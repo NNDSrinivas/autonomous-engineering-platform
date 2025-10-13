@@ -1,6 +1,7 @@
 import time
 import uuid
 import json
+import threading
 from typing import Callable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -25,14 +26,18 @@ REQ_STATUS = Counter(
     ["service", "method", "path", "status"],
 )
 
-# Redis client (lazy)
+# Redis client (lazy with thread-safe initialization)
 _redis = None
+_redis_lock = threading.Lock()
 
 
 def rds():
     global _redis
     if _redis is None:
-        _redis = redis.from_url(settings.redis_url, decode_responses=True)
+        with _redis_lock:
+            # Double-check pattern to avoid race conditions
+            if _redis is None:
+                _redis = redis.from_url(settings.redis_url, decode_responses=True)
     return _redis
 
 
@@ -88,13 +93,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.rpm = rpm
 
     async def dispatch(self, request: Request, call_next: Callable):
-        # Org or API key (prefer org for enterprise; fallback to IP)
-        org_id = (
-            request.headers.get("X-Org-Id")
-            or request.headers.get("X-API-Key")
-            or request.client.host
-            or "anon"
-        )
+        # Secure client identification (prefer authenticated org/api key)
+        org_id = request.headers.get("X-Org-Id") or request.headers.get("X-API-Key")
+
+        if not org_id:
+            # Fallback to client IP with anti-spoofing measures
+            # Only trust direct client.host, don't use proxy headers which can be spoofed
+            client_ip = (
+                getattr(request.client, "host", None) if request.client else None
+            )
+            org_id = f"ip:{client_ip}" if client_ip else "anon"
+
         key = _bucket_key(org_id)
         now = int(time.time())
         # Simple token bucket: refill 1 token per second up to rpm

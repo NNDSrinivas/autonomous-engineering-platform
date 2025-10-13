@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     # Platform Configuration
     debug: bool = False
     environment: str = "development"
-    secret_key: str = "dev-secret-key-change-in-production"
-    jwt_secret: str = "jwt-secret-key-change-in-production"
+    secret_key: str  # Required, must be set via environment variable
+    jwt_secret: str  # Required, must be set via environment variable
 
     # API Configuration
     api_v1_prefix: str = "/api"

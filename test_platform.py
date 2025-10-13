@@ -2,10 +2,10 @@
 """
 Comprehensive test script for Autonomous Engineering Intelligence Platform
 """
-import requests
 import json
 import sys
 
+import requests
 
 def test_endpoint(name, url, method="GET", data=None, expected_status=200):
     """Test a single API endpoint"""

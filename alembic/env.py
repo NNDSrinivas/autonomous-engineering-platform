@@ -1,8 +1,10 @@
-from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from alembic import context
 import os
 import sys
+from logging.config import fileConfig
+
+from alembic import context
+from sqlalchemy import engine_from_config
+from sqlalchemy import pool
 
 # Add project root so backend.* imports work
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

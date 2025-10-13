@@ -6,7 +6,6 @@ import requests
 import json
 import sys
 
-
 def test_endpoint(name, url, method="GET", data=None, expected_status=200):
     """Test a single API endpoint"""
     try:

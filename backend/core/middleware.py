@@ -181,9 +181,11 @@ class AuditMiddleware(BaseHTTPMiddleware):
         self.service_name = service_name
 
     async def dispatch(self, request: Request, call_next: Callable):
-        db = SessionLocal()
+        response = await call_next(request)
+        
+        # Try to log audit trail, but don't fail the request if audit logging fails
         try:
-            response = await call_next(request)
+            db = SessionLocal()
             try:
                 org_id = request.headers.get("X-Org-Id", "")
                 user = request.headers.get("X-User-Email", "")
@@ -208,9 +210,13 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 )
                 db.commit()
             except Exception as e:
-                # Never break the request for audit failures
+                # Never break the request for audit failures (table might not exist in CI/test)
                 AUDIT_FAILURES.labels(self.service_name).inc()
                 logger.warning(f"audit_insert_failed: {e}")
-            return response
-        finally:
-            db.close()
+            finally:
+                db.close()
+        except Exception as e:
+            # Database connection or session creation failed (e.g., CI environment)
+            logger.warning(f"audit_database_unavailable: {e}")
+            
+        return response

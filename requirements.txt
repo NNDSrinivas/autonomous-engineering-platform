@@ -4,7 +4,7 @@ uvicorn[standard]==0.30.6
 
 # Database and ORM
 SQLAlchemy==2.0.35
-psycopg[binary]==3.1.19
+psycopg[binary]>=3.1.19
 alembic==1.13.2
 
 # Configuration and validation
@@ -13,6 +13,13 @@ python-dotenv==1.0.1
 
 # Redis / Queue
 redis==5.0.8
+
+# Observability and Monitoring
+prometheus-client==0.20.0
+opentelemetry-api==1.26.0
+opentelemetry-sdk==1.26.0
+opentelemetry-instrumentation-fastapi==0.47b0
+opentelemetry-instrumentation-requests==0.47b0
 
 # Logging
 loguru==0.7.2

@@ -16,7 +16,7 @@ def upgrade() -> None:
     op.create_table(
         "audit_log",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column("ts", sa.DateTime, server_default=sa.text("(datetime('now'))")),
+        sa.Column("ts", sa.DateTime, server_default=sa.func.now()),
         sa.Column("org_id", sa.Text, nullable=True),
         sa.Column("user_email", sa.Text, nullable=True),
         sa.Column("service", sa.Text, nullable=False),

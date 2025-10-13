@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     redis_rate_limit_ttl: int = 3600  # Rate limit key TTL in seconds (1 hour)
 
+    # Rate limiting configuration
+    trusted_proxies: List[str] = [
+        "127.0.0.1",
+        "::1",
+    ]  # Trusted proxy IPs for X-Forwarded-For validation
+
     # AI Configuration
     openai_api_key: Optional[str] = None
 

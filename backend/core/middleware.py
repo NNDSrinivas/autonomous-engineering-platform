@@ -111,12 +111,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
         tokens -= 1
         rds().hset(key, mapping={"tokens": tokens, "ts": now})
-        rds().expire(key, 3600)  # Set TTL to 1 hour to prevent unbounded memory growth
+        rds().expire(
+            key, settings.redis_rate_limit_ttl
+        )  # Set TTL from settings to prevent unbounded memory growth
         return await call_next(request)
 
 
 class AuditMiddleware(BaseHTTPMiddleware):
-    """Persist minimal audit trail. Uses direct SQL for speed; swap to ORM later."""
+    """
+    Persist minimal audit trail. Uses direct SQL for speed.
+
+    Note: Under high load, consider moving to async database operations
+    or a background task queue for better performance.
+    """
 
     def __init__(self, app, service_name: str):
         super().__init__(app)

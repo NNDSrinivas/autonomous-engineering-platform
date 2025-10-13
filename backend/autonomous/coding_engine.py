@@ -202,7 +202,11 @@ class AutonomousCodingEngine:
             await self._log_task_progress(task, f"Task failed: {str(e)}")
             logger.error("Task execution failed", task_id=task_id, error=str(e))
 
-            return {"task_id": task_id, "status": "failed", "error": str(e)}
+            return {
+                "task_id": task_id,
+                "status": "failed",
+                "error": "Task execution failed",
+            }
 
     async def create_pull_request(
         self, task_id: str, repository: str, branch_name: Optional[str] = None
@@ -309,7 +313,7 @@ class AutonomousCodingEngine:
 
         except Exception as e:
             logger.error("Requirements analysis failed", error=str(e))
-            return {"error": str(e)}
+            return {"error": "Failed to analyze requirements"}
 
     async def _create_solution_plan(
         self, task: CodeTask, analysis: Dict[str, Any]
@@ -342,7 +346,7 @@ class AutonomousCodingEngine:
 
         except Exception as e:
             logger.error("Solution planning failed", error=str(e))
-            return {"error": str(e)}
+            return {"error": "Failed to create solution plan"}
 
     async def _generate_code_solutions(
         self, task: CodeTask, plan: Dict[str, Any]

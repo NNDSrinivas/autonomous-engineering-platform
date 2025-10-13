@@ -83,7 +83,7 @@ async def get_ai_response(prompt: str, system_prompt: str = None) -> str:
         return response.choices[0].message.content
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
-        return f"Error generating AI response: {str(e)}"
+        return "Error generating AI response. Please try again later."
 
 
 @app.get("/")
@@ -191,7 +191,7 @@ async def ask_question(request: QuestionRequest):
     except Exception as e:
         logger.error(f"Error in ask_question: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Error processing question: {str(e)}"
+            status_code=500, detail="Error processing question. Please try again later."
         )
 
 
@@ -269,7 +269,9 @@ async def analyze_code(request: CodeAnalysisRequest):
 
     except Exception as e:
         logger.error(f"Error in analyze_code: {e}")
-        raise HTTPException(status_code=500, detail=f"Error analyzing code: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Error analyzing code. Please try again later."
+        )
 
 
 @app.get("/api/team-analytics")
@@ -341,7 +343,7 @@ async def get_team_analytics():
     except Exception as e:
         logger.error(f"Error in team_analytics: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Error getting analytics: {str(e)}"
+            status_code=500, detail="Error getting analytics. Please try again later."
         )
 
 

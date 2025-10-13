@@ -124,7 +124,7 @@ class TeamService:
                 "query": query,
                 "results": [],
                 "summary": "Error occurred while searching team context",
-                "error": str(e),
+                "error": "internal_error",
                 "project_id": project_id,
             }
 
@@ -221,7 +221,7 @@ class TeamService:
             logger.error(f"Error adding team knowledge: {e}")
             return {
                 "success": False,
-                "error": str(e),
+                "error": "internal_error",
                 "message": "Failed to add knowledge to team database",
             }
 
@@ -278,4 +278,7 @@ class TeamService:
 
         except Exception as e:
             logger.error(f"Error generating team analytics: {e}")
-            return {"error": str(e), "message": "Failed to generate team analytics"}
+            return {
+                "error": "internal_error",
+                "message": "Failed to generate team analytics",
+            }

@@ -206,10 +206,10 @@ class LLMService:
         except Exception as e:
             logger.error("Error generating code suggestion", error=str(e))
             return {
-                "code": f"# Error generating code: {str(e)}",
+                "code": "# Error generating code. Please try again later.",
                 "language": language,
                 "description": description,
-                "error": str(e),
+                "error": "code_generation_failed",
             }
 
     def _build_engineering_system_prompt(self, context: Dict[str, Any]) -> str:

@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     @property
     def sqlalchemy_url(self) -> str:
         return (
-            f"postgresql+psycopg2://{self.db_user}:{self.db_password}"
+            f"postgresql+psycopg://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
         )
 

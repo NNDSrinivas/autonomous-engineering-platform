@@ -20,7 +20,7 @@ The migration also recreates the necessary indexes after the table is redefined.
 from alembic import op
 import sqlalchemy as sa
 
-revision = "872643470774_fix_audit_log_autoincrement"
+revision = "fix_audit_log_autoincrement"
 down_revision = "0002_audit_log"
 branch_labels = None
 depends_on = None

@@ -275,7 +275,8 @@ async def ask_question(request: QuestionRequest) -> Dict[str, Any]:
         return {
             "answer": "I encountered an error processing your request. Please try again.",
             "confidence": 0.1,
-            "error": "internal_error",
+            "error": "processing_error",
+            "error_type": type(e).__name__,
         }
 
 
@@ -315,7 +316,8 @@ async def analyze_code(request: CodeAnalysisRequest) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in analyze-code endpoint: {e}")
         return {
-            "error": "internal_error",
+            "error": "analysis_error",
+            "error_type": type(e).__name__,
             "language": request.language,
             "analysis_type": request.analysis_type,
         }
@@ -364,7 +366,8 @@ async def search_team_context(request: TeamContextRequest) -> Dict[str, Any]:
             "query": request.query,
             "results": [],
             "summary": "Error occurred while searching team context",
-            "error": "internal_error",
+            "error": "search_error",
+            "error_type": type(e).__name__,
         }
 
 
@@ -418,7 +421,8 @@ async def get_team_analytics(project_id: Optional[str] = None) -> Dict[str, Any]
     except Exception as e:
         logger.error(f"Error in team-analytics endpoint: {e}")
         return {
-            "error": "internal_error",
+            "error": "analytics_error",
+            "error_type": type(e).__name__,
             "message": "Failed to generate team analytics",
         }
 

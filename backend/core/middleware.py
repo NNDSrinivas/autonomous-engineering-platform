@@ -2,7 +2,8 @@ import time
 import uuid
 import json
 import threading
-from typing import Callable
+import ipaddress
+from typing import Callable, Optional
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -46,6 +47,32 @@ def rds():
             if _redis is None:
                 _redis = redis.from_url(settings.redis_url, decode_responses=True)
     return _redis
+
+
+def _get_client_ip(request: Request) -> Optional[str]:
+    """
+    Securely extract client IP with X-Forwarded-For validation for trusted proxies.
+    Falls back to direct client.host if no trusted proxy headers are found.
+    """
+    # Check if request is from a trusted proxy
+    direct_ip = getattr(request.client, "host", None) if request.client else None
+
+    # If direct IP is in trusted proxies, check X-Forwarded-For
+    if direct_ip and direct_ip in settings.trusted_proxies:
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            # Take the first (original client) IP from X-Forwarded-For chain
+            client_ip = forwarded_for.split(",")[0].strip()
+            try:
+                # Validate it's a proper IP address
+                ipaddress.ip_address(client_ip)
+                return client_ip
+            except ValueError:
+                # Invalid IP in X-Forwarded-For, fall back to direct IP
+                pass
+
+    # Use direct client IP (default secure behavior)
+    return direct_ip
 
 
 def _bucket_key(org_id: str) -> str:
@@ -104,11 +131,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         org_id = request.headers.get("X-Org-Id") or request.headers.get("X-API-Key")
 
         if not org_id:
-            # Fallback to client IP with anti-spoofing measures
-            # Only trust direct client.host, don't use proxy headers which can be spoofed
-            client_ip = (
-                getattr(request.client, "host", None) if request.client else None
-            )
+            # Fallback to client IP with proper X-Forwarded-For validation for trusted proxies
+            client_ip = _get_client_ip(request)
             org_id = f"ip:{client_ip}" if client_ip else "anon"
 
         key = _bucket_key(org_id)

@@ -4,6 +4,7 @@ Revision ID: 0002_audit_log
 Revises: 0001_init
 Create Date: 2025-10-13
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -11,6 +12,7 @@ revision = "0002_audit_log"
 down_revision = "0001_init"
 branch_labels = None
 depends_on = None
+
 
 def upgrade() -> None:
     op.create_table(
@@ -27,6 +29,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_audit_log_ts", "audit_log", ["ts"])
     op.create_index("ix_audit_log_org_ts", "audit_log", ["org_id", "ts"])
+
 
 def downgrade() -> None:
     op.drop_index("ix_audit_log_org_ts", table_name="audit_log")

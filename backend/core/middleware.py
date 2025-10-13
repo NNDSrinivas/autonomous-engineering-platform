@@ -1,23 +1,23 @@
-import time
-import uuid
+import ipaddress
 import json
 import threading
-import ipaddress
-
+import time
+import uuid
 from typing import Callable
 from typing import Optional
+
+import redis
+from loguru import logger
+from prometheus_client import Counter
+from prometheus_client import Gauge
+from prometheus_client import Histogram
+from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from loguru import logger
-from prometheus_client import Histogram
-from prometheus_client import Counter
-from prometheus_client import Gauge
-import redis
 
 from .config import settings
 from .db import SessionLocal
-from sqlalchemy import text
 
 # Prometheus metrics
 REQ_LATENCY = Histogram(

@@ -10,6 +10,7 @@ python -m backend.api.realtime &
 REALTIME_PID=$!
 
 # Trap signals and kill background processes on exit
-trap "echo 'Stopping background processes...'; kill $MAIN_PID $REALTIME_PID 2>/dev/null" SIGINT SIGTERM EXIT
+trap "echo 'Stopping background processes...'; kill ${MAIN_PID:+$MAIN_PID} ${REALTIME_PID:+$REALTIME_PID} 2>/dev/null || true" SIGINT SIGTERM EXIT
 
-wait $MAIN_PID $REALTIME_PID
+wait $MAIN_PID || true
+wait $REALTIME_PID || true

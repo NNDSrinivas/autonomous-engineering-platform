@@ -1,8 +1,10 @@
 """
 Configuration management for Autonomous Engineering Intelligence Platform
 """
+
 from pydantic_settings import BaseSettings
 from typing import List, Optional
+
 
 class Settings(BaseSettings):
     app_env: str = "dev"
@@ -13,7 +15,9 @@ class Settings(BaseSettings):
     realtime_port: int = 8001
 
     log_level: str = "INFO"
-    cors_origins: str = "http://localhost:3000,http://localhost:3001"  # comma-separated list or "*"
+    cors_origins: str = (
+        "http://localhost:3000,http://localhost:3001"  # comma-separated list or "*"
+    )
 
     # Database configuration
     db_host: str = "localhost"
@@ -62,6 +66,11 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> List[str]:
-        return ["*"] if self.cors_origins == "*" else [s.strip() for s in self.cors_origins.split(",") if s.strip()]
+        return (
+            ["*"]
+            if self.cors_origins == "*"
+            else [s.strip() for s in self.cors_origins.split(",") if s.strip()]
+        )
+
 
 settings = Settings()

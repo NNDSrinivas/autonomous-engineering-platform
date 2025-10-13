@@ -16,11 +16,11 @@ jobs:
         run: ruff check . && black --check .
       - name: Unit tests (health only for now)
         run: |
-          python -m backend.api.main & sleep 2
+          API_PORT=8002 python -m backend.api.main & sleep 2
           python -m backend.api.realtime & sleep 2
           python - <<'PY'
           import requests, sys
-          for port in (8000,8001):
+          for port in (8002,8001):
               r = requests.get(f"http://localhost:{port}/health", timeout=2)
               assert r.status_code==200
           print("health ok")

@@ -1,4 +1,7 @@
-import requests, time, subprocess, os
+import requests
+import time
+import subprocess
+import os
 
 CORE = "http://localhost:8002"  # Bootstrap core API (configured in .env)
 REAL = "http://localhost:8001"  # Bootstrap realtime API
@@ -14,7 +17,8 @@ def wait(port):
 
 def test_health_endpoints():
     # assumes you already started both services in separate terminals
-    wait(8002); wait(8001)
+    wait(8002)
+    wait(8001)
 
     r1 = requests.get(f"{CORE}/health", timeout=1).json()
     r2 = requests.get(f"{REAL}/health", timeout=1).json()

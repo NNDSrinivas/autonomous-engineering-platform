@@ -72,3 +72,6 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached application settings"""
     return Settings()
+
+# Global settings instance
+settings = get_settings()

@@ -1,211 +1,231 @@
-"""
-Autonomous Engineering Intelligence Platform - Core API
-FastAPI application serving the main engineering intelligence endpoints
-"""
-from contextlib import asynccontextmanager
-from typing import Dict, Any
-
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBearer
-import structlog
+from pydantic import BaseModel
+from typing import Dict, Any, Optional, List
+import logging
+import asyncio
+from contextlib import asynccontextmanager
 
-from backend.core.config import get_settings
-from backend.core.database import init_database
-from backend.core.ai.llm_service import LLMService
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Import our services (with correct paths)
+from backend.core.config import settings
+from backend.core.ai_service import AIService
 from backend.core.memory.vector_store import VectorStore
+from backend.core.team_service import TeamService
 from backend.integrations.github.service import GitHubService
 from backend.integrations.jira.service import JiraService
 
-logger = structlog.get_logger(__name__)
-
-# Global services
-llm_service: LLMService = None
-vector_store: VectorStore = None
-github_service: GitHubService = None
-jira_service: JiraService = None
+# Global service instances
+ai_service = None
+team_service = None
+github_service = None
+jira_service = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize and cleanup application resources"""
-    settings = get_settings()
+    """Initialize services on startup"""
+    global ai_service, team_service, github_service, jira_service
     
-    # Initialize core services
-    global llm_service, vector_store, github_service, jira_service
-    
-    logger.info("Initializing Autonomous Engineering Intelligence Platform...")
-    
-    # Database
-    await init_database()
-    
-    # AI Services
-    llm_service = LLMService(settings)
-    vector_store = VectorStore(settings.vector_db_path)
-    
-    # External Integrations
-    if settings.github_token:
-        github_service = GitHubService(settings.github_token)
-    
-    if settings.jira_url and settings.jira_token:
-        jira_service = JiraService(
-            url=settings.jira_url,
-            email=settings.jira_user,
-            token=settings.jira_token
-        )
-    
-    logger.info("Platform initialization complete!")
-    
-    yield
-    
-    # Cleanup
-    logger.info("Shutting down platform services...")
-    if vector_store:
-        await vector_store.close()
+    try:
+        logger.info("Initializing Autonomous Engineering Intelligence Platform...")
+        
+        # Initialize services
+        ai_service = AIService()
+        vector_store = VectorStore()
+        team_service = TeamService(vector_store)
+        github_service = GitHubService()
+        jira_service = JiraService()
+        
+        logger.info("✅ All services initialized successfully")
+        yield
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize services: {e}")
+        raise e
+    finally:
+        logger.info("Shutting down services...")
 
 # Create FastAPI app
 app = FastAPI(
     title="Autonomous Engineering Intelligence Platform",
-    description="AI-Powered Digital Coworker for Software Engineering Teams",
+    description="AI-powered digital coworker for engineering teams",
     version="1.0.0",
     lifespan=lifespan
 )
 
-# Security
-security = HTTPBearer()
-settings = get_settings()
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# CORS Configuration
-if settings.enable_cors:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.allow_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+# Request/Response models
+class QuestionRequest(BaseModel):
+    question: str
+    context: Optional[Dict[str, Any]] = None
+
+class CodeAnalysisRequest(BaseModel):
+    code: str
+    language: str
+    analysis_type: Optional[str] = "general"
+
+class TeamContextRequest(BaseModel):
+    query: str
+    project_id: Optional[str] = None
+    limit: Optional[int] = 5
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    version: str
+    components: Dict[str, bool]
+
+# API Endpoints
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Platform health check"""
+    return HealthResponse(
+        status="healthy",
+        service="Autonomous Engineering Intelligence Platform", 
+        version="1.0.0",
+        components={
+            "llm_service": ai_service is not None,
+            "vector_store": team_service is not None,
+            "github_integration": github_service is not None,
+            "jira_integration": jira_service is not None
+        }
     )
 
-# Health check endpoint
-@app.get("/health")
-async def health_check() -> Dict[str, Any]:
-    """Health check endpoint for the engineering platform"""
-    return {
-        "status": "healthy",
-        "service": "Autonomous Engineering Intelligence Platform",
-        "version": "1.0.0",
-        "components": {
-            "llm_service": llm_service is not None,
-            "vector_store": vector_store is not None,
-            "github_integration": github_service is not None,
-            "jira_integration": jira_service is not None,
-        }
-    }
-
-# Core engineering endpoints
 @app.post("/api/ask")
-async def ask_question(request: Dict[str, Any]) -> Dict[str, Any]:
-    """Ask the AI engineering assistant a question with full context"""
-    if not llm_service:
-        raise HTTPException(status_code=503, detail="LLM service not available")
-    
-    question = request.get("question", "")
-    context = request.get("context", {})
-    
-    if not question:
-        raise HTTPException(status_code=400, detail="Question is required")
-    
+async def ask_question(request: QuestionRequest) -> Dict[str, Any]:
+    """Ask a question to the AI assistant"""
     try:
-        # Get relevant context from vector store
-        if vector_store:
-            relevant_docs = await vector_store.search(question, limit=5)
-            context["relevant_knowledge"] = relevant_docs
+        if not ai_service:
+            raise HTTPException(status_code=503, detail="AI service not available")
         
-        # Generate AI response
-        response = await llm_service.generate_engineering_response(
-            question=question,
-            context=context
-        )
-        
-        return {
-            "answer": response.answer,
-            "reasoning": response.reasoning,
-            "suggested_actions": response.suggested_actions,
-            "confidence": response.confidence
-        }
+        result = await ai_service.ask_question(request.question, request.context)
+        return result
         
     except Exception as e:
-        logger.error("Error processing engineering question", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to process question")
+        logger.error(f"Error in ask endpoint: {e}")
+        return {
+            "answer": "I encountered an error processing your request. Please try again.",
+            "reasoning": "Technical error occurred",
+            "suggested_actions": [
+                "Try rephrasing your question",
+                "Check system status"
+            ],
+            "confidence": 0.1
+        }
 
 @app.post("/api/analyze-code")
-async def analyze_code(request: Dict[str, Any]) -> Dict[str, Any]:
-    """Analyze code and provide engineering insights"""
-    if not llm_service:
-        raise HTTPException(status_code=503, detail="LLM service not available")
-    
-    code = request.get("code", "")
-    language = request.get("language", "python")
-    context = request.get("context", {})
-    
-    if not code:
-        raise HTTPException(status_code=400, detail="Code is required")
-    
+async def analyze_code(request: CodeAnalysisRequest) -> Dict[str, Any]:
+    """Analyze code for quality, security, and performance"""
     try:
-        analysis = await llm_service.analyze_code(
-            code=code,
-            language=language,
-            context=context
+        if not ai_service:
+            raise HTTPException(status_code=503, detail="AI service not available")
+        
+        result = await ai_service.analyze_code(
+            request.code, 
+            request.language, 
+            request.analysis_type
         )
-        
-        return {
-            "quality_score": analysis.quality_score,
-            "issues": analysis.issues,
-            "suggestions": analysis.suggestions,
-            "complexity": analysis.complexity,
-            "test_coverage_suggestions": analysis.test_suggestions
-        }
+        return result
         
     except Exception as e:
-        logger.error("Error analyzing code", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to analyze code")
+        logger.error(f"Error in analyze-code endpoint: {e}")
+        return {
+            "quality_score": 0.5,
+            "issues": [
+                {
+                    "type": "analysis_error",
+                    "message": "Could not analyze code"
+                }
+            ],
+            "suggestions": [
+                "Manual code review recommended"
+            ],
+            "complexity": {
+                "cyclomatic": "unknown"
+            },
+            "test_coverage_suggestions": [
+                "Add basic unit tests"
+            ]
+        }
 
-@app.get("/api/team-context")
-async def get_team_context() -> Dict[str, Any]:
-    """Get current team context and project status"""
-    context = {}
-    
+@app.post("/api/team-context")
+async def search_team_context(request: TeamContextRequest) -> Dict[str, Any]:
+    """Search team knowledge and context"""
     try:
-        # GitHub context
-        if github_service:
-            github_context = await github_service.get_team_context()
-            context["github"] = github_context
+        if not team_service:
+            raise HTTPException(status_code=503, detail="Team service not available")
         
-        # JIRA context
-        if jira_service:
-            jira_context = await jira_service.get_team_context()
-            context["jira"] = jira_context
-        
-        # Memory context
-        if vector_store:
-            recent_knowledge = await vector_store.get_recent_knowledge(limit=10)
-            context["recent_knowledge"] = recent_knowledge
-        
-        return {
-            "status": "success",
-            "context": context,
-            "timestamp": "2025-10-11T00:00:00Z"
-        }
+        result = await team_service.search_team_context(
+            request.query,
+            request.project_id,
+            request.limit
+        )
+        return result
         
     except Exception as e:
-        logger.error("Error getting team context", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to get team context")
+        logger.error(f"Error in team-context endpoint: {e}")
+        return {
+            "query": request.query,
+            "results": [],
+            "summary": "Error occurred while searching team context",
+            "error": str(e),
+            "project_id": request.project_id
+        }
+
+@app.get("/api/team-analytics")
+async def get_team_analytics(project_id: Optional[str] = None) -> Dict[str, Any]:
+    """Get team analytics and insights"""
+    try:
+        if not team_service:
+            raise HTTPException(status_code=503, detail="Team service not available")
+        
+        result = await team_service.get_team_analytics(project_id)
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in team-analytics endpoint: {e}")
+        return {
+            "error": str(e),
+            "message": "Failed to generate team analytics"
+        }
+
+@app.get("/")
+async def root():
+    """Platform information"""
+    return {
+        "service": "Autonomous Engineering Intelligence Platform",
+        "version": "1.0.0",
+        "description": "AI-powered digital coworker for engineering teams",
+        "endpoints": {
+            "health": "/health",
+            "ask": "/api/ask",
+            "analyze_code": "/api/analyze-code", 
+            "team_context": "/api/team-context",
+            "team_analytics": "/api/team-analytics",
+            "docs": "/docs"
+        },
+        "status": "operational"
+    }
 
 if __name__ == "__main__":
     import uvicorn
-    settings = get_settings()
     uvicorn.run(
         "backend.api.main:app",
         host="0.0.0.0",
-        port=settings.api_port,
-        reload=settings.debug
+        port=8000,
+        reload=True,
+        log_level="info"
     )

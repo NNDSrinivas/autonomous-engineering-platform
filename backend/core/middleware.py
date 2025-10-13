@@ -1,4 +1,6 @@
-import time, uuid, json
+import time
+import uuid
+import json
 from typing import Callable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -85,9 +87,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         now = int(time.time())
         # Simple token bucket: refill 1 token per second up to rpm
         # We'll store (tokens, last_ts)
-        pipe = rds().pipeline()
-        pipe.hgetall(key)
-        data = pipe.execute()[0] or {}
+        data = rds().hgetall(key) or {}
         tokens = int(data.get("tokens", self.rpm))
         last_ts = int(data.get("ts", now))
         # refill
@@ -99,6 +99,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
         tokens -= 1
         rds().hset(key, mapping={"tokens": tokens, "ts": now})
+        rds().expire(key, 3600)  # Set TTL to 1 hour to prevent unbounded memory growth
         return await call_next(request)
 
 class AuditMiddleware(BaseHTTPMiddleware):

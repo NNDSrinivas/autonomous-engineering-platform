@@ -2,7 +2,7 @@
 Configuration management for Autonomous Engineering Intelligence Platform
 """
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 class Settings(BaseSettings):
     app_env: str = "dev"
@@ -15,13 +15,36 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_origins: str = "http://localhost:3000,http://localhost:3001"  # comma-separated list or "*"
 
+    # Database configuration
     db_host: str = "localhost"
     db_port: int = 5432
     db_user: str = "mentor"
     db_password: str = "mentor"
     db_name: str = "mentor"
+    database_url: Optional[str] = None  # Allow override with full URL
 
     redis_url: str = "redis://localhost:6379/0"
+
+    # AI Configuration
+    openai_api_key: Optional[str] = None
+
+    # Platform Configuration
+    debug: bool = False
+    environment: str = "development"
+    secret_key: str = "dev-secret-key-change-in-production"
+    jwt_secret: str = "jwt-secret-key-change-in-production"
+
+    # API Configuration
+    api_v1_prefix: str = "/api"
+
+    # Storage
+    vector_db_path: str = "./data/vector_store"
+
+    # Features
+    enable_real_time: bool = True
+    enable_github_integration: bool = True
+    enable_analytics: bool = True
+    enable_ai_assistance: bool = True
 
     class Config:
         env_file = ".env"
@@ -29,6 +52,9 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_url(self) -> str:
+        # Use database_url if provided, otherwise construct from components
+        if self.database_url:
+            return self.database_url
         return (
             f"postgresql+psycopg://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"

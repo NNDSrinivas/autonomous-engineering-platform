@@ -25,6 +25,11 @@ REQ_STATUS = Counter(
     "Total HTTP requests",
     ["service", "method", "path", "status"],
 )
+AUDIT_FAILURES = Counter(
+    "audit_failures_total",
+    "Total audit logging failures",
+    ["service"],
+)
 
 # Redis client (lazy with thread-safe initialization)
 _redis = None
@@ -167,6 +172,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 db.commit()
             except Exception as e:
                 # Never break the request for audit failures
+                AUDIT_FAILURES.labels(self.service_name).inc()
                 logger.warning(f"audit_insert_failed: {e}")
             return response
         finally:

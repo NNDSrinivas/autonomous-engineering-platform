@@ -17,8 +17,9 @@ autoincrement and avoids issues seen with the previous schema.
 The migration also recreates the necessary indexes after the table is redefined.
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "fix_audit_log_autoincrement"
 down_revision = "0002_audit_log"

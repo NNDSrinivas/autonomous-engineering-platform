@@ -3,12 +3,16 @@
 Simplified Autonomous Engineering Intelligence Platform
 Working backend with all features
 """
+import logging
+from datetime import datetime
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Any, Optional, List
-import logging
-from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

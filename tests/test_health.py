@@ -1,5 +1,6 @@
-import requests
 import time
+
+import requests
 
 CORE = "http://localhost:8002"  # Bootstrap core API (configured in .env)
 REAL = "http://localhost:8001"  # Bootstrap realtime API

@@ -5,10 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..core.config import settings
 from ..core.logging import setup_logging
+from ..core.metrics import router as metrics_router
 from ..core.middleware import AuditMiddleware
 from ..core.middleware import RateLimitMiddleware
 from ..core.middleware import RequestIDMiddleware
-from ..core.metrics import router as metrics_router
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Realtime API")

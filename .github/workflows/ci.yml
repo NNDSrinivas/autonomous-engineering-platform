@@ -15,6 +15,9 @@ jobs:
       - name: Lint
         run: ruff check . && black --check .
       - name: Unit tests (health only for now)
+        env:
+          SECRET_KEY: test-secret-for-ci
+          JWT_SECRET: test-jwt-secret-for-ci
         run: |
           API_PORT=8002 python -m backend.api.main & sleep 2
           python -m backend.api.realtime & sleep 2

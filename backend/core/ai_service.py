@@ -1,8 +1,13 @@
-import openai
-from typing import Dict, Any, List, Optional
-import logging
-from .config import settings
 import json
+import logging
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+
+import openai
+
+from .config import settings
 
 logger = logging.getLogger(__name__)
 

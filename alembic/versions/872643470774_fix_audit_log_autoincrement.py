@@ -20,7 +20,7 @@ The migration also recreates the necessary indexes after the table is redefined.
 from alembic import op
 import sqlalchemy as sa
 
-revision = "872643470774"
+revision = "872643470774_fix_audit_log_autoincrement"
 down_revision = "0002_audit_log"
 branch_labels = None
 depends_on = None
@@ -56,7 +56,7 @@ def downgrade() -> None:
     op.create_table(
         "audit_log",
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
-        sa.Column("ts", sa.DateTime, server_default=sa.text("(datetime('now'))")),
+        sa.Column("ts", sa.DateTime, server_default=sa.func.now()),
         sa.Column("org_id", sa.Text, nullable=True),
         sa.Column("user_email", sa.Text, nullable=True),
         sa.Column("service", sa.Text, nullable=False),

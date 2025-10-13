@@ -7,7 +7,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 from loguru import logger
-from prometheus_client import Histogram, Counter, Gauge
+from prometheus_client import Histogram
+from prometheus_client import Counter  
+from prometheus_client import Gauge
 import redis
 from .config import settings
 from .db import SessionLocal

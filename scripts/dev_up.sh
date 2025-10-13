@@ -3,6 +3,13 @@
 set -e
 docker compose up -d
 echo "Starting Core API (8000) and Realtime API (8001) ..."
+
 python -m backend.api.main &
+MAIN_PID=$!
 python -m backend.api.realtime &
-wait
+REALTIME_PID=$!
+
+# Trap signals and kill background processes on exit
+trap "echo 'Stopping background processes...'; kill $MAIN_PID $REALTIME_PID 2>/dev/null" SIGINT SIGTERM EXIT
+
+wait $MAIN_PID $REALTIME_PID

@@ -1,9 +1,13 @@
+from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
+
 from ..core.config import settings
 from ..core.logging import setup_logging
-from ..core.middleware import RequestIDMiddleware, RateLimitMiddleware, AuditMiddleware
+from ..core.middleware import AuditMiddleware
+from ..core.middleware import RateLimitMiddleware
+from ..core.middleware import RequestIDMiddleware
 from ..core.metrics import router as metrics_router
 
 logger = setup_logging()

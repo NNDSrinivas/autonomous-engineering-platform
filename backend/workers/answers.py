@@ -39,7 +39,7 @@ def _recent_meeting_text(db: Session, meeting_id: str) -> list[str]:
         ),
         {"mid": meeting_id, "limit": MAX_TRANSCRIPT_SEGMENTS},
     ).fetchall()
-    return [r[0] for r in rows][::-1]  # chronological
+    return [r[0] for r in rows][::-1]  # reverse to chronological order (oldest first)
 
 
 def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:

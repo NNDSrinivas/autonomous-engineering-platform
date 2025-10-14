@@ -1,6 +1,9 @@
 import sys
+
 from loguru import logger
+
 from .config import settings
+
 
 def setup_logging():
     logger.remove()

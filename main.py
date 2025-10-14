@@ -1,14 +1,18 @@
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from typing import Dict, List, Optional, Any
-import asyncio
-import logging
-import sys
-import os
-from datetime import datetime
 import json
+import logging
+import os
+import sys
+from datetime import datetime
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi import HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -18,12 +22,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load environment variables
-from dotenv import load_dotenv
 load_dotenv()
 
 # Import OpenAI for real AI capabilities
 try:
     from openai import OpenAI
+
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     OPENAI_AVAILABLE = True
     logger.info("✅ OpenAI GPT-4 client initialized successfully")
@@ -34,7 +38,7 @@ except Exception as e:
 app = FastAPI(
     title="Autonomous Engineering Intelligence Platform",
     description="AI-powered digital coworker for engineering teams",
-    version="2.0.0"
+    version="2.0.0",
 )
 
 # CORS middleware
@@ -46,15 +50,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Pydantic models
 class QuestionRequest(BaseModel):
     question: str
     context: Optional[Dict[str, Any]] = None
 
+
 class CodeAnalysisRequest(BaseModel):
     code: str
     language: str = "python"
     analysis_type: str = "general"
+
 
 class TeamMember(BaseModel):
     id: str
@@ -62,28 +69,27 @@ class TeamMember(BaseModel):
     role: str
     skills: List[str]
 
+
 async def get_ai_response(prompt: str, system_prompt: str = None) -> str:
     """Get response from GPT-4"""
     if not OPENAI_AVAILABLE:
         return "AI service is not available. Please check your OpenAI API key configuration."
-    
+
     try:
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        
+
         response = client.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-            max_tokens=1000,
-            temperature=0.7
+            model="gpt-4", messages=messages, max_tokens=1000, temperature=0.7
         )
-        
+
         return response.choices[0].message.content
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
-        return f"Error generating AI response: {str(e)}"
+        return "Error generating AI response. Please try again later."
+
 
 @app.get("/")
 async def root():
@@ -94,38 +100,39 @@ async def root():
         "ai_powered": True,
         "features": [
             "GPT-4 Question Answering",
-            "Intelligent Code Analysis", 
+            "Intelligent Code Analysis",
             "Team Analytics",
-            "Real-time Collaboration"
+            "Real-time Collaboration",
         ],
         "endpoints": {
             "health": "/health",
             "ask": "/api/ask",
             "analyze_code": "/api/analyze-code",
             "team_analytics": "/api/team-analytics",
-            "documentation": "/docs"
-        }
+            "documentation": "/docs",
+        },
     }
+
 
 @app.get("/health")
 async def health_check():
     """Health check with AI status"""
     api_key_configured = bool(os.getenv("OPENAI_API_KEY"))
-    
+
     # Test OpenAI connection
     openai_status = False
     if OPENAI_AVAILABLE and api_key_configured:
         try:
             # Simple test call
-            test_response = client.chat.completions.create(
+            client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": "Hello"}],
-                max_tokens=5
+                max_tokens=5,
             )
             openai_status = True
         except Exception as e:
             logger.warning(f"OpenAI connection test failed: {e}")
-    
+
     return {
         "status": "healthy",
         "service": "Autonomous Engineering Intelligence Platform",
@@ -137,9 +144,10 @@ async def health_check():
             "fastapi": True,
             "openai_gpt4": openai_status,
             "database": True,
-            "vector_store": True
-        }
+            "vector_store": True,
+        },
     }
+
 
 @app.post("/api/ask")
 async def ask_question(request: QuestionRequest):
@@ -147,7 +155,7 @@ async def ask_question(request: QuestionRequest):
     try:
         question = request.question
         context = request.context or {}
-        
+
         # Create enhanced system prompt
         system_prompt = """You are an expert AI engineering assistant with deep knowledge in:
         - Software architecture and design patterns
@@ -159,7 +167,7 @@ async def ask_question(request: QuestionRequest):
         
         Provide detailed, practical answers with examples when appropriate.
         Focus on actionable insights and industry best practices."""
-        
+
         # Enhance the question with context
         enhanced_prompt = f"""
         Question: {question}
@@ -172,22 +180,25 @@ async def ask_question(request: QuestionRequest):
         3. Best practices and recommendations
         4. Common pitfalls to avoid
         """
-        
+
         # Get AI response
         ai_answer = await get_ai_response(enhanced_prompt, system_prompt)
-        
+
         return {
             "question": question,
             "answer": ai_answer,
             "model": "GPT-4",
             "confidence": 0.95,
             "context": context,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-        
+
     except Exception as e:
         logger.error(f"Error in ask_question: {e}")
-        raise HTTPException(status_code=500, detail=f"Error processing question: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Error processing question. Please try again later."
+        )
+
 
 @app.post("/api/analyze-code")
 async def analyze_code(request: CodeAnalysisRequest):
@@ -196,7 +207,7 @@ async def analyze_code(request: CodeAnalysisRequest):
         code = request.code
         language = request.language
         analysis_type = request.analysis_type
-        
+
         # Create system prompt for code analysis
         system_prompt = f"""You are an expert code reviewer and software architect. 
         Analyze the provided {language} code and provide:
@@ -214,7 +225,7 @@ async def analyze_code(request: CodeAnalysisRequest):
         - suggestions (array of strings)
         - summary (string)
         """
-        
+
         # Create analysis prompt
         analysis_prompt = f"""
         Please analyze this {language} code with focus on {analysis_type}:
@@ -225,10 +236,10 @@ async def analyze_code(request: CodeAnalysisRequest):
         
         Provide a detailed analysis following the JSON format specified.
         """
-        
+
         # Get AI analysis
         ai_response = await get_ai_response(analysis_prompt, system_prompt)
-        
+
         # Try to parse JSON response
         try:
             # Extract JSON from response if it's wrapped in markdown
@@ -238,9 +249,9 @@ async def analyze_code(request: CodeAnalysisRequest):
                 json_str = ai_response[json_start:json_end].strip()
             else:
                 json_str = ai_response
-            
+
             analysis_result = json.loads(json_str)
-        except:
+        except Exception:
             # Fallback if JSON parsing fails
             analysis_result = {
                 "complexity_score": 7,
@@ -248,20 +259,25 @@ async def analyze_code(request: CodeAnalysisRequest):
                 "quality_score": 7,
                 "issues": ["Unable to parse detailed analysis"],
                 "suggestions": ["Review code structure and add comments"],
-                "summary": ai_response[:200] + "..." if len(ai_response) > 200 else ai_response
+                "summary": (
+                    ai_response[:200] + "..." if len(ai_response) > 200 else ai_response
+                ),
             }
-        
+
         return {
             "language": language,
             "analysis_type": analysis_type,
             "ai_model": "GPT-4",
             "timestamp": datetime.now().isoformat(),
-            **analysis_result
+            **analysis_result,
         }
-        
+
     except Exception as e:
         logger.error(f"Error in analyze_code: {e}")
-        raise HTTPException(status_code=500, detail=f"Error analyzing code: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Error analyzing code. Please try again later."
+        )
+
 
 @app.get("/api/team-analytics")
 async def get_team_analytics():
@@ -271,9 +287,9 @@ async def get_team_analytics():
         knowledge_base = {
             "total_documents": 15,
             "vector_count": 1250,
-            "last_updated": datetime.now().isoformat()
+            "last_updated": datetime.now().isoformat(),
         }
-        
+
         # Get AI insights about team performance
         if OPENAI_AVAILABLE:
             insights_prompt = """Based on typical software engineering team metrics, provide insights about:
@@ -288,9 +304,9 @@ async def get_team_analytics():
             - collaboration_score (1-10)
             - recommendations (array)
             """
-            
+
             ai_insights_response = await get_ai_response(insights_prompt)
-            
+
             try:
                 if "```json" in ai_insights_response:
                     json_start = ai_insights_response.find("```json") + 7
@@ -298,37 +314,43 @@ async def get_team_analytics():
                     json_str = ai_insights_response[json_start:json_end].strip()
                 else:
                     json_str = ai_insights_response
-                    
+
                 ai_insights = json.loads(json_str)
                 ai_insights["ai_model"] = "GPT-4"
                 ai_insights["response_quality"] = 0.92
                 ai_insights["platform_effectiveness"] = "High"
-            except:
+            except Exception:
                 ai_insights = {
                     "productivity_score": 8,
                     "quality_score": 7,
                     "collaboration_score": 9,
-                    "recommendations": ["Increase code review coverage", "Implement automated testing"],
+                    "recommendations": [
+                        "Increase code review coverage",
+                        "Implement automated testing",
+                    ],
                     "ai_model": "GPT-4",
                     "response_quality": 0.85,
-                    "platform_effectiveness": "Medium"
+                    "platform_effectiveness": "Medium",
                 }
         else:
             ai_insights = {
                 "message": "AI insights unavailable - OpenAI API key required",
-                "platform_effectiveness": "Limited"
+                "platform_effectiveness": "Limited",
             }
-        
+
         return {
             "knowledge_base": knowledge_base,
             "ai_insights": ai_insights,
             "platform_status": "operational",
-            "last_analysis": datetime.now().isoformat()
+            "last_analysis": datetime.now().isoformat(),
         }
-        
+
     except Exception as e:
         logger.error(f"Error in team_analytics: {e}")
-        raise HTTPException(status_code=500, detail=f"Error getting analytics: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Error getting analytics. Please try again later."
+        )
+
 
 @app.get("/api/features")
 async def get_features():
@@ -338,28 +360,33 @@ async def get_features():
             "question_answering": True,
             "code_analysis": True,
             "team_insights": True,
-            "model": "GPT-4" if OPENAI_AVAILABLE else "Simulated"
+            "model": "GPT-4" if OPENAI_AVAILABLE else "Simulated",
         },
         "integrations": {
             "github": "Available",
-            "jira": "Available", 
+            "jira": "Available",
             "slack": "Planned",
-            "ide_plugins": "Available"
+            "ide_plugins": "Available",
         },
         "analytics": {
             "team_performance": True,
             "code_quality": True,
             "knowledge_base": True,
-            "real_time": True
-        }
+            "real_time": True,
+        },
     }
+
 
 if __name__ == "__main__":
     import uvicorn
+
     print("🚀 Starting Autonomous Engineering Intelligence Platform...")
     print("🤖 AI Model: GPT-4")
-    print("🔑 API Key Status:", "✅ Configured" if os.getenv("OPENAI_API_KEY") else "❌ Missing")
+    print(
+        "🔑 API Key Status:",
+        "✅ Configured" if os.getenv("OPENAI_API_KEY") else "❌ Missing",
+    )
     print("🌐 Server: http://localhost:8000")
     print("📖 Docs: http://localhost:8000/docs")
-    
+
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

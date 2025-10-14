@@ -4,6 +4,7 @@ Revision ID: 0004_integrations_ro
 Revises: ba72f0e6da5f
 Create Date: 2025-10-13
 """
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -11,6 +12,7 @@ revision = "0004_integrations_ro"
 down_revision = "ba72f0e6da5f"
 branch_labels = None
 depends_on = None
+
 
 def upgrade() -> None:
     op.create_table(
@@ -24,21 +26,31 @@ def upgrade() -> None:
         sa.Column("refresh_token", sa.Text, nullable=True),
         sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("scopes", sa.JSON, nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now())
+        sa.Column(
+            "created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+        ),
     )
     op.create_table(
         "jira_project_config",
         sa.Column("id", sa.Text, primary_key=True),
         sa.Column("org_id", sa.Text, nullable=True),
-        sa.Column("connection_id", sa.Text, sa.ForeignKey("jira_connection.id", ondelete="CASCADE")),
+        sa.Column(
+            "connection_id",
+            sa.Text,
+            sa.ForeignKey("jira_connection.id", ondelete="CASCADE"),
+        ),
         sa.Column("project_keys", sa.JSON, nullable=False),
         sa.Column("default_jql", sa.Text, nullable=True),
-        sa.Column("last_sync_at", sa.TIMESTAMP(timezone=True), nullable=True)
+        sa.Column("last_sync_at", sa.TIMESTAMP(timezone=True), nullable=True),
     )
     op.create_table(
         "jira_issue",
         sa.Column("id", sa.Text, primary_key=True),
-        sa.Column("connection_id", sa.Text, sa.ForeignKey("jira_connection.id", ondelete="CASCADE")),
+        sa.Column(
+            "connection_id",
+            sa.Text,
+            sa.ForeignKey("jira_connection.id", ondelete="CASCADE"),
+        ),
         sa.Column("project_key", sa.Text, nullable=False),
         sa.Column("issue_key", sa.Text, unique=True, nullable=False),
         sa.Column("summary", sa.Text, nullable=True),
@@ -53,7 +65,7 @@ def upgrade() -> None:
         sa.Column("updated", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("url", sa.Text, nullable=True),
         sa.Column("raw", sa.JSON, nullable=True),
-        sa.Column("indexed_at", sa.TIMESTAMP(timezone=True), nullable=True)
+        sa.Column("indexed_at", sa.TIMESTAMP(timezone=True), nullable=True),
     )
     op.create_index("ix_jira_issue_project", "jira_issue", ["project_key"])
     op.create_index("ix_jira_issue_updated", "jira_issue", ["updated"])
@@ -69,18 +81,24 @@ def upgrade() -> None:
         sa.Column("refresh_token", sa.Text, nullable=True),
         sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("scopes", sa.JSON, nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now())
+        sa.Column(
+            "created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+        ),
     )
     op.create_table(
         "gh_repo",
         sa.Column("id", sa.Text, primary_key=True),
-        sa.Column("connection_id", sa.Text, sa.ForeignKey("gh_connection.id", ondelete="CASCADE")),
+        sa.Column(
+            "connection_id",
+            sa.Text,
+            sa.ForeignKey("gh_connection.id", ondelete="CASCADE"),
+        ),
         sa.Column("repo_full_name", sa.Text, nullable=False),  # org/repo
         sa.Column("default_branch", sa.Text, nullable=True),
         sa.Column("is_private", sa.Boolean, nullable=True),
         sa.Column("url", sa.Text, nullable=True),
         sa.Column("last_index_at", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("index_mode", sa.Text, nullable=True)  # api|git (placeholder)
+        sa.Column("index_mode", sa.Text, nullable=True),  # api|git (placeholder)
     )
     op.create_table(
         "gh_file",
@@ -90,7 +108,7 @@ def upgrade() -> None:
         sa.Column("size_bytes", sa.Integer, nullable=True),
         sa.Column("lang", sa.Text, nullable=True),
         sa.Column("sha", sa.Text, nullable=True),
-        sa.Column("updated", sa.TIMESTAMP(timezone=True), nullable=True)
+        sa.Column("updated", sa.TIMESTAMP(timezone=True), nullable=True),
     )
     op.create_index("ix_gh_file_repo_path", "gh_file", ["repo_id", "path"])
 
@@ -105,9 +123,12 @@ def upgrade() -> None:
         sa.Column("state", sa.Text, nullable=True),
         sa.Column("author", sa.Text, nullable=True),
         sa.Column("updated", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("url", sa.Text, nullable=True)
+        sa.Column("url", sa.Text, nullable=True),
     )
-    op.create_index("ix_gh_issue_pr_repo_updated", "gh_issue_pr", ["repo_id", "updated"])
+    op.create_index(
+        "ix_gh_issue_pr_repo_updated", "gh_issue_pr", ["repo_id", "updated"]
+    )
+
 
 def downgrade() -> None:
     op.drop_index("ix_gh_issue_pr_repo_updated", table_name="gh_issue_pr")

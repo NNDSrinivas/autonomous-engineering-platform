@@ -34,7 +34,11 @@ app.add_middleware(AuditMiddleware, service_name="core")
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "core", "time": dt.datetime.now(dt.timezone.utc).isoformat()}
+    return {
+        "status": "ok",
+        "service": "core",
+        "time": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
 
 
 @app.get("/version")
@@ -104,10 +108,12 @@ def search_meetings(
 
 # ---- Feature 4: Integration endpoints (JIRA + GitHub) ----
 
+
 # --- JIRA ---
 class JiraConnectReq(BaseModel):
     cloud_base_url: str
     access_token: str  # for MVP; replace with real OAuth exchange later
+
 
 @app.post("/api/integrations/jira/connect")
 def jira_connect(body: JiraConnectReq, db: Session = Depends(get_db)):
@@ -119,7 +125,7 @@ def jira_connect(body: JiraConnectReq, db: Session = Depends(get_db)):
 
     Returns:
         Connection ID for subsequent operations
-    
+
     Raises:
         HTTPException: If connection creation fails
     """
@@ -130,10 +136,12 @@ def jira_connect(body: JiraConnectReq, db: Session = Depends(get_db)):
         logger.error(f"Failed to create JIRA connection: {e}")
         raise HTTPException(status_code=500, detail="Failed to create JIRA connection")
 
+
 class JiraConfigReq(BaseModel):
     connection_id: str
     project_keys: list[str]
     default_jql: str | None = None
+
 
 @app.post("/api/integrations/jira/config")
 def jira_config(body: JiraConfigReq, db: Session = Depends(get_db)):
@@ -145,16 +153,21 @@ def jira_config(body: JiraConfigReq, db: Session = Depends(get_db)):
 
     Returns:
         Configuration ID
-    
+
     Raises:
         HTTPException: If configuration creation fails
     """
     try:
-        cfg = jsvc.set_project_config(db, body.connection_id, body.project_keys, body.default_jql)
+        cfg = jsvc.set_project_config(
+            db, body.connection_id, body.project_keys, body.default_jql
+        )
         return {"config_id": cfg.id}
     except Exception as e:
         logger.error(f"Failed to create JIRA configuration: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create JIRA configuration")
+        raise HTTPException(
+            status_code=500, detail="Failed to create JIRA configuration"
+        )
+
 
 @app.post("/api/integrations/jira/sync")
 def jira_trigger_sync(connection_id: str):
@@ -165,7 +178,7 @@ def jira_trigger_sync(connection_id: str):
 
     Returns:
         Sync job enqueue confirmation
-    
+
     Raises:
         HTTPException: If sync job enqueue fails
     """
@@ -176,8 +189,15 @@ def jira_trigger_sync(connection_id: str):
         logger.error(f"Failed to enqueue JIRA sync job: {e}")
         raise HTTPException(status_code=500, detail="Failed to enqueue sync job")
 
+
 @app.get("/api/jira/tasks")
-def jira_tasks(q: str | None = None, project: str | None = None, assignee: str | None = None, updated_since: str | None = None, db: Session = Depends(get_db)):
+def jira_tasks(
+    q: str | None = None,
+    project: str | None = None,
+    assignee: str | None = None,
+    updated_since: str | None = None,
+    db: Session = Depends(get_db),
+):
     """Search JIRA issues with optional filters.
 
     Args:
@@ -190,11 +210,17 @@ def jira_tasks(q: str | None = None, project: str | None = None, assignee: str |
     Returns:
         List of matching JIRA issues
     """
-    return {"items": jsvc.search_issues(db, q=q, project=project, assignee=assignee, updated_since=updated_since)}
+    return {
+        "items": jsvc.search_issues(
+            db, q=q, project=project, assignee=assignee, updated_since=updated_since
+        )
+    }
+
 
 # --- GitHub ---
 class GhConnectReq(BaseModel):
     access_token: str  # for MVP; replace with real OAuth exchange later
+
 
 @app.post("/api/integrations/github/connect")
 def gh_connect(body: GhConnectReq, db: Session = Depends(get_db)):
@@ -206,7 +232,7 @@ def gh_connect(body: GhConnectReq, db: Session = Depends(get_db)):
 
     Returns:
         Connection ID for subsequent operations
-    
+
     Raises:
         HTTPException: If connection creation fails
     """
@@ -215,11 +241,15 @@ def gh_connect(body: GhConnectReq, db: Session = Depends(get_db)):
         return {"connection_id": conn.id}
     except Exception as e:
         logger.error(f"Failed to create GitHub connection: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create GitHub connection")
+        raise HTTPException(
+            status_code=500, detail="Failed to create GitHub connection"
+        )
+
 
 class GhIndexReq(BaseModel):
     connection_id: str
     repo_full_name: str
+
 
 @app.post("/api/github/index")
 def gh_index_repo(body: GhIndexReq):
@@ -230,7 +260,7 @@ def gh_index_repo(body: GhIndexReq):
 
     Returns:
         Index job enqueue confirmation
-    
+
     Raises:
         HTTPException: If index job enqueue fails
     """
@@ -241,8 +271,14 @@ def gh_index_repo(body: GhIndexReq):
         logger.error(f"Failed to enqueue GitHub index job: {e}")
         raise HTTPException(status_code=500, detail="Failed to enqueue index job")
 
+
 @app.get("/api/github/search/code")
-def gh_search_code(repo: str | None = None, q: str | None = None, path: str | None = None, db: Session = Depends(get_db)):
+def gh_search_code(
+    repo: str | None = None,
+    q: str | None = None,
+    path: str | None = None,
+    db: Session = Depends(get_db),
+):
     """Search GitHub code files with optional filters.
 
     Args:
@@ -256,8 +292,14 @@ def gh_search_code(repo: str | None = None, q: str | None = None, path: str | No
     """
     return {"hits": ghsvc.search_code(db, repo=repo, q=q, path_prefix=path)}
 
+
 @app.get("/api/github/search/issues")
-def gh_search_issues(repo: str | None = None, q: str | None = None, updated_since: str | None = None, db: Session = Depends(get_db)):
+def gh_search_issues(
+    repo: str | None = None,
+    q: str | None = None,
+    updated_since: str | None = None,
+    db: Session = Depends(get_db),
+):
     """Search GitHub issues and pull requests with optional filters.
 
     Args:
@@ -269,7 +311,9 @@ def gh_search_issues(repo: str | None = None, q: str | None = None, updated_sinc
     Returns:
         List of matching issues and pull requests
     """
-    return {"hits": ghsvc.search_issues(db, repo=repo, q=q, updated_since=updated_since)}
+    return {
+        "hits": ghsvc.search_issues(db, repo=repo, q=q, updated_since=updated_since)
+    }
 
 
 # TODO: Write actions (comment, transition, PR create) will ship in a later PR.

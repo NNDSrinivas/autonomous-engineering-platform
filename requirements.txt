@@ -41,3 +41,6 @@ structlog>=23.2.0
 
 # Additional utilities
 python-multipart>=0.0.6
+
+# Task queue
+dramatiq==1.16.0

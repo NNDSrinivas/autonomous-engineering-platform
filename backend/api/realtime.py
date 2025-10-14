@@ -28,6 +28,10 @@ ANSWER_GENERATION_INTERVAL = 3  # Generate answer every N captions
 
 # Constants for SSE streaming
 SSE_MAX_DURATION_SECONDS = 3600  # Maximum duration for SSE streams (1 hour)
+SSE_POLL_INTERVAL_SECONDS = 1  # Polling interval for new answers in SSE streams
+
+# Constants for rate limiting
+REALTIME_API_RPM = 120  # Requests per minute for realtime API
 
 logger = setup_logging()
 
@@ -63,7 +67,7 @@ app.add_middleware(
 )
 app.add_middleware(RequestIDMiddleware, service_name="realtime")
 app.add_middleware(
-    RateLimitMiddleware, service_name="realtime", rpm=120
+    RateLimitMiddleware, service_name="realtime", rpm=REALTIME_API_RPM
 )  # a bit higher
 app.add_middleware(AuditMiddleware, service_name="realtime")
 
@@ -242,7 +246,7 @@ def stream_answers(session_id: str) -> StreamingResponse:
                         # Set last_ts to the latest timestamp after emitting
                         last_ts = rows[-1]["created_at"]
 
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
             except Exception as e:
                 logger.exception(
                     "Error in SSE stream for session %s: %s", session_id, e

@@ -11,6 +11,7 @@ MAX_CONTEXT_LENGTH = 600  # Maximum characters of meeting context to use
 MAX_FALLBACK_LENGTH = 140  # Maximum characters for fallback answer from meeting
 MAX_ANSWER_LENGTH = 280  # Maximum length of generated answer
 MIN_SENTENCE_LENGTH = 2  # Minimum character length for meaningful sentences
+MAX_EXTRACTED_TERMS = 8  # Maximum number of terms to extract from text
 
 # Constants for answer retrieval
 MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
@@ -62,7 +63,7 @@ def extract_terms(latest_text: str) -> list[str]:
         latest_text: Text to extract keywords from
 
     Returns:
-        List of up to 8 unique keywords, excluding common stopwords
+        List of up to MAX_EXTRACTED_TERMS unique keywords, excluding common stopwords
     """
     words = re.findall(r"[A-Za-z0-9_-]{3,}", latest_text or "")
     uniq = []
@@ -82,7 +83,7 @@ def extract_terms(latest_text: str) -> list[str]:
         wl = w.lower()
         if wl not in uniq and wl not in stopwords:
             uniq.append(wl)
-    return uniq[:8]
+    return uniq[:MAX_EXTRACTED_TERMS]
 
 
 def _pick_best(items: list[dict], n: int) -> list[dict]:

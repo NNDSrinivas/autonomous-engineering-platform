@@ -3,6 +3,8 @@ import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
+from typing import Generator
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -37,7 +39,7 @@ redis_pool = redis.ConnectionPool.from_url(
 
 # Context manager for database sessions in streaming contexts
 @contextmanager
-def db_session():
+def db_session() -> Generator[Session, None, None]:
     """Context manager for database sessions with automatic cleanup.
 
     Yields:

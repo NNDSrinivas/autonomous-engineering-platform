@@ -5,6 +5,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..models.answers import SessionAnswer
 
+# Constants for answer generation
+MAX_CONTEXT_LENGTH = 600  # Maximum characters of meeting context to use
+MAX_FALLBACK_LENGTH = 140  # Maximum characters for fallback answer from meeting
+MAX_ANSWER_LENGTH = 280  # Maximum length of generated answer
+
 
 def _id() -> str:
     """Generate a unique identifier for an answer.
@@ -81,7 +86,7 @@ def generate_grounded_answer(
     Returns:
         Dictionary with answer text, citations, confidence score, token count, and latency_ms placeholder
     """
-    text_context = " ".join(meeting_snippets)[-600:]
+    text_context = " ".join(meeting_snippets)[-MAX_CONTEXT_LENGTH:]
     answer = ""
     citations = []
 
@@ -104,7 +109,7 @@ def generate_grounded_answer(
         s = (
             text_context.split(".")[-2:]
             if "." in text_context
-            else [text_context[:140]]
+            else [text_context[:MAX_FALLBACK_LENGTH]]
         )
         answer = " ".join(s).strip()
         citations.append({"type": "meeting"})
@@ -112,7 +117,7 @@ def generate_grounded_answer(
         answer = "I don't have enough context yet."
 
     return {
-        "answer": answer[:280],
+        "answer": answer[:MAX_ANSWER_LENGTH],
         "citations": citations,
         "confidence": 0.6,
         "token_count": len(answer.split()),

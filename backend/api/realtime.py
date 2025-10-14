@@ -121,8 +121,8 @@ def post_caption(session_id: str, body: CaptionReq, db: Session = Depends(get_db
         if "?" in (body.text or "") or n % ANSWER_GENERATION_INTERVAL == 0:
             generate_answer.send(session_id)
         r.expire(key, 60)
-    except Exception as e:
-        logger.warning(f"Failed to enqueue answer generation: {e}")
+    except (redis.RedisError, ConnectionError) as e:
+        logger.warning("Failed to enqueue answer generation: %s", e)
         # Continue even if answer generation fails
 
     return {"ok": True}
@@ -193,8 +193,8 @@ def stream_answers(session_id: str, db: Session = Depends(get_db)):
                         last_ts = r["created_at"]
                         yield f"data: {json.dumps(r, default=str)}\n\n"
                 sleep(1)
-        except Exception as e:
-            logger.error(f"Error in SSE stream for session {session_id}: {e}")
+        except Exception:
+            logger.exception("Error in SSE stream for session %s", session_id)
             yield f"data: {json.dumps({'event': 'error', 'message': 'An internal server error occurred.'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

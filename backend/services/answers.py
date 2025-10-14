@@ -183,7 +183,11 @@ def recent_answers(
     if since_ts:
         # Parse since_ts string to a timezone-aware datetime object
         try:
-            dt = datetime.fromisoformat(since_ts)
+            # Handle 'Z' suffix for UTC timezone which fromisoformat doesn't support
+            ts_normalized = (
+                since_ts.replace("Z", "+00:00") if since_ts.endswith("Z") else since_ts
+            )
+            dt = datetime.fromisoformat(ts_normalized)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             since_datetime = dt

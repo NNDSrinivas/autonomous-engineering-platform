@@ -56,6 +56,20 @@ def db_session() -> Generator[Session, None, None]:
         db.close()
 
 
+def _format_sse_data(data: dict | str) -> str:
+    """Format data for Server-Sent Events transmission.
+
+    Args:
+        data: Dictionary or string to send as SSE data
+
+    Returns:
+        Formatted SSE data string
+    """
+    if isinstance(data, str):
+        return f"data: {data}\n\n"
+    return f"data: {json.dumps(data, default=str)}\n\n"
+
+
 app = FastAPI(title=f"{settings.app_name} - Realtime API")
 
 app.add_middleware(
@@ -234,24 +248,26 @@ def stream_answers(session_id: str) -> StreamingResponse:
                     # Check if max duration exceeded
                     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
                     if elapsed > SSE_MAX_DURATION_SECONDS:
-                        yield f"data: {json.dumps({'event': 'timeout'})}\n\n"
+                        yield _format_sse_data({"event": "timeout"})
                         break
 
                     # Query for new answers using the shared session
                     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
                     if rows:
-                        # emit each new row as SSE (most recent first)
-                        for r in reversed(rows):
-                            yield f"data: {json.dumps(r, default=str)}\n\n"
+                        # emit each new row as SSE (most recent first - already sorted by query)
+                        for r in rows:
+                            yield _format_sse_data(r)
                         # Set last_ts to the latest timestamp after emitting
-                        last_ts = rows[-1]["created_at"]
+                        last_ts = rows[0]["created_at"]
 
                     await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
             except Exception as e:
                 logger.exception(
                     "Error in SSE stream for session %s: %s", session_id, e
                 )
-                yield f"data: {json.dumps({'event': 'error', 'message': 'An internal server error occurred.'})}\n\n"
+                yield _format_sse_data(
+                    {"event": "error", "message": "An internal server error occurred."}
+                )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

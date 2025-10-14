@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
+from time import sleep
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -13,6 +15,8 @@ from ..core.middleware import RateLimitMiddleware
 from ..core.middleware import RequestIDMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
+from ..services import answers as asvc
+from ..workers.answers import generate_answer
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Realtime API")
@@ -103,6 +107,17 @@ def post_caption(session_id: str, body: CaptionReq, db: Session = Depends(get_db
     svc.append_segment(
         db, m.id, body.text, body.speaker, body.ts_start_ms, body.ts_end_ms
     )
+
+    # Enqueue answer generation with simple heuristic
+    import redis
+
+    r = redis.from_url(settings.redis_url, decode_responses=True)
+    key = f"ans:count:{session_id}"
+    n = r.incr(key)
+    if "?" in (body.text or "") or n % 3 == 0:
+        generate_answer.send(session_id)
+    r.expire(key, 60)
+
     return {"ok": True}
 
 
@@ -116,7 +131,54 @@ def close_session(session_id: str, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
-# TODO: /answers/stream coming in Feature 4.
+# ---- PR-5: Real-time Answer Coach endpoints ----
+
+
+@app.get("/api/sessions/{session_id}/answers")
+def get_answers(
+    session_id: str, since: str | None = None, db: Session = Depends(get_db)
+):
+    """Poll for new answers generated for this session.
+
+    Args:
+        session_id: Session identifier
+        since: Optional ISO timestamp to get answers after this time
+        db: Database session dependency
+
+    Returns:
+        List of answers with citations
+    """
+    return {"answers": asvc.recent_answers(db, session_id, since_ts=since)}
+
+
+@app.get("/api/sessions/{session_id}/stream")
+def stream_answers(session_id: str, db: Session = Depends(get_db)):
+    """Server-Sent Events stream of real-time answers.
+
+    Args:
+        session_id: Session identifier
+        db: Database session dependency
+
+    Returns:
+        SSE stream that emits new answers as they're generated
+    """
+    last_ts = None
+
+    def event_stream():
+        nonlocal last_ts
+        while True:
+            rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
+            if rows:
+                # emit each new row as SSE
+                for r in rows[::-1]:
+                    last_ts = r["created_at"]
+                    import json
+
+                    yield f"data: {json.dumps(r, default=str)}\n\n"
+            sleep(1)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
 
 if __name__ == "__main__":
     import uvicorn

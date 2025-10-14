@@ -1,0 +1,115 @@
+import uuid
+import datetime as dt
+import re
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from ..models.answers import SessionAnswer
+
+
+def _id() -> str:
+    return str(uuid.uuid4())
+
+
+def _extract_terms(latest_text: str) -> list[str]:
+    """Ultra-light keyword extractor: split, dedupe, keep useful tokens"""
+    words = re.findall(r"[A-Za-z0-9#._-]{3,}", latest_text or "")
+    uniq = []
+    stopwords = {
+        "the",
+        "and",
+        "this",
+        "that",
+        "with",
+        "have",
+        "what",
+        "when",
+        "where",
+        "how",
+    }
+    for w in words:
+        wl = w.lower()
+        if wl not in uniq and wl not in stopwords:
+            uniq.append(wl)
+    return uniq[:8]
+
+
+def _pick_best(items: list[dict], n: int) -> list[dict]:
+    return items[:n] if items else []
+
+
+def generate_grounded_answer(
+    db: Session,
+    session_id: str,
+    jira_hits: list[dict],
+    code_hits: list[dict],
+    pr_hits: list[dict],
+    meeting_snippets: list[str],
+) -> dict:
+    """Heuristic short answer with citations"""
+    text_context = " ".join(meeting_snippets)[-600:]
+    answer = ""
+    citations = []
+
+    if jira_hits:
+        j = jira_hits[0]
+        answer = f"Latest on {j.get('issue_key')}: {j.get('summary') or 'see ticket'} (status: {j.get('status')})."
+        citations.append(
+            {"type": "jira", "key": j.get("issue_key"), "url": j.get("url")}
+        )
+    elif code_hits:
+        c = code_hits[0]
+        answer = f"Relevant code is at {c.get('repo')}/{c.get('path')}."
+        citations.append({"type": "code", "repo": c.get("repo"), "path": c.get("path")})
+    elif pr_hits:
+        p = pr_hits[0]
+        answer = f"Related PR: {p.get('title')} (#{p.get('number')}, {p.get('state')})."
+        citations.append({"type": "pr", "number": p.get("number"), "url": p.get("url")})
+    elif text_context:
+        # fallback from meeting context only
+        s = (
+            text_context.split(".")[-2:]
+            if "." in text_context
+            else [text_context[:140]]
+        )
+        answer = " ".join(s).strip()
+        citations.append({"type": "meeting"})
+    else:
+        answer = "I don't have enough context yet."
+
+    return {
+        "answer": answer[:280],
+        "citations": citations,
+        "confidence": 0.6,
+        "token_count": len(answer.split()),
+        "latency_ms": 0,
+    }
+
+
+def save_answer(db: Session, session_id: str, payload: dict):
+    row = SessionAnswer(
+        id=_id(),
+        session_id=session_id,
+        created_at=dt.datetime.utcnow(),
+        answer=payload["answer"],
+        citations=payload.get("citations", []),
+        confidence=payload.get("confidence"),
+        token_count=payload.get("token_count"),
+        latency_ms=payload.get("latency_ms"),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def recent_answers(
+    db: Session, session_id: str, since_ts: str | None = None
+) -> list[dict]:
+    sql = "SELECT id, created_at, answer, citations, confidence FROM session_answer WHERE session_id=:sid"
+    params = {"sid": session_id}
+    if since_ts:
+        sql += " AND created_at > :ts"
+        params["ts"] = since_ts
+    sql += " ORDER BY created_at DESC LIMIT 20"
+    rows = db.execute(text(sql), params).mappings().all()
+    return [dict(r) for r in rows]

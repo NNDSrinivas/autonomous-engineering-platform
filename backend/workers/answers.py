@@ -17,7 +17,16 @@ dramatiq.set_broker(broker)
 def _recent_meeting_text(
     db: Session, meeting_id: str, window_seconds: int = 180
 ) -> list[str]:
-    """Get last N seconds based on ts_end_ms; fallback to last 20 segments"""
+    """Get last N seconds of meeting transcript text.
+
+    Args:
+        db: Database session
+        meeting_id: Meeting identifier
+        window_seconds: Time window (currently unused, fallback to 20 segments)
+
+    Returns:
+        List of transcript text segments in chronological order
+    """
     rows = db.execute(
         text(
             "SELECT text FROM transcript_segment WHERE meeting_id=:mid ORDER BY ts_end_ms DESC NULLS LAST, id DESC LIMIT 20"
@@ -28,6 +37,15 @@ def _recent_meeting_text(
 
 
 def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:
+    """Extract search terms from the most recent transcript segment.
+
+    Args:
+        db: Database session
+        meeting_id: Meeting identifier
+
+    Returns:
+        List of extracted keyword terms
+    """
     row = db.execute(
         text(
             "SELECT text FROM transcript_segment WHERE meeting_id=:mid ORDER BY ts_end_ms DESC NULLS LAST, id DESC LIMIT 1"
@@ -39,11 +57,29 @@ def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:
 
 
 def _search_jira(db: Session, terms: list[str]) -> list[dict]:
+    """Search JIRA issues using extracted terms.
+
+    Args:
+        db: Database session
+        terms: List of search terms
+
+    Returns:
+        List of matching JIRA issues
+    """
     q = " ".join(terms[:4]) if terms else None
     return JiraService.search_issues(db, project=None, q=q, updated_since=None)
 
 
 def _search_code(db: Session, terms: list[str]) -> list[dict]:
+    """Search GitHub code using extracted terms.
+
+    Args:
+        db: Database session
+        terms: List of search terms
+
+    Returns:
+        List of matching code files
+    """
     q = " ".join(terms[:4]) if terms else None
     # choose a path-like term if present
     path_term = (
@@ -53,18 +89,33 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
 
 
 def _search_prs(db: Session, terms: list[str]) -> list[dict]:
+    """Search GitHub pull requests using extracted terms.
+
+    Args:
+        db: Database session
+        terms: List of search terms
+
+    Returns:
+        List of matching pull requests
+    """
     q = " ".join(terms[:4]) if terms else None
     return GitHubService.search_issues(db, repo=None, q=q, updated_since=None)
 
 
 @dramatiq.actor(max_retries=0)
-def generate_answer(session_id: str):
+def generate_answer(session_id: str) -> None:
+    """Generate grounded answer for a session using JIRA and GitHub context.
+
+    Args:
+        session_id: Session identifier to generate answer for
+    """
     t0 = time.perf_counter()
     db: Session = SessionLocal()
     try:
         m = msvc.get_meeting_by_session(db, session_id)
         if not m:
             return
+
         meeting_snips = _recent_meeting_text(db, m.id)
         terms = _terms_from_latest(db, m.id)
 
@@ -77,5 +128,8 @@ def generate_answer(session_id: str):
         )
         payload["latency_ms"] = int((time.perf_counter() - t0) * 1000)
         asvc.save_answer(db, session_id, payload)
+    except Exception as e:
+        # Log but don't raise - Dramatiq will handle retries
+        print(f"Error generating answer for session {session_id}: {e}")
     finally:
         db.close()

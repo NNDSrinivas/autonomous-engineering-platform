@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from time import sleep
 
@@ -6,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+import redis
 
 from ..core.config import settings
 from ..core.logging import setup_logging
@@ -109,14 +111,16 @@ def post_caption(session_id: str, body: CaptionReq, db: Session = Depends(get_db
     )
 
     # Enqueue answer generation with simple heuristic
-    import redis
-
-    r = redis.from_url(settings.redis_url, decode_responses=True)
-    key = f"ans:count:{session_id}"
-    n = r.incr(key)
-    if "?" in (body.text or "") or n % 3 == 0:
-        generate_answer.send(session_id)
-    r.expire(key, 60)
+    try:
+        r = redis.from_url(settings.redis_url, decode_responses=True)
+        key = f"ans:count:{session_id}"
+        n = r.incr(key)
+        if "?" in (body.text or "") or n % 3 == 0:
+            generate_answer.send(session_id)
+        r.expire(key, 60)
+    except Exception as e:
+        logger.warning(f"Failed to enqueue answer generation: {e}")
+        # Continue even if answer generation fails
 
     return {"ok": True}
 
@@ -161,21 +165,34 @@ def stream_answers(session_id: str, db: Session = Depends(get_db)):
 
     Returns:
         SSE stream that emits new answers as they're generated
+
+    Note:
+        Stream will continue until client disconnects or max duration is reached
     """
     last_ts = None
+    max_duration_seconds = 3600  # 1 hour max streaming
 
     def event_stream():
         nonlocal last_ts
-        while True:
-            rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
-            if rows:
-                # emit each new row as SSE
-                for r in rows[::-1]:
-                    last_ts = r["created_at"]
-                    import json
+        start_time = datetime.now(timezone.utc)
+        try:
+            while True:
+                # Check if max duration exceeded
+                elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+                if elapsed > max_duration_seconds:
+                    yield f"data: {json.dumps({'event': 'timeout'})}\n\n"
+                    break
 
-                    yield f"data: {json.dumps(r, default=str)}\n\n"
-            sleep(1)
+                rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
+                if rows:
+                    # emit each new row as SSE
+                    for r in rows[::-1]:
+                        last_ts = r["created_at"]
+                        yield f"data: {json.dumps(r, default=str)}\n\n"
+                sleep(1)
+        except Exception as e:
+            logger.error(f"Error in SSE stream for session {session_id}: {e}")
+            yield f"data: {json.dumps({'event': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

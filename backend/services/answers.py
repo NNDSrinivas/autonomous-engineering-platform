@@ -1,5 +1,5 @@
 import uuid
-import datetime as dt
+from datetime import datetime, timezone
 import re
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -7,11 +7,23 @@ from ..models.answers import SessionAnswer
 
 
 def _id() -> str:
+    """Generate a unique identifier for an answer.
+
+    Returns:
+        UUID string
+    """
     return str(uuid.uuid4())
 
 
 def _extract_terms(latest_text: str) -> list[str]:
-    """Ultra-light keyword extractor: split, dedupe, keep useful tokens"""
+    """Ultra-light keyword extractor: split, dedupe, keep useful tokens.
+
+    Args:
+        latest_text: Text to extract keywords from
+
+    Returns:
+        List of up to 8 unique keywords, excluding common stopwords
+    """
     words = re.findall(r"[A-Za-z0-9#._-]{3,}", latest_text or "")
     uniq = []
     stopwords = {
@@ -34,6 +46,15 @@ def _extract_terms(latest_text: str) -> list[str]:
 
 
 def _pick_best(items: list[dict], n: int) -> list[dict]:
+    """Select top N items from a list.
+
+    Args:
+        items: List of items to select from
+        n: Number of items to select
+
+    Returns:
+        First N items or empty list if items is None
+    """
     return items[:n] if items else []
 
 
@@ -85,11 +106,21 @@ def generate_grounded_answer(
     }
 
 
-def save_answer(db: Session, session_id: str, payload: dict):
+def save_answer(db: Session, session_id: str, payload: dict) -> SessionAnswer:
+    """Save a generated answer to the database.
+
+    Args:
+        db: Database session
+        session_id: Session identifier
+        payload: Answer data including text, citations, and metrics
+
+    Returns:
+        Created SessionAnswer instance
+    """
     row = SessionAnswer(
         id=_id(),
         session_id=session_id,
-        created_at=dt.datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
         answer=payload["answer"],
         citations=payload.get("citations", []),
         confidence=payload.get("confidence"),
@@ -105,6 +136,16 @@ def save_answer(db: Session, session_id: str, payload: dict):
 def recent_answers(
     db: Session, session_id: str, since_ts: str | None = None
 ) -> list[dict]:
+    """Retrieve recent answers for a session.
+
+    Args:
+        db: Database session
+        session_id: Session identifier
+        since_ts: Optional ISO timestamp to filter answers after this time
+
+    Returns:
+        List of answer dictionaries with id, created_at, answer, citations, confidence
+    """
     sql = "SELECT id, created_at, answer, citations, confidence FROM session_answer WHERE session_id=:sid"
     params = {"sid": session_id}
     if since_ts:

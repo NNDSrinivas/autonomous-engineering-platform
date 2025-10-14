@@ -179,7 +179,8 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         pipe = r.pipeline()
         pipe.incr(key)
         pipe.expire(key, REDIS_KEY_EXPIRY_SECONDS)
-        n, _ = pipe.execute()
+        results = pipe.execute()
+        n = results[0]  # Get count from first result
         
         if _should_generate_answer(text, n):
             generate_answer.send(session_id)

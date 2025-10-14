@@ -143,10 +143,12 @@ def post_caption(session_id: str, body: CaptionReq, db: Session = Depends(get_db
     try:
         r = redis.Redis(connection_pool=redis_pool)
         key = f"ans:count:{session_id}"
-        n = r.incr(key)
+        pipe = r.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, 60)
+        n, _ = pipe.execute()
         if "?" in (body.text or "") or n % ANSWER_GENERATION_INTERVAL == 0:
             generate_answer.send(session_id)
-        r.expire(key, 60)
     except (redis.RedisError, ConnectionError) as e:
         logger.warning("Failed to enqueue answer generation: %s", e)
         # Continue even if answer generation fails

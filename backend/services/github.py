@@ -32,7 +32,15 @@ def upsert_file(db: Session, repo_id: str, path: str, sha: str | None, lang: str
     db.add(row); db.commit()
 
 def upsert_issuepr(db: Session, repo_id: str, number: int, type_: str, title: str, body: str | None, state: str, author: str | None, url: str, updated: dt.datetime | None):
-    row = GhIssuePr(id=_id(), repo_id=repo_id, number=number, type=type_, title=title, body=(body or "")[:8000], state=state, author=author, url=url, updated=updated)
+    # Safely handle body field - ensure it's a string before slicing
+    safe_body = ""
+    if body is not None:
+        if isinstance(body, str):
+            safe_body = body[:8000]
+        else:
+            safe_body = str(body)[:8000]
+    
+    row = GhIssuePr(id=_id(), repo_id=repo_id, number=number, type=type_, title=title, body=safe_body, state=state, author=author, url=url, updated=updated)
     db.add(row); db.commit()
 
 def search_code(db: Session, repo: str | None, q: str | None, path_prefix: str | None):

@@ -16,12 +16,42 @@ def set_project_config(db: Session, connection_id: str, project_keys: list[str],
 
 def upsert_issue(db: Session, conn_id: str, issue: dict):
     row = db.scalar(select(JiraIssue).where(JiraIssue.issue_key == issue["key"]))
+    
+    # Handle JIRA description field - could be string or Atlassian Document Format (dict)
+    def extract_description_text(desc_field) -> str:
+        """Extract plain text from JIRA description field (handles both string and ADF format)"""
+        if desc_field is None:
+            return ""
+        elif isinstance(desc_field, str):
+            return desc_field
+        elif isinstance(desc_field, dict):
+            # Atlassian Document Format - extract text content recursively
+            def extract_adf_text(node):
+                if isinstance(node, str):
+                    return node
+                elif isinstance(node, dict):
+                    text_parts = []
+                    if node.get("type") == "text" and "text" in node:
+                        text_parts.append(node["text"])
+                    if "content" in node:
+                        for child in node["content"]:
+                            text_parts.append(extract_adf_text(child))
+                    return " ".join(text_parts)
+                elif isinstance(node, list):
+                    return " ".join(extract_adf_text(item) for item in node)
+                return ""
+            return extract_adf_text(desc_field).strip()
+        else:
+            return str(desc_field)
+    
+    description = extract_description_text(issue["fields"].get("description"))[:8000]
+    
     payload = {
         "connection_id": conn_id,
         "project_key": issue["fields"]["project"]["key"],
         "issue_key": issue["key"],
         "summary": issue["fields"].get("summary"),
-        "description": (issue["fields"].get("description") or "")[:8000],
+        "description": description,
         "status": (issue["fields"].get("status") or {}).get("name"),
         "priority": (issue["fields"].get("priority") or {}).get("name"),
         "assignee": ((issue["fields"].get("assignee") or {}).get("displayName")),

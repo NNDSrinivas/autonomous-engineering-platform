@@ -181,7 +181,18 @@ def recent_answers(
         SessionAnswer.confidence,
     ).filter(SessionAnswer.session_id == session_id)
     if since_ts:
-        query = query.filter(SessionAnswer.created_at > since_ts)
+        # Parse since_ts string to a timezone-aware datetime object
+        if isinstance(since_ts, str):
+            try:
+                dt = datetime.fromisoformat(since_ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                since_ts_dt = dt
+            except ValueError:
+                raise ValueError(f"Invalid ISO timestamp for since_ts: {since_ts}")
+        else:
+            since_ts_dt = since_ts
+        query = query.filter(SessionAnswer.created_at > since_ts_dt)
     query = query.order_by(SessionAnswer.created_at.desc()).limit(MAX_RECENT_ANSWERS)
     rows = query.all()
     return [

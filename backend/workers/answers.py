@@ -25,14 +25,13 @@ dramatiq.set_broker(broker)
 
 
 def _recent_meeting_text(
-    db: Session, meeting_id: str, window_seconds: int = DEFAULT_MEETING_WINDOW_SECONDS
+    db: Session, meeting_id: str
 ) -> list[str]:
-    """Get last N seconds of meeting transcript text.
+    """Get last N transcript segments of a meeting.
 
     Args:
         db: Database session
         meeting_id: Meeting identifier
-        window_seconds: Time window in seconds (currently unused, fallback to last N segments)
 
     Returns:
         List of transcript text segments in chronological order

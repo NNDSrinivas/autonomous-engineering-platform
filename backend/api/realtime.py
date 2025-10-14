@@ -33,11 +33,15 @@ SSE_POLL_INTERVAL_SECONDS = 1  # Polling interval for new answers in SSE streams
 # Constants for rate limiting
 REALTIME_API_RPM = 120  # Requests per minute for realtime API
 
+# Constants for Redis operations
+REDIS_KEY_EXPIRY_SECONDS = 60  # TTL for Redis keys
+REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
+
 logger = setup_logging()
 
 # Create Redis connection pool for reuse across requests
 redis_pool = redis.ConnectionPool.from_url(
-    settings.redis_url, decode_responses=True, max_connections=10
+    settings.redis_url, decode_responses=True, max_connections=REDIS_MAX_CONNECTIONS
 )
 
 
@@ -172,7 +176,7 @@ def post_caption(
         key = f"ans:count:{session_id}"
         pipe = r.pipeline()
         pipe.incr(key)
-        pipe.expire(key, 60)
+        pipe.expire(key, REDIS_KEY_EXPIRY_SECONDS)
         n, _ = pipe.execute()
         
         # Check for question or interval-based trigger

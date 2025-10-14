@@ -215,11 +215,11 @@ def stream_answers(session_id: str):
                 with db_session() as db:
                     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
                     if rows:
-                        # Set last_ts to the latest timestamp before emitting
-                        last_ts = rows[0]["created_at"]
                         # emit each new row as SSE
                         for r in rows[::-1]:
                             yield f"data: {json.dumps(r, default=str)}\n\n"
+                        # Set last_ts to the latest timestamp after emitting
+                        last_ts = rows[-1]["created_at"]
 
                 await asyncio.sleep(1)
         except Exception:

@@ -23,24 +23,21 @@ broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
 
 
-def _recent_meeting_text(
-    db: Session, meeting_id: str, window_seconds: int = 180
-) -> list[str]:
-    """Get last N seconds of meeting transcript text.
+def _recent_meeting_text(db: Session, meeting_id: str) -> list[str]:
+    """Get recent meeting transcript text.
 
     Args:
         db: Database session
         meeting_id: Meeting identifier
-        window_seconds: Time window (currently unused, fallback to 20 segments)
 
     Returns:
-        List of transcript text segments in chronological order
+        List of recent transcript text segments in chronological order
     """
     rows = db.execute(
         text(
-            f"SELECT text FROM transcript_segment WHERE meeting_id=:mid ORDER BY ts_end_ms DESC NULLS LAST, id DESC LIMIT {MAX_TRANSCRIPT_SEGMENTS}"
+            "SELECT text FROM transcript_segment WHERE meeting_id=:mid ORDER BY ts_end_ms DESC NULLS LAST, id DESC LIMIT :limit"
         ),
-        {"mid": meeting_id},
+        {"mid": meeting_id, "limit": MAX_TRANSCRIPT_SEGMENTS},
     ).fetchall()
     return [r[0] for r in rows][::-1]  # chronological
 
@@ -133,7 +130,7 @@ def generate_answer(session_id: str) -> None:
         pr_hits = _search_prs(db, terms)
 
         payload = asvc.generate_grounded_answer(
-            db, session_id, jira_hits, code_hits, pr_hits, meeting_snips
+            jira_hits, code_hits, pr_hits, meeting_snips
         )
         payload["latency_ms"] = int((time.perf_counter() - t0) * 1000)
         asvc.save_answer(db, session_id, payload)

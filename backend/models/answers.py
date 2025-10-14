@@ -4,6 +4,7 @@ from ..core.db import Base
 from datetime import datetime
 from typing import list, dict
 
+
 class SessionAnswer(Base):
     __tablename__ = "session_answer"
     id: Mapped[str] = mapped_column(String, primary_key=True)

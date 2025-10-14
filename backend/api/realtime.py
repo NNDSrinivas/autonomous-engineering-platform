@@ -225,8 +225,10 @@ def stream_answers(session_id: str):
                         last_ts = rows[0]["created_at"]
 
                     await asyncio.sleep(1)
-            except Exception:
-                logger.exception("Error in SSE stream for session %s", session_id)
+            except Exception as e:
+                logger.exception(
+                    "Error in SSE stream for session %s: %s", session_id, e
+                )
                 yield f"data: {json.dumps({'event': 'error', 'message': 'An internal server error occurred.'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

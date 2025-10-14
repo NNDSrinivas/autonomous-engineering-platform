@@ -1,4 +1,5 @@
 from datetime import datetime
+import datetime as dt
 
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,7 +35,7 @@ app.add_middleware(AuditMiddleware, service_name="core")
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "core", "time": datetime.utcnow().isoformat()}
+    return {"status": "ok", "service": "core", "time": dt.datetime.now(dt.timezone.utc).isoformat()}
 
 
 @app.get("/version")

@@ -24,9 +24,7 @@ broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
 
 
-def _recent_meeting_text(
-    db: Session, meeting_id: str
-) -> list[str]:
+def _recent_meeting_text(db: Session, meeting_id: str) -> list[str]:
     """Get last N transcript segments of a meeting.
 
     Args:

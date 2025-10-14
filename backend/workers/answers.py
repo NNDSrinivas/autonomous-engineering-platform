@@ -13,6 +13,9 @@ from ..services.github import GitHubService
 
 logger = logging.getLogger(__name__)
 
+# Constants for search term extraction
+MAX_SEARCH_TERMS = 4  # Maximum number of terms to use in searches
+
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
 
@@ -69,7 +72,7 @@ def _search_jira(db: Session, terms: list[str]) -> list[dict]:
     Returns:
         List of matching JIRA issues
     """
-    q = " ".join(terms[:4]) if terms else None
+    q = " ".join(terms[:MAX_SEARCH_TERMS]) if terms else None
     return JiraService.search_issues(db, project=None, q=q, updated_since=None)
 
 
@@ -83,7 +86,7 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
     Returns:
         List of matching code files
     """
-    q = " ".join(terms[:4]) if terms else None
+    q = " ".join(terms[:MAX_SEARCH_TERMS]) if terms else None
     # choose a path-like term if present
     path_term = (
         next((t for t in terms if "/" in t or "." in t), None) if terms else None
@@ -101,7 +104,7 @@ def _search_prs(db: Session, terms: list[str]) -> list[dict]:
     Returns:
         List of matching pull requests
     """
-    q = " ".join(terms[:4]) if terms else None
+    q = " ".join(terms[:MAX_SEARCH_TERMS]) if terms else None
     return GitHubService.search_issues(db, repo=None, q=q, updated_since=None)
 
 

@@ -1,4 +1,3 @@
-import datetime
 import os, datetime as dt, uuid
 import dramatiq, httpx
 from dramatiq.brokers.redis import RedisBroker
@@ -13,13 +12,13 @@ broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
 
 @dramatiq.actor(max_retries=0)
-def jira_sync(connection_id: str):
+def jira_sync(connection_id: str) -> None:
     db: Session = SessionLocal()
     try:
         conn = db.get(JiraConnection, connection_id)
         cfg = db.scalar(select(JiraProjectConfig).where(JiraProjectConfig.connection_id==connection_id))
         if not conn or not cfg: return
-        since = (cfg.last_sync_at or (dt.datetime.now(datetime.timezone.utc) - dt.timedelta(days=30))).isoformat()
+        since = (cfg.last_sync_at or (dt.dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=30))).isoformat()
         headers = {"Authorization": f"Bearer {conn.access_token}", "Accept": "application/json"}
         async def fetch():
             async with httpx.AsyncClient(timeout=30) as client:
@@ -37,14 +36,14 @@ def jira_sync(connection_id: str):
                         if start_at + 50 >= data.get("total", 0): break
                         start_at += 50
         import anyio; anyio.run(fetch)
-        cfg.last_sync_at = dt.datetime.now(datetime.timezone.utc); db.commit()
+        cfg.last_sync_at = dt.dt.datetime.now(dt.timezone.utc); db.commit()
     except Exception:
         pass
     finally:
         db.close()
 
 @dramatiq.actor(max_retries=0)
-def github_index(connection_id: str, repo_full_name: str):
+def github_index(connection_id: str, repo_full_name: str) -> None:
     db: Session = SessionLocal()
     try:
         conn = db.get(GhConnection, connection_id)

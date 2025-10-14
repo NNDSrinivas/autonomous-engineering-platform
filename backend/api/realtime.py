@@ -215,8 +215,8 @@ def stream_answers(session_id: str):
                 with db_session() as db:
                     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
                     if rows:
-                        # emit each new row as SSE
-                        for r in rows[::-1]:
+                        # emit each new row as SSE (most recent first)
+                        for r in reversed(rows):
                             yield f"data: {json.dumps(r, default=str)}\n\n"
                         # Set last_ts to the latest timestamp after emitting
                         last_ts = rows[0]["created_at"]

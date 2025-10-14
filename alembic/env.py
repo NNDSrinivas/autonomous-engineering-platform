@@ -11,6 +11,10 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from backend.core.config import settings  # noqa
 from backend.core.db import Base  # noqa
 
+# Import all models so they're registered with Base
+from backend.models.meetings import *  # noqa
+from backend.models.integrations import *  # noqa
+
 config = context.config
 if (
     not config.get_main_option("sqlalchemy.url")

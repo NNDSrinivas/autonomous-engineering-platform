@@ -16,6 +16,36 @@ MIN_SENTENCE_LENGTH = 2  # Minimum character length for meaningful sentences
 MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
 
 
+def parse_iso_timestamp(timestamp_str: str) -> datetime:
+    """Parse an ISO 8601 timestamp string to a timezone-aware datetime object.
+
+    Handles various ISO 8601 formats including 'Z' suffix for UTC timezone
+    which datetime.fromisoformat() doesn't support natively.
+
+    Args:
+        timestamp_str: ISO 8601 timestamp string (e.g., '2023-10-14T12:30:45Z')
+
+    Returns:
+        Timezone-aware datetime object
+
+    Raises:
+        ValueError: If the timestamp string is not a valid ISO 8601 format
+    """
+    try:
+        # Handle 'Z' suffix for UTC timezone which fromisoformat doesn't support
+        ts_normalized = (
+            timestamp_str.replace("Z", "+00:00")
+            if timestamp_str.endswith("Z")
+            else timestamp_str
+        )
+        dt = datetime.fromisoformat(ts_normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        raise ValueError(f"Invalid ISO timestamp: {timestamp_str}")
+
+
 def _id() -> str:
     """Generate a unique identifier for an answer.
 
@@ -181,18 +211,7 @@ def recent_answers(
         SessionAnswer.confidence,
     ).filter(SessionAnswer.session_id == session_id)
     if since_ts:
-        # Parse since_ts string to a timezone-aware datetime object
-        try:
-            # Handle 'Z' suffix for UTC timezone which fromisoformat doesn't support
-            ts_normalized = (
-                since_ts.replace("Z", "+00:00") if since_ts.endswith("Z") else since_ts
-            )
-            dt = datetime.fromisoformat(ts_normalized)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            since_datetime = dt
-        except ValueError:
-            raise ValueError(f"Invalid ISO timestamp for since_ts: {since_ts}")
+        since_datetime = parse_iso_timestamp(since_ts)
         query = query.filter(SessionAnswer.created_at > since_datetime)
     query = query.order_by(SessionAnswer.created_at.desc()).limit(MAX_RECENT_ANSWERS)
     rows = query.all()

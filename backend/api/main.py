@@ -1,7 +1,9 @@
 from datetime import datetime
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from ..core.config import settings
 from ..core.logging import setup_logging
@@ -9,6 +11,9 @@ from ..core.metrics import router as metrics_router
 from ..core.middleware import AuditMiddleware
 from ..core.middleware import RateLimitMiddleware
 from ..core.middleware import RequestIDMiddleware
+from ..core.db import get_db
+from ..services import meetings as svc
+from ..workers.queue import process_meeting
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -38,7 +43,44 @@ def version():
 # Prometheus
 app.include_router(metrics_router)
 
-# TODO: Feature endpoints (meetings/jira/github) land here.
+# ---- Feature 1 endpoints (Finalize + Query) ----
+
+
+class FinalizeResp(BaseModel):
+    enqueued: bool
+
+
+@app.post("/api/meetings/{session_id}/finalize", response_model=FinalizeResp)
+def finalize(session_id: str):
+    # enqueue background processing
+    process_meeting.send(session_id)
+    return FinalizeResp(enqueued=True)
+
+
+@app.get("/api/meetings/{session_id}/summary")
+def get_summary(session_id: str, db: Session = Depends(get_db)):
+    res = svc.get_summary(db, session_id)
+    if not res:
+        raise HTTPException(status_code=404, detail="Not ready or session not found")
+    return res
+
+
+@app.get("/api/meetings/{session_id}/actions")
+def get_actions(session_id: str, db: Session = Depends(get_db)):
+    return {"actions": svc.list_actions(db, session_id)}
+
+
+@app.get("/api/meetings/search")
+def search_meetings(
+    q: str | None = None,
+    since: str | None = Query(None),
+    people: str | None = None,
+    db: Session = Depends(get_db),
+):
+    return {"results": svc.search_meetings(db, q=q, since=since, people=people)}
+
+
+# TODO: JIRA/GitHub endpoints coming in Features 2-3.
 
 if __name__ == "__main__":
     import uvicorn

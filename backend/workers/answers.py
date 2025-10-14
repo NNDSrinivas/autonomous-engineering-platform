@@ -16,9 +16,15 @@ logger = logging.getLogger(__name__)
 # Constants for search term extraction
 MAX_SEARCH_TERMS = 4  # Maximum number of terms to use in searches
 
-# Constants for transcript retrieval
+# Constants for transcript retrieval  
 MAX_TRANSCRIPT_SEGMENTS = 20  # Maximum number of recent transcript segments to fetch
 DEFAULT_MEETING_WINDOW_SECONDS = 180  # Default time window for meeting transcripts
+
+# Constants for array indexing
+FIRST_ELEMENT_INDEX = 0  # Index for accessing first element in arrays
+
+# Constants for Dramatiq actor configuration
+NO_RETRIES = 0  # No retries for one-shot operations
 
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
@@ -130,7 +136,7 @@ def _search_prs(db: Session, terms: list[str]) -> list[dict]:
     return GitHubService.search_issues(db, repo=None, q=q, updated_since=None)
 
 
-@dramatiq.actor(max_retries=0)
+@dramatiq.actor(max_retries=NO_RETRIES)
 def generate_answer(session_id: str) -> None:
     """Generate grounded answer for a session using JIRA and GitHub context.
 

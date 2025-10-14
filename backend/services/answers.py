@@ -15,6 +15,11 @@ MAX_EXTRACTED_TERMS = 8  # Maximum number of terms to extract from text
 
 # Constants for answer retrieval
 MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
+DEFAULT_LIMIT = 5  # Default limit for database queries
+
+# Constants for answer metadata
+DEFAULT_CONFIDENCE = 0.6  # Default confidence score for generated answers
+DEFAULT_LATENCY_MS = 0  # Default latency for immediate responses
 
 
 def parse_iso_timestamp(timestamp_str: str) -> datetime:
@@ -158,9 +163,9 @@ def generate_grounded_answer(
     return {
         "answer": answer[:MAX_ANSWER_LENGTH],
         "citations": citations,
-        "confidence": 0.6,
+        "confidence": DEFAULT_CONFIDENCE,
         "token_count": len(answer.split()),
-        "latency_ms": 0,
+        "latency_ms": DEFAULT_LATENCY_MS,
     }
 
 

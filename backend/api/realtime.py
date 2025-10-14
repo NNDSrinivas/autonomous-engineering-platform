@@ -192,7 +192,7 @@ def stream_answers(session_id: str, db: Session = Depends(get_db)):
                 sleep(1)
         except Exception as e:
             logger.error(f"Error in SSE stream for session {session_id}: {e}")
-            yield f"data: {json.dumps({'event': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'event': 'error', 'message': 'An internal server error occurred.'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

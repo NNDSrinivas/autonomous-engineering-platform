@@ -193,7 +193,9 @@ def stream_answers(session_id: str):
                     break
 
                 # Create fresh database session for each query to avoid stale connections
-                db = next(get_db())
+                # Using generator protocol properly to ensure cleanup
+                db_gen = get_db()
+                db = next(db_gen)
                 try:
                     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
                     if rows:
@@ -203,7 +205,11 @@ def stream_answers(session_id: str):
                         for r in rows[::-1]:
                             yield f"data: {json.dumps(r, default=str)}\n\n"
                 finally:
-                    db.close()
+                    # Properly close the generator to trigger cleanup
+                    try:
+                        next(db_gen)
+                    except StopIteration:
+                        pass
 
                 await asyncio.sleep(1)
         except Exception:

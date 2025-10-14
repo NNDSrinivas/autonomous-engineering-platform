@@ -15,13 +15,16 @@ from ..core.metrics import router as metrics_router
 from ..core.middleware import AuditMiddleware
 from ..core.middleware import RateLimitMiddleware
 from ..core.middleware import RequestIDMiddleware
-from ..core.db import get_db
+from ..core.db import get_db, SessionLocal
 from ..services import meetings as svc
 from ..services import answers as asvc
 from ..workers.answers import generate_answer
 
 # Constants for answer generation triggering
 ANSWER_GENERATION_INTERVAL = 3  # Generate answer every N captions
+
+# Constants for SSE streaming
+SSE_MAX_DURATION_SECONDS = 3600  # Maximum duration for SSE streams (1 hour)
 
 logger = setup_logging()
 
@@ -179,7 +182,6 @@ def stream_answers(session_id: str):
         Creates fresh database sessions for each query to avoid stale connections.
     """
     last_ts = None
-    max_duration_seconds = 3600  # 1 hour max streaming
 
     async def event_stream():
         nonlocal last_ts
@@ -188,15 +190,22 @@ def stream_answers(session_id: str):
             while True:
                 # Check if max duration exceeded
                 elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-                if elapsed > max_duration_seconds:
+                if elapsed > SSE_MAX_DURATION_SECONDS:
                     yield f"data: {json.dumps({'event': 'timeout'})}\n\n"
                     break
 
-                # Create fresh database session for each query to avoid stale connections
-                # Using generator protocol properly to ensure cleanup
-                db_gen = get_db()
-                db = next(db_gen)
-                try:
+                # Create fresh database session for each query using context manager
+                from contextlib import contextmanager
+
+                @contextmanager
+                def db_session():
+                    db = SessionLocal()
+                    try:
+                        yield db
+                    finally:
+                        db.close()
+
+                with db_session() as db:
                     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
                     if rows:
                         # Set last_ts to the latest timestamp before emitting
@@ -204,12 +213,6 @@ def stream_answers(session_id: str):
                         # emit each new row as SSE
                         for r in rows[::-1]:
                             yield f"data: {json.dumps(r, default=str)}\n\n"
-                finally:
-                    # Properly close the generator to trigger cleanup
-                    try:
-                        next(db_gen)
-                    except StopIteration:
-                        pass
 
                 await asyncio.sleep(1)
         except Exception:

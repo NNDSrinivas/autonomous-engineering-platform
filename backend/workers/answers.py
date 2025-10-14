@@ -3,9 +3,9 @@ import time
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 from ..core.config import settings
 from ..core.db import SessionLocal
+from ..models.meetings import TranscriptSegment
 from ..services import answers as asvc
 from ..services import meetings as msvc
 from ..services.jira import JiraService
@@ -37,13 +37,19 @@ def _recent_meeting_text(
     Returns:
         List of transcript text segments in chronological order
     """
-    rows = db.execute(
-        text(
-            "SELECT text FROM transcript_segment WHERE meeting_id=:mid ORDER BY ts_end_ms DESC NULLS LAST, id DESC LIMIT :limit"
-        ),
-        {"mid": meeting_id, "limit": MAX_TRANSCRIPT_SEGMENTS},
-    ).fetchall()
-    return [r[0] for r in rows][::-1]  # reverse to chronological order (oldest first)
+    # Use SQLAlchemy ORM for better type safety and maintainability
+    segments = (
+        db.query(TranscriptSegment)
+        .filter(TranscriptSegment.meeting_id == meeting_id)
+        .order_by(
+            TranscriptSegment.ts_end_ms.desc().nulls_last(), TranscriptSegment.id.desc()
+        )
+        .limit(MAX_TRANSCRIPT_SEGMENTS)
+        .all()
+    )
+    return [
+        seg.text for seg in reversed(segments)
+    ]  # reverse to chronological order (oldest first)
 
 
 def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:
@@ -56,13 +62,16 @@ def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:
     Returns:
         List of extracted keyword terms
     """
-    row = db.execute(
-        text(
-            "SELECT text FROM transcript_segment WHERE meeting_id=:mid ORDER BY ts_end_ms DESC NULLS LAST, id DESC LIMIT :limit"
-        ),
-        {"mid": meeting_id, "limit": 1},
-    ).fetchone()
-    latest = row[0] if row else ""
+    # Use SQLAlchemy ORM for better type safety and maintainability
+    segment = (
+        db.query(TranscriptSegment)
+        .filter(TranscriptSegment.meeting_id == meeting_id)
+        .order_by(
+            TranscriptSegment.ts_end_ms.desc().nulls_last(), TranscriptSegment.id.desc()
+        )
+        .first()
+    )
+    latest = segment.text if segment else ""
     return asvc.extract_terms(latest)
 
 

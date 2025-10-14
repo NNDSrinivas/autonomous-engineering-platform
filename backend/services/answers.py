@@ -186,10 +186,10 @@ def recent_answers(
             dt = datetime.fromisoformat(since_ts)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
-            since_ts_dt = dt
+            since_datetime = dt
         except ValueError:
             raise ValueError(f"Invalid ISO timestamp for since_ts: {since_ts}")
-        query = query.filter(SessionAnswer.created_at > since_ts_dt)
+        query = query.filter(SessionAnswer.created_at > since_datetime)
     query = query.order_by(SessionAnswer.created_at.desc()).limit(MAX_RECENT_ANSWERS)
     rows = query.all()
     return [

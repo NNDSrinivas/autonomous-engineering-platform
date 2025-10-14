@@ -15,7 +15,6 @@ MAX_EXTRACTED_TERMS = 8  # Maximum number of terms to extract from text
 
 # Constants for answer retrieval
 MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
-DEFAULT_LIMIT = 5  # Default limit for database queries
 
 # Constants for answer metadata
 DEFAULT_CONFIDENCE = 0.6  # Default confidence score for generated answers

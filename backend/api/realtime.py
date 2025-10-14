@@ -1,7 +1,9 @@
 from datetime import datetime
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from ..core.config import settings
 from ..core.logging import setup_logging
@@ -9,6 +11,8 @@ from ..core.metrics import router as metrics_router
 from ..core.middleware import AuditMiddleware
 from ..core.middleware import RateLimitMiddleware
 from ..core.middleware import RequestIDMiddleware
+from ..core.db import get_db
+from ..services import meetings as svc
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Realtime API")
@@ -43,7 +47,76 @@ def version():
 
 app.include_router(metrics_router)
 
-# TODO: /api/sessions, /captions, /answers/stream coming in Feature 1 & 4.
+# ---- Feature 1 endpoints (Realtime capture) ----
+
+
+class CreateSessionReq(BaseModel):
+    title: str | None = None
+    provider: str | None = "manual"
+
+
+class CreateSessionResp(BaseModel):
+    session_id: str
+    meeting_id: str
+
+
+@app.post("/api/sessions", response_model=CreateSessionResp)
+def create_session(body: CreateSessionReq, db: Session = Depends(get_db)):
+    """Create a new meeting session for real-time caption capture.
+
+    Args:
+        body: Session creation request with title and provider
+        db: Database session dependency
+
+    Returns:
+        Session and meeting IDs for subsequent API calls
+    """
+    m = svc.create_meeting(db, title=body.title, provider=body.provider, org_id=None)
+    return CreateSessionResp(session_id=m.session_id, meeting_id=m.id)
+
+
+class CaptionReq(BaseModel):
+    text: str
+    speaker: str | None = None
+    ts_start_ms: int | None = None
+    ts_end_ms: int | None = None
+
+
+@app.post("/api/sessions/{session_id}/captions")
+def post_caption(session_id: str, body: CaptionReq, db: Session = Depends(get_db)):
+    """Add a caption/transcript segment to an active session.
+
+    Args:
+        session_id: Session identifier from create_session
+        body: Caption data with text, speaker, and timestamps
+        db: Database session dependency
+
+    Returns:
+        Success confirmation
+
+    Raises:
+        HTTPException: If session not found
+    """
+    m = svc.get_meeting_by_session(db, session_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Session not found")
+    svc.append_segment(
+        db, m.id, body.text, body.speaker, body.ts_start_ms, body.ts_end_ms
+    )
+    return {"ok": True}
+
+
+@app.delete("/api/sessions/{session_id}")
+def close_session(session_id: str, db: Session = Depends(get_db)):
+    m = svc.get_meeting_by_session(db, session_id)
+    if not m:
+        raise HTTPException(status_code=404, detail="Session not found")
+    m.ended_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True}
+
+
+# TODO: /answers/stream coming in Feature 4.
 
 if __name__ == "__main__":
     import uvicorn

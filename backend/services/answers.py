@@ -34,7 +34,7 @@ def extract_terms(latest_text: str) -> list[str]:
     Returns:
         List of up to 8 unique keywords, excluding common stopwords
     """
-    words = re.findall(r"[A-Za-z0-9#._-]{3,}", latest_text or "")
+    words = re.findall(r"[A-Za-z0-9_-]{3,}", latest_text or "")
     uniq = []
     stopwords = {
         "the",

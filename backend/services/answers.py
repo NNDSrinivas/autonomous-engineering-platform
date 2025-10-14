@@ -67,8 +67,6 @@ def _pick_best(items: list[dict], n: int) -> list[dict]:
 
 
 def generate_grounded_answer(
-    db: Session,
-    session_id: str,
     jira_hits: list[dict],
     code_hits: list[dict],
     pr_hits: list[dict],
@@ -79,8 +77,6 @@ def generate_grounded_answer(
     Priority order: JIRA issues → GitHub code → Pull requests → Meeting context → Fallback
 
     Args:
-        db: Database session
-        session_id: Session identifier
         jira_hits: List of matching JIRA issues
         code_hits: List of matching GitHub code files
         pr_hits: List of matching GitHub pull requests
@@ -169,10 +165,10 @@ def recent_answers(
         List of answer dictionaries with id, created_at, answer, citations, confidence
     """
     sql = "SELECT id, created_at, answer, citations, confidence FROM session_answer WHERE session_id=:sid"
-    params = {"sid": session_id}
+    params = {"sid": session_id, "limit": MAX_RECENT_ANSWERS}
     if since_ts:
         sql += " AND created_at > :ts"
         params["ts"] = since_ts
-    sql += f" ORDER BY created_at DESC LIMIT {MAX_RECENT_ANSWERS}"
+    sql += " ORDER BY created_at DESC LIMIT :limit"
     rows = db.execute(text(sql), params).mappings().all()
     return [dict(r) for r in rows]

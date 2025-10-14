@@ -1,4 +1,4 @@
-from datetime import datetime
+import datetime as dt
 
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +13,9 @@ from ..core.middleware import RateLimitMiddleware
 from ..core.middleware import RequestIDMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
+from ..services import jira as jsvc, github as ghsvc
 from ..workers.queue import process_meeting
+from ..workers.integrations import jira_sync, github_index
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -32,7 +34,11 @@ app.add_middleware(AuditMiddleware, service_name="core")
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "core", "time": datetime.utcnow().isoformat()}
+    return {
+        "status": "ok",
+        "service": "core",
+        "time": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
 
 
 @app.get("/version")
@@ -100,7 +106,217 @@ def search_meetings(
     return {"results": svc.search_meetings(db, q=q, since=since, people=people)}
 
 
-# TODO: JIRA/GitHub endpoints coming in Features 2-3.
+# ---- Feature 4: Integration endpoints (JIRA + GitHub) ----
+
+
+# --- JIRA ---
+class JiraConnectReq(BaseModel):
+    cloud_base_url: str
+    access_token: str  # for MVP; replace with real OAuth exchange later
+
+
+@app.post("/api/integrations/jira/connect")
+def jira_connect(body: JiraConnectReq, db: Session = Depends(get_db)):
+    """Connect to JIRA instance with access token.
+
+    Args:
+        body: JIRA connection details including base URL and access token
+        db: Database session dependency
+
+    Returns:
+        Connection ID for subsequent operations
+
+    Raises:
+        HTTPException: If connection creation fails
+    """
+    try:
+        conn = jsvc.save_connection(db, body.cloud_base_url, body.access_token)
+        return {"connection_id": conn.id}
+    except Exception as e:
+        logger.error(f"Failed to create JIRA connection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create JIRA connection")
+
+
+class JiraConfigReq(BaseModel):
+    connection_id: str
+    project_keys: list[str]
+    default_jql: str | None = None
+
+
+@app.post("/api/integrations/jira/config")
+def jira_config(body: JiraConfigReq, db: Session = Depends(get_db)):
+    """Configure JIRA project sync settings.
+
+    Args:
+        body: Configuration including connection ID, project keys, and default JQL
+        db: Database session dependency
+
+    Returns:
+        Configuration ID
+
+    Raises:
+        HTTPException: If configuration creation fails
+    """
+    try:
+        cfg = jsvc.set_project_config(
+            db, body.connection_id, body.project_keys, body.default_jql
+        )
+        return {"config_id": cfg.id}
+    except Exception as e:
+        logger.error(f"Failed to create JIRA configuration: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to create JIRA configuration"
+        )
+
+
+@app.post("/api/integrations/jira/sync")
+def jira_trigger_sync(connection_id: str):
+    """Trigger background sync of JIRA issues.
+
+    Args:
+        connection_id: JIRA connection identifier
+
+    Returns:
+        Sync job enqueue confirmation
+
+    Raises:
+        HTTPException: If sync job enqueue fails
+    """
+    try:
+        jira_sync.send(connection_id)
+        return {"enqueued": True}
+    except Exception as e:
+        logger.error(f"Failed to enqueue JIRA sync job: {e}")
+        raise HTTPException(status_code=500, detail="Failed to enqueue sync job")
+
+
+@app.get("/api/jira/tasks")
+def jira_tasks(
+    q: str | None = None,
+    project: str | None = None,
+    assignee: str | None = None,
+    updated_since: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Search JIRA issues with optional filters.
+
+    Args:
+        q: Text search query for summary/description
+        project: Filter by project key
+        assignee: Filter by assignee name
+        updated_since: Filter by update timestamp
+        db: Database session dependency
+
+    Returns:
+        List of matching JIRA issues
+    """
+    return {
+        "items": jsvc.search_issues(
+            db, q=q, project=project, assignee=assignee, updated_since=updated_since
+        )
+    }
+
+
+# --- GitHub ---
+class GhConnectReq(BaseModel):
+    access_token: str  # for MVP; replace with real OAuth exchange later
+
+
+@app.post("/api/integrations/github/connect")
+def gh_connect(body: GhConnectReq, db: Session = Depends(get_db)):
+    """Connect to GitHub with access token.
+
+    Args:
+        body: GitHub connection details with access token
+        db: Database session dependency
+
+    Returns:
+        Connection ID for subsequent operations
+
+    Raises:
+        HTTPException: If connection creation fails
+    """
+    try:
+        conn = ghsvc.save_connection(db, body.access_token)
+        return {"connection_id": conn.id}
+    except Exception as e:
+        logger.error(f"Failed to create GitHub connection: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to create GitHub connection"
+        )
+
+
+class GhIndexReq(BaseModel):
+    connection_id: str
+    repo_full_name: str
+
+
+@app.post("/api/github/index")
+def gh_index_repo(body: GhIndexReq):
+    """Trigger background indexing of GitHub repository.
+
+    Args:
+        body: Repository indexing request with connection ID and repo name
+
+    Returns:
+        Index job enqueue confirmation
+
+    Raises:
+        HTTPException: If index job enqueue fails
+    """
+    try:
+        github_index.send(body.connection_id, body.repo_full_name)
+        return {"enqueued": True}
+    except Exception as e:
+        logger.error(f"Failed to enqueue GitHub index job: {e}")
+        raise HTTPException(status_code=500, detail="Failed to enqueue index job")
+
+
+@app.get("/api/github/search/code")
+def gh_search_code(
+    repo: str | None = None,
+    q: str | None = None,
+    path: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Search GitHub code files with optional filters.
+
+    Args:
+        repo: Filter by repository full name (org/repo)
+        q: Text search query (placeholder for future semantic search)
+        path: Filter by file path prefix
+        db: Database session dependency
+
+    Returns:
+        List of matching code files
+    """
+    return {"hits": ghsvc.search_code(db, repo=repo, q=q, path_prefix=path)}
+
+
+@app.get("/api/github/search/issues")
+def gh_search_issues(
+    repo: str | None = None,
+    q: str | None = None,
+    updated_since: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Search GitHub issues and pull requests with optional filters.
+
+    Args:
+        repo: Filter by repository full name (org/repo)
+        q: Text search query for title/body
+        updated_since: Filter by update timestamp
+        db: Database session dependency
+
+    Returns:
+        List of matching issues and pull requests
+    """
+    return {
+        "hits": ghsvc.search_issues(db, repo=repo, q=q, updated_since=updated_since)
+    }
+
+
+# TODO: Write actions (comment, transition, PR create) will ship in a later PR.
 
 if __name__ == "__main__":
     import uvicorn

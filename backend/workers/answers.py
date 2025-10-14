@@ -154,7 +154,10 @@ def generate_answer(session_id: str) -> None:
         payload = asvc.generate_grounded_answer(
             jira_hits, code_hits, pr_hits, meeting_snips
         )
-        payload["latency_ms"] = int((time.perf_counter() - t0) * 1000)
+        
+        # Calculate latency and save result
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        payload["latency_ms"] = latency_ms
         asvc.save_answer(db, session_id, payload)
     except Exception as e:
         # Log but don't raise - Dramatiq will handle retries

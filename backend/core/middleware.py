@@ -152,7 +152,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if tokens <= 0:
                 # Too many requests
                 return Response(
-                    content="Rate limit exceeded", status_code=429, media_type="text/plain"
+                    content="Rate limit exceeded",
+                    status_code=429,
+                    media_type="text/plain",
                 )
             tokens -= 1
             rds().hset(key, mapping={"tokens": tokens, "ts": now})
@@ -164,7 +166,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             logger.warning(f"Redis unavailable, skipping rate limiting: {e}")
             # In production, you'd want proper in-memory fallback, but for CI we skip
             pass
-            
+
         return await call_next(request)
 
 
@@ -182,7 +184,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable):
         response = await call_next(request)
-        
+
         # Try to log audit trail, but don't fail the request if audit logging fails
         try:
             db = SessionLocal()
@@ -218,5 +220,5 @@ class AuditMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             # Database connection or session creation failed (e.g., CI environment)
             logger.warning(f"audit_database_unavailable: {e}")
-            
+
         return response

@@ -198,23 +198,24 @@ def stream_answers(session_id: str):
 
     Note:
         Stream will continue until client disconnects or max duration is reached.
-        Creates fresh database sessions for each query to avoid stale connections.
+        Uses a single database session for the entire stream duration to avoid connection pool exhaustion.
     """
     last_ts = None
 
     async def event_stream():
         nonlocal last_ts
         start_time = datetime.now(timezone.utc)
-        try:
-            while True:
-                # Check if max duration exceeded
-                elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-                if elapsed > SSE_MAX_DURATION_SECONDS:
-                    yield f"data: {json.dumps({'event': 'timeout'})}\n\n"
-                    break
+        # Use a single database session for the entire SSE stream to avoid connection pool exhaustion
+        with db_session() as db:
+            try:
+                while True:
+                    # Check if max duration exceeded
+                    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+                    if elapsed > SSE_MAX_DURATION_SECONDS:
+                        yield f"data: {json.dumps({'event': 'timeout'})}\n\n"
+                        break
 
-                # Create fresh database session for each query using context manager
-                with db_session() as db:
+                    # Query for new answers using the shared session
                     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
                     if rows:
                         # emit each new row as SSE (most recent first)
@@ -223,10 +224,10 @@ def stream_answers(session_id: str):
                         # Set last_ts to the latest timestamp after emitting
                         last_ts = rows[0]["created_at"]
 
-                await asyncio.sleep(1)
-        except Exception:
-            logger.exception("Error in SSE stream for session %s", session_id)
-            yield f"data: {json.dumps({'event': 'error', 'message': 'An internal server error occurred.'})}\n\n"
+                    await asyncio.sleep(1)
+            except Exception:
+                logger.exception("Error in SSE stream for session %s", session_id)
+                yield f"data: {json.dumps({'event': 'error', 'message': 'An internal server error occurred.'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

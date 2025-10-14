@@ -222,7 +222,7 @@ def stream_answers(session_id: str):
                         for r in reversed(rows):
                             yield f"data: {json.dumps(r, default=str)}\n\n"
                         # Set last_ts to the latest timestamp after emitting
-                        last_ts = rows[-1]["created_at"]
+                        last_ts = rows[0]["created_at"]
 
                     await asyncio.sleep(1)
             except Exception:

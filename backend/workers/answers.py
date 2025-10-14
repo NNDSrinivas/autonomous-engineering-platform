@@ -62,7 +62,7 @@ def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:
         ),
         {"mid": meeting_id, "limit": 1},
     ).fetchone()
-    latest = row[0] if row and len(row) > 0 else ""
+    latest = row[0] if row else ""
     return asvc.extract_terms(latest)
 
 

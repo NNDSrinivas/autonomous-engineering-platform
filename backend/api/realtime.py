@@ -151,6 +151,42 @@ class CaptionReq(BaseModel):
     ts_end_ms: int | None = None
 
 
+def _should_generate_answer(text: str, caption_count: int) -> bool:
+    """Determine if answer generation should be triggered.
+    
+    Args:
+        text: Caption text to analyze
+        caption_count: Current caption count for session
+        
+    Returns:
+        True if answer should be generated
+    """
+    has_question = "?" in (text or "")
+    is_interval_trigger = caption_count % ANSWER_GENERATION_INTERVAL == 0
+    return has_question or is_interval_trigger
+
+
+def _enqueue_answer_generation(session_id: str, text: str) -> None:
+    """Enqueue answer generation with Redis-based heuristics.
+    
+    Args:
+        session_id: Session identifier
+        text: Caption text for analysis
+    """
+    try:
+        r = redis.Redis(connection_pool=redis_pool)
+        key = f"ans:count:{session_id}"
+        pipe = r.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, REDIS_KEY_EXPIRY_SECONDS)
+        n, _ = pipe.execute()
+        
+        if _should_generate_answer(text, n):
+            generate_answer.send(session_id)
+    except (redis.RedisError, ConnectionError) as e:
+        logger.warning("Failed to enqueue answer generation: %s", e)
+
+
 @app.post("/api/sessions/{session_id}/captions")
 def post_caption(
     session_id: str, body: CaptionReq, db: Session = Depends(get_db)
@@ -171,28 +207,13 @@ def post_caption(
     m = svc.get_meeting_by_session(db, session_id)
     if not m:
         raise HTTPException(status_code=404, detail="Session not found")
+    
     svc.append_segment(
         db, m.id, body.text, body.speaker, body.ts_start_ms, body.ts_end_ms
     )
-
+    
     # Enqueue answer generation with simple heuristic
-    try:
-        r = redis.Redis(connection_pool=redis_pool)
-        key = f"ans:count:{session_id}"
-        pipe = r.pipeline()
-        pipe.incr(key)
-        pipe.expire(key, REDIS_KEY_EXPIRY_SECONDS)
-        n, _ = pipe.execute()
-        
-        # Check for question or interval-based trigger
-        has_question = "?" in (body.text or "")
-        is_interval_trigger = n % ANSWER_GENERATION_INTERVAL == 0
-        if has_question or is_interval_trigger:
-            generate_answer.send(session_id)
-    except (redis.RedisError, ConnectionError) as e:
-        logger.warning("Failed to enqueue answer generation: %s", e)
-        # Continue even if answer generation fails
-
+    _enqueue_answer_generation(session_id, body.text)
     return {"ok": True}
 
 
@@ -238,6 +259,38 @@ def get_answers(
     return {"answers": asvc.recent_answers(db, session_id, since_ts=since)}
 
 
+def _check_stream_timeout(start_time: datetime) -> bool:
+    """Check if SSE stream has exceeded maximum duration.
+    
+    Args:
+        start_time: When the stream started
+        
+    Returns:
+        True if timeout exceeded
+    """
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    return elapsed > SSE_MAX_DURATION_SECONDS
+
+
+def _emit_new_answers(
+    db: Session, session_id: str, last_ts: datetime | None
+) -> tuple[list[dict], datetime | None]:
+    """Emit new answers and return updated timestamp.
+    
+    Args:
+        db: Database session
+        session_id: Session identifier  
+        last_ts: Last timestamp processed
+        
+    Returns:
+        Tuple of (new_rows, updated_last_ts)
+    """
+    rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
+    if rows:
+        return rows, rows[0]["created_at"]
+    return [], last_ts
+
+
 @app.get("/api/sessions/{session_id}/stream")
 def stream_answers(session_id: str) -> StreamingResponse:
     """Server-Sent Events stream of real-time answers.
@@ -257,24 +310,19 @@ def stream_answers(session_id: str) -> StreamingResponse:
     async def event_stream():
         nonlocal last_ts
         start_time = datetime.now(timezone.utc)
-        # Use a single database session for the entire SSE stream to avoid connection pool exhaustion
+        # Use single DB session for entire SSE stream to avoid connection pool exhaustion
         with db_session() as db:
             try:
                 while True:
                     # Check if max duration exceeded
-                    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
-                    if elapsed > SSE_MAX_DURATION_SECONDS:
+                    if _check_stream_timeout(start_time):
                         yield _format_sse_data({"event": "timeout"})
                         break
 
-                    # Query for new answers using the shared session
-                    rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
-                    if rows:
-                        # emit each new row as SSE (most recent first - already sorted by query)
-                        for r in rows:
-                            yield _format_sse_data(r)
-                        # Set last_ts to the latest timestamp after emitting
-                        last_ts = rows[0]["created_at"]
+                    # Query for new answers and emit them
+                    rows, last_ts = _emit_new_answers(db, session_id, last_ts)
+                    for r in rows:
+                        yield _format_sse_data(r)
 
                     await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
             except Exception as e:

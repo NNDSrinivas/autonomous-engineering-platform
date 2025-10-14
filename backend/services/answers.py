@@ -103,6 +103,84 @@ def _pick_best(items: list[dict], n: int) -> list[dict]:
     return items[:n] if items else []
 
 
+def _generate_jira_answer(jira_hit: dict) -> tuple[str, dict]:
+    """Generate answer from JIRA issue.
+    
+    Args:
+        jira_hit: JIRA issue data
+        
+    Returns:
+        Tuple of (answer_text, citation)
+    """
+    status = jira_hit.get("status")
+    issue_key = jira_hit.get("issue_key")
+    summary = jira_hit.get("summary") or "see ticket"
+    answer = f"Latest on {issue_key}: {summary} (status: {status})."
+    citation = {"type": "jira", "key": issue_key, "url": jira_hit.get("url")}
+    return answer, citation
+
+
+def _generate_code_answer(code_hit: dict) -> tuple[str, dict]:
+    """Generate answer from GitHub code.
+    
+    Args:
+        code_hit: GitHub code data
+        
+    Returns:
+        Tuple of (answer_text, citation)
+    """
+    repo = code_hit.get("repo")
+    path = code_hit.get("path")
+    answer = f"Relevant code is at {repo}/{path}."
+    citation = {"type": "code", "repo": repo, "path": path}
+    return answer, citation
+
+
+def _generate_pr_answer(pr_hit: dict) -> tuple[str, dict]:
+    """Generate answer from GitHub PR.
+    
+    Args:
+        pr_hit: GitHub PR data
+        
+    Returns:
+        Tuple of (answer_text, citation)
+    """
+    title = pr_hit.get("title")
+    number = pr_hit.get("number")
+    state = pr_hit.get("state")
+    answer = f"Related PR: {title} (#{number}, {state})."
+    citation = {"type": "pr", "number": number, "url": pr_hit.get("url")}
+    return answer, citation
+
+
+def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
+    """Generate fallback answer from meeting context.
+    
+    Args:
+        text_context: Meeting transcript text
+        
+    Returns:
+        Tuple of (answer_text, citation)
+    """
+    if "." in text_context:
+        # Extract last two sentences, filter out empty/trivial ones
+        sentences = []
+        for sent in text_context.split("."):
+            stripped = sent.strip()
+            if stripped and len(stripped) > MIN_SENTENCE_LENGTH:
+                sentences.append(stripped)
+        s = sentences[-2:] if sentences else []
+    else:
+        s = []
+    
+    if not s:
+        s = [text_context[:MAX_FALLBACK_LENGTH]]
+    
+    answer = " ".join(s).strip()
+    citation = {"type": "meeting"}
+    return answer, citation
+
+
 def generate_grounded_answer(
     jira_hits: list[dict],
     code_hits: list[dict],
@@ -123,41 +201,23 @@ def generate_grounded_answer(
         Dictionary with answer text, citations, confidence score, token count, and latency_ms placeholder
     """
     text_context = " ".join(meeting_snippets)[-MAX_CONTEXT_LENGTH:]
-    answer = ""
-    citations = []
-
+    
+    # Generate answer based on priority order
     if jira_hits:
-        j = jira_hits[0]
-        answer = f"Latest on {j.get('issue_key')}: {j.get('summary') or 'see ticket'} (status: {j.get('status')})."
-        citations.append(
-            {"type": "jira", "key": j.get("issue_key"), "url": j.get("url")}
-        )
+        answer, citation = _generate_jira_answer(jira_hits[0])
+        citations = [citation]
     elif code_hits:
-        c = code_hits[0]
-        answer = f"Relevant code is at {c.get('repo')}/{c.get('path')}."
-        citations.append({"type": "code", "repo": c.get("repo"), "path": c.get("path")})
+        answer, citation = _generate_code_answer(code_hits[0])
+        citations = [citation]
     elif pr_hits:
-        p = pr_hits[0]
-        answer = f"Related PR: {p.get('title')} (#{p.get('number')}, {p.get('state')})."
-        citations.append({"type": "pr", "number": p.get("number"), "url": p.get("url")})
+        answer, citation = _generate_pr_answer(pr_hits[0])
+        citations = [citation]
     elif text_context:
-        # fallback from meeting context only
-        if "." in text_context:
-            # Extract last two sentences, filter out empty/trivial ones
-            sentences = []
-            for sent in text_context.split("."):
-                stripped = sent.strip()
-                if stripped and len(stripped) > MIN_SENTENCE_LENGTH:
-                    sentences.append(stripped)
-            s = sentences[-2:] if sentences else []
-        else:
-            s = []
-        if not s:
-            s = [text_context[:MAX_FALLBACK_LENGTH]]
-        answer = " ".join(s).strip()
-        citations.append({"type": "meeting"})
+        answer, citation = _generate_meeting_answer(text_context)
+        citations = [citation]
     else:
         answer = "I don't have enough context yet."
+        citations = []
 
     return {
         "answer": answer[:MAX_ANSWER_LENGTH],

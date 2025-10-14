@@ -159,7 +159,7 @@ def generate_answer(session_id: str) -> None:
         payload["latency_ms"] = int((time.perf_counter() - t0) * 1000)
         asvc.save_answer(db, session_id, payload)
     except Exception as e:
-        # Log but don't raise - Dramatiq will handle retries
+        # Log but don't raise - error will be logged, no retries will occur
         logger.error(
             "Error generating answer for session %s: %s", session_id, e, exc_info=True
         )

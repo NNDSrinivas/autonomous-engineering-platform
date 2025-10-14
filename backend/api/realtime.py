@@ -194,9 +194,10 @@ def stream_answers(session_id: str, db: Session = Depends(get_db)):
 
                 rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
                 if rows:
+                    # Set last_ts to the latest timestamp before emitting
+                    last_ts = rows[0]["created_at"]
                     # emit each new row as SSE
                     for r in rows[::-1]:
-                        last_ts = r["created_at"]
                         yield f"data: {json.dumps(r, default=str)}\n\n"
                 await asyncio.sleep(1)
         except Exception:

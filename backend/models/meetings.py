@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Integer, ForeignKey, JSON, TIMESTAMP
 from ..core.db import Base
@@ -9,13 +11,13 @@ class Meeting(Base):
     session_id: Mapped[str] = mapped_column(String, unique=True)
     title: Mapped[str | None] = mapped_column(String, nullable=True)
     provider: Mapped[str | None] = mapped_column(String, nullable=True)
-    started_at: Mapped[object | None] = mapped_column(
+    started_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
-    ended_at: Mapped[object | None] = mapped_column(
+    ended_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
-    participants: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    participants: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     org_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     segments: Mapped[list["TranscriptSegment"]] = relationship(
@@ -48,9 +50,9 @@ class MeetingSummary(Base):
     meeting_id: Mapped[str] = mapped_column(
         ForeignKey("meeting.id", ondelete="CASCADE"), primary_key=True
     )
-    bullets: Mapped[list | None] = mapped_column(JSON)
-    decisions: Mapped[list | None] = mapped_column(JSON)
-    risks: Mapped[list | None] = mapped_column(JSON)
+    bullets: Mapped[list[str] | None] = mapped_column(JSON)
+    decisions: Mapped[list[str] | None] = mapped_column(JSON)
+    risks: Mapped[list[str] | None] = mapped_column(JSON)
 
     meeting: Mapped["Meeting"] = relationship("Meeting", back_populates="summary")
 

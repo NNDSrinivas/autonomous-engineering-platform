@@ -16,6 +16,7 @@ from ..services import meetings as svc
 from ..services import jira as jsvc, github as ghsvc
 from ..workers.queue import process_meeting
 from ..workers.integrations import jira_sync, github_index
+from ..workers.answers import generate_answer
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -317,6 +318,32 @@ def gh_search_issues(
 
 
 # TODO: Write actions (comment, transition, PR create) will ship in a later PR.
+
+
+# ---- PR-5: Answer Coach manual trigger ----
+
+
+class GenerateReq(BaseModel):
+    session_id: str
+
+
+class GenerateResp(BaseModel):
+    enqueued: bool
+
+
+@app.post("/api/answers/generate", response_model=GenerateResp)
+def manual_generate(body: GenerateReq):
+    """Manually trigger answer generation for a session.
+
+    Args:
+        body: Request containing session_id
+
+    Returns:
+        Confirmation that job was enqueued
+    """
+    generate_answer.send(body.session_id)
+    return GenerateResp(enqueued=True)
+
 
 if __name__ == "__main__":
     import uvicorn

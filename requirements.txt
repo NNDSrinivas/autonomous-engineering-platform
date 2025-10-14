@@ -44,3 +44,8 @@ python-multipart>=0.0.6
 
 # Task queue
 dramatiq==1.16.0
+
+# Integrations dependencies  
+httpx==0.27.2
+pydantic==2.9.2
+python-json-logger==2.0.7

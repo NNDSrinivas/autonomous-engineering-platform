@@ -59,7 +59,19 @@ def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:
         {"mid": meeting_id},
     ).fetchone()
     latest = row[0] if row else ""
-    return asvc._extract_terms(latest)
+    return asvc.extract_terms(latest)
+
+
+def _build_search_query(terms: list[str]) -> str | None:
+    """Build search query string from terms.
+
+    Args:
+        terms: List of search terms
+
+    Returns:
+        Space-joined string of up to MAX_SEARCH_TERMS, or None if no terms
+    """
+    return " ".join(terms[:MAX_SEARCH_TERMS]) if terms else None
 
 
 def _search_jira(db: Session, terms: list[str]) -> list[dict]:
@@ -72,7 +84,7 @@ def _search_jira(db: Session, terms: list[str]) -> list[dict]:
     Returns:
         List of matching JIRA issues
     """
-    q = " ".join(terms[:MAX_SEARCH_TERMS]) if terms else None
+    q = _build_search_query(terms)
     return JiraService.search_issues(db, project=None, q=q, updated_since=None)
 
 
@@ -86,7 +98,7 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
     Returns:
         List of matching code files
     """
-    q = " ".join(terms[:MAX_SEARCH_TERMS]) if terms else None
+    q = _build_search_query(terms)
     # choose a path-like term if present
     path_term = (
         next((t for t in terms if "/" in t or "." in t), None) if terms else None
@@ -104,7 +116,7 @@ def _search_prs(db: Session, terms: list[str]) -> list[dict]:
     Returns:
         List of matching pull requests
     """
-    q = " ".join(terms[:MAX_SEARCH_TERMS]) if terms else None
+    q = _build_search_query(terms)
     return GitHubService.search_issues(db, repo=None, q=q, updated_since=None)
 
 

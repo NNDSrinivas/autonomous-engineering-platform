@@ -24,6 +24,12 @@ from ..workers.answers import generate_answer
 ANSWER_GENERATION_INTERVAL = 3  # Generate answer every N captions
 
 logger = setup_logging()
+
+# Create Redis connection pool for reuse across requests
+redis_pool = redis.ConnectionPool.from_url(
+    settings.redis_url, decode_responses=True, max_connections=10
+)
+
 app = FastAPI(title=f"{settings.app_name} - Realtime API")
 
 app.add_middleware(
@@ -115,7 +121,7 @@ def post_caption(session_id: str, body: CaptionReq, db: Session = Depends(get_db
 
     # Enqueue answer generation with simple heuristic
     try:
-        r = redis.from_url(settings.redis_url, decode_responses=True)
+        r = redis.Redis(connection_pool=redis_pool)
         key = f"ans:count:{session_id}"
         n = r.incr(key)
         if "?" in (body.text or "") or n % ANSWER_GENERATION_INTERVAL == 0:

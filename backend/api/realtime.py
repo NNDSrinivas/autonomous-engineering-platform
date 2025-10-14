@@ -62,6 +62,15 @@ class CreateSessionResp(BaseModel):
 
 @app.post("/api/sessions", response_model=CreateSessionResp)
 def create_session(body: CreateSessionReq, db: Session = Depends(get_db)):
+    """Create a new meeting session for real-time caption capture.
+
+    Args:
+        body: Session creation request with title and provider
+        db: Database session dependency
+
+    Returns:
+        Session and meeting IDs for subsequent API calls
+    """
     m = svc.create_meeting(db, title=body.title, provider=body.provider, org_id=None)
     return CreateSessionResp(session_id=m.session_id, meeting_id=m.id)
 
@@ -75,6 +84,19 @@ class CaptionReq(BaseModel):
 
 @app.post("/api/sessions/{session_id}/captions")
 def post_caption(session_id: str, body: CaptionReq, db: Session = Depends(get_db)):
+    """Add a caption/transcript segment to an active session.
+
+    Args:
+        session_id: Session identifier from create_session
+        body: Caption data with text, speaker, and timestamps
+        db: Database session dependency
+
+    Returns:
+        Success confirmation
+
+    Raises:
+        HTTPException: If session not found
+    """
     m = svc.get_meeting_by_session(db, session_id)
     if not m:
         raise HTTPException(status_code=404, detail="Session not found")

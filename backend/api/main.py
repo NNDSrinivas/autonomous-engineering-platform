@@ -52,6 +52,14 @@ class FinalizeResp(BaseModel):
 
 @app.post("/api/meetings/{session_id}/finalize", response_model=FinalizeResp)
 def finalize(session_id: str):
+    """Enqueue background processing to generate meeting summary and actions.
+
+    Args:
+        session_id: Session identifier from realtime API
+
+    Returns:
+        Confirmation that processing was enqueued
+    """
     # enqueue background processing
     process_meeting.send(session_id)
     return FinalizeResp(enqueued=True)
@@ -59,6 +67,18 @@ def finalize(session_id: str):
 
 @app.get("/api/meetings/{session_id}/summary")
 def get_summary(session_id: str, db: Session = Depends(get_db)):
+    """Retrieve the AI-generated summary for a processed meeting.
+
+    Args:
+        session_id: Session identifier
+        db: Database session dependency
+
+    Returns:
+        Meeting summary with bullets, decisions, risks, and actions
+
+    Raises:
+        HTTPException: If meeting not found or not yet processed
+    """
     res = svc.get_summary(db, session_id)
     if not res:
         raise HTTPException(status_code=404, detail="Not ready or session not found")

@@ -12,6 +12,17 @@ def new_uuid() -> str:
 def create_meeting(
     db: Session, title: str | None, provider: str | None, org_id: str | None
 ) -> Meeting:
+    """Create a new meeting and persist it to the database.
+
+    Args:
+        db: Database session
+        title: Optional meeting title
+        provider: Meeting provider (zoom, teams, meet, manual)
+        org_id: Optional organization ID
+
+    Returns:
+        Created Meeting instance
+    """
     m = Meeting(
         id=new_uuid(),
         session_id=new_uuid(),
@@ -28,6 +39,15 @@ def create_meeting(
 
 
 def get_meeting_by_session(db: Session, session_id: str) -> Meeting | None:
+    """Retrieve a meeting by its session ID.
+
+    Args:
+        db: Database session
+        session_id: Unique session identifier
+
+    Returns:
+        Meeting instance if found, None otherwise
+    """
     return db.scalar(select(Meeting).where(Meeting.session_id == session_id))
 
 
@@ -39,6 +59,19 @@ def append_segment(
     ts_start_ms: int | None,
     ts_end_ms: int | None,
 ) -> TranscriptSegment:
+    """Add a transcript segment to a meeting.
+
+    Args:
+        db: Database session
+        meeting_id: Meeting ID to add segment to
+        text_content: Transcript text
+        speaker: Optional speaker name
+        ts_start_ms: Optional start timestamp in milliseconds
+        ts_end_ms: Optional end timestamp in milliseconds
+
+    Returns:
+        Created TranscriptSegment instance
+    """
     seg = TranscriptSegment(
         id=new_uuid(),
         meeting_id=meeting_id,
@@ -60,7 +93,17 @@ def finalize_meeting(
     decisions: list[str],
     risks: list[str],
     actions: list[dict],
-):
+) -> None:
+    """Finalize a meeting by saving summary and action items.
+
+    Args:
+        db: Database session
+        meeting: Meeting to finalize
+        bullets: Summary bullets
+        decisions: Key decisions made
+        risks: Identified risks
+        actions: Extracted action items
+    """
     # upsert summary
     existing = db.get(MeetingSummary, meeting.id)
     if not existing:

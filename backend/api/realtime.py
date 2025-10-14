@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,7 +36,7 @@ def health():
     return {
         "status": "ok",
         "service": "realtime",
-        "time": datetime.now(datetime.timezone.utc).isoformat(),
+        "time": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -111,7 +111,7 @@ def close_session(session_id: str, db: Session = Depends(get_db)):
     m = svc.get_meeting_by_session(db, session_id)
     if not m:
         raise HTTPException(status_code=404, detail="Session not found")
-    m.ended_at = datetime.now(datetime.timezone.utc)
+    m.ended_at = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True}
 

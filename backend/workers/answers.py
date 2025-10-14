@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 # Constants for search term extraction
 MAX_SEARCH_TERMS = 4  # Maximum number of terms to use in searches
 
+# Constants for transcript retrieval
+MAX_TRANSCRIPT_SEGMENTS = 20  # Maximum number of recent transcript segments to fetch
+
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
 
@@ -35,7 +38,7 @@ def _recent_meeting_text(
     """
     rows = db.execute(
         text(
-            "SELECT text FROM transcript_segment WHERE meeting_id=:mid ORDER BY ts_end_ms DESC NULLS LAST, id DESC LIMIT 20"
+            f"SELECT text FROM transcript_segment WHERE meeting_id=:mid ORDER BY ts_end_ms DESC NULLS LAST, id DESC LIMIT {MAX_TRANSCRIPT_SEGMENTS}"
         ),
         {"mid": meeting_id},
     ).fetchall()

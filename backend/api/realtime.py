@@ -20,6 +20,9 @@ from ..services import meetings as svc
 from ..services import answers as asvc
 from ..workers.answers import generate_answer
 
+# Constants for answer generation triggering
+ANSWER_GENERATION_INTERVAL = 3  # Generate answer every N captions
+
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Realtime API")
 
@@ -115,7 +118,7 @@ def post_caption(session_id: str, body: CaptionReq, db: Session = Depends(get_db
         r = redis.from_url(settings.redis_url, decode_responses=True)
         key = f"ans:count:{session_id}"
         n = r.incr(key)
-        if "?" in (body.text or "") or n % 3 == 0:
+        if "?" in (body.text or "") or n % ANSWER_GENERATION_INTERVAL == 0:
             generate_answer.send(session_id)
         r.expire(key, 60)
     except Exception as e:

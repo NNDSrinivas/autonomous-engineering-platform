@@ -10,6 +10,9 @@ MAX_CONTEXT_LENGTH = 600  # Maximum characters of meeting context to use
 MAX_FALLBACK_LENGTH = 140  # Maximum characters for fallback answer from meeting
 MAX_ANSWER_LENGTH = 280  # Maximum length of generated answer
 
+# Constants for answer retrieval
+MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
+
 
 def _id() -> str:
     """Generate a unique identifier for an answer.
@@ -170,6 +173,6 @@ def recent_answers(
     if since_ts:
         sql += " AND created_at > :ts"
         params["ts"] = since_ts
-    sql += " ORDER BY created_at DESC LIMIT 20"
+    sql += f" ORDER BY created_at DESC LIMIT {MAX_RECENT_ANSWERS}"
     rows = db.execute(text(sql), params).mappings().all()
     return [dict(r) for r in rows]

@@ -62,8 +62,8 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),
-            server_default=sa.text("(datetime('now'))"),
-        ),  # SQLite compatible
+            server_default=sa.func.now(),
+        ),  # Database-agnostic current timestamp
     )
 
     op.create_table(

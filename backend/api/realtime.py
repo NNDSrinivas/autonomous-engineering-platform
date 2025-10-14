@@ -1,5 +1,6 @@
 import asyncio
 import json
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -32,6 +33,22 @@ logger = setup_logging()
 redis_pool = redis.ConnectionPool.from_url(
     settings.redis_url, decode_responses=True, max_connections=10
 )
+
+
+# Context manager for database sessions in streaming contexts
+@contextmanager
+def db_session():
+    """Context manager for database sessions with automatic cleanup.
+
+    Yields:
+        Database session that will be automatically closed
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 
 app = FastAPI(title=f"{settings.app_name} - Realtime API")
 
@@ -195,16 +212,6 @@ def stream_answers(session_id: str):
                     break
 
                 # Create fresh database session for each query using context manager
-                from contextlib import contextmanager
-
-                @contextmanager
-                def db_session():
-                    db = SessionLocal()
-                    try:
-                        yield db
-                    finally:
-                        db.close()
-
                 with db_session() as db:
                     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
                     if rows:

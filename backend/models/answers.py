@@ -2,7 +2,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, Integer, JSON, TIMESTAMP
 from ..core.db import Base
 from datetime import datetime
-from typing import list, dict
 
 
 class SessionAnswer(Base):

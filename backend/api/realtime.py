@@ -67,7 +67,7 @@ app.add_middleware(AuditMiddleware, service_name="realtime")
 
 
 @app.get("/health")
-def health():
+def health() -> dict[str, str]:
     return {
         "status": "ok",
         "service": "realtime",
@@ -76,7 +76,7 @@ def health():
 
 
 @app.get("/version")
-def version():
+def version() -> dict[str, str]:
     return {"name": settings.app_name, "env": settings.app_env, "version": "0.1.0"}
 
 
@@ -96,7 +96,9 @@ class CreateSessionResp(BaseModel):
 
 
 @app.post("/api/sessions", response_model=CreateSessionResp)
-def create_session(body: CreateSessionReq, db: Session = Depends(get_db)):
+def create_session(
+    body: CreateSessionReq, db: Session = Depends(get_db)
+) -> CreateSessionResp:
     """Create a new meeting session for real-time caption capture.
 
     Args:
@@ -118,7 +120,9 @@ class CaptionReq(BaseModel):
 
 
 @app.post("/api/sessions/{session_id}/captions")
-def post_caption(session_id: str, body: CaptionReq, db: Session = Depends(get_db)):
+def post_caption(
+    session_id: str, body: CaptionReq, db: Session = Depends(get_db)
+) -> dict[str, str]:
     """Add a caption/transcript segment to an active session.
 
     Args:
@@ -157,7 +161,19 @@ def post_caption(session_id: str, body: CaptionReq, db: Session = Depends(get_db
 
 
 @app.delete("/api/sessions/{session_id}")
-def close_session(session_id: str, db: Session = Depends(get_db)):
+def close_session(session_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
+    """Close/end a meeting session by marking it with an end timestamp.
+
+    Args:
+        session_id: Session identifier to close
+        db: Database session dependency
+
+    Returns:
+        Success confirmation
+
+    Raises:
+        HTTPException: 404 if session not found
+    """
     m = svc.get_meeting_by_session(db, session_id)
     if not m:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -172,7 +188,7 @@ def close_session(session_id: str, db: Session = Depends(get_db)):
 @app.get("/api/sessions/{session_id}/answers")
 def get_answers(
     session_id: str, since: str | None = None, db: Session = Depends(get_db)
-):
+) -> dict[str, list[dict]]:
     """Poll for new answers generated for this session.
 
     Args:
@@ -187,7 +203,7 @@ def get_answers(
 
 
 @app.get("/api/sessions/{session_id}/stream")
-def stream_answers(session_id: str):
+def stream_answers(session_id: str) -> StreamingResponse:
     """Server-Sent Events stream of real-time answers.
 
     Args:

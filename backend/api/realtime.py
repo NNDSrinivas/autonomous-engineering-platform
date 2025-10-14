@@ -118,6 +118,7 @@ class CreateSessionReq(BaseModel):
 class CreateSessionResp(BaseModel):
     """Response model for answer session creation."""
     session_id: str
+    meeting_id: str
     message: str
 
 
@@ -128,14 +129,18 @@ def create_session(
     """Create a new meeting session for real-time caption capture.
 
     Args:
-        body: Session creation request with title and provider
+        body: Session creation request with question and user_id
         db: Database session dependency
 
     Returns:
         Session and meeting IDs for subsequent API calls
     """
-    m = svc.create_meeting(db, title=body.title, provider=body.provider, org_id=None)
-    return CreateSessionResp(session_id=m.session_id, meeting_id=m.id)
+    m = svc.create_meeting(db, title=body.question, provider="realtime", org_id=None)
+    return CreateSessionResp(
+        session_id=m.session_id, 
+        meeting_id=m.id,
+        message="Session created successfully"
+    )
 
 
 class CaptionReq(BaseModel):

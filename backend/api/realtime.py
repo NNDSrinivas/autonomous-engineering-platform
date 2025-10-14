@@ -1,6 +1,6 @@
+import asyncio
 import json
 from datetime import datetime, timezone
-from time import sleep
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -175,7 +175,7 @@ def stream_answers(session_id: str, db: Session = Depends(get_db)):
     last_ts = None
     max_duration_seconds = 3600  # 1 hour max streaming
 
-    def event_stream():
+    async def event_stream():
         nonlocal last_ts
         start_time = datetime.now(timezone.utc)
         try:
@@ -192,7 +192,7 @@ def stream_answers(session_id: str, db: Session = Depends(get_db)):
                     for r in rows[::-1]:
                         last_ts = r["created_at"]
                         yield f"data: {json.dumps(r, default=str)}\n\n"
-                sleep(1)
+                await asyncio.sleep(1)
         except Exception:
             logger.exception("Error in SSE stream for session %s", session_id)
             yield f"data: {json.dumps({'event': 'error', 'message': 'An internal server error occurred.'})}\n\n"

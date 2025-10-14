@@ -105,11 +105,18 @@ def generate_grounded_answer(
         citations.append({"type": "pr", "number": p.get("number"), "url": p.get("url")})
     elif text_context:
         # fallback from meeting context only
-        s = (
-            text_context.split(".")[-2:]
-            if "." in text_context
-            else [text_context[:MAX_FALLBACK_LENGTH]]
-        )
+        if "." in text_context:
+            # Extract last two sentences, filter out empty/trivial ones
+            sentences = [
+                sent.strip()
+                for sent in text_context.split(".")
+                if sent.strip() and len(sent.strip()) > 2
+            ]
+            s = sentences[-2:] if sentences else []
+            if not s:
+                s = [text_context[:MAX_FALLBACK_LENGTH]]
+        else:
+            s = [text_context[:MAX_FALLBACK_LENGTH]]
         answer = " ".join(s).strip()
         citations.append({"type": "meeting"})
     else:

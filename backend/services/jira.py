@@ -1,9 +1,12 @@
-import datetime
-import uuid, datetime as dt
+import uuid
+import datetime as dt
 import httpx
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 from ..models.integrations import JiraConnection, JiraProjectConfig, JiraIssue
+
+# Configuration constants
+MAX_DESCRIPTION_LENGTH = 8000
 
 def _id(): return str(uuid.uuid4())
 
@@ -45,7 +48,7 @@ def upsert_issue(db: Session, conn_id: str, issue: dict):
         else:
             return str(desc_field)
     
-    description = extract_description_text(issue["fields"].get("description"))[:8000]
+    description = extract_description_text(issue["fields"].get("description"))[:MAX_DESCRIPTION_LENGTH]
     
     payload = {
         "connection_id": conn_id,
@@ -63,7 +66,7 @@ def upsert_issue(db: Session, conn_id: str, issue: dict):
         "updated": dt.datetime.fromisoformat(issue["fields"]["updated"].replace("Z","+00:00")) if issue["fields"].get("updated") else None,
         "url": None,
         "raw": issue,
-        "indexed_at": dt.datetime.now(datetime.timezone.utc),
+        "indexed_at": dt.datetime.now(dt.timezone.utc),
     }
     if row:
         for k,v in payload.items(): setattr(row,k,v)

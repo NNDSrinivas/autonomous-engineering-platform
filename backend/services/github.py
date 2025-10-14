@@ -1,9 +1,12 @@
-import datetime
-import uuid, datetime as dt
+import uuid
+import datetime as dt
 import httpx, base64
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 from ..models.integrations import GhConnection, GhRepo, GhFile, GhIssuePr
+
+# Configuration constants
+MAX_BODY_LENGTH = 8000
 
 def _id(): return str(uuid.uuid4())
 
@@ -29,7 +32,7 @@ def upsert_repo(db: Session, conn_id: str, repo: dict):
     db.commit(); return row
 
 def upsert_file(db: Session, repo_id: str, path: str, sha: str | None, lang: str | None, size: int | None):
-    row = GhFile(id=_id(), repo_id=repo_id, path=path, sha=sha, lang=lang, size_bytes=size, updated=dt.datetime.now(datetime.timezone.utc))
+    row = GhFile(id=_id(), repo_id=repo_id, path=path, sha=sha, lang=lang, size_bytes=size, updated=dt.datetime.now(dt.timezone.utc))
     db.add(row); db.commit()
 
 def upsert_issuepr(db: Session, repo_id: str, number: int, type_: str, title: str, body: str | None, state: str, author: str | None, url: str, updated: dt.datetime | None):
@@ -37,9 +40,9 @@ def upsert_issuepr(db: Session, repo_id: str, number: int, type_: str, title: st
     safe_body = ""
     if body is not None:
         if isinstance(body, str):
-            safe_body = body[:8000]
+            safe_body = body[:MAX_BODY_LENGTH]
         else:
-            safe_body = str(body)[:8000]
+            safe_body = str(body)[:MAX_BODY_LENGTH]
     
     row = GhIssuePr(id=_id(), repo_id=repo_id, number=number, type=type_, title=title, body=safe_body, state=state, author=author, url=url, updated=updated)
     db.add(row); db.commit()

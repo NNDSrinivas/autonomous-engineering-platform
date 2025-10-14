@@ -119,9 +119,16 @@ def jira_connect(body: JiraConnectReq, db: Session = Depends(get_db)):
 
     Returns:
         Connection ID for subsequent operations
+    
+    Raises:
+        HTTPException: If connection creation fails
     """
-    conn = jsvc.save_connection(db, body.cloud_base_url, body.access_token)
-    return {"connection_id": conn.id}
+    try:
+        conn = jsvc.save_connection(db, body.cloud_base_url, body.access_token)
+        return {"connection_id": conn.id}
+    except Exception as e:
+        logger.error(f"Failed to create JIRA connection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create JIRA connection")
 
 class JiraConfigReq(BaseModel):
     connection_id: str
@@ -138,9 +145,16 @@ def jira_config(body: JiraConfigReq, db: Session = Depends(get_db)):
 
     Returns:
         Configuration ID
+    
+    Raises:
+        HTTPException: If configuration creation fails
     """
-    cfg = jsvc.set_project_config(db, body.connection_id, body.project_keys, body.default_jql)
-    return {"config_id": cfg.id}
+    try:
+        cfg = jsvc.set_project_config(db, body.connection_id, body.project_keys, body.default_jql)
+        return {"config_id": cfg.id}
+    except Exception as e:
+        logger.error(f"Failed to create JIRA configuration: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create JIRA configuration")
 
 @app.post("/api/integrations/jira/sync")
 def jira_trigger_sync(connection_id: str):
@@ -151,9 +165,16 @@ def jira_trigger_sync(connection_id: str):
 
     Returns:
         Sync job enqueue confirmation
+    
+    Raises:
+        HTTPException: If sync job enqueue fails
     """
-    jira_sync.send(connection_id)
-    return {"enqueued": True}
+    try:
+        jira_sync.send(connection_id)
+        return {"enqueued": True}
+    except Exception as e:
+        logger.error(f"Failed to enqueue JIRA sync job: {e}")
+        raise HTTPException(status_code=500, detail="Failed to enqueue sync job")
 
 @app.get("/api/jira/tasks")
 def jira_tasks(q: str | None = None, project: str | None = None, assignee: str | None = None, updated_since: str | None = None, db: Session = Depends(get_db)):
@@ -185,9 +206,16 @@ def gh_connect(body: GhConnectReq, db: Session = Depends(get_db)):
 
     Returns:
         Connection ID for subsequent operations
+    
+    Raises:
+        HTTPException: If connection creation fails
     """
-    conn = ghsvc.save_connection(db, body.access_token)
-    return {"connection_id": conn.id}
+    try:
+        conn = ghsvc.save_connection(db, body.access_token)
+        return {"connection_id": conn.id}
+    except Exception as e:
+        logger.error(f"Failed to create GitHub connection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create GitHub connection")
 
 class GhIndexReq(BaseModel):
     connection_id: str
@@ -202,9 +230,16 @@ def gh_index_repo(body: GhIndexReq):
 
     Returns:
         Index job enqueue confirmation
+    
+    Raises:
+        HTTPException: If index job enqueue fails
     """
-    github_index.send(body.connection_id, body.repo_full_name)
-    return {"enqueued": True}
+    try:
+        github_index.send(body.connection_id, body.repo_full_name)
+        return {"enqueued": True}
+    except Exception as e:
+        logger.error(f"Failed to enqueue GitHub index job: {e}")
+        raise HTTPException(status_code=500, detail="Failed to enqueue index job")
 
 @app.get("/api/github/search/code")
 def gh_search_code(repo: str | None = None, q: str | None = None, path: str | None = None, db: Session = Depends(get_db)):

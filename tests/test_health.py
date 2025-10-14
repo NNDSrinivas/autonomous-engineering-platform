@@ -1,4 +1,3 @@
-import time
 import pytest
 from fastapi.testclient import TestClient
 
@@ -8,6 +7,7 @@ from backend.api.main import app
 # Use FastAPI TestClient instead of requiring running servers
 client = TestClient(app)
 
+
 def test_health_endpoint():
     """Test health endpoint using TestClient (no server required)"""
     response = client.get("/health")
@@ -16,6 +16,7 @@ def test_health_endpoint():
     assert data["status"] == "ok"
     assert data["service"] == "core"
 
+
 def test_version_endpoint():
     """Test version endpoint using TestClient (no server required)"""
     response = client.get("/version")
@@ -23,11 +24,12 @@ def test_version_endpoint():
     data = response.json()
     assert "version" in data
 
+
 # Keep original tests for integration testing (when servers are running)
 def test_integration_health_endpoints():
     """Integration test - only runs if servers are already started"""
     import requests
-    
+
     try:
         r1 = requests.get("http://localhost:8002/health", timeout=1)
         if r1.status_code == 200:
@@ -37,10 +39,11 @@ def test_integration_health_endpoints():
     except requests.exceptions.ConnectionError:
         pytest.skip("Integration test skipped - server not running")
 
+
 def test_integration_version_endpoints():
     """Integration test - only runs if servers are already started"""
     import requests
-    
+
     try:
         v1 = requests.get("http://localhost:8002/version", timeout=1)
         if v1.status_code == 200:

@@ -165,18 +165,18 @@ def get_answers(
 
 
 @app.get("/api/sessions/{session_id}/stream")
-def stream_answers(session_id: str, db: Session = Depends(get_db)):
+def stream_answers(session_id: str):
     """Server-Sent Events stream of real-time answers.
 
     Args:
         session_id: Session identifier
-        db: Database session dependency
 
     Returns:
         SSE stream that emits new answers as they're generated
 
     Note:
-        Stream will continue until client disconnects or max duration is reached
+        Stream will continue until client disconnects or max duration is reached.
+        Creates fresh database sessions for each query to avoid stale connections.
     """
     last_ts = None
     max_duration_seconds = 3600  # 1 hour max streaming
@@ -192,13 +192,19 @@ def stream_answers(session_id: str, db: Session = Depends(get_db)):
                     yield f"data: {json.dumps({'event': 'timeout'})}\n\n"
                     break
 
-                rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
-                if rows:
-                    # Set last_ts to the latest timestamp before emitting
-                    last_ts = rows[0]["created_at"]
-                    # emit each new row as SSE
-                    for r in rows[::-1]:
-                        yield f"data: {json.dumps(r, default=str)}\n\n"
+                # Create fresh database session for each query to avoid stale connections
+                db = next(get_db())
+                try:
+                    rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
+                    if rows:
+                        # Set last_ts to the latest timestamp before emitting
+                        last_ts = rows[0]["created_at"]
+                        # emit each new row as SSE
+                        for r in rows[::-1]:
+                            yield f"data: {json.dumps(r, default=str)}\n\n"
+                finally:
+                    db.close()
+
                 await asyncio.sleep(1)
         except Exception:
             logger.exception("Error in SSE stream for session %s", session_id)

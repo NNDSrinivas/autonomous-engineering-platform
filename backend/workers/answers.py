@@ -18,20 +18,24 @@ MAX_SEARCH_TERMS = 4  # Maximum number of terms to use in searches
 
 # Constants for transcript retrieval
 MAX_TRANSCRIPT_SEGMENTS = 20  # Maximum number of recent transcript segments to fetch
+DEFAULT_MEETING_WINDOW_SECONDS = 180  # Default time window for meeting transcripts
 
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
 
 
-def _recent_meeting_text(db: Session, meeting_id: str) -> list[str]:
-    """Get recent meeting transcript text.
+def _recent_meeting_text(
+    db: Session, meeting_id: str, window_seconds: int = DEFAULT_MEETING_WINDOW_SECONDS
+) -> list[str]:
+    """Get last N seconds of meeting transcript text.
 
     Args:
         db: Database session
         meeting_id: Meeting identifier
+        window_seconds: Time window in seconds (currently unused, fallback to last N segments)
 
     Returns:
-        List of recent transcript text segments in chronological order
+        List of transcript text segments in chronological order
     """
     rows = db.execute(
         text(
@@ -54,11 +58,11 @@ def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:
     """
     row = db.execute(
         text(
-            "SELECT text FROM transcript_segment WHERE meeting_id=:mid ORDER BY ts_end_ms DESC NULLS LAST, id DESC LIMIT 1"
+            "SELECT text FROM transcript_segment WHERE meeting_id=:mid ORDER BY ts_end_ms DESC NULLS LAST, id DESC LIMIT :limit"
         ),
-        {"mid": meeting_id},
+        {"mid": meeting_id, "limit": 1},
     ).fetchone()
-    latest = row[0] if row else ""
+    latest = row[0] if row and len(row) > 0 else ""
     return asvc.extract_terms(latest)
 
 

@@ -171,11 +171,24 @@ def recent_answers(
     Returns:
         List of answer dictionaries with id, created_at, answer, citations, confidence
     """
-    sql = "SELECT id, created_at, answer, citations, confidence FROM session_answer WHERE session_id=:sid"
-    params = {"sid": session_id, "limit": MAX_RECENT_ANSWERS}
+    query = db.query(
+        SessionAnswer.id,
+        SessionAnswer.created_at,
+        SessionAnswer.answer,
+        SessionAnswer.citations,
+        SessionAnswer.confidence,
+    ).filter(SessionAnswer.session_id == session_id)
     if since_ts:
-        sql += " AND created_at > :ts"
-        params["ts"] = since_ts
-    sql += " ORDER BY created_at DESC LIMIT :limit"
-    rows = db.execute(text(sql), params).mappings().all()
-    return [dict(r) for r in rows]
+        query = query.filter(SessionAnswer.created_at > since_ts)
+    query = query.order_by(SessionAnswer.created_at.desc()).limit(MAX_RECENT_ANSWERS)
+    rows = query.all()
+    return [
+        {
+            "id": r.id,
+            "created_at": r.created_at,
+            "answer": r.answer,
+            "citations": r.citations,
+            "confidence": r.confidence,
+        }
+        for r in rows
+    ]

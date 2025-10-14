@@ -12,12 +12,21 @@ dramatiq.set_broker(broker)
 
 
 def _normalize(text: str) -> str:
+    """Normalize text by cleaning up whitespace and punctuation spacing."""
     # simple cleanup: spaces, fix punctuation spacing
     t = re.sub(r"\s+", " ", text).strip()
     return t
 
 
 def _mock_summarize(chunks: list[str]) -> dict:
+    """Generate mock summary from text chunks.
+
+    Args:
+        chunks: List of normalized text segments
+
+    Returns:
+        Dictionary with bullets, decisions, and risks
+    """
     # Deterministic, simple heuristic (replace with real LLM later)
     all_text = " ".join(chunks)
     bullets = []
@@ -39,6 +48,14 @@ def _mock_summarize(chunks: list[str]) -> dict:
 
 
 def _mock_actions(chunks: list[str]) -> list[dict]:
+    """Extract mock action items from text chunks.
+
+    Args:
+        chunks: List of normalized text segments
+
+    Returns:
+        List of action item dictionaries
+    """
     actions = []
     for i, chunk in enumerate(chunks):
         if any(

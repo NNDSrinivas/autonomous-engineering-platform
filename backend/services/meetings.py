@@ -6,6 +6,7 @@ from ..models.meetings import Meeting, TranscriptSegment, MeetingSummary, Action
 
 
 def new_uuid() -> str:
+    """Generate a new UUID string."""
     return str(uuid.uuid4())
 
 

@@ -1,3 +1,4 @@
+import logging
 import time
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
@@ -9,6 +10,8 @@ from ..services import answers as asvc
 from ..services import meetings as msvc
 from ..services.jira import JiraService
 from ..services.github import GitHubService
+
+logger = logging.getLogger(__name__)
 
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
@@ -130,6 +133,8 @@ def generate_answer(session_id: str) -> None:
         asvc.save_answer(db, session_id, payload)
     except Exception as e:
         # Log but don't raise - Dramatiq will handle retries
-        print(f"Error generating answer for session {session_id}: {e}")
+        logger.error(
+            "Error generating answer for session %s: %s", session_id, e, exc_info=True
+        )
     finally:
         db.close()

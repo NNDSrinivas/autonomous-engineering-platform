@@ -66,7 +66,21 @@ def generate_grounded_answer(
     pr_hits: list[dict],
     meeting_snippets: list[str],
 ) -> dict:
-    """Heuristic short answer with citations"""
+    """Generate a grounded answer with citations from JIRA, GitHub, and meeting context.
+
+    Priority order: JIRA issues → GitHub code → Pull requests → Meeting context → Fallback
+
+    Args:
+        db: Database session
+        session_id: Session identifier
+        jira_hits: List of matching JIRA issues
+        code_hits: List of matching GitHub code files
+        pr_hits: List of matching GitHub pull requests
+        meeting_snippets: Recent transcript text segments
+
+    Returns:
+        Dictionary with answer text, citations, confidence score, token count, and latency_ms placeholder
+    """
     text_context = " ".join(meeting_snippets)[-600:]
     answer = ""
     citations = []

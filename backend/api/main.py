@@ -1,4 +1,3 @@
-from datetime import datetime
 import datetime as dt
 
 from fastapi import FastAPI, Depends, HTTPException, Query

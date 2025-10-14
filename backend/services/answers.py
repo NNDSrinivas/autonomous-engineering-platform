@@ -23,7 +23,7 @@ def _id() -> str:
     return str(uuid.uuid4())
 
 
-def _extract_terms(latest_text: str) -> list[str]:
+def extract_terms(latest_text: str) -> list[str]:
     """Ultra-light keyword extractor: split, dedupe, keep useful tokens.
 
     Args:

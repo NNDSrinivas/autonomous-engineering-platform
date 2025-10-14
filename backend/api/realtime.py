@@ -106,13 +106,15 @@ app.include_router(metrics_router)
 
 
 class CreateSessionReq(BaseModel):
-    title: str | None = None
-    provider: str | None = "manual"
+    """Request model for creating a new answer session."""
+    question: str
+    user_id: str = "default_user"
 
 
 class CreateSessionResp(BaseModel):
+    """Response model for answer session creation."""
     session_id: str
-    meeting_id: str
+    message: str
 
 
 @app.post("/api/sessions", response_model=CreateSessionResp)
@@ -133,6 +135,7 @@ def create_session(
 
 
 class CaptionReq(BaseModel):
+    """Request model for caption submission."""
     text: str
     speaker: str | None = None
     ts_start_ms: int | None = None
@@ -171,7 +174,11 @@ def post_caption(
         pipe.incr(key)
         pipe.expire(key, 60)
         n, _ = pipe.execute()
-        if "?" in (body.text or "") or n % ANSWER_GENERATION_INTERVAL == 0:
+        
+        # Check for question or interval-based trigger
+        has_question = "?" in (body.text or "")
+        is_interval_trigger = n % ANSWER_GENERATION_INTERVAL == 0
+        if has_question or is_interval_trigger:
             generate_answer.send(session_id)
     except (redis.RedisError, ConnectionError) as e:
         logger.warning("Failed to enqueue answer generation: %s", e)

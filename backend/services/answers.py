@@ -140,11 +140,11 @@ def generate_grounded_answer(
         # fallback from meeting context only
         if "." in text_context:
             # Extract last two sentences, filter out empty/trivial ones
-            sentences = [
-                stripped
-                for sent in text_context.split(".")
-                if (stripped := sent.strip()) and len(stripped) > MIN_SENTENCE_LENGTH
-            ]
+            sentences = []
+            for sent in text_context.split("."):
+                stripped = sent.strip()
+                if stripped and len(stripped) > MIN_SENTENCE_LENGTH:
+                    sentences.append(stripped)
             s = sentences[-2:] if sentences else []
         else:
             s = []

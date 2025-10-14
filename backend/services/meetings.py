@@ -29,7 +29,7 @@ def create_meeting(
         session_id=new_uuid(),
         title=title,
         provider=provider,
-        started_at=dt.datetime.utcnow(),
+        started_at=dt.datetime.now(datetime.timezone.utc),
         org_id=org_id,
         participants=[],
     )
@@ -131,7 +131,7 @@ def finalize_meeting(
                 source_segment=a.get("source_segment") or None,
             )
         )
-    meeting.ended_at = dt.datetime.utcnow()
+    meeting.ended_at = dt.datetime.now(datetime.timezone.utc)
     db.commit()
 
 

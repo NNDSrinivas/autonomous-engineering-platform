@@ -36,7 +36,7 @@ def health():
     return {
         "status": "ok",
         "service": "realtime",
-        "time": datetime.utcnow().isoformat(),
+        "time": datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 
@@ -111,7 +111,7 @@ def close_session(session_id: str, db: Session = Depends(get_db)):
     m = svc.get_meeting_by_session(db, session_id)
     if not m:
         raise HTTPException(status_code=404, detail="Session not found")
-    m.ended_at = datetime.utcnow()
+    m.ended_at = datetime.now(datetime.timezone.utc)
     db.commit()
     return {"ok": True}
 

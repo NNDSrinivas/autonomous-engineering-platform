@@ -1,3 +1,4 @@
+import datetime
 import uuid, datetime as dt
 import httpx
 from sqlalchemy.orm import Session
@@ -62,7 +63,7 @@ def upsert_issue(db: Session, conn_id: str, issue: dict):
         "updated": dt.datetime.fromisoformat(issue["fields"]["updated"].replace("Z","+00:00")) if issue["fields"].get("updated") else None,
         "url": None,
         "raw": issue,
-        "indexed_at": dt.datetime.utcnow(),
+        "indexed_at": dt.datetime.now(datetime.timezone.utc),
     }
     if row:
         for k,v in payload.items(): setattr(row,k,v)

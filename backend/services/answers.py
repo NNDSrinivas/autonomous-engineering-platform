@@ -1,14 +1,16 @@
+import re
 import uuid
 from datetime import datetime, timezone
-import re
+
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+
 from ..models.answers import SessionAnswer
 
 # Constants for answer generation
 MAX_CONTEXT_LENGTH = 600  # Maximum characters of meeting context to use
 MAX_FALLBACK_LENGTH = 140  # Maximum characters for fallback answer from meeting
 MAX_ANSWER_LENGTH = 280  # Maximum length of generated answer
+MIN_SENTENCE_LENGTH = 2  # Minimum character length for meaningful sentences
 
 # Constants for answer retrieval
 MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
@@ -110,7 +112,7 @@ def generate_grounded_answer(
             sentences = [
                 sent.strip()
                 for sent in text_context.split(".")
-                if sent.strip() and len(sent.strip()) > 2
+                if sent.strip() and len(sent.strip()) > MIN_SENTENCE_LENGTH
             ]
             s = sentences[-2:] if sentences else []
             if not s:

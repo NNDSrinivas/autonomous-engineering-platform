@@ -115,9 +115,9 @@ def generate_grounded_answer(
                 if (stripped := sent.strip()) and len(stripped) > MIN_SENTENCE_LENGTH
             ]
             s = sentences[-2:] if sentences else []
-            if not s:
-                s = [text_context[:MAX_FALLBACK_LENGTH]]
         else:
+            s = []
+        if not s:
             s = [text_context[:MAX_FALLBACK_LENGTH]]
         answer = " ".join(s).strip()
         citations.append({"type": "meeting"})

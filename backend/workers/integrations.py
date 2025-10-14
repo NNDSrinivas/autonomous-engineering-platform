@@ -1,3 +1,4 @@
+import datetime
 import os, datetime as dt, uuid
 import dramatiq, httpx
 from dramatiq.brokers.redis import RedisBroker
@@ -18,7 +19,7 @@ def jira_sync(connection_id: str):
         conn = db.get(JiraConnection, connection_id)
         cfg = db.scalar(select(JiraProjectConfig).where(JiraProjectConfig.connection_id==connection_id))
         if not conn or not cfg: return
-        since = (cfg.last_sync_at or (dt.datetime.utcnow() - dt.timedelta(days=30))).isoformat()
+        since = (cfg.last_sync_at or (dt.datetime.now(datetime.timezone.utc) - dt.timedelta(days=30))).isoformat()
         headers = {"Authorization": f"Bearer {conn.access_token}", "Accept": "application/json"}
         async def fetch():
             async with httpx.AsyncClient(timeout=30) as client:
@@ -36,7 +37,7 @@ def jira_sync(connection_id: str):
                         if start_at + 50 >= data.get("total", 0): break
                         start_at += 50
         import anyio; anyio.run(fetch)
-        cfg.last_sync_at = dt.datetime.utcnow(); db.commit()
+        cfg.last_sync_at = dt.datetime.now(datetime.timezone.utc); db.commit()
     except Exception:
         pass
     finally:
@@ -58,7 +59,10 @@ def github_index(connection_id: str, repo_full_name: str):
                 # List files (shallow: use contents API limited)
                 tree = await client.get(f"https://api.github.com/repos/{repo_full_name}/git/trees/{repo.get('default_branch')}?recursive=1", headers=headers)
                 if tree.status_code == 200:
-                    for node in tree.json().get("tree", [])[:2000]:
+                    tree_data = tree.json().get("tree", [])
+                    # Safely limit the tree data
+                    limited_tree = tree_data[:2000] if isinstance(tree_data, list) else []
+                    for node in limited_tree:
                         if node.get("type") == "blob" and (node.get('path') or "").endswith((".py",".js",".ts",".java",".go",".rb",".cs",".kt",".scala",".rs",".sql",".yaml",".yml",".json",".md")):
                             ghsvc.upsert_file(db, repo_row.id, node["path"], node.get("sha"), None, None)
 

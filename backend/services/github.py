@@ -1,3 +1,4 @@
+import datetime
 import uuid, datetime as dt
 import httpx, base64
 from sqlalchemy.orm import Session
@@ -28,7 +29,7 @@ def upsert_repo(db: Session, conn_id: str, repo: dict):
     db.commit(); return row
 
 def upsert_file(db: Session, repo_id: str, path: str, sha: str | None, lang: str | None, size: int | None):
-    row = GhFile(id=_id(), repo_id=repo_id, path=path, sha=sha, lang=lang, size_bytes=size, updated=dt.datetime.utcnow())
+    row = GhFile(id=_id(), repo_id=repo_id, path=path, sha=sha, lang=lang, size_bytes=size, updated=dt.datetime.now(datetime.timezone.utc))
     db.add(row); db.commit()
 
 def upsert_issuepr(db: Session, repo_id: str, number: int, type_: str, title: str, body: str | None, state: str, author: str | None, url: str, updated: dt.datetime | None):

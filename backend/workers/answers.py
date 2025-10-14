@@ -18,11 +18,6 @@ MAX_SEARCH_TERMS = 4  # Maximum number of terms to use in searches
 
 # Constants for transcript retrieval  
 MAX_TRANSCRIPT_SEGMENTS = 20  # Maximum number of recent transcript segments to fetch
-DEFAULT_MEETING_WINDOW_SECONDS = 180  # Default time window for meeting transcripts
-
-# Constants for array indexing
-FIRST_ELEMENT_INDEX = 0  # Index for accessing first element in arrays
-
 # Constants for Dramatiq actor configuration
 NO_RETRIES = 0  # No retries for one-shot operations
 

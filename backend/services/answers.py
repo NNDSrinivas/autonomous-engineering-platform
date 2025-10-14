@@ -213,7 +213,7 @@ def recent_answers(
     ).filter(SessionAnswer.session_id == session_id)
     if since_ts:
         since_datetime = parse_iso_timestamp(since_ts)
-        query = query.filter(SessionAnswer.created_at > since_datetime)
+        query = query.filter(SessionAnswer.created_at >= since_datetime)
     query = query.order_by(SessionAnswer.created_at.desc()).limit(MAX_RECENT_ANSWERS)
     rows = query.all()
     return [

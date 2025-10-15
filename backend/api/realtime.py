@@ -77,11 +77,11 @@ def get_redis_client() -> redis.Redis:
                         max_connections=REDIS_MAX_CONNECTIONS,
                     )
                 except Exception as e:
-                    logger.error(f"Failed to initialize Redis client: {e}")
+                    logger.error("Failed to initialize Redis client: %s", e, exc_info=True)
                     raise HTTPException(
                         status_code=HTTP_503_SERVICE_UNAVAILABLE,
                         detail="Redis unavailable",
-                    )
+                    ) from e
     return _redis_client_instance
 
 
@@ -483,18 +483,25 @@ def stream_answers(session_id: str) -> StreamingResponse:
         try:
             # Acquire a single database session for the duration of the stream
             with db_session() as db:
+                loop_count = 0
                 while True:
                     # Check if max duration exceeded
                     if _check_stream_timeout(start_time):
                         yield _format_sse_data({"event": "timeout"})
                         break
 
+                    # Refresh database session every 100 iterations to prevent staleness
+                    if loop_count > 0 and loop_count % 100 == 0:
+                        db.rollback()  # Refresh transaction to get latest data
+                    
                     # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)
 
                     # Emit in chronological order (oldest first)
                     for r in rows:
                         yield _format_sse_data(r)
+                    
+                    loop_count += 1
                     await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
         except asyncio.CancelledError:
             # Client disconnected - clean shutdown

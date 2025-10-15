@@ -41,7 +41,7 @@ STOPWORDS = {
 # Common abbreviations that shouldn't trigger sentence breaks
 COMMON_ABBREVIATIONS = {
     "Dr",
-    "Mr", 
+    "Mr",
     "Mrs",
     "Ms",
     "Prof",
@@ -190,22 +190,6 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
         # Extract last two sentences using improved sentence boundary detection
         # Handle common abbreviations and edge cases more robustly
 
-        # Common abbreviations that shouldn't trigger sentence breaks
-        abbreviations = {
-            "Dr",
-            "Mr",
-            "Mrs",
-            "Ms",
-            "Prof",
-            "Inc",
-            "Ltd",
-            "Corp",
-            "vs",
-            "etc",
-            "i.e",
-            "e.g",
-        }
-
         # Split on periods, but reassemble when followed by known abbreviations
         potential_sentences = text_context.split(".")
         sentences = []
@@ -222,7 +206,7 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
 
             # Check if the part ends with a known abbreviation
             words = part.strip().split()
-            if words and words[-1] in abbreviations:
+            if words and words[-1] in COMMON_ABBREVIATIONS:
                 # This is an abbreviation, continue building the sentence
                 current_sentence += "."
             else:

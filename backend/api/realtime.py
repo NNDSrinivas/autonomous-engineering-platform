@@ -103,11 +103,18 @@ def get_redis_client() -> redis.Redis:
     a bottleneck under extreme load. Consider per-worker instances for 500+ concurrent streams.
     """
     try:
+        # Ensure minimum pool size for documented concurrency (100+ concurrent SSE streams)
+        # Use at least 100 connections to support stated concurrency without bottlenecks
+        min_connections_for_concurrency = 100
+        effective_max_connections = max(
+            settings.redis_max_connections, min_connections_for_concurrency
+        )
+
         # Redis client handles connection pooling internally
         return redis.Redis.from_url(
             settings.redis_url,
             decode_responses=True,
-            max_connections=settings.redis_max_connections,
+            max_connections=effective_max_connections,
         )
     except Exception as e:
         logger.error("Failed to initialize Redis client: %s", e, exc_info=True)

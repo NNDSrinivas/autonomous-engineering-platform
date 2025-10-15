@@ -14,6 +14,11 @@ MAX_ANSWER_LENGTH = 280  # Maximum length of generated answer
 MIN_SENTENCE_LENGTH = 2  # Minimum character length for meaningful sentences
 MAX_EXTRACTED_TERMS = 8  # Maximum number of terms to extract from text
 
+# Context overflow handling
+CONTEXT_OVERFLOW_MULTIPLIER = 1.5  # Allow 50% overflow for preserving complete words
+# Rationale: Based on average English word length (4.5 chars), 50% overflow accommodates
+# words up to ~270 chars while preventing unbounded growth. Balances completeness vs memory.
+
 # Constants for answer retrieval
 MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
 
@@ -266,7 +271,10 @@ def generate_grounded_answer(
     # If still too long (e.g., one very long snippet), truncate at word boundary
     if len(text_context) > MAX_CONTEXT_LENGTH:
         # Check if the character exactly at MAX_CONTEXT_LENGTH is a space
-        if text_context[MAX_CONTEXT_LENGTH] == " ":
+        if (
+            MAX_CONTEXT_LENGTH < len(text_context)
+            and text_context[MAX_CONTEXT_LENGTH] == " "
+        ):
             text_context = text_context[:MAX_CONTEXT_LENGTH]
         else:
             # Find the last space before MAX_CONTEXT_LENGTH
@@ -278,9 +286,7 @@ def generate_grounded_answer(
                     text_context = text_context[:next_space]
                 else:
                     # No spaces at all; apply absolute hard limit to prevent unbounded growth
-                    hard_limit = int(
-                        MAX_CONTEXT_LENGTH * 1.5
-                    )  # Allow 50% overflow for single words
+                    hard_limit = int(MAX_CONTEXT_LENGTH * CONTEXT_OVERFLOW_MULTIPLIER)
                     if len(text_context) > hard_limit:
                         text_context = text_context[:hard_limit]
                     # else: preserve complete word if under hard limit

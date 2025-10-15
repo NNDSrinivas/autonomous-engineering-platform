@@ -448,7 +448,8 @@ def _emit_new_answers(
         else:
             # Log a warning and skip emitting answers with missing "created_at"
             logger.error(
-                "Missing or null 'created_at' in answer row for session %s. Skipping row and not updating last_ts.", session_id
+                "Missing or null 'created_at' in answer row for session %s. Skipping row and not updating last_ts.",
+                session_id,
             )
             # Do not update last_ts; return previous last_ts
             return rows, _convert_timestamp_to_iso(last_ts)

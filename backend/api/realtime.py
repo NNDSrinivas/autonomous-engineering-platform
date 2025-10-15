@@ -89,6 +89,10 @@ def get_redis_client():
 def db_session() -> Generator[Session, None, None]:
     """Context manager for database sessions with automatic cleanup.
 
+    Used specifically for SSE streaming where we need shorter-lived sessions
+    per poll cycle rather than dependency injection. This is complementary
+    to get_db() which is used for FastAPI dependency injection.
+
     Yields:
         Database session that will be automatically closed
     """
@@ -269,6 +273,32 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         logger.warning(
             "Failed to enqueue answer generation for session %s: %s", session_id, e
         )
+        # Fallback: Use simple heuristic without Redis state
+        logger.info("Using fallback answer generation for session %s", session_id)
+        if _should_generate_answer_fallback(text):
+            try:
+                generate_answer.send(session_id)
+            except Exception as fallback_error:
+                logger.error(
+                    "Fallback answer generation also failed for session %s: %s",
+                    session_id,
+                    fallback_error,
+                )
+
+
+def _should_generate_answer_fallback(text: str) -> bool:
+    """Fallback heuristic for answer generation when Redis is unavailable.
+
+    Args:
+        text: Caption text to analyze
+
+    Returns:
+        True if answer should be generated based on simple text analysis
+    """
+    # Simple fallback: generate if text contains question indicators
+    question_indicators = ["?", "what", "how", "why", "when", "where", "who"]
+    text_lower = text.lower()
+    return any(indicator in text_lower for indicator in question_indicators)
 
 
 @app.post("/api/sessions/{session_id}/captions")
@@ -408,22 +438,21 @@ def stream_answers(session_id: str) -> StreamingResponse:
         # Use connection pooling for read-only SSE streaming
 
         try:
-            with db_session() as db:
-                while True:
-                    # Check if max duration exceeded
-                    if _check_stream_timeout(start_time):
-                        yield _format_sse_data({"event": "timeout"})
-                        break
+            while True:
+                # Check if max duration exceeded
+                if _check_stream_timeout(start_time):
+                    yield _format_sse_data({"event": "timeout"})
+                    break
 
-                    # Database session is maintained throughout the stream lifecycle for read-only operations.
-                    # No periodic refresh needed for this use case.
-
+                # Acquire a new database session for each poll cycle
+                with db_session() as db:
                     # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)
-                    # Emit in chronological order (oldest first)
-                    for r in rows:
-                        yield _format_sse_data(r)
-                    await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
+
+                # Emit in chronological order (oldest first)
+                for r in rows:
+                    yield _format_sse_data(r)
+                await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
         except Exception as e:
             logger.exception("Error in SSE stream for session %s: %s", session_id, e)
             yield _format_sse_data(

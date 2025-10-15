@@ -2,6 +2,7 @@ import logging
 import re
 import time
 import dramatiq
+import sqlalchemy.exc
 from dramatiq.brokers.redis import RedisBroker
 from sqlalchemy.orm import Session
 from ..core.config import settings
@@ -227,9 +228,13 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
             db, repo=None, q=search_term, path_prefix=None
         )
         return results
-    except Exception:
-        logger.exception("Error searching code in GitHubService")
+    except (sqlalchemy.exc.SQLAlchemyError, ConnectionError) as e:
+        logger.exception("Database error searching code in GitHubService: %s", e)
         return []
+    except Exception as e:
+        logger.exception("Unexpected error searching code in GitHubService: %s", e)
+        # Re-raise unexpected errors as they may indicate serious issues
+        raise
 
 
 def _search_prs(db: Session, terms: list[str]) -> list[dict]:

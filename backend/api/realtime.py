@@ -502,7 +502,9 @@ def stream_answers(session_id: str) -> StreamingResponse:
         # Use connection pooling for read-only SSE streaming
 
         try:
-            # Create fresh database session for each poll iteration to prevent connection pool exhaustion
+            # Short-lived sessions are preferred for SSE streams to prevent resource leaks
+            # and connection pool exhaustion with 100+ concurrent streams. Session overhead
+            # is minimal compared to long-held connections in streaming contexts.
             while True:
                 # Check if max duration exceeded
                 if _check_stream_timeout(start_time):

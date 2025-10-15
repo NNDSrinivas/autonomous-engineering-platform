@@ -177,7 +177,7 @@ def generate_answer(session_id: str) -> None:
         )
 
         # Calculate latency and save result
-        latency_ms = int((time.perf_counter() - t0) * 1000)
+        latency_ms = round((time.perf_counter() - t0) * 1000)
         payload["latency_ms"] = latency_ms
         asvc.save_answer(db, session_id, payload)
     except Exception as e:

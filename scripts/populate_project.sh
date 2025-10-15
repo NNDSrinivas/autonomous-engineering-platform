@@ -39,8 +39,9 @@ gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" >/dev/null
 
 # Try to detect iteration availability
 ITERATION_AVAILABLE="false"
-if gh project iteration-list "$PROJECT_NUMBER" --owner "$OWNER" >/dev/null 2>&1; then
-  if gh project iteration-list "$PROJECT_NUMBER" --owner "$OWNER" | grep -q "^$ITERATION_NAME$"; then
+iteration_list_output=$(gh project iteration-list "$PROJECT_NUMBER" --owner "$OWNER" 2>/dev/null || true)
+if [[ -n "$iteration_list_output" ]]; then
+  if echo "$iteration_list_output" | grep -q "^$ITERATION_NAME$"; then
     ITERATION_AVAILABLE="true"
     echo "🗓️  Iteration '$ITERATION_NAME' detected; will assign it."
   else

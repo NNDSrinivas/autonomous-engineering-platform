@@ -228,13 +228,9 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
             db, repo=None, q=search_term, path_prefix=None
         )
         return results
-    except (sqlalchemy.exc.SQLAlchemyError, ConnectionError) as e:
-        logger.exception("Database error searching code in GitHubService: %s", e)
-        return []
     except Exception as e:
-        logger.exception("Unexpected error searching code in GitHubService: %s", e)
-        # Re-raise unexpected errors as they may indicate serious issues
-        raise
+        logger.exception("Error searching code in GitHubService: %s", e)
+        return []
 
 
 def _search_prs(db: Session, terms: list[str]) -> list[dict]:

@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+from typing import Dict, Any
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
 from sqlalchemy.orm import Session
@@ -153,7 +154,7 @@ def _build_search_query(terms: list[str]) -> str | None:
     return " ".join(terms[:MAX_SEARCH_TERMS]) if terms else None
 
 
-def _search_jira(db: Session, terms: list[str]) -> list[dict]:
+def _search_jira(db: Session, terms: list[str]) -> list[Dict[str, Any]]:
     """Search JIRA issues using extracted terms.
 
     Args:
@@ -202,7 +203,7 @@ def _extract_path_term(terms: list[str]) -> str | None:
     return None
 
 
-def _search_code(db: Session, terms: list[str]) -> list[dict]:
+def _search_code(db: Session, terms: list[str]) -> list[Dict[str, Any]]:
     """Search code repositories using extracted terms with path-aware prioritization.
 
     Args:
@@ -232,7 +233,7 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
         return []
 
 
-def _search_prs(db: Session, terms: list[str]) -> list[dict]:
+def _search_prs(db: Session, terms: list[str]) -> list[Dict[str, Any]]:
     """Search GitHub pull requests using extracted terms.
 
     Args:

@@ -1,7 +1,7 @@
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict
 
 from sqlalchemy.orm import Session
 
@@ -98,7 +98,7 @@ def extract_terms(latest_text: str) -> list[str]:
     return uniq[:MAX_EXTRACTED_TERMS]
 
 
-def _pick_best(items: list[dict], n: int) -> list[dict]:
+def _pick_best(items: list[Dict[str, Any]], n: int) -> list[Dict[str, Any]]:
     """Select top N items from a list.
 
     Args:
@@ -111,7 +111,7 @@ def _pick_best(items: list[dict], n: int) -> list[dict]:
     return items[:n] if items else []
 
 
-def _generate_jira_answer(jira_hit: dict) -> tuple[str, dict]:
+def _generate_jira_answer(jira_hit: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
     """Generate answer from JIRA issue.
 
     Args:
@@ -128,7 +128,7 @@ def _generate_jira_answer(jira_hit: dict) -> tuple[str, dict]:
     return answer, citation
 
 
-def _generate_code_answer(code_hit: dict) -> tuple[str, dict]:
+def _generate_code_answer(code_hit: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
     """Generate answer from GitHub code.
 
     Args:
@@ -144,7 +144,7 @@ def _generate_code_answer(code_hit: dict) -> tuple[str, dict]:
     return answer, citation
 
 
-def _generate_pr_answer(pr_hit: dict) -> tuple[str, dict]:
+def _generate_pr_answer(pr_hit: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
     """Generate answer from GitHub PR.
 
     Args:
@@ -192,11 +192,11 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
 
 
 def generate_grounded_answer(
-    jira_hits: list[dict],
-    code_hits: list[dict],
-    pr_hits: list[dict],
+    jira_hits: list[Dict[str, Any]],
+    code_hits: list[Dict[str, Any]],
+    pr_hits: list[Dict[str, Any]],
     meeting_snippets: list[str],
-) -> dict:
+) -> Dict[str, Any]:
     """Generate a grounded answer with citations from JIRA, GitHub, and meeting context.
 
     This function coordinates the complete answer generation pipeline.
@@ -241,7 +241,7 @@ def generate_grounded_answer(
     }
 
 
-def save_answer(db: Session, session_id: str, payload: dict) -> SessionAnswer:
+def save_answer(db: Session, session_id: str, payload: Dict[str, Any]) -> SessionAnswer:
     """Save a generated answer to the database.
 
     Args:
@@ -288,7 +288,7 @@ def _format_answer_row(row: SessionAnswer) -> dict[str, Any]:
 
 def recent_answers(
     db: Session, session_id_param: str, since_ts: str | None = None
-) -> list[dict]:
+) -> list[Dict[str, Any]]:
     """Retrieve recent answers for a session.
 
     Args:

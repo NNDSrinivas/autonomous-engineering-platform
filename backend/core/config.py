@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     database_url: Optional[str] = None  # Allow override with full URL
 
     redis_url: str = "redis://localhost:6379/0"
+    redis_max_connections: int = (
+        20  # Maximum connections in Redis pool (default 20 for high concurrency)
+    )
     redis_rate_limit_ttl: int = 3600  # Rate limit key TTL in seconds (1 hour)
 
     # Rate limiting configuration

@@ -21,6 +21,9 @@ MAX_TRANSCRIPT_SEGMENTS = 20  # Maximum number of recent transcript segments to 
 # Constants for Dramatiq actor configuration
 NO_RETRIES = 0  # No retries for one-shot operations
 
+# Constants for path detection
+PROTOCOL_INDICATORS = ["http", "ftp", "://", "www."]  # Strings that indicate URLs rather than file paths
+
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
 
@@ -115,7 +118,7 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
     if terms:
         for t in terms:
             # Look for file paths: contains '/' but not protocol indicators
-            if "/" in t and not any(proto in t.lower() for proto in ["http", "ftp", "://", "www."]):
+            if "/" in t and not any(proto in t.lower() for proto in PROTOCOL_INDICATORS):
                 # Additional check: if it contains a file extension
                 if "." in t.split("/")[-1]:  # Last segment has extension
                     path_term = t

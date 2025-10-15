@@ -85,14 +85,22 @@ def get_redis_client() -> redis.Redis:
     Thread-safe lazy initialization using functools.lru_cache.
     Ensures only one Redis client instance is created and cached.
 
+    IMPORTANT: This creates a singleton Redis client shared across all FastAPI workers
+    in the same process. The connection pool (settings.redis_max_connections) is shared
+    by all concurrent requests.
+
     Redis connection pool is configured via settings.redis_max_connections.
     For high-traffic scenarios with many concurrent SSE streams, consider:
-    - Increasing redis_max_connections (default: 20)
-    - Monitoring Redis memory usage and connection counts
+    - Increasing redis_max_connections (default: 20, may need 50+ for 100+ concurrent streams)
+    - Monitoring Redis memory usage and connection counts per process
     - Implementing connection health checks
+    - Using FastAPI lifespan events for per-worker Redis instances if needed
 
     Expected concurrency: Up to 100+ concurrent SSE streams per instance
-    with proper Redis pool sizing.
+    with proper Redis pool sizing (recommend 0.5-1 connection per concurrent stream).
+
+    Singleton limitation: All workers share the same connection pool, which may become
+    a bottleneck under extreme load. Consider per-worker instances for 500+ concurrent streams.
     """
     try:
         # Redis client handles connection pooling internally
@@ -440,19 +448,23 @@ def _emit_new_answers(
     # Convert datetime to string for the API call
     since_ts = _convert_timestamp_to_iso(last_ts)
     rows = asvc.recent_answers(db, session_id, since_ts=since_ts)
+
+    # Filter out rows with missing or null 'created_at' to prevent infinite loops
     if rows:
-        last_row = rows[-1]
-        timestamp_str = _extract_timestamp_from_row(last_row)
-        if timestamp_str:
-            return rows, timestamp_str
+        filtered_rows = [row for row in rows if _extract_timestamp_from_row(row)]
+        if filtered_rows:
+            last_row = filtered_rows[-1]
+            timestamp_str = _extract_timestamp_from_row(last_row)
+            return filtered_rows, timestamp_str
         else:
-            # Log a warning and skip emitting answers with missing "created_at"
+            # All rows have missing timestamps - log warning and skip
             logger.error(
-                "Missing or null 'created_at' in answer row for session %s. Skipping row and not updating last_ts.",
+                "All recent answer rows for session %s are missing or have null 'created_at'. Skipping rows and not updating last_ts.",
                 session_id,
             )
-            # Do not update last_ts; return previous last_ts
-            return rows, _convert_timestamp_to_iso(last_ts)
+            # Do not update last_ts; return previous last_ts to avoid infinite polling
+            return [], _convert_timestamp_to_iso(last_ts)
+
     return [], _convert_timestamp_to_iso(last_ts)
 
 

@@ -439,14 +439,12 @@ def _emit_new_answers(
         if timestamp_str:
             return rows, timestamp_str
         else:
-            # Log a warning when "created_at" is missing
-            logger.warning(
-                "Missing or null 'created_at' in answer row for session %s", session_id
+            # Log a warning and skip emitting answers with missing "created_at"
+            logger.error(
+                "Missing or null 'created_at' in answer row for session %s. Skipping row and not updating last_ts.", session_id
             )
-            # Use current UTC time with microsecond precision to ensure unique fallback timestamps
-            # datetime.now() includes microseconds by default, ensuring uniqueness even for rapid calls
-            fallback_timestamp = datetime.now(timezone.utc).isoformat()
-            return rows, fallback_timestamp
+            # Do not update last_ts; return previous last_ts
+            return rows, _convert_timestamp_to_iso(last_ts)
     return [], _convert_timestamp_to_iso(last_ts)
 
 

@@ -181,7 +181,8 @@ def _extract_path_term(terms: list[str]) -> str | None:
 
     for t in terms:
         # Look for file paths: contains '/' but not protocol indicators
-        if "/" in t and not any(proto in t.lower() for proto in PROTOCOL_INDICATORS):
+        t_lower = t.lower()
+        if "/" in t and not any(proto in t_lower for proto in PROTOCOL_INDICATORS):
             last_segment = t.split("/")[-1]
 
             # Check if last segment has a valid file extension
@@ -202,7 +203,15 @@ def _extract_path_term(terms: list[str]) -> str | None:
 
 
 def _search_code(db: Session, terms: list[str]) -> list[dict]:
-    """Search code repositories for relevant information."""
+    """Search code repositories using extracted terms with path-aware prioritization.
+
+    Args:
+        db: Database session
+        terms: List of search terms
+
+    Returns:
+        List of matching code files
+    """
 
     if not terms:
         return []

@@ -171,9 +171,11 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
         Tuple of (answer_text, citation)
     """
     if "." in text_context:
-        # Extract last two sentences, filter out empty/trivial ones
+        # Extract last two sentences using regex that handles abbreviations and decimals
+        # Split on periods followed by whitespace and capital letter, avoiding common abbreviations
+        sentence_pattern = r"\.(?=\s+[A-Z]|$)(?!\s*[a-z]{1,3}\.|\s*\d)"
         sentences = []
-        for sent in text_context.split("."):
+        for sent in re.split(sentence_pattern, text_context):
             stripped = sent.strip()
             if stripped and len(stripped) > MIN_SENTENCE_LENGTH:
                 sentences.append(stripped)

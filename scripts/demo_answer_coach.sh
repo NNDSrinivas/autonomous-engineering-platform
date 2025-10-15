@@ -40,7 +40,11 @@ for i in {1..6}; do
   if [[ "$status" != "200" ]]; then
     echo "   [API error] HTTP status: $status"
   elif ! echo "$body" | python3 -m json.tool >/dev/null 2>&1; then
-    echo "   [JSON parse error] Invalid JSON response"
+    echo "   [JSON parse error] Invalid JSON response:"
+    echo "$body"
+  else
+    echo "   [Polling result] Response:"
+    echo "$body" | python3 -m json.tool
   fi
   sleep 1
 done

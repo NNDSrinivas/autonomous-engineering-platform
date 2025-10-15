@@ -310,8 +310,6 @@ def recent_answers(
                 f"Invalid ISO timestamp format for 'since_ts': {since_ts}"
             ) from e
         query = query.filter(SessionAnswer.created_at >= since_datetime)
-    query = query.order_by(SessionAnswer.created_at.desc()).limit(MAX_RECENT_ANSWERS)
+    query = query.order_by(SessionAnswer.created_at.asc()).limit(MAX_RECENT_ANSWERS)
     rows = query.all()
-    # Reverse to chronological order (oldest to newest) if needed
-    rows = list(reversed(rows))
     return [_format_answer_row(row) for row in rows]

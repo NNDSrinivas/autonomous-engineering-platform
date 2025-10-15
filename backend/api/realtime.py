@@ -49,11 +49,6 @@ def _datetime_serializer(obj):
 # Constants for Redis operations
 REDIS_KEY_EXPIRY_SECONDS = 60  # TTL for Redis keys
 
-# Constants for database session management
-DB_SESSION_REFRESH_INTERVAL = (
-    100  # Refresh DB session every N iterations to prevent staleness
-)
-
 # Constants for fallback question detection
 FALLBACK_QUESTION_INDICATORS = {
     "what",
@@ -477,7 +472,7 @@ def stream_answers(session_id: str) -> StreamingResponse:
 
     Note:
         Stream will continue until client disconnects or max duration is reached.
-        Uses a single database session for read-only operations.
+        Uses short-lived database sessions for each poll to prevent connection exhaustion.
     """
     last_ts = None
 
@@ -487,25 +482,23 @@ def stream_answers(session_id: str) -> StreamingResponse:
         # Use connection pooling for read-only SSE streaming
 
         try:
-            # Acquire a single database session for the duration of the stream
-            with db_session() as db:
-                while True:
-                    # Check if max duration exceeded
-                    if _check_stream_timeout(start_time):
-                        yield _format_sse_data({"event": "timeout"})
-                        break
+            # Create fresh database session for each poll iteration to prevent connection pool exhaustion
+            while True:
+                # Check if max duration exceeded
+                if _check_stream_timeout(start_time):
+                    yield _format_sse_data({"event": "timeout"})
+                    break
 
+                # Use short-lived database session for each query to prevent resource exhaustion
+                with db_session() as db:
                     # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)
-
-                    # Note: No expiration needed; rows are dictionaries, not ORM instances
-                    # Database freshness is ensured by the query itself in _emit_new_answers
 
                     # Emit in chronological order (oldest first)
                     for r in rows:
                         yield _format_sse_data(r)
 
-                    await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
+                await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
         except asyncio.CancelledError:
             # Client disconnected - clean shutdown
             logger.info(

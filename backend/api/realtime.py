@@ -320,7 +320,8 @@ def _emit_new_answers(
                 # Log a warning when "created_at" is not a datetime object
                 logger.warning(
                     "'created_at' in answer row for session %s is not a datetime: %r",
-                    session_id, last_row["created_at"]
+                    session_id,
+                    last_row["created_at"],
                 )
                 return rows, last_ts
         else:

@@ -74,8 +74,6 @@ MODAL_VERBS = {
 # Combined question indicators for fallback detection
 FALLBACK_QUESTION_INDICATORS = QUESTION_WORDS | MODAL_VERBS
 
-REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
-
 logger = setup_logging()
 
 
@@ -86,13 +84,22 @@ def get_redis_client() -> redis.Redis:
 
     Thread-safe lazy initialization using functools.lru_cache.
     Ensures only one Redis client instance is created and cached.
+
+    Redis connection pool is configured via settings.redis_max_connections.
+    For high-traffic scenarios with many concurrent SSE streams, consider:
+    - Increasing redis_max_connections (default: 20)
+    - Monitoring Redis memory usage and connection counts
+    - Implementing connection health checks
+
+    Expected concurrency: Up to 100+ concurrent SSE streams per instance
+    with proper Redis pool sizing.
     """
     try:
         # Redis client handles connection pooling internally
         return redis.Redis.from_url(
             settings.redis_url,
             decode_responses=True,
-            max_connections=REDIS_MAX_CONNECTIONS,
+            max_connections=settings.redis_max_connections,
         )
     except Exception as e:
         logger.error("Failed to initialize Redis client: %s", e, exc_info=True)

@@ -296,11 +296,24 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
     try:
         r = get_redis_client()
         key = f"ans:count:{session_id}"
-        pipe = r.pipeline()
-        pipe.incr(key)
-        pipe.expire(key, REDIS_KEY_EXPIRY_SECONDS)
-        results = pipe.execute()
-        n = results[0]  # Get count from first result
+
+        # Use Redis transactions to prevent race conditions in concurrent requests
+        with r.pipeline(transaction=True) as pipe:
+            while True:
+                try:
+                    # Watch the key for changes during transaction
+                    pipe.watch(key)
+
+                    # Start transaction
+                    pipe.multi()
+                    pipe.incr(key)
+                    pipe.expire(key, REDIS_KEY_EXPIRY_SECONDS)
+                    results = pipe.execute()
+                    n = results[0]  # Get count from first result
+                    break
+                except redis.WatchError:
+                    # Key was modified during transaction, retry
+                    continue
 
         if _should_generate_answer(text, n):
             generate_answer.send(session_id)
@@ -464,8 +477,8 @@ def _emit_new_answers(
             timestamp_str = _extract_timestamp_from_row(last_row)
             return filtered_rows, timestamp_str
         else:
-            # All rows have missing timestamps - log warning and skip
-            logger.error(
+            # All rows have missing timestamps - log warning for data integrity issue
+            logger.warning(
                 "All recent answer rows for session %s are missing or have null 'created_at'. "
                 "Skipping rows and not updating last_ts. This may indicate a data integrity issue "
                 "in the session_answer table. Preventing infinite polling by not updating last_ts.",

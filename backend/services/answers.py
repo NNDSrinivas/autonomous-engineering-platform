@@ -238,7 +238,9 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
     Returns:
         Tuple of (answer_text, citation)
     """
-    if "." in text_context:
+    # Check if text contains sentence-ending punctuation using proper pattern
+    sentence_endings = re.compile(r"[.!?]")
+    if sentence_endings.search(text_context):
         # Extract last two sentences using improved sentence boundary detection
         # Handle common abbreviations and edge cases more robustly
 
@@ -261,6 +263,7 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
             last_word = words[-1].rstrip(".!?") if words else ""
             if last_word in COMMON_ABBREVIATIONS and i < len(potential_sentences) - 1:
                 # This is an abbreviation, continue building the sentence
+                # Preserve original punctuation by using the original part
                 current_sentence += part + " "
             else:
                 current_sentence += part

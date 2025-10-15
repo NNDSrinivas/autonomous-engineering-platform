@@ -1,6 +1,7 @@
 import asyncio
 import json
 import redis
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -50,21 +51,25 @@ logger = setup_logging()
 # Lazy-initialized Redis connection pool for reuse across requests
 _redis_pool = None
 _redis_client = None
+_redis_lock = threading.Lock()
 
 
 def get_redis_pool():
     """Get or create Redis connection pool with error handling."""
     global _redis_pool
     if _redis_pool is None:
-        try:
-            _redis_pool = redis.ConnectionPool.from_url(
-                settings.redis_url,
-                decode_responses=True,
-                max_connections=REDIS_MAX_CONNECTIONS,
-            )
-        except Exception as e:
-            logger.error(f"Failed to initialize Redis connection pool: {e}")
-            raise HTTPException(status_code=503, detail="Redis unavailable")
+        with _redis_lock:
+            # Double-check pattern to avoid race conditions
+            if _redis_pool is None:
+                try:
+                    _redis_pool = redis.ConnectionPool.from_url(
+                        settings.redis_url,
+                        decode_responses=True,
+                        max_connections=REDIS_MAX_CONNECTIONS,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to initialize Redis connection pool: {e}")
+                    raise HTTPException(status_code=503, detail="Redis unavailable")
     return _redis_pool
 
 
@@ -72,7 +77,10 @@ def get_redis_client():
     """Get or create Redis client with connection pool."""
     global _redis_client
     if _redis_client is None:
-        _redis_client = redis.Redis(connection_pool=get_redis_pool())
+        with _redis_lock:
+            # Double-check pattern to avoid race conditions
+            if _redis_client is None:
+                _redis_client = redis.Redis(connection_pool=get_redis_pool())
     return _redis_client
 
 
@@ -258,7 +266,7 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         if _should_generate_answer(text, n):
             generate_answer.send(session_id)
     except (redis.RedisError, ConnectionError) as e:
-        logger.warning("Failed to enqueue answer generation: %s", e)
+        logger.warning("Failed to enqueue answer generation for session %s: %s", session_id, e)
 
 
 @app.post("/api/sessions/{session_id}/captions")

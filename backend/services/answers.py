@@ -24,6 +24,20 @@ DEFAULT_LATENCY_MS = 0  # Default latency for immediate responses
 # Regex pattern for extracting words/tokens of 3+ characters (alphanumeric, underscores, hyphens)
 KEYWORD_EXTRACTION_PATTERN = r"[A-Za-z0-9_-]{3,}"
 
+# Common stopwords to exclude from keyword extraction
+STOPWORDS = {
+    "the",
+    "and",
+    "this",
+    "that",
+    "with",
+    "have",
+    "what",
+    "when",
+    "where",
+    "how",
+}
+
 
 def parse_iso_timestamp(timestamp_str: str) -> datetime:
     """Parse an ISO 8601 timestamp string to a timezone-aware datetime object.
@@ -77,21 +91,9 @@ def extract_terms(latest_text: str) -> list[str]:
     """
     words = re.findall(KEYWORD_EXTRACTION_PATTERN, latest_text or "")
     uniq = []
-    stopwords = {
-        "the",
-        "and",
-        "this",
-        "that",
-        "with",
-        "have",
-        "what",
-        "when",
-        "where",
-        "how",
-    }
     for w in words:
         wl = w.lower()
-        if wl not in uniq and wl not in stopwords:
+        if wl not in uniq and wl not in STOPWORDS:
             uniq.append(wl)
     return uniq[:MAX_EXTRACTED_TERMS]
 

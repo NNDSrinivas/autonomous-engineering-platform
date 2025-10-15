@@ -195,9 +195,9 @@ def generate_grounded_answer(
 ) -> dict:
     """Generate a grounded answer with citations from JIRA, GitHub, and meeting context.
     
-    This function coordinates the complete answer generation pipeline."""
-
-    Priority order: JIRA issues → GitHub code → Pull requests → Meeting context → Fallback
+    This function coordinates the complete answer generation pipeline.
+    Priority order: JIRA issues -> GitHub code -> Pull requests -> 
+    Meeting context -> Fallback
 
     Args:
         jira_hits: List of matching JIRA issues
@@ -206,7 +206,8 @@ def generate_grounded_answer(
         meeting_snippets: Recent transcript text segments
 
     Returns:
-        Dictionary with answer text, citations, confidence score, token count, and latency_ms placeholder
+        Dictionary with answer text, citations, confidence score, 
+        token count, and latency_ms placeholder
     """
     text_context = " ".join(meeting_snippets)[-MAX_CONTEXT_LENGTH:]
 

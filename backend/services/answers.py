@@ -255,6 +255,24 @@ def save_answer(db: Session, session_id: str, payload: dict) -> SessionAnswer:
     return row
 
 
+def _format_answer_row(row) -> dict:
+    """Convert database row to API response format.
+
+    Args:
+        row: SQLAlchemy result row with answer data
+
+    Returns:
+        Dictionary formatted for API response
+    """
+    return {
+        "id": row.id,
+        "created_at": row.created_at,
+        "answer": row.answer,
+        "citations": row.citations,
+        "confidence": row.confidence,
+    }
+
+
 def recent_answers(
     db: Session, session_id: str, since_ts: str | None = None
 ) -> list[dict]:
@@ -280,13 +298,4 @@ def recent_answers(
         query = query.filter(SessionAnswer.created_at >= since_datetime)
     query = query.order_by(SessionAnswer.created_at.desc()).limit(MAX_RECENT_ANSWERS)
     rows = query.all()
-    return [
-        {
-            "id": r.id,
-            "created_at": r.created_at,
-            "answer": r.answer,
-            "citations": r.citations,
-            "confidence": r.confidence,
-        }
-        for r in rows
-    ]
+    return [_format_answer_row(row) for row in rows]

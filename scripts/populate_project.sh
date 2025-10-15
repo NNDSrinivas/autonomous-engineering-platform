@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+#
+# Project Issue Creator for Autonomous Engineering Platform
+#
+# This script creates and organizes GitHub issues for the autonomous engineering 
+# platform project. It sets up a comprehensive project structure with pre-defined
+# issues organized into different phases (Discovery, Foundation, Core Features, etc.)
+# and automatically assigns them to the appropriate GitHub Project board columns.
+#
+# The script handles:
+# - Creating GitHub issues with proper labels and assignments
+# - Adding issues to the GitHub Project board
+# - Setting appropriate status fields (Backlog, Ready, In Progress, Done)
+# - Organizing issues by feature area and priority
+#
 set -euo pipefail
 
 # ===== CONFIG =====

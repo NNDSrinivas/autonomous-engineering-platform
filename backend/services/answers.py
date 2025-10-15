@@ -1,6 +1,7 @@
 import re
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -255,7 +256,7 @@ def save_answer(db: Session, session_id: str, payload: dict) -> SessionAnswer:
     return row
 
 
-def _format_answer_row(row) -> dict:
+def _format_answer_row(row: SessionAnswer) -> dict[str, Any]:
     """Convert database row to API response format.
 
     Args:

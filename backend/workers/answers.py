@@ -213,8 +213,8 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
     search_term = path_term if path_term else terms[0]
 
     try:
-        results = GitHubService.search_code(db, search_term)
-        return results or []
+        results = GitHubService.search_code(db, repo=None, q=search_term, path_prefix=None)
+        return results
     except Exception:
         logger.exception("Error searching code in GitHubService")
         return []

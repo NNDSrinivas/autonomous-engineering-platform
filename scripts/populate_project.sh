@@ -4,7 +4,7 @@ set -euo pipefail
 # ===== CONFIG =====
 OWNER="NNDSrinivas"
 PROJECT_NUMBER=2
-REPO="NNDSrinivas/autonomous-engineering-platform"
+REPO="${REPO:-NNDSrinivas/autonomous-engineering-platform}"  # Can override via environment variable
 
 # Project field names must match exactly what you shared:
 FIELD_STATUS="Status"            # ProjectV2SingleSelectField

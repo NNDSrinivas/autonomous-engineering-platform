@@ -1,5 +1,6 @@
 import asyncio
 import json
+import redis
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -10,7 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-import redis
 
 from ..core.config import settings
 from ..core.logging import setup_logging
@@ -39,7 +39,6 @@ def _datetime_serializer(obj):
     if isinstance(obj, datetime):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
 
 # Constants for Redis operations
 REDIS_KEY_EXPIRY_SECONDS = 60  # TTL for Redis keys
@@ -80,6 +79,23 @@ def _format_sse_data(data: dict | str) -> str:
     if isinstance(data, str):
         return f"data: {data}\n\n"
     return f"data: {json.dumps(data, default=_datetime_serializer)}\n\n"
+
+
+def _extract_timestamp_from_row(row: dict) -> str | None:
+    """Extract and convert timestamp from a row to ISO format string.
+    
+    Args:
+        row: Dictionary containing row data with potential 'created_at' field
+        
+    Returns:
+        ISO formatted timestamp string or None if not available
+    """
+    if "created_at" in row and row["created_at"] is not None:
+        if isinstance(row["created_at"], datetime):
+            return row["created_at"].isoformat()
+        # If it's already a string, return as-is
+        return str(row["created_at"])
+    return None
 
 
 app = FastAPI(title=f"{settings.app_name} - Realtime API")
@@ -130,7 +146,7 @@ app.include_router(metrics_router)
 class CreateSessionReq(BaseModel):
     """Request model for creating a new answer session."""
 
-    title: str | None = None
+    title: str | None = "Untitled Session"
     provider: str | None = "manual"
 
 
@@ -139,7 +155,7 @@ class CreateSessionResp(BaseModel):
 
     session_id: str
     meeting_id: str
-    message: str
+    message: str | None = None
 
 
 @app.post("/api/sessions", response_model=CreateSessionResp)
@@ -156,13 +172,15 @@ def create_session(
         Session and meeting IDs for subsequent API calls
     """
     m = svc.create_meeting(
-        db,
-        title=body.title or "Untitled Session",
-        provider=body.provider or "manual",
-        org_id=None,
+        db, 
+        title=body.title, 
+        provider=body.provider, 
+        org_id=None
     )
     return CreateSessionResp(
-        session_id=m.session_id, meeting_id=m.id, message="Session created successfully"
+        session_id=m.session_id, 
+        meeting_id=m.id, 
+        message="Session created successfully"
     )
 
 
@@ -299,7 +317,7 @@ def _check_stream_timeout(start_time: datetime) -> bool:
 
 def _emit_new_answers(
     db: Session, session_id: str, last_ts: datetime | None
-) -> tuple[list[dict], datetime | None]:
+) -> tuple[list[dict], str | None]:
     """Emit new answers and return updated timestamp.
 
     Args:
@@ -308,29 +326,24 @@ def _emit_new_answers(
         last_ts: Last timestamp processed
 
     Returns:
-        Tuple of (new_rows, updated_last_ts)
+        Tuple of (new_rows, updated_last_ts as ISO string)
     """
-    rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
+    # Convert datetime to string for the API call
+    since_ts = last_ts.isoformat() if isinstance(last_ts, datetime) else last_ts
+    rows = asvc.recent_answers(db, session_id, since_ts=since_ts)
     if rows:
         last_row = rows[-1]
-        if "created_at" in last_row and last_row["created_at"] is not None:
-            if isinstance(last_row["created_at"], datetime):
-                return rows, last_row["created_at"].isoformat()
-            else:
-                # Log a warning when "created_at" is not a datetime object
-                logger.warning(
-                    "'created_at' in answer row for session %s is not a datetime: %r",
-                    session_id,
-                    last_row["created_at"],
-                )
-                return rows, last_ts
+        timestamp_str = _extract_timestamp_from_row(last_row)
+        if timestamp_str:
+            return rows, timestamp_str
         else:
             # Log a warning when "created_at" is missing
             logger.warning(
-                "Missing or null 'created_at' in answer row for session %s", session_id
+                "Missing or null 'created_at' in answer row for session %s", 
+                session_id
             )
-            return rows, last_ts
-    return [], last_ts
+            return rows, last_ts.isoformat() if isinstance(last_ts, datetime) else last_ts
+    return [], last_ts.isoformat() if isinstance(last_ts, datetime) else last_ts
 
 
 @app.get("/api/sessions/{session_id}/stream")
@@ -345,36 +358,34 @@ def stream_answers(session_id: str) -> StreamingResponse:
 
     Note:
         Stream will continue until client disconnects or max duration is reached.
-        Uses a single database session for the entire stream duration to avoid connection pool exhaustion.
+        Creates a new database session for each poll to avoid stale connections.
     """
     last_ts = None
 
     async def event_stream():
         nonlocal last_ts
         start_time = datetime.now(timezone.utc)
-        # Use single DB session for entire SSE stream to avoid connection pool exhaustion
-        with db_session() as db:
-            try:
-                while True:
-                    # Check if max duration exceeded
-                    if _check_stream_timeout(start_time):
-                        yield _format_sse_data({"event": "timeout"})
-                        break
-
-                    # Query for new answers and emit them
+        # Create a new DB session for each poll iteration to avoid stale connections and resource exhaustion
+        try:
+            while True:
+                # Check if max duration exceeded
+                if _check_stream_timeout(start_time):
+                    yield _format_sse_data({"event": "timeout"})
+                    break
+                # Query for new answers and emit them
+                with db_session() as db:
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)
-                    # Emit in reverse chronological order (newest first)
-                    for r in rows:
-                        yield _format_sse_data(r)
-
-                    await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
-            except Exception as e:
-                logger.exception(
-                    "Error in SSE stream for session %s: %s", session_id, e
-                )
-                yield _format_sse_data(
-                    {"event": "error", "message": "An internal server error occurred."}
-                )
+                # Emit in chronological order (oldest first)
+                for r in rows:
+                    yield _format_sse_data(r)
+                await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
+        except Exception as e:
+            logger.exception(
+                "Error in SSE stream for session %s: %s", session_id, e
+            )
+            yield _format_sse_data(
+                {"event": "error", "message": "An internal server error occurred."}
+            )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

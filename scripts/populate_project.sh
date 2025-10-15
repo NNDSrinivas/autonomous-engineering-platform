@@ -160,4 +160,4 @@ create_and_add \
   "epic,platform,P1" \
   "$STATUS_BACKLOG" "$PRIORITY_P1"
 
-echo "✅ Done. Review your board at: https://github.com/users/\"${OWNER}\"/projects/\"${PROJECT_NUMBER}\""
+echo "✅ Done. Review your board at: https://github.com/users/${OWNER}/projects/${PROJECT_NUMBER}"

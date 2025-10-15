@@ -468,8 +468,7 @@ def _emit_new_answers(
             logger.error(
                 "All recent answer rows for session %s are missing or have null 'created_at'. "
                 "Skipping rows and not updating last_ts. This may indicate a data integrity issue "
-                "in the session_answer table and can cause an infinite polling loop with repeated "
-                "fetches of the same rows.",
+                "in the session_answer table. Preventing infinite polling by not updating last_ts.",
                 session_id,
             )
             # Do not update last_ts; return previous last_ts to avoid infinite polling

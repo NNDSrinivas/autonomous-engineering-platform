@@ -23,7 +23,8 @@ post() {
     echo "   Posted: $(echo "$1" | python3 -c 'import sys,json; print(json.load(sys.stdin)["text"])')"
 }
 
-post '{"text":"We worked on PROJ-15 and fixed the retry loop."}'
+# Replace ISSUE-123 with your actual project issue key as needed
+post '{"text":"We worked on ISSUE-123 and fixed the retry loop."}'
 post '{"text":"JWT expiry is parsed in auth layer per last sprint."}'
 post '{"text":"Where is the JWT expiry parsed now?"}'
 echo ""

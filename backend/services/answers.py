@@ -283,14 +283,14 @@ def _format_answer_row(row: SessionAnswer) -> dict[str, Any]:
 
 
 def recent_answers(
-    db: Session, session_id: str, since_ts: str | None = None
+    db: Session, session_id_param: str, since_ts: str | None = None
 ) -> list[dict]:
     """Retrieve recent answers for a session.
 
     Args:
         db: Database session
-        session_id: Session identifier
-        since_ts: Optional ISO timestamp to filter answers after this time
+        session_id_param: Session identifier
+        since_ts: Optional ISO timestamp string to filter results after this time
 
     Returns:
         List of answer dictionaries with id, created_at, answer, citations, confidence
@@ -301,7 +301,7 @@ def recent_answers(
         SessionAnswer.answer,
         SessionAnswer.citations,
         SessionAnswer.confidence,
-    ).filter(SessionAnswer.session_id == session_id)
+    ).filter(SessionAnswer.session_id == session_id_param)
     if since_ts:
         try:
             since_datetime = parse_iso_timestamp(since_ts)

@@ -43,9 +43,50 @@ def _is_version_number(segment: str) -> bool:
 PROTOCOL_INDICATORS = [
     "http",
     "ftp",
-    "://",
-    "www.",
-]  # Strings that indicate URLs rather than file paths
+    "git",
+    "ssh",
+]
+
+# Common file extensions to validate against
+VALID_EXTENSIONS = {
+    ".py",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".java",
+    ".cpp",
+    ".c",
+    ".h",
+    ".go",
+    ".rs",
+    ".php",
+    ".rb",
+    ".cs",
+    ".swift",
+    ".kt",
+    ".scala",
+    ".html",
+    ".css",
+    ".scss",
+    ".sass",
+    ".vue",
+    ".svelte",
+    ".md",
+    ".txt",
+    ".json",
+    ".xml",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+    ".sh",
+    ".bat",
+    ".ps1",
+    ".sql",
+    ".dockerfile",
+    ".tf",
+}
 
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
@@ -137,47 +178,6 @@ def _extract_path_term(terms: list[str]) -> str | None:
     """
     if not terms:
         return None
-
-    # Common file extensions to validate against
-    VALID_EXTENSIONS = {
-        ".py",
-        ".js",
-        ".ts",
-        ".jsx",
-        ".tsx",
-        ".java",
-        ".cpp",
-        ".c",
-        ".h",
-        ".go",
-        ".rs",
-        ".php",
-        ".rb",
-        ".cs",
-        ".swift",
-        ".kt",
-        ".scala",
-        ".html",
-        ".css",
-        ".scss",
-        ".sass",
-        ".vue",
-        ".svelte",
-        ".md",
-        ".txt",
-        ".json",
-        ".xml",
-        ".yaml",
-        ".yml",
-        ".toml",
-        ".ini",
-        ".sh",
-        ".bat",
-        ".ps1",
-        ".sql",
-        ".dockerfile",
-        ".tf",
-    }
 
     for t in terms:
         # Look for file paths: contains '/' but not protocol indicators

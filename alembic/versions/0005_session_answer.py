@@ -26,7 +26,7 @@ def upgrade() -> None:
         ),
         sa.Column("answer", sa.Text, nullable=False),
         sa.Column(
-            "citations", sa.JSON, nullable=False
+            "citations", sa.JSON, nullable=True
         ),  # [{"type":"meeting|jira|code|pr", ...}]
         sa.Column("confidence", sa.Numeric, nullable=True),
         sa.Column("token_count", sa.Integer, nullable=True),

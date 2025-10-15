@@ -39,7 +39,7 @@ for i in {1..6}; do
   status=$(echo "$resp" | tail -n1)
   if [[ "$status" != "200" ]]; then
     echo "   [API error] HTTP status: $status"
-  elif ! echo "$body" | python3 -m json.tool 2>/dev/null; then
+  elif ! echo "$body" | python3 -m json.tool >/dev/null 2>&1; then
     echo "   [JSON parse error] Invalid JSON response"
   fi
   sleep 1

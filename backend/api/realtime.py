@@ -111,12 +111,14 @@ app.include_router(metrics_router)
 
 class CreateSessionReq(BaseModel):
     """Request model for creating a new answer session."""
+
     question: str
     user_id: str = "default_user"
 
 
 class CreateSessionResp(BaseModel):
     """Response model for answer session creation."""
+
     session_id: str
     meeting_id: str
     message: str
@@ -137,14 +139,13 @@ def create_session(
     """
     m = svc.create_meeting(db, title=body.question, provider="realtime", org_id=None)
     return CreateSessionResp(
-        session_id=m.session_id, 
-        meeting_id=m.id,
-        message="Session created successfully"
+        session_id=m.session_id, meeting_id=m.id, message="Session created successfully"
     )
 
 
 class CaptionReq(BaseModel):
     """Request model for caption submission."""
+
     text: str
     speaker: str | None = None
     ts_start_ms: int | None = None
@@ -153,11 +154,11 @@ class CaptionReq(BaseModel):
 
 def _should_generate_answer(text: str, caption_count: int) -> bool:
     """Determine if answer generation should be triggered.
-    
+
     Args:
         text: Caption text to analyze
         caption_count: Current caption count for session
-        
+
     Returns:
         True if answer should be generated
     """
@@ -168,7 +169,7 @@ def _should_generate_answer(text: str, caption_count: int) -> bool:
 
 def _enqueue_answer_generation(session_id: str, text: str) -> None:
     """Enqueue answer generation with Redis-based heuristics.
-    
+
     Args:
         session_id: Session identifier
         text: Caption text for analysis
@@ -181,7 +182,7 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         pipe.expire(key, REDIS_KEY_EXPIRY_SECONDS)
         results = pipe.execute()
         n = results[0]  # Get count from first result
-        
+
         if _should_generate_answer(text, n):
             generate_answer.send(session_id)
     except (redis.RedisError, ConnectionError) as e:
@@ -208,11 +209,11 @@ def post_caption(
     m = svc.get_meeting_by_session(db, session_id)
     if not m:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     svc.append_segment(
         db, m.id, body.text, body.speaker, body.ts_start_ms, body.ts_end_ms
     )
-    
+
     # Enqueue answer generation with simple heuristic
     _enqueue_answer_generation(session_id, body.text)
     return {"ok": True}
@@ -262,10 +263,10 @@ def get_answers(
 
 def _check_stream_timeout(start_time: datetime) -> bool:
     """Check if SSE stream has exceeded maximum duration.
-    
+
     Args:
         start_time: When the stream started
-        
+
     Returns:
         True if timeout exceeded
     """
@@ -277,12 +278,12 @@ def _emit_new_answers(
     db: Session, session_id: str, last_ts: datetime | None
 ) -> tuple[list[dict], datetime | None]:
     """Emit new answers and return updated timestamp.
-    
+
     Args:
         db: Database session
-        session_id: Session identifier  
+        session_id: Session identifier
         last_ts: Last timestamp processed
-        
+
     Returns:
         Tuple of (new_rows, updated_last_ts)
     """

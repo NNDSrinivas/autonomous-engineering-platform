@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Constants for search term extraction
 MAX_SEARCH_TERMS = 4  # Maximum number of terms to use in searches
 
-# Constants for transcript retrieval  
+# Constants for transcript retrieval
 MAX_TRANSCRIPT_SEGMENTS = 20  # Maximum number of recent transcript segments to fetch
 # Constants for Dramatiq actor configuration
 NO_RETRIES = 0  # No retries for one-shot operations
@@ -155,7 +155,7 @@ def generate_answer(session_id: str) -> None:
         payload = asvc.generate_grounded_answer(
             jira_hits, code_hits, pr_hits, meeting_snips
         )
-        
+
         # Calculate latency and save result
         latency_ms = int((time.perf_counter() - t0) * 1000)
         payload["latency_ms"] = latency_ms

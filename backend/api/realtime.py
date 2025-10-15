@@ -205,7 +205,6 @@ class CreateSessionResp(BaseModel):
 
     session_id: str
     meeting_id: str
-    message: str | None = None
 
 
 @app.post("/api/sessions", response_model=CreateSessionResp)
@@ -222,9 +221,7 @@ def create_session(
         Session and meeting IDs for subsequent API calls
     """
     m = svc.create_meeting(db, title=body.title, provider=body.provider, org_id=None)
-    return CreateSessionResp(
-        session_id=m.session_id, meeting_id=m.id, message="Session created successfully"
-    )
+    return CreateSessionResp(session_id=m.session_id, meeting_id=m.id)
 
 
 class CaptionReq(BaseModel):
@@ -246,7 +243,7 @@ def _should_generate_answer(text: str, caption_count: int) -> bool:
     Returns:
         True if answer should be generated
     """
-    has_question = "?" in (text or "")
+    has_question = _should_generate_answer_fallback(text)
     is_interval_trigger = caption_count % ANSWER_GENERATION_INTERVAL == 0
     return has_question or is_interval_trigger
 
@@ -289,16 +286,39 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
 def _should_generate_answer_fallback(text: str) -> bool:
     """Fallback heuristic for answer generation when Redis is unavailable.
 
+    Note: This fallback only uses question-based triggers since we cannot track
+    caption intervals without Redis state. To compensate for the loss of
+    interval-based triggers, this uses more generous question detection.
+
     Args:
         text: Caption text to analyze
 
     Returns:
         True if answer should be generated based on simple text analysis
     """
-    # Simple fallback: generate if text contains question indicators
-    question_indicators = ["?", "what", "how", "why", "when", "where", "who"]
-    text_lower = text.lower()
-    return any(indicator in text_lower for indicator in question_indicators)
+    # Enhanced fallback: more generous question detection to compensate for lost interval triggers
+    question_indicators = [
+        "?",
+        "what",
+        "how",
+        "why",
+        "when",
+        "where",
+        "who",
+        "can",
+        "should",
+        "would",
+        "could",
+    ]
+    text_lower = (text or "").lower()
+
+    # Check for question indicators or any sentence ending with '?'
+    has_question_word = any(
+        indicator in text_lower for indicator in question_indicators
+    )
+    has_question_punctuation = "?" in text_lower
+
+    return has_question_word or has_question_punctuation
 
 
 @app.post("/api/sessions/{session_id}/captions")

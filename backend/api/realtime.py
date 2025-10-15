@@ -58,7 +58,9 @@ def get_redis_pool():
     if _redis_pool is None:
         try:
             _redis_pool = redis.ConnectionPool.from_url(
-                settings.redis_url, decode_responses=True, max_connections=REDIS_MAX_CONNECTIONS
+                settings.redis_url,
+                decode_responses=True,
+                max_connections=REDIS_MAX_CONNECTIONS,
             )
         except Exception as e:
             logger.error(f"Failed to initialize Redis connection pool: {e}")

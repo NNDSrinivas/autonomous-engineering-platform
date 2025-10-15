@@ -89,6 +89,10 @@ def get_redis_client() -> redis.Redis:
     in the same process. The connection pool (settings.redis_max_connections) is shared
     by all concurrent requests.
 
+    Multi-process deployment note: Each process (e.g., uvicorn --workers=4) gets its own
+    singleton Redis client. Total Redis connections = workers × redis_max_connections.
+    Plan Redis server capacity accordingly.
+
     Redis connection pool is configured via settings.redis_max_connections.
     For high-traffic scenarios with many concurrent SSE streams, consider:
     - Increasing redis_max_connections (default: 20, may need 50+ for 100+ concurrent streams)
@@ -334,8 +338,8 @@ def _should_generate_answer_fallback(text: str) -> bool:
     text_lower = (text or "").lower()
 
     # Check for question indicators with word boundaries to avoid partial matches
-    # Split into words to prevent "what" matching "whatever"
-    words = set(text_lower.split())
+    # Strip punctuation to handle cases like 'what?' -> 'what'
+    words = set(word.strip(".,!?;:") for word in text_lower.split())
     has_question_word = (
         any(indicator in words for indicator in FALLBACK_QUESTION_INDICATORS)
         or "?" in text_lower

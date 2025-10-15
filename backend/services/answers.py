@@ -273,8 +273,13 @@ def generate_grounded_answer(
             if next_space != -1:
                 text_context = text_context[:next_space]
             else:
-                # No spaces at all; preserve the whole text (single long word)
-                pass  # Keep text_context as is to preserve complete word
+                # No spaces at all; apply absolute hard limit to prevent unbounded growth
+                hard_limit = int(
+                    MAX_CONTEXT_LENGTH * 1.5
+                )  # Allow 50% overflow for single words
+                if len(text_context) > hard_limit:
+                    text_context = text_context[:hard_limit]
+                # else: preserve complete word if under hard limit
         else:
             text_context = text_context[:cutoff]
 

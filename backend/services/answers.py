@@ -30,7 +30,7 @@ def parse_iso_timestamp(timestamp_str: str) -> datetime:
 
     Handles various ISO 8601 formats including 'Z' suffix for UTC timezone
     which datetime.fromisoformat() doesn't support natively.
-    
+
     Used for parsing timestamps from API query parameters.
 
     Args:
@@ -194,9 +194,9 @@ def generate_grounded_answer(
     meeting_snippets: list[str],
 ) -> dict:
     """Generate a grounded answer with citations from JIRA, GitHub, and meeting context.
-    
+
     This function coordinates the complete answer generation pipeline.
-    Priority order: JIRA issues -> GitHub code -> Pull requests -> 
+    Priority order: JIRA issues -> GitHub code -> Pull requests ->
     Meeting context -> Fallback
 
     Args:
@@ -206,7 +206,7 @@ def generate_grounded_answer(
         meeting_snippets: Recent transcript text segments
 
     Returns:
-        Dictionary with answer text, citations, confidence score, 
+        Dictionary with answer text, citations, confidence score,
         token count, and latency_ms placeholder
     """
     text_context = " ".join(meeting_snippets)[-MAX_CONTEXT_LENGTH:]

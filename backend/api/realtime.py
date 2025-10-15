@@ -1,6 +1,7 @@
 import asyncio
 import json
 import redis
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -53,30 +54,34 @@ logger = setup_logging()
 
 # Redis client instance for dependency injection
 _redis_client_instance = None
+_redis_client_lock = threading.Lock()
 
 
 def get_redis_client() -> redis.Redis:
     """Get or create Redis client for dependency injection.
 
-    Thread-safe lazy initialization suitable for FastAPI's async environment.
-    Uses module-level singleton pattern without explicit locking since Redis
-    client itself is thread-safe after initialization.
+    Thread-safe lazy initialization using double-checked locking pattern.
+    Ensures only one Redis client instance is created even in multi-threaded
+    FastAPI environments.
     """
     global _redis_client_instance
     if _redis_client_instance is None:
-        try:
-            # Redis client handles connection pooling internally
-            _redis_client_instance = redis.Redis.from_url(
-                settings.redis_url,
-                decode_responses=True,
-                max_connections=REDIS_MAX_CONNECTIONS,
-            )
-        except Exception as e:
-            logger.error(f"Failed to initialize Redis client: {e}")
-            raise HTTPException(
-                status_code=HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Redis unavailable",
-            )
+        with _redis_client_lock:
+            # Double-check pattern to prevent race conditions
+            if _redis_client_instance is None:
+                try:
+                    # Redis client handles connection pooling internally
+                    _redis_client_instance = redis.Redis.from_url(
+                        settings.redis_url,
+                        decode_responses=True,
+                        max_connections=REDIS_MAX_CONNECTIONS,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to initialize Redis client: {e}")
+                    raise HTTPException(
+                        status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Redis unavailable",
+                    )
     return _redis_client_instance
 
 
@@ -476,21 +481,21 @@ def stream_answers(session_id: str) -> StreamingResponse:
         # Use connection pooling for read-only SSE streaming
 
         try:
-            while True:
-                # Check if max duration exceeded
-                if _check_stream_timeout(start_time):
-                    yield _format_sse_data({"event": "timeout"})
-                    break
+            # Acquire a single database session for the duration of the stream
+            with db_session() as db:
+                while True:
+                    # Check if max duration exceeded
+                    if _check_stream_timeout(start_time):
+                        yield _format_sse_data({"event": "timeout"})
+                        break
 
-                # Acquire a new database session for each poll cycle
-                with db_session() as db:
                     # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)
 
-                # Emit in chronological order (oldest first)
-                for r in rows:
-                    yield _format_sse_data(r)
-                await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
+                    # Emit in chronological order (oldest first)
+                    for r in rows:
+                        yield _format_sse_data(r)
+                    await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
         except asyncio.CancelledError:
             # Client disconnected - clean shutdown
             logger.info(

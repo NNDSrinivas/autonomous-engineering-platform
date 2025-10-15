@@ -67,14 +67,7 @@ FALLBACK_QUESTION_INDICATORS = {
     "should",
     "would",
     "could",
-    "will",  # Added for more generous detection
-    "do",  # Added for more generous detection
-    "does",  # Added for more generous detection
-    "did",  # Added for more generous detection
-    "is",  # Added for more generous detection
-    "are",  # Added for more generous detection
-    "was",  # Added for more generous detection
-    "were",  # Added for more generous detection
+    "will",  # Modal verbs indicate questions or uncertainty
 }
 REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
 
@@ -500,12 +493,14 @@ def stream_answers(session_id: str) -> StreamingResponse:
                         yield _format_sse_data({"event": "timeout"})
                         break
 
-                    # Refresh database session every 100 iterations to prevent staleness
-                    if loop_count > 0 and loop_count % DB_SESSION_REFRESH_INTERVAL == 0:
-                        db.expire_all()  # Explicitly refresh all ORM objects to get latest data
-
                     # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)
+
+                    # Targeted refresh: only expire fetched rows to ensure freshness
+                    if loop_count > 0 and loop_count % DB_SESSION_REFRESH_INTERVAL == 0:
+                        # Expire only the recently fetched rows instead of all cached objects
+                        for r in rows:
+                            db.expire(r)
 
                     # Emit in chronological order (oldest first)
                     for r in rows:

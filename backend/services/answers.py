@@ -190,28 +190,25 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
         # Extract last two sentences using improved sentence boundary detection
         # Handle common abbreviations and edge cases more robustly
 
-        # Split on periods, but reassemble when followed by known abbreviations
-        potential_sentences = text_context.split(".")
+        # Split on sentence boundaries (., !, ?) but reassemble when followed by known abbreviations
+        # Regex matches sentence end punctuation followed by whitespace or end of string
+        sentence_endings = re.compile(r"(?<=[.!?])\s+")
+        potential_sentences = sentence_endings.split(text_context)
         sentences = []
         current_sentence = ""
 
         for i, part in enumerate(potential_sentences):
-            current_sentence += part
-
-            # Check if this is the last part
-            if i == len(potential_sentences) - 1:
-                if current_sentence.strip():
-                    sentences.append(current_sentence.strip())
-                break
-
-            # Check if the part ends with a known abbreviation
-            words = part.strip().split()
-            if words and words[-1] in COMMON_ABBREVIATIONS:
+            part = part.strip()
+            if not part:
+                continue
+            words = part.split()
+            # Check if the last word is a known abbreviation (strip trailing punctuation)
+            last_word = words[-1].rstrip(".!?") if words else ""
+            if last_word in COMMON_ABBREVIATIONS and i < len(potential_sentences) - 1:
                 # This is an abbreviation, continue building the sentence
-                current_sentence += "."
+                current_sentence += part + " "
             else:
-                # This appears to be a sentence boundary
-                current_sentence += "."
+                current_sentence += part
                 if (
                     current_sentence.strip()
                     and len(current_sentence.strip()) > MIN_SENTENCE_LENGTH
@@ -253,7 +250,27 @@ def generate_grounded_answer(
         Dictionary with answer text, citations, confidence score,
         token count, and latency_ms placeholder
     """
-    text_context = " ".join(meeting_snippets)[-MAX_CONTEXT_LENGTH:]
+    # Build text_context from the end, only including as many snippets as fit within MAX_CONTEXT_LENGTH
+    context_parts = []
+    total_length = 0
+    # Iterate from the end (most recent) backwards
+    for snippet in reversed(meeting_snippets):
+        snippet_length = len(snippet) + (
+            1 if context_parts else 0
+        )  # +1 for space if not first
+        if total_length + snippet_length > MAX_CONTEXT_LENGTH:
+            break
+        context_parts.insert(0, snippet)
+        total_length += snippet_length
+    text_context = " ".join(context_parts)
+    # If still too long (e.g., one very long snippet), truncate at word boundary
+    if len(text_context) > MAX_CONTEXT_LENGTH:
+        # Find the last space before MAX_CONTEXT_LENGTH
+        cutoff = text_context.rfind(" ", 0, MAX_CONTEXT_LENGTH)
+        if cutoff == -1:
+            text_context = text_context[:MAX_CONTEXT_LENGTH]
+        else:
+            text_context = text_context[:cutoff]
 
     # Generate answer based on priority order
     if jira_hits:

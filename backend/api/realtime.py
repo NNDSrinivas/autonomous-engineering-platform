@@ -50,7 +50,7 @@ def _datetime_serializer(obj):
 REDIS_KEY_EXPIRY_SECONDS = 60  # TTL for Redis keys
 
 # Constants for fallback question detection
-FALLBACK_QUESTION_INDICATORS = {
+QUESTION_WORDS = {
     "what",
     "when",
     "where",
@@ -58,15 +58,21 @@ FALLBACK_QUESTION_INDICATORS = {
     "who",
     "why",
     "which",
+}
+
+# Modal verbs that indicate questions or uncertainty
+MODAL_VERBS = {
     "can",
     "should",
     "would",
     "could",
-    "will",  # Modal verbs indicate questions or uncertainty
+    "will",
+    "might",
+    "may",
 }
 
-# Additional modal verbs not covered by FALLBACK_QUESTION_INDICATORS
-ADDITIONAL_MODAL_VERBS = ["might", "may"]
+# Combined question indicators for fallback detection
+FALLBACK_QUESTION_INDICATORS = QUESTION_WORDS | MODAL_VERBS
 
 REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
 
@@ -311,21 +317,19 @@ def _should_generate_answer_fallback(text: str) -> bool:
     # Enhanced fallback: more generous question detection to compensate for lost interval triggers
     text_lower = (text or "").lower()
 
-    # Check for question indicators or any sentence ending with '?'
+    # Check for question indicators (including modal verbs) or any sentence ending with '?'
     has_question_word = (
         any(indicator in text_lower for indicator in FALLBACK_QUESTION_INDICATORS)
         or "?" in text_lower
     )
 
     # Additional generous patterns for fallback mode
-    # Use module-level constant for performance
-    has_modal_verbs = any(modal in text_lower for modal in ADDITIONAL_MODAL_VERBS)
     has_uncertainty = any(
         word in text_lower
         for word in ["maybe", "perhaps", "possibly", "not sure", "uncertain"]
     )
 
-    return has_question_word or has_modal_verbs or has_uncertainty
+    return has_question_word or has_uncertainty
 
 
 @app.post("/api/sessions/{session_id}/captions")

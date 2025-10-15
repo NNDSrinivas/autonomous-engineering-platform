@@ -295,13 +295,7 @@ def recent_answers(
     Returns:
         List of answer dictionaries with id, created_at, answer, citations, confidence
     """
-    query = db.query(
-        SessionAnswer.id,
-        SessionAnswer.created_at,
-        SessionAnswer.answer,
-        SessionAnswer.citations,
-        SessionAnswer.confidence,
-    ).filter(SessionAnswer.session_id == session_id_param)
+    query = db.query(SessionAnswer).filter(SessionAnswer.session_id == session_id_param)
     if since_ts:
         try:
             since_datetime = parse_iso_timestamp(since_ts)

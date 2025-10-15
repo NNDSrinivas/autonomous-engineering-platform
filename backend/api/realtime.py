@@ -28,6 +28,7 @@ ANSWER_GENERATION_INTERVAL = 3  # Generate answer every N captions
 
 # Constants for SSE streaming
 SSE_MAX_DURATION_SECONDS = 3600  # Maximum duration for SSE streams (1 hour)
+SESSION_REFRESH_INTERVAL = 300  # Refresh database session every 5 minutes
 SSE_POLL_INTERVAL_SECONDS = 1  # Polling interval for new answers in SSE streams
 
 # Constants for rate limiting
@@ -161,7 +162,7 @@ app.include_router(metrics_router)
 class CreateSessionReq(BaseModel):
     """Request model for creating a new answer session."""
 
-    title: str | None = "Untitled Session"
+    title: str | None = None
     provider: str | None = "manual"
 
 
@@ -373,7 +374,7 @@ def stream_answers(session_id: str) -> StreamingResponse:
         nonlocal last_ts
         start_time = datetime.now(timezone.utc)
         # Use connection pooling with periodic refresh to balance performance and connection health
-        session_refresh_interval = 300  # Refresh session every 5 minutes
+        session_refresh_interval = SESSION_REFRESH_INTERVAL
         last_session_refresh = datetime.now(timezone.utc)
 
         try:

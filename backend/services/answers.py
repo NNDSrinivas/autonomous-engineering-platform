@@ -21,12 +21,17 @@ MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
 DEFAULT_CONFIDENCE = 0.6  # Default confidence score for generated answers
 DEFAULT_LATENCY_MS = 0  # Default latency for immediate responses
 
+# Regex pattern for extracting alphanumeric words/tokens of 3+ characters
+KEYWORD_EXTRACTION_PATTERN = r"[A-Za-z0-9_-]{3,}"
+
 
 def parse_iso_timestamp(timestamp_str: str) -> datetime:
     """Parse an ISO 8601 timestamp string to a timezone-aware datetime object.
 
     Handles various ISO 8601 formats including 'Z' suffix for UTC timezone
     which datetime.fromisoformat() doesn't support natively.
+    
+    Used for parsing timestamps from API query parameters.
 
     Args:
         timestamp_str: ISO 8601 timestamp string (e.g., '2023-10-14T12:30:45Z')
@@ -70,7 +75,7 @@ def extract_terms(latest_text: str) -> list[str]:
     Returns:
         List of up to MAX_EXTRACTED_TERMS unique keywords, excluding common stopwords
     """
-    words = re.findall(r"[A-Za-z0-9_-]{3,}", latest_text or "")
+    words = re.findall(KEYWORD_EXTRACTION_PATTERN, latest_text or "")
     uniq = []
     stopwords = {
         "the",

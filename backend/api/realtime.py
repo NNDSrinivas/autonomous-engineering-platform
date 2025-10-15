@@ -33,6 +33,13 @@ SSE_POLL_INTERVAL_SECONDS = 1  # Polling interval for new answers in SSE streams
 # Constants for rate limiting
 REALTIME_API_RPM = 120  # Requests per minute for realtime API
 
+
+def _datetime_serializer(obj):
+    """Custom JSON serializer for datetime objects."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
 # Constants for Redis operations
 REDIS_KEY_EXPIRY_SECONDS = 60  # TTL for Redis keys
 REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
@@ -71,7 +78,7 @@ def _format_sse_data(data: dict | str) -> str:
     """
     if isinstance(data, str):
         return f"data: {data}\n\n"
-    return f"data: {json.dumps(data, default=str)}\n\n"
+    return f"data: {json.dumps(data, default=_datetime_serializer)}\n\n"
 
 
 app = FastAPI(title=f"{settings.app_name} - Realtime API")
@@ -299,7 +306,7 @@ def _emit_new_answers(
     """
     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
     if rows:
-        return rows, rows[-1]["created_at"]
+        return rows, rows[-1]["created_at"].isoformat()
     return [], last_ts
 
 

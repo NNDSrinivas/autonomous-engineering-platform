@@ -34,9 +34,9 @@ echo "3. Polling for answers (6 attempts, 1s apart)..."
 for i in {1..6}; do
   echo ""
   echo "   Poll $i:"
-  resp=$(curl -s -w "%{http_code}" "http://localhost:${REALTIME_PORT}/api/sessions/${sid}/answers")
-  body="${resp::-3}"
-  status="${resp: -3}"
+  resp=$(curl -s -w "\n%{http_code}" "http://localhost:${REALTIME_PORT}/api/sessions/${sid}/answers")
+  body=$(echo "$resp" | sed '$d')
+  status=$(echo "$resp" | tail -n1)
   if [[ "$status" != "200" ]]; then
     echo "   [API error] HTTP status: $status"
   elif ! echo "$body" | python3 -m json.tool 2>/dev/null; then

@@ -60,7 +60,7 @@ create_and_add () {
 
   # 1) Create GitHub Issue
   local out
-  out=$($DRY gh issue create -R "$REPO" -t "$title" -b "$body" -l "$labels_csv" --json url,number 2>/dev/null)
+  out=$($DRY gh issue create -R "$REPO" -t "$title" -b "$body" -l "$labels_csv" --json url,number)
   local url number
   url=$(echo "$out" | jq -r '.url')
   number=$(echo "$out" | jq -r '.number')

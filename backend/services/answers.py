@@ -242,8 +242,11 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
         # Extract last two sentences using improved sentence boundary detection
         # Handle common abbreviations and edge cases more robustly
 
-        # Split on sentence boundaries (., !, ?) using regex; abbreviation handling and sentence reassembly is done below
-        # The regex naively splits on sentence-ending punctuation followed by whitespace; the loop below merges sentences split at known abbreviations
+        # Split on sentence boundaries (., !, ?) using regex.
+        # Abbreviation handling strategy:
+        #   Sentences ending with known abbreviations (e.g., 'Dr.', 'Inc.') are merged with the following sentence.
+        #   This prevents incorrect splits, such as splitting "Mr. Smith said" into two sentences.
+        # The regex naively splits on sentence-ending punctuation followed by whitespace; the loop below merges sentences split at known abbreviations.
         sentence_endings = re.compile(r"(?<=[.!?])\s+")
         potential_sentences = sentence_endings.split(text_context)
         sentences = []

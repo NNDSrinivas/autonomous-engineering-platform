@@ -299,7 +299,7 @@ def _emit_new_answers(
     """
     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
     if rows:
-        return rows, rows[0]["created_at"]
+        return rows, rows[-1]["created_at"]
     return [], last_ts
 
 
@@ -333,7 +333,8 @@ def stream_answers(session_id: str) -> StreamingResponse:
 
                     # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)
-                    for r in rows:
+                    # Reverse to emit in chronological order (oldest first)
+                    for r in reversed(rows):
                         yield _format_sse_data(r)
 
                     await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)

@@ -30,12 +30,12 @@ broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
 
 
-def _recent_meeting_text(db: Session, meeting_id: str) -> list[str]:
+def _recent_meeting_text(db: Session, meeting_id_param: str) -> list[str]:
     """Get last N transcript segments of a meeting.
 
     Args:
         db: Database session
-        meeting_id: Meeting identifier
+        meeting_id_param: Meeting identifier
 
     Returns:
         List of transcript text segments in chronological order
@@ -43,7 +43,7 @@ def _recent_meeting_text(db: Session, meeting_id: str) -> list[str]:
     # Use SQLAlchemy ORM for better type safety and maintainability
     segments = (
         db.query(TranscriptSegment)
-        .filter(TranscriptSegment.meeting_id == meeting_id)
+        .filter(TranscriptSegment.meeting_id == meeting_id_param)
         .order_by(
             TranscriptSegment.ts_end_ms.desc().nulls_last(), 
             TranscriptSegment.id.desc()
@@ -56,12 +56,12 @@ def _recent_meeting_text(db: Session, meeting_id: str) -> list[str]:
     ]  # reverse to chronological order (oldest first)
 
 
-def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:
+def _terms_from_latest(db: Session, meeting_id_param: str) -> list[str]:
     """Extract search terms from the most recent transcript segment.
 
     Args:
         db: Database session
-        meeting_id: Meeting identifier
+        meeting_id_param: Meeting identifier
 
     Returns:
         List of extracted keyword terms
@@ -69,7 +69,7 @@ def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:
     # Use SQLAlchemy ORM for better type safety and maintainability
     segment = (
         db.query(TranscriptSegment)
-        .filter(TranscriptSegment.meeting_id == meeting_id)
+        .filter(TranscriptSegment.meeting_id == meeting_id_param)
         .order_by(
             TranscriptSegment.ts_end_ms.desc().nulls_last(), 
             TranscriptSegment.id.desc()

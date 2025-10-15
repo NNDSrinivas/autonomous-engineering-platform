@@ -18,6 +18,9 @@ MAX_EXTRACTED_TERMS = 8  # Maximum number of terms to extract from text
 CONTEXT_OVERFLOW_MULTIPLIER = 1.5  # Allow 50% overflow for preserving complete words
 # Rationale: Based on average English word length (4.5 chars), 50% overflow accommodates
 # words up to ~270 chars while preventing unbounded growth. Balances completeness vs memory.
+HARD_CONTEXT_LIMIT = int(
+    MAX_CONTEXT_LENGTH * CONTEXT_OVERFLOW_MULTIPLIER
+)  # Pre-computed: 900 chars
 
 # Constants for answer retrieval
 MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
@@ -286,9 +289,8 @@ def generate_grounded_answer(
                     text_context = text_context[:next_space]
                 else:
                     # No spaces at all; apply absolute hard limit to prevent unbounded growth
-                    hard_limit = int(MAX_CONTEXT_LENGTH * CONTEXT_OVERFLOW_MULTIPLIER)
-                    if len(text_context) > hard_limit:
-                        text_context = text_context[:hard_limit]
+                    if len(text_context) > HARD_CONTEXT_LIMIT:
+                        text_context = text_context[:HARD_CONTEXT_LIMIT]
                     # else: preserve complete word if under hard limit
             else:
                 text_context = text_context[:cutoff]

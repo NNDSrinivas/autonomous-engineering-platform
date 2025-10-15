@@ -339,9 +339,11 @@ def _should_generate_answer_fallback(text: str) -> bool:
     # Enhanced fallback: more generous question detection to compensate for lost interval triggers
     text_lower = (text or "").lower()
 
-    # Check for question indicators (including modal verbs) or any sentence ending with '?'
+    # Check for question indicators with word boundaries to avoid partial matches
+    # Split into words to prevent "what" matching "whatever"
+    words = set(text_lower.split())
     has_question_word = (
-        any(indicator in text_lower for indicator in FALLBACK_QUESTION_INDICATORS)
+        any(indicator in words for indicator in FALLBACK_QUESTION_INDICATORS)
         or "?" in text_lower
     )
 
@@ -466,7 +468,10 @@ def _emit_new_answers(
         else:
             # All rows have missing timestamps - log warning and skip
             logger.error(
-                "All recent answer rows for session %s are missing or have null 'created_at'. Skipping rows and not updating last_ts.",
+                "All recent answer rows for session %s are missing or have null 'created_at'. "
+                "Skipping rows and not updating last_ts. This may indicate a data integrity issue "
+                "in the session_answer table and can cause an infinite polling loop with repeated "
+                "fetches of the same rows.",
                 session_id,
             )
             # Do not update last_ts; return previous last_ts to avoid infinite polling

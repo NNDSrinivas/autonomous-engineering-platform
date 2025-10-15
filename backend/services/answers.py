@@ -38,6 +38,22 @@ STOPWORDS = {
     "how",
 }
 
+# Common abbreviations that shouldn't trigger sentence breaks
+COMMON_ABBREVIATIONS = {
+    "Dr",
+    "Mr", 
+    "Mrs",
+    "Ms",
+    "Prof",
+    "Inc",
+    "Ltd",
+    "Corp",
+    "vs",
+    "etc",
+    "i.e",
+    "e.g",
+}
+
 
 def parse_iso_timestamp(timestamp_str: str) -> datetime:
     """Parse an ISO 8601 timestamp string to a timezone-aware datetime object.
@@ -67,8 +83,8 @@ def parse_iso_timestamp(timestamp_str: str) -> datetime:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
-    except ValueError:
-        raise ValueError(f"Invalid ISO timestamp: {timestamp_str}")
+    except ValueError as e:
+        raise ValueError(f"Invalid ISO timestamp '{timestamp_str}': {e}") from e
 
 
 def _id() -> str:

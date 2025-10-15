@@ -5,7 +5,7 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from typing import Generator
+from typing import Generator, AsyncGenerator, Dict, Any
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +34,10 @@ SSE_POLL_INTERVAL_SECONDS = 1  # Polling interval for new answers in SSE streams
 # Constants for rate limiting
 REALTIME_API_RPM = 120  # Requests per minute for realtime API
 
+# Constants for HTTP status codes
+HTTP_404_NOT_FOUND = 404  # Resource not found
+HTTP_503_SERVICE_UNAVAILABLE = 503  # Service unavailable
+
 
 def _datetime_serializer(obj):
     """Custom JSON serializer for datetime objects."""
@@ -54,7 +58,7 @@ _redis_client = None
 _redis_lock = threading.Lock()
 
 
-def get_redis_pool():
+def get_redis_pool() -> redis.ConnectionPool:
     """Get or create Redis connection pool with error handling."""
     global _redis_pool
     if _redis_pool is None:
@@ -69,11 +73,14 @@ def get_redis_pool():
                     )
                 except Exception as e:
                     logger.error(f"Failed to initialize Redis connection pool: {e}")
-                    raise HTTPException(status_code=503, detail="Redis unavailable")
+                    raise HTTPException(
+                        status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Redis unavailable",
+                    )
     return _redis_pool
 
 
-def get_redis_client():
+def get_redis_client() -> redis.Redis:
     """Get or create Redis client with connection pool."""
     global _redis_client
     if _redis_client is None:
@@ -103,7 +110,7 @@ def db_session() -> Generator[Session, None, None]:
         db.close()
 
 
-def _format_sse_data(data: dict | str) -> str:
+def _format_sse_data(data: Dict[str, Any] | str) -> str:
     """Format data for Server-Sent Events transmission.
 
     Args:
@@ -117,7 +124,7 @@ def _format_sse_data(data: dict | str) -> str:
     return f"data: {json.dumps(data, default=_datetime_serializer)}\n\n"
 
 
-def _extract_timestamp_from_row(row: dict) -> str | None:
+def _extract_timestamp_from_row(row: Dict[str, Any]) -> str | None:
     """Extract and convert timestamp from a row to ISO format string.
 
     Args:
@@ -324,7 +331,7 @@ def _should_generate_answer_fallback(text: str) -> bool:
 @app.post("/api/sessions/{session_id}/captions")
 def post_caption(
     session_id: str, body: CaptionReq, db: Session = Depends(get_db)
-) -> dict[str, str]:
+) -> dict[str, bool]:
     """Add a caption/transcript segment to an active session.
 
     Args:
@@ -340,7 +347,7 @@ def post_caption(
     """
     m = svc.get_meeting_by_session(db, session_id)
     if not m:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Session not found")
 
     svc.append_segment(
         db, m.id, body.text, body.speaker, body.ts_start_ms, body.ts_end_ms
@@ -367,7 +374,7 @@ def close_session(session_id: str, db: Session = Depends(get_db)) -> dict[str, b
     """
     m = svc.get_meeting_by_session(db, session_id)
     if not m:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Session not found")
     m.ended_at = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True}
@@ -379,7 +386,7 @@ def close_session(session_id: str, db: Session = Depends(get_db)) -> dict[str, b
 @app.get("/api/sessions/{session_id}/answers")
 def get_answers(
     session_id: str, since: str | None = None, db: Session = Depends(get_db)
-) -> dict[str, list[dict]]:
+) -> dict[str, list[Dict[str, Any]]]:
     """Poll for new answers generated for this session.
 
     Args:
@@ -408,7 +415,7 @@ def _check_stream_timeout(start_time: datetime) -> bool:
 
 def _emit_new_answers(
     db: Session, session_id: str, last_ts: datetime | None
-) -> tuple[list[dict], str | None]:
+) -> tuple[list[Dict[str, Any]], str | None]:
     """Emit new answers and return updated timestamp.
 
     Args:
@@ -452,7 +459,7 @@ def stream_answers(session_id: str) -> StreamingResponse:
     """
     last_ts = None
 
-    async def event_stream():
+    async def event_stream() -> AsyncGenerator[str, None]:
         nonlocal last_ts
         start_time = datetime.now(timezone.utc)
         # Use connection pooling for read-only SSE streaming

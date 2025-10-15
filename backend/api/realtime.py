@@ -129,8 +129,8 @@ app.include_router(metrics_router)
 class CreateSessionReq(BaseModel):
     """Request model for creating a new answer session."""
 
-    question: str
-    user_id: str = "default_user"
+    title: str | None = None
+    provider: str | None = "manual"
 
 
 class CreateSessionResp(BaseModel):
@@ -148,13 +148,13 @@ def create_session(
     """Create a new meeting session for real-time caption capture.
 
     Args:
-        body: Session creation request with question and user_id
+        body: Session creation request with title and provider
         db: Database session dependency
 
     Returns:
         Session and meeting IDs for subsequent API calls
     """
-    m = svc.create_meeting(db, title=body.question, provider="realtime", org_id=None)
+    m = svc.create_meeting(db, title=body.title or "Untitled Session", provider=body.provider or "manual", org_id=None)
     return CreateSessionResp(
         session_id=m.session_id, meeting_id=m.id, message="Session created successfully"
     )
@@ -305,7 +305,7 @@ def _emit_new_answers(
         Tuple of (new_rows, updated_last_ts)
     """
     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
-    if rows:
+    if rows and len(rows) > 0:
         return rows, rows[-1]["created_at"].isoformat()
     return [], last_ts
 
@@ -340,8 +340,8 @@ def stream_answers(session_id: str) -> StreamingResponse:
 
                     # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)
-                    # Reverse to emit in chronological order (oldest first)
-                    for r in reversed(rows):
+                    # Emit in reverse chronological order (newest first)
+                    for r in rows:
                         yield _format_sse_data(r)
 
                     await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)

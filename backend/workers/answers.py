@@ -110,10 +110,20 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
         List of matching code files
     """
     q = _build_search_query(terms)
-    # choose a path-like term if present
-    path_term = (
-        next((t for t in terms if "/" in t or "." in t), None) if terms else None
-    )
+    # Choose a path-like term if present (avoid URLs and version numbers)
+    path_term = None
+    if terms:
+        for t in terms:
+            # Look for file paths: contains '/' but not protocol indicators
+            if "/" in t and not any(proto in t.lower() for proto in ["http", "ftp", "://", "www."]):
+                # Additional check: if it contains a file extension
+                if "." in t.split("/")[-1]:  # Last segment has extension
+                    path_term = t
+                    break
+                # Or if it looks like a directory path
+                elif len(t.split("/")) > 1:
+                    path_term = t
+                    break
     return GitHubService.search_code(db, repo=None, q=q, path_prefix=path_term)
 
 

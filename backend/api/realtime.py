@@ -1,7 +1,7 @@
 import asyncio
+import functools
 import json
 import redis
-import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -72,39 +72,28 @@ REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
 
 logger = setup_logging()
 
+
 # Redis client instance for dependency injection
-_redis_client_instance = None
-_redis_client_lock = threading.Lock()
-
-
+@functools.lru_cache(maxsize=1)
 def get_redis_client() -> redis.Redis:
     """Get or create Redis client for dependency injection.
 
-    Thread-safe lazy initialization using double-checked locking pattern.
-    Ensures only one Redis client instance is created even in multi-threaded
-    FastAPI environments.
+    Thread-safe lazy initialization using functools.lru_cache.
+    Ensures only one Redis client instance is created and cached.
     """
-    global _redis_client_instance
-    if _redis_client_instance is None:
-        with _redis_client_lock:
-            # Double-check pattern to prevent race conditions
-            if _redis_client_instance is None:
-                try:
-                    # Redis client handles connection pooling internally
-                    _redis_client_instance = redis.Redis.from_url(
-                        settings.redis_url,
-                        decode_responses=True,
-                        max_connections=REDIS_MAX_CONNECTIONS,
-                    )
-                except Exception as e:
-                    logger.error(
-                        "Failed to initialize Redis client: %s", e, exc_info=True
-                    )
-                    raise HTTPException(
-                        status_code=HTTP_503_SERVICE_UNAVAILABLE,
-                        detail="Redis unavailable",
-                    ) from e
-    return _redis_client_instance
+    try:
+        # Redis client handles connection pooling internally
+        return redis.Redis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            max_connections=REDIS_MAX_CONNECTIONS,
+        )
+    except Exception as e:
+        logger.error("Failed to initialize Redis client: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Redis unavailable",
+        ) from e
 
 
 # Context manager for database sessions in streaming contexts
@@ -327,7 +316,6 @@ def _should_generate_answer_fallback(text: str) -> bool:
         any(indicator in text_lower for indicator in FALLBACK_QUESTION_INDICATORS)
         or "?" in text_lower
     )
-    has_question_punctuation = "?" in text_lower
 
     # Additional generous patterns for fallback mode
     # Use module-level constant for performance
@@ -337,12 +325,7 @@ def _should_generate_answer_fallback(text: str) -> bool:
         for word in ["maybe", "perhaps", "possibly", "not sure", "uncertain"]
     )
 
-    return (
-        has_question_word
-        or has_question_punctuation
-        or has_modal_verbs
-        or has_uncertainty
-    )
+    return has_question_word or has_modal_verbs or has_uncertainty
 
 
 @app.post("/api/sessions/{session_id}/captions")

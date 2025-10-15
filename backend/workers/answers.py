@@ -120,14 +120,66 @@ def _extract_path_term(terms: list[str]) -> str | None:
     if not terms:
         return None
 
+    # Common file extensions to validate against
+    VALID_EXTENSIONS = {
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".java",
+        ".cpp",
+        ".c",
+        ".h",
+        ".go",
+        ".rs",
+        ".php",
+        ".rb",
+        ".cs",
+        ".swift",
+        ".kt",
+        ".scala",
+        ".html",
+        ".css",
+        ".scss",
+        ".sass",
+        ".vue",
+        ".svelte",
+        ".md",
+        ".txt",
+        ".json",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".ini",
+        ".sh",
+        ".bat",
+        ".ps1",
+        ".sql",
+        ".dockerfile",
+        ".tf",
+    }
+
     for t in terms:
         # Look for file paths: contains '/' but not protocol indicators
         if "/" in t and not any(proto in t.lower() for proto in PROTOCOL_INDICATORS):
-            # Additional check: if it contains a file extension
-            if "." in t.split("/")[-1]:  # Last segment has extension
-                return t
-            # Or if it looks like a directory path
-            elif len(t.split("/")) > 1:
+            last_segment = t.split("/")[-1]
+
+            # Check if last segment has a valid file extension
+            if "." in last_segment:
+                extension = "." + last_segment.split(".")[-1].lower()
+                if extension in VALID_EXTENSIONS:
+                    return t
+                # Avoid version numbers like "1.2.3" or "v1.2.3"
+                if last_segment.replace("v", "").replace(".", "").isdigit():
+                    continue
+
+            # Or if it looks like a directory path (multiple segments, no obvious version pattern)
+            elif len(t.split("/")) > 1 and not any(
+                segment.replace("v", "").replace(".", "").isdigit()
+                for segment in t.split("/")
+            ):
                 return t
     return None
 

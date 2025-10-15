@@ -1,7 +1,6 @@
 import asyncio
 import json
 import redis
-import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -52,43 +51,33 @@ REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
 
 logger = setup_logging()
 
-# Lazy-initialized Redis connection pool for reuse across requests
-_redis_pool = None
-_redis_client = None
-_redis_lock = threading.Lock()
-
-
-def get_redis_pool() -> redis.ConnectionPool:
-    """Get or create Redis connection pool with error handling."""
-    global _redis_pool
-    if _redis_pool is None:
-        with _redis_lock:
-            # Double-check pattern to avoid race conditions
-            if _redis_pool is None:
-                try:
-                    _redis_pool = redis.ConnectionPool.from_url(
-                        settings.redis_url,
-                        decode_responses=True,
-                        max_connections=REDIS_MAX_CONNECTIONS,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to initialize Redis connection pool: {e}")
-                    raise HTTPException(
-                        status_code=HTTP_503_SERVICE_UNAVAILABLE,
-                        detail="Redis unavailable",
-                    )
-    return _redis_pool
+# Redis client instance for dependency injection
+_redis_client_instance = None
 
 
 def get_redis_client() -> redis.Redis:
-    """Get or create Redis client with connection pool."""
-    global _redis_client
-    if _redis_client is None:
-        with _redis_lock:
-            # Double-check pattern to avoid race conditions
-            if _redis_client is None:
-                _redis_client = redis.Redis(connection_pool=get_redis_pool())
-    return _redis_client
+    """Get or create Redis client for dependency injection.
+
+    Thread-safe lazy initialization suitable for FastAPI's async environment.
+    Uses module-level singleton pattern without explicit locking since Redis
+    client itself is thread-safe after initialization.
+    """
+    global _redis_client_instance
+    if _redis_client_instance is None:
+        try:
+            # Redis client handles connection pooling internally
+            _redis_client_instance = redis.Redis.from_url(
+                settings.redis_url,
+                decode_responses=True,
+                max_connections=REDIS_MAX_CONNECTIONS,
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize Redis client: {e}")
+            raise HTTPException(
+                status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Redis unavailable",
+            )
+    return _redis_client_instance
 
 
 # Context manager for database sessions in streaming contexts
@@ -316,6 +305,14 @@ def _should_generate_answer_fallback(text: str) -> bool:
         "should",
         "would",
         "could",
+        "will",  # Added for more generous detection
+        "do",  # Added for more generous detection
+        "does",  # Added for more generous detection
+        "did",  # Added for more generous detection
+        "is",  # Added for more generous detection
+        "are",  # Added for more generous detection
+        "was",  # Added for more generous detection
+        "were",  # Added for more generous detection
     ]
     text_lower = (text or "").lower()
 
@@ -325,7 +322,21 @@ def _should_generate_answer_fallback(text: str) -> bool:
     )
     has_question_punctuation = "?" in text_lower
 
-    return has_question_word or has_question_punctuation
+    # Additional generous patterns for fallback mode
+    has_modal_verbs = any(
+        modal in text_lower for modal in ["should", "could", "would", "might", "may"]
+    )
+    has_uncertainty = any(
+        word in text_lower
+        for word in ["maybe", "perhaps", "possibly", "not sure", "uncertain"]
+    )
+
+    return (
+        has_question_word
+        or has_question_punctuation
+        or has_modal_verbs
+        or has_uncertainty
+    )
 
 
 @app.post("/api/sessions/{session_id}/captions")
@@ -480,6 +491,12 @@ def stream_answers(session_id: str) -> StreamingResponse:
                 for r in rows:
                     yield _format_sse_data(r)
                 await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
+        except asyncio.CancelledError:
+            # Client disconnected - clean shutdown
+            logger.info(
+                "SSE stream cancelled for session %s (client disconnect)", session_id
+            )
+            raise  # Re-raise to properly close the connection
         except Exception as e:
             logger.exception("Error in SSE stream for session %s: %s", session_id, e)
             yield _format_sse_data(

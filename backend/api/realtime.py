@@ -48,6 +48,34 @@ def _datetime_serializer(obj):
 
 # Constants for Redis operations
 REDIS_KEY_EXPIRY_SECONDS = 60  # TTL for Redis keys
+
+# Constants for database session management
+DB_SESSION_REFRESH_INTERVAL = (
+    100  # Refresh DB session every N iterations to prevent staleness
+)
+
+# Constants for fallback question detection
+FALLBACK_QUESTION_INDICATORS = {
+    "what",
+    "when",
+    "where",
+    "how",
+    "who",
+    "why",
+    "which",
+    "can",
+    "should",
+    "would",
+    "could",
+    "will",  # Added for more generous detection
+    "do",  # Added for more generous detection
+    "does",  # Added for more generous detection
+    "did",  # Added for more generous detection
+    "is",  # Added for more generous detection
+    "are",  # Added for more generous detection
+    "was",  # Added for more generous detection
+    "were",  # Added for more generous detection
+}
 REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
 
 logger = setup_logging()
@@ -300,32 +328,12 @@ def _should_generate_answer_fallback(text: str) -> bool:
         True if answer should be generated based on simple text analysis
     """
     # Enhanced fallback: more generous question detection to compensate for lost interval triggers
-    question_indicators = [
-        "?",
-        "what",
-        "how",
-        "why",
-        "when",
-        "where",
-        "who",
-        "can",
-        "should",
-        "would",
-        "could",
-        "will",  # Added for more generous detection
-        "do",  # Added for more generous detection
-        "does",  # Added for more generous detection
-        "did",  # Added for more generous detection
-        "is",  # Added for more generous detection
-        "are",  # Added for more generous detection
-        "was",  # Added for more generous detection
-        "were",  # Added for more generous detection
-    ]
     text_lower = (text or "").lower()
 
     # Check for question indicators or any sentence ending with '?'
-    has_question_word = any(
-        indicator in text_lower for indicator in question_indicators
+    has_question_word = (
+        any(indicator in text_lower for indicator in FALLBACK_QUESTION_INDICATORS)
+        or "?" in text_lower
     )
     has_question_punctuation = "?" in text_lower
 
@@ -493,7 +501,7 @@ def stream_answers(session_id: str) -> StreamingResponse:
                         break
 
                     # Refresh database session every 100 iterations to prevent staleness
-                    if loop_count > 0 and loop_count % 100 == 0:
+                    if loop_count > 0 and loop_count % DB_SESSION_REFRESH_INTERVAL == 0:
                         db.expire_all()  # Explicitly refresh all ORM objects to get latest data
 
                     # Query for new answers and emit them

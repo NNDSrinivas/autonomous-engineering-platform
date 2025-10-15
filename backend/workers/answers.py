@@ -107,9 +107,7 @@ def _recent_meeting_text(db: Session, meeting_id_param: str) -> list[str]:
     segments = (
         db.query(TranscriptSegment)
         .filter(TranscriptSegment.meeting_id == meeting_id_param)
-        .order_by(
-            TranscriptSegment.ts_end_ms.desc().nulls_last(), TranscriptSegment.id.desc()
-        )
+        .order_by(TranscriptSegment.ts_end_ms.desc(), TranscriptSegment.id.desc())
         .limit(MAX_TRANSCRIPT_SEGMENTS)
         .all()
     )
@@ -132,9 +130,7 @@ def _terms_from_latest(db: Session, meeting_id_param: str) -> list[str]:
     segment = (
         db.query(TranscriptSegment)
         .filter(TranscriptSegment.meeting_id == meeting_id_param)
-        .order_by(
-            TranscriptSegment.ts_end_ms.desc().nulls_last(), TranscriptSegment.id.desc()
-        )
+        .order_by(TranscriptSegment.ts_end_ms.desc(), TranscriptSegment.id.desc())
         .first()
     )
     if not segment or not segment.text:

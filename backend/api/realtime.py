@@ -331,9 +331,12 @@ def _should_generate_answer_fallback(text: str) -> bool:
     has_question_punctuation = "?" in text_lower
 
     # Additional generous patterns for fallback mode
-    has_modal_verbs = any(
-        modal in text_lower for modal in ["should", "could", "would", "might", "may"]
-    )
+    # Only check for modal verbs not already in FALLBACK_QUESTION_INDICATORS
+    additional_modal_verbs = [
+        "might",
+        "may",
+    ]  # "should", "would", "could" already in FALLBACK_QUESTION_INDICATORS
+    has_modal_verbs = any(modal in text_lower for modal in additional_modal_verbs)
     has_uncertainty = any(
         word in text_lower
         for word in ["maybe", "perhaps", "possibly", "not sure", "uncertain"]
@@ -496,11 +499,8 @@ def stream_answers(session_id: str) -> StreamingResponse:
                     # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)
 
-                    # Targeted refresh: only expire fetched rows to ensure freshness
-                    if loop_count > 0 and loop_count % DB_SESSION_REFRESH_INTERVAL == 0:
-                        # Expire only the recently fetched rows instead of all cached objects
-                        for r in rows:
-                            db.expire(r)
+                    # Note: No expiration needed; rows are dictionaries, not ORM instances
+                    # Database freshness is ensured by the query itself in _emit_new_answers
 
                     # Emit in chronological order (oldest first)
                     for r in rows:

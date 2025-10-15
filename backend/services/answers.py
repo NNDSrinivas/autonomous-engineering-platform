@@ -194,6 +194,8 @@ def generate_grounded_answer(
     meeting_snippets: list[str],
 ) -> dict:
     """Generate a grounded answer with citations from JIRA, GitHub, and meeting context.
+    
+    This function coordinates the complete answer generation pipeline."""
 
     Priority order: JIRA issues → GitHub code → Pull requests → Meeting context → Fallback
 
@@ -305,6 +307,6 @@ def recent_answers(
         except ValueError:
             raise ValueError(f"Invalid ISO timestamp format for 'since_ts': {since_ts}")
         query = query.filter(SessionAnswer.created_at >= since_datetime)
-    query = query.order_by(SessionAnswer.created_at.desc()).limit(MAX_RECENT_ANSWERS)
+    query = query.order_by(SessionAnswer.created_at.asc()).limit(MAX_RECENT_ANSWERS)
     rows = query.all()
     return [_format_answer_row(row) for row in rows]

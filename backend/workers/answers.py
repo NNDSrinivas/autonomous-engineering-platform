@@ -22,7 +22,9 @@ MAX_TRANSCRIPT_SEGMENTS = 20  # Maximum number of recent transcript segments to 
 NO_RETRIES = 0  # No retries for one-shot operations
 
 # Constants for path detection
-PROTOCOL_INDICATORS = ["http", "ftp", "://", "www."]  # Strings that indicate URLs rather than file paths
+PROTOCOL_INDICATORS = [
+    "http", "ftp", "://", "www."
+]  # Strings that indicate URLs rather than file paths
 
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
@@ -43,7 +45,8 @@ def _recent_meeting_text(db: Session, meeting_id: str) -> list[str]:
         db.query(TranscriptSegment)
         .filter(TranscriptSegment.meeting_id == meeting_id)
         .order_by(
-            TranscriptSegment.ts_end_ms.desc().nulls_last(), TranscriptSegment.id.desc()
+            TranscriptSegment.ts_end_ms.desc().nulls_last(), 
+            TranscriptSegment.id.desc()
         )
         .limit(MAX_TRANSCRIPT_SEGMENTS)
         .all()
@@ -68,12 +71,14 @@ def _terms_from_latest(db: Session, meeting_id: str) -> list[str]:
         db.query(TranscriptSegment)
         .filter(TranscriptSegment.meeting_id == meeting_id)
         .order_by(
-            TranscriptSegment.ts_end_ms.desc().nulls_last(), TranscriptSegment.id.desc()
+            TranscriptSegment.ts_end_ms.desc().nulls_last(), 
+            TranscriptSegment.id.desc()
         )
         .first()
     )
-    latest = segment.text if segment else ""
-    return asvc.extract_terms(latest)
+    if not segment or not segment.text:
+        return []
+    return asvc.extract_terms(segment.text)
 
 
 def _build_search_query(terms: list[str]) -> str | None:
@@ -118,7 +123,9 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
     if terms:
         for t in terms:
             # Look for file paths: contains '/' but not protocol indicators
-            if "/" in t and not any(proto in t.lower() for proto in PROTOCOL_INDICATORS):
+            if "/" in t and not any(
+                proto in t.lower() for proto in PROTOCOL_INDICATORS
+            ):
                 # Additional check: if it contains a file extension
                 if "." in t.split("/")[-1]:  # Last segment has extension
                     path_term = t

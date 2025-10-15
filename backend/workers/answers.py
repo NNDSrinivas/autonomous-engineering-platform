@@ -27,12 +27,14 @@ NO_RETRIES = 0  # No retries for one-shot operations
 # Pattern for matching semantic version numbers (major.minor.patch) with optional pre-release and build metadata
 # Strict SemVer 2.0.0: Supports "1.2.3", "v1.2.3-alpha", "1.2.3+build", "v1.2.3-alpha.1+build.5", etc.
 VERSION_PATTERN = re.compile(
-    r"^v?"                                 # Optional 'v' prefix
+    r"^v?"  # Optional 'v' prefix
     r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"  # major.minor.patch (no leading zeros)
-    r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?" # Optional pre-release: hyphen, dot-separated identifiers
-    r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?" # Optional build metadata: plus, dot-separated identifiers
+    r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"  # Optional pre-release: hyphen, dot-separated identifiers
+    r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"  # Optional build metadata: plus, dot-separated identifiers
     r"$"
 )
+
+
 def _is_version_number(segment: str) -> bool:
     """Check if a string matches a version number pattern.
 

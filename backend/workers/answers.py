@@ -29,14 +29,15 @@ VERSION_PATTERN = re.compile(r"^v?\d+(\.\d+)*$")
 
 def _is_version_number(segment: str) -> bool:
     """Check if a string matches a version number pattern.
-    
+
     Args:
         segment: String segment to check
-        
+
     Returns:
         True if segment matches version pattern like 'v1.2.3' or '1.2.3'
     """
     return bool(VERSION_PATTERN.match(segment))
+
 
 # Constants for path detection
 PROTOCOL_INDICATORS = [
@@ -213,7 +214,9 @@ def _search_code(db: Session, terms: list[str]) -> list[dict]:
     search_term = path_term if path_term else terms[0]
 
     try:
-        results = GitHubService.search_code(db, repo=None, q=search_term, path_prefix=None)
+        results = GitHubService.search_code(
+            db, repo=None, q=search_term, path_prefix=None
+        )
         return results
     except Exception:
         logger.exception("Error searching code in GitHubService")

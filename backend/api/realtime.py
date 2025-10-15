@@ -315,7 +315,15 @@ def _emit_new_answers(
     if rows:
         last_row = rows[-1]
         if "created_at" in last_row and last_row["created_at"] is not None:
-            return rows, last_row["created_at"].isoformat()
+            if isinstance(last_row["created_at"], datetime):
+                return rows, last_row["created_at"].isoformat()
+            else:
+                # Log a warning when "created_at" is not a datetime object
+                logger.warning(
+                    "'created_at' in answer row for session %s is not a datetime: %r",
+                    session_id, last_row["created_at"]
+                )
+                return rows, last_ts
         else:
             # Log a warning when "created_at" is missing
             logger.warning(

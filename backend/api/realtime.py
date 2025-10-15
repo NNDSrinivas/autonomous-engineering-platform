@@ -154,9 +154,16 @@ def create_session(
     Returns:
         Session and meeting IDs for subsequent API calls
     """
-    m = svc.create_meeting(db, title=body.title or "Untitled Session", provider=body.provider or "manual", org_id=None)
+    m = svc.create_meeting(
+        db, 
+        title=body.title or "Untitled Session", 
+        provider=body.provider or "manual", 
+        org_id=None
+    )
     return CreateSessionResp(
-        session_id=m.session_id, meeting_id=m.id, message="Session created successfully"
+        session_id=m.session_id, 
+        meeting_id=m.id, 
+        message="Session created successfully"
     )
 
 
@@ -310,7 +317,11 @@ def _emit_new_answers(
         if "created_at" in last_row and last_row["created_at"] is not None:
             return rows, last_row["created_at"].isoformat()
         else:
-            # Log a warning or handle gracefully if "created_at" is missing
+            # Log a warning when "created_at" is missing
+            logger.warning(
+                "Missing or null 'created_at' in answer row for session %s", 
+                session_id
+            )
             return rows, last_ts
     return [], last_ts
 

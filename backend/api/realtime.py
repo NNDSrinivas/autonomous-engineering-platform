@@ -28,7 +28,6 @@ ANSWER_GENERATION_INTERVAL = 3  # Generate answer every N captions
 
 # Constants for SSE streaming
 SSE_MAX_DURATION_SECONDS = 3600  # Maximum duration for SSE streams (1 hour)
-SESSION_REFRESH_INTERVAL = 300  # Refresh database session every 5 minutes
 SSE_POLL_INTERVAL_SECONDS = 1  # Polling interval for new answers in SSE streams
 
 # Constants for rate limiting
@@ -387,16 +386,14 @@ def stream_answers(session_id: str) -> StreamingResponse:
 
     Note:
         Stream will continue until client disconnects or max duration is reached.
-        Creates a new database session for each poll to avoid stale connections.
+        Uses a single database session for read-only operations.
     """
     last_ts = None
 
     async def event_stream():
         nonlocal last_ts
         start_time = datetime.now(timezone.utc)
-        # Use connection pooling with periodic refresh to balance performance and connection health
-        session_refresh_interval = SESSION_REFRESH_INTERVAL
-        last_session_refresh = datetime.now(timezone.utc)
+        # Use connection pooling for read-only SSE streaming
 
         try:
             with db_session() as db:
@@ -406,14 +403,9 @@ def stream_answers(session_id: str) -> StreamingResponse:
                         yield _format_sse_data({"event": "timeout"})
                         break
 
-                    # Refresh session periodically to avoid stale connections
-                    current_time = datetime.now(timezone.utc)
-                    if (
-                        current_time - last_session_refresh
-                    ).total_seconds() > session_refresh_interval:
-                        db.rollback()  # Release any locks without persisting changes
-                        db.expire_all()  # Refresh all objects from database
-                        last_session_refresh = current_time
+                    # For read-only SSE streams, periodic session refresh is not necessary.
+                    # Removing aggressive rollback and expire_all to avoid performance issues.
+                    # If session health issues are observed, consider a much less frequent refresh or targeted handling.
 
                     # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)

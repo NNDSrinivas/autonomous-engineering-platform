@@ -21,7 +21,7 @@ MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
 DEFAULT_CONFIDENCE = 0.6  # Default confidence score for generated answers
 DEFAULT_LATENCY_MS = 0  # Default latency for immediate responses
 
-# Regex pattern for extracting alphanumeric words/tokens of 3+ characters
+# Regex pattern for extracting words/tokens of 3+ characters (alphanumeric, underscores, hyphens)
 KEYWORD_EXTRACTION_PATTERN = r"[A-Za-z0-9_-]{3,}"
 
 
@@ -277,7 +277,7 @@ def _format_answer_row(row: SessionAnswer) -> dict[str, Any]:
         "id": row.id,
         "created_at": row.created_at,
         "answer": row.answer,
-        "citations": row.citations,
+        "citations": row.citations or [],
         "confidence": row.confidence,
     }
 

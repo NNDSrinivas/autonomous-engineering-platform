@@ -12,7 +12,7 @@ class SessionAnswer(Base):
     session_id: Mapped[str] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
     answer: Mapped[str] = mapped_column(String)
-    citations: Mapped[list[dict]] = mapped_column(JSON)
+    citations: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     confidence: Mapped[float | None] = mapped_column()
     token_count: Mapped[int | None] = mapped_column(Integer)
     latency_ms: Mapped[int | None] = mapped_column(Integer)

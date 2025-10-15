@@ -306,7 +306,12 @@ def _emit_new_answers(
     """
     rows = asvc.recent_answers(db, session_id, since_ts=last_ts)
     if rows and len(rows) > 0:
-        return rows, rows[-1]["created_at"].isoformat()
+        last_row = rows[-1]
+        if "created_at" in last_row and last_row["created_at"] is not None:
+            return rows, last_row["created_at"].isoformat()
+        else:
+            # Log a warning or handle gracefully if "created_at" is missing
+            return rows, last_ts
     return [], last_ts
 
 

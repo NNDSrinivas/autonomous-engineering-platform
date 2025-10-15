@@ -23,7 +23,10 @@ NO_RETRIES = 0  # No retries for one-shot operations
 
 # Constants for path detection
 PROTOCOL_INDICATORS = [
-    "http", "ftp", "://", "www."
+    "http",
+    "ftp",
+    "://",
+    "www.",
 ]  # Strings that indicate URLs rather than file paths
 
 broker = RedisBroker(url=settings.redis_url)
@@ -45,8 +48,7 @@ def _recent_meeting_text(db: Session, meeting_id_param: str) -> list[str]:
         db.query(TranscriptSegment)
         .filter(TranscriptSegment.meeting_id == meeting_id_param)
         .order_by(
-            TranscriptSegment.ts_end_ms.desc().nulls_last(), 
-            TranscriptSegment.id.desc()
+            TranscriptSegment.ts_end_ms.desc().nulls_last(), TranscriptSegment.id.desc()
         )
         .limit(MAX_TRANSCRIPT_SEGMENTS)
         .all()
@@ -71,8 +73,7 @@ def _terms_from_latest(db: Session, meeting_id_param: str) -> list[str]:
         db.query(TranscriptSegment)
         .filter(TranscriptSegment.meeting_id == meeting_id_param)
         .order_by(
-            TranscriptSegment.ts_end_ms.desc().nulls_last(), 
-            TranscriptSegment.id.desc()
+            TranscriptSegment.ts_end_ms.desc().nulls_last(), TranscriptSegment.id.desc()
         )
         .first()
     )
@@ -109,21 +110,19 @@ def _search_jira(db: Session, terms: list[str]) -> list[dict]:
 
 def _extract_path_term(terms: list[str]) -> str | None:
     """Extract a path-like term from the list, avoiding URLs and version numbers.
-    
+
     Args:
         terms: List of search terms
-        
+
     Returns:
         First valid path-like term found, or None if no valid paths
     """
     if not terms:
         return None
-        
+
     for t in terms:
         # Look for file paths: contains '/' but not protocol indicators
-        if "/" in t and not any(
-            proto in t.lower() for proto in PROTOCOL_INDICATORS
-        ):
+        if "/" in t and not any(proto in t.lower() for proto in PROTOCOL_INDICATORS):
             # Additional check: if it contains a file extension
             if "." in t.split("/")[-1]:  # Last segment has extension
                 return t
@@ -135,20 +134,21 @@ def _extract_path_term(terms: list[str]) -> str | None:
 
 def _search_code(db: Session, terms: list[str]) -> list[dict]:
     """Search code repositories for relevant information."""
-    
+
     if not terms:
         return []
-    
+
     # Try to find a path-like term
     path_term = _extract_path_term(terms)
-    
+
     # Use path if found, otherwise use first term
     search_term = path_term if path_term else terms[0]
-    
+
     try:
         results = GitHubService.search_code(db, search_term)
         return results or []
     except Exception:
+        logger.exception("Error searching code in GitHubService")
         return []
 
 

@@ -40,6 +40,7 @@ def _datetime_serializer(obj):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
+
 # Constants for Redis operations
 REDIS_KEY_EXPIRY_SECONDS = 60  # TTL for Redis keys
 REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
@@ -83,10 +84,10 @@ def _format_sse_data(data: dict | str) -> str:
 
 def _extract_timestamp_from_row(row: dict) -> str | None:
     """Extract and convert timestamp from a row to ISO format string.
-    
+
     Args:
         row: Dictionary containing row data with potential 'created_at' field
-        
+
     Returns:
         ISO formatted timestamp string or None if not available
     """
@@ -96,6 +97,20 @@ def _extract_timestamp_from_row(row: dict) -> str | None:
         # If it's already a string, return as-is
         return str(row["created_at"])
     return None
+
+
+def _convert_timestamp_to_iso(timestamp: datetime | str | None) -> str | None:
+    """Convert datetime or string timestamp to ISO format string.
+
+    Args:
+        timestamp: Datetime object, ISO string, or None
+
+    Returns:
+        ISO formatted timestamp string or input if already string/None
+    """
+    if isinstance(timestamp, datetime):
+        return timestamp.isoformat()
+    return timestamp
 
 
 app = FastAPI(title=f"{settings.app_name} - Realtime API")
@@ -171,16 +186,9 @@ def create_session(
     Returns:
         Session and meeting IDs for subsequent API calls
     """
-    m = svc.create_meeting(
-        db, 
-        title=body.title, 
-        provider=body.provider, 
-        org_id=None
-    )
+    m = svc.create_meeting(db, title=body.title, provider=body.provider, org_id=None)
     return CreateSessionResp(
-        session_id=m.session_id, 
-        meeting_id=m.id, 
-        message="Session created successfully"
+        session_id=m.session_id, meeting_id=m.id, message="Session created successfully"
     )
 
 
@@ -329,7 +337,7 @@ def _emit_new_answers(
         Tuple of (new_rows, updated_last_ts as ISO string)
     """
     # Convert datetime to string for the API call
-    since_ts = last_ts.isoformat() if isinstance(last_ts, datetime) else last_ts
+    since_ts = _convert_timestamp_to_iso(last_ts)
     rows = asvc.recent_answers(db, session_id, since_ts=since_ts)
     if rows:
         last_row = rows[-1]
@@ -339,11 +347,10 @@ def _emit_new_answers(
         else:
             # Log a warning when "created_at" is missing
             logger.warning(
-                "Missing or null 'created_at' in answer row for session %s", 
-                session_id
+                "Missing or null 'created_at' in answer row for session %s", session_id
             )
-            return rows, last_ts.isoformat() if isinstance(last_ts, datetime) else last_ts
-    return [], last_ts.isoformat() if isinstance(last_ts, datetime) else last_ts
+            return rows, _convert_timestamp_to_iso(last_ts)
+    return [], _convert_timestamp_to_iso(last_ts)
 
 
 @app.get("/api/sessions/{session_id}/stream")
@@ -380,11 +387,13 @@ def stream_answers(session_id: str) -> StreamingResponse:
                     yield _format_sse_data(r)
                 await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
         except Exception as e:
-            logger.exception(
-                "Error in SSE stream for session %s: %s", session_id, e
-            )
+            logger.exception("Error in SSE stream for session %s: %s", session_id, e)
             yield _format_sse_data(
-                {"event": "error", "message": "An internal server error occurred."}
+                {
+                    "event": "error",
+                    "message": f"SSE stream error for session {session_id}. Please try reconnecting.",
+                    "session_id": session_id,
+                }
             )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

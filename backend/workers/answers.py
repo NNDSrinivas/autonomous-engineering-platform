@@ -26,7 +26,7 @@ NO_RETRIES = 0  # No retries for one-shot operations
 
 # Pattern for matching semantic version numbers (major.minor.patch) with optional pre-release and build metadata
 # Supports: "1.2.3", "v1.2.3-alpha", "1.2.3+build", "v1.2.3-alpha+build"
-VERSION_PATTERN = re.compile(r'^v?\d+\.\d+\.\d+(-[0-9A-Za-z-]+)?(\+[0-9A-Za-z-]+)?$')
+VERSION_PATTERN = re.compile(r"^v?\d+\.\d+\.\d+(-[0-9A-Za-z-]+)?(\+[0-9A-Za-z-]+)?$")
 
 
 def _is_version_number(segment: str) -> bool:

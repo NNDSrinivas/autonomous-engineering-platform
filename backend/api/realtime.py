@@ -372,20 +372,33 @@ def stream_answers(session_id: str) -> StreamingResponse:
     async def event_stream():
         nonlocal last_ts
         start_time = datetime.now(timezone.utc)
-        # Create a new DB session for each poll iteration to avoid stale connections and resource exhaustion
+        # Use connection pooling with periodic refresh to balance performance and connection health
+        session_refresh_interval = 300  # Refresh session every 5 minutes
+        last_session_refresh = datetime.now(timezone.utc)
+
         try:
-            while True:
-                # Check if max duration exceeded
-                if _check_stream_timeout(start_time):
-                    yield _format_sse_data({"event": "timeout"})
-                    break
-                # Query for new answers and emit them
-                with db_session() as db:
+            with db_session() as db:
+                while True:
+                    # Check if max duration exceeded
+                    if _check_stream_timeout(start_time):
+                        yield _format_sse_data({"event": "timeout"})
+                        break
+
+                    # Refresh session periodically to avoid stale connections
+                    current_time = datetime.now(timezone.utc)
+                    if (
+                        current_time - last_session_refresh
+                    ).total_seconds() > session_refresh_interval:
+                        db.commit()  # Commit any pending changes
+                        db.expire_all()  # Refresh all objects from database
+                        last_session_refresh = current_time
+
+                    # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)
-                # Emit in chronological order (oldest first)
-                for r in rows:
-                    yield _format_sse_data(r)
-                await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
+                    # Emit in chronological order (oldest first)
+                    for r in rows:
+                        yield _format_sse_data(r)
+                    await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
         except Exception as e:
             logger.exception("Error in SSE stream for session %s: %s", session_id, e)
             yield _format_sse_data(

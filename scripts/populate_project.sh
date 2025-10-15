@@ -3,7 +3,7 @@
 # Project Issue Creator for Autonomous Engineering Platform
 #
 # This script creates and organizes GitHub issues for the autonomous engineering 
-# platform project. It sets up a comprehensive project structure with pre-defined
+# platform project. It sets up a comprehensive project structure with predefined
 # issues organized into different phases (Discovery, Foundation, Core Features, etc.)
 # and automatically assigns them to the appropriate GitHub Project board columns.
 #

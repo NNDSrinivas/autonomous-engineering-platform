@@ -171,14 +171,54 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
         Tuple of (answer_text, citation)
     """
     if "." in text_context:
-        # Extract last two sentences using regex that handles abbreviations and decimals
-        # Split on periods followed by whitespace and capital letter, avoiding common abbreviations
-        sentence_pattern = r"\.(?=\s+[A-Z]|$)(?!\s*[a-z]{1,3}\.|\s*\d)"
+        # Extract last two sentences using improved sentence boundary detection
+        # Handle common abbreviations and edge cases more robustly
+
+        # Common abbreviations that shouldn't trigger sentence breaks
+        abbreviations = {
+            "Dr",
+            "Mr",
+            "Mrs",
+            "Ms",
+            "Prof",
+            "Inc",
+            "Ltd",
+            "Corp",
+            "vs",
+            "etc",
+            "i.e",
+            "e.g",
+        }
+
+        # Split on periods, but reassemble when followed by known abbreviations
+        potential_sentences = text_context.split(".")
         sentences = []
-        for sent in re.split(sentence_pattern, text_context):
-            stripped = sent.strip()
-            if stripped and len(stripped) > MIN_SENTENCE_LENGTH:
-                sentences.append(stripped)
+        current_sentence = ""
+
+        for i, part in enumerate(potential_sentences):
+            current_sentence += part
+
+            # Check if this is the last part
+            if i == len(potential_sentences) - 1:
+                if current_sentence.strip():
+                    sentences.append(current_sentence.strip())
+                break
+
+            # Check if the part ends with a known abbreviation
+            words = part.strip().split()
+            if words and words[-1] in abbreviations:
+                # This is an abbreviation, continue building the sentence
+                current_sentence += "."
+            else:
+                # This appears to be a sentence boundary
+                current_sentence += "."
+                if (
+                    current_sentence.strip()
+                    and len(current_sentence.strip()) > MIN_SENTENCE_LENGTH
+                ):
+                    sentences.append(current_sentence.strip())
+                current_sentence = ""
+
         s = sentences[-2:] if sentences else []
     else:
         s = []

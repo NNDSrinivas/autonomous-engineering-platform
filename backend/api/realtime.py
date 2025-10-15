@@ -48,10 +48,31 @@ REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
 
 logger = setup_logging()
 
-# Create Redis connection pool for reuse across requests
-redis_pool = redis.ConnectionPool.from_url(
-    settings.redis_url, decode_responses=True, max_connections=REDIS_MAX_CONNECTIONS
-)
+# Lazy-initialized Redis connection pool for reuse across requests
+_redis_pool = None
+_redis_client = None
+
+
+def get_redis_pool():
+    """Get or create Redis connection pool with error handling."""
+    global _redis_pool
+    if _redis_pool is None:
+        try:
+            _redis_pool = redis.ConnectionPool.from_url(
+                settings.redis_url, decode_responses=True, max_connections=REDIS_MAX_CONNECTIONS
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize Redis connection pool: {e}")
+            raise HTTPException(status_code=503, detail="Redis unavailable")
+    return _redis_pool
+
+
+def get_redis_client():
+    """Get or create Redis client with connection pool."""
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.Redis(connection_pool=get_redis_pool())
+    return _redis_client
 
 
 # Context manager for database sessions in streaming contexts
@@ -225,7 +246,7 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         text: Caption text for analysis
     """
     try:
-        r = redis.Redis(connection_pool=redis_pool)
+        r = get_redis_client()
         key = f"ans:count:{session_id}"
         pipe = r.pipeline()
         pipe.incr(key)
@@ -390,7 +411,7 @@ def stream_answers(session_id: str) -> StreamingResponse:
                     if (
                         current_time - last_session_refresh
                     ).total_seconds() > session_refresh_interval:
-                        db.commit()  # Commit any pending changes
+                        db.rollback()  # Release any locks without persisting changes
                         db.expire_all()  # Refresh all objects from database
                         last_session_refresh = current_time
 

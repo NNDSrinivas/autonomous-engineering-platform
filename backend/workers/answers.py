@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
@@ -21,6 +22,21 @@ MAX_TRANSCRIPT_SEGMENTS = 20  # Maximum number of recent transcript segments to 
 
 # Constants for Dramatiq actor configuration
 NO_RETRIES = 0  # No retries for one-shot operations
+
+# Pattern for matching version numbers like "v1.2.3" or "1.2.3"
+VERSION_PATTERN = re.compile(r"^v?\d+(\.\d+)*$")
+
+
+def _is_version_number(segment: str) -> bool:
+    """Check if a string matches a version number pattern.
+    
+    Args:
+        segment: String segment to check
+        
+    Returns:
+        True if segment matches version pattern like 'v1.2.3' or '1.2.3'
+    """
+    return bool(VERSION_PATTERN.match(segment))
 
 # Constants for path detection
 PROTOCOL_INDICATORS = [
@@ -173,13 +189,12 @@ def _extract_path_term(terms: list[str]) -> str | None:
                 if extension in VALID_EXTENSIONS:
                     return t
                 # Avoid version numbers like "1.2.3" or "v1.2.3"
-                if last_segment.replace("v", "").replace(".", "").isdigit():
+                if _is_version_number(last_segment):
                     continue
 
             # Or if it looks like a directory path (multiple segments, no obvious version pattern)
             elif len(t.split("/")) > 1 and not any(
-                segment.replace("v", "").replace(".", "").isdigit()
-                for segment in t.split("/")
+                _is_version_number(segment) for segment in t.split("/")
             ):
                 return t
     return None

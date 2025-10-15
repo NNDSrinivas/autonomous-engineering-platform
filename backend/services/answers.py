@@ -265,23 +265,27 @@ def generate_grounded_answer(
     text_context = " ".join(context_parts)
     # If still too long (e.g., one very long snippet), truncate at word boundary
     if len(text_context) > MAX_CONTEXT_LENGTH:
-        # Find the last space before MAX_CONTEXT_LENGTH
-        cutoff = text_context.rfind(" ", 0, MAX_CONTEXT_LENGTH)
-        if cutoff == -1:
-            # No space before MAX_CONTEXT_LENGTH; try to find the next space after
-            next_space = text_context.find(" ", MAX_CONTEXT_LENGTH)
-            if next_space != -1:
-                text_context = text_context[:next_space]
-            else:
-                # No spaces at all; apply absolute hard limit to prevent unbounded growth
-                hard_limit = int(
-                    MAX_CONTEXT_LENGTH * 1.5
-                )  # Allow 50% overflow for single words
-                if len(text_context) > hard_limit:
-                    text_context = text_context[:hard_limit]
-                # else: preserve complete word if under hard limit
+        # Check if the character exactly at MAX_CONTEXT_LENGTH is a space
+        if text_context[MAX_CONTEXT_LENGTH] == " ":
+            text_context = text_context[:MAX_CONTEXT_LENGTH]
         else:
-            text_context = text_context[:cutoff]
+            # Find the last space before MAX_CONTEXT_LENGTH
+            cutoff = text_context.rfind(" ", 0, MAX_CONTEXT_LENGTH)
+            if cutoff == -1:
+                # No space before MAX_CONTEXT_LENGTH; try to find the next space after
+                next_space = text_context.find(" ", MAX_CONTEXT_LENGTH)
+                if next_space != -1:
+                    text_context = text_context[:next_space]
+                else:
+                    # No spaces at all; apply absolute hard limit to prevent unbounded growth
+                    hard_limit = int(
+                        MAX_CONTEXT_LENGTH * 1.5
+                    )  # Allow 50% overflow for single words
+                    if len(text_context) > hard_limit:
+                        text_context = text_context[:hard_limit]
+                    # else: preserve complete word if under hard limit
+            else:
+                text_context = text_context[:cutoff]
 
     # Generate answer based on priority order
     if jira_hits:

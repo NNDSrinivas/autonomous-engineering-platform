@@ -6,6 +6,7 @@ from datetime import datetime
 
 class SessionAnswer(Base):
     """SQLAlchemy model for storing AI-generated answers and metadata."""
+
     __tablename__ = "session_answer"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     session_id: Mapped[str] = mapped_column(String)

@@ -105,10 +105,10 @@ def _pick_best(items: list[dict], n: int) -> list[dict]:
 
 def _generate_jira_answer(jira_hit: dict) -> tuple[str, dict]:
     """Generate answer from JIRA issue.
-    
+
     Args:
         jira_hit: JIRA issue data
-        
+
     Returns:
         Tuple of (answer_text, citation)
     """
@@ -122,10 +122,10 @@ def _generate_jira_answer(jira_hit: dict) -> tuple[str, dict]:
 
 def _generate_code_answer(code_hit: dict) -> tuple[str, dict]:
     """Generate answer from GitHub code.
-    
+
     Args:
         code_hit: GitHub code data
-        
+
     Returns:
         Tuple of (answer_text, citation)
     """
@@ -138,10 +138,10 @@ def _generate_code_answer(code_hit: dict) -> tuple[str, dict]:
 
 def _generate_pr_answer(pr_hit: dict) -> tuple[str, dict]:
     """Generate answer from GitHub PR.
-    
+
     Args:
         pr_hit: GitHub PR data
-        
+
     Returns:
         Tuple of (answer_text, citation)
     """
@@ -155,10 +155,10 @@ def _generate_pr_answer(pr_hit: dict) -> tuple[str, dict]:
 
 def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
     """Generate fallback answer from meeting context.
-    
+
     Args:
         text_context: Meeting transcript text
-        
+
     Returns:
         Tuple of (answer_text, citation)
     """
@@ -172,10 +172,10 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
         s = sentences[-2:] if sentences else []
     else:
         s = []
-    
+
     if not s:
         s = [text_context[:MAX_FALLBACK_LENGTH]]
-    
+
     answer = " ".join(s).strip()
     citation = {"type": "meeting"}
     return answer, citation
@@ -201,7 +201,7 @@ def generate_grounded_answer(
         Dictionary with answer text, citations, confidence score, token count, and latency_ms placeholder
     """
     text_context = " ".join(meeting_snippets)[-MAX_CONTEXT_LENGTH:]
-    
+
     # Generate answer based on priority order
     if jira_hits:
         answer, citation = _generate_jira_answer(jira_hits[0])

@@ -92,6 +92,11 @@ app.add_middleware(AuditMiddleware, service_name="realtime")
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    """Health check endpoint for service monitoring.
+
+    Returns:
+        Status information with service name and timestamp
+    """
     return {
         "status": "ok",
         "service": "realtime",
@@ -101,6 +106,11 @@ def health() -> dict[str, str]:
 
 @app.get("/version")
 def version() -> dict[str, str]:
+    """Version information endpoint.
+
+    Returns:
+        Application name, environment, and version details
+    """
     return {"name": settings.app_name, "env": settings.app_env, "version": "0.1.0"}
 
 

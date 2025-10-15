@@ -63,6 +63,45 @@ COMMON_ABBREVIATIONS = {
 }
 
 
+def _truncate_at_word_boundary(text: str, max_length: int, hard_limit: int) -> str:
+    """Truncate text at word boundaries with hard limit fallback.
+
+    Attempts to truncate at the optimal word boundary while preserving complete words.
+    Falls back to hard limit if no suitable word boundaries are found.
+
+    Args:
+        text: Text to truncate
+        max_length: Preferred maximum length (word boundary target)
+        hard_limit: Absolute maximum length (hard cutoff)
+
+    Returns:
+        Truncated text respecting word boundaries when possible
+    """
+    if len(text) <= max_length:
+        return text
+
+    # Check if the character exactly at max_length is a space
+    if max_length < len(text) and text[max_length] == " ":
+        return text[:max_length]
+
+    # Find the last space before max_length
+    cutoff = text.rfind(" ", 0, max_length)
+    if cutoff != -1:
+        return text[:cutoff]
+
+    # No space before max_length; try to find the next space after
+    next_space = text.find(" ", max_length)
+    if next_space != -1:
+        return text[:next_space]
+
+    # No spaces at all; apply absolute hard limit to prevent unbounded growth
+    if len(text) > hard_limit:
+        return text[:hard_limit]
+
+    # Preserve complete word if under hard limit
+    return text
+
+
 def parse_iso_timestamp(timestamp_str: str) -> datetime:
     """Parse an ISO 8601 timestamp string to a timezone-aware datetime object.
 
@@ -272,28 +311,9 @@ def generate_grounded_answer(
         total_length += snippet_length
     text_context = " ".join(context_parts)
     # If still too long (e.g., one very long snippet), truncate at word boundary
-    if len(text_context) > MAX_CONTEXT_LENGTH:
-        # Check if the character exactly at MAX_CONTEXT_LENGTH is a space
-        if (
-            MAX_CONTEXT_LENGTH < len(text_context)
-            and text_context[MAX_CONTEXT_LENGTH] == " "
-        ):
-            text_context = text_context[:MAX_CONTEXT_LENGTH]
-        else:
-            # Find the last space before MAX_CONTEXT_LENGTH
-            cutoff = text_context.rfind(" ", 0, MAX_CONTEXT_LENGTH)
-            if cutoff == -1:
-                # No space before MAX_CONTEXT_LENGTH; try to find the next space after
-                next_space = text_context.find(" ", MAX_CONTEXT_LENGTH)
-                if next_space != -1:
-                    text_context = text_context[:next_space]
-                else:
-                    # No spaces at all; apply absolute hard limit to prevent unbounded growth
-                    if len(text_context) > HARD_CONTEXT_LIMIT:
-                        text_context = text_context[:HARD_CONTEXT_LIMIT]
-                    # else: preserve complete word if under hard limit
-            else:
-                text_context = text_context[:cutoff]
+    text_context = _truncate_at_word_boundary(
+        text_context, MAX_CONTEXT_LENGTH, HARD_CONTEXT_LIMIT
+    )
 
     # Generate answer based on priority order
     if jira_hits:

@@ -2,7 +2,6 @@ import logging
 import re
 import time
 import dramatiq
-import sqlalchemy.exc
 from dramatiq.brokers.redis import RedisBroker
 from sqlalchemy.orm import Session
 from ..core.config import settings

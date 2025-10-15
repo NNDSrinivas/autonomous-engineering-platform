@@ -100,4 +100,3 @@ cd frontend && npm start          # Web UI (port 3000)
 - 📧 srinivasn7779@gmail.com
 - 🔗 LinkedIn: [nnd-srinivas](https://www.linkedin.com/in/nnd-srinivas/)
 - 💻 GitHub: [NNDSrinivas](https://github.com/NNDSrinivas)
-# Trigger new CI build

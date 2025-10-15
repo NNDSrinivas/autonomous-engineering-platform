@@ -185,14 +185,15 @@ def _extract_path_term(terms: list[str]) -> str | None:
         if "/" in t and not any(proto in t_lower for proto in PROTOCOL_INDICATORS):
             last_segment = t.split("/")[-1]
 
+            # Avoid version numbers like "1.2.3" or "v1.2.3"
+            if _is_version_number(last_segment):
+                continue
+
             # Check if last segment has a valid file extension
             if "." in last_segment:
                 extension = "." + last_segment.split(".")[-1].lower()
                 if extension in VALID_EXTENSIONS:
                     return t
-                # Avoid version numbers like "1.2.3" or "v1.2.3"
-                if _is_version_number(last_segment):
-                    continue
 
             # Or if it looks like a directory path (multiple segments, no obvious version pattern)
             elif len(t.split("/")) > 1 and not any(

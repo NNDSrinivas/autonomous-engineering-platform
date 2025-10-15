@@ -443,8 +443,10 @@ def _emit_new_answers(
             logger.warning(
                 "Missing or null 'created_at' in answer row for session %s", session_id
             )
-            # Use current UTC time to ensure progress and avoid infinite loop
-            return rows, datetime.now(timezone.utc).isoformat()
+            # Use current UTC time with microsecond precision to ensure unique fallback timestamps
+            # datetime.now() includes microseconds by default, ensuring uniqueness even for rapid calls
+            fallback_timestamp = datetime.now(timezone.utc).isoformat()
+            return rows, fallback_timestamp
     return [], _convert_timestamp_to_iso(last_ts)
 
 

@@ -24,8 +24,9 @@ MAX_TRANSCRIPT_SEGMENTS = 20  # Maximum number of recent transcript segments to 
 # Constants for Dramatiq actor configuration
 NO_RETRIES = 0  # No retries for one-shot operations
 
-# Pattern for matching version numbers like "v1", "v1.2", or "v1.2.3" (semantic versioning)
-VERSION_PATTERN = re.compile(r"^v?\d+(\.\d+){0,2}$")
+# Pattern for matching semantic version numbers, including pre-release and build metadata
+# Supports: "v1", "v1.2", "v1.2.3", "v1.2.3-alpha", "v1.2.3-alpha.1", "v1.2.3+build.1", "v1.2.3-alpha+build.1"
+VERSION_PATTERN = re.compile(r"^v?\d+(\.\d+)*(-[0-9A-Za-z-.]+)?(\+[0-9A-Za-z-.]+)?$")
 
 
 def _is_version_number(segment: str) -> bool:

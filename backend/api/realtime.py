@@ -503,6 +503,7 @@ def stream_answers(session_id: str) -> StreamingResponse:
             # Short-lived sessions are preferred for SSE streams to prevent resource leaks
             # and connection pool exhaustion with 100+ concurrent streams. Session overhead
             # is minimal compared to long-held connections in streaming contexts.
+            # Poll continuously until timeout or client disconnect
             while True:
                 # Check if max duration exceeded
                 if _check_stream_timeout(start_time):

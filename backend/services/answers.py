@@ -26,7 +26,12 @@ HARD_CONTEXT_LIMIT = int(
 MAX_RECENT_ANSWERS = 20  # Maximum number of recent answers to retrieve
 
 # Constants for answer metadata
-DEFAULT_CONFIDENCE = 0.6  # Default confidence score for generated answers
+# Default confidence score for generated answers.
+# Rationale: 0.6 was chosen as a moderate baseline reflecting partial confidence in answers
+# when citation source quality is unknown or mixed. This value is intended as a placeholder
+# until dynamic confidence calculation based on citation source (e.g., JIRA=0.8, code=0.7, meeting-only=0.4)
+# is implemented. Adjust as needed based on empirical evaluation or business requirements.
+DEFAULT_CONFIDENCE = 0.6
 DEFAULT_LATENCY_MS = 0  # Default latency for immediate responses
 
 # Regex pattern for extracting words/tokens of 3+ characters (alphanumeric, underscores, hyphens)

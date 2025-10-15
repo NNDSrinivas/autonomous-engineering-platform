@@ -306,7 +306,9 @@ def recent_answers(
         try:
             since_datetime = parse_iso_timestamp(since_ts)
         except ValueError as e:
-            raise ValueError(f"Invalid ISO timestamp format for 'since_ts': {since_ts}. Error: {e}")
+            raise ValueError(
+                f"Invalid ISO timestamp format for 'since_ts': {since_ts}. Error: {e}"
+            )
         query = query.filter(SessionAnswer.created_at >= since_datetime)
     query = query.order_by(SessionAnswer.created_at.asc()).limit(MAX_RECENT_ANSWERS)
     rows = query.all()

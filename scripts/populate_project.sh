@@ -161,3 +161,7 @@ create_and_add \
   "$STATUS_BACKLOG" "$PRIORITY_P1"
 
 echo "✅ Done. Review your board at: https://github.com/users/${OWNER}/projects/${PROJECT_NUMBER}"
+# Safer: quote variables in URL
+echo "✅ Done. Review your board at: https://github.com/users/${OWNER}/projects/${PROJECT_NUMBER}"
+# Correct fix:
+echo "✅ Done. Review your board at: https://github.com/users/\"${OWNER}\"/projects/\"${PROJECT_NUMBER}\""

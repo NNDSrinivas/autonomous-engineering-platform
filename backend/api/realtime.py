@@ -266,7 +266,9 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         if _should_generate_answer(text, n):
             generate_answer.send(session_id)
     except (redis.RedisError, ConnectionError) as e:
-        logger.warning("Failed to enqueue answer generation for session %s: %s", session_id, e)
+        logger.warning(
+            "Failed to enqueue answer generation for session %s: %s", session_id, e
+        )
 
 
 @app.post("/api/sessions/{session_id}/captions")
@@ -413,9 +415,8 @@ def stream_answers(session_id: str) -> StreamingResponse:
                         yield _format_sse_data({"event": "timeout"})
                         break
 
-                    # For read-only SSE streams, periodic session refresh is not necessary.
-                    # Removing aggressive rollback and expire_all to avoid performance issues.
-                    # If session health issues are observed, consider a much less frequent refresh or targeted handling.
+                    # Database session is maintained throughout the stream lifecycle for read-only operations.
+                    # No periodic refresh needed for this use case.
 
                     # Query for new answers and emit them
                     rows, last_ts = _emit_new_answers(db, session_id, last_ts)

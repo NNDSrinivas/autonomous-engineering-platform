@@ -23,7 +23,10 @@ NO_RETRIES = 0  # No retries for one-shot operations
 
 # Constants for path detection
 PROTOCOL_INDICATORS = [
-    "http", "ftp", "://", "www."
+    "http",
+    "ftp",
+    "://",
+    "www.",
 ]  # Strings that indicate URLs rather than file paths
 
 broker = RedisBroker(url=settings.redis_url)
@@ -45,8 +48,7 @@ def _recent_meeting_text(db: Session, meeting_id_param: str) -> list[str]:
         db.query(TranscriptSegment)
         .filter(TranscriptSegment.meeting_id == meeting_id_param)
         .order_by(
-            TranscriptSegment.ts_end_ms.desc().nulls_last(), 
-            TranscriptSegment.id.desc()
+            TranscriptSegment.ts_end_ms.desc().nulls_last(), TranscriptSegment.id.desc()
         )
         .limit(MAX_TRANSCRIPT_SEGMENTS)
         .all()
@@ -71,8 +73,7 @@ def _terms_from_latest(db: Session, meeting_id_param: str) -> list[str]:
         db.query(TranscriptSegment)
         .filter(TranscriptSegment.meeting_id == meeting_id_param)
         .order_by(
-            TranscriptSegment.ts_end_ms.desc().nulls_last(), 
-            TranscriptSegment.id.desc()
+            TranscriptSegment.ts_end_ms.desc().nulls_last(), TranscriptSegment.id.desc()
         )
         .first()
     )
@@ -107,34 +108,48 @@ def _search_jira(db: Session, terms: list[str]) -> list[dict]:
     return JiraService.search_issues(db, project=None, q=q, updated_since=None)
 
 
-def _search_code(db: Session, terms: list[str]) -> list[dict]:
-    """Search GitHub code using extracted terms.
+def _extract_path_term(terms: list[str]) -> str | None:
+    """Extract a path-like term from the list, avoiding URLs and version numbers.
 
     Args:
-        db: Database session
         terms: List of search terms
 
     Returns:
-        List of matching code files
+        First valid path-like term found, or None if no valid paths
     """
-    q = _build_search_query(terms)
-    # Choose a path-like term if present (avoid URLs and version numbers)
-    path_term = None
-    if terms:
-        for t in terms:
-            # Look for file paths: contains '/' but not protocol indicators
-            if "/" in t and not any(
-                proto in t.lower() for proto in PROTOCOL_INDICATORS
-            ):
-                # Additional check: if it contains a file extension
-                if "." in t.split("/")[-1]:  # Last segment has extension
-                    path_term = t
-                    break
-                # Or if it looks like a directory path
-                elif len(t.split("/")) > 1:
-                    path_term = t
-                    break
-    return GitHubService.search_code(db, repo=None, q=q, path_prefix=path_term)
+    if not terms:
+        return None
+
+    for t in terms:
+        # Look for file paths: contains '/' but not protocol indicators
+        if "/" in t and not any(proto in t.lower() for proto in PROTOCOL_INDICATORS):
+            # Additional check: if it contains a file extension
+            if "." in t.split("/")[-1]:  # Last segment has extension
+                return t
+            # Or if it looks like a directory path
+            elif len(t.split("/")) > 1:
+                return t
+    return None
+
+
+def _search_code(db: Session, terms: list[str]) -> list[dict]:
+    """Search code repositories for relevant information."""
+    from backend.integrations.github.service import GitHubService
+
+    if not terms:
+        return []
+
+    # Try to find a path-like term
+    path_term = _extract_path_term(terms)
+
+    # Use path if found, otherwise use first term
+    search_term = path_term if path_term else terms[0]
+
+    try:
+        results = GitHubService.search_code(db, search_term)
+        return results or []
+    except Exception:
+        return []
 
 
 def _search_prs(db: Session, terms: list[str]) -> list[dict]:

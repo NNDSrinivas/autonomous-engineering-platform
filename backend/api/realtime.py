@@ -40,6 +40,7 @@ def _datetime_serializer(obj):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
+
 # Constants for Redis operations
 REDIS_KEY_EXPIRY_SECONDS = 60  # TTL for Redis keys
 REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
@@ -155,15 +156,13 @@ def create_session(
         Session and meeting IDs for subsequent API calls
     """
     m = svc.create_meeting(
-        db, 
-        title=body.title or "Untitled Session", 
-        provider=body.provider or "manual", 
-        org_id=None
+        db,
+        title=body.title or "Untitled Session",
+        provider=body.provider or "manual",
+        org_id=None,
     )
     return CreateSessionResp(
-        session_id=m.session_id, 
-        meeting_id=m.id, 
-        message="Session created successfully"
+        session_id=m.session_id, meeting_id=m.id, message="Session created successfully"
     )
 
 
@@ -327,8 +326,7 @@ def _emit_new_answers(
         else:
             # Log a warning when "created_at" is missing
             logger.warning(
-                "Missing or null 'created_at' in answer row for session %s", 
-                session_id
+                "Missing or null 'created_at' in answer row for session %s", session_id
             )
             return rows, last_ts
     return [], last_ts

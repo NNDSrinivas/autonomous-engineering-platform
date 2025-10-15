@@ -69,6 +69,10 @@ FALLBACK_QUESTION_INDICATORS = {
     "could",
     "will",  # Modal verbs indicate questions or uncertainty
 }
+
+# Additional modal verbs not covered by FALLBACK_QUESTION_INDICATORS
+ADDITIONAL_MODAL_VERBS = ["might", "may"]
+
 REDIS_MAX_CONNECTIONS = 10  # Maximum connections in Redis pool
 
 logger = setup_logging()
@@ -331,12 +335,8 @@ def _should_generate_answer_fallback(text: str) -> bool:
     has_question_punctuation = "?" in text_lower
 
     # Additional generous patterns for fallback mode
-    # Only check for modal verbs not already in FALLBACK_QUESTION_INDICATORS
-    additional_modal_verbs = [
-        "might",
-        "may",
-    ]  # "should", "would", "could" already in FALLBACK_QUESTION_INDICATORS
-    has_modal_verbs = any(modal in text_lower for modal in additional_modal_verbs)
+    # Use module-level constant for performance
+    has_modal_verbs = any(modal in text_lower for modal in ADDITIONAL_MODAL_VERBS)
     has_uncertainty = any(
         word in text_lower
         for word in ["maybe", "perhaps", "possibly", "not sure", "uncertain"]
@@ -489,7 +489,6 @@ def stream_answers(session_id: str) -> StreamingResponse:
         try:
             # Acquire a single database session for the duration of the stream
             with db_session() as db:
-                loop_count = 0
                 while True:
                     # Check if max duration exceeded
                     if _check_stream_timeout(start_time):
@@ -506,7 +505,6 @@ def stream_answers(session_id: str) -> StreamingResponse:
                     for r in rows:
                         yield _format_sse_data(r)
 
-                    loop_count += 1
                     await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
         except asyncio.CancelledError:
             # Client disconnected - clean shutdown

@@ -104,6 +104,7 @@ def _recent_meeting_text(db: Session, meeting_id_param: str) -> list[str]:
         List of transcript text segments in chronological order
     """
     # Use SQLAlchemy ORM for better type safety and maintainability
+    # Note: Consider adding composite index: (meeting_id, ts_end_ms DESC, id DESC) for query optimization
     segments = (
         db.query(TranscriptSegment)
         .filter(TranscriptSegment.meeting_id == meeting_id_param)
@@ -127,6 +128,7 @@ def _terms_from_latest(db: Session, meeting_id_param: str) -> list[str]:
         List of extracted keyword terms
     """
     # Use SQLAlchemy ORM for better type safety and maintainability
+    # Note: Consider adding composite index: (meeting_id, ts_end_ms DESC, id DESC) for query optimization
     segment = (
         db.query(TranscriptSegment)
         .filter(TranscriptSegment.meeting_id == meeting_id_param)

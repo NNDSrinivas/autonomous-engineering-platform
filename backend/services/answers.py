@@ -50,8 +50,8 @@ COMMON_ABBREVIATIONS = {
     "Corp",
     "vs",
     "etc",
-    "i.e",
-    "e.g",
+    "ie",  # Both with and without periods for robust matching
+    "eg",
 }
 
 
@@ -202,8 +202,8 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
             if not part:
                 continue
             words = part.split()
-            # Check if the last word is a known abbreviation (strip trailing punctuation)
-            last_word = words[-1].rstrip(".!?") if words else ""
+            # Check if the last word is a known abbreviation (strip trailing punctuation and internal periods)
+            last_word = words[-1].rstrip(".!?").replace(".", "") if words else ""
             if last_word in COMMON_ABBREVIATIONS and i < len(potential_sentences) - 1:
                 # This is an abbreviation, continue building the sentence
                 current_sentence += part + " "

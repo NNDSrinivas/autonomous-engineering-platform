@@ -256,7 +256,7 @@ def generate_grounded_answer(
     # Iterate from the end (most recent) backwards
     for snippet in reversed(meeting_snippets):
         snippet_length = len(snippet) + (
-            1 if context_parts else 0
+            0 if not context_parts else 1
         )  # +1 for space if not first
         if total_length + snippet_length > MAX_CONTEXT_LENGTH:
             break
@@ -268,7 +268,13 @@ def generate_grounded_answer(
         # Find the last space before MAX_CONTEXT_LENGTH
         cutoff = text_context.rfind(" ", 0, MAX_CONTEXT_LENGTH)
         if cutoff == -1:
-            text_context = text_context[:MAX_CONTEXT_LENGTH]
+            # No space before MAX_CONTEXT_LENGTH; try to find the next space after
+            next_space = text_context.find(" ", MAX_CONTEXT_LENGTH)
+            if next_space != -1:
+                text_context = text_context[:next_space]
+            else:
+                # No spaces at all; preserve the whole text (single long word)
+                pass  # Keep text_context as is to preserve complete word
         else:
             text_context = text_context[:cutoff]
 

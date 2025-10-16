@@ -54,17 +54,25 @@ class UpdateTaskRequest(BaseModel):
 def update_task(
     task_id: str,
     body: UpdateTaskRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    task = task_service.update_task(db, task_id, **body.model_dump(exclude_none=True))
+    org_id = request.headers.get("X-Org-Id")
+    task = task_service.update_task(
+        db,
+        task_id,
+        org_id=org_id,
+        **body.model_dump(exclude_none=True),
+    )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"ok": True}
 
 
 @router.get("/{task_id}")
-def get_task(task_id: str, db: Session = Depends(get_db)):
-    task = task_service.get_task(db, task_id)
+def get_task(task_id: str, request: Request, db: Session = Depends(get_db)):
+    org_id = request.headers.get("X-Org-Id")
+    task = task_service.get_task(db, task_id, org_id=org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task

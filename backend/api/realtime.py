@@ -103,8 +103,8 @@ def get_redis_client() -> redis.Redis:
     Expected concurrency: Up to 100+ concurrent SSE streams per instance
     with proper Redis pool sizing (recommend 0.5-1 connection per concurrent stream).
 
-    Singleton limitation: All workers share the same connection pool, which may become
-    a bottleneck under extreme load. Consider per-worker instances for 500+ concurrent streams.
+    Singleton limitation: All concurrent requests within the same worker process share the same
+    connection pool, which may become a bottleneck under extreme load. Consider per-worker instances for 500+ concurrent streams.
     """
     try:
         # Use configured Redis connection pool size directly
@@ -473,9 +473,7 @@ def _emit_new_answers(
     if rows:
         # Filter and extract timestamps in one pass to avoid redundant calls
         filtered_rows_with_timestamps = [
-            (row, _extract_timestamp_from_row(row))
-            for row in rows
-            if _extract_timestamp_from_row(row)
+            (row, ts) for row in rows if (ts := _extract_timestamp_from_row(row))
         ]
         if filtered_rows_with_timestamps:
             filtered_rows, timestamps = zip(*filtered_rows_with_timestamps)

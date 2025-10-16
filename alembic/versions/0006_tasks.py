@@ -68,7 +68,8 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),
-            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
     )
     op.create_index("ix_task_event_task", "task_event", ["task_id"])

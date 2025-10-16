@@ -50,7 +50,7 @@ def refresh_task_links() -> None:
             links_result = db.execute(
                 text(
                     "SELECT task_id, type, key, url FROM task_link WHERE task_id IN :task_ids"
-                ).bindparam(bindparam("task_ids", expanding=True)),
+                ).bindparams(bindparam("task_ids", expanding=True)),
                 {"task_ids": task_ids},
             ).mappings()
 

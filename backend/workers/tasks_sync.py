@@ -18,9 +18,10 @@ def refresh_task_links() -> None:
     db: Session = SessionLocal()
     try:
         # Get active tasks with links using EXISTS for PostgreSQL compatibility
-        tasks = db.execute(
-            text(
-                """
+        tasks = (
+            db.execute(
+                text(
+                    """
                 SELECT t.id, t.org_id, t.status
                 FROM task t
                 WHERE t.status != 'done' AND EXISTS (
@@ -29,14 +30,17 @@ def refresh_task_links() -> None:
                 ORDER BY t.updated_at DESC
                 LIMIT 100
             """
+                )
             )
-        ).all()
+            .mappings()
+            .all()
+        )
 
         if not tasks:
             return
 
         # Fix N+1 query: fetch all links in one query
-        task_ids = [task.id for task in tasks]
+        task_ids = [task["id"] for task in tasks]
         if len(task_ids) == 1:
             # Single task case
             links_result = db.execute(
@@ -64,7 +68,7 @@ def refresh_task_links() -> None:
         # Prepare status updates - only for tasks where status will actually change
         status_updates = {}
         for task in tasks:
-            task_id, org_id, current_status = task.id, task.org_id, task.status
+            task_id, org_id, current_status = task["id"], task["org_id"], task["status"]
             links = links_by_task.get(task_id, [])
             inferred_status: str | None = None
             for link in links:

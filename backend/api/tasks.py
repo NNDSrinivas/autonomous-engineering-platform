@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -14,7 +16,7 @@ class CreateTaskRequest(BaseModel):
     title: str = Field(..., min_length=1)
     description: str | None = None
     assignee: str | None = None
-    priority: str | None = Field(default="P1")
+    priority: Literal["P0", "P1", "P2", "P3"] = Field(default="P1")
     due_date: str | None = None
     meeting_id: str | None = None
     action_item_id: str | None = None
@@ -49,9 +51,9 @@ def create_task(
 class UpdateTaskRequest(BaseModel):
     title: str | None = None
     description: str | None = None
-    status: str | None = None
+    status: Literal["open", "in_progress", "done"] | None = None
     assignee: str | None = None
-    priority: str | None = None
+    priority: Literal["P0", "P1", "P2", "P3"] | None = None
     due_date: str | None = None
 
 

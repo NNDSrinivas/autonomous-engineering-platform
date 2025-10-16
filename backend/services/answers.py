@@ -16,8 +16,8 @@ MAX_EXTRACTED_TERMS = 8  # Maximum number of terms to extract from text
 
 # Context overflow handling
 CONTEXT_OVERFLOW_MULTIPLIER = 1.5  # Allow 50% overflow for preserving complete words
-# Rationale: Based on average English word length (4.5 chars), 50% overflow accommodates
-# words up to ~270 chars while preventing unbounded growth. Balances completeness vs memory.
+# Rationale: Based on average English word length (4.5 chars), 50% overflow provides up to 300 additional characters,
+# allowing preservation of a complete word when the cutoff falls mid-word, while preventing unbounded growth. Balances completeness vs memory.
 HARD_CONTEXT_LIMIT = int(
     MAX_CONTEXT_LENGTH * CONTEXT_OVERFLOW_MULTIPLIER
 )  # Pre-computed: 900 chars

@@ -128,7 +128,25 @@ def update_task(
         return None
 
     previous_status = task.status
-    mutable_fields = dict(fields)  # Allow explicit None values
+
+    # Whitelist of allowed updatable columns for security
+    allowed_fields = {
+        "title",
+        "description",
+        "status",
+        "assignee",
+        "priority",
+        "due_date",
+    }
+    mutable_fields = {k: v for k, v in fields.items() if k in allowed_fields}
+
+    # Reject request if unknown keys were provided
+    unknown_keys = set(fields.keys()) - allowed_fields
+    if unknown_keys:
+        raise ValueError(
+            f"Invalid update fields: {', '.join(unknown_keys)}. Allowed: {', '.join(sorted(allowed_fields))}"
+        )
+
     if "due_date" in mutable_fields and mutable_fields["due_date"] is not None:
         mutable_fields["due_date"] = _parse_due_date(mutable_fields["due_date"])
 

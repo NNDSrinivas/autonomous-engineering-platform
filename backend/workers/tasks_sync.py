@@ -23,13 +23,14 @@ def refresh_task_links() -> None:
                 """
                 SELECT t.id, t.org_id
                 FROM task t
-                WHERE t.status != 'done'
-                AND EXISTS (SELECT 1 FROM task_link l WHERE l.task_id = t.id)
+                WHERE t.status != 'done' AND EXISTS (
+                    SELECT 1 FROM task_link l WHERE l.task_id = t.id
+                )
                 ORDER BY t.updated_at DESC
                 LIMIT 100
-                """
+            """
             )
-        ).fetchall()
+        ).all()
 
         if not tasks:
             return

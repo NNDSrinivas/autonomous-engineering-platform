@@ -67,12 +67,17 @@ def update_task(
     org_id = request.headers.get("X-Org-Id")
     if not org_id:
         raise HTTPException(status_code=400, detail="Missing organization context")
-    task = task_service.update_task(
-        db,
-        task_id,
-        org_id=org_id,
-        **body.model_dump(exclude_none=True),
-    )
+
+    try:
+        task = task_service.update_task(
+            db,
+            task_id,
+            org_id=org_id,
+            **body.model_dump(exclude_none=True),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"ok": True}
@@ -99,7 +104,7 @@ def search_tasks(
     q: str | None = Query(default=None),
     status: str | None = Query(default=None),
     assignee: str | None = Query(default=None),
-    limit: int = Query(default=20, le=100),
+    limit: int = Query(default=20, ge=1, le=100),
 ):
     org_id = request.headers.get("X-Org-Id")
     if not org_id:

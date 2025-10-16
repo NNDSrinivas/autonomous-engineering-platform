@@ -87,21 +87,22 @@ def get_task(task_id: str, request: Request, db: Session = Depends(get_db)):
     return task
 
 
-@router.get("")
+@router.get("/")
 def search_tasks(
     request: Request,
-    q: str | None = None,
-    status: str | None = None,
-    assignee: str | None = None,
-    limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
+    q: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    assignee: str | None = Query(default=None),
+    limit: int = Query(default=20, le=100),
 ):
     org_id = request.headers.get("X-Org-Id")
     if not org_id:
         raise HTTPException(
             status_code=400,
-            detail="Organization scope required (provide X-Org-Id header)",
+            detail="Missing organization context (X-Org-Id header required)",
         )
+
     items = task_service.list_tasks(
         db,
         q=q,
@@ -110,7 +111,6 @@ def search_tasks(
         org_id=org_id,
         limit=limit,
     )
-    return {"items": items}
 
 
 @router.get("/stats/summary")

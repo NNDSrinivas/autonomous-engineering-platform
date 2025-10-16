@@ -17,6 +17,7 @@ from ..services import jira as jsvc, github as ghsvc
 from ..workers.queue import process_meeting
 from ..workers.integrations import jira_sync, github_index
 from ..workers.answers import generate_answer
+from .tasks import router as tasks_router
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -49,6 +50,7 @@ def version():
 
 # Prometheus
 app.include_router(metrics_router)
+app.include_router(tasks_router)
 
 # ---- Feature 1 endpoints (Finalize + Query) ----
 

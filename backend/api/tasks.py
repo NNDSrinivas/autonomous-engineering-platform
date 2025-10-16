@@ -58,6 +58,8 @@ def update_task(
     db: Session = Depends(get_db),
 ):
     org_id = request.headers.get("X-Org-Id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Missing organization context")
     task = task_service.update_task(
         db,
         task_id,
@@ -72,6 +74,8 @@ def update_task(
 @router.get("/{task_id}")
 def get_task(task_id: str, request: Request, db: Session = Depends(get_db)):
     org_id = request.headers.get("X-Org-Id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="Missing organization context")
     task = task_service.get_task(db, task_id, org_id=org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

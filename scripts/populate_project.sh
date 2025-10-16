@@ -7,7 +7,7 @@
 # issues organized into different phases (Discovery, Foundation, Core Features, etc.)
 # and automatically assigns them to the appropriate GitHub Project board columns.
 #
-# Requirements: Bash 4.0+ (for associative arrays and modern constructs)
+# Requirements: Bash 3.2+ (uses standard bash constructs and indexed arrays)
 #
 # The script handles:
 # - Creating GitHub issues with proper labels and assignments
@@ -16,13 +16,6 @@
 # - Organizing issues by feature area and priority
 #
 set -euo pipefail
-
-# Check bash version requirement (4.0+ for associative arrays)
-if ((BASH_VERSINFO[0] < 4)); then
-    echo "Error: This script requires Bash 4.0 or higher (current: $BASH_VERSION)" >&2
-    echo "Please upgrade bash or use a compatible shell." >&2
-    exit 1
-fi
 
 # ===== CONFIG =====
 OWNER="NNDSrinivas"

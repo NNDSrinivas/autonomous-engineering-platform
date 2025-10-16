@@ -11,6 +11,7 @@ from loguru import logger
 from prometheus_client import Counter
 from prometheus_client import Gauge
 from prometheus_client import Histogram
+from prometheus_client import Summary
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -35,6 +36,12 @@ AUDIT_FAILURES = Counter(
     "audit_failures_total",
     "Total audit logging failures",
     ["service"],
+)
+TASK_CREATED = Counter("tasks_created_total", "Tasks created")
+TASK_DONE = Counter("tasks_done_total", "Tasks completed")
+TASK_LATENCY = Summary(
+    "task_update_latency_seconds",
+    "Latency between task creation and latest update",
 )
 
 # Redis client (lazy with thread-safe initialization)

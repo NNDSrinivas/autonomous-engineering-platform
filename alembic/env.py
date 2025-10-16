@@ -14,6 +14,7 @@ from backend.core.db import Base  # noqa
 # Import all models so they're registered with Base
 from backend.models.meetings import *  # noqa
 from backend.models.integrations import *  # noqa
+from backend.models.tasks import *  # noqa
 
 config = context.config
 if (

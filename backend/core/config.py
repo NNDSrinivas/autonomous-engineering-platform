@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     database_url: Optional[str] = None  # Allow override with full URL
 
     redis_url: str = "redis://localhost:6379/0"
+    redis_max_connections: int = (
+        20  # Maximum connections in Redis pool (default 20 for high concurrency)
+    )
     redis_rate_limit_ttl: int = 3600  # Rate limit key TTL in seconds (1 hour)
 
     # Rate limiting configuration
@@ -62,6 +65,47 @@ class Settings(BaseSettings):
     enable_github_integration: bool = True
     enable_analytics: bool = True
     enable_ai_assistance: bool = True
+
+    # Common file extensions to validate against for code analysis
+    valid_extensions: List[str] = [
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".java",
+        ".cpp",
+        ".c",
+        ".h",
+        ".go",
+        ".rs",
+        ".php",
+        ".rb",
+        ".cs",
+        ".swift",
+        ".kt",
+        ".scala",
+        ".html",
+        ".css",
+        ".scss",
+        ".sass",
+        ".vue",
+        ".svelte",
+        ".md",
+        ".txt",
+        ".json",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".ini",
+        ".sh",
+        ".bat",
+        ".ps1",
+        ".sql",
+        ".dockerfile",
+        ".tf",
+    ]
 
     class Config:
         env_file = ".env"

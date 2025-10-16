@@ -20,7 +20,7 @@ def refresh_task_links() -> None:
         tasks = db.execute(
             text(
                 """
-                SELECT DISTINCT t.id
+                SELECT DISTINCT t.id, t.org_id
                 FROM task t
                 JOIN task_link l ON l.task_id = t.id
                 WHERE t.status != 'done'
@@ -29,7 +29,7 @@ def refresh_task_links() -> None:
                 """
             )
         ).fetchall()
-        for (task_id,) in tasks:
+        for task_id, org_id in tasks:
             links = db.execute(
                 text(
                     "SELECT type, key, url FROM task_link WHERE task_id = :task_id"
@@ -42,7 +42,7 @@ def refresh_task_links() -> None:
                     inferred_status = inferred_status or "in_progress"
                 elif link["type"] in {"github_pr", "github_issue"}:
                     inferred_status = inferred_status or "in_progress"
-            if inferred_status:
-                update_task(db, task_id, status=inferred_status)
+            if inferred_status and org_id:
+                update_task(db, task_id, org_id=org_id, status=inferred_status)
     finally:
         db.close()

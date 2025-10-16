@@ -17,7 +17,7 @@ class CreateTaskRequest(BaseModel):
     description: str | None = None
     assignee: str | None = None
     priority: Literal["P0", "P1", "P2", "P3"] = Field(default="P1")
-    due_date: str | None = None
+    due_date: str | int | float | None = None
     meeting_id: str | None = None
     action_item_id: str | None = None
 
@@ -54,7 +54,7 @@ class UpdateTaskRequest(BaseModel):
     status: Literal["open", "in_progress", "done"] | None = None
     assignee: str | None = None
     priority: Literal["P0", "P1", "P2", "P3"] | None = None
-    due_date: str | None = None
+    due_date: str | int | float | None = None
 
 
 @router.patch("/{task_id}")

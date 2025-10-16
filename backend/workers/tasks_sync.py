@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections import defaultdict
+
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
 from sqlalchemy import bindparam, text
@@ -59,8 +61,6 @@ def refresh_task_links() -> None:
             ).mappings()
 
         # Group links by task_id
-        from collections import defaultdict
-
         links_by_task = defaultdict(list)
         for link in links_result:
             links_by_task[link["task_id"]].append(link)

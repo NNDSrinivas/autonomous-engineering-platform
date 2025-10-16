@@ -4,6 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..core.db import get_db
@@ -37,8 +38,6 @@ def create_task(
 
     # Validate meeting_id belongs to the organization
     if body.meeting_id:
-        from sqlalchemy import text
-
         meeting_org = db.execute(
             text("SELECT org_id FROM meeting WHERE id = :meeting_id"),
             {"meeting_id": body.meeting_id},
@@ -51,8 +50,6 @@ def create_task(
 
     # Validate action_item_id belongs to the organization (through its meeting)
     if body.action_item_id:
-        from sqlalchemy import text
-
         action_org = db.execute(
             text(
                 """

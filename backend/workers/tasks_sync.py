@@ -30,10 +30,10 @@ def refresh_task_links() -> None:
                 """
             )
         ).fetchall()
-        
+
         if not tasks:
             return
-            
+
         # Fix N+1 query: fetch all links in one query
         task_ids = [task_id for task_id, _ in tasks]
         if len(task_ids) == 1:
@@ -54,13 +54,14 @@ def refresh_task_links() -> None:
                 ),
                 params,
             ).mappings()
-        
+
         # Group links by task_id
         from collections import defaultdict
+
         links_by_task = defaultdict(list)
         for link in links_result:
             links_by_task[link["task_id"]].append(link)
-        
+
         # Process each task
         for task_id, org_id in tasks:
             links = links_by_task.get(task_id, [])

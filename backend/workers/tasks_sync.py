@@ -73,6 +73,11 @@ def refresh_task_links() -> None:
                 elif link["type"] in {"github_pr", "github_issue"}:
                     inferred_status = inferred_status or "in_progress"
             if inferred_status and org_id:
-                update_task(db, task_id, org_id=org_id, status=inferred_status)
+                update_task(
+                    db, task_id, org_id=org_id, status=inferred_status, commit=False
+                )
+
+        # Single commit after all updates
+        db.commit()
     finally:
         db.close()

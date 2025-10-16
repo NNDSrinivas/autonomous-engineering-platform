@@ -117,6 +117,7 @@ def update_task(
     task_id: str,
     *,
     org_id: Optional[str] = None,
+    commit: bool = True,
     **fields: Any,
 ) -> Optional[Task]:
     if not org_id:
@@ -163,8 +164,9 @@ def update_task(
             db, task.id, "assignee_changed", {"assignee": task.assignee}, commit=False
         )
 
-    db.commit()
-    db.refresh(task)
+    if commit:
+        db.commit()
+        db.refresh(task)
 
     _record_status_metrics(task, previous_status=previous_status)
     return task

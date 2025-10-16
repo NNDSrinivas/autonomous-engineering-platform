@@ -2,6 +2,7 @@ import asyncio
 import functools
 import json
 import redis
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -48,6 +49,8 @@ def _datetime_serializer(obj):
 
 # Constants for Redis operations
 REDIS_KEY_EXPIRY_SECONDS = 60  # TTL for Redis keys
+REDIS_TRANSACTION_MAX_RETRIES = 5  # Maximum retries for Redis transactions
+REDIS_RETRY_BASE_DELAY = 0.001  # Base delay for exponential backoff (1ms)
 
 # Constants for fallback question detection
 QUESTION_WORDS = {
@@ -298,8 +301,9 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         key = f"ans:count:{session_id}"
 
         # Use Redis transactions to prevent race conditions in concurrent requests
+        retry_count = 0
         with r.pipeline(transaction=True) as pipe:
-            while True:
+            while retry_count < REDIS_TRANSACTION_MAX_RETRIES:
                 try:
                     # Watch the key for changes during transaction
                     pipe.watch(key)
@@ -312,8 +316,16 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
                     n = results[0]  # Get count from first result
                     break
                 except redis.WatchError:
-                    # Key was modified during transaction, retry
-                    continue
+                    # Key was modified during transaction, retry with exponential backoff
+                    retry_count += 1
+                    if retry_count < REDIS_TRANSACTION_MAX_RETRIES:
+                        time.sleep(REDIS_RETRY_BASE_DELAY * (2**retry_count))
+                        continue
+                    else:
+                        # Max retries reached, fall back to non-atomic increment
+                        n = r.incr(key)
+                        r.expire(key, REDIS_KEY_EXPIRY_SECONDS)
+                        break
 
         if _should_generate_answer(text, n):
             generate_answer.send(session_id)

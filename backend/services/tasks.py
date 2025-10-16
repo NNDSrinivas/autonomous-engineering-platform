@@ -69,6 +69,11 @@ def create_task(
     *,
     commit: bool = True,
 ) -> Task:
+    # Validate due_date consistently with update_task
+    parsed_due_date = _parse_due_date(due_date)
+    if parsed_due_date is None and due_date is not None and str(due_date).strip() != "":
+        raise ValueError(f"Invalid due_date string: {due_date!r}")
+
     now = dt.datetime.now(dt.timezone.utc)
     task = Task(
         id=_new_id(),
@@ -77,7 +82,7 @@ def create_task(
         status="open",
         assignee=assignee,
         priority=priority,
-        due_date=_parse_due_date(due_date),
+        due_date=parsed_due_date,
         created_at=now,
         updated_at=now,
         meeting_id=meeting_id,

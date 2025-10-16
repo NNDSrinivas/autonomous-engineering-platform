@@ -94,6 +94,9 @@ def upgrade() -> None:
             sa.ForeignKey("task.id", ondelete="CASCADE"),
             nullable=False,
         ),
+        sa.UniqueConstraint(
+            "task_id", "depends_on_task_id", name="uq_task_dependency_task_depends_on"
+        ),
     )
     op.create_index("ix_task_dep_task", "task_dependency", ["task_id"])
     op.create_index("ix_task_dep_depends_on", "task_dependency", ["depends_on_task_id"])
@@ -111,13 +114,19 @@ def upgrade() -> None:
         sa.Column("key", sa.Text, nullable=True),
         sa.Column("url", sa.Text, nullable=True),
         sa.Column("meta", sa.JSON, nullable=True),
+        sa.UniqueConstraint("task_id", "type", "key", name="uq_task_link_task_type_key"),
     )
     op.create_index("ix_task_link_task", "task_link", ["task_id"])
 
 
 def downgrade() -> None:
     op.drop_index("ix_task_link_task", table_name="task_link")
+    op.drop_constraint("uq_task_link_task_type_key", "task_link", type_="unique")
     op.drop_table("task_link")
+    op.drop_constraint(
+        "uq_task_dependency_task_depends_on", "task_dependency", type_="unique"
+    )
+    op.drop_index("ix_task_dep_depends_on", table_name="task_dependency")
     op.drop_index("ix_task_dep_task", table_name="task_dependency")
     op.drop_table("task_dependency")
     op.drop_index("ix_task_event_task", table_name="task_event")

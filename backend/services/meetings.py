@@ -3,6 +3,7 @@ import datetime as dt
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 from ..models.meetings import Meeting, TranscriptSegment, MeetingSummary, ActionItem
+from . import tasks as tasksvc
 
 
 def new_uuid() -> str:
@@ -131,7 +132,8 @@ def finalize_meeting(
                 source_segment=a.get("source_segment") or None,
             )
         )
-    meeting.ended_at = dt.dt.datetime.now(dt.timezone.utc)
+    meeting.ended_at = dt.datetime.now(dt.timezone.utc)
+    tasksvc.ensure_tasks_for_actions(db, meeting.id)
     db.commit()
 
 

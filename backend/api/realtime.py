@@ -471,11 +471,16 @@ def _emit_new_answers(
 
     # Filter out rows with missing or null 'created_at' to prevent infinite loops
     if rows:
-        filtered_rows = [row for row in rows if _extract_timestamp_from_row(row)]
-        if filtered_rows:
-            last_row = filtered_rows[-1]
-            timestamp_str = _extract_timestamp_from_row(last_row)
-            return filtered_rows, timestamp_str
+        # Filter and extract timestamps in one pass to avoid redundant calls
+        filtered_rows_with_timestamps = [
+            (row, _extract_timestamp_from_row(row))
+            for row in rows
+            if _extract_timestamp_from_row(row)
+        ]
+        if filtered_rows_with_timestamps:
+            filtered_rows, timestamps = zip(*filtered_rows_with_timestamps)
+            last_timestamp = timestamps[-1]  # Get timestamp of last row
+            return list(filtered_rows), last_timestamp
         else:
             # All rows have missing timestamps - log warning for data integrity issue
             logger.warning(

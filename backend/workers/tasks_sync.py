@@ -92,6 +92,7 @@ def refresh_task_links() -> None:
                     UPDATE task SET 
                         status = CASE id
                             {" ".join(f"WHEN :task_id_{i} THEN :status_{i}" for i in range(len(task_ids_to_update)))}
+                            ELSE status
                         END,
                         updated_at = :now
                     WHERE id IN ({placeholders})

@@ -66,6 +66,8 @@ def create_task(
     meeting_id: Optional[str] = None,
     action_item_id: Optional[str] = None,
     org_id: Optional[str] = None,
+    *,
+    commit: bool = True,
 ) -> Task:
     now = dt.datetime.now(dt.timezone.utc)
     task = Task(
@@ -88,9 +90,10 @@ def create_task(
     _add_event(db, task.id, "created", {"title": title}, commit=False)
     _auto_links_from_text(db, task.id, f"{title} {description or ''}", commit=False)
 
-    # Single commit for all operations
-    db.commit()
-    db.refresh(task)
+    # Commit only if requested
+    if commit:
+        db.commit()
+        db.refresh(task)
 
     _record_status_metrics(task, previous_status=None)
     return task
@@ -157,7 +160,15 @@ def update_task(
         if mutable_fields["due_date"] == "":
             mutable_fields["due_date"] = None
         elif mutable_fields["due_date"] is not None:
-            mutable_fields["due_date"] = _parse_due_date(mutable_fields["due_date"])
+            parsed_due_date = _parse_due_date(mutable_fields["due_date"])
+            if (
+                parsed_due_date is None
+                and str(mutable_fields["due_date"]).strip() != ""
+            ):
+                raise ValueError(
+                    f"Invalid due_date string: {mutable_fields['due_date']!r}"
+                )
+            mutable_fields["due_date"] = parsed_due_date
 
     for key, value in mutable_fields.items():
         setattr(task, key, value)
@@ -322,6 +333,7 @@ def ensure_tasks_for_actions(db: Session, meeting_id: str) -> None:
         {"meeting_id": meeting_id},
     ).mappings()
 
+    tasks_created = []
     for mapping in action_rows:
         row = dict(mapping)
         exists = db.execute(
@@ -330,7 +342,7 @@ def ensure_tasks_for_actions(db: Session, meeting_id: str) -> None:
         ).first()
         if exists:
             continue
-        create_task(
+        task = create_task(
             db,
             title=row["title"],
             description=(
@@ -341,4 +353,12 @@ def ensure_tasks_for_actions(db: Session, meeting_id: str) -> None:
             meeting_id=meeting_id,
             action_item_id=row["id"],
             org_id=meeting_org_id,
+            commit=False,
         )
+        tasks_created.append(task)
+
+    # Commit once after all tasks are created
+    if tasks_created:
+        db.commit()
+        for task in tasks_created:
+            db.refresh(task)

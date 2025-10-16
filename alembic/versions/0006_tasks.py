@@ -85,6 +85,7 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_task_dep_task", "task_dependency", ["task_id"])
+    op.create_index("ix_task_dep_depends_on", "task_dependency", ["depends_on_task_id"])
 
     op.create_table(
         "task_link",

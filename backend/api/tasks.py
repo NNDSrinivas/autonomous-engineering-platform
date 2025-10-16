@@ -80,7 +80,7 @@ def update_task(
 
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return {"ok": True}
+    return task
 
 
 @router.get("/stats/summary")

@@ -109,6 +109,10 @@ def refresh_task_links() -> None:
             )
 
         # Single commit after all updates
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
     finally:
         db.close()

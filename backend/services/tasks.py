@@ -94,8 +94,8 @@ def create_task(
     if commit:
         db.commit()
         db.refresh(task)
+        _record_status_metrics(task, previous_status=None)
 
-    _record_status_metrics(task, previous_status=None)
     return task
 
 
@@ -333,14 +333,20 @@ def ensure_tasks_for_actions(db: Session, meeting_id: str) -> None:
         {"meeting_id": meeting_id},
     ).mappings()
 
+    # Prefetch all existing action_item_id values for the meeting in a single query
+    existing_action_item_ids = {
+        r[0]
+        for r in db.execute(
+            text("SELECT action_item_id FROM task WHERE meeting_id = :meeting_id"),
+            {"meeting_id": meeting_id},
+        )
+        if r[0] is not None
+    }
+
     tasks_created = []
     for mapping in action_rows:
         row = dict(mapping)
-        exists = db.execute(
-            text("SELECT 1 FROM task WHERE action_item_id = :action_id"),
-            {"action_id": row["id"]},
-        ).first()
-        if exists:
+        if row["id"] in existing_action_item_ids:
             continue
         task = create_task(
             db,
@@ -362,3 +368,4 @@ def ensure_tasks_for_actions(db: Session, meeting_id: str) -> None:
         db.commit()
         for task in tasks_created:
             db.refresh(task)
+            _record_status_metrics(task, previous_status=None)

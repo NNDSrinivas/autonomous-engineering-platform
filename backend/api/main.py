@@ -50,6 +50,10 @@ def version():
 # Prometheus
 app.include_router(metrics_router)
 
+# Tasks API
+from .tasks import router as tasks_router
+app.include_router(tasks_router)
+
 # ---- Feature 1 endpoints (Finalize + Query) ----
 
 

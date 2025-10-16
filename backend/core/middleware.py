@@ -37,6 +37,11 @@ AUDIT_FAILURES = Counter(
     ["service"],
 )
 
+# Task metrics
+TASK_CREATED = Counter("tasks_created_total", "Tasks created")
+TASK_DONE = Counter("tasks_done_total", "Tasks completed")
+TASK_LATENCY = Histogram("task_update_latency_seconds", "Latency between create and last update")
+
 # Redis client (lazy with thread-safe initialization)
 _redis = None
 _redis_lock = threading.Lock()

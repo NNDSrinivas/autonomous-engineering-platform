@@ -29,7 +29,7 @@ def create_meeting(
         session_id=new_uuid(),
         title=title,
         provider=provider,
-        started_at=dt.dt.datetime.now(dt.timezone.utc),
+        started_at=dt.datetime.now(dt.timezone.utc),
         org_id=org_id,
         participants=[],
     )
@@ -131,8 +131,11 @@ def finalize_meeting(
                 source_segment=a.get("source_segment") or None,
             )
         )
-    meeting.ended_at = dt.dt.datetime.now(dt.timezone.utc)
+    meeting.ended_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
+    # Auto-create Task rows for each action_item in this meeting
+    from . import tasks as tasksvc
+    tasksvc.ensure_tasks_for_actions(db, meeting.id)
 
 
 def get_summary(db: Session, session_id: str) -> dict | None:

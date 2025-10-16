@@ -111,6 +111,7 @@ def search_tasks(
         org_id=org_id,
         limit=limit,
     )
+    return {"items": items}
 
 
 @router.get("/stats/summary")

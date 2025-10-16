@@ -67,6 +67,12 @@ COMMON_ABBREVIATIONS = {
     "eg",
 }
 
+# Regex patterns for text processing (compiled once at module level)
+SENTENCE_ENDINGS = re.compile(r"[.!?]")  # Matches sentence-ending punctuation
+SENTENCE_BOUNDARY_PATTERN = re.compile(
+    r"(?<=[.!?])\s+"
+)  # Splits on sentence boundaries
+
 
 def _truncate_at_word_boundary(text: str, max_length: int, hard_limit: int) -> str:
     """Truncate text at word boundaries with hard limit fallback.
@@ -239,8 +245,7 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
         Tuple of (answer_text, citation)
     """
     # Check if text contains sentence-ending punctuation using proper pattern
-    sentence_endings = re.compile(r"[.!?]")
-    if sentence_endings.search(text_context):
+    if SENTENCE_ENDINGS.search(text_context):
         # Extract last two sentences using improved sentence boundary detection
         # Handle common abbreviations and edge cases more robustly
 
@@ -249,8 +254,7 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
         #   Sentences ending with known abbreviations (e.g., 'Dr.', 'Inc.') are merged with the following sentence.
         #   This prevents incorrect splits, such as splitting "Mr. Smith said" into two sentences.
         # The regex naively splits on sentence-ending punctuation followed by whitespace; the loop below merges sentences split at known abbreviations.
-        sentence_boundary_pattern = re.compile(r"(?<=[.!?])\s+")
-        potential_sentences = sentence_boundary_pattern.split(text_context)
+        potential_sentences = SENTENCE_BOUNDARY_PATTERN.split(text_context)
         sentences = []
         current_sentence = ""
 

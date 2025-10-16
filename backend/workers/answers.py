@@ -56,6 +56,7 @@ PROTOCOL_INDICATORS = [
 ]
 
 # Common file extensions to validate against
+# TODO: Consider moving to configuration file for easier maintenance and extension
 VALID_EXTENSIONS = {
     ".py",
     ".js",

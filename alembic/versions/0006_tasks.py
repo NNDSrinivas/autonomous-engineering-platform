@@ -18,8 +18,18 @@ def upgrade() -> None:
     op.create_table(
         "task",
         sa.Column("id", sa.Text, primary_key=True),
-        sa.Column("meeting_id", sa.Text, nullable=True),
-        sa.Column("action_item_id", sa.Text, nullable=True),
+        sa.Column(
+            "meeting_id", 
+            sa.Text, 
+            sa.ForeignKey("meeting.id", ondelete="SET NULL"), 
+            nullable=True
+        ),
+        sa.Column(
+            "action_item_id", 
+            sa.Text, 
+            sa.ForeignKey("action_item.id", ondelete="SET NULL"), 
+            nullable=True
+        ),
         sa.Column("title", sa.Text, nullable=False),
         sa.Column("description", sa.Text, nullable=True),
         sa.Column(
@@ -34,11 +44,13 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),
+            nullable=False,
             server_default=sa.text("(CURRENT_TIMESTAMP)"),
         ),
         sa.Column(
             "updated_at",
             sa.TIMESTAMP(timezone=True),
+            nullable=False,
             server_default=sa.text("(CURRENT_TIMESTAMP)"),
         ),
         sa.Column("org_id", sa.Text, nullable=True),

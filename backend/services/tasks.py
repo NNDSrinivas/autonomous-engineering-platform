@@ -32,7 +32,8 @@ def _parse_due_date(value: Any) -> Optional[dt.datetime]:
         return dt.datetime.fromtimestamp(float(value), tz=dt.timezone.utc)
     if isinstance(value, str):
         try:
-            return dt.datetime.fromisoformat(value)
+            d = dt.datetime.fromisoformat(value)
+            return d if d.tzinfo else d.replace(tzinfo=dt.timezone.utc)
         except ValueError:
             return None
     return None
@@ -91,7 +92,7 @@ def create_task(
     return task
 
 
-def _add_event(db: Session, task_id: str, event_type: str, data: Optional[dict]) -> None:
+def _add_event(db: Session, task_id: str, event_type: str, data: Optional[dict], *, commit: bool = True) -> None:
     event = TaskEvent(
         id=_new_id(),
         task_id=task_id,
@@ -100,7 +101,8 @@ def _add_event(db: Session, task_id: str, event_type: str, data: Optional[dict])
         created_at=dt.datetime.now(dt.timezone.utc),
     )
     db.add(event)
-    db.commit()
+    if commit:
+        db.commit()
 
 
 def update_task(
@@ -119,21 +121,23 @@ def update_task(
         return None
 
     previous_status = task.status
-    mutable_fields = {k: v for k, v in fields.items() if v is not None}
-    if "due_date" in mutable_fields:
+    mutable_fields = dict(fields)  # Allow explicit None values
+    if "due_date" in mutable_fields and mutable_fields["due_date"] is not None:
         mutable_fields["due_date"] = _parse_due_date(mutable_fields["due_date"])
 
     for key, value in mutable_fields.items():
         setattr(task, key, value)
 
     task.updated_at = dt.datetime.now(dt.timezone.utc)
+    
+    # Add events before committing
+    if "status" in mutable_fields:
+        _add_event(db, task.id, "status_changed", {"status": task.status}, commit=False)
+    if "assignee" in mutable_fields:
+        _add_event(db, task.id, "assignee_changed", {"assignee": task.assignee}, commit=False)
+    
     db.commit()
     db.refresh(task)
-
-    if "status" in mutable_fields:
-        _add_event(db, task.id, "status_changed", {"status": task.status})
-    if "assignee" in mutable_fields:
-        _add_event(db, task.id, "assignee_changed", {"assignee": task.assignee})
 
     _record_status_metrics(task, previous_status=previous_status)
     return task

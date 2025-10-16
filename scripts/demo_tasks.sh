@@ -24,12 +24,21 @@ echo "Waiting for processing..."
 sleep 4
 
 echo "Tasks:"
-curl -s "http://localhost:${CORE_PORT}/api/tasks?status=open" | jq
+curl -s "http://localhost:${CORE_PORT}/api/tasks?status=open" \
+  -H "X-Org-Id: demo" | jq
 
-tid=$(curl -s "http://localhost:${CORE_PORT}/api/tasks" | jq -r '.items[0].id')
-curl -s -X PATCH "http://localhost:${CORE_PORT}/api/tasks/${tid}" \
-  -H "Content-Type: application/json" \
-  -d '{"status":"done"}' | jq
+tid=$(curl -s "http://localhost:${CORE_PORT}/api/tasks" \
+  -H "X-Org-Id: demo" | jq -r '.items[0].id')
+
+if [[ -n "$tid" && "$tid" != "null" ]]; then
+  curl -s -X PATCH "http://localhost:${CORE_PORT}/api/tasks/${tid}" \
+    -H "Content-Type: application/json" \
+    -H "X-Org-Id: demo" \
+    -d '{"status":"done"}' | jq
+else
+  echo "No open tasks found to mark as done."
+fi
 
 echo "Stats:"
-curl -s "http://localhost:${CORE_PORT}/api/tasks/stats/summary" | jq
+curl -s "http://localhost:${CORE_PORT}/api/tasks/stats/summary" \
+  -H "X-Org-Id: demo" | jq

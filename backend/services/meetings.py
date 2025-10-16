@@ -132,7 +132,7 @@ def finalize_meeting(
                 source_segment=a.get("source_segment") or None,
             )
         )
-    meeting.ended_at = dt.dt.datetime.now(dt.timezone.utc)
+    meeting.ended_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
     tasksvc.ensure_tasks_for_actions(db, meeting.id)
 

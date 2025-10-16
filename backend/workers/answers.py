@@ -55,47 +55,8 @@ PROTOCOL_INDICATORS = [
     "ssh",
 ]
 
-# Common file extensions to validate against
-# TODO: Consider moving to configuration file for easier maintenance and extension
-VALID_EXTENSIONS = {
-    ".py",
-    ".js",
-    ".ts",
-    ".jsx",
-    ".tsx",
-    ".java",
-    ".cpp",
-    ".c",
-    ".h",
-    ".go",
-    ".rs",
-    ".php",
-    ".rb",
-    ".cs",
-    ".swift",
-    ".kt",
-    ".scala",
-    ".html",
-    ".css",
-    ".scss",
-    ".sass",
-    ".vue",
-    ".svelte",
-    ".md",
-    ".txt",
-    ".json",
-    ".xml",
-    ".yaml",
-    ".yml",
-    ".toml",
-    ".ini",
-    ".sh",
-    ".bat",
-    ".ps1",
-    ".sql",
-    ".dockerfile",
-    ".tf",
-}
+# Common file extensions to validate against (loaded from settings for easy maintenance)
+VALID_EXTENSIONS = set(settings.valid_extensions)
 
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)

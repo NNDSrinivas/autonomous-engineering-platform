@@ -484,9 +484,11 @@ def _emit_new_answers(
     # Filter out rows with missing or null 'created_at' to prevent infinite loops
     if rows:
         # Filter and extract timestamps in one pass to avoid redundant calls
-        filtered_rows_with_timestamps = [
-            (row, ts) for row in rows if (ts := _extract_timestamp_from_row(row))
-        ]
+        filtered_rows_with_timestamps = []
+        for row in rows:
+            ts = _extract_timestamp_from_row(row)
+            if ts:
+                filtered_rows_with_timestamps.append((row, ts))
         if filtered_rows_with_timestamps:
             filtered_rows, timestamps = zip(*filtered_rows_with_timestamps)
             last_timestamp = timestamps[-1]  # Get timestamp of last row

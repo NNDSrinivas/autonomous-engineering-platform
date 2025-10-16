@@ -62,7 +62,12 @@ def upgrade() -> None:
     op.create_table(
         "task_event",
         sa.Column("id", sa.Text, primary_key=True),
-        sa.Column("task_id", sa.Text, sa.ForeignKey("task.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "task_id",
+            sa.Text,
+            sa.ForeignKey("task.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("type", sa.Text, nullable=False),
         sa.Column("data", sa.JSON, nullable=True),
         sa.Column(
@@ -77,7 +82,12 @@ def upgrade() -> None:
     op.create_table(
         "task_dependency",
         sa.Column("id", sa.Text, primary_key=True),
-        sa.Column("task_id", sa.Text, sa.ForeignKey("task.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "task_id",
+            sa.Text,
+            sa.ForeignKey("task.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column(
             "depends_on_task_id",
             sa.Text,
@@ -91,7 +101,12 @@ def upgrade() -> None:
     op.create_table(
         "task_link",
         sa.Column("id", sa.Text, primary_key=True),
-        sa.Column("task_id", sa.Text, sa.ForeignKey("task.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "task_id",
+            sa.Text,
+            sa.ForeignKey("task.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("type", sa.Text, nullable=False),
         sa.Column("key", sa.Text, nullable=True),
         sa.Column("url", sa.Text, nullable=True),

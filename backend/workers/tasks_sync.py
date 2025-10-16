@@ -21,7 +21,7 @@ def refresh_task_links() -> None:
         tasks = db.execute(
             text(
                 """
-                SELECT t.id, t.org_id
+                SELECT t.id, t.org_id, t.status
                 FROM task t
                 WHERE t.status != 'done' AND EXISTS (
                     SELECT 1 FROM task_link l WHERE l.task_id = t.id
@@ -36,7 +36,7 @@ def refresh_task_links() -> None:
             return
 
         # Fix N+1 query: fetch all links in one query
-        task_ids = [task_id for task_id, _ in tasks]
+        task_ids = [task.id for task in tasks]
         if len(task_ids) == 1:
             # Single task case
             links_result = db.execute(
@@ -61,9 +61,10 @@ def refresh_task_links() -> None:
         for link in links_result:
             links_by_task[link["task_id"]].append(link)
 
-        # Prepare status updates
+        # Prepare status updates - only for tasks where status will actually change
         status_updates = {}
-        for task_id, org_id in tasks:
+        for task in tasks:
+            task_id, org_id, current_status = task.id, task.org_id, task.status
             links = links_by_task.get(task_id, [])
             inferred_status: str | None = None
             for link in links:
@@ -71,7 +72,8 @@ def refresh_task_links() -> None:
                     inferred_status = inferred_status or "in_progress"
                 elif link["type"] in {"github_pr", "github_issue"}:
                     inferred_status = inferred_status or "in_progress"
-            if inferred_status and org_id:
+            # Only update if status actually changes
+            if inferred_status and inferred_status != current_status and org_id:
                 status_updates[task_id] = {"status": inferred_status}
 
         # Bulk update tasks if we have any status changes
@@ -94,7 +96,10 @@ def refresh_task_links() -> None:
                             {" ".join(f"WHEN :task_id_{i} THEN :status_{i}" for i in range(len(task_ids_to_update)))}
                             ELSE status
                         END,
-                        updated_at = :now
+                        updated_at = CASE id
+                            {" ".join(f"WHEN :task_id_{i} THEN :now" for i in range(len(task_ids_to_update)))}
+                            ELSE updated_at
+                        END
                     WHERE id IN ({placeholders})
                 """
                 ),

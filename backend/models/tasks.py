@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import JSON, TIMESTAMP, ForeignKey, String, Text
+from sqlalchemy import JSON, TIMESTAMP, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.db import Base
@@ -12,7 +12,7 @@ from ..core.db import Base
 class Task(Base):
     __tablename__ = "task"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
     meeting_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     action_item_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
@@ -42,7 +42,7 @@ class Task(Base):
 class TaskEvent(Base):
     __tablename__ = "task_event"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
     task_id: Mapped[str] = mapped_column(
         ForeignKey("task.id", ondelete="CASCADE"), nullable=False
     )
@@ -58,7 +58,7 @@ class TaskEvent(Base):
 class TaskDependency(Base):
     __tablename__ = "task_dependency"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
     task_id: Mapped[str] = mapped_column(
         ForeignKey("task.id", ondelete="CASCADE"), nullable=False
     )
@@ -70,7 +70,7 @@ class TaskDependency(Base):
 class TaskLink(Base):
     __tablename__ = "task_link"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
     task_id: Mapped[str] = mapped_column(
         ForeignKey("task.id", ondelete="CASCADE"), nullable=False
     )

@@ -52,6 +52,7 @@ STOPWORDS = {
 }
 
 # Common abbreviations that shouldn't trigger sentence breaks
+# Note: Stored without periods since punctuation is stripped during matching
 COMMON_ABBREVIATIONS = {
     "Dr",
     "Mr",
@@ -63,7 +64,7 @@ COMMON_ABBREVIATIONS = {
     "Corp",
     "vs",
     "etc",
-    "ie",  # Both with and without periods for robust matching
+    "ie",  # Common abbreviations without periods for robust matching
     "eg",
 }
 

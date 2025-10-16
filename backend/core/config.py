@@ -66,6 +66,47 @@ class Settings(BaseSettings):
     enable_analytics: bool = True
     enable_ai_assistance: bool = True
 
+    # Common file extensions to validate against for code analysis
+    valid_extensions: List[str] = [
+        ".py",
+        ".js",
+        ".ts",
+        ".jsx",
+        ".tsx",
+        ".java",
+        ".cpp",
+        ".c",
+        ".h",
+        ".go",
+        ".rs",
+        ".php",
+        ".rb",
+        ".cs",
+        ".swift",
+        ".kt",
+        ".scala",
+        ".html",
+        ".css",
+        ".scss",
+        ".sass",
+        ".vue",
+        ".svelte",
+        ".md",
+        ".txt",
+        ".json",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".ini",
+        ".sh",
+        ".bat",
+        ".ps1",
+        ".sql",
+        ".dockerfile",
+        ".tf",
+    ]
+
     class Config:
         env_file = ".env"
         case_sensitive = False

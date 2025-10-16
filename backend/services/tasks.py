@@ -148,8 +148,12 @@ def update_task(
             f"Invalid update fields: {', '.join(unknown_keys)}. Allowed: {', '.join(sorted(allowed_fields))}"
         )
 
-    if "due_date" in mutable_fields and mutable_fields["due_date"] is not None:
-        mutable_fields["due_date"] = _parse_due_date(mutable_fields["due_date"])
+    if "due_date" in mutable_fields:
+        # Handle empty strings by converting to None for clearing the field
+        if mutable_fields["due_date"] == "":
+            mutable_fields["due_date"] = None
+        elif mutable_fields["due_date"] is not None:
+            mutable_fields["due_date"] = _parse_due_date(mutable_fields["due_date"])
 
     for key, value in mutable_fields.items():
         setattr(task, key, value)

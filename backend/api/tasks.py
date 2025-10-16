@@ -22,7 +22,7 @@ class CreateTaskRequest(BaseModel):
     action_item_id: str | None = None
 
 
-@router.post("")
+@router.post("/")
 def create_task(
     body: CreateTaskRequest,
     request: Request,
@@ -78,15 +78,18 @@ def update_task(
     return {"ok": True}
 
 
-@router.get("/{task_id}")
-def get_task(task_id: str, request: Request, db: Session = Depends(get_db)):
+@router.get("/stats/summary")
+def task_stats(
+    request: Request,
+    db: Session = Depends(get_db),
+):
     org_id = request.headers.get("X-Org-Id")
     if not org_id:
-        raise HTTPException(status_code=400, detail="Missing organization context")
-    task = task_service.get_task(db, task_id, org_id=org_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return task
+        raise HTTPException(
+            status_code=400,
+            detail="Organization scope required (provide X-Org-Id header)",
+        )
+    return task_service.stats(db, org_id)
 
 
 @router.get("/")
@@ -116,15 +119,12 @@ def search_tasks(
     return {"items": items}
 
 
-@router.get("/stats/summary")
-def task_stats(
-    request: Request,
-    db: Session = Depends(get_db),
-):
+@router.get("/{task_id}")
+def get_task(task_id: str, request: Request, db: Session = Depends(get_db)):
     org_id = request.headers.get("X-Org-Id")
     if not org_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Organization scope required (provide X-Org-Id header)",
-        )
-    return task_service.stats(db, org_id)
+        raise HTTPException(status_code=400, detail="Missing organization context")
+    task = task_service.get_task(db, task_id, org_id=org_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task

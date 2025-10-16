@@ -215,28 +215,35 @@ def _auto_links_from_text(
     db: Session, task_id: str, text_value: str, *, commit: bool = False
 ) -> None:
     links_to_add: list[TaskLink] = []
-    for match in JIRA_RE.findall(text_value or ""):
+
+    # Deduplicate JIRA keys to avoid unique constraint violations
+    jira_keys = set(JIRA_RE.findall(text_value or ""))
+    for key in jira_keys:
         links_to_add.append(
             TaskLink(
                 id=_new_id(),
                 task_id=task_id,
                 type="jira",
-                key=match,
+                key=key,
                 url=None,
                 meta={},
             )
         )
-    for match in PR_RE.findall(text_value or ""):
+
+    # Deduplicate PR numbers to avoid unique constraint violations
+    pr_numbers = set(PR_RE.findall(text_value or ""))
+    for pr_number in pr_numbers:
         links_to_add.append(
             TaskLink(
                 id=_new_id(),
                 task_id=task_id,
                 type="github_pr",
-                key=str(match),
+                key=str(pr_number),
                 url=None,
                 meta={},
             )
         )
+
     if links_to_add:
         db.add_all(links_to_add)
         if commit:

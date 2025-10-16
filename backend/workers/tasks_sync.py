@@ -11,11 +11,29 @@ from sqlalchemy.orm import Session
 from ..core.config import settings
 from ..core.db import SessionLocal
 
-broker = RedisBroker(url=settings.redis_url)
-dramatiq.set_broker(broker)
+# Defer broker initialization to avoid import-time side effects
+broker = None
 
 
-@dramatiq.actor(max_retries=0)
+def init_broker():
+    """Initialize Dramatiq broker - call this at application startup"""
+    global broker
+    if broker is None:
+        broker = RedisBroker(url=settings.redis_url)
+        dramatiq.set_broker(broker)
+        # Register actors after broker is set
+        refresh_task_links_actor = dramatiq.actor(max_retries=0)(refresh_task_links)
+        globals()["refresh_task_links"] = refresh_task_links_actor
+    return broker
+
+
+def get_broker():
+    """Get the broker, initializing if needed"""
+    if broker is None:
+        init_broker()
+    return broker
+
+
 def refresh_task_links() -> None:
     db: Session = SessionLocal()
     try:

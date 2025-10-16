@@ -133,8 +133,8 @@ def finalize_meeting(
             )
         )
     meeting.ended_at = dt.datetime.now(dt.timezone.utc)
-    db.commit()
     tasksvc.ensure_tasks_for_actions(db, meeting.id)
+    db.commit()
 
 
 def get_summary(db: Session, session_id: str) -> dict | None:

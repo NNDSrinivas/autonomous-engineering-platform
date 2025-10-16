@@ -83,11 +83,15 @@ def create_task(
         org_id=org_id,
     )
     db.add(task)
+
+    # Batch all related operations before committing
+    _add_event(db, task.id, "created", {"title": title}, commit=False)
+    _auto_links_from_text(db, task.id, f"{title} {description or ''}", commit=False)
+
+    # Single commit for all operations
     db.commit()
     db.refresh(task)
 
-    _add_event(db, task.id, "created", {"title": title})
-    _auto_links_from_text(db, task.id, f"{title} {description or ''}", commit=True)
     _record_status_metrics(task, previous_status=None)
     return task
 

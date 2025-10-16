@@ -45,13 +45,13 @@ def upgrade() -> None:
             "created_at",
             sa.TIMESTAMP(timezone=True),
             nullable=False,
-            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
         sa.Column(
             "updated_at",
             sa.TIMESTAMP(timezone=True),
             nullable=False,
-            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
         sa.Column("org_id", sa.Text, nullable=True),
     )

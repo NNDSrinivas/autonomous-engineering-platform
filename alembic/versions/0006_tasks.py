@@ -19,16 +19,16 @@ def upgrade() -> None:
         "task",
         sa.Column("id", sa.Text, primary_key=True),
         sa.Column(
-            "meeting_id", 
-            sa.Text, 
-            sa.ForeignKey("meeting.id", ondelete="SET NULL"), 
-            nullable=True
+            "meeting_id",
+            sa.Text,
+            sa.ForeignKey("meeting.id", ondelete="SET NULL"),
+            nullable=True,
         ),
         sa.Column(
-            "action_item_id", 
-            sa.Text, 
-            sa.ForeignKey("action_item.id", ondelete="SET NULL"), 
-            nullable=True
+            "action_item_id",
+            sa.Text,
+            sa.ForeignKey("action_item.id", ondelete="SET NULL"),
+            nullable=True,
         ),
         sa.Column("title", sa.Text, nullable=False),
         sa.Column("description", sa.Text, nullable=True),

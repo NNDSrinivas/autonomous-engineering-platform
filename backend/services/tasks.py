@@ -92,7 +92,14 @@ def create_task(
     return task
 
 
-def _add_event(db: Session, task_id: str, event_type: str, data: Optional[dict], *, commit: bool = True) -> None:
+def _add_event(
+    db: Session,
+    task_id: str,
+    event_type: str,
+    data: Optional[dict],
+    *,
+    commit: bool = True,
+) -> None:
     event = TaskEvent(
         id=_new_id(),
         task_id=task_id,
@@ -129,13 +136,15 @@ def update_task(
         setattr(task, key, value)
 
     task.updated_at = dt.datetime.now(dt.timezone.utc)
-    
+
     # Add events before committing
     if "status" in mutable_fields:
         _add_event(db, task.id, "status_changed", {"status": task.status}, commit=False)
     if "assignee" in mutable_fields:
-        _add_event(db, task.id, "assignee_changed", {"assignee": task.assignee}, commit=False)
-    
+        _add_event(
+            db, task.id, "assignee_changed", {"assignee": task.assignee}, commit=False
+        )
+
     db.commit()
     db.refresh(task)
 
@@ -293,7 +302,9 @@ def ensure_tasks_for_actions(db: Session, meeting_id: str) -> None:
         create_task(
             db,
             title=row["title"],
-            description=(row.get("source_segment") or "Auto-created from meeting action item"),
+            description=(
+                row.get("source_segment") or "Auto-created from meeting action item"
+            ),
             assignee=row.get("assignee"),
             priority="P1",
             meeting_id=meeting_id,

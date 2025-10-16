@@ -69,6 +69,37 @@ def create_task(
     *,
     commit: bool = True,
 ) -> Task:
+    """
+    Create a new task and persist it to the database.
+
+    Parameters:
+        db (Session): SQLAlchemy database session.
+        title (str): Title of the task.
+        description (Optional[str]): Description of the task.
+        assignee (Optional[str]): User ID of the assignee.
+        priority (Optional[str]): Priority of the task (P0, P1, P2, P3).
+        due_date (Any | None): Due date for the task. Accepts:
+            - datetime.datetime (with or without tzinfo)
+            - int or float (interpreted as Unix timestamp, seconds)
+            - str (ISO 8601 format, e.g. "2024-06-01T12:00:00+00:00")
+            - None or empty string for no due date
+        meeting_id (Optional[str]): Associated meeting ID.
+        action_item_id (Optional[str]): Associated action item ID.
+        org_id (Optional[str]): Organization ID.
+        commit (bool): Whether to commit the transaction (default: True).
+
+    Side Effects:
+        - Persists the new task to the database.
+        - Emits a "created" TaskEvent.
+        - Auto-links related entities from the task text.
+        - Emits metrics/events if metrics wiring is enabled (TASK_CREATED, TASK_LATENCY).
+
+    Returns:
+        Task: The created Task object.
+
+    Raises:
+        ValueError: If due_date is provided but not in a recognized format.
+    """
     # Validate due_date consistently with update_task
     parsed_due_date = _parse_due_date(due_date)
     if parsed_due_date is None and due_date is not None and str(due_date).strip() != "":
@@ -132,6 +163,28 @@ def update_task(
     commit: bool = True,
     **fields: Any,
 ) -> Optional[Task]:
+    """
+    Update an existing task with provided fields.
+
+    Parameters:
+        db (Session): SQLAlchemy database session.
+        task_id (str): ID of the task to update.
+        org_id (Optional[str]): Organization ID for authorization.
+        commit (bool): Whether to commit the transaction (default: True).
+        **fields: Fields to update (title, description, status, assignee, priority, due_date).
+
+    Side Effects:
+        - Updates the task in the database.
+        - Emits an "updated" TaskEvent.
+        - Validates status and priority values.
+        - Emits metrics/events if metrics wiring is enabled.
+
+    Returns:
+        Optional[Task]: The updated Task object, or None if not found.
+
+    Raises:
+        ValueError: If field values are invalid or due_date format is unrecognized.
+    """
     if not org_id:
         return None
 
@@ -343,6 +396,22 @@ def stats(db: Session, org_id: Optional[str] = None) -> dict:
 
 
 def ensure_tasks_for_actions(db: Session, meeting_id: str) -> None:
+    """
+    Create tasks for action items that don't already have associated tasks.
+
+    Parameters:
+        db (Session): SQLAlchemy database session.
+        meeting_id (str): ID of the meeting to process action items for.
+
+    Side Effects:
+        - Creates new tasks for action items without existing tasks.
+        - Uses batch operations for efficiency.
+        - Commits all task creation in a single transaction.
+        - Emits metrics for each created task.
+
+    Returns:
+        None
+    """
     meeting_row = db.execute(
         text("SELECT org_id FROM meeting WHERE id = :meeting_id"),
         {"meeting_id": meeting_id},

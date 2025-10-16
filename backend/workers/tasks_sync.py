@@ -17,7 +17,7 @@ dramatiq.set_broker(broker)
 def refresh_task_links() -> None:
     db: Session = SessionLocal()
     try:
-        # Fix PostgreSQL DISTINCT ORDER BY issue by using EXISTS
+        # Get active tasks with links using EXISTS for PostgreSQL compatibility
         tasks = db.execute(
             text(
                 """

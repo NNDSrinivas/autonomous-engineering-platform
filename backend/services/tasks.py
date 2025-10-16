@@ -87,7 +87,7 @@ def create_task(
     db.refresh(task)
 
     _add_event(db, task.id, "created", {"title": title})
-    _auto_links_from_text(db, task.id, f"{title} {description or ''}")
+    _auto_links_from_text(db, task.id, f"{title} {description or ''}", commit=True)
     _record_status_metrics(task, previous_status=None)
     return task
 
@@ -176,7 +176,9 @@ def update_task(
     return task
 
 
-def _auto_links_from_text(db: Session, task_id: str, text_value: str) -> None:
+def _auto_links_from_text(
+    db: Session, task_id: str, text_value: str, *, commit: bool = False
+) -> None:
     links_to_add: list[TaskLink] = []
     for match in JIRA_RE.findall(text_value or ""):
         links_to_add.append(
@@ -202,7 +204,8 @@ def _auto_links_from_text(db: Session, task_id: str, text_value: str) -> None:
         )
     if links_to_add:
         db.add_all(links_to_add)
-        db.commit()
+        if commit:
+            db.commit()
 
 
 def list_tasks(

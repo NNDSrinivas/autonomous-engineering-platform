@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
 from sqlalchemy import text
@@ -7,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from ..core.config import settings
 from ..core.db import SessionLocal
-from ..services.tasks import update_task
 
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
@@ -63,7 +63,8 @@ def refresh_task_links() -> None:
         for link in links_result:
             links_by_task[link["task_id"]].append(link)
 
-        # Process each task
+        # Prepare status updates
+        status_updates = {}
         for task_id, org_id in tasks:
             links = links_by_task.get(task_id, [])
             inferred_status: str | None = None
@@ -73,9 +74,40 @@ def refresh_task_links() -> None:
                 elif link["type"] in {"github_pr", "github_issue"}:
                     inferred_status = inferred_status or "in_progress"
             if inferred_status and org_id:
-                update_task(
-                    db, task_id, org_id=org_id, status=inferred_status, commit=False
-                )
+                status_updates[task_id] = {"status": inferred_status, "org_id": org_id}
+
+        # Bulk update tasks if we have any status changes
+        if status_updates:
+            # Fetch all tasks to update in one query
+            task_ids_to_update = list(status_updates.keys())
+            placeholders = ",".join(
+                f":task_id_{i}" for i in range(len(task_ids_to_update))
+            )
+            params = {
+                f"task_id_{i}": task_id for i, task_id in enumerate(task_ids_to_update)
+            }
+
+            # Bulk update status using raw SQL for efficiency
+            db.execute(
+                text(
+                    f"""
+                    UPDATE task SET 
+                        status = CASE id
+                            {" ".join(f"WHEN :task_id_{i} THEN :status_{i}" for i in range(len(task_ids_to_update)))}
+                        END,
+                        updated_at = :now
+                    WHERE id IN ({placeholders})
+                """
+                ),
+                {
+                    **params,
+                    **{
+                        f"status_{i}": status_updates[task_id]["status"]
+                        for i, task_id in enumerate(task_ids_to_update)
+                    },
+                    "now": dt.datetime.now(dt.timezone.utc),
+                },
+            )
 
         # Single commit after all updates
         db.commit()

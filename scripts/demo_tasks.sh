@@ -18,7 +18,8 @@ curl -s -X POST "http://localhost:${REALTIME_PORT}/api/sessions/${sid}/captions"
   -H "Content-Type: application/json" \
   -d '{"text":"Action: Implement JWT expiry check PR #42 and close JIRA-123","speaker":"Lead"}' >/dev/null
 
-curl -s -X POST "http://localhost:${CORE_PORT}/api/meetings/${sid}/finalize" | jq
+curl -s -X POST "http://localhost:${CORE_PORT}/api/meetings/${sid}/finalize" \
+  -H "X-Org-Id: demo" | jq
 
 echo "Waiting for processing..."
 sleep 4

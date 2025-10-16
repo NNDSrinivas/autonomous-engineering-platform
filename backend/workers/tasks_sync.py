@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from ..core.config import settings
@@ -46,14 +46,12 @@ def refresh_task_links() -> None:
                 {"task_id": task_ids[0]},
             ).mappings()
         else:
-            # Multiple tasks - use IN clause with tuple
-            placeholders = ",".join(":task_id_" + str(i) for i in range(len(task_ids)))
-            params = {f"task_id_{i}": task_id for i, task_id in enumerate(task_ids)}
+            # Multiple tasks - use bindparam with expanding for proper IN clause handling
             links_result = db.execute(
                 text(
-                    f"SELECT task_id, type, key, url FROM task_link WHERE task_id IN ({placeholders})"
-                ),
-                params,
+                    "SELECT task_id, type, key, url FROM task_link WHERE task_id IN :task_ids"
+                ).bindparam(bindparam("task_ids", expanding=True)),
+                {"task_ids": task_ids},
             ).mappings()
 
         # Group links by task_id
@@ -74,7 +72,7 @@ def refresh_task_links() -> None:
                 elif link["type"] in {"github_pr", "github_issue"}:
                     inferred_status = inferred_status or "in_progress"
             if inferred_status and org_id:
-                status_updates[task_id] = {"status": inferred_status, "org_id": org_id}
+                status_updates[task_id] = {"status": inferred_status}
 
         # Bulk update tasks if we have any status changes
         if status_updates:

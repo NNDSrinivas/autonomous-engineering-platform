@@ -114,7 +114,9 @@ def upgrade() -> None:
         sa.Column("key", sa.Text, nullable=True),
         sa.Column("url", sa.Text, nullable=True),
         sa.Column("meta", sa.JSON, nullable=True),
-        sa.UniqueConstraint("task_id", "type", "key", name="uq_task_link_task_type_key"),
+        sa.UniqueConstraint(
+            "task_id", "type", "key", name="uq_task_link_task_type_key"
+        ),
     )
     op.create_index("ix_task_link_task", "task_link", ["task_id"])
 

@@ -34,6 +34,41 @@ def create_task(
             status_code=400,
             detail="Organization scope required (provide X-Org-Id header)",
         )
+
+    # Validate meeting_id belongs to the organization
+    if body.meeting_id:
+        from sqlalchemy import text
+
+        meeting_org = db.execute(
+            text("SELECT org_id FROM meeting WHERE id = :meeting_id"),
+            {"meeting_id": body.meeting_id},
+        ).scalar()
+        if not meeting_org or meeting_org != org_id:
+            raise HTTPException(
+                status_code=400,
+                detail="meeting_id does not belong to the specified organization",
+            )
+
+    # Validate action_item_id belongs to the organization (through its meeting)
+    if body.action_item_id:
+        from sqlalchemy import text
+
+        action_org = db.execute(
+            text(
+                """
+                SELECT m.org_id FROM action_item a 
+                JOIN meeting m ON a.meeting_id = m.id 
+                WHERE a.id = :action_item_id
+            """
+            ),
+            {"action_item_id": body.action_item_id},
+        ).scalar()
+        if not action_org or action_org != org_id:
+            raise HTTPException(
+                status_code=400,
+                detail="action_item_id does not belong to the specified organization",
+            )
+
     task = task_service.create_task(
         db,
         title=body.title,

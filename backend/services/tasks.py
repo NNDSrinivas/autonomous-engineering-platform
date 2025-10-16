@@ -170,6 +170,21 @@ def update_task(
                 )
             mutable_fields["due_date"] = parsed_due_date
 
+    # Validate field values for data integrity
+    if "status" in mutable_fields:
+        valid_statuses = {"open", "in_progress", "done"}
+        if mutable_fields["status"] not in valid_statuses:
+            raise ValueError(
+                f"Invalid status: {mutable_fields['status']!r}. Must be one of: {', '.join(sorted(valid_statuses))}"
+            )
+
+    if "priority" in mutable_fields and mutable_fields["priority"] is not None:
+        valid_priorities = {"P0", "P1", "P2", "P3"}
+        if mutable_fields["priority"] not in valid_priorities:
+            raise ValueError(
+                f"Invalid priority: {mutable_fields['priority']!r}. Must be one of: {', '.join(sorted(valid_priorities))}"
+            )
+
     for key, value in mutable_fields.items():
         setattr(task, key, value)
 

@@ -13,17 +13,17 @@ from ..core.db import SessionLocal
 
 # Defer broker initialization to avoid import-time side effects
 broker = None
+refresh_task_links_actor = None
 
 
 def init_broker():
     """Initialize Dramatiq broker - call this at application startup"""
-    global broker
+    global broker, refresh_task_links_actor
     if broker is None:
         broker = RedisBroker(url=settings.redis_url)
         dramatiq.set_broker(broker)
         # Register actors after broker is set
         refresh_task_links_actor = dramatiq.actor(max_retries=0)(refresh_task_links)
-        globals()["refresh_task_links"] = refresh_task_links_actor
     return broker
 
 

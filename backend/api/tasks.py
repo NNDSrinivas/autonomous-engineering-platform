@@ -77,7 +77,7 @@ def create_task(
         action_item_id=body.action_item_id,
         org_id=org_id,
     )
-    return {"id": task.id}
+    return task_service.get_task(db, task.id, org_id=org_id)
 
 
 class UpdateTaskRequest(BaseModel):
@@ -98,7 +98,10 @@ def update_task(
 ):
     org_id = request.headers.get("X-Org-Id")
     if not org_id:
-        raise HTTPException(status_code=400, detail="Missing organization context")
+        raise HTTPException(
+            status_code=400,
+            detail="Organization scope required (provide X-Org-Id header)",
+        )
 
     try:
         task = task_service.update_task(
@@ -160,7 +163,10 @@ def search_tasks(
 def get_task(task_id: str, request: Request, db: Session = Depends(get_db)):
     org_id = request.headers.get("X-Org-Id")
     if not org_id:
-        raise HTTPException(status_code=400, detail="Missing organization context")
+        raise HTTPException(
+            status_code=400,
+            detail="Organization scope required (provide X-Org-Id header)",
+        )
     task = task_service.get_task(db, task_id, org_id=org_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

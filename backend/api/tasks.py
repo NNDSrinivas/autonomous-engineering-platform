@@ -27,6 +27,11 @@ def create_task(
     db: Session = Depends(get_db),
 ):
     org_id = request.headers.get("X-Org-Id")
+    if not org_id:
+        raise HTTPException(
+            status_code=400, 
+            detail="Organization scope required (provide X-Org-Id header)"
+        )
     task = task_service.create_task(
         db,
         title=body.title,
@@ -92,6 +97,11 @@ def search_tasks(
     db: Session = Depends(get_db),
 ):
     org_id = request.headers.get("X-Org-Id")
+    if not org_id:
+        raise HTTPException(
+            status_code=400, 
+            detail="Organization scope required (provide X-Org-Id header)"
+        )
     items = task_service.list_tasks(
         db,
         q=q,
@@ -107,7 +117,11 @@ def search_tasks(
 def task_stats(
     request: Request,
     db: Session = Depends(get_db),
-    org_id: str | None = Query(default=None),
 ):
-    effective_org = org_id or request.headers.get("X-Org-Id")
-    return task_service.stats(db, effective_org)
+    org_id = request.headers.get("X-Org-Id")
+    if not org_id:
+        raise HTTPException(
+            status_code=400, 
+            detail="Organization scope required (provide X-Org-Id header)"
+        )
+    return task_service.stats(db, org_id)

@@ -5,7 +5,7 @@ import re
 import uuid
 from typing import Any, Optional
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from ..models.tasks import Task, TaskEvent, TaskLink
@@ -103,8 +103,18 @@ def _add_event(db: Session, task_id: str, event_type: str, data: Optional[dict])
     db.commit()
 
 
-def update_task(db: Session, task_id: str, **fields: Any) -> Optional[Task]:
-    task = db.get(Task, task_id)
+def update_task(
+    db: Session,
+    task_id: str,
+    *,
+    org_id: Optional[str] = None,
+    **fields: Any,
+) -> Optional[Task]:
+    if not org_id:
+        return None
+
+    stmt = select(Task).where(Task.id == task_id, Task.org_id == org_id)
+    task = db.scalars(stmt).first()
     if not task:
         return None
 
@@ -193,8 +203,12 @@ def list_tasks(
     return [dict(row) for row in db.execute(sql, params).mappings().all()]
 
 
-def get_task(db: Session, task_id: str) -> Optional[dict]:
-    task = db.get(Task, task_id)
+def get_task(db: Session, task_id: str, org_id: Optional[str] = None) -> Optional[dict]:
+    if not org_id:
+        return None
+
+    stmt = select(Task).where(Task.id == task_id, Task.org_id == org_id)
+    task = db.scalars(stmt).first()
     if not task:
         return None
     links = db.execute(
@@ -247,6 +261,12 @@ def stats(db: Session, org_id: Optional[str] = None) -> dict:
 
 
 def ensure_tasks_for_actions(db: Session, meeting_id: str) -> None:
+    meeting_row = db.execute(
+        text("SELECT org_id FROM meeting WHERE id = :meeting_id"),
+        {"meeting_id": meeting_id},
+    ).first()
+    meeting_org_id = meeting_row[0] if meeting_row else None
+
     action_rows = db.execute(
         text(
             """
@@ -274,4 +294,5 @@ def ensure_tasks_for_actions(db: Session, meeting_id: str) -> None:
             priority="P1",
             meeting_id=meeting_id,
             action_item_id=row["id"],
+            org_id=meeting_org_id,
         )

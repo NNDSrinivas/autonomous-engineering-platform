@@ -249,8 +249,8 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
         #   Sentences ending with known abbreviations (e.g., 'Dr.', 'Inc.') are merged with the following sentence.
         #   This prevents incorrect splits, such as splitting "Mr. Smith said" into two sentences.
         # The regex naively splits on sentence-ending punctuation followed by whitespace; the loop below merges sentences split at known abbreviations.
-        sentence_endings = re.compile(r"(?<=[.!?])\s+")
-        potential_sentences = sentence_endings.split(text_context)
+        sentence_boundary_pattern = re.compile(r"(?<=[.!?])\s+")
+        potential_sentences = sentence_boundary_pattern.split(text_context)
         sentences = []
         current_sentence = ""
 

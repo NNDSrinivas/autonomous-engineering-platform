@@ -41,9 +41,12 @@ export function runCommand(workspaceRoot: string, cmd: string) {
   if (!isAllowedCommand(cmd)) {
     throw new Error(`Command not allowed: ${cmd}`);
   }
-  // Only pass PATH environment variable for maximum security - most restrictive approach
+  // Pass a minimal set of safe environment variables required by most commands
+  const allowedEnvVars = ['PATH', 'HOME', 'USER', 'LANG'];
   const filteredEnv: { [key: string]: string } = {};
-  if (typeof process.env.PATH !== 'undefined') filteredEnv.PATH = process.env.PATH;
+  for (const key of allowedEnvVars) {
+    if (typeof process.env[key] !== 'undefined') filteredEnv[key] = process.env[key]!;
+  }
   
   const out = execSync(cmd, { cwd: workspaceRoot, stdio: 'pipe', env: filteredEnv, encoding: 'utf8' });
   return out.slice(-4000);

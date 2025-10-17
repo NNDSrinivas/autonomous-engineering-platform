@@ -6,28 +6,20 @@ export type PolicyDoc = {
   deny?: { commands?: string[] };
 };
 
-// Escape RegExp metacharacters in the pattern, except for glob tokens (to be replaced)
-function escapeRegExp(s: string): string {
-  // Escape special regex characters to prevent ReDoS and injection, but do NOT escape * or ? (glob tokens)
-  return s.replace(/[.+^${}()|[\]\\]/g, (match) => '\\' + match);
-}
-
-// Constants for glob pattern matching performance optimization
-const DOUBLE_STAR_PLACEHOLDER = '__DOUBLE_STAR_PLACEHOLDER__';
-const DOUBLE_STAR_PLACEHOLDER_REGEX = new RegExp(escapeRegExp(DOUBLE_STAR_PLACEHOLDER), 'g');
-
 function matchGlobPattern(pattern: string, path: string): boolean {
   // Convert glob pattern to regex safely with explicit escaping
   // ** matches any number of directories
   // * matches any characters within a directory segment
   // ? matches any single character
   
-  // Replace '**' with a placeholder to avoid confusion with single '*'
-  let regexPattern = escapeRegExp(pattern)
-    .replace(/\\\*\\\*/g, DOUBLE_STAR_PLACEHOLDER) // ** becomes placeholder
-    .replace(/\\\*/g, '[^/]*') // single * becomes [^/]*
-    .replace(/\\\?/g, '[^/]') // ? becomes [^/] (single character, not path separator)
-    .replace(DOUBLE_STAR_PLACEHOLDER_REGEX, '.*'); // restore ** to .*
+  // Single-pass conversion using replace with callback for maximum performance
+  const regexPattern = pattern.replace(/([.+^${}()|[\]\\])|(\*\*)|(\*)|(\?)/g, (match, esc, dblStar, star, q) => {
+    if (esc) return '\\' + esc; // Escape regex metacharacters
+    if (dblStar) return '.*';   // ** => .*
+    if (star) return '[^/]*';   // * => [^/]*
+    if (q) return '[^/]';       // ? => [^/]
+    return match;
+  });
   
   const regex = new RegExp(`^${regexPattern}$`);
   return regex.test(path);

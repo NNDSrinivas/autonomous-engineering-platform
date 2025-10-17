@@ -68,7 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (step.kind === 'edit' && step.files?.length && wf) {
                   details = await applyEdits(wf, step.files, step.desc);
                 } else if (step.command && wf) {
-                  details = await Promise.resolve(runCommand(wf, step.command));
+                  details = runCommand(wf, step.command);
                 } else {
                   status = 'skipped';
                 }
@@ -120,8 +120,7 @@ function html(): string {
           .replace(/\`/g, '&#96;')
           .replace(/\//g, '&#x2F;')
           .replace(/=/g, '&#x3D;')
-          .replace(/[\x00-\x1F\x7F-\x9F]/g, '') // Remove control characters
-          .replace(/[\u2000-\u206F\u2E00-\u2E7F\u3000-\u303F]/g, ''); // Remove dangerous Unicode
+          .replace(/[\x00-\x1F\x7F-\x9F\u2000-\u206F\u2E00-\u2E7F\u3000-\u303F]/g, ''); // Remove control and dangerous Unicode characters
       };
 
       // Helper function to render a task item as HTML

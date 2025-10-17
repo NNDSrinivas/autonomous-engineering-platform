@@ -144,7 +144,7 @@ function html(): string {
           log(\`<b>\${escapeHtml(payload.text)}</b><ul>\${items}</ul>\`);
         }
         if (type==='context.pack') {
-          log('<b>Context Pack</b><pre>'+JSON.stringify(payload,null,2)+'</pre>');
+          log('<b>Context Pack</b><pre>'+escapeHtml(JSON.stringify(payload,null,2))+'</pre>');
         }
         if (type==='plan.proposed') {
           window.__plan = payload;
@@ -152,7 +152,7 @@ function html(): string {
           log('<b>Plan Proposed</b><ul>'+list+'</ul><div class="row"><button class="btn primary" onclick="approve()">Approve & Run</button></div>');
         }
         if (type==='plan.results') {
-          log('<b>Plan Results</b><pre>'+JSON.stringify(payload,null,2)+'</pre>');
+          log('<b>Plan Results</b><pre>'+escapeHtml(JSON.stringify(payload,null,2))+'</pre>');
         }
       });
 

@@ -120,8 +120,8 @@ function html(): string {
           .replace(/\`/g, '&#96;')
           .replace(/\\//g, '&#x2F;')
           .replace(/=/g, '&#x3D;')
-          .replace(/[\\x00-\\x1F\\x7F-\\x9F]/g, '') // Remove control characters
-          .replace(/[\\u2000-\\u206F\\u2E00-\\u2E7F\\u3000-\\u303F]/g, ''); // Remove dangerous Unicode
+          .replace(/[\x00-\x1F\x7F-\x9F]/g, '') // Remove control characters
+          .replace(/[\u2000-\u206F\u2E00-\u2E7F\u3000-\u303F]/g, ''); // Remove dangerous Unicode
       };
 
       // Helper function to render a task item as HTML

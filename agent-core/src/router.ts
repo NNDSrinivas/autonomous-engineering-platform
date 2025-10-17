@@ -1,5 +1,5 @@
-import { coreApi } from './env.js';
-import type { Plan, PlanItem } from './protocol.js';
+import { coreApi } from './env';
+import type { Plan, PlanItem } from './protocol';
 
 export interface PlanResponse {
   plan: Plan;

@@ -1,6 +1,6 @@
 routes:
   plan: claude-3-5
-  code: gpt-4.1
+  code: gpt-4-1106-preview
   review: gpt-4o-mini
 
 budgets:
@@ -17,4 +17,4 @@ budgets:
 fallbacks:
   plan: [gpt-4o, claude-3-haiku]
   code: [gpt-4o, claude-3-5]
-  review: [gpt-4.1, claude-3-haiku]
+  review: [gpt-4-1106-preview, claude-3-haiku]

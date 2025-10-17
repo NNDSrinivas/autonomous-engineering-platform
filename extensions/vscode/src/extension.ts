@@ -88,10 +88,23 @@ function html(): string {
         return text.replace(/[&<>"']/g, (m) => map[m]);
       };
 
+      // Helper function to render a task item as HTML
+      function renderTaskItem(t) {
+        return (
+          '<li>' +
+            '<button class="btn" onclick="pick(\'' + escapeHtml(t.key) + '\')">' +
+              escapeHtml(t.key) +
+            '</button> ' +
+            escapeHtml(t.title) +
+            ' <code>' + escapeHtml(t.status || '') + '</code>' +
+          '</li>'
+        );
+      }
+
       window.addEventListener('message', ev => {
         const {type, payload} = ev.data;
         if (type==='message') {
-          const items = (payload.tasks||[]).map(t => \`<li><button class="btn" onclick="pick('\${escapeHtml(t.key)}')">\${escapeHtml(t.key)}</button> \${escapeHtml(t.title)} <code>\${escapeHtml(t.status||'')}</code></li>\`).join('') || '<li><small>No tasks found.</small></li>';
+          const items = (payload.tasks||[]).map(renderTaskItem).join('') || '<li><small>No tasks found.</small></li>';
           log(\`<b>\${escapeHtml(payload.text)}</b><ul>\${items}</ul>\`);
         }
         if (type==='context.pack') {
@@ -99,7 +112,7 @@ function html(): string {
         }
         if (type==='plan.proposed') {
           window.__plan = payload;
-          const list = payload.items.map(i=>\`<li><code>\${i.kind}</code> — \${i.desc}</li>\`).join('');
+          const list = payload.items.map(i=>\`<li><code>\${escapeHtml(i.kind)}</code> — \${escapeHtml(i.desc)}</li>\`).join('');
           log('<b>Plan Proposed</b><ul>'+list+'</ul><div class="row"><button class="btn primary" onclick="approve()">Approve & Run</button></div>');
         }
         if (type==='plan.results') {

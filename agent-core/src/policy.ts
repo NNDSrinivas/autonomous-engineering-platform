@@ -8,8 +8,8 @@ export type PolicyDoc = {
 
 // Escape RegExp metacharacters in the pattern, except for glob tokens (to be replaced)
 function escapeRegExp(s: string): string {
-  // Escape special regex characters to prevent ReDoS and injection
-  return s.replace(/[.*+?^${}()|[\]\\]/g, (match) => '\\' + match);
+  // Escape special regex characters to prevent ReDoS and injection, but do NOT escape * or ? (glob tokens)
+  return s.replace(/[.+^${}()|[\]\\]/g, (match) => '\\' + match);
 }
 
 function matchGlobPattern(pattern: string, path: string): boolean {

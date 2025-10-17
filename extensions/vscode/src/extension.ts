@@ -108,10 +108,20 @@ function html(): string {
       const vscode = acquireVsCodeApi();
       const log = (html) => { const d=document.createElement('div'); d.className='card'; d.innerHTML=html; document.getElementById('log').prepend(d); };
       
-      // HTML escape function to prevent XSS
+      // Comprehensive HTML escape function to prevent XSS
       const escapeHtml = (text) => {
-        const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
-        return text.replace(/[&<>"']/g, (m) => map[m]);
+        if (typeof text !== 'string') return '';
+        return text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;')
+          .replace(/\`/g, '&#96;')
+          .replace(/\\//g, '&#x2F;')
+          .replace(/=/g, '&#x3D;')
+          .replace(/[\\x00-\\x1F\\x7F-\\x9F]/g, '') // Remove control characters
+          .replace(/[\\u2000-\\u206F\\u2E00-\\u2E7F\\u3000-\\u303F]/g, ''); // Remove dangerous Unicode
       };
 
       // Helper function to render a task item as HTML

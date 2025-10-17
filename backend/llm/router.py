@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AuditContext:
     """Encapsulates audit logging parameters for LLM calls."""
+
     db: Optional[Session] = None
     prompt_hash: Optional[str] = None
     org_id: Optional[str] = None
@@ -167,7 +168,7 @@ class ModelRouter:
         # Initialize audit context if not provided
         if audit_context is None:
             audit_context = AuditContext()
-        
+
         # Generate prompt hash if not provided
         if not audit_context.prompt_hash:
             audit_context.prompt_hash = generate_prompt_hash(prompt, context)
@@ -220,7 +221,9 @@ class ModelRouter:
                         )
                         audit_context.db.commit()
                     except Exception as audit_error:
-                        logger.error(f"Failed to record audit log for {phase}/{candidate}: {audit_error}")
+                        logger.error(
+                            f"Failed to record audit log for {phase}/{candidate}: {audit_error}"
+                        )
                         # Don't fail the API call due to audit logging issues
                         audit_context.db.rollback()
 
@@ -276,7 +279,9 @@ class ModelRouter:
                         )
                         audit_context.db.commit()
                     except Exception as audit_error:
-                        logger.error(f"Failed to record error audit log for {phase}/{candidate}: {audit_error}")
+                        logger.error(
+                            f"Failed to record error audit log for {phase}/{candidate}: {audit_error}"
+                        )
                         audit_context.db.rollback()
 
                 logger.warning(f"Model {candidate} failed for phase {phase}: {e}")

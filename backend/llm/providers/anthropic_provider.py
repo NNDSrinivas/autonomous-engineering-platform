@@ -1,6 +1,9 @@
 import os
+import logging
 import anthropic
 from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
 
 
 class AnthropicProvider:
@@ -52,4 +55,7 @@ class AnthropicProvider:
             }
 
         except Exception as e:
-            raise RuntimeError(f"Anthropic API error for model {self.model}: {str(e)}")
+            logger.error(f"Anthropic API error for model {self.model}: {str(e)}")
+            raise RuntimeError(
+                f"Anthropic API error for model {self.model}. Please check logs for details."
+            )

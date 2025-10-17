@@ -201,7 +201,7 @@ async def clear_cache() -> Dict[str, str]:
         logger.info("Plan cache cleared")
         return {"message": "Cache cleared successfully"}
     except Exception as e:
-        logger.error(f"Error clearing cache: {e}")
+        logger.error(f"Cache clearing failed: {type(e).__name__}")
         raise HTTPException(
             status_code=500, detail="Failed to clear cache due to an internal error."
         )

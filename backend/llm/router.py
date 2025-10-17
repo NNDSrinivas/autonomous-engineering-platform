@@ -12,6 +12,35 @@ logger = logging.getLogger(__name__)
 class ModelRouter:
     """Routes LLM requests to appropriate providers with fallback support."""
 
+    def _sanitize_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Sanitize context data to prevent injection attacks and limit size."""
+        sanitized = {}
+        max_string_length = 10000  # Limit individual string values
+        max_context_size = 50000  # Limit total context size
+
+        def sanitize_value(value, max_len=max_string_length):
+            if isinstance(value, str):
+                # Remove potentially dangerous characters and limit length
+                sanitized_str = value.replace("\x00", "").replace("\x1a", "")
+                return (
+                    sanitized_str[:max_len]
+                    if len(sanitized_str) > max_len
+                    else sanitized_str
+                )
+            elif isinstance(value, dict):
+                return {k: sanitize_value(v) for k, v in value.items()}
+            elif isinstance(value, list):
+                return [sanitize_value(item) for item in value[:100]]  # Limit list size
+            else:
+                return value
+
+        for key, value in context.items():
+            if len(str(sanitized)) > max_context_size:
+                break
+            sanitized[key] = sanitize_value(value)
+
+        return sanitized
+
     def __init__(self, config_path: str = "config/model-router.yaml"):
         self.providers = {
             "gpt-4-1106-preview": OpenAIProvider("gpt-4-1106-preview"),
@@ -101,7 +130,8 @@ class ModelRouter:
 
             try:
                 logger.info(f"Calling model {candidate} for phase {phase}")
-                result = provider.complete(prompt, context)
+                sanitized_context = self._sanitize_context(context)
+                result = provider.complete(prompt, sanitized_context)
 
                 latency_ms = (time.time() - start_time) * 1000
 

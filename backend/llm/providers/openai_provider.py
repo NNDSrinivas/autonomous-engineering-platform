@@ -1,6 +1,9 @@
 import os
+import logging
 import openai
 from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIProvider:
@@ -61,4 +64,7 @@ class OpenAIProvider:
             }
 
         except Exception as e:
-            raise RuntimeError(f"OpenAI API error for model {self.model}: {str(e)}")
+            logger.error(f"OpenAI API error for model {self.model}: {str(e)}")
+            raise RuntimeError(
+                f"OpenAI API error for model {self.model}. Please check your request and try again."
+            )

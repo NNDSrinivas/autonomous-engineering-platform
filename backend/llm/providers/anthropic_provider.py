@@ -42,9 +42,7 @@ class AnthropicProvider:
 
             # Safely extract text content
             if not message.content or len(message.content) == 0:
-                raise RuntimeError(
-                    f"Anthropic API returned empty content for model {self.model}"
-                )
+                raise RuntimeError("Anthropic API returned empty content")
 
             return {
                 "text": message.content[0].text,
@@ -56,6 +54,4 @@ class AnthropicProvider:
 
         except Exception as e:
             logger.error(f"Anthropic API error for model {self.model}: {str(e)}")
-            raise RuntimeError(
-                f"Anthropic API error for model {self.model}. Please check logs for details."
-            )
+            raise RuntimeError("Anthropic API error. Please check logs for details.")

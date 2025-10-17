@@ -5,7 +5,7 @@ import hashlib
 import time
 import logging
 import os
-import threading
+import functools
 
 from ..core.cache import Cache
 from ..llm.router import ModelRouter
@@ -17,24 +17,10 @@ cache = Cache(ttl=3600)  # 1 hour cache
 logger = logging.getLogger(__name__)
 
 
-class ModelRouterSingleton:
-    """Singleton pattern for ModelRouter to avoid global state issues."""
-
-    _instance = None
-    _lock = threading.Lock()
-
-    @classmethod
-    def get_instance(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = ModelRouter()
-        return cls._instance
-
-
+@functools.lru_cache(maxsize=1)
 def get_model_router():
-    """Get the model router instance using singleton pattern."""
-    return ModelRouterSingleton.get_instance()
+    """Get the model router instance using functools singleton pattern."""
+    return ModelRouter()
 
 
 def load_plan_prompt() -> str:

@@ -25,7 +25,7 @@ export async function applyEdits(workspaceRoot: string, files: string[], note: s
 function isAllowedCommand(cmd: string): boolean {
   // Strict whitelist of allowed commands for maximum security
   const allowedCommands = [
-    /^git\s+(status|log|diff|show|branch|checkout|add|commit|push|pull|fetch|clone)\b/, // specific git subcommands only
+    /^git\s+(status|log|diff|show|branch|checkout|add|commit|push|pull|fetch)\b/, // specific git subcommands only (removed clone for security)
     /^pytest\s+/, // pytest commands
     /^npm\s+(install|test|run|build|start)\b/, // specific npm subcommands only
     /^pnpm\s+(install|test|run|build|start)\b/, // specific pnpm subcommands only  
@@ -52,7 +52,7 @@ export async function runCommand(workspaceRoot: string, cmd: string): Promise<st
   }
   
   // Additional security validations
-  if (cmd.includes('sudo') || cmd.includes('su ') || cmd.includes('chmod +x')) {
+  if (cmd.includes('sudo') || /\bsu\b/.test(cmd) || cmd.includes('chmod +x')) {
     throw new Error('Privileged commands are not allowed');
   }
   if (cmd.includes('..') || cmd.includes('/etc/') || cmd.includes('/root/')) {
@@ -80,7 +80,7 @@ export async function runCommand(workspaceRoot: string, cmd: string): Promise<st
       env: sanitizedEnv, 
       encoding: 'utf8',
       timeout: 30000, // 30 second timeout
-      maxBuffer: 1024 * 1024 // 1MB max buffer
+      maxBuffer: 5 * 1024 * 1024 // 5MB max buffer for legitimate command outputs
     });
     return stdout.slice(-4000);
   } catch (error: any) {

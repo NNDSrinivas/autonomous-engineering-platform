@@ -233,7 +233,7 @@ export function activate(context: vscode.ExtensionContext) {
             const latency = getTelemetryValue<number>(t, 'latency_ms', 'number', formatLatency);
             
             vscode.window.setStatusBarMessage(
-              `AEP Plan — model: ${model}, tokens: ${tokens}, cost: $${cost}, latency: ${latency} ms`, 
+              `AEP Plan — model: ${model}, tokens: ${tokens}, cost: $${cost}, latency: ${latency}ms`, 
               CONFIG.STATUS_BAR_TIMEOUT_MS
             );
           }

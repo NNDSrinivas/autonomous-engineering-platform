@@ -14,7 +14,7 @@ class ModelRouter:
 
     def __init__(self, config_path: str = "config/model-router.yaml"):
         self.providers = {
-            "gpt-4.1": OpenAIProvider("gpt-4-1106-preview"),  # Map to actual model name
+            "gpt-4-1106-preview": OpenAIProvider("gpt-4-1106-preview"),
             "gpt-4o": OpenAIProvider("gpt-4o"),
             "gpt-4o-mini": OpenAIProvider("gpt-4o-mini"),
             "claude-3-5": AnthropicProvider("claude-3-5-sonnet-20241022"),
@@ -52,7 +52,11 @@ class ModelRouter:
 
     def _use_defaults(self) -> None:
         """Use default configuration."""
-        self.routes = {"plan": "claude-3-5", "code": "gpt-4o", "review": "gpt-4o-mini"}
+        self.routes = {
+            "plan": "claude-3-5",
+            "code": "gpt-4-1106-preview",
+            "review": "gpt-4o-mini",
+        }
         self.budgets = {
             "plan": {"tokens": 40000, "seconds": 60},
             "code": {"tokens": 40000, "seconds": 60},
@@ -60,8 +64,8 @@ class ModelRouter:
         }
         self.fallbacks = {
             "plan": ["gpt-4o", "claude-3-haiku"],
-            "code": ["claude-3-5", "gpt-4o-mini"],
-            "review": ["gpt-4o", "claude-3-haiku"],
+            "code": ["gpt-4o", "claude-3-5"],
+            "review": ["gpt-4-1106-preview", "claude-3-haiku"],
         }
 
     def call(

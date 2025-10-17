@@ -1,7 +1,7 @@
 import { coreApi } from './env';
 import type { Greeting, Plan, PlanItem } from './protocol';
-import { generatePlan } from './router.js';
-import { record } from './telemetry.js';
+import { generatePlan } from './router';
+import { record } from './telemetry';
 
 export async function greet(): Promise<Greeting> {
   const name = process.env.USER || 'Developer';

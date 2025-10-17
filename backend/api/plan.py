@@ -5,24 +5,36 @@ import hashlib
 import time
 import logging
 import os
+import threading
 
 from ..core.cache import Cache
 from ..llm.router import ModelRouter
 
 # Initialize router and dependencies
 router = APIRouter(prefix="/api/plan", tags=["plan"])
-model_router = None
 cache = Cache(ttl=3600)  # 1 hour cache
 
 logger = logging.getLogger(__name__)
 
 
+class ModelRouterSingleton:
+    """Singleton pattern for ModelRouter to avoid global state issues."""
+
+    _instance = None
+    _lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = ModelRouter()
+        return cls._instance
+
+
 def get_model_router():
-    """Get the model router instance, initializing if needed."""
-    global model_router
-    if model_router is None:
-        model_router = ModelRouter()
-    return model_router
+    """Get the model router instance using singleton pattern."""
+    return ModelRouterSingleton.get_instance()
 
 
 def load_plan_prompt() -> str:

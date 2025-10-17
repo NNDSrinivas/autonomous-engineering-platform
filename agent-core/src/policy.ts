@@ -44,8 +44,13 @@ export async function checkPolicy(
 ): Promise<boolean> {
   if (!workspaceRoot) return false;
   const path = join(workspaceRoot, policyFile);
-  let doc: PolicyDoc = { allow: {} };
-  try { doc = JSON.parse((await readFile(path)).toString('utf8')); } catch {}
+  let doc: PolicyDoc;
+  try { 
+    doc = JSON.parse((await readFile(path)).toString('utf8')); 
+  } catch (err) {
+    console.error(`Failed to load or parse policy file at ${path}:`, err);
+    return false; // Deny by default if policy cannot be loaded
+  }
 
   if (step.command) {
     if (doc.deny?.commands?.some(d => step.command!.startsWith(d))) return false;

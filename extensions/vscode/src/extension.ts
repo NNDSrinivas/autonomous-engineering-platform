@@ -198,7 +198,10 @@ function html(): string {
           .replace(/'/g, '&#039;')
           .replace(/\`/g, '&#96;')
           // Remove dangerous control characters (preserving tab=\x09, newline=\x0A, carriage return=\x0D)
-          .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+          .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+          // Remove Unicode line/paragraph separators which can break JS string literals
+          .replace(/\u2028/g, '')
+          .replace(/\u2029/g, '');
       };
 
       // Helper function to render a task item as HTML

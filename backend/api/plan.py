@@ -25,7 +25,15 @@ def get_model_router():
 
 def load_plan_prompt() -> str:
     """Load the plan prompt template."""
-    prompt_path = "backend/llm/prompts/plan.md"
+    # Allow override via environment variable
+    env_prompt_path = os.environ.get("PLAN_PROMPT_PATH")
+    if env_prompt_path:
+        prompt_path = env_prompt_path
+    else:
+        # Path relative to this file
+        prompt_path = os.path.join(os.path.dirname(__file__), "..", "llm", "prompts", "plan.md")
+        prompt_path = os.path.normpath(prompt_path)
+    
     try:
         with open(prompt_path, 'r') as f:
             return f.read()
@@ -95,12 +103,12 @@ async def generate_plan(
         
         except Exception as e:
             logger.error(f"LLM call failed for key {key}: {e}")
-            # Return error plan
+            # Return error plan - use generic message for security
             plan = {
                 "items": [{
                     "id": "error-1",
                     "kind": "edit",
-                    "desc": f"Plan generation failed: {str(e)}",
+                    "desc": "Plan generation failed due to an internal error.",
                     "files": []
                 }]
             }
@@ -110,7 +118,7 @@ async def generate_plan(
                 "tokens": 0,
                 "cost_usd": 0,
                 "latency_ms": 0,
-                "error": str(e)
+                "error": "Internal error"
             }
         
         # Build result
@@ -124,8 +132,9 @@ async def generate_plan(
             "cached": False
         }
         
-        # Cache the result
-        cache.set(cache_key, result)
+        # Only cache successful results (not error responses)
+        if not telemetry.get("error"):
+            cache.set(cache_key, result)
         
         logger.info(f"Generated plan for {key}: {len(plan.get('items', []))} steps, "
                    f"${telemetry.get('cost_usd', 0):.6f}, {total_time:.0f}ms")

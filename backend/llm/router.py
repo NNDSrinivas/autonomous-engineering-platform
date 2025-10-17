@@ -193,8 +193,25 @@ class ModelRouter:
                 sanitized_context = self._sanitize_context(context)
                 result = provider.complete(prompt, sanitized_context)
 
-                tokens = int(result.get("tokens", 0))
-                cost = float(result.get("cost_usd", 0.0))
+                # Safely convert telemetry values with validation
+                tokens_raw = result.get("tokens", 0)
+                cost_raw = result.get("cost_usd", 0.0)
+
+                # Validate and convert tokens
+                if isinstance(tokens_raw, (int, float)) or (
+                    isinstance(tokens_raw, str) and tokens_raw.isdigit()
+                ):
+                    tokens = int(float(tokens_raw))  # Handle string numbers
+                else:
+                    tokens = 0
+
+                # Validate and convert cost
+                if isinstance(cost_raw, (int, float)) or (
+                    isinstance(cost_raw, str) and cost_raw.replace(".", "").isdigit()
+                ):
+                    cost = float(cost_raw)
+                else:
+                    cost = 0.0
 
                 # Calculate latency for successful call
                 latency_ms = (time.time() - start_time) * 1000

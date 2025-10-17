@@ -29,7 +29,11 @@ export function activate(context: vscode.ExtensionContext) {
           case 'plan.approve': {
             const results: any[] = [];
             for (const step of msg.plan.items ?? []) {
-              const allowed = await checkPolicy(wf!, { command: step.command, files: step.files });
+              if (!wf) {
+                results.push({ id: step.id, status: 'error', error: 'No workspace folder available' });
+                continue;
+              }
+              const allowed = await checkPolicy(wf, { command: step.command, files: step.files });
               if (!allowed) { results.push({ id: step.id, status: 'denied' }); continue; }
               // ask-before-do per step
               const go = await vscode.window.showInformationMessage(

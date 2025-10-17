@@ -55,7 +55,12 @@ def validate_header_value(
 
     # Only allow alphanumeric characters, hyphens, underscores, and dots
     # This prevents injection attacks while allowing common ID formats
-    if not re.match(r"^[a-zA-Z0-9_.-]+$", value):
+    # Disallow leading dot and consecutive dots to prevent path traversal
+    if not re.match(r"^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$", value):
+        return None
+
+    # Additional check for consecutive dots (path traversal prevention)
+    if ".." in value:
         return None
 
     return value

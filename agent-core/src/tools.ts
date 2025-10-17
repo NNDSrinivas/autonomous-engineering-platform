@@ -45,7 +45,7 @@ export function runCommand(workspaceRoot: string, cmd: string) {
   const allowedEnvVars = ['PATH', 'HOME', 'USER', 'LANG'];
   const filteredEnv: { [key: string]: string } = {};
   for (const key of allowedEnvVars) {
-    if (typeof process.env[key] !== 'undefined') filteredEnv[key] = process.env[key]!;
+    if (process.env[key] != null) filteredEnv[key] = process.env[key] as string;
   }
   
   const out = execSync(cmd, { cwd: workspaceRoot, stdio: 'pipe', env: filteredEnv, encoding: 'utf8' });

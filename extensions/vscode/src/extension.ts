@@ -87,7 +87,73 @@ export function activate(context: vscode.ExtensionContext) {
     setTimeout(() => send('session.open'), 200);
   });
 
-  context.subscriptions.push(openPanel);
+  const runPlan = vscode.commands.registerCommand('aep.runPlan', async () => {
+    try {
+      const wf = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!wf) {
+        vscode.window.showErrorMessage('No workspace folder available');
+        return;
+      }
+      
+      // Show simple input to get plan details or use a placeholder
+      const planData = await vscode.window.showInputBox({
+        prompt: 'Enter plan data (JSON format)',
+        placeHolder: 'Plan execution requires approved plan data'
+      });
+      
+      if (!planData) {
+        vscode.window.showInformationMessage('Plan execution cancelled');
+        return;
+      }
+      
+      let plan: any;
+      try {
+        plan = JSON.parse(planData);
+      } catch (e) {
+        vscode.window.showErrorMessage('Invalid JSON format for plan data');
+        return;
+      }
+      
+      // Execute plan steps with policy checking
+      const results: any[] = [];
+      for (const step of plan.items ?? []) {
+        const allowed = await checkPolicy(wf, { command: step.command, files: step.files });
+        if (!allowed) { 
+          results.push({ id: step.id, status: 'denied' }); 
+          continue; 
+        }
+        
+        const go = await vscode.window.showInformationMessage(
+          buildConfirmationMessage(step), { modal: true }, 'Run'
+        );
+        if (go !== 'Run') { 
+          results.push({ id: step.id, status: 'cancelled' }); 
+          continue; 
+        }
+
+        let details = 'skipped', status = 'ok';
+        try {
+          if (step.kind === 'edit' && step.files?.length && wf) {
+            details = await applyEdits(wf, step.files, step.desc);
+          } else if (step.command && wf) {
+            details = runCommand(wf, step.command);
+          } else {
+            status = 'skipped';
+          }
+        } catch (e: any) { 
+          status = 'error'; 
+          details = e?.message || String(e); 
+        }
+        results.push({ id: step.id, status, details });
+      }
+      
+      vscode.window.showInformationMessage(`Plan execution completed. Results: ${JSON.stringify(results)}`);
+    } catch (e: any) {
+      vscode.window.showErrorMessage(`AEP runPlan error: ${e?.message || e}`);
+    }
+  });
+
+  context.subscriptions.push(openPanel, runPlan);
 }
 export function deactivate() {}
 

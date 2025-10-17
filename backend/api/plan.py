@@ -161,7 +161,9 @@ async def generate_plan(
                 try:
                     audit_context.db.rollback()
                 except Exception as rollback_error:
-                    logger.error(f"Failed to rollback audit transaction: {rollback_error}")
+                    logger.error(
+                        f"Failed to rollback audit transaction: {rollback_error}"
+                    )
 
             # Return error plan - use generic message for security
             plan = {

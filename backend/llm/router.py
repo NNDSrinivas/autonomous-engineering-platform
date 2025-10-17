@@ -248,7 +248,9 @@ class ModelRouter:
                     "input_tokens": result.get("input_tokens", 0),
                     "output_tokens": result.get("output_tokens", 0),
                     "cost_usd": cost,
-                    "latency_ms": round(latency_ms),  # Use consistent rounding with logging
+                    "latency_ms": round(
+                        latency_ms
+                    ),  # Use consistent rounding with logging
                     "timestamp": time.time(),
                 }
 

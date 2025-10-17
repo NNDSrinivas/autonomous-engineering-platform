@@ -9,9 +9,9 @@ class OpenAIProvider:
         self.model = model
         self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
-        # Model-specific pricing (per 1K tokens)
+        # Model-specific pricing (per 1K tokens) - map actual API model names to pricing
         self.pricing = {
-            "gpt-4.1": {"input": 0.03, "output": 0.06},
+            "gpt-4-1106-preview": {"input": 0.03, "output": 0.06},
             "gpt-4o": {"input": 0.005, "output": 0.015},
             "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
             "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002}

@@ -9,12 +9,12 @@ class AnthropicProvider:
         self.model = model
         self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         
-        # Model-specific pricing (per 1K tokens)
+        # Model-specific pricing (per 1K tokens) - map actual API model names to pricing
         self.pricing = {
-            "claude-3-5": {"input": 0.003, "output": 0.015},
-            "claude-3-haiku": {"input": 0.00025, "output": 0.00125},
-            "claude-3-sonnet": {"input": 0.003, "output": 0.015},
-            "claude-3-opus": {"input": 0.015, "output": 0.075}
+            "claude-3-5-sonnet-20241022": {"input": 0.003, "output": 0.015},
+            "claude-3-haiku-20240307": {"input": 0.00025, "output": 0.00125},
+            "claude-3-sonnet-20240229": {"input": 0.003, "output": 0.015},
+            "claude-3-opus-20240229": {"input": 0.015, "output": 0.075}
         }
     
     def complete(self, prompt: str, context: Dict[str, Any]) -> Dict[str, Any]:

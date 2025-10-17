@@ -195,9 +195,9 @@ class ModelRouter:
                         db.execute(
                             text(
                                 """
-                            INSERT INTO llm_call (phase, model, status, prompt_hash, tokens, cost_usd, latency_ms, org_id, user_id)
-                            VALUES (:phase, :model, :status, :prompt_hash, :tokens, :cost_usd, :latency_ms, :org_id, :user_id)
-                        """
+INSERT INTO llm_call (phase, model, status, prompt_hash, tokens, cost_usd, latency_ms, org_id, user_id)
+VALUES (:phase, :model, :status, :prompt_hash, :tokens, :cost_usd, :latency_ms, :org_id, :user_id)
+"""
                             ),
                             {
                                 "phase": phase,
@@ -255,9 +255,9 @@ class ModelRouter:
                         db.execute(
                             text(
                                 """
-                            INSERT INTO llm_call (phase, model, status, prompt_hash, tokens, cost_usd, latency_ms, error_message, org_id, user_id)
-                            VALUES (:phase, :model, :status, :prompt_hash, :tokens, :cost_usd, :latency_ms, :error_message, :org_id, :user_id)
-                        """
+INSERT INTO llm_call (phase, model, status, prompt_hash, tokens, cost_usd, latency_ms, error_message, org_id, user_id)
+VALUES (:phase, :model, :status, :prompt_hash, :tokens, :cost_usd, :latency_ms, :error_message, :org_id, :user_id)
+"""
                             ),
                             {
                                 "phase": phase,

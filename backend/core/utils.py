@@ -2,25 +2,13 @@
 
 import hashlib
 import json
-import re
 from typing import Any, Dict, Optional
 
 # Configuration constants
 MAX_HEADER_LENGTH = 100  # Maximum allowed length for header values
 
-# Header value validation pattern using re.VERBOSE for maintainability
-# Note: Empty strings are handled separately in validate_header_value()
-# This pattern requires at least one character and validates the format
-HEADER_VALUE_PATTERN = re.compile(
-    r"""
-    ^                   # Start of string
-    (?!.*\.\.)         # Negative lookahead: no consecutive dots anywhere
-    [a-zA-Z0-9_]       # First character: alphanumeric or underscore only
-    (?:[a-zA-Z0-9_.-]*[a-zA-Z0-9_])?  # Optional middle chars ending with alnum/underscore
-    $                   # End of string
-    """,
-    re.VERBOSE,
-)
+# Simple character set for header validation - more maintainable than complex regex
+ALLOWED_HEADER_CHARS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-')
 
 
 def generate_prompt_hash(prompt: str, context: Dict[str, Any] = None) -> str:
@@ -67,10 +55,21 @@ def validate_header_value(
     if len(value) > max_length:
         return None
 
-    # Only allow alphanumeric characters, hyphens, underscores, and dots
-    # This prevents injection attacks while allowing common ID formats
-    # Disallow leading dot and consecutive dots to prevent path traversal
-    if not HEADER_VALUE_PATTERN.match(value):
+    # Simple validation using string methods for better maintainability
+    # 1. Must start with alphanumeric or underscore
+    if not (value[0].isalnum() or value[0] == '_'):
+        return None
+    
+    # 2. Must end with alphanumeric or underscore (if more than 1 char)
+    if len(value) > 1 and not (value[-1].isalnum() or value[-1] == '_'):
+        return None
+    
+    # 3. Only allow specific characters
+    if not all(c in ALLOWED_HEADER_CHARS for c in value):
+        return None
+    
+    # 4. Disallow consecutive dots to prevent path traversal
+    if '..' in value:
         return None
 
     return value

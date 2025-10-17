@@ -220,12 +220,7 @@ class ModelRouter:
                 LLM_COST.labels(phase=phase, model=candidate).inc(cost)
                 LLM_LATENCY.labels(phase=phase, model=candidate).observe(latency_ms)
 
-                # Record audit log
-                # NOTE: Audit logging is handled by the dedicated AuditService
-                # which encapsulates transaction management and error handling.
-                # Transaction boundaries (commit/rollback) are expected to be
-                # handled by the caller (API layer) to allow grouping multiple
-                # related DB operations in a single transaction.
+                # Record audit log (transaction managed by caller)
                 if audit_context.db is not None:
                     audit_entry = AuditLogEntry(
                         phase=phase,
@@ -248,9 +243,7 @@ class ModelRouter:
                     "input_tokens": result.get("input_tokens", 0),
                     "output_tokens": result.get("output_tokens", 0),
                     "cost_usd": cost,
-                    "latency_ms": round(
-                        latency_ms, 0
-                    ),  # Explicit rounding to whole milliseconds for consistency
+                    "latency_ms": round(latency_ms),
                     "timestamp": time.time(),
                 }
 

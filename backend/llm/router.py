@@ -197,9 +197,9 @@ class ModelRouter:
                 tokens_raw = result.get("tokens", 0)
                 cost_raw = result.get("cost_usd", 0.0)
 
-                # Validate and convert tokens (handles decimals properly)
+                # Validate and convert tokens (should be integers)
                 try:
-                    tokens = int(float(tokens_raw))
+                    tokens = int(tokens_raw)
                 except (ValueError, TypeError):
                     tokens = 0
 

@@ -194,8 +194,8 @@ class ModelRouter:
                 result = provider.complete(prompt, sanitized_context)
 
                 latency_ms = (time.time() - start_time) * 1000
-                tokens = int(result.get("tokens", 0))
-                cost = float(result.get("cost_usd", 0.0))
+                tokens = int(result.get("tokens") or 0)
+                cost = float(result.get("cost_usd") or 0.0)
 
                 # Record Prometheus metrics
                 LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()
@@ -286,7 +286,7 @@ class ModelRouter:
                         audit_context.db.rollback()
 
                 logger.warning(f"Model {candidate} failed for phase {phase}: {e}")
-                continue  # Continue to next fallback candidate
+                continue
 
         # All models failed
         raise RuntimeError(

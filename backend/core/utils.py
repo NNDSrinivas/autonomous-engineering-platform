@@ -50,7 +50,7 @@ def validate_header_value(value: Optional[str], max_length: int = 100) -> Option
 
     # Only allow alphanumeric characters, hyphens, underscores, and dots
     # This prevents injection attacks while allowing common ID formats
-    if not re.match(r"^[a-zA-Z0-9\-_.]+$", value):
+    if not re.match(r"^[a-zA-Z0-9_.-]+$", value):
         return None
 
     return value

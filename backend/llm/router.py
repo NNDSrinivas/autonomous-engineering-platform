@@ -193,9 +193,11 @@ class ModelRouter:
                 sanitized_context = self._sanitize_context(context)
                 result = provider.complete(prompt, sanitized_context)
 
-                latency_ms = (time.time() - start_time) * 1000
                 tokens = int(result.get("tokens", 0))
                 cost = float(result.get("cost_usd", 0.0))
+
+                # Calculate latency for successful call
+                latency_ms = (time.time() - start_time) * 1000
 
                 # Record Prometheus metrics
                 LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()
@@ -251,10 +253,12 @@ class ModelRouter:
                 return result["text"], telemetry
 
             except Exception as e:
-                latency_ms = (time.time() - start_time) * 1000
                 status = "error"
                 error_message = str(e)
                 last_error = e
+
+                # Calculate latency for failed call
+                latency_ms = (time.time() - start_time) * 1000
 
                 # Record error metrics
                 LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()

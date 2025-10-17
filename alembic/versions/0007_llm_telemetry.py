@@ -1,4 +1,4 @@
-"""llm telemetry audit table
+"""LLM telemetry audit table
 
 Revision ID: 0007_llm_telemetry
 Revises: 0006_tasks

@@ -6,7 +6,8 @@ import { applyEdits, runCommand } from 'agent-core/tools';
 // Configuration constants
 const CONFIG = {
   PLAN_PREVIEW_STEP_LIMIT: 3,
-  TEXT_SANITIZATION_LIMIT: 200
+  TEXT_SANITIZATION_LIMIT: 200,
+  COST_DECIMAL_PLACES: 4
 } as const;
 
 // Sanitize text for display in user dialogs
@@ -222,7 +223,7 @@ export function activate(context: vscode.ExtensionContext) {
             const t = llmPlan.telemetry;
             const model = getTelemetryValue<string>(t, 'model', 'string');
             const tokens = getTelemetryValue<number>(t, 'tokens', 'number');
-            const cost = getTelemetryValue<number>(t, 'cost_usd', 'number', v => v.toFixed(4));
+            const cost = getTelemetryValue<number>(t, 'cost_usd', 'number', v => v.toFixed(CONFIG.COST_DECIMAL_PLACES));
             const latency = getTelemetryValue<number>(t, 'latency_ms', 'number', v => Math.round(v) + 'ms');
             
             vscode.window.setStatusBarMessage(

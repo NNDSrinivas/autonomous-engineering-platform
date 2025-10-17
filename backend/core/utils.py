@@ -5,6 +5,9 @@ import json
 import re
 from typing import Any, Dict, Optional
 
+# Configuration constants
+MAX_HEADER_LENGTH = 100  # Maximum allowed length for header values
+
 
 def generate_prompt_hash(prompt: str, context: Dict[str, Any] = None) -> str:
     """
@@ -27,7 +30,9 @@ def generate_prompt_hash(prompt: str, context: Dict[str, Any] = None) -> str:
     return hashlib.sha256(combined_input.encode("utf-8")).hexdigest()
 
 
-def validate_header_value(value: Optional[str], max_length: int = 100) -> Optional[str]:
+def validate_header_value(
+    value: Optional[str], max_length: int = MAX_HEADER_LENGTH
+) -> Optional[str]:
     """
     Validate and sanitize header values for audit logging.
 

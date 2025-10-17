@@ -68,7 +68,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (step.kind === 'edit' && step.files?.length && wf) {
                   details = await applyEdits(wf, step.files, step.desc);
                 } else if (step.command && wf) {
-                  details = runCommand(wf, step.command);
+                  details = await runCommand(wf, step.command);
                 } else {
                   status = 'skipped';
                 }
@@ -136,7 +136,7 @@ export function activate(context: vscode.ExtensionContext) {
           if (step.kind === 'edit' && step.files?.length && wf) {
             details = await applyEdits(wf, step.files, step.desc);
           } else if (step.command && wf) {
-            details = runCommand(wf, step.command);
+            details = await runCommand(wf, step.command);
           } else {
             status = 'skipped';
           }

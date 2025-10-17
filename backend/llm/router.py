@@ -249,8 +249,8 @@ class ModelRouter:
                     "output_tokens": result.get("output_tokens", 0),
                     "cost_usd": cost,
                     "latency_ms": round(
-                        latency_ms
-                    ),  # Use consistent rounding with logging
+                        latency_ms, 0
+                    ),  # Explicit rounding to whole milliseconds for consistency
                     "timestamp": time.time(),
                 }
 
@@ -261,7 +261,7 @@ class ModelRouter:
                 formatted_cost = f"${cost:.{COST_DECIMAL_PLACES}f}"
                 logger.info(
                     f"Successfully completed {phase} with {candidate}: "
-                    f"{tokens} tokens, {formatted_cost}, {round(latency_ms):.0f}ms"
+                    f"{tokens} tokens, {formatted_cost}, {round(latency_ms)}ms"
                 )
 
                 return result["text"], telemetry

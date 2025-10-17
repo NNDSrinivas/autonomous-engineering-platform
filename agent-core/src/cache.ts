@@ -3,9 +3,12 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
+// Configuration constants
+const DEFAULT_TTL = 3600; // Default TTL in seconds (1 hour)
+
 const cache = new Map<string, CacheEntry<any>>();
 
-export function get<T>(key: string, ttl: number = 3600): T | undefined {
+export function get<T>(key: string, ttl: number = DEFAULT_TTL): T | undefined {
   const entry = cache.get(key);
   if (!entry) return undefined;
   
@@ -32,7 +35,7 @@ export function size(): number {
   return cache.size;
 }
 
-export function cleanup(maxAge: number = 3600): number {
+export function cleanup(maxAge: number = DEFAULT_TTL): number {
   const now = Date.now();
   let removed = 0;
   

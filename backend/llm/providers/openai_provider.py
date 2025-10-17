@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 class OpenAIProvider:
     """OpenAI API provider for LLM completions."""
 
+    # Configuration constants
+    MAX_TOKENS = 1500  # Maximum tokens for completion
+
     def __init__(self, model: str):
         self.model = model
 
@@ -38,7 +41,7 @@ class OpenAIProvider:
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": str(context)},
                 ],
-                max_tokens=1500,
+                max_tokens=self.MAX_TOKENS,
                 temperature=0.1,
                 top_p=0.9,
             )

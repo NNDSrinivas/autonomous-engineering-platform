@@ -15,6 +15,9 @@ cache = Cache(ttl=3600)  # 1 hour cache
 
 logger = logging.getLogger(__name__)
 
+# Configuration constants
+MAX_LLM_RESPONSE_SIZE = 1024 * 1024  # 1 MB limit for LLM responses
+
 
 # Singleton instance for ModelRouter
 _model_router_instance = None
@@ -96,8 +99,6 @@ async def generate_plan(
             )
 
             # Parse LLM response with size limits
-            MAX_LLM_RESPONSE_SIZE = 1024 * 1024  # 1 MB
-
             try:
                 # Limit LLM response size to prevent memory exhaustion
                 if len(response_text) > MAX_LLM_RESPONSE_SIZE:

@@ -15,6 +15,7 @@ class ModelRouter:
     # Security and validation constants
     MAX_STRING_LENGTH = 10000  # Limit individual string values
     MAX_CONTEXT_SIZE = 50000  # Limit total context size
+    MAX_LIST_SIZE = 100  # Limit list size in sanitization
 
     def _sanitize_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Sanitize context data to prevent injection attacks and limit size."""
@@ -49,7 +50,9 @@ class ModelRouter:
             elif isinstance(value, dict):
                 return {k: sanitize_value(v) for k, v in value.items()}
             elif isinstance(value, list):
-                return [sanitize_value(item) for item in value[:100]]  # Limit list size
+                return [
+                    sanitize_value(item) for item in value[: self.MAX_LIST_SIZE]
+                ]  # Limit list size
             else:
                 return value
 

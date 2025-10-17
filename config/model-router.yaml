@@ -1,0 +1,13 @@
+routes:
+  plan: claude-3-5
+  code: gpt-4.1
+  review: gpt-4o-mini
+
+budgets:
+  tokens: 120000
+  seconds: 180
+
+fallbacks:
+  plan: [gpt-4o, claude-3-haiku]
+  code: [gpt-4o, claude-3-5]
+  review: [gpt-4.1, claude-3-haiku]

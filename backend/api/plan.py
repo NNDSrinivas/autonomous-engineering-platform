@@ -10,7 +10,7 @@ import os
 from ..core.cache import Cache
 from ..core.db import get_db
 from ..core.utils import generate_prompt_hash
-from ..llm.router import ModelRouter
+from ..llm.router import ModelRouter, AuditContext
 
 # Initialize router and dependencies
 router = APIRouter(prefix="/api/plan", tags=["plan"])
@@ -98,8 +98,13 @@ async def generate_plan(
         org_id = request.headers.get("X-Org-Id") if request else None
         user_id = request.headers.get("X-User-Id") if request else None
 
-        # Generate prompt hash for audit logging
-        prompt_hash = generate_prompt_hash(prompt, context_pack)
+        # Create audit context for LLM call
+        audit_context = AuditContext(
+            db=db,
+            prompt_hash=generate_prompt_hash(prompt, context_pack),
+            org_id=org_id,
+            user_id=user_id,
+        )
 
         # Call LLM via model router
         logger.info(f"Generating new plan for key: {key}")
@@ -110,10 +115,7 @@ async def generate_plan(
                 "plan",
                 prompt,
                 context_pack,
-                db=db,
-                prompt_hash=prompt_hash,
-                org_id=org_id,
-                user_id=user_id,
+                audit_context=audit_context,
             )
 
             # Parse LLM response with size limits

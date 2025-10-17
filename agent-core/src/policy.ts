@@ -12,6 +12,10 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.+^${}()|[\]\\]/g, (match) => '\\' + match);
 }
 
+// Constants for glob pattern matching performance optimization
+const DOUBLE_STAR_PLACEHOLDER = '__DOUBLE_STAR_PLACEHOLDER__';
+const DOUBLE_STAR_PLACEHOLDER_REGEX = new RegExp(escapeRegExp(DOUBLE_STAR_PLACEHOLDER), 'g');
+
 function matchGlobPattern(pattern: string, path: string): boolean {
   // Convert glob pattern to regex safely with explicit escaping
   // ** matches any number of directories
@@ -19,8 +23,6 @@ function matchGlobPattern(pattern: string, path: string): boolean {
   // ? matches any single character
   
   // Replace '**' with a placeholder to avoid confusion with single '*'
-  const DOUBLE_STAR_PLACEHOLDER = '__DOUBLE_STAR_PLACEHOLDER__';
-  const DOUBLE_STAR_PLACEHOLDER_REGEX = new RegExp(escapeRegExp(DOUBLE_STAR_PLACEHOLDER), 'g');
   let regexPattern = escapeRegExp(pattern)
     .replace(/\\\*\\\*/g, DOUBLE_STAR_PLACEHOLDER) // ** becomes placeholder
     .replace(/\\\*/g, '[^/]*') // single * becomes [^/]*

@@ -37,6 +37,12 @@ class AnthropicProvider:
                 usage.output_tokens / 1000
             ) * pricing["output"]
 
+            # Safely extract text content
+            if not message.content or len(message.content) == 0:
+                raise RuntimeError(
+                    f"Anthropic API returned empty content for model {self.model}"
+                )
+
             return {
                 "text": message.content[0].text,
                 "tokens": usage.input_tokens + usage.output_tokens,

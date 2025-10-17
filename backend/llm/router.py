@@ -220,13 +220,13 @@ class ModelRouter:
                                 "user_id": audit_context.user_id,
                             },
                         )
-                        audit_context.db.commit()
+                        # Commit should be handled at a higher level
                     except Exception as audit_error:
                         logger.error(
                             f"Failed to record audit log for {phase}/{candidate}: {audit_error}"
                         )
                         # Don't fail the API call due to audit logging issues
-                        audit_context.db.rollback()
+                        # Rollback should be handled at a higher level
 
                 # Build telemetry data
                 telemetry = {
@@ -278,12 +278,12 @@ class ModelRouter:
                                 "user_id": audit_context.user_id,
                             },
                         )
-                        audit_context.db.commit()
+                        # Commit should be handled at a higher level
                     except Exception as audit_error:
                         logger.error(
                             f"Failed to record error audit log for {phase}/{candidate}: {audit_error}"
                         )
-                        audit_context.db.rollback()
+                        # Rollback should be handled at a higher level
 
                 logger.warning(f"Model {candidate} failed for phase {phase}: {e}")
                 continue

@@ -2,9 +2,13 @@ import yaml
 import time
 import os
 import logging
-from typing import Dict, List, Any, Tuple
+import hashlib
+from typing import Dict, List, Any, Tuple, Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 from .providers.openai_provider import OpenAIProvider
 from .providers.anthropic_provider import AnthropicProvider
+from ..telemetry.metrics import LLM_CALLS, LLM_TOKENS, LLM_COST, LLM_LATENCY
 
 logger = logging.getLogger(__name__)
 
@@ -120,15 +124,27 @@ class ModelRouter:
         }
 
     def call(
-        self, phase: str, prompt: str, context: Dict[str, Any]
+        self,
+        phase: str,
+        prompt: str,
+        context: Dict[str, Any],
+        db: Optional[Session] = None,
+        prompt_hash: Optional[str] = None,
+        org_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Route LLM call to appropriate provider with fallback support.
+        Records telemetry metrics and audit logs for each attempt.
 
         Args:
             phase: The phase/task type (plan, code, review, etc.)
             prompt: The system prompt
             context: Context data to send to the model
+            db: Database session for audit logging
+            prompt_hash: SHA256 hash of prompt+context for audit
+            org_id: Organization ID for multi-tenant support
+            user_id: User ID for audit tracking
 
         Returns:
             Tuple of (response_text, telemetry_data)
@@ -140,6 +156,10 @@ class ModelRouter:
         fallback_models = self.fallbacks.get(phase, [])
         candidates = [model_name] + fallback_models
 
+        # Generate prompt hash if not provided
+        if not prompt_hash:
+            prompt_hash = hashlib.sha256((prompt + str(context)).encode()).hexdigest()
+
         last_error = None
 
         for candidate in candidates:
@@ -149,6 +169,10 @@ class ModelRouter:
                 continue
 
             start_time = time.time()
+            status = "ok"
+            tokens = 0
+            cost = 0.0
+            error_message = None
 
             try:
                 logger.info(f"Calling model {candidate} for phase {phase}")
@@ -156,15 +180,51 @@ class ModelRouter:
                 result = provider.complete(prompt, sanitized_context)
 
                 latency_ms = (time.time() - start_time) * 1000
+                tokens = int(result.get("tokens", 0))
+                cost = float(result.get("cost_usd", 0.0))
+
+                # Record Prometheus metrics
+                LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()
+                LLM_TOKENS.labels(phase=phase, model=candidate).inc(tokens)
+                LLM_COST.labels(phase=phase, model=candidate).inc(cost)
+                LLM_LATENCY.labels(phase=phase, model=candidate).observe(latency_ms)
+
+                # Record audit log
+                if db is not None:
+                    try:
+                        db.execute(
+                            text(
+                                """
+                            INSERT INTO llm_call (phase, model, status, prompt_hash, tokens, cost_usd, latency_ms, org_id, user_id)
+                            VALUES (:phase, :model, :status, :prompt_hash, :tokens, :cost_usd, :latency_ms, :org_id, :user_id)
+                        """
+                            ),
+                            {
+                                "phase": phase,
+                                "model": candidate,
+                                "status": status,
+                                "prompt_hash": prompt_hash,
+                                "tokens": tokens,
+                                "cost_usd": cost,
+                                "latency_ms": int(latency_ms),
+                                "org_id": org_id,
+                                "user_id": user_id,
+                            },
+                        )
+                        db.commit()
+                    except Exception as audit_error:
+                        logger.error(f"Failed to record audit log: {audit_error}")
+                        # Don't fail the API call due to audit logging issues
+                        db.rollback()
 
                 # Build telemetry data
                 telemetry = {
                     "phase": phase,
                     "model": candidate,
-                    "tokens": result.get("tokens", 0),
+                    "tokens": tokens,
                     "input_tokens": result.get("input_tokens", 0),
                     "output_tokens": result.get("output_tokens", 0),
-                    "cost_usd": result.get("cost_usd", 0),
+                    "cost_usd": cost,
                     "latency_ms": round(latency_ms, 2),
                     "timestamp": time.time(),
                 }
@@ -174,16 +234,51 @@ class ModelRouter:
 
                 logger.info(
                     f"Successfully completed {phase} with {candidate}: "
-                    f"{telemetry['tokens']} tokens, ${telemetry['cost_usd']:.6f}, "
-                    f"{telemetry['latency_ms']:.0f}ms"
+                    f"{tokens} tokens, ${cost:.6f}, {latency_ms:.0f}ms"
                 )
 
                 return result["text"], telemetry
 
             except Exception as e:
+                latency_ms = (time.time() - start_time) * 1000
+                status = "error"
+                error_message = str(e)
                 last_error = e
+
+                # Record error metrics
+                LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()
+                LLM_LATENCY.labels(phase=phase, model=candidate).observe(latency_ms)
+
+                # Record error audit log
+                if db is not None:
+                    try:
+                        db.execute(
+                            text(
+                                """
+                            INSERT INTO llm_call (phase, model, status, prompt_hash, tokens, cost_usd, latency_ms, error_message, org_id, user_id)
+                            VALUES (:phase, :model, :status, :prompt_hash, :tokens, :cost_usd, :latency_ms, :error_message, :org_id, :user_id)
+                        """
+                            ),
+                            {
+                                "phase": phase,
+                                "model": candidate,
+                                "status": status,
+                                "prompt_hash": prompt_hash,
+                                "tokens": 0,
+                                "cost_usd": 0.0,
+                                "latency_ms": int(latency_ms),
+                                "error_message": error_message,
+                                "org_id": org_id,
+                                "user_id": user_id,
+                            },
+                        )
+                        db.commit()
+                    except Exception as audit_error:
+                        logger.error(f"Failed to record error audit log: {audit_error}")
+                        db.rollback()
+
                 logger.warning(f"Model {candidate} failed for phase {phase}: {e}")
-                continue
+                # Continue to next fallback candidate
 
         # All models failed
         raise RuntimeError(

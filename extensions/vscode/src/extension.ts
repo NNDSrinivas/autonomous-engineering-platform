@@ -203,6 +203,15 @@ export function activate(context: vscode.ExtensionContext) {
           progress.report({ message: 'Generating plan with LLM...' });
           const llmPlan = await proposePlanLLM(pack);
           
+          // Display telemetry in status bar if available
+          if (llmPlan?.telemetry) {
+            const t = llmPlan.telemetry;
+            vscode.window.setStatusBarMessage(
+              `AEP Plan — model: ${t.model}, tokens: ${t.tokens}, cost: $${t.cost_usd.toFixed(4)}, latency: ${Math.round(t.latency_ms)}ms`, 
+              8000
+            );
+          }
+          
           const stepCount = llmPlan.items?.length || 0;
           vscode.window.showInformationMessage(
             `Generated LLM Plan for ${key} with ${stepCount} steps:\n` +

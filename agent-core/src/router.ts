@@ -20,6 +20,7 @@ export interface PlanResponse {
 }
 
 export async function generatePlan(contextPack: any): Promise<PlanResponse> {
+  // Validate inputs
   if (
     !contextPack ||
     !contextPack.ticket ||
@@ -29,7 +30,13 @@ export async function generatePlan(contextPack: any): Promise<PlanResponse> {
     throw new Error("Invalid contextPack: missing or empty ticket.key");
   }
 
-  const response = await fetch(`${coreApi()}/api/plan/${contextPack.ticket.key}`, {
+  // Extract and validate ticket key before API call
+  const ticketKey = contextPack.ticket.key;
+  if (!ticketKey) {
+    throw new Error("Ticket key is required for plan generation");
+  }
+
+  const response = await fetch(`${coreApi()}/api/plan/${ticketKey}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ contextPack })

@@ -45,15 +45,11 @@ class OpenAIProvider:
 
             # Safely extract response content
             if not response.choices or len(response.choices) == 0:
-                raise RuntimeError(
-                    f"OpenAI API returned empty choices for model {self.model}"
-                )
+                raise RuntimeError("OpenAI API returned empty choices")
 
             content = response.choices[0].message.content
             if content is None:
-                raise RuntimeError(
-                    f"OpenAI API returned null content for model {self.model}"
-                )
+                raise RuntimeError("OpenAI API returned null content")
 
             return {
                 "text": content.strip(),
@@ -66,5 +62,5 @@ class OpenAIProvider:
         except Exception as e:
             logger.error(f"OpenAI API error for model {self.model}: {str(e)}")
             raise RuntimeError(
-                f"OpenAI API error for model {self.model}. Please check your request and try again."
+                "OpenAI API error. Please check your request and try again."
             )

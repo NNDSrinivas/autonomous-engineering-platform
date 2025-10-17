@@ -203,7 +203,7 @@ export function activate(context: vscode.ExtensionContext) {
           const stepCount = llmPlan.items?.length || 0;
           vscode.window.showInformationMessage(
             `Generated LLM Plan for ${key} with ${stepCount} steps:\n` +
-            (llmPlan.items ?? []).slice(0, PLAN_PREVIEW_STEP_LIMIT).map(step => `• ${step.desc}`).join('\n') +
+            (llmPlan.items ?? []).slice(0, PLAN_PREVIEW_STEP_LIMIT).map(step => `• ${sanitizeDialogText(step.desc)}`).join('\n') +
             (stepCount > PLAN_PREVIEW_STEP_LIMIT ? `\n• ... and ${stepCount - PLAN_PREVIEW_STEP_LIMIT} more steps` : '')
           );
         } catch (error: any) {

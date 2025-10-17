@@ -12,13 +12,15 @@ logger = logging.getLogger(__name__)
 class ModelRouter:
     """Routes LLM requests to appropriate providers with fallback support."""
 
+    # Security and validation constants
+    MAX_STRING_LENGTH = 10000  # Limit individual string values
+    MAX_CONTEXT_SIZE = 50000  # Limit total context size
+
     def _sanitize_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Sanitize context data to prevent injection attacks and limit size."""
         sanitized = {}
-        max_string_length = 10000  # Limit individual string values
-        max_context_size = 50000  # Limit total context size
 
-        def sanitize_value(value, max_len=max_string_length):
+        def sanitize_value(value, max_len=self.MAX_STRING_LENGTH):
             if isinstance(value, str):
                 # Remove potentially dangerous characters and limit length
                 sanitized_str = value.replace("\x00", "").replace("\x1a", "")
@@ -35,7 +37,7 @@ class ModelRouter:
                 return value
 
         for key, value in context.items():
-            if len(str(sanitized)) > max_context_size:
+            if len(str(sanitized)) > self.MAX_CONTEXT_SIZE:
                 break
             sanitized[key] = sanitize_value(value)
 

@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 class AnthropicProvider:
     """Anthropic API provider for LLM completions."""
 
+    # Configuration constants
+    MAX_TOKENS = 1500  # Maximum tokens for completion
+
     def __init__(self, model: str):
         self.model = model
 
@@ -35,7 +38,7 @@ class AnthropicProvider:
         try:
             message = self.client.messages.create(
                 model=self.model,
-                max_tokens=1500,
+                max_tokens=self.MAX_TOKENS,
                 temperature=0.1,
                 system=prompt,
                 messages=[{"role": "user", "content": str(context)}],

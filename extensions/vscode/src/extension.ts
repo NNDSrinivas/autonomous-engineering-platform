@@ -4,12 +4,15 @@ import { checkPolicy } from 'agent-core/policy';
 import { applyEdits, runCommand } from 'agent-core/tools';
 
 // Configuration constants
-const PLAN_PREVIEW_STEP_LIMIT = 3;
+const CONFIG = {
+  PLAN_PREVIEW_STEP_LIMIT: 3,
+  TEXT_SANITIZATION_LIMIT: 200
+} as const;
 
 // Sanitize text for display in user dialogs
 function sanitizeDialogText(text: string): string {
   // Limit length and remove potentially confusing characters
-  return text.slice(0, 200).replace(/[\r\n\t]/g, ' ').trim();
+  return text.slice(0, CONFIG.TEXT_SANITIZATION_LIMIT).replace(/[\r\n\t]/g, ' ').trim();
 }
 
 // Build a structured confirmation message
@@ -203,8 +206,8 @@ export function activate(context: vscode.ExtensionContext) {
           const stepCount = llmPlan.items?.length || 0;
           vscode.window.showInformationMessage(
             `Generated LLM Plan for ${key} with ${stepCount} steps:\n` +
-            (llmPlan.items ?? []).slice(0, PLAN_PREVIEW_STEP_LIMIT).map(step => `• ${sanitizeDialogText(step.desc)}`).join('\n') +
-            (stepCount > PLAN_PREVIEW_STEP_LIMIT ? `\n• ... and ${stepCount - PLAN_PREVIEW_STEP_LIMIT} more steps` : '')
+            (llmPlan.items ?? []).slice(0, CONFIG.PLAN_PREVIEW_STEP_LIMIT).map(step => `• ${sanitizeDialogText(step.desc)}`).join('\n') +
+            (stepCount > CONFIG.PLAN_PREVIEW_STEP_LIMIT ? `\n• ... and ${stepCount - CONFIG.PLAN_PREVIEW_STEP_LIMIT} more steps` : '')
           );
         } catch (error: any) {
           vscode.window.showErrorMessage(`Failed to generate LLM plan: ${error?.message || error}`);

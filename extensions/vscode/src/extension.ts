@@ -31,6 +31,11 @@ function getTelemetryValue<T>(
   return 'N/A';
 }
 
+// Format latency value to rounded milliseconds
+function formatLatency(latencyMs: number): string {
+  return String(Math.round(latencyMs));
+}
+
 // Build a structured confirmation message
 function buildConfirmationMessage(step: any): string {
   const kind = String(step.kind).toUpperCase();
@@ -225,7 +230,7 @@ export function activate(context: vscode.ExtensionContext) {
             const model = getTelemetryValue<string>(t, 'model', 'string');
             const tokens = getTelemetryValue<number>(t, 'tokens', 'number');
             const cost = getTelemetryValue<number>(t, 'cost_usd', 'number', v => v.toFixed(CONFIG.COST_DECIMAL_PLACES));
-            const latency = getTelemetryValue<number>(t, 'latency_ms', 'number', (v: number) => String(Math.round(v)));
+            const latency = getTelemetryValue<number>(t, 'latency_ms', 'number', formatLatency);
             
             vscode.window.setStatusBarMessage(
               `AEP Plan — model: ${model}, tokens: ${tokens}, cost: $${cost}, latency: ${latency} ms`, 

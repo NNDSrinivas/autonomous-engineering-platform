@@ -39,7 +39,7 @@ function isAllowedCommand(cmd: string): boolean {
   ];
   
   // Additional security: reject commands with dangerous patterns
-  if (cmd.match(/[;&|`$(){}><]/)) {
+  if (cmd.match(/[;&|`$(){}><\\]/)) {
     return false; // No shell metacharacters allowed
   }
   

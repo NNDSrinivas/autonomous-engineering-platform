@@ -197,7 +197,7 @@ function html(): string {
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&#039;')
           .replace(/\`/g, '&#96;')
-          // Remove only non-printable ASCII control characters (preserving \n, \r, \t if needed)
+          // Remove dangerous control characters (preserving tab=\x09, newline=\x0A, carriage return=\x0D)
           .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
       };
 

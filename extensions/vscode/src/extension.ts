@@ -7,7 +7,8 @@ import { applyEdits, runCommand } from 'agent-core/tools';
 const CONFIG = {
   PLAN_PREVIEW_STEP_LIMIT: 3,
   TEXT_SANITIZATION_LIMIT: 200,
-  COST_DECIMAL_PLACES: 4
+  COST_DECIMAL_PLACES: 4,
+  STATUS_BAR_TIMEOUT_MS: 8000
 } as const;
 
 // Sanitize text for display in user dialogs
@@ -228,7 +229,7 @@ export function activate(context: vscode.ExtensionContext) {
             
             vscode.window.setStatusBarMessage(
               `AEP Plan — model: ${model}, tokens: ${tokens}, cost: $${cost}, latency: ${latency}`, 
-              8000
+              CONFIG.STATUS_BAR_TIMEOUT_MS
             );
           }
           

@@ -7,6 +7,9 @@ from typing import Any, Dict, Optional
 
 # Configuration constants
 MAX_HEADER_LENGTH = 100  # Maximum allowed length for header values
+HEADER_VALUE_PATTERN = (
+    r"^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$"  # Allowed characters for header values
+)
 
 
 def generate_prompt_hash(prompt: str, context: Dict[str, Any] = None) -> str:
@@ -56,7 +59,7 @@ def validate_header_value(
     # Only allow alphanumeric characters, hyphens, underscores, and dots
     # This prevents injection attacks while allowing common ID formats
     # Disallow leading dot and consecutive dots to prevent path traversal
-    if not re.match(r"^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$", value):
+    if not re.match(HEADER_VALUE_PATTERN, value):
         return None
 
     # Additional check for consecutive dots (path traversal prevention)

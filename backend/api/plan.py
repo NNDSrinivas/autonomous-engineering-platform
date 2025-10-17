@@ -122,6 +122,14 @@ async def generate_plan(
                 audit_context=audit_context,
             )
 
+            # Commit audit logging transaction after successful LLM call
+            if audit_context.db:
+                try:
+                    audit_context.db.commit()
+                except Exception as commit_error:
+                    logger.error(f"Failed to commit audit transaction: {commit_error}")
+                    audit_context.db.rollback()
+
             # Parse LLM response with size limits
             try:
                 # Limit LLM response size to prevent memory exhaustion
@@ -149,6 +157,16 @@ async def generate_plan(
 
         except Exception as e:
             logger.error(f"LLM call failed for key {key}: {e}")
+
+            # Rollback audit logging transaction on error
+            if audit_context.db:
+                try:
+                    audit_context.db.rollback()
+                except Exception as rollback_error:
+                    logger.error(
+                        f"Failed to rollback audit transaction: {rollback_error}"
+                    )
+
             # Return error plan - use generic message for security
             plan = {
                 "items": [

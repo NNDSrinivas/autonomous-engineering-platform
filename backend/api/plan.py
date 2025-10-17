@@ -123,11 +123,8 @@ async def generate_plan(
             )
 
             # Commit audit logging transaction after successful LLM call
-            # NOTE: The explicit commit/rollback handling appears in multiple
-            # places across the codebase. Consider extracting a small helper
-            # (for example `safe_commit_with_rollback(db, logger)`) that
-            # centralizes the try/except logic, reducing duplication and
-            # making it easier to adjust logging/retry behavior in one place.
+            # Uses the safe_commit_with_rollback helper to handle transaction
+            # boundaries with proper error handling and logging.
             if audit_context.db:
                 safe_commit_with_rollback(
                     audit_context.db, 

@@ -47,8 +47,14 @@ class Settings(BaseSettings):
     # Platform Configuration
     debug: bool = False
     environment: str = "development"
-    secret_key: str = "dev-secret-change-in-production"  # Override via environment variable in production
-    jwt_secret: str = "dev-jwt-secret-change-in-production"  # Override via environment variable in production
+    # Override via environment variable in production
+    secret_key: str = (
+        "dev-secret-change-in-production"
+    )
+    # Override via environment variable in production  
+    jwt_secret: str = (
+        "dev-jwt-secret-change-in-production"
+    )
 
     # API Configuration
     api_v1_prefix: str = "/api"

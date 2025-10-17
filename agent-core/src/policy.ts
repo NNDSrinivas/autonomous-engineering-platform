@@ -6,6 +6,19 @@ export type PolicyDoc = {
   deny?: { commands?: string[] };
 };
 
+function matchGlobPattern(pattern: string, path: string): boolean {
+  // Convert glob pattern to regex
+  // ** matches any number of directories
+  // * matches any characters within a directory segment
+  const regexPattern = pattern
+    .replace(/\*\*/g, '.*') // ** becomes .*
+    .replace(/(?<!\*)\*(?!\*)/g, '[^/]*') // single * becomes [^/]*
+    .replace(/\//g, '\\/'); // escape forward slashes
+  
+  const regex = new RegExp(`^${regexPattern}$`);
+  return regex.test(path);
+}
+
 export async function checkPolicy(
   workspaceRoot: string | undefined,
   step: { command?: string; files?: string[] },
@@ -21,7 +34,7 @@ export async function checkPolicy(
     if (doc.allow?.commands && !doc.allow.commands.some(a => step.command!.startsWith(a))) return false;
   }
   if (step.files?.length && doc.allow?.paths?.length) {
-    const ok = step.files.every(f => doc.allow!.paths!.some(p => f.startsWith(p.replace('**',''))));
+    const ok = step.files.every(f => doc.allow!.paths!.some(p => matchGlobPattern(p, f)));
     if (!ok) return false;
   }
   return true;

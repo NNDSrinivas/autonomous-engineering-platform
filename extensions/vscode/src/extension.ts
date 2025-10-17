@@ -206,8 +206,13 @@ export function activate(context: vscode.ExtensionContext) {
           // Display telemetry in status bar if available
           if (llmPlan?.telemetry) {
             const t = llmPlan.telemetry;
+            const model = typeof t.model === 'string' ? t.model : 'N/A';
+            const tokens = typeof t.tokens === 'number' ? t.tokens : 'N/A';
+            const cost = typeof t.cost_usd === 'number' ? t.cost_usd.toFixed(4) : 'N/A';
+            const latency = typeof t.latency_ms === 'number' ? Math.round(t.latency_ms) + 'ms' : 'N/A';
+            
             vscode.window.setStatusBarMessage(
-              `AEP Plan — model: ${t.model}, tokens: ${t.tokens}, cost: $${t.cost_usd.toFixed(4)}, latency: ${Math.round(t.latency_ms)}ms`, 
+              `AEP Plan — model: ${model}, tokens: ${tokens}, cost: $${cost}, latency: ${latency}`, 
               8000
             );
           }

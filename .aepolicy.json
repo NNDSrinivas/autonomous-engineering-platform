@@ -1,0 +1,7 @@
+{
+  "allow": {
+    "commands": ["pytest", "npm", "pnpm", "yarn", "mvn", "gradle", "git"],
+    "paths": ["src/**", "backend/**", "web/**", "tests/**"]
+  },
+  "deny": { "commands": ["docker login", "curl http://"] }
+}

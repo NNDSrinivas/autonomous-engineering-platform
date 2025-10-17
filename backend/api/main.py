@@ -1,9 +1,10 @@
 import datetime as dt
 
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from ..core.config import settings
 from ..core.logging import setup_logging
@@ -51,6 +52,58 @@ def version():
 # Prometheus
 app.include_router(metrics_router)
 app.include_router(tasks_router)
+
+# Context Pack endpoint for IDE Bridge
+ctx_router = APIRouter(prefix="/api/context", tags=["context"])
+
+@ctx_router.get("/task/{key}")
+def context_for_task(key: str, db: Session = Depends(get_db)):
+    """Compose context pack from JIRA, meetings, tasks, code refs for IDE Bridge MVP"""
+    # Get JIRA ticket info
+    jira = db.execute(
+        text("SELECT issue_key as key, summary, status, url FROM jira_issue WHERE issue_key=:k LIMIT 1"), 
+        {"k": key}
+    ).mappings().first()
+    
+    # Get recent meetings with summaries
+    meets = db.execute(text("""
+        SELECT m.id, ms.id as summary_id, ms.summary_json
+        FROM meeting m
+        LEFT JOIN meeting_summary ms ON ms.meeting_id = m.id
+        ORDER BY m.created_at DESC NULLS LAST LIMIT 5
+    """)).mappings().all()
+    
+    # Get recent action items
+    actions = db.execute(text("""
+        SELECT a.id, a.title, a.assignee, a.meeting_id FROM action_item a
+        ORDER BY a.created_at DESC NULLS LAST LIMIT 10
+    """)).mappings().all()
+    
+    # Get recent code files (if GitHub integration is available)
+    code = db.execute(text("""
+        SELECT r.repo_full_name as repo, f.path FROM gh_file f 
+        JOIN gh_repo r ON r.id=f.repo_id
+        ORDER BY f.updated DESC NULLS LAST LIMIT 20
+    """)).mappings().all()
+
+    # Build explanation
+    explain = {
+        "what": jira["summary"] if jira else f"Work item {key}", 
+        "why": "Aligns with team objectives.", 
+        "how": ["Open branch", "Edit auth module", "Add tests", "Run CI", "Open PR"]
+    }
+
+    return {
+        "ticket": dict(jira) if jira else {"key": key},
+        "explain": explain,
+        "sources": {
+            "meetings": [{"id": m["id"], "summary_id": m["summary_id"]} for m in meets],
+            "actions": [dict(a) for a in actions],
+            "code": [dict(c) for c in code]
+        }
+    }
+
+app.include_router(ctx_router)
 
 # ---- Feature 1 endpoints (Finalize + Query) ----
 

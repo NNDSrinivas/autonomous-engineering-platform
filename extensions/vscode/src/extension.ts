@@ -19,14 +19,14 @@ function sanitizeDialogText(text: string): string {
 
 // Helper function to safely extract and format telemetry values
 function getTelemetryValue<T>(
-  obj: any, 
+  obj: Record<string, unknown>, 
   key: string, 
   expectedType: string, 
   formatter?: (value: T) => string
 ): string {
   const value = obj?.[key];
   if (typeof value === expectedType) {
-    return formatter ? formatter(value) : String(value);
+    return formatter ? formatter(value as T) : String(value);
   }
   return 'N/A';
 }

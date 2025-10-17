@@ -2,12 +2,13 @@ import yaml
 import time
 import os
 import logging
-import hashlib
 from typing import Dict, List, Any, Tuple, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .providers.openai_provider import OpenAIProvider
 from .providers.anthropic_provider import AnthropicProvider
+from .queries import INSERT_LLM_CALL_SUCCESS, INSERT_LLM_CALL_ERROR
+from ..core.utils import generate_prompt_hash
 from ..telemetry.metrics import LLM_CALLS, LLM_TOKENS, LLM_COST, LLM_LATENCY
 
 logger = logging.getLogger(__name__)
@@ -158,7 +159,7 @@ class ModelRouter:
 
         # Generate prompt hash if not provided
         if not prompt_hash:
-            prompt_hash = hashlib.sha256((prompt + str(context)).encode()).hexdigest()
+            prompt_hash = generate_prompt_hash(prompt, context)
 
         last_error = None
 
@@ -193,12 +194,7 @@ class ModelRouter:
                 if db is not None:
                     try:
                         db.execute(
-                            text(
-                                """
-INSERT INTO llm_call (phase, model, status, prompt_hash, tokens, cost_usd, latency_ms, org_id, user_id)
-VALUES (:phase, :model, :status, :prompt_hash, :tokens, :cost_usd, :latency_ms, :org_id, :user_id)
-"""
-                            ),
+                            text(INSERT_LLM_CALL_SUCCESS),
                             {
                                 "phase": phase,
                                 "model": candidate,
@@ -253,12 +249,7 @@ VALUES (:phase, :model, :status, :prompt_hash, :tokens, :cost_usd, :latency_ms, 
                 if db is not None:
                     try:
                         db.execute(
-                            text(
-                                """
-INSERT INTO llm_call (phase, model, status, prompt_hash, tokens, cost_usd, latency_ms, error_message, org_id, user_id)
-VALUES (:phase, :model, :status, :prompt_hash, :tokens, :cost_usd, :latency_ms, :error_message, :org_id, :user_id)
-"""
-                            ),
+                            text(INSERT_LLM_CALL_ERROR),
                             {
                                 "phase": phase,
                                 "model": candidate,

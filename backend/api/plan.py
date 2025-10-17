@@ -9,6 +9,7 @@ import os
 
 from ..core.cache import Cache
 from ..core.db import get_db
+from ..core.utils import generate_prompt_hash
 from ..llm.router import ModelRouter
 
 # Initialize router and dependencies
@@ -98,9 +99,7 @@ async def generate_plan(
         user_id = request.headers.get("X-User-Id") if request else None
 
         # Generate prompt hash for audit logging
-        prompt_hash = hashlib.sha256(
-            (prompt + json.dumps(context_pack, sort_keys=True)).encode()
-        ).hexdigest()
+        prompt_hash = generate_prompt_hash(prompt, context_pack)
 
         # Call LLM via model router
         logger.info(f"Generating new plan for key: {key}")

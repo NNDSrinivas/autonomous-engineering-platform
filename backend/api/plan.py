@@ -126,11 +126,7 @@ async def generate_plan(
             # Uses the safe_commit_with_rollback helper to handle transaction
             # boundaries with proper error handling and logging.
             if audit_context.db:
-                safe_commit_with_rollback(
-                    audit_context.db, 
-                    logger, 
-                    "audit transaction"
-                )
+                safe_commit_with_rollback(audit_context.db, logger, "audit transaction")
 
             # Parse LLM response with size limits
             try:
@@ -163,9 +159,7 @@ async def generate_plan(
             # Rollback audit logging transaction on error
             if audit_context.db:
                 safe_commit_with_rollback(
-                    audit_context.db, 
-                    logger, 
-                    "audit transaction rollback"
+                    audit_context.db, logger, "audit transaction rollback"
                 )
 
             # Return error plan - use generic message for security

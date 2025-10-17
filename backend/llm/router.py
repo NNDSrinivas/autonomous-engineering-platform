@@ -13,6 +13,9 @@ from ..telemetry.metrics import LLM_CALLS, LLM_TOKENS, LLM_COST, LLM_LATENCY
 
 logger = logging.getLogger(__name__)
 
+# Formatting constants
+COST_DECIMAL_PLACES = 6  # Number of decimal places for cost formatting
+
 
 @dataclass
 class AuditContext:
@@ -254,7 +257,7 @@ class ModelRouter:
 
                 logger.info(
                     f"Successfully completed {phase} with {candidate}: "
-                    f"{tokens} tokens, ${cost:.6f}, {latency_ms:.0f}ms"
+                    f"{tokens} tokens, ${cost:.{COST_DECIMAL_PLACES}f}, {latency_ms:.0f}ms"
                 )
 
                 return result["text"], telemetry

@@ -24,24 +24,24 @@ def get_db():
 
 
 def safe_commit_with_rollback(
-    db: Session, 
+    db: Session,
     logger: Optional[logging.Logger] = None,
-    operation_name: str = "database operation"
+    operation_name: str = "database operation",
 ) -> bool:
     """
     Safely commit a database transaction with automatic rollback on error.
-    
+
     Args:
         db: SQLAlchemy database session
         logger: Optional logger for error reporting
         operation_name: Description of the operation for logging context
-        
+
     Returns:
         True if commit succeeded, False if rollback was required
     """
     if logger is None:
         logger = logging.getLogger(__name__)
-        
+
     try:
         db.commit()
         return True

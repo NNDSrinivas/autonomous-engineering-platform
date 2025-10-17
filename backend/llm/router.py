@@ -57,8 +57,9 @@ class ModelRouter:
             "review": "gpt-4o-mini"
         }
         self.budgets = {
-            "tokens": 120000,
-            "seconds": 180
+            "plan": {"tokens": 40000, "seconds": 60},
+            "code": {"tokens": 40000, "seconds": 60},
+            "review": {"tokens": 40000, "seconds": 60}
         }
         self.fallbacks = {
             "plan": ["gpt-4o", "claude-3-haiku"],
@@ -158,13 +159,16 @@ class ModelRouter:
         }
     
     def check_budget(self, phase: str) -> Dict[str, bool]:
-        """Check if current usage is within budget limits."""
-        total_tokens = sum(stats["total_tokens"] for stats in self.usage_stats.values())
-        token_budget = self.budgets.get("tokens", float('inf'))
+        """Check if current usage is within budget limits for the specified phase."""
+        phase_stats = self.usage_stats.get(phase, {})
+        phase_budget = self.budgets.get(phase, {"tokens": float('inf'), "seconds": float('inf')})
+        
+        phase_tokens = phase_stats.get("total_tokens", 0)
+        token_budget = phase_budget.get("tokens", float('inf'))
         
         return {
-            "within_token_budget": total_tokens <= token_budget,
-            "tokens_used": total_tokens,
+            "within_token_budget": phase_tokens <= token_budget,
+            "tokens_used": phase_tokens,
             "token_budget": token_budget,
-            "token_usage_percent": (total_tokens / token_budget * 100) if token_budget > 0 else 0
+            "token_usage_percent": (phase_tokens / token_budget * 100) if token_budget > 0 else 0
         }

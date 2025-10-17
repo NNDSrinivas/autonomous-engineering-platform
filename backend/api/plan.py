@@ -108,7 +108,7 @@ async def generate_plan(
                 "items": [{
                     "id": "error-1",
                     "kind": "edit",
-                    "desc": "Plan generation failed due to an internal error.",
+                    "desc": "Plan generation failed due to an internal error. Please check your API credentials and network connection, then try again.",
                     "files": []
                 }]
             }

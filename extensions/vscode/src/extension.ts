@@ -3,6 +3,9 @@ import { greet, fetchContextPack, proposePlan, proposePlanLLM } from 'agent-core
 import { checkPolicy } from 'agent-core/policy';
 import { applyEdits, runCommand } from 'agent-core/tools';
 
+// Configuration constants
+const PLAN_PREVIEW_STEP_LIMIT = 3;
+
 // Sanitize text for display in user dialogs
 function sanitizeDialogText(text: string): string {
   // Limit length and remove potentially confusing characters
@@ -200,8 +203,8 @@ export function activate(context: vscode.ExtensionContext) {
           const stepCount = llmPlan.items?.length || 0;
           vscode.window.showInformationMessage(
             `Generated LLM Plan for ${key} with ${stepCount} steps:\n` +
-            llmPlan.items?.slice(0, 3).map(step => `• ${step.desc}`).join('\n') +
-            (stepCount > 3 ? `\n• ... and ${stepCount - 3} more steps` : '')
+            llmPlan.items?.slice(0, PLAN_PREVIEW_STEP_LIMIT).map(step => `• ${step.desc}`).join('\n') +
+            (stepCount > PLAN_PREVIEW_STEP_LIMIT ? `\n• ... and ${stepCount - PLAN_PREVIEW_STEP_LIMIT} more steps` : '')
           );
         } catch (error: any) {
           vscode.window.showErrorMessage(`Failed to generate LLM plan: ${error?.message || error}`);

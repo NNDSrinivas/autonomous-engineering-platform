@@ -6,6 +6,18 @@ export type PolicyDoc = {
   deny?: { commands?: string[] };
 };
 
+/**
+ * Matches a path against a glob pattern.
+ *
+ * Supported glob syntax:
+ * - `*` matches any sequence of characters within a single path segment (does not cross `/`).
+ * - `**` matches any sequence of characters across multiple path segments (can cross `/`).
+ * - `?` matches any single character within a path segment (does not match `/`).
+ *
+ * @param pattern The glob pattern to match, supporting `*`, `**`, and `?`.
+ * @param path The path string to test against the pattern.
+ * @returns `true` if the path matches the pattern, `false` otherwise.
+ */
 function matchGlobPattern(pattern: string, path: string): boolean {
   // Convert glob pattern to regex safely with explicit escaping
   // ** matches any number of directories

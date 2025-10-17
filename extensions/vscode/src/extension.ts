@@ -95,22 +95,27 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
       
-      // Show simple input to get plan details or use a placeholder
-      const planData = await vscode.window.showInputBox({
-        prompt: 'Enter plan data (JSON format)',
-        placeHolder: 'Plan execution requires approved plan data'
+      // Prompt user to select a plan file (JSON)
+      const files = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        openLabel: 'Select Plan File',
+        filters: { 'JSON': ['json'] },
+        defaultUri: vscode.Uri.file(wf)
       });
       
-      if (!planData) {
+      if (!files || files.length === 0) {
         vscode.window.showInformationMessage('Plan execution cancelled');
         return;
       }
       
       let plan: any;
       try {
+        const fileUri = files[0];
+        const fileData = await vscode.workspace.fs.readFile(fileUri);
+        const planData = Buffer.from(fileData).toString('utf8');
         plan = JSON.parse(planData);
-      } catch (e) {
-        vscode.window.showErrorMessage('Invalid JSON format for plan data');
+      } catch (e: any) {
+        vscode.window.showErrorMessage('Failed to read or parse plan file: ' + (e?.message || String(e)));
         return;
       }
       

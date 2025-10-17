@@ -58,9 +58,6 @@ export async function runCommand(workspaceRoot: string, cmd: string): Promise<st
   if (cmd.includes('..') || cmd.includes('/etc/') || cmd.includes('/root/')) {
     throw new Error('Path traversal or system directory access not allowed');
   }
-  if (cmd.match(/[;&|`$(){}]/)) {
-    throw new Error('Shell metacharacters not allowed for security');
-  }
   
   // Strict environment with minimal safe variables
   const safeEnvVars = ['PATH', 'HOME', 'USER', 'LANG', 'PWD'];

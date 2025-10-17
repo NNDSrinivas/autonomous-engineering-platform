@@ -197,20 +197,16 @@ class ModelRouter:
                 tokens_raw = result.get("tokens", 0)
                 cost_raw = result.get("cost_usd", 0.0)
 
-                # Validate and convert tokens
-                if isinstance(tokens_raw, (int, float)) or (
-                    isinstance(tokens_raw, str) and tokens_raw.isdigit()
-                ):
-                    tokens = int(float(tokens_raw))  # Handle string numbers
-                else:
+                # Validate and convert tokens (handles decimals properly)
+                try:
+                    tokens = int(float(tokens_raw))
+                except (ValueError, TypeError):
                     tokens = 0
 
-                # Validate and convert cost
-                if isinstance(cost_raw, (int, float)) or (
-                    isinstance(cost_raw, str) and cost_raw.replace(".", "").isdigit()
-                ):
+                # Validate and convert cost (handles all numeric formats)
+                try:
                     cost = float(cost_raw)
-                else:
+                except (ValueError, TypeError):
                     cost = 0.0
 
                 # Calculate latency for successful call

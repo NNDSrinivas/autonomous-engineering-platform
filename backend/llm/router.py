@@ -150,10 +150,11 @@ class ModelRouter:
             phase: The phase/task type (plan, code, review, etc.)
             prompt: The system prompt
             context: Context data to send to the model
-            db: Database session for audit logging
-            prompt_hash: SHA256 hash of prompt+context for audit
-            org_id: Organization ID for multi-tenant support
-            user_id: User ID for audit tracking
+            audit_context: Optional AuditContext object containing audit information such as
+                - db: Database session for audit logging
+                - prompt_hash: SHA256 hash of prompt+context for audit
+                - org_id: Organization ID for multi-tenant support
+                - user_id: User ID for audit tracking
 
         Returns:
             Tuple of (response_text, telemetry_data)
@@ -285,7 +286,7 @@ class ModelRouter:
                         audit_context.db.rollback()
 
                 logger.warning(f"Model {candidate} failed for phase {phase}: {e}")
-                # Continue to next fallback candidate
+                continue  # Continue to next fallback candidate
 
         # All models failed
         raise RuntimeError(

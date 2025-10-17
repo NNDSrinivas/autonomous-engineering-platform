@@ -22,8 +22,25 @@ class ModelRouter:
 
         def sanitize_value(value, max_len=self.MAX_STRING_LENGTH):
             if isinstance(value, str):
-                # Remove potentially dangerous characters and limit length
-                sanitized_str = value.replace("\x00", "").replace("\x1a", "")
+                # Remove potentially dangerous characters and normalize Unicode
+                import unicodedata
+                import re
+
+                # Normalize Unicode to prevent normalization attacks
+                sanitized_str = unicodedata.normalize("NFKC", value)
+
+                # Remove control characters (except whitespace: \t, \n, \r)
+                sanitized_str = re.sub(
+                    r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]", "", sanitized_str
+                )
+
+                # Remove potentially dangerous Unicode categories
+                sanitized_str = "".join(
+                    char
+                    for char in sanitized_str
+                    if unicodedata.category(char) not in ["Cc", "Cf", "Co", "Cs"]
+                )
+
                 return (
                     sanitized_str[:max_len]
                     if len(sanitized_str) > max_len

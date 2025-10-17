@@ -11,7 +11,15 @@ class OpenAIProvider:
 
     def __init__(self, model: str):
         self.model = model
-        self.client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        # Validate API key is present
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY environment variable is not set. Please set it to your OpenAI API key."
+            )
+
+        self.client = openai.OpenAI(api_key=api_key)
 
         # Model-specific pricing (per 1K tokens) - map actual API model names to pricing
         self.pricing = {

@@ -1,6 +1,9 @@
-import { execSync } from 'child_process';
+import { exec as execCallback } from 'child_process';
+import { promisify } from 'util';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
+
+const exec = promisify(execCallback);
 
 function sanitizeNote(note: string): string {
   // Remove newlines and comment terminators, and trim whitespace
@@ -37,7 +40,7 @@ function isAllowedCommand(cmd: string): boolean {
   return allowedCommands.some((re) => re.test(cmd));
 }
 
-export function runCommand(workspaceRoot: string, cmd: string) {
+export async function runCommand(workspaceRoot: string, cmd: string): Promise<string> {
   if (!isAllowedCommand(cmd)) {
     throw new Error(`Command not allowed: ${cmd}`);
   }
@@ -48,6 +51,6 @@ export function runCommand(workspaceRoot: string, cmd: string) {
     if (process.env[key] != null) filteredEnv[key] = process.env[key] as string;
   }
   
-  const out = execSync(cmd, { cwd: workspaceRoot, stdio: 'pipe', env: filteredEnv, encoding: 'utf8' });
-  return out.slice(-4000);
+  const { stdout } = await exec(cmd, { cwd: workspaceRoot, env: filteredEnv, encoding: 'utf8' });
+  return stdout.slice(-4000);
 }

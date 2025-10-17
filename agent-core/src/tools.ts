@@ -2,12 +2,18 @@ import { execSync } from 'child_process';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 
+function sanitizeNote(note: string): string {
+  // Remove newlines and comment terminators, and trim whitespace
+  return note.replace(/[\r\n]+/g, ' ').replace(/\*\//g, '').trim();
+}
+
 export async function applyEdits(workspaceRoot: string, files: string[], note: string) {
+  const safeNote = sanitizeNote(note);
   for (const rel of files) {
     const abs = join(workspaceRoot, rel);
     await mkdir(dirname(abs), { recursive: true });
     const old = await readFile(abs).catch(() => Buffer.from(''));
-    const next = old.toString('utf8') + `\n// AEP edit: ${note}\n`;
+    const next = old.toString('utf8') + `\n// AEP edit: ${safeNote}\n`;
     await writeFile(abs, next, 'utf8');
   }
   return 'Applied MVP edits';
@@ -35,6 +41,12 @@ export function runCommand(workspaceRoot: string, cmd: string) {
   if (!isAllowedCommand(cmd)) {
     throw new Error(`Command not allowed: ${cmd}`);
   }
-  const out = execSync(cmd, { cwd: workspaceRoot, stdio: 'pipe', env: process.env, encoding: 'utf8' });
+  // Only pass essential environment variables to the command
+  const filteredEnv = {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    USER: process.env.USER,
+  };
+  const out = execSync(cmd, { cwd: workspaceRoot, stdio: 'pipe', env: filteredEnv, encoding: 'utf8' });
   return out.slice(-4000);
 }

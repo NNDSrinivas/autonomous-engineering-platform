@@ -60,8 +60,4 @@ def validate_header_value(
     if not re.match(HEADER_VALUE_PATTERN, value):
         return None
 
-    # Additional check for consecutive dots (path traversal prevention)
-    if ".." in value:
-        return None
-
     return value

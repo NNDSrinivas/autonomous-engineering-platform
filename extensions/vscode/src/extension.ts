@@ -15,6 +15,20 @@ function sanitizeDialogText(text: string): string {
   return text.slice(0, CONFIG.TEXT_SANITIZATION_LIMIT).replace(/[\r\n\t]/g, ' ').trim();
 }
 
+// Helper function to safely extract and format telemetry values
+function getTelemetryValue<T>(
+  obj: any, 
+  key: string, 
+  expectedType: string, 
+  formatter?: (value: T) => string
+): string {
+  const value = obj?.[key];
+  if (typeof value === expectedType) {
+    return formatter ? formatter(value) : String(value);
+  }
+  return 'N/A';
+}
+
 // Build a structured confirmation message
 function buildConfirmationMessage(step: any): string {
   const kind = String(step.kind).toUpperCase();
@@ -206,10 +220,10 @@ export function activate(context: vscode.ExtensionContext) {
           // Display telemetry in status bar if available
           if (llmPlan?.telemetry) {
             const t = llmPlan.telemetry;
-            const model = typeof t.model === 'string' ? t.model : 'N/A';
-            const tokens = typeof t.tokens === 'number' ? t.tokens : 'N/A';
-            const cost = typeof t.cost_usd === 'number' ? t.cost_usd.toFixed(4) : 'N/A';
-            const latency = typeof t.latency_ms === 'number' ? Math.round(t.latency_ms) + 'ms' : 'N/A';
+            const model = getTelemetryValue<string>(t, 'model', 'string');
+            const tokens = getTelemetryValue<number>(t, 'tokens', 'number');
+            const cost = getTelemetryValue<number>(t, 'cost_usd', 'number', v => v.toFixed(4));
+            const latency = getTelemetryValue<number>(t, 'latency_ms', 'number', v => Math.round(v) + 'ms');
             
             vscode.window.setStatusBarMessage(
               `AEP Plan — model: ${model}, tokens: ${tokens}, cost: $${cost}, latency: ${latency}`, 

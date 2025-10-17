@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional
 MAX_HEADER_LENGTH = 100  # Maximum allowed length for header values
 
 # Header value validation pattern using re.VERBOSE for maintainability
+# Note: Empty strings are handled separately in validate_header_value()
+# This pattern requires at least one character and validates the format
 HEADER_VALUE_PATTERN = re.compile(
     r"""
     ^                   # Start of string

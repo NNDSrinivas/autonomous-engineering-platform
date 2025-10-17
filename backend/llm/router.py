@@ -257,11 +257,11 @@ class ModelRouter:
                 # Track usage statistics
                 self._update_usage_stats(candidate, telemetry)
 
-                # Format cost for logging to improve f-string readability
-                formatted_cost = f"${cost:.{COST_DECIMAL_PLACES}f}"
+                # Format log message using telemetry values for consistency
+                formatted_cost = f"${telemetry['cost_usd']:.{COST_DECIMAL_PLACES}f}"
                 logger.info(
                     f"Successfully completed {phase} with {candidate}: "
-                    f"{tokens} tokens, {formatted_cost}, {round(latency_ms)}ms"
+                    f"{telemetry['tokens']} tokens, {formatted_cost}, {telemetry['latency_ms']}ms"
                 )
 
                 return result["text"], telemetry

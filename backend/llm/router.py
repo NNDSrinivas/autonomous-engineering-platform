@@ -5,7 +5,6 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, List, Any, Tuple, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 from .providers.openai_provider import OpenAIProvider
 from .providers.anthropic_provider import AnthropicProvider
 from .audit import get_audit_service, AuditLogEntry
@@ -219,19 +218,11 @@ class ModelRouter:
                 LLM_LATENCY.labels(phase=phase, model=candidate).observe(latency_ms)
 
                 # Record audit log
-                # NOTE: The insert below intentionally does not commit the
-                # transaction. Transaction boundaries (commit/rollback) are
-                # expected to be handled by the caller (for example, the
-                # API layer) so that multiple related DB operations can be
-                # grouped in a single transaction. If audit insertion fails
-                # we log the error and intentionally do not propagate it to
-                # avoid failing the LLM call itself.
-                #
-                # Consider extracting audit logging into a dedicated helper
-                # or service (e.g. `audit_log_success(db, ...)`) to centralize
-                # retry logic, error handling, and explicit transaction
-                # semantics rather than embedding DB transaction concerns
-                # inside ModelRouter.
+                # NOTE: Audit logging is handled by the dedicated AuditService
+                # which encapsulates transaction management and error handling.
+                # Transaction boundaries (commit/rollback) are expected to be
+                # handled by the caller (API layer) to allow grouping multiple
+                # related DB operations in a single transaction.
                 if audit_context.db is not None:
                     audit_entry = AuditLogEntry(
                         phase=phase,

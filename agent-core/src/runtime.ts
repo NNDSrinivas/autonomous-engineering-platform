@@ -1,5 +1,5 @@
-import { coreApi } from './env.js';
-import type { Greeting, Plan, PlanItem } from './protocol.js';
+import { coreApi } from './env';
+import type { Greeting, Plan, PlanItem } from './protocol';
 
 export async function greet(): Promise<Greeting> {
   const name = process.env.USER || 'Developer';

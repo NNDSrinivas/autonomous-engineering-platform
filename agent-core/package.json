@@ -1,18 +1,16 @@
 {
   "name": "aep-agent-core",
   "version": "0.1.0",
-  "type": "module",
   "main": "./dist/index.js",
-  "exports": { ".": "./dist/index.js" },
   "scripts": {
     "build": "tsc -p ./",
     "dev:agentd": "ts-node src/agentd.ts"
   },
-  "dependencies": {},
   "devDependencies": {
-    "typescript": "^5.4.5",
-    "ts-node": "^10.9.2",
     "@types/node": "^20.11.0",
+    "@types/ws": "^8.18.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
     "ws": "^8.18.0"
   }
 }

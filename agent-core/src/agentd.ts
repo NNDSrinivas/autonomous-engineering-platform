@@ -1,8 +1,8 @@
 import { WebSocketServer } from 'ws';
-import { greet, fetchContextPack, proposePlan } from './runtime.js';
-import { applyEdits, runCommand } from './tools.js';
-import { checkPolicy } from './policy.js';
-import type { RpcReq, RpcRes, PlanItem } from './protocol.js';
+import { greet, fetchContextPack, proposePlan } from './runtime';
+import { applyEdits, runCommand } from './tools';
+import { checkPolicy } from './policy';
+import type { RpcReq, RpcRes, PlanItem } from './protocol';
 import { existsSync } from 'fs';
 import { cwd } from 'process';
 

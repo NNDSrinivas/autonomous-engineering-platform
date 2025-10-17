@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Body, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Body, HTTPException, BackgroundTasks, Depends, Request
+from sqlalchemy.orm import Session
 from typing import Dict, Any
 import json
 import hashlib
@@ -7,6 +8,7 @@ import logging
 import os
 
 from ..core.cache import Cache
+from ..core.db import get_db
 from ..llm.router import ModelRouter
 
 # Initialize router and dependencies
@@ -56,6 +58,8 @@ def load_plan_prompt() -> str:
 async def generate_plan(
     key: str,
     payload: Dict[str, Any] = Body(...),
+    request: Request = None,
+    db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = None,
 ) -> Dict[str, Any]:
     """
@@ -89,13 +93,28 @@ async def generate_plan(
         # Load prompt template
         prompt = load_plan_prompt()
 
+        # Extract identity headers for audit logging
+        org_id = request.headers.get("X-Org-Id") if request else None
+        user_id = request.headers.get("X-User-Id") if request else None
+
+        # Generate prompt hash for audit logging
+        prompt_hash = hashlib.sha256(
+            (prompt + json.dumps(context_pack, sort_keys=True)).encode()
+        ).hexdigest()
+
         # Call LLM via model router
         logger.info(f"Generating new plan for key: {key}")
         start_time = time.time()
 
         try:
             response_text, telemetry = get_model_router().call(
-                "plan", prompt, context_pack
+                "plan",
+                prompt,
+                context_pack,
+                db=db,
+                prompt_hash=prompt_hash,
+                org_id=org_id,
+                user_id=user_id,
             )
 
             # Parse LLM response with size limits

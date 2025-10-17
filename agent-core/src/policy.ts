@@ -6,14 +6,22 @@ export type PolicyDoc = {
   deny?: { commands?: string[] };
 };
 
+// Escape RegExp metacharacters in the pattern, except for glob tokens (to be replaced)
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function matchGlobPattern(pattern: string, path: string): boolean {
-  // Convert glob pattern to regex
+  // Convert glob pattern to regex safely
   // ** matches any number of directories
   // * matches any characters within a directory segment
-  const regexPattern = pattern
-    .replace(/\*\*/g, '.*') // ** becomes .*
-    .replace(/(?<!\*)\*(?!\*)/g, '[^/]*') // single * becomes [^/]*
-    .replace(/\//g, '\\/'); // escape forward slashes
+  
+  // Replace '**' with a placeholder to avoid confusion with single '*'
+  const DOUBLE_STAR_PLACEHOLDER = '__DOUBLE_STAR__';
+  let regexPattern = escapeRegExp(pattern)
+    .replace(/\\\*\\\*/g, DOUBLE_STAR_PLACEHOLDER) // ** becomes placeholder
+    .replace(/\\\*/g, '[^/]*') // single * becomes [^/]*
+    .replace(new RegExp(DOUBLE_STAR_PLACEHOLDER, 'g'), '.*'); // restore ** to .*
   
   const regex = new RegExp(`^${regexPattern}$`);
   return regex.test(path);

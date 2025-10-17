@@ -42,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (step.kind === 'edit' && step.files?.length && wf) {
                   details = await applyEdits(wf, step.files, step.desc);
                 } else if (step.command && wf) {
-                  details = runCommand(wf, step.command);
+                  details = await Promise.resolve(runCommand(wf, step.command));
                 } else {
                   status = 'skipped';
                 }
@@ -81,12 +81,18 @@ function html(): string {
     <script>
       const vscode = acquireVsCodeApi();
       const log = (html) => { const d=document.createElement('div'); d.className='card'; d.innerHTML=html; document.getElementById('log').prepend(d); };
+      
+      // HTML escape function to prevent XSS
+      const escapeHtml = (text) => {
+        const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+        return text.replace(/[&<>"']/g, (m) => map[m]);
+      };
 
       window.addEventListener('message', ev => {
         const {type, payload} = ev.data;
         if (type==='message') {
-          const items = (payload.tasks||[]).map(t => \`<li><button class="btn" onclick="pick('\${t.key}')">\${t.key}</button> \${t.title} <code>\${t.status||''}</code></li>\`).join('') || '<li><small>No tasks found.</small></li>';
-          log(\`<b>\${payload.text}</b><ul>\${items}</ul>\`);
+          const items = (payload.tasks||[]).map(t => \`<li><button class="btn" onclick="pick('\${escapeHtml(t.key)}')">\${escapeHtml(t.key)}</button> \${escapeHtml(t.title)} <code>\${escapeHtml(t.status||'')}</code></li>\`).join('') || '<li><small>No tasks found.</small></li>';
+          log(\`<b>\${escapeHtml(payload.text)}</b><ul>\${items}</ul>\`);
         }
         if (type==='context.pack') {
           log('<b>Context Pack</b><pre>'+JSON.stringify(payload,null,2)+'</pre>');

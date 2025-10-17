@@ -52,8 +52,14 @@ export async function runCommand(workspaceRoot: string, cmd: string): Promise<st
   }
   
   // Additional security validations
-  if (cmd.includes('sudo') || /\bsu\b/.test(cmd) || cmd.includes('chmod +x')) {
-    throw new Error('Privileged commands are not allowed');
+  // Block dangerous privilege escalation and chmod patterns
+  const dangerousChmod = /\bchmod\s+((7[0-7]{2})|(\+[xwsXugo]+)|([0-6]?[0-7]{2,3}))\b/i;
+  if (
+    cmd.includes('sudo') ||
+    /\bsu\b/.test(cmd) ||
+    dangerousChmod.test(cmd)
+  ) {
+    throw new Error('Privileged or unsafe permission-changing commands are not allowed');
   }
   if (cmd.includes('..') || cmd.includes('/etc/') || cmd.includes('/root/')) {
     throw new Error('Path traversal or system directory access not allowed');

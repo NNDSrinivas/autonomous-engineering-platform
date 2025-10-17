@@ -172,7 +172,7 @@ async def ask_question(request: QuestionRequest):
         enhanced_prompt = f"""
         Question: {question}
         
-        Context: {json.dumps(context, indent=2) if context else 'No additional context provided'}
+        Context: {json.dumps(context, indent=2) if context else "No additional context provided"}
         
         Please provide a comprehensive answer that includes:
         1. Core concept explanation

@@ -158,7 +158,7 @@ async def generate_plan(
         raise
     except Exception as e:
         logger.error(f"Unexpected error generating plan for {key}: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/metrics")
@@ -176,7 +176,9 @@ async def get_metrics() -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"Error getting metrics: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get metrics: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Failed to get metrics due to an internal error."
+        )
 
 
 @router.post("/clear-cache")
@@ -188,7 +190,9 @@ async def clear_cache() -> Dict[str, str]:
         return {"message": "Cache cleared successfully"}
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Failed to clear cache due to an internal error."
+        )
 
 
 @router.get("/health")

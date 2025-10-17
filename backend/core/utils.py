@@ -14,7 +14,7 @@ HEADER_VALUE_PATTERN = re.compile(
     ^                   # Start of string
     (?!.*\.\.)         # Negative lookahead: no consecutive dots anywhere
     [a-zA-Z0-9_]       # First character: alphanumeric or underscore only
-    [a-zA-Z0-9_.-]*    # Remaining characters: alphanumeric, underscore, dot, or hyphen
+    (?:[a-zA-Z0-9_.-]*[a-zA-Z0-9_])?  # Optional middle chars ending with alnum/underscore
     $                   # End of string
     """,
     re.VERBOSE,

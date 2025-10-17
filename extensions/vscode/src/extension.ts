@@ -1,12 +1,28 @@
 import * as vscode from 'vscode';
-import { greet, fetchContextPack, proposePlan } from '../../../agent-core/dist/runtime';
-import { checkPolicy } from '../../../agent-core/dist/policy';
-import { applyEdits, runCommand } from '../../../agent-core/dist/tools';
+import { greet, fetchContextPack, proposePlan } from 'agent-core/runtime';
+import { checkPolicy } from 'agent-core/policy';
+import { applyEdits, runCommand } from 'agent-core/tools';
 
 // Sanitize text for display in user dialogs
 function sanitizeDialogText(text: string): string {
   // Limit length and remove potentially confusing characters
   return text.slice(0, 200).replace(/[\r\n\t]/g, ' ').trim();
+}
+
+// Build a structured confirmation message
+function buildConfirmationMessage(step: any): string {
+  const kind = String(step.kind).toUpperCase();
+  let msg = `Operation: ${kind}\n`;
+  if (step.kind === 'edit' && Array.isArray(step.files) && step.files.length) {
+    msg += `Files to edit:\n  ${step.files.map((f:string) => sanitizeDialogText(f)).join('\n  ')}\n`;
+  }
+  if (step.command) {
+    msg += `Command to run:\n  ${sanitizeDialogText(step.command)}\n`;
+  }
+  if (step.desc) {
+    msg += `Description:\n  ${sanitizeDialogText(step.desc)}\n`;
+  }
+  return msg.trim();
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -42,10 +58,8 @@ export function activate(context: vscode.ExtensionContext) {
               const allowed = await checkPolicy(wf, { command: step.command, files: step.files });
               if (!allowed) { results.push({ id: step.id, status: 'denied' }); continue; }
               // ask-before-do per step
-              const safeDesc = sanitizeDialogText(step.desc || '');
-              const safeCommand = step.command ? sanitizeDialogText(step.command) : '';
               const go = await vscode.window.showInformationMessage(
-                `${step.kind.toUpperCase()}: ${safeDesc}${safeCommand ? `\n${safeCommand}`:''}`, { modal:true }, 'Run'
+                buildConfirmationMessage(step), { modal:true }, 'Run'
               );
               if (go !== 'Run') { results.push({ id: step.id, status:'cancelled' }); continue; }
 

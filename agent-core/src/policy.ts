@@ -20,11 +20,12 @@ function matchGlobPattern(pattern: string, path: string): boolean {
   
   // Replace '**' with a placeholder to avoid confusion with single '*'
   const DOUBLE_STAR_PLACEHOLDER = '__DOUBLE_STAR_PLACEHOLDER__';
+  const DOUBLE_STAR_PLACEHOLDER_REGEX = new RegExp(escapeRegExp(DOUBLE_STAR_PLACEHOLDER), 'g');
   let regexPattern = escapeRegExp(pattern)
     .replace(/\\\*\\\*/g, DOUBLE_STAR_PLACEHOLDER) // ** becomes placeholder
     .replace(/\\\*/g, '[^/]*') // single * becomes [^/]*
     .replace(/\\\?/g, '[^/]') // ? becomes [^/] (single character, not path separator)
-    .replace(new RegExp(escapeRegExp(DOUBLE_STAR_PLACEHOLDER), 'g'), '.*'); // restore ** to .*
+    .replace(DOUBLE_STAR_PLACEHOLDER_REGEX, '.*'); // restore ** to .*
   
   const regex = new RegExp(`^${regexPattern}$`);
   return regex.test(path);

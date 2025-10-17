@@ -40,8 +40,20 @@ class OpenAIProvider:
                 usage.completion_tokens / 1000
             ) * pricing["output"]
 
+            # Safely extract response content
+            if not response.choices or len(response.choices) == 0:
+                raise RuntimeError(
+                    f"OpenAI API returned empty choices for model {self.model}"
+                )
+
+            content = response.choices[0].message.content
+            if content is None:
+                raise RuntimeError(
+                    f"OpenAI API returned null content for model {self.model}"
+                )
+
             return {
-                "text": response.choices[0].message.content.strip(),
+                "text": content.strip(),
                 "tokens": usage.total_tokens,
                 "input_tokens": usage.prompt_tokens,
                 "output_tokens": usage.completion_tokens,

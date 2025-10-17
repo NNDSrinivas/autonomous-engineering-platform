@@ -20,6 +20,10 @@ export interface PlanResponse {
 }
 
 export async function generatePlan(contextPack: any): Promise<PlanResponse> {
+  if (!contextPack || !contextPack.ticket || typeof contextPack.ticket.key !== "string") {
+    throw new Error("Invalid contextPack: missing ticket or ticket.key");
+  }
+
   const response = await fetch(`${coreApi()}/api/plan/${contextPack.ticket.key}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

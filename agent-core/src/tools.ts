@@ -5,6 +5,9 @@ import { dirname, join } from 'path';
 
 const exec = promisify(execCallback);
 
+// Constants for command execution limits
+const MAX_OUTPUT_SIZE = 4000; // Maximum characters to return from command output
+
 function sanitizeNote(note: string): string {
   // Remove newlines and comment terminators, and trim whitespace
   return note.replace(/[\r\n]+/g, ' ').replace(/\*\//g, '').trim();
@@ -53,7 +56,7 @@ export async function runCommand(workspaceRoot: string, cmd: string): Promise<st
   
   // Additional security validations
   // Block dangerous privilege escalation and chmod patterns
-  const dangerousChmod = /\bchmod\s+((7[0-7]{2})|(\+[xwsXugo]+)|([0-6]?[0-7]{2,3}))\b/i;
+  const dangerousChmod = /\bchmod\s+([0-7]{3,4}|\+[rwxstugo]+|\-[rwxstugo]+)/i;
   if (
     cmd.includes('sudo') ||
     /\bsu\b/.test(cmd) ||
@@ -88,7 +91,7 @@ export async function runCommand(workspaceRoot: string, cmd: string): Promise<st
       timeout: 30000, // 30 second timeout
       maxBuffer: 5 * 1024 * 1024 // 5MB max buffer for legitimate command outputs
     });
-    return stdout.slice(-4000);
+    return stdout.slice(-MAX_OUTPUT_SIZE);
   } catch (error: any) {
     // Sanitize error messages to prevent information leakage
     const sanitizedMessage = error.message?.replace(/\/[^\s]+/g, '[PATH]') || 'Command execution failed';

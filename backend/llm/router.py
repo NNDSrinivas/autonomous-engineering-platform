@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .providers.openai_provider import OpenAIProvider
 from .providers.anthropic_provider import AnthropicProvider
-from .queries import INSERT_LLM_CALL_SUCCESS, INSERT_LLM_CALL_ERROR
+from .audit import get_audit_service, AuditLogEntry
 from ..core.utils import generate_prompt_hash
 from ..telemetry.metrics import LLM_CALLS, LLM_TOKENS, LLM_COST, LLM_LATENCY
 
@@ -219,29 +219,32 @@ class ModelRouter:
                 LLM_LATENCY.labels(phase=phase, model=candidate).observe(latency_ms)
 
                 # Record audit log
+                # NOTE: The insert below intentionally does not commit the
+                # transaction. Transaction boundaries (commit/rollback) are
+                # expected to be handled by the caller (for example, the
+                # API layer) so that multiple related DB operations can be
+                # grouped in a single transaction. If audit insertion fails
+                # we log the error and intentionally do not propagate it to
+                # avoid failing the LLM call itself.
+                #
+                # Consider extracting audit logging into a dedicated helper
+                # or service (e.g. `audit_log_success(db, ...)`) to centralize
+                # retry logic, error handling, and explicit transaction
+                # semantics rather than embedding DB transaction concerns
+                # inside ModelRouter.
                 if audit_context.db is not None:
-                    try:
-                        audit_context.db.execute(
-                            text(INSERT_LLM_CALL_SUCCESS),
-                            {
-                                "phase": phase,
-                                "model": candidate,
-                                "status": status,
-                                "prompt_hash": audit_context.prompt_hash,
-                                "tokens": tokens,
-                                "cost_usd": cost,
-                                "latency_ms": int(latency_ms),
-                                "org_id": audit_context.org_id,
-                                "user_id": audit_context.user_id,
-                            },
-                        )
-                        # Commit should be handled at a higher level
-                    except Exception as audit_error:
-                        logger.error(
-                            f"Failed to record audit log for {phase}/{candidate}: {audit_error}"
-                        )
-                        # Don't fail the API call due to audit logging issues
-                        # Rollback should be handled at a higher level
+                    audit_entry = AuditLogEntry(
+                        phase=phase,
+                        model=candidate,
+                        status=status,
+                        prompt_hash=audit_context.prompt_hash,
+                        tokens=tokens,
+                        cost_usd=cost,
+                        latency_ms=int(latency_ms),
+                        org_id=audit_context.org_id,
+                        user_id=audit_context.user_id,
+                    )
+                    get_audit_service().log_success(audit_context.db, audit_entry)
 
                 # Build telemetry data
                 telemetry = {
@@ -279,28 +282,19 @@ class ModelRouter:
 
                 # Record error audit log
                 if audit_context.db is not None:
-                    try:
-                        audit_context.db.execute(
-                            text(INSERT_LLM_CALL_ERROR),
-                            {
-                                "phase": phase,
-                                "model": candidate,
-                                "status": status,
-                                "prompt_hash": audit_context.prompt_hash,
-                                "tokens": 0,
-                                "cost_usd": 0.0,
-                                "latency_ms": int(latency_ms),
-                                "error_message": error_message,
-                                "org_id": audit_context.org_id,
-                                "user_id": audit_context.user_id,
-                            },
-                        )
-                        # Commit should be handled at a higher level
-                    except Exception as audit_error:
-                        logger.error(
-                            f"Failed to record error audit log for {phase}/{candidate}: {audit_error}"
-                        )
-                        # Rollback should be handled at a higher level
+                    audit_entry = AuditLogEntry(
+                        phase=phase,
+                        model=candidate,
+                        status=status,
+                        prompt_hash=audit_context.prompt_hash,
+                        tokens=0,
+                        cost_usd=0.0,
+                        latency_ms=int(latency_ms),
+                        org_id=audit_context.org_id,
+                        user_id=audit_context.user_id,
+                        error_message=error_message,
+                    )
+                    get_audit_service().log_error(audit_context.db, audit_entry)
 
                 logger.warning(f"Model {candidate} failed for phase {phase}: {e}")
                 continue

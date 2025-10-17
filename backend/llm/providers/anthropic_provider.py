@@ -11,7 +11,16 @@ class AnthropicProvider:
 
     def __init__(self, model: str):
         self.model = model
-        self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+        # Validate API key is present
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            logger.error("ANTHROPIC_API_KEY environment variable is not set.")
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY environment variable is required to use the AnthropicProvider."
+            )
+
+        self.client = anthropic.Anthropic(api_key=api_key)
 
         # Model-specific pricing (per 1K tokens) - map actual API model names to pricing
         self.pricing = {

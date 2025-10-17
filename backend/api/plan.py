@@ -5,7 +5,6 @@ import hashlib
 import time
 import logging
 import os
-import functools
 
 from ..core.cache import Cache
 from ..llm.router import ModelRouter
@@ -17,10 +16,16 @@ cache = Cache(ttl=3600)  # 1 hour cache
 logger = logging.getLogger(__name__)
 
 
-@functools.lru_cache(maxsize=1)
+# Singleton instance for ModelRouter
+_model_router_instance = None
+
+
 def get_model_router():
-    """Get the model router instance using functools singleton pattern."""
-    return ModelRouter()
+    """Get the model router singleton instance."""
+    global _model_router_instance
+    if _model_router_instance is None:
+        _model_router_instance = ModelRouter()
+    return _model_router_instance
 
 
 def load_plan_prompt() -> str:
@@ -90,12 +95,21 @@ async def generate_plan(
                 "plan", prompt, context_pack
             )
 
-            # Parse LLM response
+            # Parse LLM response with size limits
+            MAX_LLM_RESPONSE_SIZE = 1024 * 1024  # 1 MB
+
             try:
+                # Limit LLM response size to prevent memory exhaustion
+                if len(response_text) > MAX_LLM_RESPONSE_SIZE:
+                    logger.warning(
+                        f"LLM response too large: {len(response_text)} bytes"
+                    )
+                    raise ValueError("LLM response too large to parse as JSON")
+
                 parsed_response = json.loads(response_text)
                 plan = parsed_response.get("plan", {"items": []})
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse LLM response as JSON: {e}")
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Failed to parse LLM response: {e}")
                 # Fallback: create a simple plan structure
                 plan = {
                     "items": [

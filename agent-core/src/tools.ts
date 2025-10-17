@@ -23,20 +23,26 @@ export async function applyEdits(workspaceRoot: string, files: string[], note: s
 }
 
 function isAllowedCommand(cmd: string): boolean {
-  // Define a whitelist of allowed commands for security
+  // Strict whitelist of allowed commands for maximum security
   const allowedCommands = [
-    /^git\s+/, // git commands
-    /^pytest(\s|$)/, // pytest commands
-    /^npm(\s|$)/, // npm commands  
-    /^pnpm(\s|$)/, // pnpm commands
-    /^yarn(\s|$)/, // yarn commands
-    /^mvn(\s|$)/, // maven commands
-    /^gradle(\s|$)/, // gradle commands
-    /^ls(\s|$)/, // list files
-    /^pwd(\s|$)/, // print working directory
-    /^echo(\s|$)/, // echo command
-    /^cat(\s|$)/, // read files
+    /^git\s+(status|log|diff|show|branch|checkout|add|commit|push|pull|fetch|clone)\b/, // specific git subcommands only
+    /^pytest\s+/, // pytest commands
+    /^npm\s+(install|test|run|build|start)\b/, // specific npm subcommands only
+    /^pnpm\s+(install|test|run|build|start)\b/, // specific pnpm subcommands only  
+    /^yarn\s+(install|test|run|build|start)\b/, // specific yarn subcommands only
+    /^mvn\s+(clean|compile|test|package|install)\b/, // specific maven subcommands only
+    /^gradle\s+(clean|build|test|assemble)\b/, // specific gradle subcommands only
+    /^ls\s*(-[la]*\s*)?[.\w/-]*$/, // ls with basic flags and safe paths only
+    /^pwd\s*$/, // pwd with no arguments
+    /^echo\s+[\w\s.-]+$/, // echo with alphanumeric content only
+    /^cat\s+[\w./-]+$/, // cat with safe file paths only
   ];
+  
+  // Additional security: reject commands with dangerous patterns
+  if (cmd.match(/[;&|`$(){}><]/)) {
+    return false; // No shell metacharacters allowed
+  }
+  
   return allowedCommands.some((re) => re.test(cmd));
 }
 
@@ -44,13 +50,45 @@ export async function runCommand(workspaceRoot: string, cmd: string): Promise<st
   if (!isAllowedCommand(cmd)) {
     throw new Error(`Command not allowed: ${cmd}`);
   }
-  // Pass a minimal set of safe environment variables required by most commands
-  const allowedEnvVars = ['PATH', 'HOME', 'USER', 'LANG'];
-  const filteredEnv: { [key: string]: string } = {};
-  for (const key of allowedEnvVars) {
-    if (process.env[key] != null) filteredEnv[key] = process.env[key] as string;
+  
+  // Additional security validations
+  if (cmd.includes('sudo') || cmd.includes('su ') || cmd.includes('chmod +x')) {
+    throw new Error('Privileged commands are not allowed');
+  }
+  if (cmd.includes('..') || cmd.includes('/etc/') || cmd.includes('/root/')) {
+    throw new Error('Path traversal or system directory access not allowed');
+  }
+  if (cmd.match(/[;&|`$(){}]/)) {
+    throw new Error('Shell metacharacters not allowed for security');
   }
   
-  const { stdout } = await exec(cmd, { cwd: workspaceRoot, env: filteredEnv, encoding: 'utf8' });
-  return stdout.slice(-4000);
+  // Strict environment with minimal safe variables
+  const safeEnvVars = ['PATH', 'HOME', 'USER', 'LANG', 'PWD'];
+  const sanitizedEnv: { [key: string]: string } = {};
+  
+  for (const key of safeEnvVars) {
+    const value = process.env[key];
+    if (value != null && typeof value === 'string') {
+      // Sanitize environment variable values
+      const sanitizedValue = value.replace(/[;&|`$(){}]/g, '');
+      if (sanitizedValue.length > 0) {
+        sanitizedEnv[key] = sanitizedValue;
+      }
+    }
+  }
+  
+  try {
+    const { stdout } = await exec(cmd, { 
+      cwd: workspaceRoot, 
+      env: sanitizedEnv, 
+      encoding: 'utf8',
+      timeout: 30000, // 30 second timeout
+      maxBuffer: 1024 * 1024 // 1MB max buffer
+    });
+    return stdout.slice(-4000);
+  } catch (error: any) {
+    // Sanitize error messages to prevent information leakage
+    const sanitizedMessage = error.message?.replace(/\/[^\s]+/g, '[PATH]') || 'Command execution failed';
+    throw new Error(`Command failed: ${sanitizedMessage}`);
+  }
 }

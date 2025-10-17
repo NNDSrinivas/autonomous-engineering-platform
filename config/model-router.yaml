@@ -4,8 +4,15 @@ routes:
   review: gpt-4o-mini
 
 budgets:
-  tokens: 120000
-  seconds: 180
+  plan:
+    tokens: 40000
+    seconds: 60
+  code:
+    tokens: 40000
+    seconds: 60
+  review:
+    tokens: 40000
+    seconds: 60
 
 fallbacks:
   plan: [gpt-4o, claude-3-haiku]

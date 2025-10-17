@@ -19,6 +19,7 @@ from ..workers.queue import process_meeting
 from ..workers.integrations import jira_sync, github_index
 from ..workers.answers import generate_answer
 from .tasks import router as tasks_router
+from .plan import router as plan_router
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -136,6 +137,7 @@ def context_for_task(key: str, db: Session = Depends(get_db)):
 
 
 app.include_router(ctx_router)
+app.include_router(plan_router)
 
 # ---- Feature 1 endpoints (Finalize + Query) ----
 

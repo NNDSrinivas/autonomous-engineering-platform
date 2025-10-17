@@ -20,6 +20,10 @@
       {
         "command": "aep.runPlan",
         "title": "AEP: Run Approved Plan"
+      },
+      {
+        "command": "aep.generatePlanLLM",
+        "title": "AEP: Generate Plan (LLM)"
       }
     ],
     "configuration": {

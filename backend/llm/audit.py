@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AuditLogEntry:
     """Data structure for LLM audit log entries."""
+
     phase: str
     model: str
     status: str
@@ -28,21 +29,18 @@ class AuditLogEntry:
 
 class AuditService:
     """Centralized service for audit logging with explicit transaction semantics."""
-    
+
     def log_success(
-        self, 
-        db: Session, 
-        entry: AuditLogEntry,
-        commit: bool = False
+        self, db: Session, entry: AuditLogEntry, commit: bool = False
     ) -> bool:
         """
         Log a successful LLM call.
-        
+
         Args:
             db: Database session
             entry: Audit log entry data
             commit: Whether to commit the transaction immediately
-            
+
         Returns:
             True if logging succeeded, False otherwise
         """
@@ -61,35 +59,36 @@ class AuditService:
                     "user_id": entry.user_id,
                 },
             )
-            
+
             if commit:
                 db.commit()
-                
+
             return True
-            
+
         except Exception as e:
-            logger.error(f"Failed to log successful LLM call for {entry.phase}/{entry.model}: {e}")
+            logger.error(
+                f"Failed to log successful LLM call for {entry.phase}/{entry.model}: {e}"
+            )
             if commit:
                 try:
                     db.rollback()
                 except Exception as rollback_error:
-                    logger.error(f"Failed to rollback audit transaction: {rollback_error}")
+                    logger.error(
+                        f"Failed to rollback audit transaction: {rollback_error}"
+                    )
             return False
-    
+
     def log_error(
-        self, 
-        db: Session, 
-        entry: AuditLogEntry,
-        commit: bool = False
+        self, db: Session, entry: AuditLogEntry, commit: bool = False
     ) -> bool:
         """
         Log a failed LLM call.
-        
+
         Args:
             db: Database session
             entry: Audit log entry data
             commit: Whether to commit the transaction immediately
-            
+
         Returns:
             True if logging succeeded, False otherwise
         """
@@ -109,19 +108,23 @@ class AuditService:
                     "user_id": entry.user_id,
                 },
             )
-            
+
             if commit:
                 db.commit()
-                
+
             return True
-            
+
         except Exception as e:
-            logger.error(f"Failed to log failed LLM call for {entry.phase}/{entry.model}: {e}")
+            logger.error(
+                f"Failed to log failed LLM call for {entry.phase}/{entry.model}: {e}"
+            )
             if commit:
                 try:
                     db.rollback()
                 except Exception as rollback_error:
-                    logger.error(f"Failed to rollback audit transaction: {rollback_error}")
+                    logger.error(
+                        f"Failed to rollback audit transaction: {rollback_error}"
+                    )
             return False
 
 

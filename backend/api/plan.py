@@ -8,7 +8,7 @@ import logging
 import os
 
 from ..core.cache import Cache
-from ..core.db import get_db
+from ..core.db import get_db, safe_commit_with_rollback
 from ..core.utils import generate_prompt_hash, validate_header_value
 from ..llm.router import ModelRouter, AuditContext
 
@@ -123,17 +123,17 @@ async def generate_plan(
             )
 
             # Commit audit logging transaction after successful LLM call
+            # NOTE: The explicit commit/rollback handling appears in multiple
+            # places across the codebase. Consider extracting a small helper
+            # (for example `safe_commit_with_rollback(db, logger)`) that
+            # centralizes the try/except logic, reducing duplication and
+            # making it easier to adjust logging/retry behavior in one place.
             if audit_context.db:
-                try:
-                    audit_context.db.commit()
-                except Exception as commit_error:
-                    logger.error(f"Failed to commit audit transaction: {commit_error}")
-                    try:
-                        audit_context.db.rollback()
-                    except Exception as rollback_error:
-                        logger.error(
-                            f"Failed to rollback audit transaction: {rollback_error}"
-                        )
+                safe_commit_with_rollback(
+                    audit_context.db, 
+                    logger, 
+                    "audit transaction"
+                )
 
             # Parse LLM response with size limits
             try:
@@ -165,12 +165,11 @@ async def generate_plan(
 
             # Rollback audit logging transaction on error
             if audit_context.db:
-                try:
-                    audit_context.db.rollback()
-                except Exception as rollback_error:
-                    logger.error(
-                        f"Failed to rollback audit transaction: {rollback_error}"
-                    )
+                safe_commit_with_rollback(
+                    audit_context.db, 
+                    logger, 
+                    "audit transaction rollback"
+                )
 
             # Return error plan - use generic message for security
             plan = {

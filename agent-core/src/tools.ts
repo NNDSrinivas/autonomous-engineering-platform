@@ -42,7 +42,7 @@ function isAllowedCommand(cmd: string): boolean {
   ];
   
   // Additional security: reject commands with dangerous patterns
-  if (cmd.match(/[;&|`$(){}><\\]/)) {
+  if (cmd.match(/[;&|`$(){}><\\~*\[\]!]/)) {
     return false; // No shell metacharacters allowed
   }
   
@@ -84,14 +84,19 @@ export async function runCommand(workspaceRoot: string, cmd: string): Promise<st
   }
   
   try {
-    const { stdout } = await exec(cmd, { 
+    const { stdout, stderr } = await exec(cmd, { 
       cwd: workspaceRoot, 
       env: sanitizedEnv, 
       encoding: 'utf8',
       timeout: 30000, // 30 second timeout
       maxBuffer: 5 * 1024 * 1024 // 5MB max buffer for legitimate command outputs
     });
-    return stdout.slice(-MAX_OUTPUT_SIZE);
+    
+    // Sanitize stderr to prevent sensitive information leakage
+    const sanitizedStderr = stderr ? stderr.replace(/\/[^\s]+/g, '[PATH]') : '';
+    const output = stdout + (sanitizedStderr ? '\n[STDERR]: ' + sanitizedStderr : '');
+    
+    return output.slice(-MAX_OUTPUT_SIZE);
   } catch (error: any) {
     // Sanitize error messages to prevent information leakage
     const sanitizedMessage = error.message?.replace(/\/[^\s]+/g, '[PATH]') || 'Command execution failed';

@@ -13,7 +13,11 @@ RESPONSE=$(curl -s -X POST "$CORE/api/plan/DEMO-1" \
   -d '{"contextPack": {"ticket":{"key":"DEMO-1","summary":"demo ticket for telemetry testing"}}}')
 
 echo "[SMOKE] Plan response received"
-echo "$RESPONSE" | jq '.telemetry.model, .telemetry.tokens, .telemetry.cost_usd, .telemetry.latency_ms, .plan.items | length'
+echo "[SMOKE] Telemetry model:      $(echo "$RESPONSE" | jq -r '.telemetry.model')"
+echo "[SMOKE] Telemetry tokens:     $(echo "$RESPONSE" | jq -r '.telemetry.tokens')"
+echo "[SMOKE] Telemetry cost (USD): $(echo "$RESPONSE" | jq -r '.telemetry.cost_usd')"
+echo "[SMOKE] Telemetry latency (ms): $(echo "$RESPONSE" | jq -r '.telemetry.latency_ms')"
+echo "[SMOKE] Plan items count:     $(echo "$RESPONSE" | jq -r '.plan.items | length')"
 
 # Test metrics endpoint
 echo "[SMOKE] Checking Prometheus metrics..."

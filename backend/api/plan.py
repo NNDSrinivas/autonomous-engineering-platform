@@ -9,7 +9,7 @@ import os
 
 from ..core.cache import Cache
 from ..core.db import get_db
-from ..core.utils import generate_prompt_hash
+from ..core.utils import generate_prompt_hash, validate_header_value
 from ..llm.router import ModelRouter, AuditContext
 
 # Initialize router and dependencies
@@ -94,9 +94,13 @@ async def generate_plan(
         # Load prompt template
         prompt = load_plan_prompt()
 
-        # Extract identity headers for audit logging
-        org_id = request.headers.get("X-Org-Id") if request else None
-        user_id = request.headers.get("X-User-Id") if request else None
+        # Extract and validate identity headers for audit logging
+        raw_org_id = request.headers.get("X-Org-Id") if request else None
+        raw_user_id = request.headers.get("X-User-Id") if request else None
+
+        # Validate and sanitize header values
+        org_id = validate_header_value(raw_org_id)
+        user_id = validate_header_value(raw_user_id)
 
         # Create audit context for LLM call
         audit_context = AuditContext(

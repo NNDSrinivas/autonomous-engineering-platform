@@ -186,7 +186,8 @@ function html(): string {
           .replace(/\`/g, '&#96;')
           .replace(/\//g, '&#x2F;')
           .replace(/=/g, '&#x3D;')
-          .replace(/[\x00-\x1F\x7F-\x9F\u2000-\u206F\u2E00-\u2E7F\u3000-\u303F]/g, ''); // Remove control and dangerous Unicode characters
+          // Remove only non-printable ASCII control characters (preserving \n, \r, \t if needed)
+          .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
       };
 
       // Helper function to render a task item as HTML

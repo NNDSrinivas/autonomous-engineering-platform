@@ -1,5 +1,7 @@
 import { coreApi } from './env';
 import type { Greeting, Plan, PlanItem } from './protocol';
+import { generatePlan } from './router';
+import { record } from './telemetry';
 
 export async function greet(): Promise<Greeting> {
   const name = process.env.USER || 'Developer';
@@ -33,4 +35,22 @@ export async function proposePlan(pack: any): Promise<Plan> {
       { id: 'p4', kind: 'git',  desc: 'Create branch & commit', command: 'git checkout -b feat/jwt-expiry && git add -A && git commit -m "feat: jwt expiry fix (#ticket)"' }
     ]
   };
+}
+
+export async function proposePlanLLM(pack: any): Promise<Plan> {
+  try {
+    const response = await generatePlan(pack);
+    
+    // Record telemetry data
+    if (response.telemetry) {
+      record(response.telemetry);
+    }
+    
+    return response.plan;
+  } catch (error) {
+    console.error('LLM plan generation failed:', error);
+    
+    // Fallback to hardcoded plan on error
+    return proposePlan(pack);
+  }
 }

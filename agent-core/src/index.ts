@@ -6,3 +6,6 @@ export * from './policy';
 export * from './tools';
 export * from './protocol';
 export * from './env';
+export * from './router';
+export * from './cache';
+export * from './telemetry';

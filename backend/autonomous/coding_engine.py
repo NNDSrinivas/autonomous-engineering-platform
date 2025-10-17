@@ -324,7 +324,7 @@ class AutonomousCodingEngine:
         Create a detailed implementation plan for this coding task:
         
         Task: {task.title}
-        Requirements Analysis: {analysis.get('technical_requirements', '')}
+        Requirements Analysis: {analysis.get("technical_requirements", "")}
         
         Create step-by-step plan including:
         1. Implementation approach
@@ -496,8 +496,8 @@ class AutonomousCodingEngine:
 {chr(10).join(f"- {file}" for file in task.files_to_modify)}
 
 **Test Results:**
-- Coverage: {task.test_results.get('test_coverage', 'N/A')}%
-- All tests passed: {task.test_results.get('all_tests_passed', 'Unknown')}
+- Coverage: {task.test_results.get("test_coverage", "N/A")}%
+- All tests passed: {task.test_results.get("all_tests_passed", "Unknown")}
 
 **Execution Log:**
 {chr(10).join(f"- {log}" for log in (task.execution_log or []))}

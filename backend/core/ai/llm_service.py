@@ -117,8 +117,8 @@ class LLMService:
         {code}
         ```
         
-        Context: {context.get('description', 'No additional context provided')}
-        Project: {context.get('project', 'Unknown')}
+        Context: {context.get("description", "No additional context provided")}
+        Project: {context.get("project", "Unknown")}
         
         Provide detailed analysis focusing on:
         1. Code quality and maintainability
@@ -170,9 +170,9 @@ class LLMService:
         Generate {language} code for: {description}
         
         Context:
-        - Project: {context.get('project', 'Unknown')}
-        - Framework: {context.get('framework', 'Standard')}
-        - Style: {context.get('coding_style', 'Standard best practices')}
+        - Project: {context.get("project", "Unknown")}
+        - Framework: {context.get("framework", "Standard")}
+        - Style: {context.get("coding_style", "Standard best practices")}
         
         Requirements:
         1. Follow {language} best practices

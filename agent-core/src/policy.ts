@@ -16,12 +16,14 @@ function matchGlobPattern(pattern: string, path: string): boolean {
   // Convert glob pattern to regex safely with explicit escaping
   // ** matches any number of directories
   // * matches any characters within a directory segment
+  // ? matches any single character
   
   // Replace '**' with a placeholder to avoid confusion with single '*'
   const DOUBLE_STAR_PLACEHOLDER = '__DOUBLE_STAR_PLACEHOLDER__';
   let regexPattern = escapeRegExp(pattern)
     .replace(/\\\*\\\*/g, DOUBLE_STAR_PLACEHOLDER) // ** becomes placeholder
     .replace(/\\\*/g, '[^/]*') // single * becomes [^/]*
+    .replace(/\\\?/g, '[^/]') // ? becomes [^/] (single character, not path separator)
     .replace(new RegExp(escapeRegExp(DOUBLE_STAR_PLACEHOLDER), 'g'), '.*'); // restore ** to .*
   
   const regex = new RegExp(`^${regexPattern}$`);

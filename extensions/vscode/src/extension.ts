@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { greet, fetchContextPack, proposePlan } from 'agent-core/runtime';
+import { greet, fetchContextPack, proposePlan, proposePlanLLM } from 'agent-core/runtime';
 import { checkPolicy } from 'agent-core/policy';
 import { applyEdits, runCommand } from 'agent-core/tools';
 
@@ -166,7 +166,54 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(openPanel, runPlan);
+  const generatePlanLLM = vscode.commands.registerCommand('aep.generatePlanLLM', async () => {
+    try {
+      const wf = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!wf) {
+        vscode.window.showErrorMessage('No workspace folder available');
+        return;
+      }
+      
+      const key = await vscode.window.showInputBox({
+        prompt: 'Enter ticket key (e.g., PROJ-123)',
+        placeHolder: 'PROJ-123'
+      });
+      
+      if (!key) {
+        vscode.window.showInformationMessage('Plan generation cancelled');
+        return;
+      }
+      
+      // Show progress indicator
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Generating LLM plan for ${key}`,
+        cancellable: false
+      }, async (progress) => {
+        try {
+          progress.report({ message: 'Fetching context pack...' });
+          const pack = await fetchContextPack(key);
+          
+          progress.report({ message: 'Generating plan with LLM...' });
+          const llmPlan = await proposePlanLLM(pack);
+          
+          const stepCount = llmPlan.items?.length || 0;
+          vscode.window.showInformationMessage(
+            `Generated LLM Plan for ${key} with ${stepCount} steps:\n` +
+            llmPlan.items?.slice(0, 3).map(step => `• ${step.desc}`).join('\n') +
+            (stepCount > 3 ? `\n• ... and ${stepCount - 3} more steps` : '')
+          );
+        } catch (error: any) {
+          vscode.window.showErrorMessage(`Failed to generate LLM plan: ${error?.message || error}`);
+        }
+      });
+      
+    } catch (e: any) {
+      vscode.window.showErrorMessage(`AEP generatePlanLLM error: ${e?.message || e}`);
+    }
+  });
+
+  context.subscriptions.push(openPanel, runPlan, generatePlanLLM);
 }
 export function deactivate() {}
 

@@ -1,0 +1,65 @@
+{
+  "name": "aep-ide",
+  "displayName": "AEP Agent",
+  "publisher": "navra",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:aep.openPanel"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aep.openPanel",
+        "title": "AEP: Open Agent"
+      },
+      {
+        "command": "aep.runPlan",
+        "title": "AEP: Run Approved Plan"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "AEP Agent",
+      "properties": {
+        "aep.coreApi": {
+          "type": "string",
+          "default": "http://localhost:8002",
+          "description": "Core API base"
+        },
+        "aep.realtimeApi": {
+          "type": "string",
+          "default": "http://localhost:8001",
+          "description": "Realtime API base"
+        },
+        "aep.model.plan": {
+          "type": "string",
+          "default": "claude-3-5"
+        },
+        "aep.model.code": {
+          "type": "string",
+          "default": "gpt-4.1"
+        },
+        "aep.policyFile": {
+          "type": "string",
+          "default": ".aepolicy.json"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.21",
+    "@types/vscode": "^1.84.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.5"
+  }
+}

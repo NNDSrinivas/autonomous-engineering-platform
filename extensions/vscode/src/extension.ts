@@ -152,7 +152,15 @@ export function activate(context: vscode.ExtensionContext) {
         results.push({ id: step.id, status, details });
       }
       
-      vscode.window.showInformationMessage(`Plan execution completed. Results: ${JSON.stringify(results)}`);
+      const summary = results.map(r => {
+        let line = `Step ${r.id}: ${r.status}`;
+        if (r.details && typeof r.details === 'string') {
+          const truncatedDetails = r.details.length > 100 ? r.details.substring(0, 100) + '...' : r.details;
+          line += ` (${sanitizeDialogText(truncatedDetails)})`;
+        }
+        return line;
+      }).join('\n');
+      vscode.window.showInformationMessage(`Plan execution completed.\n${summary}`);
     } catch (e: any) {
       vscode.window.showErrorMessage(`AEP runPlan error: ${e?.message || e}`);
     }

@@ -179,7 +179,7 @@ class ModelRouter:
             "within_token_budget": phase_tokens <= token_budget,
             "tokens_used": phase_tokens,
             "token_budget": token_budget,
-            "token_usage_percent": (phase_tokens / token_budget * 100)
-            if token_budget > 0
-            else 0,
+            "token_usage_percent": (
+                (phase_tokens / token_budget * 100) if token_budget > 0 else 0
+            ),
         }

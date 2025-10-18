@@ -29,7 +29,9 @@ class GitHubService:
 
     @staticmethod
     def upsert_repo(db: Session, conn_id: str, repo: dict):
-        row = db.scalar(select(GhRepo).where(GhRepo.repo_full_name == repo["full_name"]))
+        row = db.scalar(
+            select(GhRepo).where(GhRepo.repo_full_name == repo["full_name"])
+        )
         payload = {
             "connection_id": conn_id,
             "repo_full_name": repo["full_name"],
@@ -106,7 +108,9 @@ class GitHubService:
         db.commit()
 
     @staticmethod
-    def search_code(db: Session, repo: str | None, q: str | None, path_prefix: str | None):
+    def search_code(
+        db: Session, repo: str | None, q: str | None, path_prefix: str | None
+    ):
         clause = ["1=1"]
         params = {}
         join = "JOIN gh_repo r ON r.id=f.repo_id"
@@ -120,7 +124,9 @@ class GitHubService:
         return [dict(r) for r in db.execute(text(sql), params).mappings().all()]
 
     @staticmethod
-    def search_issues(db: Session, repo: str | None, q: str | None, updated_since: str | None):
+    def search_issues(
+        db: Session, repo: str | None, q: str | None, updated_since: str | None
+    ):
         clause = ["1=1"]
         params = {}
         join = "JOIN gh_repo r ON r.id=ip.repo_id"

@@ -340,7 +340,9 @@ async def search_team_context(request: TeamContextRequest) -> Dict[str, Any]:
         # Filter by project if specified
         if request.project_id:
             results = [
-                r for r in results if r.get("metadata", {}).get("project") == request.project_id
+                r
+                for r in results
+                if r.get("metadata", {}).get("project") == request.project_id
             ]
 
         # Generate summary
@@ -381,7 +383,9 @@ async def get_team_analytics(project_id: Optional[str] = None) -> Dict[str, Any]
         analytics = {
             "knowledge_base": {
                 "total_documents": len(KNOWLEDGE_BASE),
-                "categories": list(set(item["metadata"]["category"] for item in KNOWLEDGE_BASE)),
+                "categories": list(
+                    set(item["metadata"]["category"] for item in KNOWLEDGE_BASE)
+                ),
                 "top_contributors": list(
                     set(item["metadata"]["author"] for item in KNOWLEDGE_BASE)
                 ),
@@ -464,4 +468,6 @@ if __name__ == "__main__":
     import uvicorn
 
     logger.info("🚀 Starting Autonomous Engineering Intelligence Platform...")
-    uvicorn.run("simple_server:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
+    uvicorn.run(
+        "simple_server:app", host="0.0.0.0", port=8000, reload=True, log_level="info"
+    )

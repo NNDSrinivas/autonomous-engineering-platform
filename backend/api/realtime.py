@@ -249,7 +249,9 @@ class CreateSessionResp(BaseModel):
 
 
 @app.post("/api/sessions", response_model=CreateSessionResp)
-def create_session(body: CreateSessionReq, db: Session = Depends(get_db)) -> CreateSessionResp:
+def create_session(
+    body: CreateSessionReq, db: Session = Depends(get_db)
+) -> CreateSessionResp:
     """Create a new meeting session for real-time caption capture.
 
     Args:
@@ -328,7 +330,9 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         if _should_generate_answer(text, n):
             generate_answer.send(session_id)
     except (redis.RedisError, ConnectionError) as e:
-        logger.warning("Failed to enqueue answer generation for session %s: %s", session_id, e)
+        logger.warning(
+            "Failed to enqueue answer generation for session %s: %s", session_id, e
+        )
         # Fallback: Use simple heuristic without Redis state
         logger.info("Using fallback answer generation for session %s", session_id)
         if _should_generate_answer_fallback(text):
@@ -362,12 +366,14 @@ def _should_generate_answer_fallback(text: str) -> bool:
     # Strip punctuation to handle cases like 'what?' -> 'what'
     words = set(word.strip(".,!?;:") for word in text_lower.split())
     has_question_word = (
-        any(indicator in words for indicator in FALLBACK_QUESTION_INDICATORS) or "?" in text_lower
+        any(indicator in words for indicator in FALLBACK_QUESTION_INDICATORS)
+        or "?" in text_lower
     )
 
     # Additional generous patterns for fallback mode
     has_uncertainty = any(
-        word in text_lower for word in ["maybe", "perhaps", "possibly", "not sure", "uncertain"]
+        word in text_lower
+        for word in ["maybe", "perhaps", "possibly", "not sure", "uncertain"]
     )
 
     return has_question_word or has_uncertainty
@@ -394,7 +400,9 @@ def post_caption(
     if not m:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="Session not found")
 
-    svc.append_segment(db, m.id, body.text, body.speaker, body.ts_start_ms, body.ts_end_ms)
+    svc.append_segment(
+        db, m.id, body.text, body.speaker, body.ts_start_ms, body.ts_end_ms
+    )
 
     # Enqueue answer generation with simple heuristic
     _enqueue_answer_generation(session_id, body.text)
@@ -543,7 +551,9 @@ def stream_answers(session_id: str) -> StreamingResponse:
                 await asyncio.sleep(SSE_POLL_INTERVAL_SECONDS)
         except asyncio.CancelledError:
             # Client disconnected - clean shutdown
-            logger.info("SSE stream cancelled for session %s (client disconnect)", session_id)
+            logger.info(
+                "SSE stream cancelled for session %s (client disconnect)", session_id
+            )
             raise  # Re-raise to properly close the connection
         except Exception as e:
             logger.exception("Error in SSE stream for session %s: %s", session_id, e)

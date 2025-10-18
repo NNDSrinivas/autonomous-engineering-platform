@@ -259,7 +259,9 @@ async def analyze_code(request: CodeAnalysisRequest):
                 "quality_score": 7,
                 "issues": ["Unable to parse detailed analysis"],
                 "suggestions": ["Review code structure and add comments"],
-                "summary": (ai_response[:200] + "..." if len(ai_response) > 200 else ai_response),
+                "summary": (
+                    ai_response[:200] + "..." if len(ai_response) > 200 else ai_response
+                ),
             }
 
         return {
@@ -272,7 +274,9 @@ async def analyze_code(request: CodeAnalysisRequest):
 
     except Exception as e:
         logger.error(f"Error in analyze_code: {e}")
-        raise HTTPException(status_code=500, detail="Error analyzing code. Please try again later.")
+        raise HTTPException(
+            status_code=500, detail="Error analyzing code. Please try again later."
+        )
 
 
 @app.get("/api/team-analytics")

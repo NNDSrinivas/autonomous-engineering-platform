@@ -29,7 +29,7 @@ def upgrade():
         sa.Column("phase", sa.String(32), nullable=False),  # e.g., plan|code|review
         sa.Column("model", sa.String(64), nullable=False),  # e.g., gpt-4.1|claude-3-5
         sa.Column("status", sa.String(16), nullable=False),  # ok|error
-        # sha256 of prompt+context (64 chars for hex representation)
+        # hex-encoded SHA256 hash of prompt+context (64 characters)
         sa.Column("prompt_hash", sa.String(64), nullable=True),
         sa.Column("tokens", sa.Integer, nullable=True),
         sa.Column("cost_usd", sa.Numeric(12, 6), nullable=True),

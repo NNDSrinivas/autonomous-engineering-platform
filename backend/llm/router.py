@@ -196,8 +196,8 @@ class ModelRouter:
                 cost_raw = result.get("cost_usd", 0.0)
 
                 # Use centralized validation for consistent error handling
-                tokens = validate_telemetry_value(tokens_raw, int, 0)
-                cost = validate_telemetry_value(cost_raw, float, 0.0)
+                tokens = validate_telemetry_value(tokens_raw, int)
+                cost = validate_telemetry_value(cost_raw, float)
 
                 # Calculate latency for successful call
                 latency_ms = (time.time() - start_time) * 1000
@@ -291,9 +291,9 @@ class ModelRouter:
         validated_phase = validate_telemetry_value(phase, str, "unknown")
         validated_candidate = validate_telemetry_value(candidate, str, "unknown")
         validated_status = validate_telemetry_value(status, str, "unknown")
-        validated_latency = validate_telemetry_value(latency_ms, float, 0.0)
-        validated_tokens = validate_telemetry_value(tokens, int, 0)
-        validated_cost = validate_telemetry_value(cost, float, 0.0)
+        validated_latency = validate_telemetry_value(latency_ms, float)
+        validated_tokens = validate_telemetry_value(tokens, int)
+        validated_cost = validate_telemetry_value(cost, float)
 
         # Additional string validation
         if not validated_phase.strip():

@@ -18,8 +18,9 @@ function sanitizeDialogText(text: string): string {
   return text.slice(0, CONFIG.TEXT_SANITIZATION_LIMIT).replace(/[\r\n\t]/g, ' ').trim();
 }
 
-// Type alias for typeof operator return values
-type TypeOfResult = 'string' | 'number' | 'boolean' | 'object' | 'undefined' | 'function' | 'symbol' | 'bigint';
+// Type alias for typeof operator return values using const assertion
+const TYPEOF_RESULTS = ['string', 'number', 'boolean', 'object', 'undefined', 'function', 'symbol', 'bigint'] as const;
+type TypeOfResult = typeof TYPEOF_RESULTS[number];
 
 // Helper function to safely extract and format telemetry values
 function getTelemetryValue<T>(

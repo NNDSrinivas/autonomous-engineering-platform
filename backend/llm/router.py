@@ -253,10 +253,10 @@ class ModelRouter:
                 self._update_usage_stats(candidate, telemetry)
 
                 # Format log message using telemetry values for consistency
-                formatted_cost = f"${telemetry['cost_usd']:.{COST_DECIMAL_PLACES}f}"
+                formatted_cost = f"${telemetry['cost_usd']:.6f}"
                 logger.info(
                     f"Successfully completed {phase} with {candidate}: "
-                    f"{telemetry['tokens']} tokens, {formatted_cost}, {int(telemetry['latency_ms'])}ms"
+                    f"{telemetry['tokens']} tokens, {formatted_cost}, {telemetry['latency_ms']}ms"
                 )
 
                 return result["text"], telemetry

@@ -37,6 +37,11 @@ function formatLatency(latencyMs: number): string {
   return String(Math.round(latencyMs));
 }
 
+// Format cost value to fixed decimal places
+function formatCost(costUsd: number): string {
+  return costUsd.toFixed(CONFIG.COST_DECIMAL_PLACES);
+}
+
 // Build a structured confirmation message
 function buildConfirmationMessage(step: any): string {
   const kind = String(step.kind).toUpperCase();
@@ -230,7 +235,7 @@ export function activate(context: vscode.ExtensionContext) {
             const t = llmPlan.telemetry;
             const model = getTelemetryValue<string>(t, 'model', 'string');
             const tokens = getTelemetryValue<number>(t, 'tokens', 'number');
-            const cost = getTelemetryValue<number>(t, 'cost_usd', 'number', v => v.toFixed(CONFIG.COST_DECIMAL_PLACES));
+            const cost = getTelemetryValue<number>(t, 'cost_usd', 'number', formatCost);
             const latency = getTelemetryValue<number>(t, 'latency_ms', 'number', formatLatency);
             
             vscode.window.setStatusBarMessage(

@@ -214,10 +214,7 @@ class ModelRouter:
                 latency_ms = (time.time() - start_time) * 1000
 
                 # Record Prometheus metrics
-                LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()
-                LLM_TOKENS.labels(phase=phase, model=candidate).inc(tokens)
-                LLM_COST.labels(phase=phase, model=candidate).inc(cost)
-                LLM_LATENCY.labels(phase=phase, model=candidate).observe(latency_ms)
+                self._record_metrics(phase, candidate, status, latency_ms, tokens, cost)
 
                 # Record audit log (transaction managed by caller)
                 if audit_context.db is not None:
@@ -267,8 +264,7 @@ class ModelRouter:
                 latency_ms = (time.time() - start_time) * 1000
 
                 # Record error metrics
-                LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()
-                LLM_LATENCY.labels(phase=phase, model=candidate).observe(latency_ms)
+                self._record_metrics(phase, candidate, status, latency_ms)
 
                 # Record error audit log
                 if audit_context.db is not None:
@@ -293,6 +289,25 @@ class ModelRouter:
         raise RuntimeError(
             f"All models failed for phase {phase}. Last error: {last_error}"
         )
+
+    def _record_metrics(
+        self,
+        phase: str,
+        candidate: str,
+        status: str,
+        latency_ms: float,
+        tokens: int = 0,
+        cost: float = 0.0,
+    ) -> None:
+        """Record Prometheus metrics for LLM calls."""
+        try:
+            LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()
+            LLM_LATENCY.labels(phase=phase, model=candidate).observe(latency_ms)
+            if status == "ok":
+                LLM_TOKENS.labels(phase=phase, model=candidate).inc(tokens)
+                LLM_COST.labels(phase=phase, model=candidate).inc(cost)
+        except Exception as metrics_exc:
+            logger.warning(f"Failed to record LLM metrics: {metrics_exc}")
 
     def _update_usage_stats(self, model: str, telemetry: Dict[str, Any]) -> None:
         """Update usage statistics for the model."""

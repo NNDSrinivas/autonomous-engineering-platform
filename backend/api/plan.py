@@ -56,8 +56,8 @@ def load_plan_prompt() -> str:
 @router.post("/{key}")
 async def generate_plan(
     key: str,
+    request: Request,
     payload: Dict[str, Any] = Body(...),
-    request: Request = None,
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = None,
 ) -> Dict[str, Any]:

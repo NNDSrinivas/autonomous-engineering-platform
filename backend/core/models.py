@@ -4,7 +4,7 @@ from .db import Base
 
 # Database schema constants
 COST_PRECISION = 12  # Total digits for cost_usd
-COST_SCALE = 6      # Decimal places for cost_usd
+COST_SCALE = 6  # Decimal places for cost_usd
 
 
 class LLMCall(Base):

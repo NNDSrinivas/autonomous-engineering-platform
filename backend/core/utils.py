@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 MAX_HEADER_LENGTH = 100  # Maximum allowed length for header values
 
 # Simple character set for header validation - more maintainable than complex regex
-ALLOWED_HEADER_CHARS = set(string.ascii_letters + string.digits + '_.-')
+ALLOWED_HEADER_CHARS = set(string.ascii_letters + string.digits + "_.-")
 
 
 def generate_prompt_hash(prompt: str, context: Dict[str, Any] = None) -> str:
@@ -51,7 +51,7 @@ def validate_header_value(
 
     # Remove any leading/trailing whitespace
     value = value.strip()
-    
+
     # Check if empty after stripping
     if not value:
         return None
@@ -62,19 +62,19 @@ def validate_header_value(
 
     # Simple validation using string methods for better maintainability
     # 1. Must start with alphanumeric or underscore
-    if not value or not (value[0].isalnum() or value[0] == '_'):
+    if not value or not (value[0].isalnum() or value[0] == "_"):
         return None
-    
+
     # 2. Must end with alphanumeric or underscore
-    if not value or not (value[-1].isalnum() or value[-1] == '_'):
+    if not value or not (value[-1].isalnum() or value[-1] == "_"):
         return None
-    
+
     # 3. Only allow specific characters
     if not all(c in ALLOWED_HEADER_CHARS for c in value):
         return None
-    
+
     # 4. Disallow consecutive dots to prevent path traversal
-    if '..' in value:
+    if ".." in value:
         return None
 
     return value

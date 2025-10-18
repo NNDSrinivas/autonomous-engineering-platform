@@ -14,6 +14,9 @@ from ..telemetry.metrics import LLM_CALLS, LLM_TOKENS, LLM_COST, LLM_LATENCY
 
 logger = logging.getLogger(__name__)
 
+# Configuration constants
+COST_DECIMAL_PLACES = 6  # Number of decimal places for cost formatting
+
 
 @dataclass
 class AuditContext:
@@ -198,8 +201,8 @@ class ModelRouter:
                 cost_raw = result.get("cost_usd", 0.0)
 
                 # Use centralized validation for consistent error handling
-                tokens = validate_telemetry_value(tokens_raw, "tokens", int, 0)
-                cost = validate_telemetry_value(cost_raw, "cost_usd", float, 0.0)
+                tokens = validate_telemetry_value(tokens_raw, int, 0)
+                cost = validate_telemetry_value(cost_raw, float, 0.0)
 
                 # Calculate latency for successful call
                 latency_ms = (time.time() - start_time) * 1000
@@ -238,8 +241,7 @@ class ModelRouter:
                 self._update_usage_stats(candidate, telemetry)
 
                 # Format log message using telemetry values for consistency
-                cost_decimal_places = 6  # Number of decimal places for cost formatting
-                formatted_cost = f"${telemetry['cost_usd']:.{cost_decimal_places}f}"
+                formatted_cost = f"${telemetry['cost_usd']:.{COST_DECIMAL_PLACES}f}"
                 logger.info(
                     f"Successfully completed {phase} with {candidate}: "
                     f"{telemetry['tokens']} tokens, {formatted_cost}, {telemetry['latency_ms']}ms"
@@ -292,12 +294,12 @@ class ModelRouter:
         """Record Prometheus metrics for LLM calls."""
         try:
             # Use centralized validation helpers
-            validated_phase = validate_telemetry_value(phase, "phase", str, "unknown")
-            validated_candidate = validate_telemetry_value(candidate, "candidate", str, "unknown")
-            validated_status = validate_telemetry_value(status, "status", str, "unknown")
-            validated_latency = validate_telemetry_value(latency_ms, "latency_ms", float, 0.0)
-            validated_tokens = validate_telemetry_value(tokens, "tokens", int, 0)
-            validated_cost = validate_telemetry_value(cost, "cost", float, 0.0)
+            validated_phase = validate_telemetry_value(phase, str, "unknown")
+            validated_candidate = validate_telemetry_value(candidate, str, "unknown")
+            validated_status = validate_telemetry_value(status, str, "unknown")
+            validated_latency = validate_telemetry_value(latency_ms, float, 0.0)
+            validated_tokens = validate_telemetry_value(tokens, int, 0)
+            validated_cost = validate_telemetry_value(cost, float, 0.0)
 
             # Additional string validation
             if not validated_phase.strip():

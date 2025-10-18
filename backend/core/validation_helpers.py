@@ -5,15 +5,12 @@ Validation helper functions for centralized validation logic.
 from typing import Any, Optional
 
 
-def validate_telemetry_value(
-    value: Any, field_name: str, expected_type: type, default: Any = 0
-) -> Any:
+def validate_telemetry_value(value: Any, expected_type: type, default: Any = 0) -> Any:
     """
     Validate and sanitize telemetry values with consistent error handling.
 
     Args:
         value: The value to validate
-        field_name: Name of the field for error reporting
         expected_type: Expected type for validation
         default: Default value to return if validation fails
 

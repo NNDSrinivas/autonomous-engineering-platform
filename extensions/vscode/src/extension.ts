@@ -8,6 +8,7 @@ const CONFIG = {
   PLAN_PREVIEW_STEP_LIMIT: 3,
   TEXT_SANITIZATION_LIMIT: 200,
   COST_DECIMAL_PLACES: 4,
+  // Duration (in ms) to display status bar messages. 8 seconds was chosen to ensure users have enough time to read important feedback without being overly intrusive.
   STATUS_BAR_TIMEOUT_MS: 8000
 } as const;
 

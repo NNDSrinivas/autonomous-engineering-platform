@@ -26,6 +26,15 @@ class AuditContext:
     org_id: Optional[str] = None
     user_id: Optional[str] = None
 
+    def ensure_prompt_hash(
+        self, prompt: str, context: Dict[str, Any]
+    ) -> "AuditContext":
+        """Return AuditContext with prompt_hash generated if not already set."""
+        if self.prompt_hash is None:
+            generated_hash = generate_prompt_hash(prompt, context)
+            return replace(self, prompt_hash=generated_hash)
+        return self
+
 
 class ModelRouter:
     """Routes LLM requests to appropriate providers with fallback support."""
@@ -172,10 +181,8 @@ class ModelRouter:
         if audit_context is None:
             audit_context = AuditContext()
 
-        # Generate prompt hash explicitly if not provided, then create new instance with updated hash
-        if audit_context.prompt_hash is None:
-            generated_hash = generate_prompt_hash(prompt, context)
-            audit_context = replace(audit_context, prompt_hash=generated_hash)
+        # Ensure prompt hash is generated
+        audit_context = audit_context.ensure_prompt_hash(prompt, context)
 
         last_error = None
 

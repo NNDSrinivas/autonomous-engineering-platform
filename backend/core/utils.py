@@ -2,13 +2,14 @@
 
 import hashlib
 import json
+import string
 from typing import Any, Dict, Optional
 
 # Configuration constants
 MAX_HEADER_LENGTH = 100  # Maximum allowed length for header values
 
 # Simple character set for header validation - more maintainable than complex regex
-ALLOWED_HEADER_CHARS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-')
+ALLOWED_HEADER_CHARS = set(string.ascii_letters + string.digits + '_.-')
 
 
 def generate_prompt_hash(prompt: str, context: Dict[str, Any] = None) -> str:

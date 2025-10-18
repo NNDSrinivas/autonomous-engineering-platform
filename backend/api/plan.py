@@ -118,10 +118,6 @@ async def generate_plan(
                 audit_context=audit_context,
             )
 
-            # Commit audit transaction
-            if audit_context.db:
-                safe_commit_with_rollback(audit_context.db, logger, "audit transaction")
-
             # Parse LLM response with size limits
             try:
                 # Limit LLM response size to prevent memory exhaustion
@@ -186,6 +182,10 @@ async def generate_plan(
         # Only cache successful results (not error responses)
         if not telemetry.get("error"):
             cache.set(cache_key, result)
+
+        # Commit audit transaction after successful plan generation and caching
+        if audit_context.db and not telemetry.get("error"):
+            safe_commit_with_rollback(audit_context.db, logger, "audit transaction")
 
         logger.info(
             f"Generated plan for {key}: {len(plan.get('items', []))} steps, "

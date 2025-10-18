@@ -13,9 +13,6 @@ from ..telemetry.metrics import LLM_CALLS, LLM_TOKENS, LLM_COST, LLM_LATENCY
 
 logger = logging.getLogger(__name__)
 
-# Formatting constants
-COST_DECIMAL_PLACES = 6  # Number of decimal places for cost formatting
-
 
 @dataclass
 class AuditContext:

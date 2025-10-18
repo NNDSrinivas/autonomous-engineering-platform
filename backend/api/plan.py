@@ -42,9 +42,7 @@ def load_plan_prompt() -> str:
         prompt_path = env_prompt_path
     else:
         # Path relative to this file
-        prompt_path = os.path.join(
-            os.path.dirname(__file__), "..", "llm", "prompts", "plan.md"
-        )
+        prompt_path = os.path.join(os.path.dirname(__file__), "..", "llm", "prompts", "plan.md")
         prompt_path = os.path.normpath(prompt_path)
 
     try:
@@ -80,9 +78,7 @@ async def generate_plan(
             raise HTTPException(status_code=400, detail="contextPack is required")
 
         # Create cache key from context pack content
-        cache_key = hashlib.sha256(
-            json.dumps(context_pack, sort_keys=True).encode()
-        ).hexdigest()
+        cache_key = hashlib.sha256(json.dumps(context_pack, sort_keys=True).encode()).hexdigest()
 
         # Check cache first
         cached_result = cache.get(cache_key)
@@ -130,9 +126,7 @@ async def generate_plan(
             try:
                 # Limit LLM response size to prevent memory exhaustion
                 if len(response_text) > MAX_LLM_RESPONSE_SIZE:
-                    logger.warning(
-                        f"LLM response too large: {len(response_text)} bytes"
-                    )
+                    logger.warning(f"LLM response too large: {len(response_text)} bytes")
                     raise ValueError("LLM response too large to parse as JSON")
 
                 parsed_response = json.loads(response_text)

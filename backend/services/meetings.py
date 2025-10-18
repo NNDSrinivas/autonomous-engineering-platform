@@ -116,9 +116,7 @@ def finalize_meeting(
     else:
         existing.bullets, existing.decisions, existing.risks = bullets, decisions, risks
     # clear old actions
-    db.execute(
-        text("DELETE FROM action_item WHERE meeting_id=:mid"), {"mid": meeting.id}
-    )
+    db.execute(text("DELETE FROM action_item WHERE meeting_id=:mid"), {"mid": meeting.id})
     # insert new actions
     for a in actions:
         db.add(
@@ -144,11 +142,7 @@ def get_summary(db: Session, session_id: str) -> dict | None:
     s = db.get(MeetingSummary, m.id)
     if not s:
         return None
-    actions = (
-        db.execute(select(ActionItem).where(ActionItem.meeting_id == m.id))
-        .scalars()
-        .all()
-    )
+    actions = db.execute(select(ActionItem).where(ActionItem.meeting_id == m.id)).scalars().all()
     return {
         "meeting_id": m.id,
         "session_id": m.session_id,
@@ -176,11 +170,7 @@ def list_actions(db: Session, session_id: str) -> list[dict]:
     m = get_meeting_by_session(db, session_id)
     if not m:
         return []
-    actions = (
-        db.execute(select(ActionItem).where(ActionItem.meeting_id == m.id))
-        .scalars()
-        .all()
-    )
+    actions = db.execute(select(ActionItem).where(ActionItem.meeting_id == m.id)).scalars().all()
     return [
         {
             "id": a.id,

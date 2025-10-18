@@ -17,9 +17,7 @@ class Settings(BaseSettings):
     realtime_port: int = 8001
 
     log_level: str = "INFO"
-    cors_origins: str = (
-        "http://localhost:3000,http://localhost:3001"  # comma-separated list or "*"
-    )
+    cors_origins: str = "http://localhost:3000,http://localhost:3001"  # comma-separated list or "*"
 
     # Database configuration
     db_host: str = "localhost"

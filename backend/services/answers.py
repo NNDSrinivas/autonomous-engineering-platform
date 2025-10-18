@@ -70,9 +70,7 @@ COMMON_ABBREVIATIONS = {
 
 # Regex patterns for text processing (compiled once at module level)
 SENTENCE_ENDINGS = re.compile(r"[.!?]")  # Matches sentence-ending punctuation
-SENTENCE_BOUNDARY_PATTERN = re.compile(
-    r"(?<=[.!?])\s+"
-)  # Splits on sentence boundaries
+SENTENCE_BOUNDARY_PATTERN = re.compile(r"(?<=[.!?])\s+")  # Splits on sentence boundaries
 
 
 def _truncate_at_word_boundary(text: str, max_length: int, hard_limit: int) -> str:
@@ -134,9 +132,7 @@ def parse_iso_timestamp(timestamp_str: str) -> datetime:
     try:
         # Handle 'Z' suffix for UTC timezone which fromisoformat doesn't support
         ts_normalized = (
-            timestamp_str.replace("Z", "+00:00")
-            if timestamp_str.endswith("Z")
-            else timestamp_str
+            timestamp_str.replace("Z", "+00:00") if timestamp_str.endswith("Z") else timestamp_str
         )
         dt = datetime.fromisoformat(ts_normalized)
         if dt.tzinfo is None:
@@ -272,10 +268,7 @@ def _generate_meeting_answer(text_context: str) -> tuple[str, dict]:
                 current_sentence += part + " "
             else:
                 current_sentence += part
-                if (
-                    current_sentence.strip()
-                    and len(current_sentence.strip()) > MIN_SENTENCE_LENGTH
-                ):
+                if current_sentence.strip() and len(current_sentence.strip()) > MIN_SENTENCE_LENGTH:
                     sentences.append(current_sentence.strip())
                 current_sentence = ""
 
@@ -318,18 +311,14 @@ def generate_grounded_answer(
     total_length = 0
     # Iterate from the end (most recent) backwards
     for snippet in reversed(meeting_snippets):
-        snippet_length = len(snippet) + (
-            0 if not context_parts else 1
-        )  # +1 for space if not first
+        snippet_length = len(snippet) + (0 if not context_parts else 1)  # +1 for space if not first
         if total_length + snippet_length > MAX_CONTEXT_LENGTH:
             break
         context_parts.insert(0, snippet)
         total_length += snippet_length
     text_context = " ".join(context_parts)
     # If still too long (e.g., one very long snippet), truncate at word boundary
-    text_context = _truncate_at_word_boundary(
-        text_context, MAX_CONTEXT_LENGTH, HARD_CONTEXT_LIMIT
-    )
+    text_context = _truncate_at_word_boundary(text_context, MAX_CONTEXT_LENGTH, HARD_CONTEXT_LIMIT)
 
     # Generate answer based on priority order
     if jira_hits:

@@ -62,11 +62,11 @@ def validate_header_value(
 
     # Simple validation using string methods for better maintainability
     # 1. Must start with alphanumeric or underscore
-    if not value or not (value[0].isalnum() or value[0] == "_"):
+    if not (value[0].isalnum() or value[0] == "_"):
         return None
 
     # 2. Must end with alphanumeric or underscore
-    if not value or not (value[-1].isalnum() or value[-1] == "_"):
+    if not (value[-1].isalnum() or value[-1] == "_"):
         return None
 
     # 3. Only allow specific characters

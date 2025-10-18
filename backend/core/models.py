@@ -3,6 +3,8 @@ from sqlalchemy.sql import func
 from .db import Base
 
 # Database schema constants
+# Cost tracking uses 12,6 precision: supports up to $999,999.999999 per call
+# with 6 decimal places for precise billing (e.g., $0.000001 per token)
 COST_PRECISION = 12  # Total digits for cost_usd
 COST_SCALE = 6  # Decimal places for cost_usd
 

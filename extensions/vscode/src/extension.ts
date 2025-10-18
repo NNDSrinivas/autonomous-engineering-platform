@@ -22,7 +22,7 @@ function sanitizeDialogText(text: string): string {
 function getTelemetryValue<T>(
   obj: Record<string, unknown>, 
   key: string, 
-  expectedType: string, 
+  expectedType: 'string' | 'number' | 'boolean' | 'object' | 'undefined' | 'function' | 'symbol' | 'bigint', 
   formatter?: (value: T) => string
 ): string {
   const value = obj?.[key];

@@ -61,7 +61,7 @@ class ModelRouter:
                     if unicodedata.category(char) not in ["Cc", "Cf", "Co", "Cs"]
                 )
 
-                return sanitized_str[: min(len(sanitized_str), max_len)]
+                return sanitized_str[:max_len]
             elif isinstance(value, dict):
                 return {k: sanitize_value(v) for k, v in value.items()}
             elif isinstance(value, list):

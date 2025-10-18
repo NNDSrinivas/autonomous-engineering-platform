@@ -13,6 +13,9 @@ from ..telemetry.metrics import LLM_CALLS, LLM_TOKENS, LLM_COST, LLM_LATENCY
 
 logger = logging.getLogger(__name__)
 
+# Formatting constants
+COST_DECIMAL_PLACES = 6  # Number of decimal places for cost formatting
+
 
 @dataclass
 class AuditContext:
@@ -171,8 +174,8 @@ class ModelRouter:
 
         # Generate prompt hash explicitly if not provided, then create new instance with updated hash
         if audit_context.prompt_hash is None:
-            prompt_hash = generate_prompt_hash(prompt, context)
-            audit_context = replace(audit_context, prompt_hash=prompt_hash)
+            generated_hash = generate_prompt_hash(prompt, context)
+            audit_context = replace(audit_context, prompt_hash=generated_hash)
 
         last_error = None
 
@@ -246,7 +249,7 @@ class ModelRouter:
                 self._update_usage_stats(candidate, telemetry)
 
                 # Format log message using telemetry values for consistency
-                formatted_cost = f"${telemetry['cost_usd']:.6f}"
+                formatted_cost = f"${telemetry['cost_usd']:.{COST_DECIMAL_PLACES}f}"
                 logger.info(
                     f"Successfully completed {phase} with {candidate}: "
                     f"{telemetry['tokens']} tokens, {formatted_cost}, {telemetry['latency_ms']}ms"

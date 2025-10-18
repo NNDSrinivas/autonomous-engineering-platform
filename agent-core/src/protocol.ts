@@ -4,6 +4,19 @@ export type PlanItemKind = 'edit' | 'test' | 'cmd' | 'git' | 'pr';
 export type PlanItem = { id: string; kind: PlanItemKind; desc: string; files?: string[]; command?: string; patch?: string };
 export type Plan = { items: PlanItem[] };
 
+// Telemetry data for LLM operations
+export type LLMTelemetry = {
+  phase: string;
+  model: string;
+  tokens: number;
+  cost_usd: number;
+  latency_ms: number;
+  timestamp: number;
+};
+
+// Plan with optional telemetry for LLM-generated plans
+export type PlanWithTelemetry = Plan & { telemetry?: LLMTelemetry };
+
 export type RpcReq =
   | { id: string; method: 'session.open'; params: { name?: string } }
   | { id: string; method: 'ticket.select'; params: { key: string } }

@@ -1,5 +1,5 @@
 import { coreApi } from './env';
-import type { Greeting, Plan, PlanItem } from './protocol';
+import type { Greeting, Plan, PlanItem, PlanWithTelemetry } from './protocol';
 import { generatePlan } from './router';
 import { record } from './telemetry';
 
@@ -37,7 +37,7 @@ export async function proposePlan(pack: any): Promise<Plan> {
   };
 }
 
-export async function proposePlanLLM(pack: any): Promise<Plan> {
+export async function proposePlanLLM(pack: any): Promise<PlanWithTelemetry> {
   try {
     const response = await generatePlan(pack);
     
@@ -46,7 +46,11 @@ export async function proposePlanLLM(pack: any): Promise<Plan> {
       record(response.telemetry);
     }
     
-    return response.plan;
+    // Return plan with telemetry
+    return { 
+      ...response.plan, 
+      telemetry: response.telemetry 
+    };
   } catch (error) {
     console.error('LLM plan generation failed:', error);
     

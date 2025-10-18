@@ -4,15 +4,18 @@ Validation helper functions for centralized validation logic.
 
 from typing import Any, Optional
 
+# Sentinel value for default parameter
+_SENTINEL = object()
 
-def validate_telemetry_value(value: Any, expected_type: type, default: Any = 0) -> Any:
+
+def validate_telemetry_value(value: Any, expected_type: type, default: Any = _SENTINEL) -> Any:
     """
     Validate and sanitize telemetry values with consistent error handling.
 
     Args:
         value: The value to validate
         expected_type: Expected type for validation
-        default: Default value to return if validation fails
+        default: Default value to return if validation fails (uses type-appropriate default if not provided)
 
     Returns:
         Validated value or safe default
@@ -20,6 +23,23 @@ def validate_telemetry_value(value: Any, expected_type: type, default: Any = 0) 
     Raises:
         ValueError: If validation fails and no default provided
     """
+    # Handle sentinel default with type-appropriate fallbacks
+    if default is _SENTINEL:
+        if expected_type is int:
+            default = 0
+        elif expected_type is float:
+            default = 0.0
+        elif expected_type is str:
+            default = ""
+        elif expected_type is bool:
+            default = False
+        elif expected_type is list:
+            default = []
+        elif expected_type is dict:
+            default = {}
+        else:
+            default = None
+
     if value is None:
         return default
 

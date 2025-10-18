@@ -193,21 +193,13 @@ class ModelRouter:
                 sanitized_context = self._sanitize_context(context)
                 result = provider.complete(prompt, sanitized_context)
 
-                # Safely convert telemetry values with validation
+                # Safely convert telemetry values with validation using centralized helpers
                 tokens_raw = result.get("tokens", 0)
                 cost_raw = result.get("cost_usd", 0.0)
 
-                # Validate and convert tokens (should be integers)
-                try:
-                    tokens = int(tokens_raw)
-                except (ValueError, TypeError):
-                    tokens = 0
-
-                # Validate and convert cost (handles all numeric formats)
-                try:
-                    cost = float(cost_raw)
-                except (ValueError, TypeError):
-                    cost = 0.0
+                # Use centralized validation for consistent error handling
+                tokens = validate_telemetry_value(tokens_raw, "tokens", int, 0)
+                cost = validate_telemetry_value(cost_raw, "cost_usd", float, 0.0)
 
                 # Calculate latency for successful call
                 latency_ms = (time.time() - start_time) * 1000

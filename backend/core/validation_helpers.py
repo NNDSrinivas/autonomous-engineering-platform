@@ -6,10 +6,7 @@ from typing import Any, Optional
 
 
 def validate_telemetry_value(
-    value: Any, 
-    field_name: str, 
-    expected_type: type, 
-    default: Any = 0
+    value: Any, field_name: str, expected_type: type, default: Any = 0
 ) -> Any:
     """
     Validate and sanitize telemetry values with consistent error handling.
@@ -29,12 +26,21 @@ def validate_telemetry_value(
     if value is None:
         return default
 
+    # Try type conversion if not already the expected type
     if not isinstance(value, expected_type):
-        if default is not None:
+        try:
+            # Attempt type conversion
+            if expected_type is int:
+                value = int(value)
+            elif expected_type is float:
+                value = float(value)
+            elif expected_type is str:
+                value = str(value)
+            else:
+                # For other types, return default
+                return default
+        except (ValueError, TypeError):
             return default
-        raise ValueError(
-            f"Invalid {field_name}: expected {expected_type.__name__}, got {type(value).__name__}"
-        )
 
     # Additional validation for specific types
     if expected_type in (int, float) and value < 0:

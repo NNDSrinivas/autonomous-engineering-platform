@@ -39,11 +39,7 @@ def _mock_summarize(chunks: list[str]) -> dict:
         for b in bullets
         if any(k in b.lower() for k in ["decide", "decision", "agree", "approve"])
     ]
-    risks = [
-        b
-        for b in bullets
-        if any(k in b.lower() for k in ["risk", "blocker", "concern"])
-    ]
+    risks = [b for b in bullets if any(k in b.lower() for k in ["risk", "blocker", "concern"])]
     return {"bullets": bullets[:8], "decisions": decisions[:4], "risks": risks[:4]}
 
 
@@ -59,8 +55,7 @@ def _mock_actions(chunks: list[str]) -> list[dict]:
     actions = []
     for i, chunk in enumerate(chunks):
         if any(
-            k in chunk.lower()
-            for k in ["todo", "action", "follow up", "fix", "implement", "add"]
+            k in chunk.lower() for k in ["todo", "action", "follow up", "fix", "implement", "add"]
         ):
             actions.append(
                 {
@@ -103,9 +98,7 @@ def process_meeting(session_id: str):
         chunks = [_normalize(r[0]) for r in rows]
         summary = _mock_summarize(chunks)
         actions = _mock_actions(chunks)
-        finalize_meeting(
-            db, m, summary["bullets"], summary["decisions"], summary["risks"], actions
-        )
+        finalize_meeting(db, m, summary["bullets"], summary["decisions"], summary["risks"], actions)
         print(f"Successfully processed meeting {m.id} with {len(chunks)} segments")
     except Exception as e:
         print(f"Error processing meeting {session_id}: {e}")

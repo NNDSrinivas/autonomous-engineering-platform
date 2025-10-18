@@ -64,9 +64,7 @@ class GitHubService:
 
         logger.info("GitHub service initialized")
 
-    async def get_team_context(
-        self, repositories: Optional[List[str]] = None
-    ) -> TeamContext:
+    async def get_team_context(self, repositories: Optional[List[str]] = None) -> TeamContext:
         """Get comprehensive team context from GitHub"""
 
         if not repositories:
@@ -93,9 +91,7 @@ class GitHubService:
                 repository_stats[repo] = stats
 
             except Exception as e:
-                logger.error(
-                    "Error getting context for repository", repo=repo, error=str(e)
-                )
+                logger.error("Error getting context for repository", repo=repo, error=str(e))
 
         # Analyze team activity patterns
         team_activity = self._analyze_team_activity(active_prs, recent_commits)
@@ -137,14 +133,10 @@ class GitHubService:
             return pr_data
 
         except Exception as e:
-            logger.error(
-                "Error creating pull request", repository=repository, error=str(e)
-            )
+            logger.error("Error creating pull request", repository=repository, error=str(e))
             raise
 
-    async def add_pr_comment(
-        self, repository: str, pr_number: int, comment: str
-    ) -> Dict[str, Any]:
+    async def add_pr_comment(self, repository: str, pr_number: int, comment: str) -> Dict[str, Any]:
         """Add comment to a pull request"""
 
         url = f"{self.base_url}/repos/{repository}/issues/{pr_number}/comments"
@@ -165,9 +157,7 @@ class GitHubService:
             logger.error("Error adding PR comment", repository=repository, error=str(e))
             raise
 
-    async def get_file_content(
-        self, repository: str, file_path: str, branch: str = "main"
-    ) -> str:
+    async def get_file_content(self, repository: str, file_path: str, branch: str = "main") -> str:
         """Get content of a file from repository"""
 
         url = f"{self.base_url}/repos/{repository}/contents/{file_path}"
@@ -295,9 +285,7 @@ class GitHubService:
             return prs
 
         except Exception as e:
-            logger.error(
-                "Error getting repository PRs", repository=repository, error=str(e)
-            )
+            logger.error("Error getting repository PRs", repository=repository, error=str(e))
             return []
 
     async def _get_recent_commits(self, repository: str) -> List[Dict[str, Any]]:
@@ -324,9 +312,7 @@ class GitHubService:
             ]
 
         except Exception as e:
-            logger.error(
-                "Error getting recent commits", repository=repository, error=str(e)
-            )
+            logger.error("Error getting recent commits", repository=repository, error=str(e))
             return []
 
     async def _get_repository_stats(self, repository: str) -> Dict[str, Any]:
@@ -351,9 +337,7 @@ class GitHubService:
             }
 
         except Exception as e:
-            logger.error(
-                "Error getting repository stats", repository=repository, error=str(e)
-            )
+            logger.error("Error getting repository stats", repository=repository, error=str(e))
             return {}
 
     def _analyze_team_activity(

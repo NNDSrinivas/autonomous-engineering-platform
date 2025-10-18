@@ -30,9 +30,7 @@ class AuditLogEntry:
 class AuditService:
     """Centralized service for audit logging with explicit transaction semantics."""
 
-    def log_success(
-        self, db: Session, entry: AuditLogEntry, commit: bool = False
-    ) -> bool:
+    def log_success(self, db: Session, entry: AuditLogEntry, commit: bool = False) -> bool:
         """
         Log a successful LLM call.
 
@@ -66,21 +64,15 @@ class AuditService:
             return True
 
         except Exception as e:
-            logger.error(
-                f"Failed to log successful LLM call for {entry.phase}/{entry.model}: {e}"
-            )
+            logger.error(f"Failed to log successful LLM call for {entry.phase}/{entry.model}: {e}")
             if commit:
                 try:
                     db.rollback()
                 except Exception as rollback_error:
-                    logger.error(
-                        f"Failed to rollback audit transaction: {rollback_error}"
-                    )
+                    logger.error(f"Failed to rollback audit transaction: {rollback_error}")
             return False
 
-    def log_error(
-        self, db: Session, entry: AuditLogEntry, commit: bool = False
-    ) -> bool:
+    def log_error(self, db: Session, entry: AuditLogEntry, commit: bool = False) -> bool:
         """
         Log a failed LLM call.
 
@@ -115,16 +107,12 @@ class AuditService:
             return True
 
         except Exception as e:
-            logger.error(
-                f"Failed to log failed LLM call for {entry.phase}/{entry.model}: {e}"
-            )
+            logger.error(f"Failed to log failed LLM call for {entry.phase}/{entry.model}: {e}")
             if commit:
                 try:
                     db.rollback()
                 except Exception as rollback_error:
-                    logger.error(
-                        f"Failed to rollback audit transaction: {rollback_error}"
-                    )
+                    logger.error(f"Failed to rollback audit transaction: {rollback_error}")
             return False
 
 

@@ -11,9 +11,7 @@ class LLMCall(Base):
     __tablename__ = "llm_call"
 
     id = Column(Integer, primary_key=True)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     phase = Column(String(32), nullable=False)
     model = Column(String(64), nullable=False)
     status = Column(String(16), nullable=False)  # ok|error

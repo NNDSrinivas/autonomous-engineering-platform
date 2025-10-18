@@ -67,11 +67,16 @@ def validate_header_value(
 
     # Simple validation using string methods for better maintainability
     # 1. Must start with valid character (alphanumeric or underscore)
-    if not _is_valid_start_end_char(value[0]):
+    # Defensive check for empty string to prevent index bounds errors
+    if len(value) == 0 or not _is_valid_start_end_char(value[0]):
         return None
 
     # 2. Must end with valid character (alphanumeric or underscore)
-    if not _is_valid_start_end_char(value[-1]):
+    # Defensive check for single character string
+    if len(value) == 1:
+        # Single character already validated above
+        pass
+    elif not _is_valid_start_end_char(value[-1]):
         return None
 
     # 3. Only allow specific characters

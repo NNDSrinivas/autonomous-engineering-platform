@@ -18,11 +18,15 @@ function sanitizeDialogText(text: string): string {
   return text.slice(0, CONFIG.TEXT_SANITIZATION_LIMIT).replace(/[\r\n\t]/g, ' ').trim();
 }
 
+// Type alias for possible typeof return values
+const TYPEOF_TYPES = ['string', 'number', 'boolean', 'object', 'undefined', 'function', 'symbol', 'bigint'] as const;
+type TypeOfTypes = typeof TYPEOF_TYPES[number];
+
 // Helper function to safely extract and format telemetry values
 function getTelemetryValue<T>(
   obj: Record<string, unknown>, 
   key: string, 
-  expectedType: 'string' | 'number' | 'boolean' | 'object' | 'undefined' | 'function' | 'symbol' | 'bigint', 
+  expectedType: TypeOfTypes, 
   formatter?: (value: T) => string
 ): string {
   const value = obj?.[key];

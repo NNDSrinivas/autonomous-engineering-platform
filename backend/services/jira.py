@@ -16,9 +16,7 @@ class JiraService:
         return str(uuid.uuid4())
 
     @staticmethod
-    def save_connection(
-        db: Session, base_url: str, access_token: str
-    ) -> JiraConnection:
+    def save_connection(db: Session, base_url: str, access_token: str) -> JiraConnection:
         conn = JiraConnection(
             id=JiraService._id(),
             cloud_base_url=base_url,
@@ -66,9 +64,7 @@ class JiraService:
                         if content.get("type") == "text":
                             return content.get("text", "")
                         elif "content" in content:
-                            return " ".join(
-                                extract_adf_text(item) for item in content["content"]
-                            )
+                            return " ".join(extract_adf_text(item) for item in content["content"])
                     elif isinstance(content, list):
                         return " ".join(extract_adf_text(item) for item in content)
                     return ""
@@ -77,9 +73,7 @@ class JiraService:
             else:
                 return str(desc_field)[:MAX_DESCRIPTION_LENGTH]
 
-        description = extract_description_text(
-            issue.get("fields", {}).get("description")
-        )
+        description = extract_description_text(issue.get("fields", {}).get("description"))
 
         payload = {
             "connection_id": conn_id,
@@ -90,26 +84,16 @@ class JiraService:
             "description": description,
             "status": issue["fields"]["status"]["name"],
             "assignee": (
-                issue["fields"]["assignee"]["displayName"]
-                if issue["fields"]["assignee"]
-                else None
+                issue["fields"]["assignee"]["displayName"] if issue["fields"]["assignee"] else None
             ),
             "reporter": (
-                issue["fields"]["reporter"]["displayName"]
-                if issue["fields"]["reporter"]
-                else None
+                issue["fields"]["reporter"]["displayName"] if issue["fields"]["reporter"] else None
             ),
             "priority": (
-                issue["fields"]["priority"]["name"]
-                if issue["fields"]["priority"]
-                else None
+                issue["fields"]["priority"]["name"] if issue["fields"]["priority"] else None
             ),
-            "created": dt.datetime.fromisoformat(
-                issue["fields"]["created"].replace("Z", "+00:00")
-            ),
-            "updated": dt.datetime.fromisoformat(
-                issue["fields"]["updated"].replace("Z", "+00:00")
-            ),
+            "created": dt.datetime.fromisoformat(issue["fields"]["created"].replace("Z", "+00:00")),
+            "updated": dt.datetime.fromisoformat(issue["fields"]["updated"].replace("Z", "+00:00")),
             "url": f"{issue['self'].split('/rest/')[0]}/browse/{issue['key']}",
         }
 
@@ -123,9 +107,7 @@ class JiraService:
         return row
 
     @staticmethod
-    def search_issues(
-        db: Session, project: str | None, q: str | None, updated_since: str | None
-    ):
+    def search_issues(db: Session, project: str | None, q: str | None, updated_since: str | None):
         clause = ["1=1"]
         params = {}
         if project:

@@ -53,3 +53,31 @@ def safe_commit_with_rollback(
         except Exception as rollback_error:
             logger.error(f"Failed to rollback {operation_name}: {rollback_error}")
         return False
+
+
+def safe_rollback(
+    db: Session,
+    logger: Optional[logging.Logger] = None,
+    operation_name: str = "database operation",
+) -> bool:
+    """
+    Safely rollback a database transaction with error handling.
+
+    Args:
+        db: SQLAlchemy database session
+        logger: Optional logger for error reporting
+        operation_name: Description of the operation for logging context
+
+    Returns:
+        True if rollback succeeded, False if rollback failed
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+
+    try:
+        db.rollback()
+        logger.info(f"Successfully rolled back {operation_name}")
+        return True
+    except Exception as rollback_error:
+        logger.error(f"Failed to rollback {operation_name}: {rollback_error}")
+        return False

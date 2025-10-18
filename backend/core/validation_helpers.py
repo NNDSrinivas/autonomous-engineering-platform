@@ -2,12 +2,15 @@
 Validation helper functions for centralized validation logic.
 """
 
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 
 def validate_telemetry_value(
-    value: Any, field_name: str, expected_type: type, default: Union[str, int, float] = 0
-) -> Union[str, int, float]:
+    value: Any, 
+    field_name: str, 
+    expected_type: type, 
+    default: Any = 0
+) -> Any:
     """
     Validate and sanitize telemetry values with consistent error handling.
 

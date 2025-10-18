@@ -14,9 +14,6 @@ from ..telemetry.metrics import LLM_CALLS, LLM_TOKENS, LLM_COST, LLM_LATENCY
 
 logger = logging.getLogger(__name__)
 
-# Formatting constants
-COST_DECIMAL_PLACES = 6  # Number of decimal places for cost formatting
-
 
 @dataclass
 class AuditContext:
@@ -249,7 +246,8 @@ class ModelRouter:
                 self._update_usage_stats(candidate, telemetry)
 
                 # Format log message using telemetry values for consistency
-                formatted_cost = f"${telemetry['cost_usd']:.{COST_DECIMAL_PLACES}f}"
+                cost_decimal_places = 6  # Number of decimal places for cost formatting
+                formatted_cost = f"${telemetry['cost_usd']:.{cost_decimal_places}f}"
                 logger.info(
                     f"Successfully completed {phase} with {candidate}: "
                     f"{telemetry['tokens']} tokens, {formatted_cost}, {telemetry['latency_ms']}ms"

@@ -50,6 +50,10 @@ def validate_header_value(
 
     # Remove any leading/trailing whitespace
     value = value.strip()
+    
+    # Check if empty after stripping
+    if not value:
+        return None
 
     # Check length limits
     if len(value) > max_length:
@@ -60,8 +64,8 @@ def validate_header_value(
     if not (value[0].isalnum() or value[0] == '_'):
         return None
     
-    # 2. Must end with alphanumeric or underscore (if more than 1 char)
-    if len(value) > 1 and not (value[-1].isalnum() or value[-1] == '_'):
+    # 2. Must end with alphanumeric or underscore
+    if not (value[-1].isalnum() or value[-1] == '_'):
         return None
     
     # 3. Only allow specific characters

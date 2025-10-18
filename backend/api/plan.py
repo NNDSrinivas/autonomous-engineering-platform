@@ -8,7 +8,7 @@ import logging
 import os
 
 from ..core.cache import Cache
-from ..core.db import get_db, safe_commit_with_rollback
+from ..core.db import get_db, safe_commit_with_rollback, safe_rollback
 from ..core.utils import generate_prompt_hash, validate_header_value
 from ..llm.router import ModelRouter, AuditContext
 
@@ -158,7 +158,7 @@ async def generate_plan(
 
             # Rollback audit logging transaction on error
             if audit_context.db:
-                safe_commit_with_rollback(audit_context.db, logger, "audit transaction rollback")
+                safe_rollback(audit_context.db, logger, "audit transaction")
 
             # Return error plan - use generic message for security
             plan = {

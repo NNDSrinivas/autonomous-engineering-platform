@@ -172,9 +172,14 @@ class ModelRouter:
         if audit_context is None:
             audit_context = AuditContext()
 
-        # Generate prompt hash if not provided
+        # Generate prompt hash if not provided (create new instance to maintain immutability)
         if audit_context.prompt_hash is None:
-            audit_context.prompt_hash = generate_prompt_hash(prompt, context)
+            audit_context = AuditContext(
+                db=audit_context.db,
+                prompt_hash=generate_prompt_hash(prompt, context),
+                org_id=audit_context.org_id,
+                user_id=audit_context.user_id,
+            )
 
         last_error = None
 

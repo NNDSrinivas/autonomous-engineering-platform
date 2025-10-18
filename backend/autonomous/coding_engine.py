@@ -111,7 +111,9 @@ class AutonomousCodingEngine:
         task_id = str(uuid.uuid4())
 
         # Analyze task and gather context
-        context = await self._analyze_task_context(description, repository, files_to_modify or [])
+        context = await self._analyze_task_context(
+            description, repository, files_to_modify or []
+        )
 
         task = CodeTask(
             id=task_id,
@@ -263,7 +265,8 @@ class AutonomousCodingEngine:
                 query=description, knowledge_types=["code", "documentation"], limit=5
             )
             context["related_knowledge"] = [
-                {"content": doc.content, "metadata": doc.metadata} for doc in related_docs
+                {"content": doc.content, "metadata": doc.metadata}
+                for doc in related_docs
             ]
 
         # Get repository context if GitHub service available
@@ -388,7 +391,9 @@ class AutonomousCodingEngine:
                 solutions.append(solution)
 
             except Exception as e:
-                logger.error("Code generation failed for file", file_path=file_path, error=str(e))
+                logger.error(
+                    "Code generation failed for file", file_path=file_path, error=str(e)
+                )
 
         return solutions
 

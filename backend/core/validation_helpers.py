@@ -8,7 +8,9 @@ from typing import Any, Optional
 _SENTINEL = object()
 
 
-def validate_telemetry_value(value: Any, expected_type: type, default: Any = _SENTINEL) -> Any:
+def validate_telemetry_value(
+    value: Any, expected_type: type, default: Any = _SENTINEL
+) -> Any:
     """
     Validate and sanitize telemetry values with consistent error handling.
 
@@ -92,9 +94,13 @@ def validate_string_bounds(
         return ""
 
     if len(text) < min_length:
-        raise ValueError(f"String must be at least {min_length} characters, got {len(text)}")
+        raise ValueError(
+            f"String must be at least {min_length} characters, got {len(text)}"
+        )
 
     if max_length is not None and len(text) > max_length:
-        raise ValueError(f"String must be at most {max_length} characters, got {len(text)}")
+        raise ValueError(
+            f"String must be at most {max_length} characters, got {len(text)}"
+        )
 
     return text

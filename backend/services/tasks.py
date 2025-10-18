@@ -219,8 +219,13 @@ def update_task(
             mutable_fields["due_date"] = None
         elif mutable_fields["due_date"] is not None:
             parsed_due_date = _parse_due_date(mutable_fields["due_date"])
-            if parsed_due_date is None and str(mutable_fields["due_date"]).strip() != "":
-                raise ValueError(f"Invalid due_date string: {mutable_fields['due_date']!r}")
+            if (
+                parsed_due_date is None
+                and str(mutable_fields["due_date"]).strip() != ""
+            ):
+                raise ValueError(
+                    f"Invalid due_date string: {mutable_fields['due_date']!r}"
+                )
             mutable_fields["due_date"] = parsed_due_date
 
     # Validate field values for data integrity
@@ -247,7 +252,9 @@ def update_task(
     if "status" in mutable_fields:
         _add_event(db, task.id, "status_changed", {"status": task.status}, commit=False)
     if "assignee" in mutable_fields:
-        _add_event(db, task.id, "assignee_changed", {"assignee": task.assignee}, commit=False)
+        _add_event(
+            db, task.id, "assignee_changed", {"assignee": task.assignee}, commit=False
+        )
 
     if commit:
         db.commit()
@@ -440,7 +447,9 @@ def ensure_tasks_for_actions(db: Session, meeting_id: str) -> None:
         task = create_task(
             db,
             title=row["title"],
-            description=(row.get("source_segment") or "Auto-created from meeting action item"),
+            description=(
+                row.get("source_segment") or "Auto-created from meeting action item"
+            ),
             assignee=row.get("assignee"),
             priority="P1",
             meeting_id=meeting_id,

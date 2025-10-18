@@ -28,7 +28,9 @@ def upgrade() -> None:
         sa.Column("provider", sa.Text, nullable=True),  # zoom|teams|meet|manual
         sa.Column("started_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("ended_at", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.Column("participants", sa.JSON, nullable=True),  # [{"name":..., "email":...}]
+        sa.Column(
+            "participants", sa.JSON, nullable=True
+        ),  # [{"name":..., "email":...}]
         sa.Column("org_id", sa.Text, nullable=True),
     )
     op.create_index("ix_meeting_started", "meeting", ["started_at"])
@@ -36,7 +38,9 @@ def upgrade() -> None:
     op.create_table(
         "transcript_segment",
         sa.Column("id", sa.Text, primary_key=True),
-        sa.Column("meeting_id", sa.Text, sa.ForeignKey("meeting.id", ondelete="CASCADE")),
+        sa.Column(
+            "meeting_id", sa.Text, sa.ForeignKey("meeting.id", ondelete="CASCADE")
+        ),
         sa.Column("ts_start_ms", sa.Integer, nullable=True),
         sa.Column("ts_end_ms", sa.Integer, nullable=True),
         sa.Column("speaker", sa.Text, nullable=True),
@@ -65,7 +69,9 @@ def upgrade() -> None:
     op.create_table(
         "action_item",
         sa.Column("id", sa.Text, primary_key=True),
-        sa.Column("meeting_id", sa.Text, sa.ForeignKey("meeting.id", ondelete="CASCADE")),
+        sa.Column(
+            "meeting_id", sa.Text, sa.ForeignKey("meeting.id", ondelete="CASCADE")
+        ),
         sa.Column("title", sa.Text, nullable=False),
         sa.Column("assignee", sa.Text, nullable=True),
         sa.Column("due_hint", sa.Text, nullable=True),

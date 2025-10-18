@@ -26,7 +26,9 @@ def upgrade() -> None:
         sa.Column("refresh_token", sa.Text, nullable=True),
         sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("scopes", sa.JSON, nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+        ),
     )
     op.create_table(
         "jira_project_config",
@@ -79,7 +81,9 @@ def upgrade() -> None:
         sa.Column("refresh_token", sa.Text, nullable=True),
         sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("scopes", sa.JSON, nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()
+        ),
     )
     op.create_table(
         "gh_repo",
@@ -121,7 +125,9 @@ def upgrade() -> None:
         sa.Column("updated", sa.TIMESTAMP(timezone=True), nullable=True),
         sa.Column("url", sa.Text, nullable=True),
     )
-    op.create_index("ix_gh_issue_pr_repo_updated", "gh_issue_pr", ["repo_id", "updated"])
+    op.create_index(
+        "ix_gh_issue_pr_repo_updated", "gh_issue_pr", ["repo_id", "updated"]
+    )
 
 
 def downgrade() -> None:

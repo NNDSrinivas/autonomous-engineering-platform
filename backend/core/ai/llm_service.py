@@ -53,7 +53,9 @@ class LLMService:
         self.client = OpenAI(api_key=self.settings.openai_api_key)
         self.model = self.settings.openai_model
 
-        logger.info("LLM Service initialized for engineering platform", model=self.model)
+        logger.info(
+            "LLM Service initialized for engineering platform", model=self.model
+        )
 
     async def generate_engineering_response(
         self, question: str, context: Dict[str, Any]
@@ -92,7 +94,9 @@ class LLMService:
                 confidence=0.1,
             )
 
-    async def analyze_code(self, code: str, language: str, context: Dict[str, Any]) -> CodeAnalysis:
+    async def analyze_code(
+        self, code: str, language: str, context: Dict[str, Any]
+    ) -> CodeAnalysis:
         """Analyze code and provide engineering insights"""
 
         system_prompt = """You are an expert software engineer and code reviewer. 
@@ -145,7 +149,9 @@ class LLMService:
             logger.error("Error analyzing code", error=str(e))
             return CodeAnalysis(
                 quality_score=0.5,
-                issues=[{"type": "analysis_error", "message": "Could not analyze code"}],
+                issues=[
+                    {"type": "analysis_error", "message": "Could not analyze code"}
+                ],
                 suggestions=["Manual code review recommended"],
                 complexity={"cyclomatic": "unknown"},
                 test_suggestions=["Add basic unit tests"],
@@ -253,7 +259,9 @@ class LLMService:
             prompt += "\n"
 
         if context.get("current_files"):
-            prompt += f"Currently working on files: {', '.join(context['current_files'])}\n\n"
+            prompt += (
+                f"Currently working on files: {', '.join(context['current_files'])}\n\n"
+            )
 
         if context.get("recent_changes"):
             prompt += f"Recent changes: {context['recent_changes']}\n\n"
@@ -312,7 +320,11 @@ class LLMService:
                 words = line.split()
                 for word in words:
                     try:
-                        score = float(word.replace("%", "")) / 100 if "%" in word else float(word)
+                        score = (
+                            float(word.replace("%", "")) / 100
+                            if "%" in word
+                            else float(word)
+                        )
                         if 0 <= score <= 1:
                             quality_score = score
                             break

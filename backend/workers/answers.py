@@ -81,7 +81,9 @@ def _recent_meeting_text(db: Session, meeting_id_param: str) -> list[str]:
         .limit(MAX_TRANSCRIPT_SEGMENTS)
         .all()
     )
-    return [seg.text for seg in reversed(segments)]  # reverse to chronological order (oldest first)
+    return [
+        seg.text for seg in reversed(segments)
+    ]  # reverse to chronological order (oldest first)
 
 
 def _terms_from_latest(db: Session, meeting_id_param: str) -> list[str]:
@@ -190,7 +192,9 @@ def _search_code(db: Session, terms: list[str]) -> list[Dict[str, Any]]:
     search_term = path_term if path_term else terms[0]
 
     try:
-        results = GitHubService.search_code(db, repo=None, q=search_term, path_prefix=None)
+        results = GitHubService.search_code(
+            db, repo=None, q=search_term, path_prefix=None
+        )
         return results
     except Exception as e:
         logger.exception("Error searching code in GitHubService: %s", e)
@@ -232,7 +236,9 @@ def generate_answer(session_id: str) -> None:
         code_hits = _search_code(db, terms)
         pr_hits = _search_prs(db, terms)
 
-        payload = asvc.generate_grounded_answer(jira_hits, code_hits, pr_hits, meeting_snips)
+        payload = asvc.generate_grounded_answer(
+            jira_hits, code_hits, pr_hits, meeting_snips
+        )
 
         # Calculate latency and save result
         latency_ms = round((time.perf_counter() - t0) * 1000)

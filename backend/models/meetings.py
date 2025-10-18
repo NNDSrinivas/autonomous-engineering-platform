@@ -10,8 +10,12 @@ class Meeting(Base):
     session_id: Mapped[str] = mapped_column(String, unique=True)
     title: Mapped[str | None] = mapped_column(String, nullable=True)
     provider: Mapped[str | None] = mapped_column(String, nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    ended_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
     participants: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     org_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
@@ -29,7 +33,9 @@ class Meeting(Base):
 class TranscriptSegment(Base):
     __tablename__ = "transcript_segment"
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    meeting_id: Mapped[str] = mapped_column(ForeignKey("meeting.id", ondelete="CASCADE"))
+    meeting_id: Mapped[str] = mapped_column(
+        ForeignKey("meeting.id", ondelete="CASCADE")
+    )
     ts_start_ms: Mapped[int | None] = mapped_column(Integer)
     ts_end_ms: Mapped[int | None] = mapped_column(Integer)
     speaker: Mapped[str | None] = mapped_column(String)
@@ -53,7 +59,9 @@ class MeetingSummary(Base):
 class ActionItem(Base):
     __tablename__ = "action_item"
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    meeting_id: Mapped[str] = mapped_column(ForeignKey("meeting.id", ondelete="CASCADE"))
+    meeting_id: Mapped[str] = mapped_column(
+        ForeignKey("meeting.id", ondelete="CASCADE")
+    )
     title: Mapped[str] = mapped_column(String)
     assignee: Mapped[str | None] = mapped_column(String)
     due_hint: Mapped[str | None] = mapped_column(String)

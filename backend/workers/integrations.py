@@ -19,12 +19,15 @@ def jira_sync(connection_id: str) -> None:
     try:
         conn = db.get(JiraConnection, connection_id)
         cfg = db.scalar(
-            select(JiraProjectConfig).where(JiraProjectConfig.connection_id == connection_id)
+            select(JiraProjectConfig).where(
+                JiraProjectConfig.connection_id == connection_id
+            )
         )
         if not conn or not cfg:
             return
         since = (
-            cfg.last_sync_at or (dt.dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=30))
+            cfg.last_sync_at
+            or (dt.dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=30))
         ).isoformat()
         headers = {
             "Authorization": f"Bearer {conn.access_token}",
@@ -91,9 +94,13 @@ def github_index(connection_id: str, repo_full_name: str) -> None:
                 if tree.status_code == 200:
                     tree_data = tree.json().get("tree", [])
                     # Safely limit the tree data
-                    limited_tree = tree_data[:2000] if isinstance(tree_data, list) else []
+                    limited_tree = (
+                        tree_data[:2000] if isinstance(tree_data, list) else []
+                    )
                     for node in limited_tree:
-                        if node.get("type") == "blob" and (node.get("path") or "").endswith(
+                        if node.get("type") == "blob" and (
+                            node.get("path") or ""
+                        ).endswith(
                             (
                                 ".py",
                                 ".js",
@@ -131,7 +138,11 @@ def github_index(connection_id: str, repo_full_name: str) -> None:
                     for it in r.json():
                         typ = "pr" if "pull_request" in it else "issue"
                         upd = it.get("updated_at")
-                        upd = dt.datetime.fromisoformat(upd.replace("Z", "+00:00")) if upd else None
+                        upd = (
+                            dt.datetime.fromisoformat(upd.replace("Z", "+00:00"))
+                            if upd
+                            else None
+                        )
                         ghsvc.upsert_issuepr(
                             db,
                             repo_row.id,

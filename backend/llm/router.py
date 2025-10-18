@@ -27,13 +27,6 @@ class AuditContext:
     org_id: Optional[str] = None
     user_id: Optional[str] = None
 
-    def ensure_prompt_hash(self, prompt: str, context: Dict[str, Any]) -> "AuditContext":
-        """Return AuditContext with prompt_hash generated if not already set."""
-        if self.prompt_hash is None:
-            generated_hash = generate_prompt_hash(prompt, context)
-            return replace(self, prompt_hash=generated_hash)
-        return self
-
 
 class ModelRouter:
     """Routes LLM requests to appropriate providers with fallback support."""
@@ -175,7 +168,9 @@ class ModelRouter:
             audit_context = AuditContext()
 
         # Ensure prompt hash is generated
-        audit_context = audit_context.ensure_prompt_hash(prompt, context)
+        if audit_context.prompt_hash is None:
+            generated_hash = generate_prompt_hash(prompt, context)
+            audit_context = replace(audit_context, prompt_hash=generated_hash)
 
         last_error = None
 
@@ -282,6 +277,41 @@ class ModelRouter:
         # All models failed
         raise RuntimeError(f"All models failed for phase {phase}. Last error: {last_error}")
 
+    def _validate_metrics_params(
+        self,
+        phase: str,
+        candidate: str,
+        status: str,
+        latency_ms: float,
+        tokens: int = 0,
+        cost: float = 0.0,
+    ) -> tuple[str, str, str, float, int, float]:
+        """Validate and sanitize metrics parameters once for efficiency."""
+        # Use centralized validation helpers
+        validated_phase = validate_telemetry_value(phase, str, "unknown")
+        validated_candidate = validate_telemetry_value(candidate, str, "unknown")
+        validated_status = validate_telemetry_value(status, str, "unknown")
+        validated_latency = validate_telemetry_value(latency_ms, float, 0.0)
+        validated_tokens = validate_telemetry_value(tokens, int, 0)
+        validated_cost = validate_telemetry_value(cost, float, 0.0)
+
+        # Additional string validation
+        if not validated_phase.strip():
+            validated_phase = "unknown"
+        if not validated_candidate.strip():
+            validated_candidate = "unknown"
+        if not validated_status.strip():
+            validated_status = "unknown"
+
+        return (
+            validated_phase,
+            validated_candidate,
+            validated_status,
+            validated_latency,
+            validated_tokens,
+            validated_cost,
+        )
+
     def _record_metrics(
         self,
         phase: str,
@@ -291,37 +321,21 @@ class ModelRouter:
         tokens: int = 0,
         cost: float = 0.0,
     ) -> None:
-        """Record Prometheus metrics for LLM calls."""
+        """
+        Record Prometheus metrics for LLM calls.
+        Parameters are validated for safety before recording.
+        """
         try:
-            # Use centralized validation helpers
-            validated_phase = validate_telemetry_value(phase, str, "unknown")
-            validated_candidate = validate_telemetry_value(candidate, str, "unknown")
-            validated_status = validate_telemetry_value(status, str, "unknown")
-            validated_latency = validate_telemetry_value(latency_ms, float, 0.0)
-            validated_tokens = validate_telemetry_value(tokens, int, 0)
-            validated_cost = validate_telemetry_value(cost, float, 0.0)
-
-            # Additional string validation
-            if not validated_phase.strip():
-                validated_phase = "unknown"
-            if not validated_candidate.strip():
-                validated_candidate = "unknown"
-            if not validated_status.strip():
-                validated_status = "unknown"
-
-            LLM_CALLS.labels(
-                phase=validated_phase, model=validated_candidate, status=validated_status
-            ).inc()
-            LLM_LATENCY.labels(phase=validated_phase, model=validated_candidate).observe(
-                validated_latency
+            # Validate parameters once for efficiency
+            phase, candidate, status, latency_ms, tokens, cost = self._validate_metrics_params(
+                phase, candidate, status, latency_ms, tokens, cost
             )
-            if validated_status == "ok":
-                LLM_TOKENS.labels(phase=validated_phase, model=validated_candidate).inc(
-                    validated_tokens
-                )
-                LLM_COST.labels(phase=validated_phase, model=validated_candidate).inc(
-                    validated_cost
-                )
+
+            LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()
+            LLM_LATENCY.labels(phase=phase, model=candidate).observe(latency_ms)
+            if status == "ok":
+                LLM_TOKENS.labels(phase=phase, model=candidate).inc(tokens)
+                LLM_COST.labels(phase=phase, model=candidate).inc(cost)
         except Exception as metrics_exc:
             logger.warning(f"Failed to record LLM metrics: {metrics_exc}")
 

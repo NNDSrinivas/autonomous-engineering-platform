@@ -2,7 +2,7 @@ import yaml
 import time
 import os
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, List, Any, Tuple, Optional
 from sqlalchemy.orm import Session
 from .providers.openai_provider import OpenAIProvider
@@ -172,13 +172,11 @@ class ModelRouter:
         if audit_context is None:
             audit_context = AuditContext()
 
-        # Generate prompt hash if not provided (create new instance to maintain immutability)
+        # Generate prompt hash if not provided (use replace() to maintain immutability)
         if audit_context.prompt_hash is None:
-            audit_context = AuditContext(
-                db=audit_context.db,
-                prompt_hash=generate_prompt_hash(prompt, context),
-                org_id=audit_context.org_id,
-                user_id=audit_context.user_id,
+            audit_context = replace(
+                audit_context, 
+                prompt_hash=generate_prompt_hash(prompt, context)
             )
 
         last_error = None

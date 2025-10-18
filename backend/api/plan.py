@@ -122,9 +122,7 @@ async def generate_plan(
                 audit_context=audit_context,
             )
 
-            # Commit audit logging transaction after successful LLM call
-            # Uses the safe_commit_with_rollback helper to handle transaction
-            # boundaries with proper error handling and logging.
+            # Commit audit transaction
             if audit_context.db:
                 safe_commit_with_rollback(audit_context.db, logger, "audit transaction")
 

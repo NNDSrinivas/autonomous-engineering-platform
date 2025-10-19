@@ -82,7 +82,9 @@ class Settings(BaseSettings):
         # Check for basic complexity (at least mix of letters and numbers/symbols)
         has_letters = any(c.isalpha() for c in secret)
         has_numbers = any(c.isdigit() for c in secret)
-        has_symbols = any(c in string.punctuation for c in secret)
+        # Use set for O(1) lookup performance
+        punctuation_set = set(string.punctuation)
+        has_symbols = any(c in punctuation_set for c in secret)
 
         if not (has_letters and (has_numbers or has_symbols)):
             raise ValueError(

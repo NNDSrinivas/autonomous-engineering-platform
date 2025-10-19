@@ -65,8 +65,9 @@ def validate_telemetry_value(
     if expected_type in (int, float) and value < 0:
         return default
 
+    # Always return the default value for empty strings
     if expected_type is str and not value.strip():
-        return str(default) if isinstance(default, (int, float)) else default
+        return default
 
     return value
 

@@ -58,8 +58,7 @@ class ModelRouter:
                     if unicodedata.category(char) not in ["Cc", "Cf", "Co", "Cs"]
                 )
 
-                # Python slice notation safely handles cases where max_len exceeds string length
-                # No need for a conditional check: sanitized_str[:max_len] returns the whole string if shorter than max_len.
+                # Truncate to max_len to prevent excessively long strings (security limit)
                 return sanitized_str[:max_len]
             elif isinstance(value, dict):
                 return {k: sanitize_value(v) for k, v in value.items()}

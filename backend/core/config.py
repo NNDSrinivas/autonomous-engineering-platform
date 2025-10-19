@@ -67,6 +67,26 @@ class Settings(BaseSettings):
                     "In production, 'jwt_secret' must be set to a secure value via environment variable."
                 )
 
+            # Validate minimum security requirements for secrets
+            self._validate_secret_security(self.secret_key, "secret_key")
+            self._validate_secret_security(self.jwt_secret, "jwt_secret")
+
+    def _validate_secret_security(self, secret: str, secret_name: str) -> None:
+        """Validate that secrets meet minimum security requirements."""
+        if len(secret) < 32:
+            raise ValueError(
+                f"In production, '{secret_name}' must be at least 32 characters long for security."
+            )
+
+        # Check for basic complexity (at least mix of letters and numbers/symbols)
+        has_letters = any(c.isalpha() for c in secret)
+        has_numbers_or_symbols = any(c.isdigit() or not c.isalnum() for c in secret)
+
+        if not (has_letters and has_numbers_or_symbols):
+            raise ValueError(
+                f"In production, '{secret_name}' must contain a mix of letters and numbers/symbols for security."
+            )
+
     # Storage
     vector_db_path: str = "./data/vector_store"
 

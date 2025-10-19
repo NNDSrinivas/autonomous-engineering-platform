@@ -8,7 +8,7 @@ import logging
 import os
 
 from ..core.cache import Cache
-from ..core.db import get_db, safe_commit_with_rollback, safe_rollback
+from ..core.db import get_db, safe_commit_with_rollback
 from ..core.utils import generate_prompt_hash, validate_header_value
 from ..llm.router import ModelRouter, AuditContext
 
@@ -150,9 +150,11 @@ async def generate_plan(
         except Exception as e:
             logger.error(f"LLM call failed for key {key}: {e}")
 
-            # Rollback audit logging transaction on error
+            # Commit audit logging transaction even on error to ensure audit trail is complete
             if audit_context.db:
-                safe_rollback(audit_context.db, logger, "audit transaction")
+                safe_commit_with_rollback(
+                    audit_context.db, logger, "audit transaction (on error)"
+                )
 
             # Return error plan - use generic message for security
             plan = {

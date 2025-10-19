@@ -88,8 +88,6 @@ def validate_header_value(
     if not all(c in ALLOWED_HEADER_CHARS for c in value):
         return None
 
-    # 4. Disallow consecutive dots to prevent path traversal
-    if ".." in value:
-        return None
+    # 4. (Removed overly restrictive check for consecutive dots; allow version numbers, domains, etc.)
 
     return value

@@ -8,7 +8,7 @@ echo "[SMOKE] Core API: $CORE"
 
 # Test plan generation endpoint
 echo "[SMOKE] Generating plan for demo ticket..."
-RESPONSE=$(curl -s -X POST "$CORE/api/plan/DEMO-1" \
+RESPONSE=$(curl -sf -X POST "$CORE/api/plan/DEMO-1" \
   -H 'Content-Type: application/json' \
   -d '{"contextPack": {"ticket":{"key":"DEMO-1","summary":"demo ticket for telemetry testing"}}}')
 
@@ -21,7 +21,7 @@ echo "[SMOKE] Plan items count:     $(echo "$RESPONSE" | jq -r '.plan.items | le
 
 # Test metrics endpoint
 echo "[SMOKE] Checking Prometheus metrics..."
-METRICS_RESPONSE=$(curl -s "$CORE/metrics")
+METRICS_RESPONSE=$(curl -sf "$CORE/metrics")
 
 # Constants for metrics display (can be overridden via environment)
 METRICS_DISPLAY_LIMIT=${METRICS_DISPLAY_LIMIT:-10}
@@ -35,7 +35,7 @@ echo "$METRICS_RESPONSE" | grep 'aep_llm_latency_ms' | head -n $LATENCY_DISPLAY_
 
 # Generate another plan to verify metrics increment
 echo "[SMOKE] Generating second plan to verify metrics increment..."
-curl -s -X POST "$CORE/api/plan/DEMO-2" \
+curl -sf -X POST "$CORE/api/plan/DEMO-2" \
   -H 'Content-Type: application/json' \
   -d '{"contextPack": {"ticket":{"key":"DEMO-2","summary":"second demo ticket"}}}' > /dev/null
 

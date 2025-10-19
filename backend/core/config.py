@@ -2,6 +2,7 @@
 Configuration management for Autonomous Engineering Intelligence Platform
 """
 
+import string
 from typing import List
 from typing import Optional
 
@@ -80,9 +81,10 @@ class Settings(BaseSettings):
 
         # Check for basic complexity (at least mix of letters and numbers/symbols)
         has_letters = any(c.isalpha() for c in secret)
-        has_numbers_or_symbols = any(c.isdigit() or not c.isalnum() for c in secret)
+        has_numbers = any(c.isdigit() for c in secret)
+        has_symbols = any(c in string.punctuation for c in secret)
 
-        if not (has_letters and has_numbers_or_symbols):
+        if not (has_letters and (has_numbers or has_symbols)):
             raise ValueError(
                 f"In production, '{secret_name}' must contain a mix of letters and numbers/symbols for security."
             )

@@ -35,10 +35,13 @@ echo "$METRICS_RESPONSE" | grep 'aep_llm_latency_ms' | head -n $LATENCY_DISPLAY_
 
 # Generate another plan to verify metrics increment
 echo "[SMOKE] Generating second plan to verify metrics increment..."
+# Temporarily disable exit on failure for this curl command
+set +e
 SECOND_RESPONSE=$(curl -sf -X POST "$CORE/api/plan/DEMO-2" \
   -H 'Content-Type: application/json' \
   -d '{"contextPack": {"ticket":{"key":"DEMO-2","summary":"second demo ticket"}}}')
 CURL_EXIT_CODE=$?
+set -e
 
 if [ $CURL_EXIT_CODE -ne 0 ]; then
     echo "[ERROR] Second plan generation failed with exit code $CURL_EXIT_CODE"

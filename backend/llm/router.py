@@ -10,14 +10,11 @@ from sqlalchemy.orm import Session
 from .providers.openai_provider import OpenAIProvider
 from .providers.anthropic_provider import AnthropicProvider
 from .audit import get_audit_service, AuditLogEntry
-from ..core.utils import generate_prompt_hash
+from ..core.utils import generate_prompt_hash, format_cost_usd
 from ..core.validation_helpers import validate_telemetry_value
 from ..telemetry.metrics import LLM_CALLS, LLM_TOKENS, LLM_COST, LLM_LATENCY
 
 logger = logging.getLogger(__name__)
-
-# Configuration constants
-COST_DECIMAL_PLACES = 6  # Number of decimal places for cost formatting
 
 
 @dataclass
@@ -238,7 +235,7 @@ class ModelRouter:
                 self._update_usage_stats(candidate, telemetry)
 
                 # Format log message using telemetry values for consistency
-                formatted_cost = f"${telemetry['cost_usd']:.{COST_DECIMAL_PLACES}f}"
+                formatted_cost = format_cost_usd(telemetry["cost_usd"])
                 logger.info(
                     f"Successfully completed {phase} with {candidate}: "
                     f"{telemetry['tokens']} tokens, {formatted_cost}, {telemetry['latency_ms']}ms"

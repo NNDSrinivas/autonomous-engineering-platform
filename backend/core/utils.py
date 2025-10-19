@@ -4,12 +4,26 @@ import hashlib
 import json
 import string
 from typing import Any, Dict, Optional
+from .models import COST_SCALE
 
 # Configuration constants
 MAX_HEADER_LENGTH = 100  # Maximum allowed length for header values
 
 # Simple character set for header validation - more maintainable than complex regex
 ALLOWED_HEADER_CHARS = set(string.ascii_letters + string.digits + "_.-")
+
+
+def format_cost_usd(cost_usd: float) -> str:
+    """
+    Format cost in USD with consistent decimal places across the platform.
+
+    Args:
+        cost_usd: Cost value in USD
+
+    Returns:
+        Formatted cost string with currency symbol (e.g., "$0.001234")
+    """
+    return f"${cost_usd:.{COST_SCALE}f}"
 
 
 def generate_prompt_hash(prompt: str, context: Dict[str, Any] = None) -> str:

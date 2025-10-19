@@ -8,6 +8,9 @@ from typing import Optional
 
 from pydantic_settings import BaseSettings
 
+# Module-level constants for performance
+PUNCTUATION_SET = set(string.punctuation)
+
 
 class Settings(BaseSettings):
     app_env: str = "dev"
@@ -82,9 +85,8 @@ class Settings(BaseSettings):
         # Check for basic complexity (at least mix of letters and numbers/symbols)
         has_letters = any(c.isalpha() for c in secret)
         has_numbers = any(c.isdigit() for c in secret)
-        # Use set for O(1) lookup performance
-        punctuation_set = set(string.punctuation)
-        has_symbols = any(c in punctuation_set for c in secret)
+        # Use module-level constant for O(1) lookup performance without repeated set creation
+        has_symbols = any(c in PUNCTUATION_SET for c in secret)
 
         if not (has_letters and (has_numbers or has_symbols)):
             raise ValueError(

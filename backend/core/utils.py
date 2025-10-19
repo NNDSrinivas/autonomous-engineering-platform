@@ -80,12 +80,12 @@ def validate_header_value(
         return None
 
     # Simple validation using string methods for better maintainability
-    # Defensive: Ensure value is not empty before accessing indices
-    if not value or not _is_valid_start_end_char(value[0]):
+    # 1. Must start with valid character (alphanumeric or underscore)
+    if not _is_valid_start_end_char(value[0]):
         return None
 
     # 2. Must end with valid character (alphanumeric or underscore)
-    if not value or not _is_valid_start_end_char(value[-1]):
+    if not _is_valid_start_end_char(value[-1]):
         return None
 
     # 3. Only allow specific characters

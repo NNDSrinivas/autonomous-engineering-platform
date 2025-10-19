@@ -23,9 +23,9 @@ echo "[SMOKE] Plan items count:     $(echo "$RESPONSE" | jq -r '.plan.items | le
 echo "[SMOKE] Checking Prometheus metrics..."
 METRICS_RESPONSE=$(curl -s "$CORE/metrics")
 
-# Constants for metrics display
-METRICS_DISPLAY_LIMIT=10
-LATENCY_DISPLAY_LIMIT=5
+# Constants for metrics display (can be overridden via environment)
+METRICS_DISPLAY_LIMIT=${METRICS_DISPLAY_LIMIT:-10}
+LATENCY_DISPLAY_LIMIT=${LATENCY_DISPLAY_LIMIT:-5}
 
 echo "[SMOKE] Checking LLM call counters..."
 echo "$METRICS_RESPONSE" | grep -E 'aep_llm_calls_total|aep_llm_tokens_total|aep_llm_cost_usd_total' | head -n $METRICS_DISPLAY_LIMIT

@@ -54,6 +54,19 @@ class Settings(BaseSettings):
     # API Configuration
     api_v1_prefix: str = "/api"
 
+    def __init__(self, **values):
+        super().__init__(**values)
+        # Validate secrets in production
+        if self.environment.lower() == "production":
+            if self.secret_key == "dev-secret-change-in-production":
+                raise ValueError(
+                    "In production, 'secret_key' must be set to a secure value via environment variable."
+                )
+            if self.jwt_secret == "dev-jwt-secret-change-in-production":
+                raise ValueError(
+                    "In production, 'jwt_secret' must be set to a secure value via environment variable."
+                )
+
     # Storage
     vector_db_path: str = "./data/vector_store"
 

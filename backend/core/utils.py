@@ -75,6 +75,9 @@ def validate_header_value(
     if not value or len(value) > max_length:
         return None
 
+    # At this point, value is guaranteed to be non-empty and within length limits
+    assert value, "Value should not be empty at this point"
+
     # Simple validation using string methods for better maintainability
     # 1. Must start with valid character (alphanumeric or underscore)
     if not _is_valid_start_end_char(value[0]):

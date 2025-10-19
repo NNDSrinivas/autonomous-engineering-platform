@@ -71,12 +71,8 @@ def validate_header_value(
     # Remove any leading/trailing whitespace
     value = value.strip()
 
-    # Check if empty after stripping
-    if not value:
-        return None
-
-    # Check length limits
-    if len(value) > max_length:
+    # Check if empty after stripping or exceeds length limits
+    if not value or len(value) > max_length:
         return None
 
     # Simple validation using string methods for better maintainability

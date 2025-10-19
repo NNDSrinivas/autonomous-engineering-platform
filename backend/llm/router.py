@@ -2,8 +2,6 @@ import yaml
 import time
 import os
 import logging
-import re
-import unicodedata
 from dataclasses import dataclass, replace
 from typing import Dict, List, Any, Tuple, Optional
 from sqlalchemy.orm import Session
@@ -37,6 +35,9 @@ class ModelRouter:
 
     def _sanitize_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Sanitize context data to prevent injection attacks and limit size."""
+        import re
+        import unicodedata
+
         sanitized = {}
 
         def sanitize_value(value, max_len=self.MAX_STRING_LENGTH):

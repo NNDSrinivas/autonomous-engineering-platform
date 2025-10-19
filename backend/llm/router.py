@@ -2,6 +2,7 @@ import yaml
 import time
 import os
 import logging
+import re
 import unicodedata
 from dataclasses import dataclass, replace
 from typing import Dict, List, Any, Tuple, Optional
@@ -44,7 +45,6 @@ class ModelRouter:
         def sanitize_value(value, max_len=self.MAX_STRING_LENGTH):
             if isinstance(value, str):
                 # Remove potentially dangerous characters and normalize Unicode
-                import re
 
                 # Normalize Unicode to prevent normalization attacks
                 sanitized_str = unicodedata.normalize("NFKC", value)
@@ -289,7 +289,7 @@ class ModelRouter:
         latency_ms: float,
         tokens: int = 0,
         cost: float = 0.0,
-    ) -> tuple[str, str, str, float, int, float]:
+    ) -> Tuple[str, str, str, float, int, float]:
         """Validate and sanitize metrics parameters once for efficiency."""
         # Use centralized validation helpers
         validated_phase = validate_telemetry_value(phase, str, "unknown")

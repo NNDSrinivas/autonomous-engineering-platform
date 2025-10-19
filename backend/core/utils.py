@@ -85,11 +85,7 @@ def validate_header_value(
         return None
 
     # 2. Must end with valid character (alphanumeric or underscore)
-    # Defensive check for single character string
-    if len(value) == 1:
-        # Single character already validated above
-        pass
-    elif not _is_valid_start_end_char(value[-1]):
+    if not _is_valid_start_end_char(value[-1]):
         return None
 
     # 3. Only allow specific characters

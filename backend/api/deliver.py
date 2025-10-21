@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, Body, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 from ..core.database import get_db
 from ..schemas.deliver import (
@@ -53,7 +53,7 @@ def get_github_credentials(db: Session, org_id: str) -> str:
         )
 
 
-def get_jira_credentials(db: Session, org_id: str) -> tuple[str, str, str]:
+def get_jira_credentials(db: Session, org_id: str) -> Tuple[str, str, str]:
     """Get JIRA credentials for the organization"""
     try:
         result = db.execute(

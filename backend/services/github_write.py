@@ -4,6 +4,7 @@ GitHub write service for creating draft PRs and managing repository operations
 
 import logging
 from typing import Optional, Dict, Any
+from contextlib import asynccontextmanager
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -16,13 +17,10 @@ class GitHubWriteService:
         self.token = token
         self.base_url = "https://api.github.com"
     
-    async def _client(self) -> httpx.AsyncClient:
-        """Create configured HTTP client for GitHub API
-        
-        Note: This client must be used with 'async with' context manager
-        to ensure proper resource cleanup.
-        """
-        return httpx.AsyncClient(
+    @asynccontextmanager
+    async def _client(self):
+        """Create configured HTTP client for GitHub API with automatic resource cleanup"""
+        async with httpx.AsyncClient(
             base_url=self.base_url,
             headers={
                 "Authorization": f"Bearer {self.token}",
@@ -31,7 +29,8 @@ class GitHubWriteService:
                 "User-Agent": "AutonomousEngineeringPlatform/1.0"
             },
             timeout=30.0
-        )
+        ) as client:
+            yield client
     
     def _format_pr_title(self, title: str, ticket_key: Optional[str] = None) -> str:
         """Format PR title with optional ticket linking"""
@@ -96,7 +95,7 @@ class GitHubWriteService:
                     }
                 }
             
-            async with await self._client() as client:
+            async with self._client() as client:
                 # Check for existing PR with same head/base
                 logger.info(f"Checking for existing PR: {head} -> {base}")
                 
@@ -150,7 +149,7 @@ class GitHubWriteService:
     async def get_pr_status(self, repo_full_name: str, pr_number: int) -> Dict[str, Any]:
         """Get status of existing PR"""
         try:
-            async with await self._client() as client:
+            async with self._client() as client:
                 response = await client.get(f"/repos/{repo_full_name}/pulls/{pr_number}")
                 response.raise_for_status()
                 

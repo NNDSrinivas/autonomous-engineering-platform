@@ -5,6 +5,7 @@ JIRA write service for posting comments and managing issue transitions
 import logging
 import base64
 from typing import Dict, Any
+from contextlib import asynccontextmanager
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -23,13 +24,10 @@ class JiraWriteService:
         encoded_auth = base64.b64encode(auth_string.encode()).decode()
         self.auth_header = f"Basic {encoded_auth}"
     
-    async def _client(self) -> httpx.AsyncClient:
-        """Create configured HTTP client for JIRA API
-        
-        Note: This client must be used with 'async with' context manager
-        to ensure proper resource cleanup.
-        """
-        return httpx.AsyncClient(
+    @asynccontextmanager
+    async def _client(self):
+        """Create configured HTTP client for JIRA API with automatic resource cleanup"""
+        async with httpx.AsyncClient(
             base_url=self.base_url,
             headers={
                 "Authorization": self.auth_header,
@@ -38,7 +36,8 @@ class JiraWriteService:
                 "User-Agent": "AutonomousEngineeringPlatform/1.0"
             },
             timeout=30.0
-        )
+        ) as client:
+            yield client
     
     async def add_comment(
         self, 
@@ -86,7 +85,7 @@ class JiraWriteService:
                     }
                 }
             
-            async with await self._client() as client:
+            async with self._client() as client:
                 logger.info(f"Adding comment to JIRA issue: {issue_key}")
                 
                 response = await client.post(
@@ -138,7 +137,7 @@ class JiraWriteService:
                     }
                 }
             
-            async with await self._client() as client:
+            async with self._client() as client:
                 # First, get available transitions
                 logger.info(f"Getting available transitions for {issue_key}")
                 transitions_response = await client.get(
@@ -196,7 +195,7 @@ class JiraWriteService:
     async def get_issue_info(self, issue_key: str) -> Dict[str, Any]:
         """Get basic information about a JIRA issue"""
         try:
-            async with await self._client() as client:
+            async with self._client() as client:
                 response = await client.get(
                     f"/rest/api/3/issue/{issue_key}",
                     params={"fields": "summary,status,assignee,reporter"}

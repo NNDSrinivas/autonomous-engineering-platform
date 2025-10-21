@@ -6,13 +6,44 @@ import { applyEdits, runCommand } from 'agent-core/tools';
 // Configuration constants
 const CONFIG = {
   PLAN_PREVIEW_STEP_LIMIT: 3,
-  TEXT_SANITIZATION_LIMIT: 200
+  TEXT_SANITIZATION_LIMIT: 200,
+  COST_DECIMAL_PLACES: 4,
+  // Duration in ms to display status bar messages
+  STATUS_BAR_TIMEOUT_MS: 8000
 } as const;
 
 // Sanitize text for display in user dialogs
 function sanitizeDialogText(text: string): string {
   // Limit length and remove potentially confusing characters
   return text.slice(0, CONFIG.TEXT_SANITIZATION_LIMIT).replace(/[\r\n\t]/g, ' ').trim();
+}
+
+// Type alias for typeof operator return values using const assertion
+const TYPEOF_RESULTS = ['string', 'number', 'boolean', 'object', 'undefined', 'function', 'symbol', 'bigint'] as const;
+type TypeOfResult = typeof TYPEOF_RESULTS[number];
+
+// Helper function to safely extract and format telemetry values
+function getTelemetryValue<T>(
+  obj: Record<string, unknown>, 
+  key: string, 
+  expectedType: TypeOfResult, 
+  formatter?: (value: T) => string
+): string {
+  const value = obj?.[key];
+  if (typeof value === expectedType) {
+    return formatter ? formatter(value as T) : String(value);
+  }
+  return 'N/A';
+}
+
+// Format latency value to rounded milliseconds
+function formatLatency(latencyMs: number): string {
+  return String(Math.round(latencyMs));
+}
+
+// Format cost value to fixed decimal places
+function formatCost(costUsd: number): string {
+  return costUsd.toFixed(CONFIG.COST_DECIMAL_PLACES);
 }
 
 // Build a structured confirmation message
@@ -202,6 +233,20 @@ export function activate(context: vscode.ExtensionContext) {
           
           progress.report({ message: 'Generating plan with LLM...' });
           const llmPlan = await proposePlanLLM(pack);
+          
+          // Display telemetry in status bar if available
+          if (llmPlan?.telemetry) {
+            const t = llmPlan.telemetry;
+            const model = getTelemetryValue<string>(t, 'model', 'string');
+            const tokens = getTelemetryValue<number>(t, 'tokens', 'number');
+            const cost = getTelemetryValue<number>(t, 'cost_usd', 'number', formatCost);
+            const latency = getTelemetryValue<number>(t, 'latency_ms', 'number', formatLatency);
+            
+            vscode.window.setStatusBarMessage(
+              `AEP Plan — model: ${model}, tokens: ${tokens}, cost: $${cost}, latency: ${latency}ms`, 
+              CONFIG.STATUS_BAR_TIMEOUT_MS
+            );
+          }
           
           const stepCount = llmPlan.items?.length || 0;
           vscode.window.showInformationMessage(

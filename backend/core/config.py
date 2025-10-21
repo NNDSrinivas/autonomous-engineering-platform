@@ -2,10 +2,14 @@
 Configuration management for Autonomous Engineering Intelligence Platform
 """
 
+import string
 from typing import List
 from typing import Optional
 
 from pydantic_settings import BaseSettings
+
+# Module-level constants for performance
+PUNCTUATION_SET = set(string.punctuation)
 
 
 class Settings(BaseSettings):
@@ -47,15 +51,47 @@ class Settings(BaseSettings):
     # Platform Configuration
     debug: bool = False
     environment: str = "development"
-    secret_key: str = (
-        "dev-secret-change-in-production"  # Override via environment variable in production
-    )
-    jwt_secret: str = (
-        "dev-jwt-secret-change-in-production"  # Override via environment variable in production
-    )
+    # Security keys: Override via environment variables in production
+    secret_key: str = "dev-secret-change-in-production"
+    jwt_secret: str = "dev-jwt-secret-change-in-production"
 
     # API Configuration
     api_v1_prefix: str = "/api"
+
+    def __init__(self, **values):
+        super().__init__(**values)
+        # Validate secrets in production
+        if self.environment.lower() == "production":
+            if self.secret_key == "dev-secret-change-in-production":
+                raise ValueError(
+                    "In production, 'secret_key' must be set to a secure value via environment variable."
+                )
+            if self.jwt_secret == "dev-jwt-secret-change-in-production":
+                raise ValueError(
+                    "In production, 'jwt_secret' must be set to a secure value via environment variable."
+                )
+
+            # Validate minimum security requirements for secrets
+            self._validate_secret_security(self.secret_key, "secret_key")
+            self._validate_secret_security(self.jwt_secret, "jwt_secret")
+
+    def _validate_secret_security(self, secret: str, secret_name: str) -> None:
+        """Validate that secrets meet minimum security requirements."""
+        if len(secret) < 32:
+            raise ValueError(
+                f"In production, '{secret_name}' must be at least 32 characters long for security."
+            )
+
+        # Check for basic complexity (at least mix of letters and numbers/symbols)
+        has_letters = any(c.isalpha() for c in secret)
+        has_numbers = any(c.isdigit() for c in secret)
+        # Use module-level set to avoid repeated set creation; per-character lookup is O(1), but overall check is O(n)
+        has_symbols = any(c in PUNCTUATION_SET for c in secret)
+
+        if not (has_letters and (has_numbers or has_symbols)):
+            raise ValueError(
+                f"In production, '{secret_name}' must contain a mix of letters and numbers/symbols for security."
+            )
 
     # Storage
     vector_db_path: str = "./data/vector_store"

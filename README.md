@@ -192,6 +192,50 @@ Configure allowed operations in `.aepolicy.json`:
 }
 ```
 
+### 📊 **Telemetry & Monitoring**
+
+The platform includes comprehensive telemetry for LLM usage tracking and audit logging:
+
+#### **Prometheus Metrics**
+
+Metrics are exposed at `/metrics` endpoint:
+
+- `aep_llm_calls_total{phase,model,status}` - Total LLM calls by phase, model, and status
+- `aep_llm_tokens_total{phase,model}` - Total tokens used by LLM calls  
+- `aep_llm_cost_usd_total{phase,model}` - Total USD cost of LLM calls
+- `aep_llm_latency_ms_bucket{phase,model,le}` - LLM call latency histogram
+
+Example metrics query:
+```bash
+curl http://localhost:8002/metrics | grep aep_llm
+```
+
+#### **Audit Database**
+
+All LLM calls are logged to the `llm_call` table with:
+
+- **Metadata**: phase, model, status, created_at
+- **Performance**: tokens, cost_usd, latency_ms  
+- **Security**: prompt_hash (no raw prompts stored)
+- **Context**: org_id, user_id for multi-tenant support
+- **Errors**: error_message for failed calls
+
+#### **Privacy & Security**
+
+- Only telemetry metadata is persisted
+- Prompts and context are **hashed** (SHA256) for audit trails
+- No raw code or sensitive data is stored
+- Error messages are sanitized in user-facing responses
+
+#### **Usage Monitoring**
+
+Test telemetry with the smoke test:
+```bash
+./scripts/smoke.sh
+```
+
+This generates sample plans and verifies metrics are being recorded correctly.
+
 ### 🧪 **Testing**
 
 1. **Start Backend Services**

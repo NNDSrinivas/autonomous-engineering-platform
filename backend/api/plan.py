@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Body, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Body, HTTPException, BackgroundTasks, Depends, Request
+from sqlalchemy.orm import Session
 from typing import Dict, Any
 import json
 import hashlib
@@ -7,7 +8,9 @@ import logging
 import os
 
 from ..core.cache import Cache
-from ..llm.router import ModelRouter
+from ..core.db import get_db, safe_commit_with_rollback
+from ..core.utils import generate_prompt_hash, validate_header_value
+from ..llm.router import ModelRouter, AuditContext
 
 # Initialize router and dependencies
 router = APIRouter(prefix="/api/plan", tags=["plan"])
@@ -55,7 +58,9 @@ def load_plan_prompt() -> str:
 @router.post("/{key}")
 async def generate_plan(
     key: str,
+    request: Request,
     payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = None,
 ) -> Dict[str, Any]:
     """
@@ -89,13 +94,32 @@ async def generate_plan(
         # Load prompt template
         prompt = load_plan_prompt()
 
+        # Extract and validate identity headers for audit logging
+        raw_org_id = request.headers.get("X-Org-Id") if request else None
+        raw_user_id = request.headers.get("X-User-Id") if request else None
+
+        # Validate and sanitize header values
+        org_id = validate_header_value(raw_org_id)
+        user_id = validate_header_value(raw_user_id)
+
+        # Create audit context for LLM call
+        audit_context = AuditContext(
+            db=db,
+            prompt_hash=generate_prompt_hash(prompt, context_pack),
+            org_id=org_id,
+            user_id=user_id,
+        )
+
         # Call LLM via model router
         logger.info(f"Generating new plan for key: {key}")
         start_time = time.time()
 
         try:
             response_text, telemetry = get_model_router().call(
-                "plan", prompt, context_pack
+                "plan",
+                prompt,
+                context_pack,
+                audit_context=audit_context,
             )
 
             # Parse LLM response with size limits
@@ -125,6 +149,13 @@ async def generate_plan(
 
         except Exception as e:
             logger.error(f"LLM call failed for key {key}: {e}")
+
+            # Commit audit logging transaction even on error to ensure audit trail is complete
+            if audit_context.db:
+                safe_commit_with_rollback(
+                    audit_context.db, logger, "audit transaction (on error)"
+                )
+
             # Return error plan - use generic message for security
             plan = {
                 "items": [
@@ -159,6 +190,10 @@ async def generate_plan(
         # Only cache successful results (not error responses)
         if not telemetry.get("error"):
             cache.set(cache_key, result)
+
+        # Commit audit transaction after successful plan generation and caching
+        if audit_context.db and not telemetry.get("error"):
+            safe_commit_with_rollback(audit_context.db, logger, "audit transaction")
 
         logger.info(
             f"Generated plan for {key}: {len(plan.get('items', []))} steps, "

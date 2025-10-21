@@ -491,7 +491,14 @@ function html(): string {
         const title = prompt("PR title:");
         if (!title) return;
         
-        const body = prompt("PR description (markdown):", "## Summary\\n\\nImplements new functionality based on plan.\\n\\n## Changes\\n\\n- Added new features\\n- Updated documentation");
+        const body = prompt("PR description (markdown):", \`## Summary
+
+Implements new functionality based on plan.
+
+## Changes
+
+- Added new features
+- Updated documentation\`);
         if (body === null) return; // Allow empty body
         
         const ticket = prompt("Ticket key (optional, e.g., AEP-27):", "");

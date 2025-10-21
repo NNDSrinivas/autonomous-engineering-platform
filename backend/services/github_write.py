@@ -17,7 +17,11 @@ class GitHubWriteService:
         self.base_url = "https://api.github.com"
     
     async def _client(self) -> httpx.AsyncClient:
-        """Create configured HTTP client for GitHub API"""
+        """Create configured HTTP client for GitHub API
+        
+        Note: This client must be used with 'async with' context manager
+        to ensure proper resource cleanup.
+        """
         return httpx.AsyncClient(
             base_url=self.base_url,
             headers={

@@ -9,7 +9,9 @@ const CONFIG = {
   TEXT_SANITIZATION_LIMIT: 200,
   COST_DECIMAL_PLACES: 4,
   // Duration in ms to display status bar messages
-  STATUS_BAR_TIMEOUT_MS: 8000
+  STATUS_BAR_TIMEOUT_MS: 8000,
+  // API base URL for delivery operations
+  API_BASE_URL: process.env.AEP_CORE_API || 'http://localhost:8002'
 } as const;
 
 // Sanitize text for display in user dialogs
@@ -140,7 +142,7 @@ export function activate(context: vscode.ExtensionContext) {
                 dry_run: false
               };
 
-              const response = await fetch(`${process.env.AEP_CORE_API || 'http://localhost:8002'}/api/deliver/github/draft-pr`, {
+              const response = await fetch(`${CONFIG.API_BASE_URL}/api/deliver/github/draft-pr`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -195,7 +197,7 @@ export function activate(context: vscode.ExtensionContext) {
                 dry_run: false
               };
 
-              const response = await fetch(`${process.env.AEP_CORE_API || 'http://localhost:8002'}/api/deliver/jira/comment`, {
+              const response = await fetch(`${CONFIG.API_BASE_URL}/api/deliver/jira/comment`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -439,7 +441,9 @@ function html(): string {
         }
         if (type==='plan.proposed') {
           window.__plan = payload;
-          const list = payload.items.map(i=>`<li><code>${escapeHtml(i.kind)}</code> — ${escapeHtml(i.desc)}</li>`).join('');
+          const list = payload.items.map(i => 
+            '<li><code>' + escapeHtml(i.kind) + '</code> — ' + escapeHtml(i.desc) + '</li>'
+          ).join('');
           log('<b>Plan Proposed</b><ul>'+list+'</ul><div class="row"><button class="btn primary" onclick="approve()">Approve & Run</button></div>');
           
           // Add delivery actions section

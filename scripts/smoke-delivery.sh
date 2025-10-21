@@ -89,9 +89,13 @@ echo
 
 # Test audit log entries
 echo "📊 [SMOKE] Checking audit log entries..."
-AUDIT_RESPONSE=$(curl -sf "$CORE/metrics" | grep -E 'aep_audit|delivery' || echo "No audit metrics found")
-echo "📈 Audit metrics (if available):"
-echo "$AUDIT_RESPONSE"
+AUDIT_RESPONSE=$(curl -sf "$CORE/api/audit" -H "X-Org-Id: $ORG_ID" || echo "No audit log entries found")
+echo "📈 Audit log entries (if available):"
+if [ "$AUDIT_RESPONSE" != "No audit log entries found" ]; then
+    echo "$AUDIT_RESPONSE" | jq . || echo "$AUDIT_RESPONSE"
+else
+    echo "$AUDIT_RESPONSE"
+fi
 echo
 
 # Test error handling - invalid repo

@@ -34,7 +34,7 @@ class GitHubWriteService:
     def _format_pr_title(self, title: str, ticket_key: Optional[str] = None) -> str:
         """Format PR title with optional ticket linking"""
         if ticket_key and ticket_key not in title:
-            return f"{title} (#{ticket_key})"
+            return f"{title} ({ticket_key})"
         return title
     
     def _format_pr_body(self, body: str, ticket_key: Optional[str] = None) -> str:

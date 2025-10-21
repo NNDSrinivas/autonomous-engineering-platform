@@ -7,8 +7,7 @@
     "vscode": "^1.84.0"
   },
   "activationEvents": [
-    "onStartupFinished",
-    "onCommand:aep.openPanel"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {

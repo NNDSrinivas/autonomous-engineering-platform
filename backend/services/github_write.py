@@ -5,8 +5,6 @@ GitHub write service for creating draft PRs and managing repository operations
 import logging
 from typing import Optional, Dict, Any
 import httpx
-from sqlalchemy.orm import Session
-from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 

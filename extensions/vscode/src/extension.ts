@@ -434,7 +434,7 @@ function html(): string {
         const {type, payload} = ev.data;
         if (type==='message') {
           const items = (payload.tasks||[]).map(renderTaskItem).join('') || '<li><small>No tasks found.</small></li>';
-          log(\`<b>\${escapeHtml(payload.text)}</b><ul>\${items}</ul>\`);
+          log('<b>' + escapeHtml(payload.text) + '</b><ul>' + items + '</ul>');
         }
         if (type==='context.pack') {
           log('<b>Context Pack</b><pre>'+escapeHtml(JSON.stringify(payload,null,2))+'</pre>');
@@ -447,13 +447,11 @@ function html(): string {
           log('<b>Plan Proposed</b><ul>'+list+'</ul><div class="row"><button class="btn primary" onclick="approve()">Approve & Run</button></div>');
           
           // Add delivery actions section
-          log(`
-            <b>Delivery Actions</b>
-            <div class="row">
-              <button class="btn" onclick="draftPR()">📝 Draft PR</button>
-              <button class="btn" onclick="jiraComment()">💬 JIRA Comment</button>
-            </div>
-          `);
+          log('<b>Delivery Actions</b>' +
+            '<div class="row">' +
+              '<button class="btn" onclick="draftPR()">📝 Draft PR</button>' +
+              '<button class="btn" onclick="jiraComment()">💬 JIRA Comment</button>' +
+            '</div>');
         }
         if (type==='plan.results') {
           log('<b>Plan Results</b><pre>'+escapeHtml(JSON.stringify(payload,null,2))+'</pre>');
@@ -463,16 +461,16 @@ function html(): string {
           if (status === 'success') {
             if (kind === 'draftPR') {
               const existed = data.existed ? ' (already existed)' : '';
-              const url = data.url ? ` <a href="${data.url}" target="_blank">Open PR #${data.number}</a>` : '';
-              log(`<b>✅ Draft PR Created${existed}</b>${url}`);
+              const url = data.url ? ' <a href="' + escapeHtml(data.url) + '" target="_blank">Open PR #' + escapeHtml(data.number) + '</a>' : '';
+              log('<b>✅ Draft PR Created' + existed + '</b>' + url);
             } else if (kind === 'jiraComment') {
-              const url = data.url ? ` <a href="${data.url}" target="_blank">View Issue</a>` : '';
-              log(`<b>✅ JIRA Comment Posted</b>${url}`);
+              const url = data.url ? ' <a href="' + escapeHtml(data.url) + '" target="_blank">View Issue</a>' : '';
+              log('<b>✅ JIRA Comment Posted</b>' + url);
             }
           } else if (status === 'cancelled') {
-            log(`<b>❌ ${kind} Cancelled</b><p>Action was cancelled by user.</p>`);
+            log('<b>❌ ' + escapeHtml(kind) + ' Cancelled</b><p>Action was cancelled by user.</p>');
           } else if (status === 'error') {
-            log(`<b>❌ ${kind} Failed</b><p>Error: ${escapeHtml(error || 'Unknown error')}</p>`);
+            log('<b>❌ ' + escapeHtml(kind) + ' Failed</b><p>Error: ' + escapeHtml(error || 'Unknown error') + '</p>');
           }
         }
       });

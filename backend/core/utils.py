@@ -47,8 +47,8 @@ def generate_prompt_hash(prompt: str, context: Dict[str, Any] = None) -> str:
     return hashlib.sha256(combined_input.encode("utf-8")).hexdigest()
 
 
-def _is_valid_start_end_char(char: str) -> bool:
-    """Check if character is valid for start/end of header value (alphanumeric or underscore)."""
+def _is_valid_header_char(char: str) -> bool:
+    """Check if character is valid for header value (alphanumeric or underscore)."""
     return char.isalnum() or char == "_"
 
 
@@ -77,11 +77,11 @@ def validate_header_value(
 
     # Simple validation using string methods for better maintainability
     # 1. Must start with valid character (alphanumeric or underscore)
-    if not _is_valid_start_end_char(value[0]):
+    if not _is_valid_header_char(value[0]):
         return None
 
     # 2. Must end with valid character (alphanumeric or underscore)
-    if not _is_valid_start_end_char(value[-1]):
+    if not _is_valid_header_char(value[-1]):
         return None
 
     # 3. Only allow specific characters

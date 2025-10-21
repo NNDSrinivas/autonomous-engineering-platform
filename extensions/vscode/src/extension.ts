@@ -115,6 +115,119 @@ export function activate(context: vscode.ExtensionContext) {
             send('plan.results', { results });
             break;
           }
+          case 'deliver.draftPR': {
+            // Show consent modal for draft PR creation
+            const confirmMessage = `Create Draft PR?\n\nRepo: ${msg.repo}\nBase: ${msg.base} → Head: ${msg.head}\nTitle: ${sanitizeDialogText(msg.title)}`;
+            const consent = await vscode.window.showInformationMessage(
+              confirmMessage, 
+              { modal: true }, 
+              'Create PR'
+            );
+            
+            if (consent !== 'Create PR') {
+              send('deliver.result', { kind: 'draftPR', status: 'cancelled' });
+              break;
+            }
+
+            try {
+              const payload = {
+                repo_full_name: msg.repo,
+                base: msg.base,
+                head: msg.head,
+                title: msg.title,
+                body: msg.body,
+                ticket_key: msg.ticket || null,
+                dry_run: false
+              };
+
+              const response = await fetch(`${process.env.AEP_CORE_API || 'http://localhost:8002'}/api/deliver/github/draft-pr`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Org-Id': 'default'
+                },
+                body: JSON.stringify(payload)
+              });
+
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              }
+
+              const result = await response.json();
+              send('deliver.result', { kind: 'draftPR', status: 'success', data: result });
+              
+              // Show success message with link
+              if (result.url) {
+                const action = await vscode.window.showInformationMessage(
+                  `Draft PR ${result.existed ? 'found' : 'created'} successfully!`,
+                  'Open PR'
+                );
+                if (action === 'Open PR') {
+                  vscode.env.openExternal(vscode.Uri.parse(result.url));
+                }
+              }
+              
+            } catch (error: any) {
+              send('deliver.result', { kind: 'draftPR', status: 'error', error: error.message });
+              vscode.window.showErrorMessage(`Failed to create PR: ${error.message}`);
+            }
+            break;
+          }
+          case 'deliver.jiraComment': {
+            // Show consent modal for JIRA comment
+            const confirmMessage = `Post JIRA Comment?\n\nIssue: ${msg.issueKey}\nComment: ${sanitizeDialogText(msg.comment)}${msg.transition ? `\nTransition: ${msg.transition}` : ''}`;
+            const consent = await vscode.window.showInformationMessage(
+              confirmMessage,
+              { modal: true },
+              'Post Comment'
+            );
+            
+            if (consent !== 'Post Comment') {
+              send('deliver.result', { kind: 'jiraComment', status: 'cancelled' });
+              break;
+            }
+
+            try {
+              const payload = {
+                issue_key: msg.issueKey,
+                comment: msg.comment,
+                transition: msg.transition || null,
+                dry_run: false
+              };
+
+              const response = await fetch(`${process.env.AEP_CORE_API || 'http://localhost:8002'}/api/deliver/jira/comment`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Org-Id': 'default'
+                },
+                body: JSON.stringify(payload)
+              });
+
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              }
+
+              const result = await response.json();
+              send('deliver.result', { kind: 'jiraComment', status: 'success', data: result });
+              
+              // Show success message with link
+              if (result.url) {
+                const action = await vscode.window.showInformationMessage(
+                  'JIRA comment posted successfully!',
+                  'Open Issue'
+                );
+                if (action === 'Open Issue') {
+                  vscode.env.openExternal(vscode.Uri.parse(result.url));
+                }
+              }
+              
+            } catch (error: any) {
+              send('deliver.result', { kind: 'jiraComment', status: 'error', error: error.message });
+              vscode.window.showErrorMessage(`Failed to post comment: ${error.message}`);
+            }
+            break;
+          }
         }
       } catch (e:any) {
         vscode.window.showErrorMessage(`AEP error: ${e?.message || e}`);
@@ -326,16 +439,89 @@ function html(): string {
         }
         if (type==='plan.proposed') {
           window.__plan = payload;
-          const list = payload.items.map(i=>\`<li><code>\${escapeHtml(i.kind)}</code> — \${escapeHtml(i.desc)}</li>\`).join('');
+          const list = payload.items.map(i=>`<li><code>${escapeHtml(i.kind)}</code> — ${escapeHtml(i.desc)}</li>`).join('');
           log('<b>Plan Proposed</b><ul>'+list+'</ul><div class="row"><button class="btn primary" onclick="approve()">Approve & Run</button></div>');
+          
+          // Add delivery actions section
+          log(`
+            <b>Delivery Actions</b>
+            <div class="row">
+              <button class="btn" onclick="draftPR()">📝 Draft PR</button>
+              <button class="btn" onclick="jiraComment()">💬 JIRA Comment</button>
+            </div>
+          `);
         }
         if (type==='plan.results') {
           log('<b>Plan Results</b><pre>'+escapeHtml(JSON.stringify(payload,null,2))+'</pre>');
+        }
+        if (type==='deliver.result') {
+          const { kind, status, data, error } = payload;
+          if (status === 'success') {
+            if (kind === 'draftPR') {
+              const existed = data.existed ? ' (already existed)' : '';
+              const url = data.url ? ` <a href="${data.url}" target="_blank">Open PR #${data.number}</a>` : '';
+              log(`<b>✅ Draft PR Created${existed}</b>${url}`);
+            } else if (kind === 'jiraComment') {
+              const url = data.url ? ` <a href="${data.url}" target="_blank">View Issue</a>` : '';
+              log(`<b>✅ JIRA Comment Posted</b>${url}`);
+            }
+          } else if (status === 'cancelled') {
+            log(`<b>❌ ${kind} Cancelled</b><p>Action was cancelled by user.</p>`);
+          } else if (status === 'error') {
+            log(`<b>❌ ${kind} Failed</b><p>Error: ${escapeHtml(error || 'Unknown error')}</p>`);
+          }
         }
       });
 
       function approve(){ vscode.postMessage({type:'plan.approve', plan: window.__plan}); }
       function pick(key){ vscode.postMessage({type:'ticket.select', key}); }
+      
+      function draftPR() {
+        const repo = prompt("Repository (owner/repo):");
+        if (!repo) return;
+        
+        const base = prompt("Base branch:", "main");
+        if (!base) return;
+        
+        const head = prompt("Head branch:", "feat/new-feature");
+        if (!head) return;
+        
+        const title = prompt("PR title:");
+        if (!title) return;
+        
+        const body = prompt("PR description (markdown):", "## Summary\\n\\nImplements new functionality based on plan.\\n\\n## Changes\\n\\n- Added new features\\n- Updated documentation");
+        if (body === null) return; // Allow empty body
+        
+        const ticket = prompt("Ticket key (optional, e.g., AEP-27):", "");
+        
+        vscode.postMessage({
+          type: 'deliver.draftPR',
+          repo: repo.trim(),
+          base: base.trim(),
+          head: head.trim(),
+          title: title.trim(),
+          body: body.trim(),
+          ticket: ticket ? ticket.trim() : null
+        });
+      }
+      
+      function jiraComment() {
+        const issueKey = prompt("JIRA Issue key (e.g., AEP-27):");
+        if (!issueKey) return;
+        
+        const comment = prompt("Comment text:");
+        if (!comment) return;
+        
+        const transition = prompt("Status transition (optional, e.g., 'In Progress', 'Done'):", "");
+        
+        vscode.postMessage({
+          type: 'deliver.jiraComment',
+          issueKey: issueKey.trim(),
+          comment: comment.trim(),
+          transition: transition ? transition.trim() : null
+        });
+      }
+      
       vscode.postMessage({type:'session.open'});
     </script>
   </body></html>`;

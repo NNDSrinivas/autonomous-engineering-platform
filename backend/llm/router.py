@@ -2,11 +2,29 @@ import yaml
 import time
 import os
 import logging
-from typing import Dict, List, Any, Tuple
+import re
+import unicodedata
+from dataclasses import dataclass, replace
+from typing import Dict, List, Any, Tuple, Optional
+from sqlalchemy.orm import Session
 from .providers.openai_provider import OpenAIProvider
 from .providers.anthropic_provider import AnthropicProvider
+from .audit import get_audit_service, AuditLogEntry
+from ..core.utils import generate_prompt_hash, format_cost_usd
+from ..core.validation_helpers import validate_telemetry_value
+from ..telemetry.metrics import LLM_CALLS, LLM_TOKENS, LLM_COST, LLM_LATENCY
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AuditContext:
+    """Encapsulates audit logging parameters for LLM calls."""
+
+    db: Optional[Session] = None
+    prompt_hash: Optional[str] = None
+    org_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class ModelRouter:
@@ -24,8 +42,6 @@ class ModelRouter:
         def sanitize_value(value, max_len=self.MAX_STRING_LENGTH):
             if isinstance(value, str):
                 # Remove potentially dangerous characters and normalize Unicode
-                import unicodedata
-                import re
 
                 # Normalize Unicode to prevent normalization attacks
                 sanitized_str = unicodedata.normalize("NFKC", value)
@@ -42,11 +58,8 @@ class ModelRouter:
                     if unicodedata.category(char) not in ["Cc", "Cf", "Co", "Cs"]
                 )
 
-                return (
-                    sanitized_str[:max_len]
-                    if len(sanitized_str) > max_len
-                    else sanitized_str
-                )
+                # Truncate to max_len to prevent excessively long strings (security limit)
+                return sanitized_str[:max_len]
             elif isinstance(value, dict):
                 return {k: sanitize_value(v) for k, v in value.items()}
             elif isinstance(value, list):
@@ -120,15 +133,25 @@ class ModelRouter:
         }
 
     def call(
-        self, phase: str, prompt: str, context: Dict[str, Any]
+        self,
+        phase: str,
+        prompt: str,
+        context: Dict[str, Any],
+        audit_context: Optional[AuditContext] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Route LLM call to appropriate provider with fallback support.
+        Records telemetry metrics and audit logs for each attempt.
 
         Args:
             phase: The phase/task type (plan, code, review, etc.)
             prompt: The system prompt
             context: Context data to send to the model
+            audit_context: Optional AuditContext object containing audit information such as
+                - db: Database session for audit logging
+                - prompt_hash: SHA256 hash of prompt+context for audit
+                - org_id: Organization ID for multi-tenant support
+                - user_id: User ID for audit tracking
 
         Returns:
             Tuple of (response_text, telemetry_data)
@@ -140,6 +163,15 @@ class ModelRouter:
         fallback_models = self.fallbacks.get(phase, [])
         candidates = [model_name] + fallback_models
 
+        # Initialize audit context if not provided
+        if audit_context is None:
+            audit_context = AuditContext()
+
+        # Ensure prompt hash is generated
+        if audit_context.prompt_hash is None:
+            generated_hash = generate_prompt_hash(prompt, context)
+            audit_context = replace(audit_context, prompt_hash=generated_hash)
+
         last_error = None
 
         for candidate in candidates:
@@ -149,39 +181,96 @@ class ModelRouter:
                 continue
 
             start_time = time.time()
+            status = "ok"
+            tokens = 0
+            cost = 0.0
+            error_message = None
 
             try:
                 logger.info(f"Calling model {candidate} for phase {phase}")
                 sanitized_context = self._sanitize_context(context)
                 result = provider.complete(prompt, sanitized_context)
 
+                # Safely convert telemetry values with validation using centralized helpers
+                tokens_raw = result.get("tokens", 0)
+                cost_raw = result.get("cost_usd", 0.0)
+
+                # Use centralized validation for consistent error handling
+                tokens = validate_telemetry_value(tokens_raw, int)
+                cost = validate_telemetry_value(cost_raw, float)
+
+                # Calculate latency for successful call
                 latency_ms = (time.time() - start_time) * 1000
+
+                # Record Prometheus metrics
+                self._record_metrics(phase, candidate, status, latency_ms, tokens, cost)
+
+                # Record audit log (transaction managed by caller)
+                if audit_context.db is not None:
+                    audit_entry = AuditLogEntry(
+                        phase=phase,
+                        model=candidate,
+                        status=status,
+                        prompt_hash=audit_context.prompt_hash,
+                        tokens=tokens,
+                        cost_usd=cost,
+                        latency_ms=int(latency_ms),
+                        org_id=audit_context.org_id,
+                        user_id=audit_context.user_id,
+                    )
+                    get_audit_service().log_success(audit_context.db, audit_entry)
 
                 # Build telemetry data
                 telemetry = {
                     "phase": phase,
                     "model": candidate,
-                    "tokens": result.get("tokens", 0),
+                    "tokens": tokens,
                     "input_tokens": result.get("input_tokens", 0),
                     "output_tokens": result.get("output_tokens", 0),
-                    "cost_usd": result.get("cost_usd", 0),
-                    "latency_ms": round(latency_ms, 2),
+                    "cost_usd": cost,
+                    "latency_ms": int(latency_ms),
                     "timestamp": time.time(),
                 }
 
                 # Track usage statistics
                 self._update_usage_stats(candidate, telemetry)
 
+                # Format log message using telemetry values for consistency
+                formatted_cost = format_cost_usd(telemetry["cost_usd"])
                 logger.info(
                     f"Successfully completed {phase} with {candidate}: "
-                    f"{telemetry['tokens']} tokens, ${telemetry['cost_usd']:.6f}, "
-                    f"{telemetry['latency_ms']:.0f}ms"
+                    f"{telemetry['tokens']} tokens, {formatted_cost}, {telemetry['latency_ms']}ms"
                 )
 
                 return result["text"], telemetry
 
             except Exception as e:
+                status = "error"
+                error_message = str(e)
                 last_error = e
+
+                # Calculate latency for failed call
+                latency_ms = (time.time() - start_time) * 1000
+
+                # Record error metrics
+                self._record_metrics(phase, candidate, status, latency_ms)
+
+                # Record error audit log
+                if audit_context.db is not None:
+                    audit_entry = AuditLogEntry(
+                        phase=phase,
+                        model=candidate,
+                        status=status,
+                        prompt_hash=audit_context.prompt_hash,
+                        tokens=0,
+                        cost_usd=0.0,
+                        latency_ms=int(latency_ms),
+                        org_id=audit_context.org_id,
+                        user_id=audit_context.user_id,
+                        error_message=error_message,
+                    )
+                    get_audit_service().log_error(audit_context.db, audit_entry)
+
                 logger.warning(f"Model {candidate} failed for phase {phase}: {e}")
                 continue
 
@@ -189,6 +278,70 @@ class ModelRouter:
         raise RuntimeError(
             f"All models failed for phase {phase}. Last error: {last_error}"
         )
+
+    def _validate_metrics_params(
+        self,
+        phase: str,
+        candidate: str,
+        status: str,
+        latency_ms: float,
+        tokens: int = 0,
+        cost: float = 0.0,
+    ) -> Tuple[str, str, str, float, int, float]:
+        """Validate and sanitize metrics parameters once for efficiency."""
+        # Use centralized validation helpers
+        validated_phase = validate_telemetry_value(phase, str, "unknown")
+        validated_candidate = validate_telemetry_value(candidate, str, "unknown")
+        validated_status = validate_telemetry_value(status, str, "unknown")
+        validated_latency = validate_telemetry_value(latency_ms, float)
+        validated_tokens = validate_telemetry_value(tokens, int)
+        validated_cost = validate_telemetry_value(cost, float)
+
+        # Additional string validation
+        if not validated_phase.strip():
+            validated_phase = "unknown"
+        if not validated_candidate.strip():
+            validated_candidate = "unknown"
+        if not validated_status.strip():
+            validated_status = "unknown"
+
+        return (
+            validated_phase,
+            validated_candidate,
+            validated_status,
+            validated_latency,
+            validated_tokens,
+            validated_cost,
+        )
+
+    def _record_metrics(
+        self,
+        phase: str,
+        candidate: str,
+        status: str,
+        latency_ms: float,
+        tokens: int = 0,
+        cost: float = 0.0,
+    ) -> None:
+        """
+        Record Prometheus metrics for LLM calls.
+        Parameters are validated for safety before recording.
+        """
+        try:
+            # Validate parameters once for efficiency
+            phase, candidate, status, latency_ms, tokens, cost = (
+                self._validate_metrics_params(
+                    phase, candidate, status, latency_ms, tokens, cost
+                )
+            )
+
+            LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()
+            LLM_LATENCY.labels(phase=phase, model=candidate).observe(latency_ms)
+            if status == "ok":
+                LLM_TOKENS.labels(phase=phase, model=candidate).inc(tokens)
+                LLM_COST.labels(phase=phase, model=candidate).inc(cost)
+        except Exception as metrics_exc:
+            logger.warning(f"Failed to record LLM metrics: {metrics_exc}")
 
     def _update_usage_stats(self, model: str, telemetry: Dict[str, Any]) -> None:
         """Update usage statistics for the model."""

@@ -4,7 +4,7 @@ JIRA write service for posting comments and managing issue transitions
 
 import logging
 import base64
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 import httpx
 
 logger = logging.getLogger(__name__)

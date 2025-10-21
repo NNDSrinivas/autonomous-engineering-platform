@@ -85,7 +85,7 @@ class Settings(BaseSettings):
         # Check for basic complexity (at least mix of letters and numbers/symbols)
         has_letters = any(c.isalpha() for c in secret)
         has_numbers = any(c.isdigit() for c in secret)
-        # Use module-level constant for O(1) lookup performance without repeated set creation
+        # Use module-level set to avoid repeated set creation; per-character lookup is O(1), but overall check is O(n)
         has_symbols = any(c in PUNCTUATION_SET for c in secret)
 
         if not (has_letters and (has_numbers or has_symbols)):

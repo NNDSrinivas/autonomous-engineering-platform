@@ -434,7 +434,7 @@ function html(): string {
         const {type, payload} = ev.data;
         if (type==='message') {
           const items = (payload.tasks||[]).map(renderTaskItem).join('') || '<li><small>No tasks found.</small></li>';
-          log('<b>' + escapeHtml(payload.text) + '</b><ul>' + items + '</ul>');
+          log(`<b>${escapeHtml(payload.text)}</b><ul>${items}</ul>`);
         }
         if (type==='context.pack') {
           log('<b>Context Pack</b><pre>'+escapeHtml(JSON.stringify(payload,null,2))+'</pre>');
@@ -442,7 +442,7 @@ function html(): string {
         if (type==='plan.proposed') {
           window.__plan = payload;
           const list = payload.items.map(i => 
-            '<li><code>' + escapeHtml(i.kind) + '</code> — ' + escapeHtml(i.desc) + '</li>'
+            `<li><code>${escapeHtml(i.kind)}</code> — ${escapeHtml(i.desc)}</li>`
           ).join('');
           log('<b>Plan Proposed</b><ul>'+list+'</ul><div class="row"><button class="btn primary" onclick="approve()">Approve & Run</button></div>');
           

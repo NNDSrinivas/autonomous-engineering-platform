@@ -107,7 +107,7 @@ class GitHubWriteService:
                     f"/repos/{repo_full_name}/pulls",
                     params={
                         "state": "open",
-                        "head": f"{repo_full_name.split('/')[0]}:{head_branch}",
+                        "head": head_branch,  # Use just branch name for same-repo PRs
                         "base": base
                     }
                 )

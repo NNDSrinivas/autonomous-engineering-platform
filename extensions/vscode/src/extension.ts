@@ -127,7 +127,12 @@ export function activate(context: vscode.ExtensionContext) {
           }
           case 'deliver.draftPR': {
             // Show consent modal for draft PR creation
-            const confirmMessage = `Create Draft PR?\n\nRepo: ${sanitizeDialogText(msg.repo)}\nBase: ${sanitizeDialogText(msg.base)} → Head: ${sanitizeDialogText(msg.head)}\nTitle: ${sanitizeDialogText(msg.title)}`;
+            // Limit individual fields to prevent excessive dialog length
+            const repoText = sanitizeDialogText(msg.repo).slice(0, 50);
+            const baseText = sanitizeDialogText(msg.base).slice(0, 30);
+            const headText = sanitizeDialogText(msg.head).slice(0, 30);
+            const titleText = sanitizeDialogText(msg.title).slice(0, 80);
+            const confirmMessage = `Create Draft PR?\n\nRepo: ${repoText}\nBase: ${baseText} → Head: ${headText}\nTitle: ${titleText}`;
             const consent = await vscode.window.showInformationMessage(
               confirmMessage, 
               { modal: true }, 
@@ -150,11 +155,13 @@ export function activate(context: vscode.ExtensionContext) {
                 dry_run: false
               };
 
+              // Read organization ID from VSCode configuration, fallback to 'default'
+              const orgId = vscode.workspace.getConfiguration('agent').get('orgId', 'default');
               const response = await fetch(`${CONFIG.API_BASE_URL}/api/deliver/github/draft-pr`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'X-Org-Id': 'default'
+                  'X-Org-Id': orgId
                 },
                 body: JSON.stringify(payload)
               });
@@ -206,11 +213,13 @@ export function activate(context: vscode.ExtensionContext) {
                 dry_run: false
               };
 
+              // Read organization ID from VSCode configuration, fallback to 'default'
+              const orgId = vscode.workspace.getConfiguration('agent').get('orgId', 'default');
               const response = await fetch(`${CONFIG.API_BASE_URL}/api/deliver/jira/comment`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'X-Org-Id': 'default'
+                  'X-Org-Id': orgId
                 },
                 body: JSON.stringify(payload)
               });

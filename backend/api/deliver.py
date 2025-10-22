@@ -96,6 +96,15 @@ def audit_delivery_action(
 ) -> None:
     """Record delivery action in audit log"""
     try:
+        # Check if audit_log table exists before attempting insert
+        table_check = db.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'")
+        ).fetchone()
+        
+        if not table_check:
+            logger.warning("Audit log table does not exist, skipping audit logging")
+            return
+            
         db.execute(
             text("""
                 INSERT INTO audit_log (service, method, path, status, org_id, details, created_at) 

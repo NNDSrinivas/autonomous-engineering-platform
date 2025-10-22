@@ -18,10 +18,14 @@ jobs:
         env:
           SECRET_KEY: test-secret-for-ci
           JWT_SECRET: test-jwt-secret-for-ci
+          DATABASE_URL: sqlite:///./test.db
         run: |
-          API_PORT=8002 python -m backend.api.main > /dev/null 2>&1 &
+          # Initialize test database with migrations
+          alembic upgrade head || echo "Migration failed or not needed"
+          
+          API_PORT=8002 python -m backend.api.main > /tmp/main.log 2>&1 &
           MAIN_PID=$!
-          python -m backend.api.realtime > /dev/null 2>&1 &
+          python -m backend.api.realtime > /tmp/realtime.log 2>&1 &
           REALTIME_PID=$!
           
           # Wait for servers to start with retries
@@ -34,6 +38,10 @@ jobs:
             fi
             if [ $i -eq 10 ]; then
               echo "Servers failed to start"
+              echo "Main API logs:"
+              cat /tmp/main.log || echo "No main logs"
+              echo "Realtime API logs:"
+              cat /tmp/realtime.log || echo "No realtime logs"
               kill $MAIN_PID $REALTIME_PID 2>/dev/null || true
               exit 1
             fi

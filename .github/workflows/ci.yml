@@ -19,8 +19,27 @@ jobs:
           SECRET_KEY: test-secret-for-ci
           JWT_SECRET: test-jwt-secret-for-ci
         run: |
-          API_PORT=8002 python -m backend.api.main & sleep 2
-          python -m backend.api.realtime & sleep 2
+          API_PORT=8002 python -m backend.api.main > /dev/null 2>&1 &
+          MAIN_PID=$!
+          python -m backend.api.realtime > /dev/null 2>&1 &
+          REALTIME_PID=$!
+          
+          # Wait for servers to start with retries
+          for i in {1..10}; do
+            sleep 1
+            if curl -f http://localhost:8002/health > /dev/null 2>&1 && \
+               curl -f http://localhost:8001/health > /dev/null 2>&1; then
+              echo "Servers started successfully"
+              break
+            fi
+            if [ $i -eq 10 ]; then
+              echo "Servers failed to start"
+              kill $MAIN_PID $REALTIME_PID 2>/dev/null || true
+              exit 1
+            fi
+          done
+          
+          # Run health check tests
           python - <<'PY'
           import requests, sys
           for port in (8002,8001):
@@ -28,3 +47,6 @@ jobs:
               assert r.status_code==200
           print("health ok")
           PY
+          
+          # Cleanup
+          kill $MAIN_PID $REALTIME_PID 2>/dev/null || true

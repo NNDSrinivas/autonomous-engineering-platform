@@ -30,7 +30,7 @@ def get_github_credentials(db: Session, org_id: str) -> str:
     try:
         result = db.execute(
             text("""
-                SELECT access_token, repo_full_name 
+                SELECT access_token 
                 FROM gh_connection 
                 WHERE org_id = :org_id 
                 ORDER BY created_at DESC 

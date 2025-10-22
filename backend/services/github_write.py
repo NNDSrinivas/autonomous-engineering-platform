@@ -9,9 +9,9 @@ from contextlib import asynccontextmanager
 import httpx
 
 # GitHub username/organization validation pattern
-# Enforces: start/end with alphanumeric, hyphens only in middle, max 39 chars total
-# The {0,37} accounts for GitHub's 39 char max minus 2 for mandatory start/end chars
-GITHUB_OWNER_PATTERN = r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$'
+# Allows: alphanumeric at start, hyphens anywhere (including start/end for legacy), max 39 chars total
+# See: https://github.com/shinnn/github-username-regex and GitHub docs for details
+GITHUB_OWNER_PATTERN = r'^[a-zA-Z0-9][a-zA-Z0-9-]{0,38}$'
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +47,7 @@ class GitHubWriteService:
             # Validate against GitHub username/org naming rules
             if re.fullmatch(GITHUB_OWNER_PATTERN, owner_candidate):
                 return branch_candidate
-            else:
-                return head
-        else:
-            return head
+        return head
     
     @asynccontextmanager
     async def _client(self):

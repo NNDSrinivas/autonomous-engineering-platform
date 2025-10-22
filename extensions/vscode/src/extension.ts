@@ -504,7 +504,11 @@ function html(): string {
        *   - A string (empty or non-empty) for valid input based on requirements.
        * This two-state return allows callers to distinguish between cancellation and valid input.
        */
-      function promptWithCancelCheck(message, defaultValue, required = false) {
+      function promptWithCancelCheck(
+        message: string,
+        defaultValue: string,
+        required: boolean = false
+      ): string | null {
         const result = prompt(message, defaultValue);
         if (result === null) return null; // User cancelled
         if (required && !result.trim()) return null; // Required field is empty
@@ -532,7 +536,7 @@ Implements new functionality based on plan.
 
 - Added new features
 - Updated documentation\`, false);
-        if (body === null) return; // Return on cancellation; body is optional, so empty values are allowed
+        if (body === null) return; // Return on cancellation; empty strings are allowed since body is optional
         
         const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "", false);
         if (ticket === null) return;
@@ -556,7 +560,7 @@ Implements new functionality based on plan.
         if (comment === null) return;
         
         const transition = promptWithCancelCheck("Status transition (optional, e.g., 'In Progress', 'Done'):", "", false);
-        if (transition === null) return; // Return on cancellation; empty values allowed for optional fields
+        if (transition === null) return; // Return on cancellation; empty strings are allowed since transition is optional
         
         vscode.postMessage({
           type: 'deliver.jiraComment',

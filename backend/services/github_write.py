@@ -131,7 +131,6 @@ class GitHubWriteService:
                 # Check for existing PR with same head/base
                 logger.info(f"Checking for existing PR: {head} -> {base}")
                 
-                # Extract branch name handling cross-repo format and branch names with colons
                 
                 response = await client.get(
                     f"/repos/{repo_full_name}/pulls",

@@ -235,16 +235,17 @@ async def add_jira_comment(
     Can optionally transition the issue status.
     
     Returns appropriate HTTP status codes following REST conventions:
-    - 200 OK: Success or partial success (comment posted; check status field for details)
+    - 200 OK: Complete success (comment and transition both succeeded)
+    - 207 Multi-Status: Partial success (comment succeeded but transition failed)
     - 500 Internal Server Error: Complete failure
     
     The response includes a 'status' field for programmatic handling:
     - status: 'success' - Both comment and transition completed successfully (HTTP 200)
-    - status: 'partial_success' - Comment succeeded but transition failed (HTTP 200)
-    - status: 'error' - Complete failure (only in HTTP 500 responses, never in HTTP 200 responses)
+    - status: 'partial_success' - Comment succeeded but transition failed (HTTP 207)
+    - status: 'error' - Complete failure (only in HTTP 500 responses, never in success responses)
     
     This design prioritizes comment delivery over transition consistency while 
-    using standard REST patterns (HTTP 200 + detailed status field).
+    following proper REST semantics (HTTP 207 for mixed operation outcomes).
     """
     # Require organization ID from headers
     org_id = http_request.headers.get("X-Org-Id")
@@ -302,7 +303,7 @@ async def add_jira_comment(
             # Check if transition failed while comment succeeded
             if transition_result and "error" in transition_result:
                 operation_status = "partial_success"
-                http_status = 200  # Use 200 OK for partial success; details in response body
+                http_status = 207  # Use 207 Multi-Status for partial success; details in response body
         
         # Prepare response
         response_data = {

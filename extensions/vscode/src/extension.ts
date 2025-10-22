@@ -536,7 +536,11 @@ Implements new functionality based on plan.
 
 - Added new features
 - Updated documentation\`, false);
-        if (body === null) return; // Return on cancellation; empty strings allowed by UI (GitHub API accepts empty body for drafts)
+        if (body === null) return; // Return on cancellation
+        if (!body.trim()) {
+          const proceed = confirm("PR description is empty. Are you sure you want to create a draft PR without a description?");
+          if (!proceed) return;
+        }
         
         const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "", false);
         if (ticket === null) return;

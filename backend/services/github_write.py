@@ -37,7 +37,7 @@ class GitHubWriteService:
         Returns:
             The extracted branch name
         """
-        if ':' in head:
+        if head.count(':') == 1:
             owner_candidate, branch_candidate = head.split(':', 1)
             # GitHub owner/org names: alphanumeric, hyphens, underscores, max 39 chars
             if re.fullmatch(r"[A-Za-z0-9_-]{1,39}", owner_candidate):

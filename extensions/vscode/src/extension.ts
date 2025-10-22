@@ -20,6 +20,14 @@ function sanitizeDialogText(text: string): string {
   return text.slice(0, CONFIG.TEXT_SANITIZATION_LIMIT).replace(/[\r\n\t]/g, ' ').trim();
 }
 
+// Preview first N words of text with ellipsis if truncated
+function previewFirstNWords(text: string, n: number): string {
+  if (!text) return '';
+  const words = text.split(/\s+/);
+  if (words.length <= n) return text;
+  return words.slice(0, n).join(' ') + '...';
+}
+
 // Type alias for typeof operator return values using const assertion
 const TYPEOF_RESULTS = ['string', 'number', 'boolean', 'object', 'undefined', 'function', 'symbol', 'bigint'] as const;
 type TypeOfResult = typeof TYPEOF_RESULTS[number];
@@ -177,13 +185,6 @@ export function activate(context: vscode.ExtensionContext) {
           }
           case 'deliver.jiraComment': {
             // Show consent modal for JIRA comment
-            function previewFirstNWords(text: string, n: number): string {
-              if (!text) return '';
-              const words = text.split(/\s+/);
-              if (words.length <= n) return text;
-              return words.slice(0, n).join(' ') + '...';
-            }
-            
             const commentPreview = previewFirstNWords(msg.comment, 30);
             const confirmMessage = `Post JIRA Comment?\n\nIssue: ${sanitizeDialogText(msg.issueKey)}\nComment: ${commentPreview}${msg.transition ? `\nTransition: ${sanitizeDialogText(msg.transition)}` : ''}`;
             const consent = await vscode.window.showInformationMessage(
@@ -466,7 +467,7 @@ function html(): string {
           const { kind, status, data, error } = payload;
           if (status === 'success') {
             if (kind === 'draftPR') {
-              const existed = data.existed ? ' (already existed)' : '';
+              const existed = data.existed ? ' (already exists)' : '';
               const url = data.url ? \` <a href="\${escapeHtml(data.url)}" target="_blank">Open PR #\${escapeHtml(data.number)}</a>\` : '';
               log(\`<b>✅ Draft PR Created\${existed}</b>\${url}\`);
             } else if (kind === 'jiraComment') {
@@ -523,7 +524,7 @@ Implements new functionality based on plan.
 
 - Added new features
 - Updated documentation\`, false);
-        if (body === null) return; // Return on cancellation; empty bodies are allowed even though this is a required field prompt
+        if (body === null) return; // Return on cancellation; body is optional, so empty values are allowed
         
         const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "", false);
         if (ticket === null) return;

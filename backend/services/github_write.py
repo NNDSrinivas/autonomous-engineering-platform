@@ -100,9 +100,15 @@ class GitHubWriteService:
                 # Check for existing PR with same head/base
                 logger.info(f"Checking for existing PR: {head} -> {base}")
                 
-                # Extract branch name from head.
-                # If head is in 'owner:branch' format (cross-repo PR), extract branch name after the first colon.
-                # Otherwise, treat the whole head as the branch name (to support branch names with colons).
+                # Extract branch name from head, handling complex edge cases:
+                # 1. Cross-repo PRs use format 'owner:branch' where owner is GitHub username/org
+                # 2. Branch names themselves may contain colons (e.g., 'feature:v1.2:hotfix')
+                # 3. Must distinguish between these cases to extract correct branch name
+                # 
+                # Strategy: If exactly one colon exists, validate if left side matches GitHub
+                # owner naming rules (alphanumeric, hyphens, underscores, max 39 chars).
+                # If valid owner format, treat as cross-repo and extract branch after colon.
+                # Otherwise, treat entire string as branch name to preserve colon-containing branches.
                 if head.count(':') == 1:
                     owner_candidate, branch_candidate = head.split(':', 1)
                     # GitHub owner/org names: alphanumeric, hyphens, underscores, max 39 chars

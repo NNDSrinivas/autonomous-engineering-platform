@@ -217,8 +217,10 @@ async def add_jira_comment(
     Supports dry-run mode for preview before execution.
     Can optionally transition the issue status.
     
-    Note: Returns 200 with partial success if comment succeeds but transition fails.
-    Check the 'transition_result' field for transition-specific errors.
+    Note: Returns 200 with explicit status indication for all scenarios:
+    - status: 'success' - Both comment and transition (if requested) completed successfully
+    - status: 'partial_success' - Comment succeeded but transition failed
+    - status: 'error' - Complete failure (returns 500 instead)
     This partial success pattern prioritizes comment delivery over transition consistency.
     """
     # Require organization ID from headers
@@ -266,11 +268,19 @@ async def add_jira_comment(
                 dry_run=True
             )
         
+        # Determine operation status
+        operation_status = "success"
+        if request.transition and not request.dry_run:
+            # Check if transition failed while comment succeeded
+            if transition_result and "error" in transition_result:
+                operation_status = "partial_success"
+        
         # Prepare response
         response_data = {
             "url": comment_result.get("url"),
             "preview": comment_result.get("preview"),
-            "transition_result": transition_result
+            "transition_result": transition_result,
+            "status": operation_status
         }
         
         # If dry-run and transition requested, merge previews

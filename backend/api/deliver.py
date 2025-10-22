@@ -219,6 +219,7 @@ async def add_jira_comment(
     
     Note: Returns 200 with partial success if comment succeeds but transition fails.
     Check the 'transition_result' field for transition-specific errors.
+    This partial success pattern prioritizes comment delivery over transition consistency.
     """
     # Require organization ID from headers
     org_id = http_request.headers.get("X-Org-Id")

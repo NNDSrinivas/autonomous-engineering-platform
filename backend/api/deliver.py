@@ -5,7 +5,7 @@ Delivery API endpoints for GitHub PR creation and JIRA integration
 import logging
 import json
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Body, HTTPException, Request
+from fastapi import APIRouter, Depends, Body, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Dict, Any, Tuple
@@ -206,8 +206,9 @@ async def create_draft_pr(
 
 @router.post("/jira/comment", response_model=JiraCommentResponse)
 async def add_jira_comment(
-    request: JiraCommentRequest = Body(...),
-    http_request: Request = None,
+    request: JiraCommentRequest,
+    http_request: Request,
+    response: Response,
     db: Session = Depends(get_db)
 ) -> JiraCommentResponse:
     """
@@ -217,11 +218,18 @@ async def add_jira_comment(
     Supports dry-run mode for preview before execution.
     Can optionally transition the issue status.
     
-    Note: Returns 200 with explicit status indication for all scenarios:
-    - status: 'success' - Both comment and transition (if requested) completed successfully
+    Returns appropriate HTTP status codes following REST conventions:
+    - 200 OK: Complete success (comment posted, transition succeeded if requested)
+    - 207 Multi-Status: Partial success (comment posted but transition failed)
+    - 500 Internal Server Error: Complete failure
+    
+    The response includes a 'status' field for programmatic handling:
+    - status: 'success' - Both comment and transition completed successfully
     - status: 'partial_success' - Comment succeeded but transition failed
-    - status: 'error' - Complete failure (returns 500 instead)
-    This partial success pattern prioritizes comment delivery over transition consistency.
+    - status: 'error' - Complete failure
+    
+    This design prioritizes comment delivery over transition consistency while 
+    following REST conventions for status code semantics.
     """
     # Require organization ID from headers
     org_id = http_request.headers.get("X-Org-Id")
@@ -268,12 +276,14 @@ async def add_jira_comment(
                 dry_run=True
             )
         
-        # Determine operation status
+        # Determine operation status and HTTP status code
         operation_status = "success"
+        http_status = 200
         if request.transition and not request.dry_run:
             # Check if transition failed while comment succeeded
             if transition_result and "error" in transition_result:
                 operation_status = "partial_success"
+                http_status = 207  # Multi-Status for partial success
         
         # Prepare response
         response_data = {
@@ -300,10 +310,13 @@ async def add_jira_comment(
             service="delivery",
             method="POST",
             path="/jira/comment",
-            status=200,
+            status=http_status,
             org_id=org_id,
             details=audit_details
         )
+        
+        # Set HTTP status code
+        response.status_code = http_status
         
         logger.info(f"JIRA comment operation completed: {request.issue_key}")
         return JiraCommentResponse(**response_data)

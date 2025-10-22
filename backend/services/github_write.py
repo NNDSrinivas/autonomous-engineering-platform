@@ -18,6 +18,35 @@ class GitHubWriteService:
         self.token = token
         self.base_url = "https://api.github.com"
     
+    def _extract_branch_name(self, head: str) -> str:
+        """
+        Extract branch name from head, handling complex edge cases:
+        
+        1. Cross-repo PRs use format 'owner:branch' where owner is GitHub username/org
+        2. Branch names themselves may contain colons (e.g., 'feature:v1.2:hotfix')
+        3. Must distinguish between these cases to extract correct branch name
+        
+        Strategy: If exactly one colon exists, validate if left side matches GitHub
+        owner naming rules (alphanumeric, hyphens, underscores, max 39 chars).
+        If valid owner format, treat as cross-repo and extract branch after colon.
+        Otherwise, treat entire string as branch name to preserve colon-containing branches.
+        
+        Args:
+            head: The head reference from PR (e.g., 'owner:branch' or 'feature:v1.2:hotfix')
+            
+        Returns:
+            The extracted branch name
+        """
+        if head.count(':') == 1:
+            owner_candidate, branch_candidate = head.split(':', 1)
+            # GitHub owner/org names: alphanumeric, hyphens, underscores, max 39 chars
+            if re.fullmatch(r"[A-Za-z0-9_-]{1,39}", owner_candidate):
+                return branch_candidate
+            else:
+                return head
+        else:
+            return head
+    
     @asynccontextmanager
     async def _client(self):
         """Create configured HTTP client for GitHub API with automatic resource cleanup"""
@@ -100,24 +129,8 @@ class GitHubWriteService:
                 # Check for existing PR with same head/base
                 logger.info(f"Checking for existing PR: {head} -> {base}")
                 
-                # Extract branch name from head, handling complex edge cases:
-                # 1. Cross-repo PRs use format 'owner:branch' where owner is GitHub username/org
-                # 2. Branch names themselves may contain colons (e.g., 'feature:v1.2:hotfix')
-                # 3. Must distinguish between these cases to extract correct branch name
-                # 
-                # Strategy: If exactly one colon exists, validate if left side matches GitHub
-                # owner naming rules (alphanumeric, hyphens, underscores, max 39 chars).
-                # If valid owner format, treat as cross-repo and extract branch after colon.
-                # Otherwise, treat entire string as branch name to preserve colon-containing branches.
-                if head.count(':') == 1:
-                    owner_candidate, branch_candidate = head.split(':', 1)
-                    # GitHub owner/org names: alphanumeric, hyphens, underscores, max 39 chars
-                    if re.fullmatch(r"[A-Za-z0-9_-]{1,39}", owner_candidate):
-                        head_branch = branch_candidate
-                    else:
-                        head_branch = head
-                else:
-                    head_branch = head
+                # Extract branch name handling cross-repo format and branch names with colons
+                head_branch = self._extract_branch_name(head)
                 
                 existing_response = await client.get(
                     f"/repos/{repo_full_name}/pulls",

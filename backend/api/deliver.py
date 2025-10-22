@@ -239,10 +239,11 @@ async def add_jira_comment(
     - 207 Multi-Status: Partial success (comment succeeded but transition failed)
     - 500 Internal Server Error: Complete failure
     
-    The response includes a 'status' field for programmatic handling:
+    The response includes a 'status' field for programmatic handling in success responses:
     - status: 'success' - Both comment and transition completed successfully (HTTP 200)
     - status: 'partial_success' - Comment succeeded but transition failed (HTTP 207)
-    - status: 'error' - Complete failure (only in HTTP 500 responses, never in success responses)
+    
+    Note: Complete failures return HTTP 500 with HTTPException, not a response with status field.
     
     This design prioritizes comment delivery over transition consistency while 
     following proper REST semantics (HTTP 207 for mixed operation outcomes).

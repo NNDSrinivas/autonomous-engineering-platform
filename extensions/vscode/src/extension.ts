@@ -496,19 +496,19 @@ function html(): string {
       
       /**
        * Prompts the user for input with optional validation and cancellation handling.
-       * @param message - The message to display in the prompt dialog.
-       * @param defaultValue - The default value to pre-fill in the prompt.
-       * @param required - If true, the input must be non-empty; otherwise, empty string is allowed.
-       * @returns Returns:
+       * @param {string} message - The message to display in the prompt dialog.
+       * @param {string} defaultValue - The default value to pre-fill in the prompt.
+       * @param {boolean} [required=false] - If true, the input must be non-empty; otherwise, empty string is allowed.
+       * @returns {(string|null)} Returns:
        *   - null if the user cancels the prompt or leaves a required field empty.
        *   - A string (empty or non-empty) for valid input based on requirements.
        * This two-state return allows callers to distinguish between cancellation and valid input.
        */
       function promptWithCancelCheck(
-        message: string,
-        defaultValue: string,
-        required: boolean = false
-      ): string | null {
+        message,
+        defaultValue,
+        required = false
+      ) {
         const result = prompt(message, defaultValue);
         if (result === null) return null; // User cancelled
         if (required && !result.trim()) return null; // Required field is empty

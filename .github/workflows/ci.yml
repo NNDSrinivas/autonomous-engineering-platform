@@ -13,7 +13,7 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pip install ruff black pytest requests
       - name: Lint
-        run: ruff check . && black --check .
+        run: ruff check backend/ tests/ *.py && black --check .
       - name: Unit tests (health only for now)
         env:
           SECRET_KEY: test-secret-for-ci

@@ -100,7 +100,7 @@ class GitHubWriteService:
                 logger.info(f"Checking for existing PR: {head} -> {base}")
                 
                 # Extract branch name from head (handles both cross-repo PRs 'owner:branch' and same-repo PRs 'branch')
-                # Use split(':', 1) to handle branch names that contain colons
+                # Use split(':', 1)[-1] to safely handle branch names that contain colons (e.g., 'feature:v1.2:hotfix')
                 head_branch = head.split(':', 1)[-1] if ':' in head else head
                 
                 existing_response = await client.get(

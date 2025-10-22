@@ -216,6 +216,9 @@ async def add_jira_comment(
     Requires the 'X-Org-Id' header to specify the organization context.
     Supports dry-run mode for preview before execution.
     Can optionally transition the issue status.
+    
+    Note: Returns 200 with partial success if comment succeeds but transition fails.
+    Check the 'transition_result' field for transition-specific errors.
     """
     # Require organization ID from headers
     org_id = http_request.headers.get("X-Org-Id")

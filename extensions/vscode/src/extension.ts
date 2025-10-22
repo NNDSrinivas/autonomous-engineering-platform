@@ -441,9 +441,7 @@ function html(): string {
         }
         if (type==='plan.proposed') {
           window.__plan = payload;
-          const list = payload.items.map(i => 
-            \`<li><code>\${escapeHtml(i.kind)}</code> — \${escapeHtml(i.desc)}</li>\`
-          ).join('');
+          const list = payload.items.map(i => \`<li><code>\${escapeHtml(i.kind)}</code> — \${escapeHtml(i.desc)}</li>\`).join('');
           log('<b>Plan Proposed</b><ul>'+list+'</ul><div class="row"><button class="btn primary" onclick="approve()">Approve & Run</button></div>');
           
           // Add delivery actions section
@@ -502,6 +500,7 @@ Implements new functionality based on plan.
         if (body === null) return; // Return if user cancels prompt (null), but allow empty string
         
         const ticket = prompt("Ticket key (optional, e.g., AEP-27):", "");
+        if (ticket === null) return; // Return if user cancels prompt (null), but allow empty string
         
         vscode.postMessage({
           type: 'deliver.draftPR',

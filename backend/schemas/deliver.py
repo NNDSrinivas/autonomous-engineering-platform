@@ -38,3 +38,4 @@ class JiraCommentResponse(BaseModel):
     url: Optional[str] = Field(None, description="URL to the JIRA issue")
     preview: Optional[Dict[str, Any]] = Field(None, description="Preview payload for dry-run")
     transition_result: Optional[Dict[str, Any]] = Field(None, description="Result of status transition if performed")
+    status: str = Field(..., description="Operation status: 'success', 'partial_success', or 'error'")

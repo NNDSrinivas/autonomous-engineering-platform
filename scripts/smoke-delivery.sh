@@ -146,14 +146,12 @@ echo
 echo "🔍 [SMOKE] Validating PR-11 core features..."
 
 # Check for proper error response structure
-ERROR_TEST_RESPONSE=$(curl -s -w "%{http_code}" -X POST "$CORE/api/deliver/github/draft-pr" \
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$CORE/api/deliver/github/draft-pr" \
   -H 'Content-Type: application/json' \
   -H "X-Org-Id: invalid-org" \
   -d '{"repo_full_name":"test/test","base":"main","head":"test","title":"test","body":"test","dry_run":false}')
-
-HTTP_CODE=${ERROR_TEST_RESPONSE: -3}
 if [ "$HTTP_CODE" = "400" ] || [ "$HTTP_CODE" = "500" ]; then
-    echo "✅ Proper HTTP error codes returned for invalid requests"
+    echo "✅ Proper HTTP error codes returned for invalid requests (got $HTTP_CODE)"
 else
     echo "⚠️  Unexpected HTTP code: $HTTP_CODE"
 fi

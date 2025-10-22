@@ -3,6 +3,7 @@ Delivery API endpoints for GitHub PR creation and JIRA integration
 """
 
 import logging
+import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Body, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -106,7 +107,7 @@ def audit_delivery_action(
                 "path": path,
                 "status": status,
                 "org_id": org_id,
-                "details": str(details) if details else None,
+                "details": json.dumps(details) if details else None,
                 "created_at": datetime.now(timezone.utc)
             }
         )

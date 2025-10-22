@@ -476,25 +476,26 @@ function html(): string {
       function approve(){ vscode.postMessage({type:'plan.approve', plan: window.__plan}); }
       function pick(key){ vscode.postMessage({type:'ticket.select', key}); }
       
-      // Helper function to handle prompt cancellation consistently
-      function promptWithCancelCheck(message, defaultValue) {
+      // Helper function to handle prompt with validation
+      function promptWithCancelCheck(message, defaultValue, required = false) {
         const result = prompt(message, defaultValue);
         if (result === null) return null; // User cancelled
-        return result; // Could be empty string, which is allowed
+        if (required && !result.trim()) return null; // Required field is empty
+        return result; // Valid result (could be empty if not required)
       }
       
       function draftPR() {
-        const repo = promptWithCancelCheck("Repository (owner/repo):");
-        if (repo === null || !repo.trim()) return;
+        const repo = promptWithCancelCheck("Repository (owner/repo):", "", true);
+        if (repo === null) return;
         
-        const base = promptWithCancelCheck("Base branch:", "main");
-        if (base === null || !base.trim()) return;
+        const base = promptWithCancelCheck("Base branch:", "main", true);
+        if (base === null) return;
         
-        const head = promptWithCancelCheck("Head branch:", "feat/new-feature");
-        if (head === null || !head.trim()) return;
+        const head = promptWithCancelCheck("Head branch:", "feat/new-feature", true);
+        if (head === null) return;
         
-        const title = promptWithCancelCheck("PR title:");
-        if (title === null || !title.trim()) return;
+        const title = promptWithCancelCheck("PR title:", "", true);
+        if (title === null) return;
         
         const body = promptWithCancelCheck("PR description (markdown):", \`## Summary
 
@@ -503,10 +504,10 @@ Implements new functionality based on plan.
 ## Changes
 
 - Added new features
-- Updated documentation\`);
+- Updated documentation\`, false);
         if (body === null) return; // Allow empty body but not cancellation
         
-        const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "");
+        const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "", false);
         if (ticket === null) return; // Allow empty ticket but not cancellation
         
         vscode.postMessage({
@@ -521,13 +522,13 @@ Implements new functionality based on plan.
       }
       
       function jiraComment() {
-        const issueKey = promptWithCancelCheck("JIRA Issue key (e.g., AEP-27):");
-        if (issueKey === null || !issueKey.trim()) return;
+        const issueKey = promptWithCancelCheck("JIRA Issue key (e.g., AEP-27):", "", true);
+        if (issueKey === null) return;
         
-        const comment = promptWithCancelCheck("Comment text:");
-        if (comment === null || !comment.trim()) return;
+        const comment = promptWithCancelCheck("Comment text:", "", true);
+        if (comment === null) return;
         
-        const transition = promptWithCancelCheck("Status transition (optional, e.g., 'In Progress', 'Done'):", "");
+        const transition = promptWithCancelCheck("Status transition (optional, e.g., 'In Progress', 'Done'):", "", false);
         if (transition === null) return; // Allow empty transition but not cancellation
         
         vscode.postMessage({

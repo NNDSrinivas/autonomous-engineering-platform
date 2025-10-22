@@ -501,9 +501,8 @@ function html(): string {
        * @param required - If true, the input must be non-empty; otherwise, empty string is allowed.
        * @returns Returns:
        *   - null if the user cancels the prompt or leaves a required field empty.
-       *   - An empty string if the field is optional and the user submits no input.
-       *   - A non-empty string if the user provides input.
-       * This tri-state return value allows callers to distinguish between cancellation, optional empty, and valid input.
+       *   - A string (empty or non-empty) for valid input based on requirements.
+       * This two-state return allows callers to distinguish between cancellation and valid input.
        */
       function promptWithCancelCheck(message, defaultValue, required = false) {
         const result = prompt(message, defaultValue);

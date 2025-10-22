@@ -522,7 +522,7 @@ function html(): string {
         return result; // Valid result (could be empty if not required)
       }
       
-  async function draftPR() {
+  function draftPR() {
         const repo = promptWithCancelCheck("Repository (owner/repo):", "", true);
         if (repo === null) return;
         

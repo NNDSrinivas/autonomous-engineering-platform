@@ -119,7 +119,7 @@ export function activate(context: vscode.ExtensionContext) {
           }
           case 'deliver.draftPR': {
             // Show consent modal for draft PR creation
-            const confirmMessage = `Create Draft PR?\n\nRepo: ${msg.repo}\nBase: ${msg.base} → Head: ${msg.head}\nTitle: ${sanitizeDialogText(msg.title)}`;
+            const confirmMessage = `Create Draft PR?\n\nRepo: ${sanitizeDialogText(msg.repo)}\nBase: ${sanitizeDialogText(msg.base)} → Head: ${sanitizeDialogText(msg.head)}\nTitle: ${sanitizeDialogText(msg.title)}`;
             const consent = await vscode.window.showInformationMessage(
               confirmMessage, 
               { modal: true }, 
@@ -177,7 +177,7 @@ export function activate(context: vscode.ExtensionContext) {
           }
           case 'deliver.jiraComment': {
             // Show consent modal for JIRA comment
-            const confirmMessage = `Post JIRA Comment?\n\nIssue: ${msg.issueKey}\nComment: ${sanitizeDialogText(msg.comment)}${msg.transition ? `\nTransition: ${msg.transition}` : ''}`;
+            const confirmMessage = `Post JIRA Comment?\n\nIssue: ${sanitizeDialogText(msg.issueKey)}\nComment: ${sanitizeDialogText(msg.comment)}${msg.transition ? `\nTransition: ${sanitizeDialogText(msg.transition)}` : ''}`;
             const consent = await vscode.window.showInformationMessage(
               confirmMessage,
               { modal: true },
@@ -487,7 +487,7 @@ function html(): string {
        *   - A non-empty string if the user provides input.
        * This tri-state return value allows callers to distinguish between cancellation, optional empty, and valid input.
        */
-      function promptWithCancelCheck(message: string, defaultValue: string, required: boolean = false): string | null {
+      function promptWithCancelCheck(message, defaultValue, required = false) {
         const result = prompt(message, defaultValue);
         if (result === null) return null; // User cancelled
         if (required && !result.trim()) return null; // Required field is empty

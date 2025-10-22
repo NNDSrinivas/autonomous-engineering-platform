@@ -3,6 +3,7 @@ GitHub write service for creating draft PRs and managing repository operations
 """
 
 import logging
+import re
 from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
 import httpx
@@ -105,7 +106,6 @@ class GitHubWriteService:
                 if head.count(':') == 1:
                     owner_candidate, branch_candidate = head.split(':', 1)
                     # GitHub owner/org names: alphanumeric, hyphens, underscores, max 39 chars
-                    import re
                     if re.fullmatch(r"[A-Za-z0-9_-]{1,39}", owner_candidate):
                         head_branch = branch_candidate
                     else:

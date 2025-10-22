@@ -132,11 +132,11 @@ class GitHubWriteService:
                 # Extract branch name handling cross-repo format and branch names with colons
                 head_branch = self._extract_branch_name(head)
                 
-                existing_response = await client.get(
+                response = await client.get(
                     f"/repos/{repo_full_name}/pulls",
                     params={
                         "state": "open",
-                        "head": head_branch,  # Use just branch name for same-repo PRs
+                        "head": head,  # Use full owner:branch for cross-repo PRs
                         "base": base
                     }
                 )

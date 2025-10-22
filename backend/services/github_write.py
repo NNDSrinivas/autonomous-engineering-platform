@@ -32,7 +32,7 @@ class GitHubWriteService:
         3. Must distinguish between these cases to extract correct branch name
         
         Strategy: If exactly one colon exists, validate if left side matches GitHub
-        owner naming rules (alphanumeric, hyphens, underscores, max 39 chars).
+        owner naming rules (alphanumeric, hyphens, max 39 chars).
         If valid owner format, treat as cross-repo and extract branch after colon.
         Otherwise, treat entire string as branch name to preserve colon-containing branches.
         

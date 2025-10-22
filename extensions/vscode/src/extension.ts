@@ -545,8 +545,13 @@ Implements new functionality based on plan.
 - Updated documentation\`, false);
         if (body === null) return; // Return on cancellation
         if (!body.trim()) {
-          const proceed = confirm("PR description is empty. Are you sure you want to create a draft PR without a description?");
-          if (!proceed) return;
+          const proceed = await vscode.window.showWarningMessage(
+            "PR description is empty. Are you sure you want to create a draft PR without a description?",
+            { modal: true },
+            'Yes',
+            'No'
+          );
+          if (proceed !== 'Yes') return;
         }
         
         const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "", false);

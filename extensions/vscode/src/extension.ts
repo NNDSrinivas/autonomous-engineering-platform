@@ -487,7 +487,7 @@ function html(): string {
        *   - A non-empty string if the user provides input.
        * This tri-state return value allows callers to distinguish between cancellation, optional empty, and valid input.
        */
-      function promptWithCancelCheck(message, defaultValue, required = false) {
+      function promptWithCancelCheck(message: string, defaultValue: string, required: boolean = false): string | null {
         const result = prompt(message, defaultValue);
         if (result === null) return null; // User cancelled
         if (required && !result.trim()) return null; // Required field is empty
@@ -518,7 +518,7 @@ Implements new functionality based on plan.
         if (body === null) return; // Return on cancellation; empty values allowed for optional fields
         
         const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "", false);
-        if (ticket === null) return; // Return on cancellation; empty values allowed for optional fields
+        if (ticket === null) return;
         
         vscode.postMessage({
           type: 'deliver.draftPR',

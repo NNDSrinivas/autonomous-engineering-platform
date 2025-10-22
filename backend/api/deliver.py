@@ -125,13 +125,19 @@ async def create_draft_pr(
     db: Session = Depends(get_db)
 ) -> DraftPRResponse:
     """
-    Create a draft PR on GitHub with RBAC and audit logging
+    Create a draft PR on GitHub with optional JIRA ticket linking.
     
+    Requires the 'X-Org-Id' header to specify the organization context.
     Supports dry-run mode for preview before execution.
     Automatically links JIRA tickets if provided.
     """
-    # Get organization ID from headers (with fallback)
-    org_id = http_request.headers.get("X-Org-Id", "default")
+    # Require organization ID from headers
+    org_id = http_request.headers.get("X-Org-Id")
+    if not org_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required 'X-Org-Id' header"
+        )
     
     try:
         logger.info(f"Creating draft PR for org {org_id}: {request.repo_full_name}")
@@ -205,13 +211,19 @@ async def add_jira_comment(
     db: Session = Depends(get_db)
 ) -> JiraCommentResponse:
     """
-    Add a comment to a JIRA issue with optional status transition
+    Add a comment to a JIRA issue with optional status transition.
     
+    Requires the 'X-Org-Id' header to specify the organization context.
     Supports dry-run mode for preview before execution.
     Can optionally transition the issue status.
     """
-    # Get organization ID from headers (with fallback)
-    org_id = http_request.headers.get("X-Org-Id", "default")
+    # Require organization ID from headers
+    org_id = http_request.headers.get("X-Org-Id")
+    if not org_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required 'X-Org-Id' header"
+        )
     
     try:
         logger.info(f"Adding JIRA comment for org {org_id}: {request.issue_key}")

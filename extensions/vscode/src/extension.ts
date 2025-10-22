@@ -193,7 +193,14 @@ export function activate(context: vscode.ExtensionContext) {
           case 'deliver.jiraComment': {
             // Show consent modal for JIRA comment
             const commentPreview = previewFirstNWords(msg.comment, 30);
-            const confirmMessage = `Post JIRA Comment?\n\nIssue: ${sanitizeDialogText(msg.issueKey)}\nComment: ${commentPreview}${msg.transition ? `\nTransition: ${sanitizeDialogText(msg.transition)}` : ''}`;
+            const transitionText = msg.transition ? `\nTransition: ${sanitizeDialogText(msg.transition)}` : '';
+            const confirmMessage = [
+              'Post JIRA Comment?',
+              '',
+              `Issue: ${sanitizeDialogText(msg.issueKey)}`,
+              `Comment: ${commentPreview}`,
+              transitionText
+            ].filter(Boolean).join('\n');
             const consent = await vscode.window.showInformationMessage(
               confirmMessage,
               { modal: true },

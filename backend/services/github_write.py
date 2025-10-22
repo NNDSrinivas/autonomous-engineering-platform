@@ -140,9 +140,9 @@ class GitHubWriteService:
                         "base": base
                     }
                 )
-                existing_response.raise_for_status()
+                response.raise_for_status()
                 
-                existing_prs = existing_response.json()
+                existing_prs = response.json()
                 if existing_prs:
                     pr = existing_prs[0]  # Take first match
                     logger.info(f"Found existing PR #{pr['number']}")

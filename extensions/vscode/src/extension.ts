@@ -476,7 +476,17 @@ function html(): string {
       function approve(){ vscode.postMessage({type:'plan.approve', plan: window.__plan}); }
       function pick(key){ vscode.postMessage({type:'ticket.select', key}); }
       
-      // Helper function to handle prompt with validation
+      /**
+       * Prompts the user for input with optional validation and cancellation handling.
+       * @param {string} message - The message to display in the prompt dialog.
+       * @param {string} defaultValue - The default value to pre-fill in the prompt.
+       * @param {boolean} [required=false] - If true, the input must be non-empty; otherwise, empty string is allowed.
+       * @returns {string|null} Returns:
+       *   - \`null\` if the user cancels the prompt or leaves a required field empty.
+       *   - An empty string if the field is optional and the user submits no input.
+       *   - A non-empty string if the user provides input.
+       * This tri-state return value allows callers to distinguish between cancellation, optional empty, and valid input.
+       */
       function promptWithCancelCheck(message, defaultValue, required = false) {
         const result = prompt(message, defaultValue);
         if (result === null) return null; // User cancelled
@@ -505,10 +515,10 @@ Implements new functionality based on plan.
 
 - Added new features
 - Updated documentation\`, false);
-        if (body === null) return; // Allow empty body but not cancellation
+        if (body === null) return; // Return on cancellation; empty values allowed for optional fields
         
         const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "", false);
-        if (ticket === null) return; // Allow empty ticket but not cancellation
+        if (ticket === null) return; // Return on cancellation; empty values allowed for optional fields
         
         vscode.postMessage({
           type: 'deliver.draftPR',
@@ -529,7 +539,7 @@ Implements new functionality based on plan.
         if (comment === null) return;
         
         const transition = promptWithCancelCheck("Status transition (optional, e.g., 'In Progress', 'Done'):", "", false);
-        if (transition === null) return; // Allow empty transition but not cancellation
+        if (transition === null) return; // Return on cancellation; empty values allowed for optional fields
         
         vscode.postMessage({
           type: 'deliver.jiraComment',

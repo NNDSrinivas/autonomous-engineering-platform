@@ -132,7 +132,8 @@ class GitHubWriteService:
                 logger.info(f"Checking for existing PR: {head} -> {base}")
                 
                 # Extract branch name handling cross-repo format and branch names with colons
-                head_branch = self._extract_branch_name(head)
+                    # Extract branch name handling cross-repo format and branch names with colons
+                    # (removed unused variable assignment to fix lint error F841)
                 
                 response = await client.get(
                     f"/repos/{repo_full_name}/pulls",

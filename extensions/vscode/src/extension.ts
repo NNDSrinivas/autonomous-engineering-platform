@@ -177,7 +177,15 @@ export function activate(context: vscode.ExtensionContext) {
           }
           case 'deliver.jiraComment': {
             // Show consent modal for JIRA comment
-            const confirmMessage = `Post JIRA Comment?\n\nIssue: ${sanitizeDialogText(msg.issueKey)}\nComment: ${sanitizeDialogText(msg.comment)}${msg.transition ? `\nTransition: ${sanitizeDialogText(msg.transition)}` : ''}`;
+            function previewFirstNWords(text: string, n: number): string {
+              if (!text) return '';
+              const words = text.split(/\s+/);
+              if (words.length <= n) return text;
+              return words.slice(0, n).join(' ') + '...';
+            }
+            
+            const commentPreview = previewFirstNWords(msg.comment, 30);
+            const confirmMessage = `Post JIRA Comment?\n\nIssue: ${sanitizeDialogText(msg.issueKey)}\nComment: ${commentPreview}${msg.transition ? `\nTransition: ${sanitizeDialogText(msg.transition)}` : ''}`;
             const consent = await vscode.window.showInformationMessage(
               confirmMessage,
               { modal: true },
@@ -515,7 +523,7 @@ Implements new functionality based on plan.
 
 - Added new features
 - Updated documentation\`, false);
-        if (body === null) return; // Return on cancellation; empty values allowed for optional fields
+        if (body === null) return; // Return on cancellation; empty bodies are allowed even though this is a required field prompt
         
         const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "", false);
         if (ticket === null) return;

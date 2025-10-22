@@ -99,7 +99,7 @@ class GitHubWriteService:
                 # Check for existing PR with same head/base
                 logger.info(f"Checking for existing PR: {head} -> {base}")
                 
-                # Extract branch name from head (handle both 'branch' and 'owner:branch' formats)
+                # Extract branch name from head (handles both cross-repo PRs 'owner:branch' and same-repo PRs 'branch')
                 head_branch = head.split(':')[-1] if ':' in head else head
                 
                 existing_response = await client.get(

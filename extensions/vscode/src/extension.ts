@@ -499,7 +499,7 @@ Implements new functionality based on plan.
 
 - Added new features
 - Updated documentation\`);
-        if (body === null) return; // Return if user cancels prompt, allow empty body
+        if (body === null) return; // Return if user cancels prompt (null), but allow empty string
         
         const ticket = prompt("Ticket key (optional, e.g., AEP-27):", "");
         

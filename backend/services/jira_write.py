@@ -150,8 +150,9 @@ class JiraWriteService:
                 
                 # Find the transition by name
                 target_transition = None
+                transition_name_lower = transition_name.lower()
                 for transition in available_transitions:
-                    if transition["name"].lower() == transition_name.lower():
+                    if transition["name"].lower() == transition_name_lower:
                         target_transition = transition
                         break
                 

@@ -266,7 +266,11 @@ async def add_jira_comment(
             except Exception as e:
                 logger.warning(f"Transition failed but comment succeeded: {e}")
                 # Don't fail the whole operation if just transition fails
-                transition_result = {"error": str(e)}
+                transition_result = {
+                    "error": str(e),
+                    "transition_name": request.transition,
+                    "issue_key": request.issue_key
+                }
         elif request.transition and request.dry_run:
             # Include transition preview
             transition_result = await jira_service.transition_issue(

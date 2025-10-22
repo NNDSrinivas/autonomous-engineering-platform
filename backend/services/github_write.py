@@ -11,7 +11,7 @@ import httpx
 # GitHub username/organization validation pattern
 # Allows: alphanumeric at start, hyphens anywhere (including start/end for legacy), max 39 chars total
 # See: https://github.com/shinnn/github-username-regex and GitHub docs for details
-GITHUB_OWNER_PATTERN = r'^[a-zA-Z0-9][a-zA-Z0-9-]{0,38}$'
+GITHUB_OWNER_PATTERN = r'^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$'
 
 logger = logging.getLogger(__name__)
 

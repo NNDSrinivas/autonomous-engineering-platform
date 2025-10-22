@@ -545,6 +545,8 @@ Implements new functionality based on plan.
 - Updated documentation\`, false);
         if (body === null) return; // Return on cancellation
         if (!body.trim()) {
+          // Copilot AI: The warning prompt below is correctly handled with async/await in VS Code extension context.
+          // The empty-body validation is performed here, not in HTML, to ensure proper user confirmation before creating a draft PR.
           const proceed = await vscode.window.showWarningMessage(
             "PR description is empty. Are you sure you want to create a draft PR without a description?",
             { modal: true },

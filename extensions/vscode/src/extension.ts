@@ -575,7 +575,7 @@ Implements new functionality based on plan.
         if (comment === null) return;
         
         const transition = promptWithCancelCheck("Status transition (optional, e.g., 'In Progress', 'Done'):", "", false);
-        if (transition === null) return; // Return on cancellation; empty strings are allowed since transition is optional
+  if (transition === null) return;
         
         vscode.postMessage({
           type: 'deliver.jiraComment',

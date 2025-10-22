@@ -313,7 +313,7 @@ async def add_jira_comment(
             # Check if transition failed while comment succeeded
             if transition_result and "error" in transition_result:
                 operation_status = "partial_success"
-                http_status = 207  # Use 207 Multi-Status for partial success; details in response body
+                http_status = 200  # Use 200 OK for partial success, as documented
 
         # Prepare response
         response_data = {

@@ -536,7 +536,7 @@ Implements new functionality based on plan.
 
 - Added new features
 - Updated documentation\`, false);
-        if (body === null) return; // Return on cancellation; empty strings are allowed since body is optional
+        if (body === null) return; // Return on cancellation; empty strings allowed by UI (GitHub API accepts empty body for drafts)
         
         const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "", false);
         if (ticket === null) return;

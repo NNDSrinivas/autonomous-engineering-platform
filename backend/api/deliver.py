@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/deliver", tags=["delivery"])
 
+# Cache for audit log table existence to avoid repeated checks
+_audit_table_exists = None
+
 
 def get_github_credentials(db: Session, org_id: str) -> str:
     """Get GitHub access token for the organization"""
@@ -95,13 +98,17 @@ def audit_delivery_action(
     details: Dict[str, Any] = None
 ) -> None:
     """Record delivery action in audit log"""
+    global _audit_table_exists
+    
     try:
-        # Check if audit_log table exists before attempting insert
-        table_check = db.execute(
-            text("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'")
-        ).fetchone()
-        
-        if not table_check:
+        # Check table existence once and cache the result
+        if _audit_table_exists is None:
+            table_check = db.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'")
+            ).fetchone()
+            _audit_table_exists = table_check is not None
+            
+        if not _audit_table_exists:
             logger.warning("Audit log table does not exist, skipping audit logging")
             return
             

@@ -20,7 +20,9 @@ def slack_connect(
     team = payload.get("team_id")
     if not token:
         raise HTTPException(status_code=400, detail="bot_token required")
-    # TODO: Security improvement - encrypt tokens at rest before production.
+    # SECURITY WARNING: Tokens are currently stored in plaintext in the database.
+    # This is acceptable for development/testing but NOT for production deployment.
+    # TODO: BEFORE PRODUCTION - Implement token encryption at rest (CRITICAL)
     # Options:
     #  - Use a secrets-management service (AWS KMS + Secrets Manager, HashiCorp Vault)
     #  - Use database TDE/column-level encryption if available
@@ -28,6 +30,7 @@ def slack_connect(
     # If application-level encryption is used, load the encryption key from an
     # environment-backed secret (e.g. env var referencing the KMS key) and
     # rotate keys periodically. See docs/security.md for recommended patterns.
+    # TRACKING: Create GitHub issue to track this security improvement before merge.
     # Use ON CONFLICT to handle existing connections (update token)
     db.execute(
         text(

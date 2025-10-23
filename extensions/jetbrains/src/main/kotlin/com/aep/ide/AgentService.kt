@@ -5,11 +5,16 @@ import com.intellij.notification.Notification
 import com.intellij.notification.NotificationType
 import com.intellij.notification.Notifications
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.diagnostic.Logger
 import java.io.File
 import org.java_websocket.client.WebSocketClient
 
 @Service(Service.Level.APP)
 class AgentService {
+  companion object {
+    private val logger = Logger.getInstance(AgentService::class.java)
+  }
+  
   private val lock = Any()
   @Volatile private var client: RpcClient? = null
   @Volatile private var started: Boolean = false
@@ -57,7 +62,7 @@ class AgentService {
           // If startup fails, attempt to read process output for diagnostics
           try {
             agentProcess?.inputStream?.bufferedReader()?.useLines { lines ->
-              lines.take(50).forEach { println("agentd: $it") }
+              lines.take(50).forEach { logger.warn("agentd: $it") }
             }
           } catch (_: Exception) {
           }

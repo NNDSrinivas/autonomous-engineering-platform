@@ -1,6 +1,7 @@
 package com.aep.ide.ui
 
 import com.aep.ide.AgentService
+import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.intellij.openapi.application.ApplicationManager
@@ -85,7 +86,7 @@ class AgentPanel : JPanel(BorderLayout()) {
       // Use TypeReference for safer deserialization of plan items
       val items: List<Map<String, Any?>>
       try {
-        items = mapper.readValue(planJson, object : com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Any?>>>() {})
+        items = mapper.readValue(planJson, object : TypeReference<List<Map<String, Any?>>>() {})
       } catch (e: Exception) {
         append("Invalid JSON: ${e.message}\n")
         return@addActionListener

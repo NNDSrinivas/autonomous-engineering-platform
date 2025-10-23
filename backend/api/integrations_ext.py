@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Body, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from ..core.database import get_db
+from ..core.db import get_db
 
 router = APIRouter(prefix="/api/integrations-ext", tags=["integrations-ext"])
 
@@ -19,7 +19,7 @@ def slack_connect(
     token = payload.get("bot_token")
     team = payload.get("team_id")
     if not token:
-        raise HTTPException(400, "bot_token required")
+        raise HTTPException(status_code=400, detail="bot_token required")
     db.execute(
         text(
             "INSERT INTO slack_connection (org_id, bot_token, team_id) VALUES (:o,:t,:team)"
@@ -42,7 +42,9 @@ def confluence_connect(
     token = payload.get("access_token")
     email = payload.get("email")
     if not base or not token:
-        raise HTTPException(400, "base_url and access_token required")
+        raise HTTPException(
+            status_code=400, detail="base_url and access_token required"
+        )
     db.execute(
         text(
             "INSERT INTO confluence_connection (org_id, base_url, access_token, email) VALUES (:o,:b,:a,:e)"

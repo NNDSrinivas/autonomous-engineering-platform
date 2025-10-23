@@ -225,9 +225,6 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
             ).scalar()
             newest = cur
             count = 0
-            # Limit the number of channels processed per sync to avoid hitting Slack API rate limits
-            # and to keep memory usage manageable. Adjust MAX_CHANNELS_PER_SYNC as needed based on
-            # observed performance and Slack API constraints.
             for c in chans[:MAX_CHANNELS_PER_SYNC]:
                 msgs = await sr.history(
                     client, c["id"], oldest=cur, limit=SLACK_HISTORY_LIMIT
@@ -260,8 +257,8 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                             e,
                         )
                         continue
-            # Only update cursor if we have a valid timestamp (newest won't be None
-            # if any messages were processed with valid timestamps)
+            # Only update cursor if we have a valid timestamp.
+            # Note: newest will be None only if no messages with valid timestamps were processed.
             if newest:
                 # Use ON CONFLICT to handle race conditions in concurrent environments
                 db.execute(
@@ -317,12 +314,10 @@ def reindex_confluence(
             count = 0
             for p in pages:
                 text_html = p["html"]
-                # Limit HTML size before parsing for performance
-                # Robust HTML cleaning: use BeautifulSoup to handle malformed tags
-                # Truncate raw HTML before parsing to avoid excessive work. We
-                # allow a small overhead factor to account for HTML tags vs
-                # extracted text size. The factor is configurable via
-                # HTML_OVERHEAD_MULTIPLIER in backend/search/constants.py.
+                # Robust HTML cleaning: Truncate raw HTML before parsing for performance,
+                # use BeautifulSoup to handle malformed tags, and apply an overhead factor
+                # to account for HTML tags vs extracted text size. See HTML_OVERHEAD_MULTIPLIER
+                # in backend/search/constants.py for configuration.
                 soup = BeautifulSoup(
                     text_html[: MAX_CONTENT_LENGTH * HTML_OVERHEAD_MULTIPLIER],
                     "html.parser",

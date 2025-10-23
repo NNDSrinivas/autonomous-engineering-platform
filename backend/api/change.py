@@ -209,13 +209,14 @@ def review_change(
         "m": payload.get("comment")
     })
     
-    # Check if we have enough approvals
+    # Check if we have enough approvals (query after INSERT to include current review)
     req = db.execute(
         text("SELECT required_reviewers FROM org_policy WHERE org_id=:o"),
         {"o": org}
     ).mappings().first()
     
-    need = (req or {}).get("required_reviewers", 1)
+    # Default to 1 if required_reviewers is NULL or missing
+    need = (req or {}).get("required_reviewers") or 1
     
     ok_count = db.execute(text("""
         SELECT count(*) c FROM change_review WHERE change_id=:c AND decision='approve'

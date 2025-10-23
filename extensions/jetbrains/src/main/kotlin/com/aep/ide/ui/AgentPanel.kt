@@ -111,27 +111,33 @@ class AgentPanel : JPanel(BorderLayout()) {
       val body = JOptionPane.showInputDialog(this, "PR body:", "Implements ...") ?: ""
       val ticket = JOptionPane.showInputDialog(this, "Ticket key (optional):", "") ?: ""
       val url = System.getenv("AEP_CORE_API") ?: "http://localhost:8002"
-      val payload =
-        mapper.writeValueAsString(
-          mapOf(
-            "repo_full_name" to repo,
-            "base" to base,
-            "head" to head,
-            "title" to title,
-            "body" to body,
-            "ticket_key" to ticket,
-            "dry_run" to false
-          )
-        )
-      val req =
-        Request.Builder()
-          .url("$url/api/deliver/github/draft-pr")
-          .addHeader("Content-Type", "application/json")
-          .addHeader("X-Org-Id", "default")
-          .post(payload.toRequestBody("application/json".toMediaType()))
-          .build()
-      val resp = http.newCall(req).execute()
-      append("Draft PR response: ${resp.body?.string()}\n")
+      ApplicationManager.getApplication().executeOnPooledThread {
+        try {
+          val payload =
+            mapper.writeValueAsString(
+              mapOf(
+                "repo_full_name" to repo,
+                "base" to base,
+                "head" to head,
+                "title" to title,
+                "body" to body,
+                "ticket_key" to ticket,
+                "dry_run" to false
+              )
+            )
+          val req =
+            Request.Builder()
+              .url("$url/api/deliver/github/draft-pr")
+              .addHeader("Content-Type", "application/json")
+              .addHeader("X-Org-Id", "default")
+              .post(payload.toRequestBody("application/json".toMediaType()))
+              .build()
+          val resp = http.newCall(req).execute()
+          append("Draft PR response: ${resp.body?.string()}\n")
+        } catch (e: Exception) {
+          append("Error: ${e.message}\n")
+        }
+      }
     }
 
     btnJira.addActionListener {
@@ -140,24 +146,30 @@ class AgentPanel : JPanel(BorderLayout()) {
         JOptionPane.showInputDialog(this, "Comment:", "Shipping PR soon") ?: return@addActionListener
       val transition = JOptionPane.showInputDialog(this, "Transition (optional):", "") ?: ""
       val url = System.getenv("AEP_CORE_API") ?: "http://localhost:8002"
-      val payload =
-        mapper.writeValueAsString(
-          mapOf(
-            "issue_key" to issue,
-            "comment" to comment,
-            "transition" to (if (transition.isBlank()) null else transition),
-            "dry_run" to false
-          )
-        )
-      val req =
-        Request.Builder()
-          .url("$url/api/deliver/jira/comment")
-          .addHeader("Content-Type", "application/json")
-          .addHeader("X-Org-Id", "default")
-          .post(payload.toRequestBody("application/json".toMediaType()))
-          .build()
-      val resp = http.newCall(req).execute()
-      append("JIRA response: ${resp.body?.string()}\n")
+      ApplicationManager.getApplication().executeOnPooledThread {
+        try {
+          val payload =
+            mapper.writeValueAsString(
+              mapOf(
+                "issue_key" to issue,
+                "comment" to comment,
+                "transition" to (if (transition.isBlank()) null else transition),
+                "dry_run" to false
+              )
+            )
+          val req =
+            Request.Builder()
+              .url("$url/api/deliver/jira/comment")
+              .addHeader("Content-Type", "application/json")
+              .addHeader("X-Org-Id", "default")
+              .post(payload.toRequestBody("application/json".toMediaType()))
+              .build()
+          val resp = http.newCall(req).execute()
+          append("JIRA response: ${resp.body?.string()}\n")
+        } catch (e: Exception) {
+          append("Error: ${e.message}\n")
+        }
+      }
     }
   }
 

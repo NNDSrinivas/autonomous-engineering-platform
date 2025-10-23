@@ -30,7 +30,12 @@ class RpcClient(url: String) : WebSocketClient(URI(url)) {
     pending[id] = fut
     val payload = mapOf("id" to id, "method" to method, "params" to params)
     val json = mapper.writeValueAsString(payload)
-    send(json)
+    try {
+      send(json)
+    } catch (ex: Exception) {
+      pending.remove(id)
+      fut.completeExceptionally(ex)
+    }
     return fut
   }
 }

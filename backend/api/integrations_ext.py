@@ -20,9 +20,14 @@ def slack_connect(
     team = payload.get("team_id")
     if not token:
         raise HTTPException(status_code=400, detail="bot_token required")
+    # Use ON CONFLICT to handle existing connections (update token)
     db.execute(
         text(
-            "INSERT INTO slack_connection (org_id, bot_token, team_id) VALUES (:o,:t,:team)"
+            """
+            INSERT INTO slack_connection (org_id, bot_token, team_id) 
+            VALUES (:o,:t,:team)
+            ON CONFLICT (org_id) DO UPDATE SET bot_token=:t, team_id=:team
+            """
         ),
         {"o": org, "t": token, "team": team},
     )
@@ -45,9 +50,14 @@ def confluence_connect(
         raise HTTPException(
             status_code=400, detail="base_url and access_token required"
         )
+    # Use ON CONFLICT to handle existing connections (update credentials)
     db.execute(
         text(
-            "INSERT INTO confluence_connection (org_id, base_url, access_token, email) VALUES (:o,:b,:a,:e)"
+            """
+            INSERT INTO confluence_connection (org_id, base_url, access_token, email) 
+            VALUES (:o,:b,:a,:e)
+            ON CONFLICT (org_id) DO UPDATE SET base_url=:b, access_token=:a, email=:e
+            """
         ),
         {"o": org, "b": base, "a": token, "e": email},
     )

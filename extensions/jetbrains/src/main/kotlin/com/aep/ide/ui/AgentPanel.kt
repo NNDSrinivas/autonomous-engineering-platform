@@ -32,7 +32,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
      */
     private fun parseLongFromTelemetry(value: Any?): Long {
       return (value as? Number)?.toLong()
-        ?: value?.toString()?.trim()?.replace(Regex("[,$\\s]"), "")?.let { s ->
+        ?: value?.toString()?.trim()?.replace(Regex("[,\$\\s]"), "")?.let { s ->
           if (Regex("""^-?\d+$""").matches(s)) s.toLongOrNull() else null
         }
         ?: 0L
@@ -44,7 +44,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
      */
     private fun parseDoubleFromTelemetry(value: Any?): Double {
       return (value as? Number)?.toDouble()
-        ?: value?.toString()?.trim()?.replace(Regex("[,$\\s]"), "")?.let { s ->
+        ?: value?.toString()?.trim()?.replace(Regex("[,\$\\s]"), "")?.let { s ->
           if (Regex("""^-?\d+(\.\d+)?$""").matches(s)) s.toDoubleOrNull() else null
         }
         ?: 0.0
@@ -138,9 +138,9 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
               val model = t["model"]?.toString() ?: "n/a"
               
               // Parse numeric telemetry values using helper functions
-              val tokens = String.format(Locale.US, "%d", parseLongFromTelemetry(t["tokens"]))
+              val tokens = parseLongFromTelemetry(t["tokens"]).toString()
               val cost = String.format(Locale.US, "%.2f", parseDoubleFromTelemetry(t["cost_usd"]))
-              val latency = String.format(Locale.US, "%d", parseLongFromTelemetry(t["latency_ms"]))
+              val latency = parseLongFromTelemetry(t["latency_ms"]).toString()
               
               Status.show(project, "AEP Plan — model: $model | tokens: $tokens | cost: \$${cost} | latency: ${latency}ms")
             }

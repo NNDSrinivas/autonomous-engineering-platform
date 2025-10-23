@@ -16,7 +16,7 @@ object Status {
    *               as IntelliJ auto-clears the status bar after a short period. This parameter is
    *               retained for future extensibility or compatibility with other APIs.
    */
-  fun show(project: Project?, message: String, millis: Int = 8000) {
+  fun show(project: Project?, message: String, @Suppress("UNUSED_PARAMETER") millis: Int = 8000) {
     val bar = project?.let { WindowManager.getInstance().getStatusBar(it) } ?: return
     bar.info = message
     // IntelliJ auto-clears after a bit; no timer needed for basic use

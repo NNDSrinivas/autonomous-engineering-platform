@@ -9,13 +9,23 @@ const CONFIG = {
   TEXT_SANITIZATION_LIMIT: 200,
   COST_DECIMAL_PLACES: 4,
   // Duration in ms to display status bar messages
-  STATUS_BAR_TIMEOUT_MS: 8000
+  STATUS_BAR_TIMEOUT_MS: 8000,
+  // API base URL for delivery operations
+  API_BASE_URL: process.env.AEP_CORE_API || 'http://localhost:8002'
 } as const;
 
 // Sanitize text for display in user dialogs
 function sanitizeDialogText(text: string): string {
   // Limit length and remove potentially confusing characters
   return text.slice(0, CONFIG.TEXT_SANITIZATION_LIMIT).replace(/[\r\n\t]/g, ' ').trim();
+}
+
+// Preview first N words of text with ellipsis if truncated
+function previewFirstNWords(text: string, n: number): string {
+  if (!text) return '';
+  const words = text.split(/\s+/);
+  if (words.length <= n) return text;
+  return words.slice(0, n).join(' ') + '...';
 }
 
 // Type alias for typeof operator return values using const assertion
@@ -113,6 +123,136 @@ export function activate(context: vscode.ExtensionContext) {
               results.push({ id: step.id, status, details });
             }
             send('plan.results', { results });
+            break;
+          }
+          case 'deliver.draftPR': {
+            // Show consent modal for draft PR creation
+            // Limit individual fields to prevent excessive dialog length
+            const repoText = sanitizeDialogText(msg.repo).slice(0, 50);
+            const baseText = sanitizeDialogText(msg.base).slice(0, 30);
+            const headText = sanitizeDialogText(msg.head).slice(0, 30);
+            const titleText = sanitizeDialogText(msg.title).slice(0, 80);
+            const confirmMessage = `Create Draft PR?\n\nRepo: ${repoText}\nBase: ${baseText} → Head: ${headText}\nTitle: ${titleText}`;
+            const consent = await vscode.window.showInformationMessage(
+              confirmMessage, 
+              { modal: true }, 
+              'Create PR'
+            );
+            
+            if (consent !== 'Create PR') {
+              send('deliver.result', { kind: 'draftPR', status: 'cancelled' });
+              break;
+            }
+
+            try {
+              const payload = {
+                repo_full_name: msg.repo,
+                base: msg.base,
+                head: msg.head,
+                title: msg.title,
+                body: msg.body,
+                ticket_key: msg.ticket || null,
+                dry_run: false
+              };
+
+              // Read organization ID from VSCode configuration, fallback to 'default'
+              const orgId = vscode.workspace.getConfiguration('agent').get('orgId', 'default');
+              const response = await fetch(`${CONFIG.API_BASE_URL}/api/deliver/github/draft-pr`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Org-Id': orgId
+                },
+                body: JSON.stringify(payload)
+              });
+
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              }
+
+              const result = await response.json();
+              send('deliver.result', { kind: 'draftPR', status: 'success', data: result });
+              
+              // Show success message with link
+              if (result.url) {
+                const action = await vscode.window.showInformationMessage(
+                  `Draft PR ${result.existed ? 'found' : 'created'} successfully!`,
+                  'Open PR'
+                );
+                if (action === 'Open PR') {
+                  vscode.env.openExternal(vscode.Uri.parse(result.url));
+                }
+              }
+              
+            } catch (error: any) {
+              send('deliver.result', { kind: 'draftPR', status: 'error', error: error.message });
+              vscode.window.showErrorMessage(`Failed to create PR: ${error.message}`);
+            }
+            break;
+          }
+          case 'deliver.jiraComment': {
+            // Show consent modal for JIRA comment
+            const commentPreview = previewFirstNWords(msg.comment, 30);
+            const transitionText = msg.transition ? `\nTransition: ${sanitizeDialogText(msg.transition)}` : '';
+            const confirmMessage = [
+              'Post JIRA Comment?',
+              '',
+              `Issue: ${sanitizeDialogText(msg.issueKey)}`,
+              `Comment: ${commentPreview}`,
+              transitionText
+            ].filter(Boolean).join('\n');
+            const consent = await vscode.window.showInformationMessage(
+              confirmMessage,
+              { modal: true },
+              'Post Comment'
+            );
+            
+            if (consent !== 'Post Comment') {
+              send('deliver.result', { kind: 'jiraComment', status: 'cancelled' });
+              break;
+            }
+
+            try {
+              const payload = {
+                issue_key: msg.issueKey,
+                comment: msg.comment,
+                transition: msg.transition || null,
+                dry_run: false
+              };
+
+              // Read organization ID from VSCode configuration, fallback to 'default'
+              const orgId = vscode.workspace.getConfiguration('agent').get('orgId', 'default');
+              const response = await fetch(`${CONFIG.API_BASE_URL}/api/deliver/jira/comment`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Org-Id': orgId
+                },
+                body: JSON.stringify(payload)
+              });
+
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              }
+
+              const result = await response.json();
+              send('deliver.result', { kind: 'jiraComment', status: 'success', data: result });
+              
+              // Show success message with link
+              if (result.url) {
+                const action = await vscode.window.showInformationMessage(
+                  'JIRA comment posted successfully!',
+                  'Open Issue'
+                );
+                if (action === 'Open Issue') {
+                  vscode.env.openExternal(vscode.Uri.parse(result.url));
+                }
+              }
+              
+            } catch (error: any) {
+              send('deliver.result', { kind: 'jiraComment', status: 'error', error: error.message });
+              vscode.window.showErrorMessage(`Failed to post comment: ${error.message}`);
+            }
             break;
           }
         }
@@ -326,16 +466,125 @@ function html(): string {
         }
         if (type==='plan.proposed') {
           window.__plan = payload;
-          const list = payload.items.map(i=>\`<li><code>\${escapeHtml(i.kind)}</code> — \${escapeHtml(i.desc)}</li>\`).join('');
+          const list = payload.items.map(i => \`<li><code>\${escapeHtml(i.kind)}</code> — \${escapeHtml(i.desc)}</li>\`).join('');
           log('<b>Plan Proposed</b><ul>'+list+'</ul><div class="row"><button class="btn primary" onclick="approve()">Approve & Run</button></div>');
+          
+          // Add delivery actions section
+          log('<b>Delivery Actions</b>' +
+            '<div class="row">' +
+              '<button class="btn" onclick="draftPR()">📝 Draft PR</button>' +
+              '<button class="btn" onclick="jiraComment()">💬 JIRA Comment</button>' +
+            '</div>');
         }
         if (type==='plan.results') {
           log('<b>Plan Results</b><pre>'+escapeHtml(JSON.stringify(payload,null,2))+'</pre>');
+        }
+        if (type==='deliver.result') {
+          const { kind, status, data, error } = payload;
+          if (status === 'success') {
+            if (kind === 'draftPR') {
+              const existed = data.existed ? ' (already exists)' : '';
+              const url = data.url ? \` <a href="\${escapeHtml(data.url)}" target="_blank">Open PR #\${escapeHtml(data.number)}</a>\` : '';
+              log(\`<b>✅ Draft PR Created\${existed}</b>\${url}\`);
+            } else if (kind === 'jiraComment') {
+              const url = data.url ? \` <a href="\${escapeHtml(data.url)}" target="_blank">View Issue</a>\` : '';
+              log(\`<b>✅ JIRA Comment Posted</b>\${url}\`);
+            }
+          } else if (status === 'cancelled') {
+            log(\`<b>❌ \${escapeHtml(kind)} Cancelled</b><p>Action was cancelled by user.</p>\`);
+          } else if (status === 'error') {
+            log(\`<b>❌ \${escapeHtml(kind)} Failed</b><p>Error: \${escapeHtml(error || 'Unknown error')}</p>\`);
+          }
         }
       });
 
       function approve(){ vscode.postMessage({type:'plan.approve', plan: window.__plan}); }
       function pick(key){ vscode.postMessage({type:'ticket.select', key}); }
+      
+      /**
+       * Prompts the user for input with optional validation and cancellation handling.
+       * @param {string} message - The message to display in the prompt dialog.
+       * @param {string} defaultValue - The default value to pre-fill in the prompt.
+       * @param {boolean} [required=false] - If true, the input must be non-empty; otherwise, empty string is allowed.
+       * @returns {(string|null)} Returns:
+       *   - null if the user cancels the prompt or leaves a required field empty.
+       *   - A string (empty or non-empty) for valid input based on requirements.
+       * This two-state return allows callers to distinguish between cancellation and valid input.
+       */
+      function promptWithCancelCheck(
+        message,
+        defaultValue,
+        required = false
+      ) {
+        const result = prompt(message, defaultValue);
+        if (result === null) return null; // User cancelled
+        if (required && !result.trim()) return null; // Required field is empty
+        return result; // Valid result (could be empty if not required)
+      }
+      
+  function draftPR() {
+        const repo = promptWithCancelCheck("Repository (owner/repo):", "", true);
+        if (repo === null) return;
+        
+        const base = promptWithCancelCheck("Base branch:", "main", true);
+        if (base === null) return;
+        
+        const head = promptWithCancelCheck("Head branch:", "feat/new-feature", true);
+        if (head === null) return;
+        
+        const title = promptWithCancelCheck("PR title:", "", true);
+        if (title === null) return;
+        
+        const body = promptWithCancelCheck("PR description (markdown):", \`## Summary
+
+Implements new functionality based on plan.
+
+## Changes
+
+- Added new features
+- Updated documentation\`, false);
+        if (body === null) return; // Return on cancellation
+        if (!body.trim()) {
+          // Copilot AI: The warning prompt below is now handled synchronously in the webview context.
+          // The empty-body validation is performed here, using window.confirm, to ensure proper user confirmation before creating a draft PR.
+          const proceed = window.confirm(
+            "PR description is empty. Are you sure you want to create a draft PR without a description?"
+          );
+          if (!proceed) return;
+        }
+        
+        const ticket = promptWithCancelCheck("Ticket key (optional, e.g., AEP-27):", "", false);
+        if (ticket === null) return;
+        
+        vscode.postMessage({
+          type: 'deliver.draftPR',
+          repo: repo.trim(),
+          base: base.trim(),
+          head: head.trim(),
+          title: title.trim(),
+          body: body.trim(),
+          ticket: ticket ? ticket.trim() : null
+        });
+      }
+      
+      function jiraComment() {
+        const issueKey = promptWithCancelCheck("JIRA Issue key (e.g., AEP-27):", "", true);
+        if (issueKey === null) return;
+        
+        const comment = promptWithCancelCheck("Comment text:", "", true);
+        if (comment === null) return;
+        
+        const transition = promptWithCancelCheck("Status transition (optional, e.g., 'In Progress', 'Done'):", "", false);
+  if (transition === null) return;
+        
+        vscode.postMessage({
+          type: 'deliver.jiraComment',
+          issueKey: issueKey.trim(),
+          comment: comment.trim(),
+          transition: transition ? transition.trim() : null
+        });
+      }
+      
       vscode.postMessage({type:'session.open'});
     </script>
   </body></html>`;

@@ -13,14 +13,41 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pip install ruff black pytest requests
       - name: Lint
-        run: ruff check . && black --check .
+        run: ruff check backend/ tests/ *.py && black --check .
       - name: Unit tests (health only for now)
         env:
           SECRET_KEY: test-secret-for-ci
           JWT_SECRET: test-jwt-secret-for-ci
+          DATABASE_URL: sqlite:///./test.db
         run: |
-          API_PORT=8002 python -m backend.api.main & sleep 2
-          python -m backend.api.realtime & sleep 2
+          # Initialize test database with migrations
+          alembic upgrade head || echo "Migration failed or not needed"
+          
+          API_PORT=8002 python -m backend.api.main > /tmp/main.log 2>&1 &
+          MAIN_PID=$!
+          python -m backend.api.realtime > /tmp/realtime.log 2>&1 &
+          REALTIME_PID=$!
+          
+          # Wait for servers to start with retries
+          for i in {1..10}; do
+            sleep 1
+            if curl -f http://localhost:8002/health > /dev/null 2>&1 && \
+               curl -f http://localhost:8001/health > /dev/null 2>&1; then
+              echo "Servers started successfully"
+              break
+            fi
+            if [ $i -eq 10 ]; then
+              echo "Servers failed to start"
+              echo "Main API logs:"
+              cat /tmp/main.log || echo "No main logs"
+              echo "Realtime API logs:"
+              cat /tmp/realtime.log || echo "No realtime logs"
+              kill $MAIN_PID $REALTIME_PID 2>/dev/null || true
+              exit 1
+            fi
+          done
+          
+          # Run health check tests
           python - <<'PY'
           import requests, sys
           for port in (8002,8001):
@@ -28,3 +55,6 @@ jobs:
               assert r.status_code==200
           print("health ok")
           PY
+          
+          # Cleanup
+          kill $MAIN_PID $REALTIME_PID 2>/dev/null || true

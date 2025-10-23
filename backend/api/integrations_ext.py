@@ -1,10 +1,13 @@
 """Extended Integrations API - Connection management for Slack, Confluence, etc."""
 
 import os
+import logging
 from fastapi import APIRouter, Body, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..core.db import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/integrations-ext", tags=["integrations-ext"])
 
@@ -32,6 +35,7 @@ def slack_connect(
 
     # SECURITY WARNING: Tokens are currently stored in plaintext in the database.
     # This is acceptable for development/testing but NOT for production deployment.
+    # See SECURITY.md and README.md for detailed security considerations.
     # TODO: BEFORE PRODUCTION - Implement token encryption at rest (CRITICAL)
     # Options:
     #  - Use a secrets-management service (AWS KMS + Secrets Manager, HashiCorp Vault)
@@ -39,9 +43,12 @@ def slack_connect(
     #  - Application-level AES/GCM encryption with key stored in an HSM or KMS
     # If application-level encryption is used, load the encryption key from an
     # environment-backed secret (e.g. env var referencing the KMS key) and
-    # rotate keys periodically. See docs/security.md for recommended patterns.
+    # rotate keys periodically.
     # TRACKING: GitHub Issue #18 - Implement token encryption before production deployment
     # https://github.com/NNDSrinivas/autonomous-engineering-platform/issues/18
+    logger.warning(
+        "Development mode: Storing tokens in plaintext. See SECURITY.md for production requirements."
+    )
     # Use ON CONFLICT to handle existing connections (update token)
     db.execute(
         text(
@@ -82,6 +89,10 @@ def confluence_connect(
         )
 
     # TODO: Security improvement - encrypt tokens at rest (same as Slack tokens above)
+    # See SECURITY.md for detailed security considerations.
+    logger.warning(
+        "Development mode: Storing tokens in plaintext. See SECURITY.md for production requirements."
+    )
     # Use ON CONFLICT to handle existing connections (update credentials)
     db.execute(
         text(

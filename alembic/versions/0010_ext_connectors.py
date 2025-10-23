@@ -28,6 +28,7 @@ def upgrade():
             sa.DateTime(timezone=True),
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
+        sa.UniqueConstraint("org_id", name="uq_slack_org"),
     )
     op.create_table(
         "confluence_connection",
@@ -41,6 +42,7 @@ def upgrade():
             sa.DateTime(timezone=True),
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
+        sa.UniqueConstraint("org_id", name="uq_confluence_org"),
     )
     op.create_table(
         "sync_cursor",

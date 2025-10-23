@@ -30,7 +30,8 @@ def slack_connect(
     # If application-level encryption is used, load the encryption key from an
     # environment-backed secret (e.g. env var referencing the KMS key) and
     # rotate keys periodically. See docs/security.md for recommended patterns.
-    # TRACKING: Create GitHub issue to track this security improvement before merge.
+    # TRACKING: GitHub Issue #18 - Implement token encryption before production deployment
+    # https://github.com/NNDSrinivas/autonomous-engineering-platform/issues/18
     # Use ON CONFLICT to handle existing connections (update token)
     db.execute(
         text(

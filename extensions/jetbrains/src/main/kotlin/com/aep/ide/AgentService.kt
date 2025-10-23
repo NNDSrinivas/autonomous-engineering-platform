@@ -117,7 +117,8 @@ class AgentService {
         }
       }
       agentProcess = null
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+      logger.warn("Exception during agent cleanup in stopAgentIfStarted: ${e.message}", e)
     }
   }
 }

@@ -16,6 +16,9 @@ migrate:
 rev:
 	alembic revision -m "update" --autogenerate
 
+seed-policy:
+	docker exec -i aep_postgres psql -U mentor -d mentor < scripts/seed_policy.sql
+
 lint:
 	python -m pip install ruff black || true
 	ruff check .

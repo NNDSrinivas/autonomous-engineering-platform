@@ -19,14 +19,22 @@ def semantic_search(
     db: Session = Depends(get_db),
 ):
     """Semantic search across memory: JIRA, meetings, code"""
-    org = request.headers.get("X-Org-Id") or "default"
+    org = request.headers.get("X-Org-Id")
+    if not org:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=401, detail="X-Org-Id header required")
     return {"hits": do_search(db, org, req.q, k=req.k)}
 
 
 @router.post("/reindex/jira")
 def reindex_jira(request: Request = None, db: Session = Depends(get_db)):
     """Reindex JIRA issues into memory"""
-    org = request.headers.get("X-Org-Id") or "default"
+    org = request.headers.get("X-Org-Id")
+    if not org:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=401, detail="X-Org-Id header required")
     rows = (
         db.execute(
             text(
@@ -57,7 +65,11 @@ def reindex_jira(request: Request = None, db: Session = Depends(get_db)):
 @router.post("/reindex/meetings")
 def reindex_meetings(request: Request = None, db: Session = Depends(get_db)):
     """Reindex meetings and summaries into memory"""
-    org = request.headers.get("X-Org-Id") or "default"
+    org = request.headers.get("X-Org-Id")
+    if not org:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=401, detail="X-Org-Id header required")
     rows = (
         db.execute(
             text(
@@ -95,7 +107,11 @@ def reindex_meetings(request: Request = None, db: Session = Depends(get_db)):
 @router.post("/reindex/code")
 def reindex_code(request: Request = None, db: Session = Depends(get_db)):
     """Reindex GitHub code files into memory"""
-    org = request.headers.get("X-Org-Id") or "default"
+    org = request.headers.get("X-Org-Id")
+    if not org:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=401, detail="X-Org-Id header required")
     rows = (
         db.execute(
             text(

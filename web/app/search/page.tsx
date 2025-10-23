@@ -9,6 +9,7 @@ interface SearchHit {
   foreign_id?: string;
   excerpt?: string;
   url?: string;
+  chunk_seq?: number;
 }
 
 export default function SearchPage() {
@@ -45,7 +46,7 @@ export default function SearchPage() {
       <ul>
         {hits.map((h) => (
           <li
-            key={`${h.source}:${h.foreign_id}`}
+            key={`${h.source}:${h.foreign_id}:${h.chunk_seq}`}
             style={{
               margin: '12px 0',
               background: '#fff',
@@ -55,7 +56,7 @@ export default function SearchPage() {
             }}
           >
             <div style={{ fontSize: 12, color: '#64748b' }}>
-              {h.source} • score {h.score}
+              {h.source} <span aria-hidden="true">•</span> score {h.score}
             </div>
             <div style={{ fontWeight: 600 }}>{h.title || h.foreign_id}</div>
             <div style={{ fontSize: 12, color: '#334155' }}>{h.excerpt}</div>

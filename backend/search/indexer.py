@@ -52,7 +52,7 @@ def upsert_memory_object(
                 """
         INSERT INTO memory_object (org_id,source,foreign_id,title,url,lang,meta_json)
         VALUES (:o,:s,:f,:t,:u,:l,:m)
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (org_id, source, foreign_id) DO NOTHING
         RETURNING id
     """
             ),

@@ -4,17 +4,23 @@ import com.aep.ide.AgentService
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.components.service
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.awt.BorderLayout
+import java.util.concurrent.TimeUnit
 import javax.swing.*
 import javax.swing.border.EmptyBorder
 
 class AgentPanel : JPanel(BorderLayout()) {
   companion object {
-    private val http = OkHttpClient()
+    private val http = OkHttpClient.Builder()
+      .connectTimeout(10, TimeUnit.SECONDS)
+      .readTimeout(30, TimeUnit.SECONDS)
+      .writeTimeout(30, TimeUnit.SECONDS)
+      .build()
   }
   
   private val out = JTextArea()
@@ -47,7 +53,7 @@ class AgentPanel : JPanel(BorderLayout()) {
     btnOpen.addActionListener {
       ApplicationManager.getApplication().executeOnPooledThread {
         try {
-          val c = AgentService.ensureAgentRunning()
+          val c = service<AgentService>().ensureAgentRunning()
           c.call("session.open").thenAccept { res -> append("Greeting:\n${pretty(res)}\n") }
         } catch (e: Exception) {
           append("Error: ${e.message}\n")
@@ -60,7 +66,7 @@ class AgentPanel : JPanel(BorderLayout()) {
         JOptionPane.showInputDialog(this, "Ticket key:", "AEP-27") ?: return@addActionListener
       ApplicationManager.getApplication().executeOnPooledThread {
         try {
-          val c = AgentService.ensureAgentRunning()
+          val c = service<AgentService>().ensureAgentRunning()
           c.call("ticket.select", mapOf("key" to key)).thenAccept { _ ->
             c.call("plan.propose", mapOf("key" to key)).thenAccept { plan ->
               append("Plan Proposed:\n${pretty(plan)}\n")
@@ -77,11 +83,16 @@ class AgentPanel : JPanel(BorderLayout()) {
         JOptionPane.showInputDialog(this, "Paste plan JSON.items to execute (array):", "[]")
           ?: return@addActionListener
       // Use TypeReference for safer deserialization of plan items
-      val items: List<Map<String, Any?>> =
-        mapper.readValue(planJson, object : com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Any?>>>() {})
+      val items: List<Map<String, Any?>>
+      try {
+        items = mapper.readValue(planJson, object : com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Any?>>>() {})
+      } catch (e: Exception) {
+        append("Invalid JSON: ${e.message}\n")
+        return@addActionListener
+      }
       ApplicationManager.getApplication().executeOnPooledThread {
         try {
-          val c = AgentService.ensureAgentRunning()
+          val c = service<AgentService>().ensureAgentRunning()
           for (step in items) {
             // Sanitize step data for display
             val kind = (step["kind"] as? String)?.take(50) ?: "unknown"

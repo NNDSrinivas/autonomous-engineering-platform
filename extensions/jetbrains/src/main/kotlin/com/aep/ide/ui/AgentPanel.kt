@@ -78,7 +78,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
     // --- Generate Plan (LLM) -> backend /api/context + /api/plan ---
     btnPlanLLM.addActionListener {
       val key = JOptionPane.showInputDialog(this, "Ticket key:", "AEP-27") ?: return@addActionListener
-      Thread {
+      ApplicationManager.getApplication().executeOnPooledThread {
         try {
           // 1) fetch context pack
           val ctxReq = Request.Builder()
@@ -117,7 +117,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
           append("ERROR generating plan: ${e.message}\n")
           Status.show(project, "AEP Plan error: ${e.message}", 8000)
         }
-      }.start()
+      }
     }
 
     // --- Approve & Run (via agentd) ---
@@ -125,19 +125,30 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
       val planJson = JOptionPane.showInputDialog(this, "Paste plan JSON.items to execute (array):", "[]") ?: return@addActionListener
       @Suppress("UNCHECKED_CAST")
       val items: List<Map<String, Any?>> = mapper.readValue(planJson, List::class.java) as List<Map<String, Any?>>
-      Thread {
+      ApplicationManager.getApplication().executeOnPooledThread {
         try {
           val c = service<AgentService>().ensureAgentRunning()
-          items.forEach { step ->
-            val approve = JOptionPane.showConfirmDialog(this, "Run step: ${step["kind"]} - ${step["desc"]} ?", "Confirm", JOptionPane.OK_CANCEL_OPTION)
-            if (approve != JOptionPane.OK_OPTION) { append("Cancelled: ${step["id"]}\n"); return@forEach }
+          for (step in items) {
+            // Sanitize step data for display
+            val kind = (step["kind"] as? String)?.take(50) ?: "unknown"
+            val desc = (step["desc"] as? String)?.take(200) ?: "no description"
+            val stepId = (step["id"] as? String)?.take(50) ?: "unknown"
+            
+            var approve = JOptionPane.CANCEL_OPTION
+            SwingUtilities.invokeAndWait {
+              approve = JOptionPane.showConfirmDialog(this, "Run step: $kind - $desc ?", "Confirm", JOptionPane.OK_CANCEL_OPTION)
+            }
+            if (approve != JOptionPane.OK_OPTION) {
+              append("Cancelled: $stepId - stopping execution\n")
+              break
+            }
             val res = c.call("plan.runStep", mapOf("step" to step)).get()
-            append("Step ${step["id"]} -> ${pretty(res)}\n")
+            append("Step $stepId -> ${pretty(res)}\n")
           }
         } catch (e: Exception) {
           append("Error in Approve & Run: ${e.message}\n")
         }
-      }.start()
+      }
     }
 
     // --- Draft PR (OkHttp) ---
@@ -152,7 +163,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
         "repo_full_name" to repo, "base" to base, "head" to head,
         "title" to title, "body" to body, "ticket_key" to ticket, "dry_run" to false
       ))
-      Thread {
+      ApplicationManager.getApplication().executeOnPooledThread {
         try {
           val req = Request.Builder()
             .url("$coreApi/api/deliver/github/draft-pr")
@@ -169,7 +180,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
           append("Draft PR error: ${e.message}\n")
           Status.show(project, "Draft PR error: ${e.message}")
         }
-      }.start()
+      }
     }
 
     // --- JIRA Comment (OkHttp) ---
@@ -181,7 +192,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
         "issue_key" to issue, "comment" to comment,
         "transition" to (if (transition.isBlank()) null else transition), "dry_run" to false
       ))
-      Thread {
+      ApplicationManager.getApplication().executeOnPooledThread {
         try {
           val req = Request.Builder()
             .url("$coreApi/api/deliver/jira/comment")
@@ -198,13 +209,13 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
           append("JIRA comment error: ${e.message}\n")
           Status.show(project, "JIRA error: ${e.message}")
         }
-      }.start()
+      }
     }
   }
 
   private fun append(s: String) { 
     SwingUtilities.invokeLater { 
-      out.text = "$s\n${out.text}" 
+      out.append("$s\n")
     }
   }
   

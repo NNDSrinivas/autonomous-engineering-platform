@@ -105,7 +105,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
 
               // status bar telemetry
               @Suppress("UNCHECKED_CAST")
-              val t = (planRes["telemetry"] as? Map<*, *>) ?: emptyMap<String, Any>()
+              val t = (planRes["telemetry"] as? Map<*, *>) ?: emptyMap<Any?, Any?>()
               val model = t["model"]?.toString() ?: "n/a"
               val tokens = (t["tokens"] ?: "0").toString()
               val cost = (t["cost_usd"] ?: "0").toString()

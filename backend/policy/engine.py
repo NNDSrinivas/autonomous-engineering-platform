@@ -55,11 +55,27 @@ def check_action(policy: Dict, action: Dict) -> Dict:
     if action.get("command"):
         cmd = action["command"]
         # Safely tokenize the command to avoid simple bypasses like '/usr/bin/sudo'.
-        # Note: This does not implement special detection for environment variable wrappers (e.g., 'env sudo', 'VAR=value sudo').
         try:
             tokens = shlex.split(cmd)
         except Exception:
             tokens = cmd.split()
+
+        # Filter out common wrapper commands and environment variable assignments
+        # to prevent policy evasion via 'env sudo', 'VAR=value sudo', 'nohup sudo', etc.
+        WRAPPER_COMMANDS = {"env", "nohup", "nice", "ionice", "timeout", "time"}
+        filtered_tokens = []
+        for tok in tokens:
+            # Skip environment variable assignments (KEY=value)
+            if "=" in tok and not tok.startswith("/"):
+                continue
+            # Skip common wrapper commands
+            basename = os.path.basename(tok)
+            if basename in WRAPPER_COMMANDS:
+                continue
+            filtered_tokens.append(tok)
+
+        # Use filtered tokens for policy checks
+        tokens = filtered_tokens if filtered_tokens else tokens
 
         # Helper: compare token basenames to patterns
         def token_matches_pattern(tok: str, pat: str) -> bool:

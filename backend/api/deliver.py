@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Dict, Any, Tuple
 
-from ..core.database import get_db
+from ..core.db import get_db
 from ..schemas.deliver import (
     DraftPRRequest,
     DraftPRResponse,

@@ -29,7 +29,7 @@ class ConfluenceReader:
         )
         r.raise_for_status()
         j = r.json()
-        # Complex fallback logic handles multiple Confluence API response formats
+        # Explicit fallback logic handles multiple Confluence API response formats
         # Log which response structure was received to help track API version differences
         has_page_key = "page" in j
         has_results_key = "results" in j
@@ -39,7 +39,20 @@ class ConfluenceReader:
             has_page_key,
             has_results_key,
         )
-        results = (j.get("page", {}) or {}).get("results") or j.get("results") or []
+        # Extract results with explicit conditional checks for clarity
+        page_obj = j.get("page")
+        page_results = (
+            page_obj.get("results") if page_obj and isinstance(page_obj, dict) else None
+        )
+        direct_results = j.get("results") if "results" in j else None
+
+        if page_results is not None:
+            results = page_results
+        elif direct_results is not None:
+            results = direct_results
+        else:
+            results = []
+
         out = []
         for p in results:
             title = p.get("title")

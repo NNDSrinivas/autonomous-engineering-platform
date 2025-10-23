@@ -123,8 +123,15 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
     // --- Approve & Run (via agentd) ---
     btnApprove.addActionListener {
       val planJson = JOptionPane.showInputDialog(this, "Paste plan JSON.items to execute (array):", "[]") ?: return@addActionListener
-      @Suppress("UNCHECKED_CAST")
-      val items: List<Map<String, Any?>> = mapper.readValue(planJson, List::class.java) as List<Map<String, Any?>>
+      val items: List<Map<String, Any?>>
+      try {
+        @Suppress("UNCHECKED_CAST")
+        items = mapper.readValue(planJson, List::class.java) as List<Map<String, Any?>>
+      } catch (e: Exception) {
+        append("Invalid JSON: ${e.message}\n")
+        JOptionPane.showMessageDialog(this, "Invalid JSON: ${e.message}", "JSON Parse Error", JOptionPane.ERROR_MESSAGE)
+        return@addActionListener
+      }
       ApplicationManager.getApplication().executeOnPooledThread {
         try {
           val c = service<AgentService>().ensureAgentRunning()
@@ -215,7 +222,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
 
   private fun append(s: String) { 
     SwingUtilities.invokeLater { 
-      out.append("$s\n")
+      out.append(s)
     }
   }
   

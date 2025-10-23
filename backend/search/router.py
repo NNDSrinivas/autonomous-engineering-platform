@@ -30,8 +30,9 @@ def reindex_jira(request: Request = None, db: Session = Depends(get_db)):
     rows = (
         db.execute(
             text(
-                "SELECT issue_key, summary, url, status FROM jira_issue ORDER BY updated DESC LIMIT 2000"
-            )
+                "SELECT issue_key, summary, url, status FROM jira_issue WHERE org_id=:org_id ORDER BY updated DESC LIMIT 2000"
+            ),
+            {"org_id": org},
         )
         .mappings()
         .all()
@@ -64,9 +65,11 @@ def reindex_meetings(request: Request = None, db: Session = Depends(get_db)):
       SELECT m.id mid, coalesce(ms.summary_json,'{}') s
       FROM meeting m
       LEFT JOIN meeting_summary ms ON ms.meeting_id=m.id
+      WHERE m.org_id=:org_id
       ORDER BY m.created_at DESC LIMIT 1000
     """
-            )
+            ),
+            {"org_id": org},
         )
         .mappings()
         .all()
@@ -99,9 +102,11 @@ def reindex_code(request: Request = None, db: Session = Depends(get_db)):
                 """
       SELECT r.repo_full_name repo, f.path, f.blob_text
       FROM gh_file f JOIN gh_repo r ON r.id=f.repo_id
+      WHERE r.org_id=:org_id
       ORDER BY f.updated DESC LIMIT 5000
     """
-            )
+            ),
+            {"org_id": org},
         )
         .mappings()
         .all()

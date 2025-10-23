@@ -5,10 +5,21 @@ from sqlalchemy import text
 from .embeddings import embed_texts
 import hashlib
 import json
-from typing import Dict
+from typing import Dict, List
 
 CHUNK = 1200
 OVERLAP = 150
+
+
+def encode_vector_as_bytes(vec: List[float]) -> memoryview:
+    """Encode a vector as bytes for storage in LargeBinary column.
+    Uses JSON encoding for SQLite compatibility and easy migration to pgvector."""
+    return memoryview(bytearray(json.dumps(vec), "utf-8"))
+
+
+def decode_vector_from_bytes(data: bytes) -> List[float]:
+    """Decode a vector from bytes stored in LargeBinary column."""
+    return json.loads(bytes(data).decode("utf-8"))
 
 
 def _chunks(s: str, n: int = CHUNK, overlap: int = OVERLAP):
@@ -86,9 +97,6 @@ def upsert_memory_object(
         ).fetchone():
             continue
 
-        # Store embeddings as JSON-encoded bytes for SQLite/Postgres compatibility
-        # This avoids needing pgvector or other vector extensions for simple deployments
-        # For production at scale, consider migrating to native vector types (pgvector, etc.)
         db.execute(
             text(
                 """
@@ -100,7 +108,7 @@ def upsert_memory_object(
                 "id": obj_id,
                 "seq": i,
                 "text": chunk,
-                "emb": memoryview(bytearray(json.dumps(vec), "utf-8")),
+                "emb": encode_vector_as_bytes(vec),
                 "dim": len(vec),
                 "h": h,
             },

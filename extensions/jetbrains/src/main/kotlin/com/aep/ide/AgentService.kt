@@ -5,8 +5,9 @@ import com.intellij.notification.Notification
 import com.intellij.notification.NotificationType
 import com.intellij.notification.Notifications
 import java.io.File
+import org.java_websocket.client.WebSocketClient
 
-object AgentService {
+class AgentService {
   private var client: RpcClient? = null
   private var started: Boolean = false
   private var agentProcess: Process? = null
@@ -32,17 +33,19 @@ object AgentService {
           val proc = pb.start()
           agentProcess = proc
           started = true
-          // Retry connection with exponential backoff (capped at 10s max)
-          // Retries 0-6 use true exponential (200ms -> 12.8s capped to 10s)
-          var retries = 0
-          while (retries < 7) {
-            Thread.sleep(minOf(200L * (1 shl retries), 10000L)) // 200ms, 400ms, ..., max 10s
+          // Retry connection with exponential backoff (200ms -> 12.8s capped to 10s)
+          // Thread.sleep is acceptable here because:
+          // 1. Already executing on background thread (ApplicationManager.executeOnPooledThread)
+          // 2. Only called during agent startup (not hot path)
+          // 3. Synchronous return type required by callers
+          for (attempt in 0..6) {
+            Thread.sleep(minOf(200L * (1 shl attempt), 10000L))
             try {
               client = RpcClient(url)
               client!!.connectBlocking()
               return client!!
             } catch (_: Exception) {
-              retries++
+              // Continue to next retry
             }
           }
         } catch (e: Exception) {

@@ -42,7 +42,7 @@ def upsert_memory_object(
     url: str,
     lang: str,
     meta: Dict,
-    text: str,
+    content: str,
 ):
     """Index a content object into memory with embeddings"""
     # Insert or get existing object
@@ -85,7 +85,7 @@ def upsert_memory_object(
     obj_id = row["id"]
 
     # Chunk and embed
-    parts = _chunks(text)
+    parts = _chunks(content)
     vecs = embed_texts(parts)
 
     for i, (chunk, vec) in enumerate(zip(parts, vecs)):

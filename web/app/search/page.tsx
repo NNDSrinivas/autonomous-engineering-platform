@@ -2,12 +2,28 @@
 import { useState } from 'react';
 import { postJson } from '@/lib/api';
 
+interface SearchHit {
+  source: string;
+  score: number;
+  title?: string;
+  foreign_id?: string;
+  excerpt?: string;
+  url?: string;
+}
+
 export default function SearchPage() {
   const [q, setQ] = useState('jwt expiry');
-  const [hits, setHits] = useState<any[]>([]);
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const run = async () => {
-    const j = await postJson('/api/search/', { q, k: 8 });
-    setHits(j.hits);
+    try {
+      setError(null);
+      const j = await postJson('/api/search/', { q, k: 8 });
+      setHits(j.hits);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to search');
+      setHits([]);
+    }
   };
   return (
     <div>
@@ -21,10 +37,15 @@ export default function SearchPage() {
         />
         <button onClick={run}>Search</button>
       </div>
+      {error && (
+        <div style={{ color: '#dc2626', padding: 12, background: '#fee2e2', borderRadius: 8, margin: '12px 0' }}>
+          {error}
+        </div>
+      )}
       <ul>
-        {hits.map((h, i) => (
+        {hits.map((h) => (
           <li
-            key={i}
+            key={`${h.source}:${h.foreign_id}`}
             style={{
               margin: '12px 0',
               background: '#fff',

@@ -61,7 +61,6 @@ app.include_router(deliver_router)
 app.include_router(policy_router)
 app.include_router(change_router)
 app.include_router(search_router)
-app.include_router(change_router)
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])

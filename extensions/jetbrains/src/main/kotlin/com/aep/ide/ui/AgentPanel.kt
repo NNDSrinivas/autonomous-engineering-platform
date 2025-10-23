@@ -4,6 +4,7 @@ import com.aep.ide.AgentService
 import com.aep.ide.Status
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import okhttp3.MediaType.Companion.toMediaType
@@ -51,8 +52,27 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     // --- Open session (via agentd) ---
     btnOpen.addActionListener {
-      val c = service<AgentService>().ensureAgentRunning()
-      c.call("session.open").thenAccept { res -> append("Greeting:\n${pretty(res)}\n") }
+      btnOpen.isEnabled = false
+      ApplicationManager.getApplication().executeOnPooledThread {
+        try {
+          val c = service<AgentService>().ensureAgentRunning()
+          c.call("session.open").whenComplete { res, err ->
+            SwingUtilities.invokeLater {
+              btnOpen.isEnabled = true
+              if (err != null) {
+                append("ERROR opening session: ${err.message}\n")
+              } else {
+                append("Greeting:\n${pretty(res)}\n")
+              }
+            }
+          }
+        } catch (e: Exception) {
+          SwingUtilities.invokeLater {
+            btnOpen.isEnabled = true
+            append("ERROR opening session: ${e.message}\n")
+          }
+        }
+      }
     }
 
     // --- Generate Plan (LLM) -> backend /api/context + /api/plan ---

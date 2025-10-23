@@ -26,14 +26,19 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
       .writeTimeout(30, TimeUnit.SECONDS)
       .build()
     
+    // Regex patterns for telemetry parsing (compiled once for performance)
+    private val SANITIZE_PATTERN = Regex("[,\$\\s]")
+    private val LONG_VALIDATION_PATTERN = Regex("""^-?\d+$""")
+    private val DOUBLE_VALIDATION_PATTERN = Regex("""^-?\d+(\.\d+)?$""")
+    
     /**
      * Safely parse a Long value from telemetry map, handling Number types and sanitized string formats.
      * Accepts strings with commas, dollar signs, or whitespace (e.g., "1,234" or "$123").
      */
     private fun parseLongFromTelemetry(value: Any?): Long {
       return (value as? Number)?.toLong()
-        ?: value?.toString()?.trim()?.replace(Regex("[,\$\\s]"), "")?.let { s ->
-          if (Regex("""^-?\d+$""").matches(s)) s.toLongOrNull() else null
+        ?: value?.toString()?.trim()?.replace(SANITIZE_PATTERN, "")?.let { s ->
+          if (LONG_VALIDATION_PATTERN.matches(s)) s.toLongOrNull() else null
         }
         ?: 0L
     }
@@ -44,8 +49,8 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
      */
     private fun parseDoubleFromTelemetry(value: Any?): Double {
       return (value as? Number)?.toDouble()
-        ?: value?.toString()?.trim()?.replace(Regex("[,\$\\s]"), "")?.let { s ->
-          if (Regex("""^-?\d+(\.\d+)?$""").matches(s)) s.toDoubleOrNull() else null
+        ?: value?.toString()?.trim()?.replace(SANITIZE_PATTERN, "")?.let { s ->
+          if (DOUBLE_VALIDATION_PATTERN.matches(s)) s.toDoubleOrNull() else null
         }
         ?: 0.0
     }

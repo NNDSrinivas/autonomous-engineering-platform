@@ -27,7 +27,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
       .build()
     
     // Regex patterns for telemetry parsing (compiled once for performance)
-    private val SANITIZE_PATTERN = Regex("[,\$\\s]")
+    private val SANITIZE_PATTERN = Regex("[,$\\s]")
     private val LONG_VALIDATION_PATTERN = Regex("""^-?\d+$""")
     private val DOUBLE_VALIDATION_PATTERN = Regex("""^-?\d+(\.\d+)?$""")
     

@@ -86,6 +86,9 @@ def upsert_memory_object(
         ).fetchone():
             continue
 
+        # Store embeddings as JSON-encoded bytes for SQLite/Postgres compatibility
+        # This avoids needing pgvector or other vector extensions for simple deployments
+        # For production at scale, consider migrating to native vector types (pgvector, etc.)
         db.execute(
             text(
                 """

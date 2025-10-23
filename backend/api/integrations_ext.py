@@ -9,6 +9,11 @@ from ..core.db import get_db
 
 logger = logging.getLogger(__name__)
 
+# GitHub issue tracking token encryption implementation
+GITHUB_ISSUE_TOKEN_ENCRYPTION = (
+    "https://github.com/NNDSrinivas/autonomous-engineering-platform/issues/18"
+)
+
 router = APIRouter(prefix="/api/integrations-ext", tags=["integrations-ext"])
 
 
@@ -30,7 +35,7 @@ def slack_connect(
     if environment == "production":
         raise HTTPException(
             status_code=501,
-            detail="Token encryption not implemented. Production deployment blocked. See GitHub Issue #18: https://github.com/NNDSrinivas/autonomous-engineering-platform/issues/18",
+            detail=f"Token encryption not implemented. Production deployment blocked. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
         )
 
     # SECURITY WARNING: Tokens are currently stored in plaintext in the database.
@@ -85,7 +90,7 @@ def confluence_connect(
     if environment == "production":
         raise HTTPException(
             status_code=501,
-            detail="Token encryption not implemented. Production deployment blocked. See GitHub Issue #18: https://github.com/NNDSrinivas/autonomous-engineering-platform/issues/18",
+            detail=f"Token encryption not implemented. Production deployment blocked. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
         )
 
     # TODO: Security improvement - encrypt tokens at rest (same as Slack tokens above)

@@ -328,8 +328,9 @@ def reindex_confluence(
                 # in backend/search/constants.py for configuration.
                 # Note: Truncation may occur mid-tag (e.g., <div class="foo), but BeautifulSoup
                 # handles malformed HTML gracefully and still extracts meaningful text content.
+                max_html_length = MAX_CONTENT_LENGTH * HTML_OVERHEAD_MULTIPLIER
                 soup = BeautifulSoup(
-                    text_html[: MAX_CONTENT_LENGTH * HTML_OVERHEAD_MULTIPLIER],
+                    text_html[:max_html_length],
                     "html.parser",
                 )
                 # Remove script and style tags completely (including malformed ones)

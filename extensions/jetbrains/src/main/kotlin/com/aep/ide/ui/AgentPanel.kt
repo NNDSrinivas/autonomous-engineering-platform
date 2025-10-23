@@ -13,9 +13,12 @@ import javax.swing.*
 import javax.swing.border.EmptyBorder
 
 class AgentPanel : JPanel(BorderLayout()) {
+  companion object {
+    private val http = OkHttpClient()
+  }
+  
   private val out = JTextArea()
   private val mapper = ObjectMapper().registerKotlinModule()
-  private val http = OkHttpClient()
 
   init {
     border = EmptyBorder(8, 8, 8, 8)
@@ -80,18 +83,23 @@ class AgentPanel : JPanel(BorderLayout()) {
         try {
           val c = AgentService.ensureAgentRunning()
           items.forEach { step ->
+            // Sanitize step data for display
+            val kind = (step["kind"] as? String)?.take(50) ?: "unknown"
+            val desc = (step["desc"] as? String)?.take(200) ?: "no description"
+            val stepId = (step["id"] as? String)?.take(50) ?: "unknown"
+            
             var approve = JOptionPane.CANCEL_OPTION
             SwingUtilities.invokeAndWait {
               approve =
                 JOptionPane.showConfirmDialog(
                   this,
-                  "Run step: ${step["kind"]} - ${step["desc"]} ?",
+                  "Run step: $kind - $desc ?",
                   "Confirm",
                   JOptionPane.OK_CANCEL_OPTION
                 )
             }
             if (approve != JOptionPane.OK_OPTION) {
-              append("Cancelled: ${step["id"]}\n")
+              append("Cancelled: $stepId\n")
               return@forEach
             }
             val res = c.call("plan.runStep", mapOf("step" to step)).get()
@@ -134,11 +142,11 @@ class AgentPanel : JPanel(BorderLayout()) {
               .post(payload.toRequestBody("application/json".toMediaType()))
               .build()
           val resp = http.newCall(req).execute()
-          val bodyString = resp.body?.string()
+          val bodyString = resp.body?.string() ?: "<empty response>"
           if (resp.isSuccessful) {
-            append("Draft PR response: ${bodyString}\n")
+            append("Draft PR response: $bodyString\n")
           } else {
-            append("Draft PR failed: ${resp.code} - ${bodyString}\n")
+            append("Draft PR failed: ${resp.code} - $bodyString\n")
           }
         } catch (e: Exception) {
           append("Error: ${e.message}\n")
@@ -171,11 +179,11 @@ class AgentPanel : JPanel(BorderLayout()) {
               .post(payload.toRequestBody("application/json".toMediaType()))
               .build()
           val resp = http.newCall(req).execute()
-          val bodyString = resp.body?.string()
+          val bodyString = resp.body?.string() ?: "<empty response>"
           if (resp.isSuccessful) {
-            append("JIRA response: ${bodyString}\n")
+            append("JIRA response: $bodyString\n")
           } else {
-            append("JIRA request failed: ${resp.code} - ${bodyString}\n")
+            append("JIRA request failed: ${resp.code} - $bodyString\n")
           }
         } catch (e: Exception) {
           append("Error: ${e.message}\n")

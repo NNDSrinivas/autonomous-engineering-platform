@@ -8,12 +8,13 @@ import java.io.File
 import org.java_websocket.client.WebSocketClient
 
 class AgentService {
-  private var client: RpcClient? = null
-  private var started: Boolean = false
-  private var agentProcess: Process? = null
+  private val lock = Any()
+  @Volatile private var client: RpcClient? = null
+  @Volatile private var started: Boolean = false
+  @Volatile private var agentProcess: Process? = null
   private val url = System.getenv("AEP_AGENTD_URL") ?: "ws://127.0.0.1:8765"
 
-  fun ensureAgentRunning(): RpcClient {
+  fun ensureAgentRunning(): RpcClient = synchronized(lock) {
     if (client != null && client!!.isOpen) return client!!
     // Try connect; if fails, attempt to start agentd from repo (Node script)
     try {
@@ -72,7 +73,7 @@ class AgentService {
     }
   }
 
-  fun stopAgentIfStarted() {
+  fun stopAgentIfStarted() = synchronized(lock) {
     try {
       agentProcess?.destroy()
       agentProcess = null

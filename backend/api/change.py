@@ -198,16 +198,36 @@ def review_change(
     if cr["status"] != "pending":
         raise HTTPException(400, f"Change request is already {cr['status']}")
     
-    # Record review
-    db.execute(text("""
-        INSERT INTO change_review (change_id, reviewer_id, decision, comment)
-        VALUES (:c, :u, :d, :m)
-    """), {
-        "c": change_id,
-        "u": user,
-        "d": decision,
-        "m": payload.get("comment")
-    })
+    # Record review (prevent duplicate approvals from the same reviewer)
+    existing_review = db.execute(
+        text("""
+            SELECT id FROM change_review
+            WHERE change_id=:c AND reviewer_id=:u
+        """),
+        {"c": change_id, "u": user}
+    ).mappings().first()
+
+    if existing_review:
+        db.execute(text("""
+            UPDATE change_review
+            SET decision=:d, comment=:m
+            WHERE change_id=:c AND reviewer_id=:u
+        """), {
+            "c": change_id,
+            "u": user,
+            "d": decision,
+            "m": payload.get("comment")
+        })
+    else:
+        db.execute(text("""
+            INSERT INTO change_review (change_id, reviewer_id, decision, comment)
+            VALUES (:c, :u, :d, :m)
+        """), {
+            "c": change_id,
+            "u": user,
+            "d": decision,
+            "m": payload.get("comment")
+        })
     
     # Check if we have enough approvals
     req = db.execute(

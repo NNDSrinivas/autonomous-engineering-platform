@@ -112,18 +112,25 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
               val model = t["model"]?.toString() ?: "n/a"
               
               // Robust parsing: handle Number types, strings with commas/currency symbols, etc.
+              // Sanitize and validate numeric strings before parsing
               val tokensLong = (t["tokens"] as? Number)?.toLong() 
-                ?: t["tokens"]?.toString()?.replace(Regex("[^0-9-]"), "")?.toLongOrNull() 
+                ?: t["tokens"]?.toString()?.trim()?.replace(Regex("[,$\\s]"), "")?.let { s ->
+                  if (Regex("""^-?\d+$""").matches(s)) s.toLongOrNull() else null
+                }
                 ?: 0L
               val tokens = String.format(Locale.US, "%d", tokensLong)
               
               val costDouble = (t["cost_usd"] as? Number)?.toDouble()
-                ?: t["cost_usd"]?.toString()?.replace(Regex("[^0-9.-]"), "")?.toDoubleOrNull()
+                ?: t["cost_usd"]?.toString()?.trim()?.replace(Regex("[,$\\s]"), "")?.let { s ->
+                  if (Regex("""^-?\d+(\.\d+)?$""").matches(s)) s.toDoubleOrNull() else null
+                }
                 ?: 0.0
               val cost = String.format(Locale.US, "%.2f", costDouble)
               
               val latencyLong = (t["latency_ms"] as? Number)?.toLong()
-                ?: t["latency_ms"]?.toString()?.replace(Regex("[^0-9-]"), "")?.toLongOrNull()
+                ?: t["latency_ms"]?.toString()?.trim()?.replace(Regex("[,$\\s]"), "")?.let { s ->
+                  if (Regex("""^-?\d+$""").matches(s)) s.toLongOrNull() else null
+                }
                 ?: 0L
               val latency = String.format(Locale.US, "%d", latencyLong)
               

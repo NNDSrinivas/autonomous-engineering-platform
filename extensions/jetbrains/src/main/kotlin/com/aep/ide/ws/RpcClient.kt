@@ -29,7 +29,7 @@ class RpcClient(url: String) : WebSocketClient(URI(url)) {
     val fut = CompletableFuture<Map<String, Any?>>()
     pending[id] = fut
     val payload = mapOf("id" to id, "method" to method, "params" to params)
-    val json = ObjectMapper().registerKotlinModule().writeValueAsString(payload)
+    val json = mapper.writeValueAsString(payload)
     send(json)
     return fut
   }

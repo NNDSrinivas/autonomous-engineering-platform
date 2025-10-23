@@ -3,6 +3,7 @@ package com.aep.ide.ui
 import com.aep.ide.AgentService
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.intellij.openapi.application.ApplicationManager
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,17 +42,29 @@ class AgentPanel : JPanel(BorderLayout()) {
     add(JScrollPane(out), BorderLayout.CENTER)
 
     btnOpen.addActionListener {
-      val c = AgentService.ensureAgentRunning()
-      c.call("session.open").thenAccept { res -> append("Greeting:\n${pretty(res)}\n") }
+      ApplicationManager.getApplication().executeOnPooledThread {
+        try {
+          val c = AgentService.ensureAgentRunning()
+          c.call("session.open").thenAccept { res -> append("Greeting:\n${pretty(res)}\n") }
+        } catch (e: Exception) {
+          append("Error: ${e.message}\n")
+        }
+      }
     }
 
     btnPlan.addActionListener {
       val key =
         JOptionPane.showInputDialog(this, "Ticket key:", "AEP-27") ?: return@addActionListener
-      val c = AgentService.ensureAgentRunning()
-      c.call("ticket.select", mapOf("key" to key)).thenAccept { _ ->
-        c.call("plan.propose", mapOf("key" to key)).thenAccept { plan ->
-          append("Plan Proposed:\n${pretty(plan)}\n")
+      ApplicationManager.getApplication().executeOnPooledThread {
+        try {
+          val c = AgentService.ensureAgentRunning()
+          c.call("ticket.select", mapOf("key" to key)).thenAccept { _ ->
+            c.call("plan.propose", mapOf("key" to key)).thenAccept { plan ->
+              append("Plan Proposed:\n${pretty(plan)}\n")
+            }
+          }
+        } catch (e: Exception) {
+          append("Error: ${e.message}\n")
         }
       }
     }
@@ -62,16 +75,20 @@ class AgentPanel : JPanel(BorderLayout()) {
           ?: return@addActionListener
       val items: List<Map<String, Any?>> =
         mapper.readValue(planJson, List::class.java) as List<Map<String, Any?>>
-      val c = AgentService.ensureAgentRunning()
-      Thread {
+      ApplicationManager.getApplication().executeOnPooledThread {
+        try {
+          val c = AgentService.ensureAgentRunning()
           items.forEach { step ->
-            val approve =
-              JOptionPane.showConfirmDialog(
-                this,
-                "Run step: ${step["kind"]} - ${step["desc"]} ?",
-                "Confirm",
-                JOptionPane.OK_CANCEL_OPTION
-              )
+            var approve = JOptionPane.CANCEL_OPTION
+            SwingUtilities.invokeAndWait {
+              approve =
+                JOptionPane.showConfirmDialog(
+                  this,
+                  "Run step: ${step["kind"]} - ${step["desc"]} ?",
+                  "Confirm",
+                  JOptionPane.OK_CANCEL_OPTION
+                )
+            }
             if (approve != JOptionPane.OK_OPTION) {
               append("Cancelled: ${step["id"]}\n")
               return@forEach
@@ -79,8 +96,10 @@ class AgentPanel : JPanel(BorderLayout()) {
             val res = c.call("plan.runStep", mapOf("step" to step)).get()
             append("Step ${step["id"]} -> ${pretty(res)}\n")
           }
+        } catch (e: Exception) {
+          append("Error: ${e.message}\n")
         }
-        .start()
+      }
     }
 
     btnDraftPR.addActionListener {
@@ -143,9 +162,9 @@ class AgentPanel : JPanel(BorderLayout()) {
   }
 
   private fun append(s: String) {
-    out.text = "${s}\n${out.text}"
+    SwingUtilities.invokeLater { out.text = "${s}\n${out.text}" }
   }
 
   private fun pretty(map: Any?): String =
-    ObjectMapper().registerKotlinModule().writerWithDefaultPrettyPrinter().writeValueAsString(map)
+    mapper.writerWithDefaultPrettyPrinter().writeValueAsString(map)
 }

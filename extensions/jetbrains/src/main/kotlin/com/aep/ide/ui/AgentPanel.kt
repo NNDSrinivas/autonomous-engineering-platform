@@ -2,6 +2,7 @@ package com.aep.ide.ui
 
 import com.aep.ide.AgentService
 import com.aep.ide.Status
+import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.intellij.openapi.application.ApplicationManager
@@ -117,8 +118,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
           http.newCall(ctxReq).execute().use { resp ->
             if (!resp.isSuccessful) throw RuntimeException("Context HTTP ${resp.code}")
             val contextBody = resp.body?.string() ?: throw RuntimeException("Empty context response body")
-            @Suppress("UNCHECKED_CAST")
-            val contextPack = mapper.readValue(contextBody, Map::class.java) as Map<String, Any?>
+            val contextPack = mapper.readValue(contextBody, object : TypeReference<Map<String, Any?>>() {})
 
             // 2) call plan API
             val bodyMap = mapOf("contextPack" to contextPack)
@@ -130,13 +130,11 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
             http.newCall(planReq).execute().use { presp ->
               if (!presp.isSuccessful) throw RuntimeException("Plan HTTP ${presp.code}")
               val planBody = presp.body?.string() ?: throw RuntimeException("Empty plan response body")
-              @Suppress("UNCHECKED_CAST")
-              val planRes: Map<String, Any?> = mapper.readValue(planBody, Map::class.java) as Map<String, Any?>
+              val planRes = mapper.readValue(planBody, object : TypeReference<Map<String, Any?>>() {})
               append("LLM Plan:\n${pretty(planRes)}\n")
 
               // status bar telemetry
-              @Suppress("UNCHECKED_CAST")
-              val t = (planRes["telemetry"] as? Map<*, *>) ?: emptyMap<Any?, Any?>()
+              val t = (planRes["telemetry"] as? Map<*, *>) ?: emptyMap<Any, Any>()
               val model = t["model"]?.toString() ?: "n/a"
               
               // Parse numeric telemetry values using helper functions
@@ -159,8 +157,7 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
       val planJson = JOptionPane.showInputDialog(this, "Paste plan JSON.items to execute (array):", "[]") ?: return@addActionListener
       val items: List<Map<String, Any?>>
       try {
-        @Suppress("UNCHECKED_CAST")
-        items = mapper.readValue(planJson, List::class.java) as List<Map<String, Any?>>
+        items = mapper.readValue(planJson, object : TypeReference<List<Map<String, Any?>>>() {})
       } catch (e: Exception) {
         append("Invalid JSON: ${e.message}\n")
         JOptionPane.showMessageDialog(this, "Invalid JSON: ${e.message}", "JSON Parse Error", JOptionPane.ERROR_MESSAGE)

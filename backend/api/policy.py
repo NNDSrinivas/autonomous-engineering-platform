@@ -136,26 +136,19 @@ def upsert_policy(
         text("SELECT 1 FROM org_policy WHERE org_id=:o"), {"o": org_id}
     ).fetchone()
 
-    # Helper to safely quote SQL identifiers
-    def quote_identifier(identifier: str) -> str:
-        # Only allow safe SQL identifiers (letters, numbers, underscores)
-        if not identifier.isidentifier():
-            raise ValueError(f"Unsafe SQL identifier: {identifier}")
-        return f'"{identifier}"'
-
     if exists:
-        # Update existing policy - safe because keys are validated against ALLOWED_FIELDS
-        columns_set = [f"{quote_identifier(k)}=:{k}" for k in keys]
+        # Update existing policy - safe because keys are validated against ALLOWED_FIELDS whitelist
         update_sql = (
-            "UPDATE org_policy SET " + ", ".join(columns_set) + " WHERE org_id=:o"
+            "UPDATE org_policy SET "
+            + ", ".join([f"{k}=:{k}" for k in keys])
+            + " WHERE org_id=:o"
         )
         db.execute(text(update_sql), dict(vals, o=org_id))
     else:
-        # Insert new policy - safe because keys are validated against ALLOWED_FIELDS
-        columns = [quote_identifier(k) for k in keys]
+        # Insert new policy - safe because keys are validated against ALLOWED_FIELDS whitelist
         insert_sql = (
-            f'INSERT INTO org_policy ("org_id", {", ".join(columns)}) '
-            f'VALUES (:o, {", ".join(":" + k for k in keys)})'
+            f"INSERT INTO org_policy (org_id, {', '.join(keys)}) "
+            f"VALUES (:o, {', '.join(':' + k for k in keys)})"
         )
         db.execute(text(insert_sql), dict(vals, o=org_id))
 

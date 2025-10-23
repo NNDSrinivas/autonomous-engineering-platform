@@ -16,6 +16,14 @@ MAX_CHUNKS = int(os.getenv("AEP_SEARCH_MAX_CHUNKS", "6000"))
 EXCERPT_LENGTH = 400
 
 
+def _truncate_excerpt(text: str, max_len: int = EXCERPT_LENGTH) -> str:
+    """Truncate text to max_len characters with ellipsis if needed.
+    Python 3 strings are Unicode-safe, so slicing won't corrupt multi-byte chars."""
+    if len(text) <= max_len:
+        return text
+    return text[:max_len].rstrip() + "..."
+
+
 def cosine(a: List[float], b: List[float]) -> float:
     """Cosine similarity between two vectors - single-pass calculation"""
     dot = mag_a = mag_b = 0.0
@@ -78,7 +86,7 @@ def search(db: Session, org_id: str, query: str, k: int = 8) -> List[Dict]:
             "url": r["url"],
             "meta": json.loads(r["meta_json"] or "{}"),
             "chunk_seq": r["seq"],
-            "excerpt": r["text"][:EXCERPT_LENGTH],
+            "excerpt": _truncate_excerpt(r["text"]),
         }
         for s, r in top
     ]

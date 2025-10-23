@@ -8,7 +8,7 @@ import com.intellij.ui.content.ContentFactory
 
 class AepToolWindowFactory : ToolWindowFactory {
   override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-    val panel = AgentPanel()
+    val panel = AgentPanel(project)
     val content = ContentFactory.getInstance().createContent(panel, "", false)
     toolWindow.contentManager.addContent(content)
   }

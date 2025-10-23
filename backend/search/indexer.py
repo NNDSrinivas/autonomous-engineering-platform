@@ -89,7 +89,8 @@ def upsert_memory_object(
     vecs = embed_texts(parts)
 
     for i, (chunk, vec) in enumerate(zip(parts, vecs)):
-        h = hashlib.sha256(chunk.encode()).hexdigest()
+        # Use blake2b for faster hashing (deduplication purposes only)
+        h = hashlib.blake2b(chunk.encode()).hexdigest()
         # Skip if chunk already indexed
         if db.execute(
             text("SELECT 1 FROM memory_chunk WHERE object_id=:id AND hash=:h"),

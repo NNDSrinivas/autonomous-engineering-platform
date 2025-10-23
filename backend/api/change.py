@@ -259,7 +259,7 @@ def review_change(
     )
 
     # Default to 1 if required_reviewers is NULL or missing, ensure it's an int
-    need = int((req or {}).get("required_reviewers") or 1)
+    need = int(req.get("required_reviewers", 1) if req else 1)
 
     ok_count = db.execute(
         text(

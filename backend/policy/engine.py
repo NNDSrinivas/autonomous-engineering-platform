@@ -54,7 +54,8 @@ def check_action(policy: Dict, action: Dict) -> Dict:
     deny_cmds = set(_as_list(policy.get("commands_deny")))
     if action.get("command"):
         cmd = action["command"]
-        # Safely tokenize the command to avoid simple bypasses like '/usr/bin/sudo' or 'env sudo'
+        # Safely tokenize the command to avoid simple bypasses like '/usr/bin/sudo'.
+        # Note: This does not implement special detection for environment variable wrappers (e.g., 'env sudo', 'VAR=value sudo').
         try:
             tokens = shlex.split(cmd)
         except Exception:

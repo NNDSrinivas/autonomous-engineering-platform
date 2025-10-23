@@ -13,6 +13,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.awt.BorderLayout
 import java.util.concurrent.TimeUnit
+import java.util.Locale
 import javax.swing.*
 import javax.swing.border.EmptyBorder
 
@@ -109,10 +110,24 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
               @Suppress("UNCHECKED_CAST")
               val t = (planRes["telemetry"] as? Map<*, *>) ?: emptyMap<Any?, Any?>()
               val model = t["model"]?.toString() ?: "n/a"
-              val tokens = (t["tokens"] ?: "0").toString()
-              val cost = (t["cost_usd"] ?: "0").toString()
-              val latency = (t["latency_ms"] ?: "0").toString()
-              Status.show(project, "AEP Plan — model: $model | tokens: $tokens | cost: $$cost | latency: ${latency}ms")
+              
+              // Robust parsing: handle Number types, strings with commas/currency symbols, etc.
+              val tokensLong = (t["tokens"] as? Number)?.toLong() 
+                ?: t["tokens"]?.toString()?.replace(Regex("[^0-9-]"), "")?.toLongOrNull() 
+                ?: 0L
+              val tokens = String.format(Locale.US, "%d", tokensLong)
+              
+              val costDouble = (t["cost_usd"] as? Number)?.toDouble()
+                ?: t["cost_usd"]?.toString()?.replace(Regex("[^0-9.-]"), "")?.toDoubleOrNull()
+                ?: 0.0
+              val cost = String.format(Locale.US, "%.2f", costDouble)
+              
+              val latencyLong = (t["latency_ms"] as? Number)?.toLong()
+                ?: t["latency_ms"]?.toString()?.replace(Regex("[^0-9-]"), "")?.toLongOrNull()
+                ?: 0L
+              val latency = String.format(Locale.US, "%d", latencyLong)
+              
+              Status.show(project, "AEP Plan — model: $model | tokens: $tokens | cost: \$${cost} | latency: ${latency}ms")
             }
           }
         } catch (e: Exception) {

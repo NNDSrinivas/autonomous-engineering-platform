@@ -14,14 +14,29 @@ MAX_CHUNKS = int(os.getenv("AEP_SEARCH_MAX_CHUNKS", "6000"))
 
 
 def cosine(a: List[float], b: List[float]) -> float:
-    """Cosine similarity between two vectors"""
-    s = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a)) or 1.0
-    nb = math.sqrt(sum(x * x for x in b)) or 1.0
-    return s / (na * nb)
+    """Cosine similarity between two vectors - single-pass calculation"""
+    dot = mag_a = mag_b = 0.0
+    for x, y in zip(a, b):
+        dot += x * y
+        mag_a += x * x
+        mag_b += y * y
+    na = math.sqrt(mag_a) or 1.0
+    nb = math.sqrt(mag_b) or 1.0
+    return dot / (na * nb)
 
 
 def search(db: Session, org_id: str, query: str, k: int = 8) -> List[Dict]:
+    """Semantic search across memory chunks
+
+    Note: This implementation loads all chunks into memory and computes similarity in Python.
+    For production deployments with >10k chunks, consider:
+    - Vector database with native similarity search (pgvector, Pinecone, Weaviate)
+    - Pagination and filtering by source type before retrieval
+    - Pre-computed index structures (FAISS, Annoy)
+    """
+    qv = embed_texts([query])[0]
+
+    # Fetch all chunks for this org (limit configurable via env var)[Dict]:
     """Semantic search across memory chunks"""
     qv = embed_texts([query])[0]
 

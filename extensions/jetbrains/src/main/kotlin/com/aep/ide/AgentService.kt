@@ -9,6 +9,7 @@ import java.io.File
 object AgentService {
   private var client: RpcClient? = null
   private var started: Boolean = false
+  private var agentProcess: Process? = null
   private val url = System.getenv("AEP_AGENTD_URL") ?: "ws://127.0.0.1:8765"
 
   fun ensureAgentRunning(): RpcClient {
@@ -27,7 +28,8 @@ object AgentService {
         try {
           val cmd = listOf("npm", "run", "dev:agentd")
           val pb = ProcessBuilder(cmd).directory(agentCore).redirectErrorStream(true)
-          pb.start()
+          val proc = pb.start()
+          agentProcess = proc
           started = true
           // Retry connection with exponential backoff
           var retries = 0
@@ -42,6 +44,13 @@ object AgentService {
             }
           }
         } catch (e: Exception) {
+          // If startup fails, attempt to read process output for diagnostics
+          try {
+            agentProcess?.inputStream?.bufferedReader()?.useLines { lines ->
+              lines.take(50).forEach { println("agentd: $it") }
+            }
+          } catch (_: Exception) {
+          }
           Notifications.Bus.notify(
             Notification(
               "AEP",
@@ -55,6 +64,14 @@ object AgentService {
       client = RpcClient(url)
       client!!.connectBlocking()
       return client!!
+    }
+  }
+
+  fun stopAgentIfStarted() {
+    try {
+      agentProcess?.destroy()
+      agentProcess = null
+    } catch (_: Exception) {
     }
   }
 }

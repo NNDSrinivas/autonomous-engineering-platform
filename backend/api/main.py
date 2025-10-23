@@ -24,6 +24,7 @@ from .deliver import router as deliver_router
 from .policy import router as policy_router
 from .change import router as change_router
 from ..search.router import router as search_router
+from .integrations_ext import router as integrations_ext_router
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -53,13 +54,14 @@ def health():
 def version():
     return {"name": settings.app_name, "env": settings.app_env, "version": "0.1.0"}
 
-
 # Prometheus
 app.include_router(metrics_router)
 app.include_router(tasks_router)
 app.include_router(deliver_router)
 app.include_router(policy_router)
 app.include_router(change_router)
+app.include_router(search_router)
+app.include_router(integrations_ext_router)
 app.include_router(search_router)
 
 # Context Pack endpoint for IDE Bridge

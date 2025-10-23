@@ -8,7 +8,9 @@
   },
   "activationEvents": [
     "onStartupFinished",
-    "onCommand:aep.openPanel"
+    "onCommand:aep.openPanel",
+    "onCommand:aep.runPlan",
+    "onCommand:aep.generatePlanLLM"
   ],
   "main": "./out/extension.js",
   "contributes": {

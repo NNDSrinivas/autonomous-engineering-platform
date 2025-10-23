@@ -20,6 +20,7 @@ from ..workers.integrations import jira_sync, github_index
 from ..workers.answers import generate_answer
 from .tasks import router as tasks_router
 from .plan import router as plan_router
+from .deliver import router as deliver_router
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -53,6 +54,7 @@ def version():
 # Prometheus
 app.include_router(metrics_router)
 app.include_router(tasks_router)
+app.include_router(deliver_router)
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])

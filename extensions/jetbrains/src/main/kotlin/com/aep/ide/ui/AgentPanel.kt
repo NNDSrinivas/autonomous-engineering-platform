@@ -82,7 +82,7 @@ class AgentPanel : JPanel(BorderLayout()) {
       ApplicationManager.getApplication().executeOnPooledThread {
         try {
           val c = AgentService.ensureAgentRunning()
-          items.forEach { step ->
+          for (step in items) {
             // Sanitize step data for display
             val kind = (step["kind"] as? String)?.take(50) ?: "unknown"
             val desc = (step["desc"] as? String)?.take(200) ?: "no description"
@@ -99,11 +99,11 @@ class AgentPanel : JPanel(BorderLayout()) {
                 )
             }
             if (approve != JOptionPane.OK_OPTION) {
-              append("Cancelled: $stepId\n")
-              return@forEach
+              append("Cancelled: $stepId - stopping execution\n")
+              break
             }
             val res = c.call("plan.runStep", mapOf("step" to step)).get()
-            append("Step ${step["id"]} -> ${pretty(res)}\n")
+            append("Step $stepId -> ${pretty(res)}\n")
           }
         } catch (e: Exception) {
           append("Error: ${e.message}\n")

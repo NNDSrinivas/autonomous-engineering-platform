@@ -15,7 +15,13 @@ class RpcClient(url: String) : WebSocketClient(URI(url)) {
   private val pending = ConcurrentHashMap<String, CompletableFuture<Map<String, Any?>>>()
 
   override fun onOpen(handshakedata: ServerHandshake?) {}
-  override fun onClose(code: Int, reason: String?, remote: Boolean) {}
+  override fun onClose(code: Int, reason: String?, remote: Boolean) {
+    println("WebSocket closed: code=$code, reason=$reason, remote=$remote")
+    val ex = Exception("WebSocket closed: code=$code, reason=$reason, remote=$remote")
+    // Fail all pending requests
+    pending.values.forEach { it.completeExceptionally(ex) }
+    pending.clear()
+  }
   override fun onError(ex: Exception) { ex.printStackTrace() }
 
   override fun onMessage(message: String) {

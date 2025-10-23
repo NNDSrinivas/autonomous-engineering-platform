@@ -258,6 +258,7 @@ This generates sample plans and verifies metrics are being recorded correctly.
 - **PR-11**: Automated PR creation with JIRA comments  
 - **PR-12**: JetBrains adapter using `agent-core` WebSocket protocol
 - **PR-13**: Org Policy & Change Review (RBAC, Guardrails, Approvals) ✅
+- **PR-14**: Context Intelligence Dashboard + Memory Search ✅
 
 ---
 
@@ -590,4 +591,234 @@ curl http://localhost:8002/metrics | grep aep_change
 ✅ All operations logged to `audit_log` table  
 ✅ Prometheus metrics increment correctly  
 ✅ Seed script creates default org, users, and sensible policy
+
+
+---
+
+## 🧠 **PR-14 — Context Intelligence Dashboard + Memory Search**
+
+**Status:** ✅ Complete  
+**Branch:** `feat/pr-14-memory-search`
+
+### Overview
+
+PR-14 adds a **semantic memory search system** that indexes and retrieves content from:
+- **JIRA issues** (summaries, descriptions, status)
+- **Meeting summaries** (action items, decisions, transcripts)
+- **GitHub code** (file content from indexed repositories)
+
+A lightweight **Next.js dashboard** provides a unified search interface with citations, scores, and direct links to source content.
+
+### Architecture
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ JIRA Issues  │────▶│              │     │              │
+│ Meeting Data │────▶│   Indexer    │────▶│ memory_chunk │
+│ GitHub Files │────▶│              │     │  (embeddings)│
+└──────────────┘     └──────────────┘     └──────────────┘
+                              │
+                              ▼
+                     ┌──────────────┐
+                     │   Retriever  │
+                     │  (cosine sim)│
+                     └──────────────┘
+                              │
+                              ▼
+                     ┌──────────────┐
+                     │ /api/search  │◀──── Next.js UI
+                     └──────────────┘
+```
+
+### Database Schema
+
+**Tables:**
+- `memory_object` - Source content metadata (JIRA key, meeting ID, file path)
+- `memory_chunk` - Text chunks with embeddings for semantic search
+
+**Migration:** `alembic/versions/0009_memory_search.py`
+
+### API Endpoints
+
+#### `POST /api/search/`
+Semantic search across all indexed content.
+
+**Request:**
+```json
+{
+  "q": "jwt token expiry handling",
+  "k": 8
+}
+```
+
+**Response:**
+```json
+{
+  "hits": [
+    {
+      "score": 0.8234,
+      "source": "jira",
+      "title": "Fix JWT refresh token rotation",
+      "foreign_id": "PROJ-123",
+      "url": "https://your-jira.atlassian.net/browse/PROJ-123",
+      "meta": {"status": "In Progress"},
+      "chunk_seq": 0,
+      "excerpt": "Implement JWT token refresh rotation to prevent..."
+    },
+    {
+      "score": 0.7891,
+      "source": "code",
+      "title": "auth/jwt.py",
+      "foreign_id": "org/repo::auth/jwt.py",
+      "url": "https://github.com/org/repo/blob/HEAD/auth/jwt.py",
+      "meta": {"repo": "org/repo", "path": "auth/jwt.py"},
+      "chunk_seq": 2,
+      "excerpt": "def refresh_token(token: str) -> str:\\n    ..."
+    }
+  ]
+}
+```
+
+#### `POST /api/search/reindex/jira`
+Reindex all JIRA issues (limit: 2000 most recent).
+
+#### `POST /api/search/reindex/meetings`
+Reindex meetings and summaries (limit: 1000 most recent).
+
+#### `POST /api/search/reindex/code`
+Reindex GitHub code files (limit: 5000 most recent).
+
+### Embeddings Configuration
+
+Set via environment variables:
+
+```bash
+# Embedding provider (default: openai)
+EMBED_PROVIDER=openai
+
+# OpenAI embedding model (default: text-embedding-3-small)
+OPENAI_EMBED_MODEL=text-embedding-3-small
+
+# Vector dimensions (default: 1536 for OpenAI)
+EMBED_DIM=1536
+
+# OpenAI API key (required for openai provider)
+OPENAI_API_KEY=sk-...
+```
+
+**Dev Fallback:** If `OPENAI_API_KEY` is not set, a simple fallback embedder is used (returns sparse vectors based on text length).
+
+### Web Dashboard
+
+**Tech Stack:** Next.js 14, TypeScript, React 18
+
+**Features:**
+- **Overview** page (`/`) - Introduction and stats
+- **Memory Search** page (`/search`) - Query interface with live results
+- Citation cards showing source, score, excerpt, and links
+
+**Run Locally:**
+```bash
+# Install dependencies and start dev server
+make web-dev
+
+# Open http://localhost:3030
+```
+
+**Configuration:**
+Copy `web/.env.local.example` to `web/.env.local`:
+```
+NEXT_PUBLIC_AEP_CORE=http://localhost:8002
+```
+
+### Setup & Usage
+
+1. **Run Migration**
+   ```bash
+   make migrate  # Applies 0009_memory_search
+   ```
+
+2. **Start Core API**
+   ```bash
+   make dev  # Backend runs at :8002
+   ```
+
+3. **Reindex Content**
+   ```bash
+   make reindex  # Populates memory from JIRA/Meetings/GitHub
+   ```
+   
+   Or manually:
+   ```bash
+   curl -X POST "http://localhost:8002/api/search/reindex/jira" \
+     -H "X-Org-Id: default"
+   
+   curl -X POST "http://localhost:8002/api/search/reindex/meetings" \
+     -H "X-Org-Id: default"
+   
+   curl -X POST "http://localhost:8002/api/search/reindex/code" \
+     -H "X-Org-Id: default"
+   ```
+
+4. **Start Dashboard**
+   ```bash
+   make web-dev  # Next.js runs at :3030
+   ```
+
+5. **Search**
+   - Open http://localhost:3030/search
+   - Enter query: "authentication bugs", "meeting decisions on API rate limits", etc.
+   - View results with scores, sources, and links
+
+### Smoke Test
+
+```bash
+# 1. Index sample content
+make reindex
+
+# 2. Test semantic search API
+curl -X POST "http://localhost:8002/api/search/" \
+  -H "Content-Type: application/json" \
+  -H "X-Org-Id: default" \
+  -d '{"q": "jwt expiry", "k": 5}'
+
+# 3. Open dashboard
+make web-dev
+# Visit http://localhost:3030/search
+```
+
+### Performance & Limits
+
+- **Chunk size:** 1200 chars with 150 char overlap
+- **Max chunks scanned:** 6000 per query (adjust in `retriever.py` if needed)
+- **Reindex limits:**
+  - JIRA: 2000 most recent issues
+  - Meetings: 1000 most recent
+  - Code: 5000 most recent files
+  
+For production deployments:
+- Use a vector database (Pinecone, Weaviate, pgvector) for >10k chunks
+- Implement incremental indexing on JIRA/GitHub webhooks
+- Add background workers for async reindexing
+
+### Acceptance Criteria
+
+✅ `memory_object` and `memory_chunk` tables created  
+✅ `/api/search` returns top-k results with citations  
+✅ Reindex endpoints populate embeddings from JIRA/Meetings/Code  
+✅ Next.js dashboard runs locally at :3030  
+✅ Search interface displays source, title, excerpt, and Open link  
+✅ Works with SQLite and PostgreSQL  
+✅ Embeddings provider configurable via env vars  
+✅ All API calls audited and rate-limited (existing middleware)
+
+### Roadmap: PR-14B
+
+**Coming next:** Connector integrations for:
+- **Slack** - Index messages, threads, pins
+- **Confluence** - Index wiki pages, attachments
+- **Microsoft Teams** - Index chat, files
+- **Zoom** - Index transcripts, recordings
+
+Stay tuned for **PR-14B** to expand memory coverage!
 

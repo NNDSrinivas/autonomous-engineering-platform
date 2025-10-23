@@ -19,6 +19,14 @@ rev:
 seed-policy:
 	docker exec -i aep_postgres psql -U mentor -d mentor < scripts/seed_policy.sql
 
+web-dev:
+	cd web && npm install && npm run dev
+
+reindex:
+	curl -s -X POST "http://localhost:8002/api/search/reindex/jira" -H 'X-Org-Id: default' | jq .
+	curl -s -X POST "http://localhost:8002/api/search/reindex/meetings" -H 'X-Org-Id: default' | jq .
+	curl -s -X POST "http://localhost:8002/api/search/reindex/code" -H 'X-Org-Id: default' | jq .
+
 lint:
 	python -m pip install ruff black || true
 	ruff check .

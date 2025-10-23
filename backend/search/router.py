@@ -212,7 +212,12 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                         {"channel": c["name"]},
                         text_content,
                     )
-                    newest = ts if newest is None else max(newest, ts)
+                    # Slack timestamps are numeric strings (e.g., '1698765432.123')
+                    newest = (
+                        ts
+                        if newest is None
+                        else (ts if float(ts) > float(newest) else newest)
+                    )
                     count += 1
             if newest:
                 if cur is None:
@@ -271,7 +276,25 @@ def reindex_confluence(
             count = 0
             for p in pages:
                 text_html = p["html"]
-                text_clean = re.sub(r"<[^>]+>", " ", text_html)[:MAX_CONTENT_LENGTH]
+                # More robust HTML cleaning: remove script/style tags and their content
+                text_clean = re.sub(
+                    r"<script[^>]*>.*?</script>",
+                    "",
+                    text_html,
+                    flags=re.DOTALL | re.IGNORECASE,
+                )
+                text_clean = re.sub(
+                    r"<style[^>]*>.*?</style>",
+                    "",
+                    text_clean,
+                    flags=re.DOTALL | re.IGNORECASE,
+                )
+                # Remove remaining HTML tags
+                text_clean = re.sub(r"<[^>]+>", " ", text_clean)
+                # Normalize whitespace
+                text_clean = re.sub(r"\s+", " ", text_clean).strip()[
+                    :MAX_CONTENT_LENGTH
+                ]
                 upsert_memory_object(
                     db,
                     org,

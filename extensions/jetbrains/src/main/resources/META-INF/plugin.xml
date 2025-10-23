@@ -1,0 +1,16 @@
+<idea-plugin>
+  <id>com.aep.ide</id>
+  <name>AEP Agent</name>
+  <vendor email="support@aep.local">AEP</vendor>
+  <description>AEP Agent tool window with planning and delivery actions.</description>
+
+  <depends>com.intellij.modules.platform</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <toolWindow id="AEP Agent" factoryClass="com.aep.ide.AepToolWindowFactory" anchor="right" />
+  </extensions>
+
+  <actions>
+    <action id="AEP.OpenToolWindow" class="com.aep.ide.Actions$OpenTool" text="AEP: Open Agent" description="Open AEP Agent tool window" />
+  </actions>
+</idea-plugin>

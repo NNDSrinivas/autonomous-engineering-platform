@@ -7,6 +7,7 @@ import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 
 class RpcClient(url: String) : WebSocketClient(URI(url)) {
@@ -18,7 +19,8 @@ class RpcClient(url: String) : WebSocketClient(URI(url)) {
   override fun onError(ex: Exception) { ex.printStackTrace() }
 
   override fun onMessage(message: String) {
-    val map: Map<String, Any?> = mapper.readValue(message, Map::class.java) as Map<String, Any?>
+    // Use TypeReference for type-safe deserialization to avoid unchecked casts
+    val map: Map<String, Any?> = mapper.readValue(message, object : TypeReference<Map<String, Any?>>() {})
     val id = map["id"] as? String ?: return
     val p = pending.remove(id) ?: return
     p.complete(map)

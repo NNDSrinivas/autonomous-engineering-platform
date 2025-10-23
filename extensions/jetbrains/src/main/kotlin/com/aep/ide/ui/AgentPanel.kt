@@ -73,8 +73,9 @@ class AgentPanel : JPanel(BorderLayout()) {
       val planJson =
         JOptionPane.showInputDialog(this, "Paste plan JSON.items to execute (array):", "[]")
           ?: return@addActionListener
+      // Use TypeReference for safer deserialization of plan items
       val items: List<Map<String, Any?>> =
-        mapper.readValue(planJson, List::class.java) as List<Map<String, Any?>>
+        mapper.readValue(planJson, object : com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Any?>>>() {})
       ApplicationManager.getApplication().executeOnPooledThread {
         try {
           val c = AgentService.ensureAgentRunning()
@@ -133,7 +134,11 @@ class AgentPanel : JPanel(BorderLayout()) {
               .post(payload.toRequestBody("application/json".toMediaType()))
               .build()
           val resp = http.newCall(req).execute()
-          append("Draft PR response: ${resp.body?.string()}\n")
+          if (resp.isSuccessful) {
+            append("Draft PR response: ${resp.body?.string()}\n")
+          } else {
+            append("Draft PR failed: ${resp.code} - ${resp.body?.string()}\n")
+          }
         } catch (e: Exception) {
           append("Error: ${e.message}\n")
         }
@@ -165,7 +170,11 @@ class AgentPanel : JPanel(BorderLayout()) {
               .post(payload.toRequestBody("application/json".toMediaType()))
               .build()
           val resp = http.newCall(req).execute()
-          append("JIRA response: ${resp.body?.string()}\n")
+          if (resp.isSuccessful) {
+            append("JIRA response: ${resp.body?.string()}\n")
+          } else {
+            append("JIRA request failed: ${resp.code} - ${resp.body?.string()}\n")
+          }
         } catch (e: Exception) {
           append("Error: ${e.message}\n")
         }

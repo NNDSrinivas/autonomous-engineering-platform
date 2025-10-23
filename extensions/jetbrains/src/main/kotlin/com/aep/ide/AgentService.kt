@@ -82,10 +82,24 @@ class AgentService {
           )
         }
       }
-      val newClient = RpcClient(url)
-      newClient.connectBlocking()
-      client = newClient
-      return newClient
+      // Final connection attempt after agent startup
+      try {
+        val newClient = RpcClient(url)
+        newClient.connectBlocking()
+        client = newClient
+        return newClient
+      } catch (e: Exception) {
+        logger.warn("Failed to connect to aep-agentd after startup attempt: ${e.message}", e)
+        Notifications.Bus.notify(
+          Notification(
+            "AEP",
+            "AEP Agent",
+            "Failed to connect to aep-agentd: ${e.message}. Ensure agent-core is installed and Node.js is available.",
+            NotificationType.ERROR
+          )
+        )
+        throw e
+      }
     }
   }
 

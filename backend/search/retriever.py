@@ -12,6 +12,9 @@ from typing import List, Dict
 # Configurable limit for chunk retrieval (can be overridden via env var)
 MAX_CHUNKS = int(os.getenv("AEP_SEARCH_MAX_CHUNKS", "6000"))
 
+# Maximum length of text excerpt in search results
+EXCERPT_LENGTH = 400
+
 
 def cosine(a: List[float], b: List[float]) -> float:
     """Cosine similarity between two vectors - single-pass calculation"""
@@ -73,7 +76,7 @@ def search(db: Session, org_id: str, query: str, k: int = 8) -> List[Dict]:
             "url": r["url"],
             "meta": json.loads(r["meta_json"] or "{}"),
             "chunk_seq": r["seq"],
-            "excerpt": r["text"][:400],
+            "excerpt": r["text"][:EXCERPT_LENGTH],
         }
         for s, r in top
     ]

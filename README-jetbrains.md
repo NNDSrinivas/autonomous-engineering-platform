@@ -195,7 +195,7 @@ Currently manual testing via sandbox IDE. Future: add JUnit tests for RPC client
 ### Build errors
 - Clean and rebuild: `./gradlew clean build`
 - Delete `.gradle` cache and retry
-- Ensure Gradle 8.0+ is installed
+- Ensure Gradle 9.0+ is installed
 
 ## Next Steps
 

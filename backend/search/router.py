@@ -225,6 +225,14 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
             ).scalar()
             newest = cur
             count = 0
+            # Log if channels are being truncated to help operators understand sync limits
+            if len(chans) > MAX_CHANNELS_PER_SYNC:
+                logger.info(
+                    "Truncating %d channels to limit of %d for org_id=%s",
+                    len(chans),
+                    MAX_CHANNELS_PER_SYNC,
+                    org,
+                )
             for c in chans[:MAX_CHANNELS_PER_SYNC]:
                 msgs = await sr.history(
                     client, c["id"], oldest=cur, limit=SLACK_HISTORY_LIMIT
@@ -318,6 +326,8 @@ def reindex_confluence(
                 # use BeautifulSoup to handle malformed tags, and apply an overhead factor
                 # to account for HTML tags vs extracted text size. See HTML_OVERHEAD_MULTIPLIER
                 # in backend/search/constants.py for configuration.
+                # Note: Truncation may occur mid-tag (e.g., <div class="foo), but BeautifulSoup
+                # handles malformed HTML gracefully and still extracts meaningful text content.
                 soup = BeautifulSoup(
                     text_html[: MAX_CONTENT_LENGTH * HTML_OVERHEAD_MULTIPLIER],
                     "html.parser",

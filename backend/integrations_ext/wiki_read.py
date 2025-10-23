@@ -19,6 +19,9 @@ def scan_docs(root="docs") -> List[Dict]:
                 # Use relative path to avoid title collisions in nested directories.
                 # This creates unique identifiers like 'subfolder/file.md' rather than just 'file.md'
                 # when files with the same name exist in different directories.
+                # NOTE: The title is used as the foreign_id in upsert_memory_object
+                # (see backend/search/router.py) which makes this uniqueness
+                # critical for deduplication when ingesting wiki pages.
                 title = str(f.relative_to(p))
                 out.append({"title": title, "url": None, "content": content})
             except (UnicodeDecodeError, IOError, OSError) as e:

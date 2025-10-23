@@ -78,7 +78,12 @@ class AgentService {
 
   fun stopAgentIfStarted() = synchronized(lock) {
     try {
-      agentProcess?.destroy()
+      agentProcess?.let { process ->
+        process.destroy() // Request graceful termination
+        if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+          process.destroyForcibly() // Force kill if not stopped within 5s
+        }
+      }
       agentProcess = null
     } catch (_: Exception) {
     }

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..core.db import get_db
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 router = APIRouter(prefix="/api/policy", tags=["policy"])
 

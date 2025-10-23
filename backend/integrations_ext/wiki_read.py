@@ -16,7 +16,9 @@ def scan_docs(root="docs") -> List[Dict]:
         for f in p.rglob("*.md"):
             try:
                 content = f.read_text(encoding="utf-8")[:MAX_CONTENT_LENGTH]
-                # Use relative path to avoid title collisions in nested directories
+                # Use relative path to avoid title collisions in nested directories.
+                # This creates unique identifiers like 'subfolder/file.md' rather than just 'file.md'
+                # when files with the same name exist in different directories.
                 title = str(f.relative_to(p))
                 out.append({"title": title, "url": None, "content": content})
             except (UnicodeDecodeError, IOError, OSError) as e:

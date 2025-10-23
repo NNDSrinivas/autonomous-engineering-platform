@@ -34,6 +34,12 @@ class RpcClient(url: String) : WebSocketClient(URI(url)) {
     val json = mapper.writeValueAsString(payload)
     try {
       send(json)
+      // Add timeout to prevent memory leaks from stale requests
+      fut.orTimeout(30, java.util.concurrent.TimeUnit.SECONDS).whenComplete { _, ex ->
+        if (ex != null) {
+          pending.remove(id)
+        }
+      }
     } catch (ex: Exception) {
       pending.remove(id)
       fut.completeExceptionally(ex)

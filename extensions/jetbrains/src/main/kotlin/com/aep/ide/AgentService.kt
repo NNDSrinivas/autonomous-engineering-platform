@@ -29,7 +29,18 @@ object AgentService {
           val pb = ProcessBuilder(cmd).directory(agentCore).redirectErrorStream(true)
           pb.start()
           started = true
-          Thread.sleep(1200) // small wait
+          // Retry connection with exponential backoff
+          var retries = 0
+          while (retries < 10) {
+            Thread.sleep(200L * (1 shl retries)) // 200ms, 400ms, 800ms, etc.
+            try {
+              client = RpcClient(url)
+              client!!.connectBlocking()
+              return client!!
+            } catch (_: Exception) {
+              retries++
+            }
+          }
         } catch (e: Exception) {
           Notifications.Bus.notify(
             Notification(

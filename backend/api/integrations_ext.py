@@ -48,7 +48,7 @@ def slack_connect(
             """
             INSERT INTO slack_connection (org_id, bot_token, team_id) 
             VALUES (:o,:t,:team)
-            ON CONFLICT (org_id) DO UPDATE SET bot_token=:t, team_id=:team
+            ON CONFLICT (org_id, team_id) DO UPDATE SET bot_token=:t
             """
         ),
         {"o": org, "t": token, "team": team},
@@ -88,7 +88,7 @@ def confluence_connect(
             """
             INSERT INTO confluence_connection (org_id, base_url, access_token, email) 
             VALUES (:o,:b,:a,:e)
-            ON CONFLICT (org_id) DO UPDATE SET base_url=:b, access_token=:a, email=:e
+            ON CONFLICT (org_id, base_url) DO UPDATE SET access_token=:a, email=:e
             """
         ),
         {"o": org, "b": base, "a": token, "e": email},

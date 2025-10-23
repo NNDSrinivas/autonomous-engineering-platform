@@ -185,7 +185,7 @@ class AgentPanel : JPanel(BorderLayout()) {
   }
 
   private fun append(s: String) {
-    SwingUtilities.invokeLater { out.insert("$s\n", 0) }
+    SwingUtilities.invokeLater { out.insert(s, 0) }
   }
 
   private fun pretty(map: Any?): String =

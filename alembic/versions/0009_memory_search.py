@@ -32,6 +32,9 @@ def upgrade():
             sa.DateTime(timezone=True),
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
+        sa.UniqueConstraint(
+            "org_id", "source", "foreign_id", name="uq_memory_object_key"
+        ),
     )
     op.create_table(
         "memory_chunk",

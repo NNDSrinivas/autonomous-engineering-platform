@@ -39,7 +39,7 @@ export default function SearchPage() {
             <div style={{ fontWeight: 600 }}>{h.title || h.foreign_id}</div>
             <div style={{ fontSize: 12, color: '#334155' }}>{h.excerpt}</div>
             {h.url ? (
-              <a href={h.url} target="_blank">
+              <a href={h.url} target="_blank" rel="noopener noreferrer">
                 Open
               </a>
             ) : null}

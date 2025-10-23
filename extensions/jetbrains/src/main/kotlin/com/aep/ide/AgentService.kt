@@ -15,12 +15,13 @@ class AgentService {
   private val url = System.getenv("AEP_AGENTD_URL") ?: "ws://127.0.0.1:8765"
 
   fun ensureAgentRunning(): RpcClient = synchronized(lock) {
-    if (client != null && client!!.isOpen) return client!!
+    client?.takeIf { it.isOpen }?.let { return it }
     // Try connect; if fails, attempt to start agentd from repo (Node script)
     try {
-      client = RpcClient(url)
-      client!!.connectBlocking()
-      return client!!
+      val newClient = RpcClient(url)
+      newClient.connectBlocking()
+      client = newClient
+      return newClient
     } catch (_: Exception) {
       // Attempt to start: agent-core dev script (user must have Node installed)
       // Use AEP_AGENT_CORE_PATH env var if set, otherwise fall back to user.dir
@@ -42,9 +43,10 @@ class AgentService {
           for (attempt in 0..6) {
             Thread.sleep(minOf(200L * (1 shl attempt), 10000L))
             try {
-              client = RpcClient(url)
-              client!!.connectBlocking()
-              return client!!
+              val newClient = RpcClient(url)
+              newClient.connectBlocking()
+              client = newClient
+              return newClient
             } catch (_: Exception) {
               // Continue to next retry
             }
@@ -67,9 +69,10 @@ class AgentService {
           )
         }
       }
-      client = RpcClient(url)
-      client!!.connectBlocking()
-      return client!!
+      val newClient = RpcClient(url)
+      newClient.connectBlocking()
+      client = newClient
+      return newClient
     }
   }
 

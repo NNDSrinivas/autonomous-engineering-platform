@@ -24,6 +24,30 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
       .readTimeout(30, TimeUnit.SECONDS)
       .writeTimeout(30, TimeUnit.SECONDS)
       .build()
+    
+    /**
+     * Safely parse a Long value from telemetry map, handling Number types and sanitized string formats.
+     * Accepts strings with commas, dollar signs, or whitespace (e.g., "1,234" or "$123").
+     */
+    private fun parseLongFromTelemetry(value: Any?): Long {
+      return (value as? Number)?.toLong()
+        ?: value?.toString()?.trim()?.replace(Regex("[,$\\s]"), "")?.let { s ->
+          if (Regex("""^-?\d+$""").matches(s)) s.toLongOrNull() else null
+        }
+        ?: 0L
+    }
+    
+    /**
+     * Safely parse a Double value from telemetry map, handling Number types and sanitized string formats.
+     * Accepts strings with commas, dollar signs, or whitespace (e.g., "$12.34" or "1,234.56").
+     */
+    private fun parseDoubleFromTelemetry(value: Any?): Double {
+      return (value as? Number)?.toDouble()
+        ?: value?.toString()?.trim()?.replace(Regex("[,$\\s]"), "")?.let { s ->
+          if (Regex("""^-?\d+(\.\d+)?$""").matches(s)) s.toDoubleOrNull() else null
+        }
+        ?: 0.0
+    }
   }
 
   private val out = JTextArea()
@@ -42,10 +66,14 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
 
     val top = JPanel().apply {
       layout = BoxLayout(this, BoxLayout.X_AXIS)
-      add(btnOpen); add(Box.createHorizontalStrut(8))
-      add(btnPlanLLM); add(Box.createHorizontalStrut(8))
-      add(btnApprove); add(Box.createHorizontalStrut(8))
-      add(btnDraftPR); add(Box.createHorizontalStrut(8))
+      add(btnOpen)
+      add(Box.createHorizontalStrut(8))
+      add(btnPlanLLM)
+      add(Box.createHorizontalStrut(8))
+      add(btnApprove)
+      add(Box.createHorizontalStrut(8))
+      add(btnDraftPR)
+      add(Box.createHorizontalStrut(8))
       add(btnJira)
     }
     add(top, BorderLayout.NORTH)
@@ -111,28 +139,10 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
               val t = (planRes["telemetry"] as? Map<*, *>) ?: emptyMap<Any?, Any?>()
               val model = t["model"]?.toString() ?: "n/a"
               
-              // Robust parsing: handle Number types, strings with commas/currency symbols, etc.
-              // Sanitize and validate numeric strings before parsing
-              val tokensLong = (t["tokens"] as? Number)?.toLong() 
-                ?: t["tokens"]?.toString()?.trim()?.replace(Regex("[,$\\s]"), "")?.let { s ->
-                  if (Regex("""^-?\d+$""").matches(s)) s.toLongOrNull() else null
-                }
-                ?: 0L
-              val tokens = String.format(Locale.US, "%d", tokensLong)
-              
-              val costDouble = (t["cost_usd"] as? Number)?.toDouble()
-                ?: t["cost_usd"]?.toString()?.trim()?.replace(Regex("[,$\\s]"), "")?.let { s ->
-                  if (Regex("""^-?\d+(\.\d+)?$""").matches(s)) s.toDoubleOrNull() else null
-                }
-                ?: 0.0
-              val cost = String.format(Locale.US, "%.2f", costDouble)
-              
-              val latencyLong = (t["latency_ms"] as? Number)?.toLong()
-                ?: t["latency_ms"]?.toString()?.trim()?.replace(Regex("[,$\\s]"), "")?.let { s ->
-                  if (Regex("""^-?\d+$""").matches(s)) s.toLongOrNull() else null
-                }
-                ?: 0L
-              val latency = String.format(Locale.US, "%d", latencyLong)
+              // Parse numeric telemetry values using helper functions
+              val tokens = String.format(Locale.US, "%d", parseLongFromTelemetry(t["tokens"]))
+              val cost = String.format(Locale.US, "%.2f", parseDoubleFromTelemetry(t["cost_usd"]))
+              val latency = String.format(Locale.US, "%d", parseLongFromTelemetry(t["latency_ms"]))
               
               Status.show(project, "AEP Plan — model: $model | tokens: $tokens | cost: \$${cost} | latency: ${latency}ms")
             }

@@ -215,8 +215,8 @@ def review_change(
         {"o": org}
     ).mappings().first()
     
-    # Default to 1 if required_reviewers is NULL or missing
-    need = (req or {}).get("required_reviewers") or 1
+    # Default to 1 if required_reviewers is NULL or missing, ensure it's an int
+    need = int((req or {}).get("required_reviewers") or 1)
     
     ok_count = db.execute(text("""
         SELECT count(*) c FROM change_review WHERE change_id=:c AND decision='approve'
@@ -224,8 +224,8 @@ def review_change(
     
     new_status = cr["status"]
     
-    # Update CR status based on reviews
-    if ok_count >= int(need):
+    # Update CR status based on reviews (both ok_count and need are now guaranteed ints)
+    if ok_count >= need:
         db.execute(
             text("UPDATE change_request SET status='approved' WHERE id=:c"),
             {"c": change_id}

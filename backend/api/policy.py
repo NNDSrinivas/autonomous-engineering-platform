@@ -93,12 +93,15 @@ def upsert_policy(
     # Check permissions
     require_role(db, org_id, user_id, roles=("admin", "maintainer"))
     
-    # Prepare fields for upsert
-    keys = [
+    # Whitelist of allowed policy fields to prevent SQL injection
+    ALLOWED_FIELDS = {
         "models_allow", "phase_budgets", "commands_allow", "commands_deny",
         "paths_allow", "repos_allow", "branches_protected",
         "required_reviewers", "require_review_for"
-    ]
+    }
+    
+    # Prepare fields for upsert - only allow whitelisted fields
+    keys = [k for k in ALLOWED_FIELDS if k in payload]
     
     vals = {}
     for k in keys:
@@ -119,11 +122,11 @@ def upsert_policy(
     ).fetchone()
     
     if exists:
-        # Update existing policy
+        # Update existing policy - safe because keys are validated against ALLOWED_FIELDS
         update_sql = "UPDATE org_policy SET " + ", ".join([f"{k}=:{k}" for k in keys]) + " WHERE org_id=:o"
         db.execute(text(update_sql), dict(vals, o=org_id))
     else:
-        # Insert new policy
+        # Insert new policy - safe because keys are validated against ALLOWED_FIELDS
         insert_sql = f"INSERT INTO org_policy (org_id, {', '.join(keys)}) VALUES (:o, {', '.join(':' + k for k in keys)})"
         db.execute(text(insert_sql), dict(vals, o=org_id))
     

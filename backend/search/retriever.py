@@ -36,10 +36,6 @@ def search(db: Session, org_id: str, query: str, k: int = 8) -> List[Dict]:
     """
     qv = embed_texts([query])[0]
 
-    # Fetch all chunks for this org (limit configurable via env var)[Dict]:
-    """Semantic search across memory chunks"""
-    qv = embed_texts([query])[0]
-
     # Fetch all chunks for this org (limit configurable via env var)
     rows = (
         db.execute(

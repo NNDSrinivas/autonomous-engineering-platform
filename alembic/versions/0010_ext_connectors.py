@@ -57,6 +57,7 @@ def upgrade():
             sa.DateTime(timezone=True),
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
+        sa.UniqueConstraint("org_id", "source", name="uq_sync_cursor_org_src"),
     )
     op.create_table(
         "wiki_page",

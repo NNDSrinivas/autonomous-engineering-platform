@@ -13,14 +13,45 @@ from .constants import (
     CONFLUENCE_PAGE_LIMIT,
     MAX_CONTENT_LENGTH,
     MAX_MEETINGS_PER_SYNC,
+    HTML_OVERHEAD_MULTIPLIER,
 )
 import json
 import httpx
 import asyncio
 import re
+import logging
 from bs4 import BeautifulSoup
 
 router = APIRouter(prefix="/api/search", tags=["search"])
+
+# Logger for this module
+logger = logging.getLogger(__name__)
+
+
+def safe_update_newest(newest: str | None, ts: str) -> str | None:
+    """Safely update and return the newest Slack timestamp string.
+
+    Slack timestamps are numeric strings like '1698765432.123'. This helper
+    converts to float with error handling and logs invalid formats.
+
+    Returns the chosen newest (string) or the original newest if ts invalid.
+    """
+    try:
+        ts_float = float(ts)
+    except (TypeError, ValueError):
+        logger.debug("Invalid Slack timestamp received: %r", ts)
+        return newest
+
+    if newest is None:
+        return ts
+
+    try:
+        newest_float = float(newest)
+    except (TypeError, ValueError):
+        logger.debug("Existing newest timestamp invalid: %r", newest)
+        return ts
+
+    return ts if ts_float > newest_float else newest
 
 
 @router.post("/", response_model=SearchResponse)
@@ -214,14 +245,8 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                         text_content,
                     )
                     # Slack timestamps are numeric strings - compare as floats with error handling
-                    try:
-                        ts_float = float(ts)
-                        newest_float = float(newest) if newest is not None else None
-                        if newest_float is None or ts_float > newest_float:
-                            newest = ts
-                    except (TypeError, ValueError):
-                        # Invalid timestamp format; skip updating newest
-                        pass
+                    # Safely update newest timestamp
+                    newest = safe_update_newest(newest, ts)
                     count += 1
             if newest:
                 # Use ON CONFLICT to handle race conditions in concurrent environments
@@ -280,9 +305,14 @@ def reindex_confluence(
                 text_html = p["html"]
                 # Limit HTML size before parsing for performance
                 # Robust HTML cleaning: use BeautifulSoup to handle malformed tags
+                # Truncate raw HTML before parsing to avoid excessive work. We
+                # allow a small overhead factor to account for HTML tags vs
+                # extracted text size. The factor is configurable via
+                # HTML_OVERHEAD_MULTIPLIER in backend/search/constants.py.
                 soup = BeautifulSoup(
-                    text_html[: MAX_CONTENT_LENGTH * 2], "html.parser"
-                )  # Allow 2x for HTML overhead
+                    text_html[: MAX_CONTENT_LENGTH * HTML_OVERHEAD_MULTIPLIER],
+                    "html.parser",
+                )
                 # Remove script and style tags completely (including malformed ones)
                 for tag in soup(["script", "style"]):
                     tag.decompose()

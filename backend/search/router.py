@@ -244,10 +244,11 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                         {"channel": c["name"]},
                         text_content,
                     )
-                    # Slack timestamps are numeric strings - compare as floats with error handling
-                    # Safely update newest timestamp
+                    # Safely update newest timestamp with error handling
                     newest = safe_update_newest(newest, ts)
                     count += 1
+            # Only update cursor if we have a valid timestamp (newest won't be None
+            # if any messages were processed with valid timestamps)
             if newest:
                 # Use ON CONFLICT to handle race conditions in concurrent environments
                 db.execute(

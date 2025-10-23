@@ -35,6 +35,7 @@ def reindex_jira(request: Request = None, db: Session = Depends(get_db)):
         from fastapi import HTTPException
 
         raise HTTPException(status_code=401, detail="X-Org-Id header required")
+    # Note: Query performance relies on index on (org_id, updated) for jira_issue table
     rows = (
         db.execute(
             text(
@@ -70,6 +71,7 @@ def reindex_meetings(request: Request = None, db: Session = Depends(get_db)):
         from fastapi import HTTPException
 
         raise HTTPException(status_code=401, detail="X-Org-Id header required")
+    # Note: Query performance relies on index on (org_id, created_at) for meeting table
     rows = (
         db.execute(
             text(
@@ -112,6 +114,7 @@ def reindex_code(request: Request = None, db: Session = Depends(get_db)):
         from fastapi import HTTPException
 
         raise HTTPException(status_code=401, detail="X-Org-Id header required")
+    # Note: Query performance relies on indexes on (org_id) for gh_repo and (repo_id, updated) for gh_file
     rows = (
         db.execute(
             text(

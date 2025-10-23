@@ -35,8 +35,9 @@ export default function SearchPage() {
           onChange={(e) => setQ(e.target.value)}
           style={{ flex: 1, padding: 8 }}
           placeholder="Search meetings, tasks, code..."
+          aria-label="Search query"
         />
-        <button onClick={run}>Search</button>
+        <button onClick={run} aria-label="Search memory">Search</button>
       </div>
       {error && (
         <div style={{ color: '#dc2626', padding: 12, background: '#fee2e2', borderRadius: 8, margin: '12px 0' }}>

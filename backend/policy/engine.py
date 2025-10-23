@@ -70,9 +70,9 @@ def check_action(policy: Dict, action: Dict) -> Dict:
     if action.get("repo") and repos_allow and action["repo"] not in repos_allow:
         reasons.append(f"repo not allowed: {action['repo']}")
     
-    # Check protected branches
-    branches_protected = set(_as_list(policy.get("branches_protected")))
-    if action.get("branch") and action["branch"] in branches_protected:
+    # Check protected branches (supports glob patterns)
+    branches_protected = _as_list(policy.get("branches_protected"))
+    if action.get("branch") and any(fnmatch.fnmatch(action["branch"], pat) for pat in branches_protected):
         reasons.append(f"protected branch: {action['branch']}")
     
     # Check if this action kind requires review

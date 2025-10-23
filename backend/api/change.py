@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Body, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..core.db import get_db
-from ..policy.engine import check_action
+from ..policy.engine import check_action, _as_list
 import json
 from typing import Dict, Any, List
 
@@ -77,7 +77,7 @@ def submit_change(
         }
     
     # Check if any step requires review
-    require_list = json.loads(policy.get("require_review_for") or "[]")
+    require_list = _as_list(policy.get("require_review_for"))
     needs_review = any(it.get("kind") in set(require_list) for it in items)
     status = "pending" if needs_review else "approved"
     

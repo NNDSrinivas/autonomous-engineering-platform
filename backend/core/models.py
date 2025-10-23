@@ -30,16 +30,18 @@ class LLMCall(Base):
 
 class Org(Base):
     """Organization for RBAC and policy management"""
+
     __tablename__ = "org"
-    
+
     id = Column(String(64), primary_key=True)
     name = Column(String(128), nullable=False)
 
 
 class OrgUser(Base):
     """User membership in organizations with assigned roles"""
+
     __tablename__ = "org_user"
-    
+
     id = Column(Integer, primary_key=True)
     org_id = Column(String(64), ForeignKey("org.id"), nullable=False)
     user_id = Column(String(64), nullable=False)
@@ -48,39 +50,44 @@ class OrgUser(Base):
 
 class OrgPolicy(Base):
     """Organization-level policies for access control and guardrails"""
+
     __tablename__ = "org_policy"
-    
+
     org_id = Column(String(64), ForeignKey("org.id"), primary_key=True)
-    models_allow = Column(Text)          # JSON array of allowed model names
-    phase_budgets = Column(Text)         # JSON {plan,code,review:{tokens,usd_per_day}}
-    commands_allow = Column(Text)        # JSON array of allowed shell commands
-    commands_deny = Column(Text)         # JSON array of denied shell commands
-    paths_allow = Column(Text)           # JSON array of allowed file path globs
-    repos_allow = Column(Text)           # JSON array of allowed org/repo strings
-    branches_protected = Column(Text)    # JSON array of protected branch names
-    required_reviewers = Column(Integer) # Number of required approvals
-    require_review_for = Column(Text)    # JSON array of action kinds requiring review
+    models_allow = Column(Text)  # JSON array of allowed model names
+    phase_budgets = Column(Text)  # JSON {plan,code,review:{tokens,usd_per_day}}
+    commands_allow = Column(Text)  # JSON array of allowed shell commands
+    commands_deny = Column(Text)  # JSON array of denied shell commands
+    paths_allow = Column(Text)  # JSON array of allowed file path globs
+    repos_allow = Column(Text)  # JSON array of allowed org/repo strings
+    branches_protected = Column(Text)  # JSON array of protected branch names
+    required_reviewers = Column(Integer)  # Number of required approvals
+    require_review_for = Column(Text)  # JSON array of action kinds requiring review
 
 
 class ChangeRequest(Base):
     """Change requests submitted for approval before execution"""
+
     __tablename__ = "change_request"
-    
+
     id = Column(Integer, primary_key=True)
     org_id = Column(String(64), ForeignKey("org.id"), nullable=False)
     user_id = Column(String(64), nullable=False)
     ticket_key = Column(String(64))
     title = Column(String(256))
-    plan_json = Column(Text, nullable=False)    # JSON of proposed steps
-    patch_summary = Column(Text)                # Optional unified diff preview
-    status = Column(String(16), nullable=False, server_default="pending")  # pending|approved|rejected
+    plan_json = Column(Text, nullable=False)  # JSON of proposed steps
+    patch_summary = Column(Text)  # Optional unified diff preview
+    status = Column(
+        String(16), nullable=False, server_default="pending"
+    )  # pending|approved|rejected
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class ChangeReview(Base):
     """Reviews (approve/reject) for change requests"""
+
     __tablename__ = "change_review"
-    
+
     id = Column(Integer, primary_key=True)
     change_id = Column(Integer, ForeignKey("change_request.id", ondelete="CASCADE"))
     reviewer_id = Column(String(64), nullable=False)

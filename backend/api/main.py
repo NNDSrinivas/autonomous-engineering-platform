@@ -21,6 +21,8 @@ from ..workers.answers import generate_answer
 from .tasks import router as tasks_router
 from .plan import router as plan_router
 from .deliver import router as deliver_router
+from .policy import router as policy_router
+from .change import router as change_router
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -55,6 +57,8 @@ def version():
 app.include_router(metrics_router)
 app.include_router(tasks_router)
 app.include_router(deliver_router)
+app.include_router(policy_router)
+app.include_router(change_router)
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])

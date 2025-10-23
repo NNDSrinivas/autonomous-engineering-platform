@@ -4,9 +4,11 @@ import com.aep.ide.ws.RpcClient
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationType
 import com.intellij.notification.Notifications
+import com.intellij.openapi.components.Service
 import java.io.File
 import org.java_websocket.client.WebSocketClient
 
+@Service(Service.Level.APP)
 class AgentService {
   private val lock = Any()
   @Volatile private var client: RpcClient? = null
@@ -78,6 +80,11 @@ class AgentService {
 
   fun stopAgentIfStarted() = synchronized(lock) {
     try {
+      // Close WebSocket connection first
+      client?.close()
+      client = null
+      
+      // Then terminate the agent process
       agentProcess?.let { process ->
         process.destroy() // Request graceful termination
         if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {

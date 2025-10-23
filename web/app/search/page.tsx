@@ -55,7 +55,10 @@ export default function SearchPage() {
               borderRadius: 8,
             }}
           >
-            <div style={{ fontSize: 12, color: '#64748b' }}>
+            <div
+              style={{ fontSize: 12, color: '#64748b' }}
+              aria-label={`${h.source} result with relevance score ${h.score}`}
+            >
               {h.source} <span aria-hidden="true">•</span> score {h.score}
             </div>
             <div style={{ fontWeight: 600 }}>{h.title || h.foreign_id}</div>

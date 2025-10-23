@@ -23,8 +23,10 @@ def cosine(a: List[float], b: List[float]) -> float:
         dot += x * y
         mag_a += x * x
         mag_b += y * y
-    na = math.sqrt(mag_a) or 1.0
-    nb = math.sqrt(mag_b) or 1.0
+    na = math.sqrt(mag_a)
+    nb = math.sqrt(mag_b)
+    if na == 0.0 or nb == 0.0:
+        return 0.0
     return dot / (na * nb)
 
 

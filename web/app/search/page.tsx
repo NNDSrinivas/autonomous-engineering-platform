@@ -13,7 +13,7 @@ interface SearchHit {
 }
 
 export default function SearchPage() {
-  const [q, setQ] = useState('jwt expiry');
+  const [q, setQ] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [error, setError] = useState<string | null>(null);
   const run = async () => {

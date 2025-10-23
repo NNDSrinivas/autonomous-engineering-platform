@@ -56,7 +56,7 @@ def reindex_jira(request: Request = None, db: Session = Depends(get_db)):
             r["url"],
             "en",
             {"status": r["status"]},
-            r["summary"] or "",
+            r["summary"] or r["issue_key"],
         )
 
     return {"ok": True, "count": len(rows)}

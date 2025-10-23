@@ -109,10 +109,11 @@ class GhIssuePr(Base):
 class SlackConnection(Base):
     """
     Slack workspace connection with encrypted bot token.
-    
+
     Security: bot_token is stored encrypted at rest using Fernet encryption.
     The encryption key must be configured via TOKEN_ENCRYPTION_KEY environment variable.
     """
+
     __tablename__ = "slack_connection"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     org_id: Mapped[str | None] = mapped_column(String)
@@ -125,15 +126,16 @@ class SlackConnection(Base):
         "bot_token_encrypted", String, nullable=True
     )
     scopes: Mapped[list[str] | None] = mapped_column(JSON)
-    
+
     @property
     def bot_token(self) -> str | None:
         """Decrypt and return the bot token"""
         if not self._bot_token_encrypted:
             return None
         from ..core.encryption import decrypt_token
+
         return decrypt_token(self._bot_token_encrypted)
-    
+
     @bot_token.setter
     def bot_token(self, plaintext: str | None) -> None:
         """Encrypt and store the bot token"""
@@ -141,6 +143,7 @@ class SlackConnection(Base):
             self._bot_token_encrypted = None
         else:
             from ..core.encryption import encrypt_token
+
             self._bot_token_encrypted = encrypt_token(plaintext)
 
 
@@ -148,10 +151,11 @@ class SlackConnection(Base):
 class ConfluenceConnection(Base):
     """
     Confluence connection with encrypted access token.
-    
+
     Security: access_token is stored encrypted at rest using Fernet encryption.
     The encryption key must be configured via TOKEN_ENCRYPTION_KEY environment variable.
     """
+
     __tablename__ = "confluence_connection"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     org_id: Mapped[str | None] = mapped_column(String)
@@ -164,15 +168,16 @@ class ConfluenceConnection(Base):
     refresh_token: Mapped[str | None] = mapped_column(String)
     expires_at: Mapped[object | None] = mapped_column(TIMESTAMP(timezone=True))
     scopes: Mapped[list[str] | None] = mapped_column(JSON)
-    
+
     @property
     def access_token(self) -> str | None:
         """Decrypt and return the access token"""
         if not self._access_token_encrypted:
             return None
         from ..core.encryption import decrypt_token
+
         return decrypt_token(self._access_token_encrypted)
-    
+
     @access_token.setter
     def access_token(self, plaintext: str | None) -> None:
         """Encrypt and store the access token"""
@@ -180,4 +185,5 @@ class ConfluenceConnection(Base):
             self._access_token_encrypted = None
         else:
             from ..core.encryption import encrypt_token
+
             self._access_token_encrypted = encrypt_token(plaintext)

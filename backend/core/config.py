@@ -103,6 +103,7 @@ class Settings(BaseSettings):
     def _validate_encryption_key(self, key: str) -> None:
         """Validate that encryption key is properly formatted for Fernet."""
         import base64
+
         try:
             key_bytes = base64.urlsafe_b64decode(key)
             if len(key_bytes) != 32:

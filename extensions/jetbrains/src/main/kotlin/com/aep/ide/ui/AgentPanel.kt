@@ -87,8 +87,9 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
             .build()
           http.newCall(ctxReq).execute().use { resp ->
             if (!resp.isSuccessful) throw RuntimeException("Context HTTP ${resp.code}")
+            val contextBody = resp.body?.string() ?: throw RuntimeException("Empty context response body")
             @Suppress("UNCHECKED_CAST")
-            val contextPack = mapper.readValue(resp.body!!.string(), Map::class.java) as Map<String, Any?>
+            val contextPack = mapper.readValue(contextBody, Map::class.java) as Map<String, Any?>
 
             // 2) call plan API
             val bodyMap = mapOf("contextPack" to contextPack)
@@ -99,8 +100,9 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
               .build()
             http.newCall(planReq).execute().use { presp ->
               if (!presp.isSuccessful) throw RuntimeException("Plan HTTP ${presp.code}")
+              val planBody = presp.body?.string() ?: throw RuntimeException("Empty plan response body")
               @Suppress("UNCHECKED_CAST")
-              val planRes: Map<String, Any?> = mapper.readValue(presp.body!!.string(), Map::class.java) as Map<String, Any?>
+              val planRes: Map<String, Any?> = mapper.readValue(planBody, Map::class.java) as Map<String, Any?>
               append("LLM Plan:\n${pretty(planRes)}\n")
 
               // status bar telemetry

@@ -223,7 +223,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                 db.commit()
             return count
 
-    count = asyncio.get_event_loop().run_until_complete(run())
+    count = asyncio.run(run())
     return {"ok": True, "count": count}
 
 
@@ -275,7 +275,7 @@ def reindex_confluence(
                 count += 1
             return count
 
-    count = asyncio.get_event_loop().run_until_complete(run())
+    count = asyncio.run(run())
     return {"ok": True, "count": count}
 
 

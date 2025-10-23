@@ -54,6 +54,7 @@ def health():
 def version():
     return {"name": settings.app_name, "env": settings.app_env, "version": "0.1.0"}
 
+
 # Prometheus
 app.include_router(metrics_router)
 app.include_router(tasks_router)
@@ -62,7 +63,6 @@ app.include_router(policy_router)
 app.include_router(change_router)
 app.include_router(search_router)
 app.include_router(integrations_ext_router)
-app.include_router(search_router)
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])

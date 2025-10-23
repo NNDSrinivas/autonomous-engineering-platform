@@ -7,17 +7,18 @@ from ..core.db import get_db
 from .schemas import SearchRequest, SearchResponse
 from .retriever import search as do_search
 from .indexer import upsert_memory_object
+from .constants import (
+    MAX_CHANNELS_PER_SYNC,
+    SLACK_HISTORY_LIMIT,
+    CONFLUENCE_PAGE_LIMIT,
+    MAX_CONTENT_LENGTH,
+    MAX_MEETINGS_PER_SYNC,
+)
 import json
 import httpx
 import asyncio
 import re
-
-# Reindexing limits and thresholds
-MAX_CHANNELS_PER_SYNC = 20  # Slack channels to sync per request
-SLACK_HISTORY_LIMIT = 300  # Messages per channel per sync
-CONFLUENCE_PAGE_LIMIT = 200  # Pages to fetch per sync
-MAX_CONTENT_LENGTH = 200000  # Max characters for text content
-MAX_MEETINGS_PER_SYNC = 1000  # Meeting records to sync per request
+from bs4 import BeautifulSoup
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -212,12 +213,9 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                         {"channel": c["name"]},
                         text_content,
                     )
-                    # Slack timestamps are numeric strings (e.g., '1698765432.123')
-                    newest = (
-                        ts
-                        if newest is None
-                        else (ts if float(ts) > float(newest) else newest)
-                    )
+                    # Slack timestamps are numeric strings - compare as floats
+                    if newest is None or float(ts) > float(newest):
+                        newest = ts
                     count += 1
             if newest:
                 if cur is None:
@@ -276,22 +274,13 @@ def reindex_confluence(
             count = 0
             for p in pages:
                 text_html = p["html"]
-                # More robust HTML cleaning: remove script/style tags and their content
-                text_clean = re.sub(
-                    r"<script[^>]*>.*?</script>",
-                    "",
-                    text_html,
-                    flags=re.DOTALL | re.IGNORECASE,
-                )
-                text_clean = re.sub(
-                    r"<style[^>]*>.*?</style>",
-                    "",
-                    text_clean,
-                    flags=re.DOTALL | re.IGNORECASE,
-                )
-                # Remove remaining HTML tags
-                text_clean = re.sub(r"<[^>]+>", " ", text_clean)
-                # Normalize whitespace
+                # Robust HTML cleaning: use BeautifulSoup to handle malformed tags
+                soup = BeautifulSoup(text_html, "html.parser")
+                # Remove script and style tags completely (including malformed ones)
+                for tag in soup(["script", "style"]):
+                    tag.decompose()
+                # Extract text and normalize whitespace
+                text_clean = soup.get_text(separator=" ")
                 text_clean = re.sub(r"\s+", " ", text_clean).strip()[
                     :MAX_CONTENT_LENGTH
                 ]

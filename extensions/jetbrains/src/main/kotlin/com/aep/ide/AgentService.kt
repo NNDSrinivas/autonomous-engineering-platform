@@ -21,8 +21,9 @@ object AgentService {
       return client!!
     } catch (_: Exception) {
       // Attempt to start: agent-core dev script (user must have Node installed)
-      val repoHome = System.getProperty("user.dir")
-      val agentCore = File(repoHome, "agent-core")
+      // Use AEP_AGENT_CORE_PATH env var if set, otherwise fall back to user.dir
+      val agentCorePath = System.getenv("AEP_AGENT_CORE_PATH") ?: System.getProperty("user.dir")
+      val agentCore = File(agentCorePath, "agent-core")
       val pkgJson = File(agentCore, "package.json")
       if (pkgJson.exists() && !started) {
         try {
@@ -32,8 +33,9 @@ object AgentService {
           agentProcess = proc
           started = true
           // Retry connection with exponential backoff (capped at 10s max)
+          // Retries 0-6 use true exponential (200ms -> 12.8s capped to 10s)
           var retries = 0
-          while (retries < 10) {
+          while (retries < 7) {
             Thread.sleep(minOf(200L * (1 shl retries), 10000L)) // 200ms, 400ms, ..., max 10s
             try {
               client = RpcClient(url)

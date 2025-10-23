@@ -1,7 +1,9 @@
 """Policy enforcement engine for checking actions against org policies"""
 import fnmatch
 import json
-from typing import Dict, List, Any, Optional
+import shlex
+import os
+from typing import Dict, List, Any
 
 
 def _as_list(x: Any) -> List:
@@ -51,12 +53,35 @@ def check_action(policy: Dict, action: Dict) -> Dict:
     deny_cmds = set(_as_list(policy.get("commands_deny")))
     if action.get("command"):
         cmd = action["command"]
-        # Check deny list first (takes precedence)
-        if any(cmd.startswith(d) for d in deny_cmds):
+        # Safely tokenize the command to avoid simple bypasses like '/usr/bin/sudo' or 'env sudo'
+        try:
+            tokens = shlex.split(cmd)
+        except Exception:
+            tokens = cmd.split()
+
+        # Helper: compare token basenames to patterns
+        def token_matches_pattern(tok: str, pat: str) -> bool:
+            if not tok:
+                return False
+            if tok == pat:
+                return True
+            if os.path.basename(tok) == pat:
+                return True
+            # allow prefix-style rules like 'git' matching 'git-commit'
+            if os.path.basename(tok).startswith(pat):
+                return True
+            return False
+
+        # Deny-check: if any token matches a deny pattern, deny immediately
+        denied = any(token_matches_pattern(tok, d) for d in deny_cmds for tok in tokens)
+        if denied:
             reasons.append(f"command denied: {cmd}")
-        # Then check allow list if it exists
-        elif allow_cmds and not any(cmd.startswith(a) for a in allow_cmds):
-            reasons.append(f"command not in allow list: {cmd}")
+        else:
+            # Allow-check: if an allow list exists, require at least one token to match
+            if allow_cmds:
+                allowed = any(token_matches_pattern(tok, a) for a in allow_cmds for tok in tokens)
+                if not allowed:
+                    reasons.append(f"command not in allow list: {cmd}")
     
     # Check path allow list (glob patterns)
     paths_allow = _as_list(policy.get("paths_allow"))

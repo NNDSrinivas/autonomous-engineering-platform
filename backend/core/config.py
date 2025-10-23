@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     # Security keys: Override via environment variables in production
     secret_key: str = "dev-secret-change-in-production"
     jwt_secret: str = "dev-jwt-secret-change-in-production"
+    # Token encryption key for encrypting API tokens at rest (Slack, Confluence, etc.)
+    token_encryption_key: Optional[str] = None
 
     # API Configuration
     api_v1_prefix: str = "/api"
@@ -70,10 +72,15 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "In production, 'jwt_secret' must be set to a secure value via environment variable."
                 )
+            if not self.token_encryption_key:
+                raise ValueError(
+                    "In production, 'token_encryption_key' must be set via TOKEN_ENCRYPTION_KEY environment variable."
+                )
 
             # Validate minimum security requirements for secrets
             self._validate_secret_security(self.secret_key, "secret_key")
             self._validate_secret_security(self.jwt_secret, "jwt_secret")
+            self._validate_encryption_key(self.token_encryption_key)
 
     def _validate_secret_security(self, secret: str, secret_name: str) -> None:
         """Validate that secrets meet minimum security requirements."""
@@ -91,6 +98,21 @@ class Settings(BaseSettings):
         if not (has_letters and (has_numbers or has_symbols)):
             raise ValueError(
                 f"In production, '{secret_name}' must contain a mix of letters and numbers/symbols for security."
+            )
+
+    def _validate_encryption_key(self, key: str) -> None:
+        """Validate that encryption key is properly formatted for Fernet."""
+        import base64
+        try:
+            key_bytes = base64.urlsafe_b64decode(key)
+            if len(key_bytes) != 32:
+                raise ValueError(
+                    f"In production, 'token_encryption_key' must be 32 bytes when decoded, got {len(key_bytes)} bytes. "
+                    "Generate a valid key using: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+                )
+        except Exception as e:
+            raise ValueError(
+                f"In production, 'token_encryption_key' must be a valid base64-encoded 32-byte key: {e}"
             )
 
     # Storage

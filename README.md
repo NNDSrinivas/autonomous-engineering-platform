@@ -251,6 +251,34 @@ This generates sample plans and verifies metrics are being recorded correctly.
 3. **Test Flow**: Command Palette → "AEP: Open Agent" → Pick task → Approve plan
 4. **Verify Policy**: Try denied command to confirm security enforcement
 
+### 🔐 **Security**
+
+#### Token Encryption at Rest
+
+All integration credentials (Slack, Confluence, etc.) are encrypted at rest using **Fernet (AES-128-CBC + HMAC-SHA256)**:
+
+- ✅ Tokens never stored in plaintext in database
+- ✅ Automatic encryption/decryption via SQLAlchemy properties
+- ✅ Production validation ensures encryption key is properly configured
+- ✅ Support for key rotation without downtime
+
+**Setup** (required for production):
+
+```bash
+# Generate encryption key
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# Set in environment
+export TOKEN_ENCRYPTION_KEY="your-generated-key-here"
+```
+
+**Documentation**: See [`docs/security.md`](docs/security.md) for:
+- Detailed encryption implementation
+- Key management best practices
+- Key rotation procedures
+- Compliance standards (OWASP, SOC 2, PCI DSS, GDPR)
+- Troubleshooting guide
+
 ### 🔮 **Future Roadmap**
 
 - **PR-9**: Model Router & LLM-powered Planning with cost controls

@@ -212,7 +212,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                         {"channel": c["name"]},
                         text_content,
                     )
-                    newest = max(newest or ts, ts)
+                    newest = ts if newest is None else max(newest, ts)
                     count += 1
             if newest:
                 if cur is None:

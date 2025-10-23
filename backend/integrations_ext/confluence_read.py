@@ -1,7 +1,10 @@
 """Confluence Read Connector - read-only access to Confluence pages"""
 
+import logging
 import httpx
 from typing import List, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ConfluenceReader:
@@ -26,6 +29,16 @@ class ConfluenceReader:
         )
         r.raise_for_status()
         j = r.json()
+        # Complex fallback logic handles multiple Confluence API response formats
+        # Log which response structure was received to help track API version differences
+        has_page_key = "page" in j
+        has_results_key = "results" in j
+        logger.debug(
+            "Confluence API response structure for space %s: page=%s, results=%s",
+            space_key,
+            has_page_key,
+            has_results_key,
+        )
         results = (j.get("page", {}) or {}).get("results") or j.get("results") or []
         out = []
         for p in results:

@@ -1,7 +1,10 @@
 """Slack Read Connector - read-only access to Slack channels and messages"""
 
+import logging
 import httpx
 from typing import List, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class SlackReader:
@@ -21,6 +24,9 @@ class SlackReader:
         r.raise_for_status()
         j = r.json()
         if not j.get("ok"):
+            logger.error(
+                "Slack API error in list_channels: %s", j.get("error", "unknown error")
+            )
             return []
         return j.get("channels", [])
 
@@ -43,5 +49,10 @@ class SlackReader:
         r.raise_for_status()
         j = r.json()
         if not j.get("ok"):
+            logger.error(
+                "Slack API error in history for channel %s: %s",
+                channel,
+                j.get("error", "unknown error"),
+            )
             return []
         return j.get("messages", [])

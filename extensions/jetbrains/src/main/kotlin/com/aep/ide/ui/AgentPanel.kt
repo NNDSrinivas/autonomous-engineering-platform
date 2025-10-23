@@ -134,10 +134,11 @@ class AgentPanel : JPanel(BorderLayout()) {
               .post(payload.toRequestBody("application/json".toMediaType()))
               .build()
           val resp = http.newCall(req).execute()
+          val bodyString = resp.body?.string()
           if (resp.isSuccessful) {
-            append("Draft PR response: ${resp.body?.string()}\n")
+            append("Draft PR response: ${bodyString}\n")
           } else {
-            append("Draft PR failed: ${resp.code} - ${resp.body?.string()}\n")
+            append("Draft PR failed: ${resp.code} - ${bodyString}\n")
           }
         } catch (e: Exception) {
           append("Error: ${e.message}\n")
@@ -170,10 +171,11 @@ class AgentPanel : JPanel(BorderLayout()) {
               .post(payload.toRequestBody("application/json".toMediaType()))
               .build()
           val resp = http.newCall(req).execute()
+          val bodyString = resp.body?.string()
           if (resp.isSuccessful) {
-            append("JIRA response: ${resp.body?.string()}\n")
+            append("JIRA response: ${bodyString}\n")
           } else {
-            append("JIRA request failed: ${resp.code} - ${resp.body?.string()}\n")
+            append("JIRA request failed: ${resp.code} - ${bodyString}\n")
           }
         } catch (e: Exception) {
           append("Error: ${e.message}\n")

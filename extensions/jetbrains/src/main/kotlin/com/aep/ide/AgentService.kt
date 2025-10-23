@@ -31,10 +31,10 @@ object AgentService {
           val proc = pb.start()
           agentProcess = proc
           started = true
-          // Retry connection with exponential backoff
+          // Retry connection with exponential backoff (capped at 10s max)
           var retries = 0
           while (retries < 10) {
-            Thread.sleep(200L * (1 shl retries)) // 200ms, 400ms, 800ms, etc.
+            Thread.sleep(minOf(200L * (1 shl retries), 10000L)) // 200ms, 400ms, ..., max 10s
             try {
               client = RpcClient(url)
               client!!.connectBlocking()

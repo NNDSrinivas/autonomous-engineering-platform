@@ -3,11 +3,9 @@
 from pathlib import Path
 from typing import List, Dict
 import logging
+from ..search.constants import MAX_CONTENT_LENGTH
 
 logger = logging.getLogger(__name__)
-
-# Maximum content length for text files
-MAX_CONTENT_LENGTH = 200000  # Characters
 
 
 def scan_docs(root="docs") -> List[Dict]:
@@ -18,7 +16,9 @@ def scan_docs(root="docs") -> List[Dict]:
         for f in p.rglob("*.md"):
             try:
                 content = f.read_text(encoding="utf-8")[:MAX_CONTENT_LENGTH]
-                out.append({"title": f.stem, "url": None, "content": content})
+                # Use relative path to avoid title collisions in nested directories
+                title = str(f.relative_to(p))
+                out.append({"title": title, "url": None, "content": content})
             except (UnicodeDecodeError, IOError, OSError) as e:
                 logger.warning(f"Failed to read wiki file {f}: {e}")
                 continue

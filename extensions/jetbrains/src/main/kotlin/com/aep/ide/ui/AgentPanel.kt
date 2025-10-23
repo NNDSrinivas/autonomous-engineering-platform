@@ -143,11 +143,11 @@ class AgentPanel(private val project: Project) : JPanel(BorderLayout()) {
               val model = t["model"]?.toString() ?: "n/a"
               
               // Parse numeric telemetry values using helper functions
-              val tokens = parseLongFromTelemetry(t["tokens"]).toString()
-              val cost = String.format(Locale.US, "%.2f", parseDoubleFromTelemetry(t["cost_usd"]))
-              val latency = parseLongFromTelemetry(t["latency_ms"]).toString()
+              val tokens = parseLongFromTelemetry(t["tokens"])
+              val cost = String.format(Locale.US, "\$%.2f", parseDoubleFromTelemetry(t["cost_usd"]))
+              val latency = parseLongFromTelemetry(t["latency_ms"])
               
-              Status.show(project, "AEP Plan — model: $model | tokens: $tokens | cost: \$${cost} | latency: ${latency}ms")
+              Status.show(project, "AEP Plan — model: $model | tokens: $tokens | cost: $cost | latency: ${latency}ms")
             }
           }
         } catch (e: Exception) {

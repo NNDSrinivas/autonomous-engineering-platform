@@ -213,25 +213,29 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                         {"channel": c["name"]},
                         text_content,
                     )
-                    # Slack timestamps are numeric strings - compare as floats
-                    if newest is None or float(ts) > float(newest):
-                        newest = ts
+                    # Slack timestamps are numeric strings - compare as floats with error handling
+                    try:
+                        ts_float = float(ts)
+                        newest_float = float(newest) if newest is not None else None
+                        if newest_float is None or ts_float > newest_float:
+                            newest = ts
+                    except (TypeError, ValueError):
+                        # Invalid timestamp format; skip updating newest
+                        pass
                     count += 1
             if newest:
-                if cur is None:
-                    db.execute(
-                        text(
-                            "INSERT INTO sync_cursor (org_id, source, cursor) VALUES (:o,'slack',:c)"
-                        ),
-                        {"o": org, "c": newest},
-                    )
-                else:
-                    db.execute(
-                        text(
-                            "UPDATE sync_cursor SET cursor=:c, updated_at=CURRENT_TIMESTAMP WHERE org_id=:o AND source='slack'"
-                        ),
-                        {"o": org, "c": newest},
-                    )
+                # Use ON CONFLICT to handle race conditions in concurrent environments
+                db.execute(
+                    text(
+                        """
+                        INSERT INTO sync_cursor (org_id, source, cursor) 
+                        VALUES (:o, 'slack', :c)
+                        ON CONFLICT (org_id, source) 
+                        DO UPDATE SET cursor = EXCLUDED.cursor, updated_at = CURRENT_TIMESTAMP
+                        """
+                    ),
+                    {"o": org, "c": newest},
+                )
                 db.commit()
             return count
 
@@ -274,8 +278,11 @@ def reindex_confluence(
             count = 0
             for p in pages:
                 text_html = p["html"]
+                # Limit HTML size before parsing for performance
                 # Robust HTML cleaning: use BeautifulSoup to handle malformed tags
-                soup = BeautifulSoup(text_html, "html.parser")
+                soup = BeautifulSoup(
+                    text_html[: MAX_CONTENT_LENGTH * 2], "html.parser"
+                )  # Allow 2x for HTML overhead
                 # Remove script and style tags completely (including malformed ones)
                 for tag in soup(["script", "style"]):
                     tag.decompose()

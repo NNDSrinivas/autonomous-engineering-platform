@@ -20,6 +20,9 @@ def slack_connect(
     team = payload.get("team_id")
     if not token:
         raise HTTPException(status_code=400, detail="bot_token required")
+    # TODO: Security improvement - encrypt tokens at rest using application-level encryption
+    # or database encryption before production deployment. Current implementation stores
+    # bot_token and access_token in plain text which poses a security risk.
     # Use ON CONFLICT to handle existing connections (update token)
     db.execute(
         text(
@@ -50,6 +53,7 @@ def confluence_connect(
         raise HTTPException(
             status_code=400, detail="base_url and access_token required"
         )
+    # TODO: Security improvement - encrypt tokens at rest (same as Slack tokens above)
     # Use ON CONFLICT to handle existing connections (update credentials)
     db.execute(
         text(

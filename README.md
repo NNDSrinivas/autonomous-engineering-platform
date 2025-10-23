@@ -966,10 +966,12 @@ curl -X POST http://localhost:8002/api/search/ \
 
 - **Read-only access**: No writes to Slack/Confluence/etc.
 - **Org isolation**: `X-Org-Id` header enforced on all endpoints
-- **Token storage**: Encrypted at rest (credentials in DB)
+- **Token storage**: ⚠️ Currently stored in plaintext (encryption planned - see [Issue #18](https://github.com/NNDSrinivas/autonomous-engineering-platform/issues/18))
 - **Incremental sync**: Slack uses cursor-based pagination
 - **Rate limiting**: Inherited from existing API middleware
 - **Audit logs**: All API calls logged with request IDs
+
+> **⚠️ SECURITY NOTE**: Token encryption at rest is not yet implemented. This is acceptable for development/testing environments but **must be addressed before production deployment**. See `backend/api/integrations_ext.py` for TODO comments with implementation options.
 
 ### 📈 **Metrics (Prometheus)**
 

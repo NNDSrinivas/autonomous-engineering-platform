@@ -12,6 +12,13 @@ import httpx
 import asyncio
 import re
 
+# Reindexing limits and thresholds
+MAX_CHANNELS_PER_SYNC = 20  # Slack channels to sync per request
+SLACK_HISTORY_LIMIT = 300  # Messages per channel per sync
+CONFLUENCE_PAGE_LIMIT = 200  # Pages to fetch per sync
+MAX_CONTENT_LENGTH = 200000  # Max characters for text content
+MAX_MEETINGS_PER_SYNC = 1000  # Meeting records to sync per request
+
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 
@@ -83,10 +90,10 @@ def reindex_meetings(request: Request = None, db: Session = Depends(get_db)):
       FROM meeting m
       LEFT JOIN meeting_summary ms ON ms.meeting_id=m.id
       WHERE m.org_id=:org_id
-      ORDER BY m.created_at DESC LIMIT 1000
+      ORDER BY m.created_at DESC LIMIT :limit
     """
             ),
-            {"org_id": org},
+            {"org_id": org, "limit": MAX_MEETINGS_PER_SYNC},
         )
         .mappings()
         .all()
@@ -186,8 +193,10 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
             ).scalar()
             newest = cur
             count = 0
-            for c in chans[:20]:  # throttle MVP to 20 channels
-                msgs = await sr.history(client, c["id"], oldest=cur, limit=300)
+            for c in chans[:MAX_CHANNELS_PER_SYNC]:  # throttle MVP
+                msgs = await sr.history(
+                    client, c["id"], oldest=cur, limit=SLACK_HISTORY_LIMIT
+                )
                 for m in msgs:
                     ts = m.get("ts")
                     text_content = m.get("text", "")
@@ -256,11 +265,13 @@ def reindex_confluence(
 
         async with httpx.AsyncClient(timeout=30) as client:
             cr = ConfluenceReader(row["base_url"], row["access_token"], row["email"])
-            pages = await cr.pages(client, space_key=space_key, start=0, limit=200)
+            pages = await cr.pages(
+                client, space_key=space_key, start=0, limit=CONFLUENCE_PAGE_LIMIT
+            )
             count = 0
             for p in pages:
                 text_html = p["html"]
-                text_clean = re.sub(r"<[^>]+>", " ", text_html)[:200000]
+                text_clean = re.sub(r"<[^>]+>", " ", text_html)[:MAX_CONTENT_LENGTH]
                 upsert_memory_object(
                     db,
                     org,
@@ -311,10 +322,10 @@ def reindex_zoom_teams(request: Request = None, db: Session = Depends(get_db)):
       SELECT m.id mid, coalesce(ms.summary_json,'{}') s
       FROM meeting m LEFT JOIN meeting_summary ms ON ms.meeting_id=m.id
       WHERE m.provider IN ('zoom','teams') AND m.org_id=:org_id
-      ORDER BY m.created_at DESC LIMIT 1000
+      ORDER BY m.created_at DESC LIMIT :limit
     """
             ),
-            {"org_id": org},
+            {"org_id": org, "limit": MAX_MEETINGS_PER_SYNC},
         )
         .mappings()
         .all()

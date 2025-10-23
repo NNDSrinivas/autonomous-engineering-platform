@@ -2,6 +2,7 @@
 
 import fnmatch
 import json
+import re
 import shlex
 import os
 from typing import Dict, List, Any
@@ -63,10 +64,13 @@ def check_action(policy: Dict, action: Dict) -> Dict:
         # Filter out common wrapper commands and environment variable assignments
         # to prevent policy evasion via 'env sudo', 'VAR=value sudo', 'nohup sudo', etc.
         WRAPPER_COMMANDS = {"env", "nohup", "nice", "ionice", "timeout", "time"}
+        # Pattern for environment variable assignments: KEY=value (KEY must be valid identifier)
+        ENV_VAR_PATTERN = re.compile(r"^[A-Z_][A-Z0-9_]*=")
+
         filtered_tokens = []
         for tok in tokens:
             # Skip environment variable assignments (KEY=value)
-            if "=" in tok and not tok.startswith("/"):
+            if ENV_VAR_PATTERN.match(tok):
                 continue
             # Skip common wrapper commands
             basename = os.path.basename(tok)

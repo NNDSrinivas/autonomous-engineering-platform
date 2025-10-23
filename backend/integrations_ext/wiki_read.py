@@ -25,6 +25,6 @@ def scan_docs(root="docs") -> List[Dict]:
                 title = str(f.relative_to(p))
                 out.append({"title": title, "url": None, "content": content})
             except (UnicodeDecodeError, IOError, OSError) as e:
-                logger.warning(f"Failed to read wiki file {f}: {e}")
+                logger.warning("Failed to read wiki file %s: %s", f, e)
                 continue
     return out

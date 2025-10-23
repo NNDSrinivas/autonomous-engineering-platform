@@ -1,5 +1,6 @@
 """Extended Integrations API - Connection management for Slack, Confluence, etc."""
 
+import os
 from fastapi import APIRouter, Body, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -20,6 +21,15 @@ def slack_connect(
     team = payload.get("team_id")
     if not token:
         raise HTTPException(status_code=400, detail="bot_token required")
+
+    # CRITICAL SECURITY CHECK: Prevent production deployment with plaintext tokens
+    environment = os.getenv("ENVIRONMENT", "development").lower()
+    if environment == "production":
+        raise HTTPException(
+            status_code=501,
+            detail="Token encryption not implemented. Production deployment blocked. See GitHub Issue #18: https://github.com/NNDSrinivas/autonomous-engineering-platform/issues/18",
+        )
+
     # SECURITY WARNING: Tokens are currently stored in plaintext in the database.
     # This is acceptable for development/testing but NOT for production deployment.
     # TODO: BEFORE PRODUCTION - Implement token encryption at rest (CRITICAL)
@@ -62,6 +72,15 @@ def confluence_connect(
         raise HTTPException(
             status_code=400, detail="base_url and access_token required"
         )
+
+    # CRITICAL SECURITY CHECK: Prevent production deployment with plaintext tokens
+    environment = os.getenv("ENVIRONMENT", "development").lower()
+    if environment == "production":
+        raise HTTPException(
+            status_code=501,
+            detail="Token encryption not implemented. Production deployment blocked. See GitHub Issue #18: https://github.com/NNDSrinivas/autonomous-engineering-platform/issues/18",
+        )
+
     # TODO: Security improvement - encrypt tokens at rest (same as Slack tokens above)
     # Use ON CONFLICT to handle existing connections (update credentials)
     db.execute(

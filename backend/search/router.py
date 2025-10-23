@@ -225,7 +225,10 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
             ).scalar()
             newest = cur
             count = 0
-            for c in chans[:MAX_CHANNELS_PER_SYNC]:  # throttle MVP
+            # Limit the number of channels processed per sync to avoid hitting Slack API rate limits
+            # and to keep memory usage manageable. Adjust MAX_CHANNELS_PER_SYNC as needed based on
+            # observed performance and Slack API constraints.
+            for c in chans[:MAX_CHANNELS_PER_SYNC]:
                 msgs = await sr.history(
                     client, c["id"], oldest=cur, limit=SLACK_HISTORY_LIMIT
                 )
@@ -233,20 +236,30 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                     ts = m.get("ts")
                     text_content = m.get("text", "")
                     title = f"#{c['name']} {ts}"
-                    upsert_memory_object(
-                        db,
-                        org,
-                        "slack",
-                        f"{c['id']}::{ts}",
-                        title,
-                        None,
-                        "en",
-                        {"channel": c["name"]},
-                        text_content,
-                    )
-                    # Safely update newest timestamp with error handling
-                    newest = safe_update_newest(newest, ts)
-                    count += 1
+                    try:
+                        upsert_memory_object(
+                            db,
+                            org,
+                            "slack",
+                            f"{c['id']}::{ts}",
+                            title,
+                            None,
+                            "en",
+                            {"channel": c["name"]},
+                            text_content,
+                        )
+                        # Safely update newest timestamp with error handling
+                        newest = safe_update_newest(newest, ts)
+                        count += 1
+                    except Exception as e:
+                        logger.error(
+                            "Failed to upsert Slack message (channel_id=%r, ts=%r, org_id=%r): %s",
+                            c.get("id"),
+                            ts,
+                            org,
+                            e,
+                        )
+                        continue
             # Only update cursor if we have a valid timestamp (newest won't be None
             # if any messages were processed with valid timestamps)
             if newest:
@@ -322,18 +335,26 @@ def reindex_confluence(
                 text_clean = re.sub(r"\s+", " ", text_clean).strip()[
                     :MAX_CONTENT_LENGTH
                 ]
-                upsert_memory_object(
-                    db,
-                    org,
-                    "confluence",
-                    p["id"],
-                    p["title"],
-                    p["url"],
-                    "en",
-                    {"version": p["version"]},
-                    text_clean,
-                )
-                count += 1
+                try:
+                    upsert_memory_object(
+                        db,
+                        org,
+                        "confluence",
+                        p["id"],
+                        p["title"],
+                        p["url"],
+                        "en",
+                        {"version": p["version"]},
+                        text_clean,
+                    )
+                    count += 1
+                except Exception as e:
+                    logger.error(
+                        "Failed to index Confluence page id=%r title=%r: %s",
+                        p.get("id"),
+                        p.get("title"),
+                        e,
+                    )
             return count
 
     count = asyncio.run(run())
@@ -350,11 +371,24 @@ def reindex_wiki(request: Request = None, db: Session = Depends(get_db)):
     from ..integrations_ext.wiki_read import scan_docs
 
     docs = scan_docs("docs")
+    failed = []
     for d in docs:
-        upsert_memory_object(
-            db, org, "wiki", d["title"], d["title"], d["url"], "en", {}, d["content"]
-        )
-    return {"ok": True, "count": len(docs)}
+        try:
+            upsert_memory_object(
+                db,
+                org,
+                "wiki",
+                d["title"],
+                d["title"],
+                d["url"],
+                "en",
+                {},
+                d["content"],
+            )
+        except Exception as e:
+            logger.error("Failed to index wiki document '%s': %s", d["title"], e)
+            failed.append(d["title"])
+    return {"ok": True, "count": len(docs), "failed": failed}
 
 
 @router.post("/reindex/zoom_teams")
@@ -382,15 +416,18 @@ def reindex_zoom_teams(request: Request = None, db: Session = Depends(get_db)):
     )
     for r in rows:
         txt = r["s"] if isinstance(r["s"], str) else json.dumps(r["s"])
-        upsert_memory_object(
-            db,
-            org,
-            "meeting",
-            str(r["mid"]),
-            f"Meeting {r['mid']}",
-            None,
-            "en",
-            {"provider": "zoom/teams"},
-            txt,
-        )
+        try:
+            upsert_memory_object(
+                db,
+                org,
+                "meeting",
+                str(r["mid"]),
+                f"Meeting {r['mid']}",
+                None,
+                "en",
+                {"provider": "zoom/teams"},
+                txt,
+            )
+        except Exception as e:
+            logger.error("Failed to index meeting ID %s: %s", r["mid"], e)
     return {"ok": True, "count": len(rows)}

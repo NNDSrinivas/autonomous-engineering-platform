@@ -21,6 +21,12 @@ class AgentService {
   @Volatile private var agentProcess: Process? = null
   private val url = System.getenv("AEP_AGENTD_URL") ?: "ws://127.0.0.1:8765"
 
+  private fun calculateBackoffDelay(attempt: Int): Long {
+    // Exponential backoff: 200ms * 2^attempt, capped at 10s
+    // 200ms, 400ms, 800ms, 1.6s, 3.2s, 6.4s, 10s (capped)
+    return minOf(200L * (1 shl attempt), 10000L)
+  }
+
   fun ensureAgentRunning(): RpcClient = synchronized(lock) {
     client?.takeIf { it.isOpen }?.let { return it }
     // Try connect; if fails, attempt to start agentd from repo (Node script)
@@ -48,7 +54,7 @@ class AgentService {
           // 2. Only called during agent startup (not hot path)
           // 3. Synchronous return type required by callers
           for (attempt in 0..6) {
-            Thread.sleep(minOf(200L * (1 shl attempt), 10000L))
+            Thread.sleep(calculateBackoffDelay(attempt))
             try {
               val newClient = RpcClient(url)
               newClient.connectBlocking()

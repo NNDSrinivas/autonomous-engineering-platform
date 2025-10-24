@@ -2,9 +2,40 @@
 
 import logging
 import httpx
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_nested_get(data: dict, *keys: str, default: Any = None) -> Any:
+    """
+    Safely extract nested dictionary values with fallback.
+
+    Traverses nested dictionaries using the provided keys, returning the default
+    value if any key is missing or returns a non-dict value (except for the final key).
+
+    Args:
+        data: The dictionary to traverse
+        *keys: The sequence of keys to follow (e.g., "body", "storage", "value")
+        default: The value to return if any key is missing (default: None)
+
+    Returns:
+        The value at the nested path, or the default value
+
+    Examples:
+        >>> _safe_nested_get({"a": {"b": {"c": 123}}}, "a", "b", "c")
+        123
+        >>> _safe_nested_get({"a": {}}, "a", "b", "c", default="fallback")
+        'fallback'
+    """
+    current = data
+    for key in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+        if current is None:
+            return default
+    return current
 
 
 def _extract_results(response_json: dict, space_key: str) -> List[Dict]:
@@ -83,16 +114,13 @@ class ConfluenceReader:
             title = p.get("title")
             pid = p.get("id")
 
-            # Extract nested body.storage.value with explicit intermediate values
-            body_obj = p.get("body") or {}
-            storage_obj = body_obj.get("storage") or {}
-            body = storage_obj.get("value", "")
+            # Extract nested body.storage.value using safe helper
+            body = _safe_nested_get(p, "body", "storage", "value", default="")
 
             url = f"{self.base}/pages/{pid}"
 
-            # Extract nested version.number with explicit intermediate value
-            version_obj = p.get("version") or {}
-            ver = version_obj.get("number") or 1
+            # Extract nested version.number using safe helper
+            ver = _safe_nested_get(p, "version", "number", default=1)
 
             out.append(
                 {

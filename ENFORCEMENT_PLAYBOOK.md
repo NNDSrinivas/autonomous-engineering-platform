@@ -167,7 +167,7 @@ If the offender is a company or funded startup:
 ## 6. Legal Contact
 
 - **NavraLabs Legal & IP Enforcement**
-  - Email: legal@navralabs.com
+  - Email: legal@navralabs.ai
   - Founder: NagaDurga S. Nidamanuri  
   - Registered: United States  
   - Trademark filings: "Autonomous Engineering Platform", "NavraLabs", "AEP"

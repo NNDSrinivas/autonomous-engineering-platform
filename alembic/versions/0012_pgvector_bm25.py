@@ -59,17 +59,30 @@ def upgrade():
     # Add tsvector column and GIN index for BM25/FTS (PostgreSQL only)
     try:
         # Add text_tsv column for precomputed tsvector
-        op.add_column("memory_chunk", sa.Column("text_tsv", sa.TEXT(), nullable=True))
+        # Use tsvector type for proper FTS performance
+        try:
+            from sqlalchemy.dialects import postgresql
+
+            op.add_column(
+                "memory_chunk",
+                sa.Column("text_tsv", postgresql.TSVECTOR(), nullable=True),
+            )
+        except ImportError:
+            # Fallback to raw SQL if dialect not available
+            op.execute(
+                "ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS text_tsv tsvector;"
+            )
 
         # Populate existing rows with tsvector data
         op.execute(
             "UPDATE memory_chunk SET text_tsv = to_tsvector('english', coalesce(text, ''));"
         )
 
-        # Create GIN index for efficient full-text search
+        # Create GIN index on precomputed text_tsv column for efficient full-text search
+        # Index the stored tsvector column, not the computed expression
         op.execute(
             "CREATE INDEX IF NOT EXISTS idx_memory_chunk_tsv "
-            "ON memory_chunk USING GIN (to_tsvector('english', text));"
+            "ON memory_chunk USING GIN (text_tsv);"
         )
     except Exception:
         # SQLite or databases without tsvector support

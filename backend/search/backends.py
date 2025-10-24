@@ -23,6 +23,10 @@ from sqlalchemy.orm import Session
 
 from ..core.config import settings
 
+# Import embeddings at module level to avoid circular dependency
+# This is safe because embeddings.py doesn't import from backends
+from .embeddings import embed_texts
+
 
 # Hybrid ranking weights (configurable via PR-15 constants)
 SEMANTIC_WEIGHT = 0.55
@@ -301,9 +305,6 @@ def hybrid_search(
     Returns:
         List of result dictionaries with scores and metadata
     """
-    # Import here to avoid circular dependency
-    from .embeddings import embed_texts
-
     # Generate query embedding
     query_vec = embed_texts([query])[0]
 

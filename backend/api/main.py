@@ -25,6 +25,8 @@ from .policy import router as policy_router
 from .change import router as change_router
 from ..search.router import router as search_router
 from .integrations_ext import router as integrations_ext_router
+from .context_pack import router as context_pack_router
+from .memory import router as memory_router
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -63,6 +65,8 @@ app.include_router(policy_router)
 app.include_router(change_router)
 app.include_router(search_router)
 app.include_router(integrations_ext_router)
+app.include_router(context_pack_router, prefix="/api")
+app.include_router(memory_router, prefix="/api")
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])

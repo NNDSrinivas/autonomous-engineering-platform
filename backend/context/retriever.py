@@ -2,6 +2,7 @@
 
 Combines semantic search with keyword matching, recency, and authority scoring.
 """
+
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import json

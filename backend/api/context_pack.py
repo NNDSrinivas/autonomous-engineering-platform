@@ -2,7 +2,8 @@
 
 Provides retrieval-augmented context for LLM prompts
 """
-from fastapi import APIRouter, Depends, HTTPException
+
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from ..core.db import get_db
 from ..context.schemas import ContextPackRequest, ContextPackResponse
@@ -59,6 +60,7 @@ def get_context_pack(req: ContextPackRequest, db: Session = Depends(get_db)):
     CTX_HITS.observe(len(hits))
 
     return ContextPackResponse(
+        query=req.query,
         hits=hits,
         notes=notes,
         latency_ms=lat,

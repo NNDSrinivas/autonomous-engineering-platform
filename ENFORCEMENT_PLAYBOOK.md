@@ -164,7 +164,7 @@ If the offender is a company or funded startup:
 
 ---
 
-## 6. Legal Contact
+## 8. Legal Contact
 
 - **NavraLabs Legal & IP Enforcement**
   - Email: legal@navralabs.ai

@@ -30,12 +30,15 @@ MAX_CONTENT_LENGTH = 200000  # Max characters for text content
 #  - Meeting creation frequency (raise if org creates >1000 meetings between syncs)
 MAX_MEETINGS_PER_SYNC = 1000  # Meeting records to sync per request
 # HTML overhead multiplier for pre-parsing truncation
-# Rationale: HTML markup typically adds 50-150% overhead compared to plain text.
+# Rationale: HTML markup typically adds 50-300% overhead compared to plain text.
 # Common tags like <div>, <span>, <a href="...">, <p>, etc. add significant bytes.
+# Confluence pages with heavy markup (tables, nested divs, inline styles) can exceed 3x ratio.
 # Example: "Hello World" (11 chars) as '<p class="text">Hello World</p>' is 36 chars (3.3x).
-# A conservative multiplier of 2 provides a reasonable balance:
-#  - Handles most typical Confluence pages (averaging 1.5-2.5x markup-to-text ratio)
-#  - Protects against worst-case scenarios like the 3.3x example above
-#  - Reduces BeautifulSoup parsing time for large documents
-#  - Still extracts MAX_CONTENT_LENGTH chars of text after tag removal
-HTML_OVERHEAD_MULTIPLIER = 2
+# A conservative multiplier of 3 provides robust coverage:
+#  - Handles typical Confluence pages (averaging 1.5-2.5x markup-to-text ratio)
+#  - Protects against heavy markup scenarios (tables, nested divs) reaching 3-4x
+#  - Reduces BeautifulSoup parsing time for large documents by pre-truncating
+#  - Ensures we extract MAX_CONTENT_LENGTH chars of text after tag removal
+# Trade-off: Slightly more HTML parsed than needed for simple pages, but avoids truncating
+# text content prematurely on complex pages. Adjust down to 2.5 if memory is constrained.
+HTML_OVERHEAD_MULTIPLIER = 3

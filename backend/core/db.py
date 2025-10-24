@@ -65,13 +65,6 @@ class _EngineLazy:
     def __getattr__(self, name):
         return getattr(get_engine(), name)
 
-    def connect(self):
-        return get_engine().connect()
-
-    @property
-    def dialect(self):
-        return get_engine().dialect
-
 
 engine = _EngineLazy()
 

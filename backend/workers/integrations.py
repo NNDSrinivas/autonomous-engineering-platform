@@ -8,6 +8,7 @@ from ..core.config import settings
 from ..core.db import SessionLocal
 from ..models.integrations import JiraConnection, JiraProjectConfig, GhConnection
 from ..services import jira as jsvc, github as ghsvc
+from ..core.crypto import decrypt_token
 
 broker = RedisBroker(url=settings.redis_url)
 dramatiq.set_broker(broker)
@@ -30,7 +31,7 @@ def jira_sync(connection_id: str) -> None:
             or (dt.dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=30))
         ).isoformat()
         headers = {
-            "Authorization": f"Bearer {conn.access_token}",
+            "Authorization": f"Bearer {decrypt_token(conn.access_token)}",
             "Accept": "application/json",
         }
 
@@ -72,7 +73,7 @@ def github_index(connection_id: str, repo_full_name: str) -> None:
         if not conn:
             return
         headers = {
-            "Authorization": f"Bearer {conn.access_token}",
+            "Authorization": f"Bearer {decrypt_token(conn.access_token)}",
             "Accept": "application/vnd.github+json",
         }
 

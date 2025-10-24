@@ -17,6 +17,27 @@ GITHUB_ISSUE_TOKEN_ENCRYPTION = (
 router = APIRouter(prefix="/api/integrations-ext", tags=["integrations-ext"])
 
 
+def _parse_allowed_environments(default: str = "development,local") -> set[str]:
+    """
+    Parse ALLOWED_ENVIRONMENTS env var into a set of lowercase environment names.
+
+    Uses walrus operator to avoid calling strip() twice per iteration.
+    Filters out empty strings after stripping whitespace.
+
+    Args:
+        default: Comma-separated default environments if env var not set
+
+    Returns:
+        Set of lowercase environment names
+    """
+    allowed_environments_raw = os.getenv("ALLOWED_ENVIRONMENTS", default)
+    return {
+        stripped.lower()
+        for env in allowed_environments_raw.split(",")
+        if (stripped := env.strip())
+    }
+
+
 @router.post("/slack/connect")
 def slack_connect(
     payload: dict = Body(...), request: Request = None, db: Session = Depends(get_db)
@@ -43,12 +64,7 @@ def slack_connect(
     # Configurable whitelist with narrow default (development-only)
     # Use ALLOWED_ENVIRONMENTS env var (comma-separated) to customize
     # Example: ALLOWED_ENVIRONMENTS="development,staging" allows both dev and staging
-    allowed_environments_raw = os.getenv("ALLOWED_ENVIRONMENTS", "development,local")
-    allowed_environments = {
-        env.strip().lower()
-        for env in allowed_environments_raw.split(",")
-        if env.strip()
-    }
+    allowed_environments = _parse_allowed_environments()
     if environment not in allowed_environments:
         raise HTTPException(
             status_code=501,
@@ -117,12 +133,7 @@ def confluence_connect(
     # Configurable whitelist with narrow default (development-only)
     # Use ALLOWED_ENVIRONMENTS env var (comma-separated) to customize
     # Example: ALLOWED_ENVIRONMENTS="development,staging" allows both dev and staging
-    allowed_environments_raw = os.getenv("ALLOWED_ENVIRONMENTS", "development,local")
-    allowed_environments = {
-        env.strip().lower()
-        for env in allowed_environments_raw.split(",")
-        if env.strip()
-    }
+    allowed_environments = _parse_allowed_environments()
     if environment not in allowed_environments:
         raise HTTPException(
             status_code=501,

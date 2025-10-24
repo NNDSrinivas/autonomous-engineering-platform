@@ -65,6 +65,15 @@ class _EngineLazy:
     def __getattr__(self, name):
         return getattr(get_engine(), name)
 
+    def __call__(self, *args, **kwargs):
+        return get_engine()(*args, **kwargs)
+
+    def __repr__(self):
+        return repr(get_engine())
+
+    def __str__(self):
+        return str(get_engine())
+
 
 engine = _EngineLazy()
 

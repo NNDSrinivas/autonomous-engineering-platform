@@ -461,7 +461,7 @@ def reindex_zoom_teams(request: Request = None, db: Session = Depends(get_db)):
     if not org:
         raise HTTPException(status_code=401, detail="X-Org-Id header required")
 
-    # Note: Query performance relies on index on (provider, created_at) for meeting table
+    # Note: Query performance relies on index on (org_id, created_at) for meeting table, consistent with reindex_meetings
     rows = (
         db.execute(
             text(

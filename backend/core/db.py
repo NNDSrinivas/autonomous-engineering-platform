@@ -76,6 +76,18 @@ class _EngineLazy:
 engine = _EngineLazy()
 
 
+# For backward compatibility - create a lazy SessionLocal
+class _SessionLocalLazy:
+    def __call__(self, **kwargs):
+        return _get_session_local()(**kwargs)
+
+    def __getattr__(self, name):
+        return getattr(_get_session_local(), name)
+
+
+SessionLocal = _SessionLocalLazy()
+
+
 def _get_session_local():
     """Get or create SessionLocal (lazy initialization)."""
     global _SessionLocal

@@ -260,7 +260,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
             ).scalar()
             # Validate cursor timestamp using shared validation logic
             newest = validate_slack_timestamp(cur)
-            if cur and newest is None:
+            if cur is not None and newest is None:
                 logger.warning(
                     "Invalid cursor value for org_id=%s: %r, resetting to None",
                     org,
@@ -277,7 +277,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                 )
             for c in chans[:MAX_CHANNELS_PER_SYNC]:
                 msgs = await sr.history(
-                    client, c["id"], oldest=cur, limit=SLACK_HISTORY_LIMIT
+                    client, c["id"], oldest=newest, limit=SLACK_HISTORY_LIMIT
                 )
                 for m in msgs:
                     ts = m.get("ts")

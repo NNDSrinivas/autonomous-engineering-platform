@@ -60,10 +60,29 @@ def fetch_relevant_notes(
     Returns:
         List of agent notes with metadata
     """
-    rows = (
-        db.execute(
-            text(
-                """
+    # Use database-specific JSON operators for efficient tag search
+    # PostgreSQL: native @> operator with GIN index support
+    # SQLite: LIKE pattern matching (no native JSON operators)
+    dialect_name = db.bind.dialect.name
+
+    if dialect_name == "postgresql":
+        query = """
+      SELECT id, task_key, context, summary, importance, tags,
+             created_at, updated_at
+      FROM agent_note
+      WHERE org_id = :o
+        AND (task_key = :tk OR tags @> :tk_json)
+      ORDER BY importance DESC, updated_at DESC
+      LIMIT :lim
+    """
+        params = {
+            "o": org_id,
+            "tk": task_key,
+            "tk_json": json.dumps([task_key]),
+            "lim": limit,
+        }
+    else:
+        query = """
       SELECT id, task_key, context, summary, importance, tags,
              created_at, updated_at
       FROM agent_note
@@ -72,17 +91,14 @@ def fetch_relevant_notes(
       ORDER BY importance DESC, updated_at DESC
       LIMIT :lim
     """
-            ),
-            {
-                "o": org_id,
-                "tk": task_key,
-                "tk_pattern": f'%"{task_key}"%',
-                "lim": limit,
-            },
-        )
-        .mappings()
-        .all()
-    )
+        params = {
+            "o": org_id,
+            "tk": task_key,
+            "tk_pattern": f'%"{task_key}"%',
+            "lim": limit,
+        }
+
+    rows = db.execute(text(query), params).mappings().all()
 
     return [
         {

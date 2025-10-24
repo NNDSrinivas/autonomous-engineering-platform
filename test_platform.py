@@ -9,8 +9,13 @@ import sys
 import requests
 
 
-def test_endpoint(name, url, method="GET", data=None, expected_status=200):
-    """Test a single API endpoint"""
+def run_endpoint_check(name, url, method="GET", data=None, expected_status=200):
+    """Invoke a single API endpoint and log the result.
+
+    Named intentionally without the `test_` prefix so that pytest does not treat
+    this helper as a collected test function. The module doubles as a CLI script
+    for manual verification of the running platform.
+    """
     try:
         print(f"🧪 Testing {name}...")
 
@@ -49,7 +54,7 @@ def main():
     print("=" * 60)
 
     # Test 1: Health Check
-    success = test_endpoint("Health Check", f"{base_url}/health")
+    success = run_endpoint_check("Health Check", f"{base_url}/health")
 
     if not success:
         print("❌ Backend is not running. Start it with:")
@@ -59,7 +64,7 @@ def main():
         return 1
 
     # Test 2: AI Assistant (will work with API key)
-    test_endpoint(
+    run_endpoint_check(
         "AI Assistant - Code Question",
         f"{base_url}/api/ask",
         "POST",
@@ -70,7 +75,7 @@ def main():
     )
 
     # Test 3: Code Analysis
-    test_endpoint(
+    run_endpoint_check(
         "Code Analysis",
         f"{base_url}/api/analyze-code",
         "POST",
@@ -90,7 +95,7 @@ print(f"Fibonacci of 10 is: {result}")
     )
 
     # Test 4: Team Context Search
-    test_endpoint(
+    run_endpoint_check(
         "Team Context Search",
         f"{base_url}/api/team-context",
         "POST",

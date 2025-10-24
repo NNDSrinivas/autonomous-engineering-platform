@@ -71,14 +71,15 @@ def _extract_results(response_json: dict, space_key: str) -> List[Dict]:
 
     # Try direct results structure
     if "results" in response_json:
-        direct_results = response_json.get("results")
-        if direct_results is not None and isinstance(direct_results, list):
-            return direct_results
+        results = response_json.get("results")
+        if isinstance(results, list):
+            return results
 
-    # Return empty list as fallback
+    # Unexpected format - log structure to aid debugging API version changes
     logger.warning(
-        "Unexpected Confluence API response structure for space %s: results not found or not a list",
+        "Unexpected Confluence API response structure for space %s. Available keys: %s",
         space_key,
+        list(response_json.keys()),
     )
     return []
 

@@ -6,12 +6,6 @@
   "engines": {
     "vscode": "^1.84.0"
   },
-  "activationEvents": [
-    "onStartupFinished",
-    "onCommand:aep.openPanel",
-    "onCommand:aep.runPlan",
-    "onCommand:aep.generatePlanLLM"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [

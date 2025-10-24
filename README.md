@@ -103,6 +103,126 @@ cd frontend && npm start          # Web UI (port 3000)
 
 ---
 
+## 🆕 PR-15: Retrieval-Augmented Context Pack (RACP)
+
+### 🎯 **Intelligent Context for LLM Prompts**
+
+The **Context Pack** feature provides automatic retrieval of relevant knowledge for every agent interaction. No more blind prompts—every LLM call gets enriched with semantic search, episodic memory, and consolidated notes.
+
+#### **Key Features**
+- **Hybrid Retrieval**: Combines semantic (55%), keyword (25%), recency (12%), and authority (8%) scoring
+- **Episodic Memory**: Records short-term events (plans, decisions, errors, QA exchanges)
+- **Agent Notes**: Consolidates sessions into long-term searchable knowledge
+- **Policy Filtering**: Respects security policies (public_only, internal_only)
+- **Telemetry**: Prometheus metrics for latency and hit counts
+
+### 🏗️ **Architecture**
+
+```
+backend/
+├── context/
+│   ├── schemas.py       # Pydantic models (ContextPackRequest/Response)
+│   ├── retriever.py     # Hybrid ranking algorithm
+│   └── service.py       # Policy filtering & note fetching
+├── api/
+│   ├── context_pack.py  # POST /api/context/pack
+│   └── memory.py        # POST /api/memory/event, /consolidate
+└── telemetry/
+    └── context_metrics.py # CTX_LAT_MS, CTX_HITS
+```
+
+### 🚀 **API Usage**
+
+#### **1. Build Context Pack**
+```bash
+curl -X POST "http://localhost:8000/api/context/pack" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "authentication bug in user service",
+    "k": 10,
+    "sources": ["github", "jira", "slack"],
+    "task_key": "ENG-42",
+    "policy": "public_only"
+  }'
+```
+
+**Response:**
+```json
+{
+  "hits": [
+    {
+      "source": "github",
+      "title": "Fix OAuth token refresh logic",
+      "excerpt": "Fixed race condition in token refresh...",
+      "score": 0.8523,
+      "meta": {"pr_number": 123, "status": "Merged"}
+    }
+  ],
+  "notes": [
+    {
+      "task_key": "ENG-42",
+      "summary": "Implemented retry logic for auth failures",
+      "importance": 8,
+      "tags": ["auth", "reliability"]
+    }
+  ],
+  "latency_ms": 45,
+  "total": 10
+}
+```
+
+#### **2. Record Episodic Event**
+```bash
+make mem-event
+# Records decision, plan, error, qa, exec, or meeting event
+```
+
+#### **3. Consolidate into Agent Note**
+```bash
+make mem-consolidate
+# Converts session events into searchable long-term memory
+```
+
+### 📊 **Metrics**
+- `context_pack_latency_ms`: Retrieval latency histogram (p50, p95, p99)
+- `context_pack_hits`: Number of results returned per query
+
+### 🧪 **Testing**
+```bash
+# Run migration
+alembic upgrade head
+
+# Test context pack endpoint
+make context-smoke
+
+# Test memory recording
+make mem-event
+make mem-consolidate
+```
+
+### 🔗 **Integration with IDE**
+The Context Pack is designed for IDE integration. When the agent needs context:
+1. IDE sends query + task_key to `/api/context/pack`
+2. Backend retrieves relevant chunks using hybrid search
+3. Fetches consolidated notes for the task
+4. Returns enriched context for LLM prompt
+
+**Example IDE Flow:**
+```typescript
+const contextPack = await fetch('/api/context/pack', {
+  method: 'POST',
+  body: JSON.stringify({
+    query: userQuery,
+    task_key: currentJiraTicket,
+    k: 10,
+    active_path: editor.activeFile
+  })
+});
+// Inject contextPack.hits into LLM prompt
+```
+
+---
+
 ## 🆕 PR-8: IDE Agent (VS Code)
 
 ### 🎯 **IDE-First Agent Architecture**

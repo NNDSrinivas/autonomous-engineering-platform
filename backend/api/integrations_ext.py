@@ -130,7 +130,7 @@ def slack_connect(
                         and len(r) > 2
                         and isinstance(r[2], str)
                     ):
-                        # PRAGMA index_info returns (seqno, cid, name) in that order, so index 2 is the column name
+                        # PRAGMA index_info returns (seqno, cid, name); index 2 is the column name
                         cols.append(r[2])
                     else:
                         logger.warning(

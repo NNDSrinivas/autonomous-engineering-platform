@@ -544,6 +544,34 @@ Users still retain **ask-before-do** confirmation dialogs during execution, but 
 ✅ **Audit Trail**: All policy checks and reviews logged to `audit_log` table  
 ✅ **Required Reviews**: Mandate approval for sensitive actions (`git`, `pr`, `jira`)
 
+### **Token Security**
+
+🔒 **Encryption at Rest**: All API tokens (GitHub, JIRA, Slack, Confluence) are encrypted using AWS KMS envelope encryption with AES-256-GCM before database storage.
+
+✅ **Environment Variables**: Set `TOKEN_ENCRYPTION_KEY_ID` to your AWS KMS key ARN  
+✅ **KMS Permissions**: Application IAM role needs `kms:GenerateDataKey` and `kms:Decrypt`  
+✅ **Key Rotation**: Enable automatic yearly rotation in AWS KMS console  
+✅ **Audit Monitoring**: Monitor KMS CloudTrail events for encryption/decryption operations  
+✅ **Incident Response**: See `docs/security.md` for token compromise procedures
+
+**Required Environment Setup:**
+```bash
+# AWS KMS key for token encryption (required for production)
+TOKEN_ENCRYPTION_KEY_ID=arn:aws:kms:us-east-1:123456789012:key/your-key-id
+
+# AWS credentials (via IAM role or environment)
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key  
+AWS_DEFAULT_REGION=us-east-1
+```
+
+**Security Validation:**
+```bash
+# Verify tokens are encrypted in database (should return no plaintext patterns)
+psql -c "SELECT access_token LIKE 'github_pat_%' AS plaintext_detected FROM gh_connection;"
+psql -c "SELECT access_token LIKE 'xoxb-%' AS plaintext_detected FROM slack_connection;"
+```
+
 ### **Testing**
 
 ```bash

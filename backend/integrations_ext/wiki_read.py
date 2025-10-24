@@ -28,7 +28,8 @@ def scan_docs(root="docs") -> List[Dict]:
                 # Include root in title to avoid collisions across different root directories
                 title = f"{root}/{f.relative_to(p)}"
                 out.append({"title": title, "url": None, "content": content})
-            except (UnicodeDecodeError, IOError, OSError) as e:
+            except (UnicodeDecodeError, OSError) as e:
+                # IOError is an alias of OSError in Python 3; catching OSError is sufficient
                 logger.warning("Failed to read wiki file %s: %s", f, e)
                 continue
     return out

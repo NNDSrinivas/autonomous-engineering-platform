@@ -4,6 +4,18 @@
 # MAX_CHANNELS_PER_SYNC: Limit the number of Slack channels processed per sync to avoid
 # hitting Slack API rate limits and to keep memory usage manageable. Adjust as needed
 # based on observed performance and Slack API constraints.
+# Rationale / tuning notes:
+#  - Slack rate limits: Workspaces commonly encounter per-method and per-token limits.
+#    Keeping the default low (20) helps avoid history-listing spikes when multiple
+#    org-wide syncs run concurrently or when many channels have long histories.
+#    If you operate on a higher API tier or have coordinated sync scheduling, this
+#    value can be safely increased.
+#  - Memory usage: Each channel's fetched history and parsing can consume memory
+#    (depends on message density and attachments). A conservative estimate is ~1-3MB
+#    of transient memory per channel; 20 channels keeps peak usage modest on small
+#    instances. Measure in your environment and lower if you see memory pressure.
+#  - Operational guidance: If you see Slack rate-limit errors, reduce this value or
+#    increase sync spacing; if you have ample memory and higher API allowance, raise it.
 MAX_CHANNELS_PER_SYNC = 20  # Slack channels to sync per request
 SLACK_HISTORY_LIMIT = 300  # Messages per channel per sync
 CONFLUENCE_PAGE_LIMIT = 200  # Pages to fetch per sync

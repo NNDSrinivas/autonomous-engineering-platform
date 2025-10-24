@@ -82,9 +82,18 @@ class ConfluenceReader:
         for p in results:
             title = p.get("title")
             pid = p.get("id")
-            body = ((p.get("body") or {}).get("storage") or {}).get("value", "")
+
+            # Extract nested body.storage.value with explicit intermediate values
+            body_obj = p.get("body") or {}
+            storage_obj = body_obj.get("storage") or {}
+            body = storage_obj.get("value", "")
+
             url = f"{self.base}/pages/{pid}"
-            ver = ((p.get("version") or {}).get("number")) or 1
+
+            # Extract nested version.number with explicit intermediate value
+            version_obj = p.get("version") or {}
+            ver = version_obj.get("number") or 1
+
             out.append(
                 {
                     "id": pid,

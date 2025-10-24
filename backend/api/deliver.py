@@ -1,5 +1,7 @@
 """
 Delivery API endpoints for GitHub PR creation and JIRA integration
+
+This module provides endpoints for creating draft GitHub PRs and adding JIRA comments.
 """
 
 import logging

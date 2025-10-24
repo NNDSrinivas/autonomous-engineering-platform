@@ -40,7 +40,17 @@ def slack_connect(
             detail=f"ENVIRONMENT variable not set. Token encryption not implemented. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
         )
     environment = environment.lower()
-    allowed_environments = {"development", "dev", "test", "testing", "local"}
+    # Configurable whitelist with narrow default (development-only)
+    # Use ALLOWED_ENVIRONMENTS env var (comma-separated) to customize
+    # Example: ALLOWED_ENVIRONMENTS="development,staging" allows both dev and staging
+    allowed_environments_raw = os.getenv(
+        "ALLOWED_ENVIRONMENTS", "development,dev,local"
+    )
+    allowed_environments = {
+        env.strip().lower()
+        for env in allowed_environments_raw.split(",")
+        if env.strip()
+    }
     if environment not in allowed_environments:
         raise HTTPException(
             status_code=501,
@@ -106,7 +116,17 @@ def confluence_connect(
             detail=f"ENVIRONMENT variable not set. Token encryption not implemented. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
         )
     environment = environment.lower()
-    allowed_environments = {"development", "dev", "test", "testing", "local"}
+    # Configurable whitelist with narrow default (development-only)
+    # Use ALLOWED_ENVIRONMENTS env var (comma-separated) to customize
+    # Example: ALLOWED_ENVIRONMENTS="development,staging" allows both dev and staging
+    allowed_environments_raw = os.getenv(
+        "ALLOWED_ENVIRONMENTS", "development,dev,local"
+    )
+    allowed_environments = {
+        env.strip().lower()
+        for env in allowed_environments_raw.split(",")
+        if env.strip()
+    }
     if environment not in allowed_environments:
         raise HTTPException(
             status_code=501,

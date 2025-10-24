@@ -58,6 +58,17 @@ def upgrade():
         ),
         sa.UniqueConstraint("org_id", "base_url", name="uq_confluence_org_baseurl"),
     )
+
+    # Add database-level comments for sensitive columns (audit and documentation)
+    op.execute(
+        "COMMENT ON COLUMN slack_connection.bot_token IS "
+        "'SENSITIVE: Slack bot token. Must be encrypted at rest before production. See GitHub Issue #18.'"
+    )
+    op.execute(
+        "COMMENT ON COLUMN confluence_connection.access_token IS "
+        "'SENSITIVE: Confluence access token. Must be encrypted at rest before production. See GitHub Issue #18.'"
+    )
+
     op.create_table(
         "sync_cursor",
         sa.Column("id", sa.Integer, primary_key=True),

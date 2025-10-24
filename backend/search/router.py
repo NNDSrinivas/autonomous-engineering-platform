@@ -366,10 +366,20 @@ def reindex_confluence(
                 # to avoid memory/CPU issues with multi-MB Confluence pages. Truncation may occur
                 # mid-tag (e.g., <div class="foo), but BeautifulSoup handles malformed HTML gracefully.
                 max_html_length = MAX_CONTENT_LENGTH * HTML_OVERHEAD_MULTIPLIER
-                soup = BeautifulSoup(
-                    text_html[:max_html_length],
-                    "html.parser",
-                )
+                # Prefer 'lxml' parser if available (faster and more robust with malformed HTML),
+                # fallback to 'html.parser' if lxml is not installed. This is especially important
+                # when truncating mid-tag, as lxml handles incomplete markup more gracefully.
+                try:
+                    soup = BeautifulSoup(
+                        text_html[:max_html_length],
+                        "lxml",
+                    )
+                except Exception:
+                    # Fallback to built-in parser if lxml not available
+                    soup = BeautifulSoup(
+                        text_html[:max_html_length],
+                        "html.parser",
+                    )
                 # Remove script and style tags completely (including malformed ones)
                 for tag in soup(["script", "style"]):
                     tag.decompose()

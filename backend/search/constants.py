@@ -8,6 +8,14 @@ MAX_CHANNELS_PER_SYNC = 20  # Slack channels to sync per request
 SLACK_HISTORY_LIMIT = 300  # Messages per channel per sync
 CONFLUENCE_PAGE_LIMIT = 200  # Pages to fetch per sync
 MAX_CONTENT_LENGTH = 200000  # Max characters for text content
+# MAX_MEETINGS_PER_SYNC: Limit meeting records retrieved per sync operation to manage
+# database query performance and memory usage. Each meeting includes summary JSON which
+# can be several KB. At 1000 meetings with ~2KB summaries, this is ~2MB of data transferred
+# from DB to application. The LIMIT clause combined with ORDER BY created_at DESC ensures
+# recent meetings are prioritized. Adjust based on:
+#  - Database query performance (lower if queries become slow)
+#  - Memory constraints (lower for smaller instances)
+#  - Meeting creation frequency (raise if org creates >1000 meetings between syncs)
 MAX_MEETINGS_PER_SYNC = 1000  # Meeting records to sync per request
 # HTML overhead multiplier for pre-parsing truncation
 # Rationale: HTML markup typically adds 50-150% overhead compared to plain text.

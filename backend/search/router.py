@@ -21,6 +21,7 @@ import asyncio
 import re
 import logging
 from bs4 import BeautifulSoup
+from importlib.util import find_spec
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -28,12 +29,8 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 logger = logging.getLogger(__name__)
 
 # Check if lxml parser is available (faster and more robust for malformed HTML)
-try:
-    import lxml  # noqa: F401
-
-    LXML_AVAILABLE = True
-except ImportError:
-    LXML_AVAILABLE = False
+LXML_AVAILABLE = find_spec("lxml") is not None
+if not LXML_AVAILABLE:
     logger.info("lxml parser not available, will use html.parser as fallback")
 
 

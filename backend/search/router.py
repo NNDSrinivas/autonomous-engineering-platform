@@ -50,8 +50,13 @@ def validate_slack_timestamp(ts: str | None) -> str | None:
     if ts is None:
         return None
     try:
-        float(ts)
-        return ts
+        ts_float = float(ts)
+        # Accept timestamps from 0 (1970-01-01) up to 4102444800 (2100-01-01)
+        if 0 <= ts_float <= 4102444800:
+            return ts
+        else:
+            logger.debug("Slack timestamp out of bounds: %r", ts)
+            return None
     except (TypeError, ValueError):
         logger.debug("Invalid Slack timestamp: %r", ts)
         return None
@@ -262,6 +267,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                 {"o": org},
             ).scalar()
             # Log warning and proceed with full sync if cursor is invalid (recoverable from manual edits).
+            newest = None
             newest = validate_slack_timestamp(cur)
             if newest is None and cur is not None:
                 logger.warning(

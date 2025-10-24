@@ -33,6 +33,15 @@ reindex-ext:
 	curl -s -X POST "http://localhost:8002/api/search/reindex/wiki" -H 'X-Org-Id: default' | jq .
 	curl -s -X POST "http://localhost:8002/api/search/reindex/zoom_teams" -H 'X-Org-Id: default' | jq .
 
+context-smoke:
+	curl -s -X POST "http://localhost:8000/api/context/pack" -H 'Content-Type: application/json' -d '{"query":"authentication bug","k":5,"sources":["github","jira"]}' | jq .
+
+mem-event:
+	curl -s -X POST "http://localhost:8000/api/memory/event" -H 'Content-Type: application/json' -d '{"session_id":"sess_123","event_type":"decision","task_key":"ENG-42","context":"Decided to use FastAPI for async endpoints"}' | jq .
+
+mem-consolidate:
+	curl -s -X POST "http://localhost:8000/api/memory/consolidate" -H 'Content-Type: application/json' -d '{"session_id":"sess_123","task_key":"ENG-42","summary":"Implemented async API with FastAPI","importance":7,"tags":["api","fastapi","async"]}' | jq .
+
 lint:
 	python -m pip install ruff black || true
 	ruff check .

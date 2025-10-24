@@ -273,7 +273,6 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                     org,
                     cur,
                 )
-            count = 0
             # Log if channels are being truncated to help operators understand sync limits
             if len(chans) > MAX_CHANNELS_PER_SYNC:
                 logger.info(
@@ -282,15 +281,19 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                     MAX_CHANNELS_PER_SYNC,
                     org,
                 )
+            # Count of successfully indexed messages (reset per sync run)
+            count = 0
             for c in chans[:MAX_CHANNELS_PER_SYNC]:
                 msgs = await sr.history(
                     client, c["id"], oldest=newest, limit=SLACK_HISTORY_LIMIT
                 )
                 for m in msgs:
-                    ts = m.get("ts")
-                    text_content = m.get("text", "")
-                    title = f"#{c['name']} {ts}"
                     try:
+                        ts = m.get("ts")
+                        text_content = m.get("text", "")
+                        if not ts:
+                            raise ValueError("missing timestamp in Slack message")
+                        title = f"#{c['name']} {ts}"
                         upsert_memory_object(
                             db,
                             org,
@@ -311,7 +314,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                         logger.error(
                             "Failed to upsert Slack message (channel_id=%r, ts=%r, org_id=%r): %s",
                             c.get("id"),
-                            ts,
+                            m.get("ts"),
                             org,
                             e,
                         )

@@ -103,14 +103,35 @@ def slack_connect(
             idx_rows = list(db.execute(text("PRAGMA index_list('slack_connection')")))
             found = False
             for idx in idx_rows:
-                # Prefer attribute access on Row objects, fall back to tuple indexing
-                idx_name = getattr(idx, "name", None) or (idx[1] if len(idx) > 1 else None)
+                # Prefer attribute access on Row objects, fall back to tuple indexing with robust error handling
+                idx_name = getattr(idx, "name", None)
+                if idx_name is None:
+                    try:
+                        # Defensive: PRAGMA index_list returns (seq, name, unique, origin, partial) in current SQLite
+                        idx_name = idx[1]
+                    except (IndexError, TypeError):
+                        logger.error(
+                            "Unexpected PRAGMA index_list row structure: %r. "
+                            "Expected at least 2 elements for index name at position 1.",
+                            idx,
+                        )
+                        continue
                 if not idx_name:
                     continue
                 info = list(db.execute(text(f"PRAGMA index_info('{idx_name}')")))
-                # PRAGMA index_info returns rows where the column name is typically at index 2;
-                # support Row attribute access where available, otherwise fall back to indexing.
-                cols = [getattr(r, "name", None) or (r[2] if len(r) > 2 else None) for r in info]
+                # Extract column names with robust error handling for future SQLite version changes
+                cols = []
+                for r in info:
+                    col_name = getattr(r, "name", None)
+                    if col_name is not None:
+                        cols.append(col_name)
+                    elif isinstance(r, (tuple, list)) and len(r) > 2 and isinstance(r[2], str):
+                        cols.append(r[2])
+                    else:
+                        logger.warning(
+                            "Unexpected PRAGMA index_info row format: %r (expected 'name' attribute or string at index 2)", r
+                        )
+                        cols.append(None)
                 if set(cols) == {"org_id", "team_id"}:
                     found = True
                     break

@@ -27,6 +27,15 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 # Logger for this module
 logger = logging.getLogger(__name__)
 
+# Check if lxml parser is available (faster and more robust for malformed HTML)
+try:
+    import lxml  # noqa: F401
+
+    LXML_AVAILABLE = True
+except ImportError:
+    LXML_AVAILABLE = False
+    logger.info("lxml parser not available, will use html.parser as fallback")
+
 
 def validate_slack_timestamp(ts: str | None) -> str | None:
     """Validate a Slack timestamp string.
@@ -366,20 +375,14 @@ def reindex_confluence(
                 # to avoid memory/CPU issues with multi-MB Confluence pages. Truncation may occur
                 # mid-tag (e.g., <div class="foo), but BeautifulSoup handles malformed HTML gracefully.
                 max_html_length = MAX_CONTENT_LENGTH * HTML_OVERHEAD_MULTIPLIER
-                # Prefer 'lxml' parser if available (faster and more robust with malformed HTML),
-                # fallback to 'html.parser' if lxml is not installed. This is especially important
-                # when truncating mid-tag, as lxml handles incomplete markup more gracefully.
-                try:
-                    soup = BeautifulSoup(
-                        text_html[:max_html_length],
-                        "lxml",
-                    )
-                except Exception:
-                    # Fallback to built-in parser if lxml not available
-                    soup = BeautifulSoup(
-                        text_html[:max_html_length],
-                        "html.parser",
-                    )
+                # Use 'lxml' parser if available (faster and more robust with malformed HTML),
+                # otherwise use 'html.parser' built-in. This is especially important when truncating
+                # mid-tag, as lxml handles incomplete markup more gracefully.
+                parser = "lxml" if LXML_AVAILABLE else "html.parser"
+                soup = BeautifulSoup(
+                    text_html[:max_html_length],
+                    parser,
+                )
                 # Remove script and style tags completely (including malformed ones)
                 for tag in soup(["script", "style"]):
                     tag.decompose()

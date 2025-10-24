@@ -43,9 +43,8 @@ def slack_connect(
     # Configurable whitelist with narrow default (development-only)
     # Use ALLOWED_ENVIRONMENTS env var (comma-separated) to customize
     # Example: ALLOWED_ENVIRONMENTS="development,staging" allows both dev and staging
-    allowed_environments_raw = os.getenv(
-        "ALLOWED_ENVIRONMENTS", "development,dev,local"
-    )
+    # Note: 'dev' is a common abbreviation - use it in ENVIRONMENT to match default
+    allowed_environments_raw = os.getenv("ALLOWED_ENVIRONMENTS", "development,local")
     allowed_environments = {
         env.strip().lower()
         for env in allowed_environments_raw.split(",")
@@ -119,9 +118,8 @@ def confluence_connect(
     # Configurable whitelist with narrow default (development-only)
     # Use ALLOWED_ENVIRONMENTS env var (comma-separated) to customize
     # Example: ALLOWED_ENVIRONMENTS="development,staging" allows both dev and staging
-    allowed_environments_raw = os.getenv(
-        "ALLOWED_ENVIRONMENTS", "development,dev,local"
-    )
+    # Note: 'dev' is a common abbreviation - use it in ENVIRONMENT to match default
+    allowed_environments_raw = os.getenv("ALLOWED_ENVIRONMENTS", "development,local")
     allowed_environments = {
         env.strip().lower()
         for env in allowed_environments_raw.split(",")

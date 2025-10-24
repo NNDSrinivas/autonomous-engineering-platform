@@ -1,12 +1,18 @@
 """Search API endpoints - semantic search and reindexing"""
 
+import asyncio
+import json
+import logging
+import re
+from importlib.util import find_spec
+
+import httpx
+from bs4 import BeautifulSoup
 from fastapi import APIRouter, Depends, Body, Request, HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from ..core.db import get_db
-from .schemas import SearchRequest, SearchResponse
-from .retriever import search as do_search
-from .indexer import upsert_memory_object
 from .constants import (
     MAX_CHANNELS_PER_SYNC,
     SLACK_HISTORY_LIMIT,
@@ -15,13 +21,9 @@ from .constants import (
     MAX_MEETINGS_PER_SYNC,
     HTML_OVERHEAD_MULTIPLIER,
 )
-import json
-import httpx
-import asyncio
-import re
-import logging
-from bs4 import BeautifulSoup
-from importlib.util import find_spec
+from .indexer import upsert_memory_object
+from .retriever import search as do_search
+from .schemas import SearchRequest, SearchResponse
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 

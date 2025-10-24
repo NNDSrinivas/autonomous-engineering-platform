@@ -27,10 +27,9 @@ def _create_engine() -> Engine:
         if database and database != ":memory:":
             db_path = Path(database).expanduser()
             if not db_path.is_absolute():
-                # Use __file__ location as base for consistent relative path resolution
-                # regardless of current working directory when app is started
-                # Resolve relative paths against the project root (backend/../)
-                db_path = Path(__file__).parent.parent / db_path
+                # Resolve relative paths against the current working directory (project root).
+                # Application should be started from the project root for relative paths to work correctly.
+                db_path = Path.cwd() / db_path
             db_path.parent.mkdir(parents=True, exist_ok=True)
         # Allow usage across threads when FastAPI spins up multiple workers
         return create_engine(

@@ -63,8 +63,7 @@ def _authority_score(meta: Dict[str, Any]) -> float:
         meta: Metadata dictionary with authority signals
 
     Returns:
-        Returns a score capped at 0.5 (range 0.0-0.5). Individual signals may contribute
-        values that sum above 0.5, but the final returned score is limited to a maximum of 0.5.
+        Score between 0.0 and 0.5 based on authority signals (capped at 0.5)
     """
     score = 0.0
 

@@ -18,11 +18,15 @@ Changes:
 
 from alembic import op
 import sqlalchemy as sa
+import os
 
 revision = "0012_pgvector_bm25"
 down_revision = "0011_context_pack_memory_notes"
 branch_labels = None
 depends_on = None
+
+# Get embedding dimension from environment or use default
+EMBED_DIM = int(os.getenv("EMBED_DIM", "1536"))
 
 
 def upgrade():
@@ -43,9 +47,10 @@ def upgrade():
         )
     except Exception:
         # Fallback to raw SQL for vector type
+        # Use EMBED_DIM from configuration for consistency
         try:
             op.execute(
-                "ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS embedding_vec vector(1536);"
+                f"ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS embedding_vec vector({EMBED_DIM});"
             )
         except Exception:
             # SQLite fallback - no vector support

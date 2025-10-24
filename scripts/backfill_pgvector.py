@@ -71,6 +71,9 @@ def backfill_vectors():
         processed = 0
         errors = 0
 
+        # Pre-create zero padding list for efficiency
+        zero_pad = [0.0] * EMBED_DIM
+
         while processed < total:
             # Fetch batch
             cur.execute(
@@ -89,15 +92,27 @@ def backfill_vectors():
 
             for chunk_id, embedding_blob in rows:
                 try:
+                    # Handle different data types from psycopg2
+                    if isinstance(embedding_blob, str):
+                        embedding_str = embedding_blob
+                    elif isinstance(embedding_blob, bytes):
+                        embedding_str = embedding_blob.decode("utf-8")
+                    elif isinstance(embedding_blob, memoryview):
+                        embedding_str = embedding_blob.tobytes().decode("utf-8")
+                    else:
+                        raise TypeError(
+                            f"Unsupported embedding_blob type: {type(embedding_blob)}"
+                        )
+
                     # Parse JSON embedding
-                    vec = json.loads(bytes(embedding_blob).decode("utf-8"))
+                    vec = json.loads(embedding_str)
 
                     # Validate and pad/truncate to expected dimension
                     if len(vec) != EMBED_DIM:
                         print(
                             f"Warning: Row {chunk_id} has dimension {len(vec)}, expected {EMBED_DIM}. Padding/truncating."
                         )
-                        vec = (vec + [0.0] * EMBED_DIM)[:EMBED_DIM]
+                        vec = (vec + zero_pad)[:EMBED_DIM]
 
                     # Format as PostgreSQL vector literal
                     vec_str = f'[{",".join(str(x) for x in vec)}]'

@@ -33,6 +33,10 @@ AUTHORITY_WEIGHT = 0.08
 # Recency scoring parameters
 RECENCY_HALF_LIFE_DAYS = 30.0  # Days until recency score decays by 50%
 
+# JSON vector fallback parameters
+JSON_VECTOR_SCAN_LIMIT = 8000  # Maximum rows to scan in linear search
+EXCERPT_MAX_LENGTH = 700  # Maximum excerpt length in characters
+
 
 def _recency_score(timestamp: float, now: float) -> float:
     """Calculate recency score with exponential decay
@@ -42,7 +46,7 @@ def _recency_score(timestamp: float, now: float) -> float:
         now: Current unix timestamp
 
     Returns:
-        Score between 0.0 and 1.0 (1.0 = recent, 0.0 = old)
+        Score between 0.0 (exclusive) and 1.0 (1.0 = recent, approaches 0.0 for old items)
     """
     days_old = max(0.0, (now - timestamp) / 86400.0)
     return 1.0 / (1.0 + days_old / RECENCY_HALF_LIFE_DAYS)
@@ -55,7 +59,8 @@ def _authority_score(meta: Dict[str, Any]) -> float:
         meta: Metadata dictionary with authority signals
 
     Returns:
-        Score between 0.0 and 0.5
+        Score between 0.0 and 0.5. Individual signals may sum to more than 0.5,
+        but the final score is capped at 0.5 before being returned.
     """
     score = 0.0
 
@@ -203,6 +208,7 @@ def semantic_json(
         List of (similarity_score, row_dict) tuples
     """
     source_filter = "AND mo.source = ANY(:src)" if sources else ""
+    scan_limit = getattr(settings, "json_vector_scan_limit", JSON_VECTOR_SCAN_LIMIT)
 
     rows = (
         db.execute(
@@ -215,10 +221,10 @@ def semantic_json(
       FROM memory_chunk mc
       JOIN memory_object mo ON mo.id = mc.object_id
       WHERE mo.org_id = :o {source_filter}
-      LIMIT 8000
+      LIMIT :scan_limit
     """
             ),
-            {"o": org_id, "src": sources},
+            {"o": org_id, "src": sources, "scan_limit": scan_limit},
         )
         .mappings()
         .all()
@@ -227,8 +233,8 @@ def semantic_json(
     def cosine_similarity(a: List[float], b: List[float]) -> float:
         """Compute cosine similarity between two vectors"""
         dot_product = sum(x * y for x, y in zip(a, b))
-        norm_a = math.sqrt(sum(x * x for x in a)) or 1.0
-        norm_b = math.sqrt(sum(x * x for x in b)) or 1.0
+        norm_a = math.sqrt(sum(x * x for x in a)) if any(a) else 1.0
+        norm_b = math.sqrt(sum(x * x for x in b)) if any(b) else 1.0
         return dot_product / (norm_a * norm_b)
 
     scored = []
@@ -368,7 +374,7 @@ def hybrid_search(
                 "foreign_id": row["foreign_id"],
                 "title": row["title"],
                 "url": row["url"],
-                "excerpt": (row["text"] or "")[:700],
+                "excerpt": (row["text"] or "")[:EXCERPT_MAX_LENGTH],
                 "score": float(f"{score:.4f}"),
                 "meta": json.loads(row["meta_json"] or "{}"),
             }

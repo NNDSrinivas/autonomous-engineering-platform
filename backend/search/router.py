@@ -156,6 +156,7 @@ def reindex_meetings(request: Request = None, db: Session = Depends(get_db)):
 
         raise HTTPException(status_code=401, detail="X-Org-Id header required")
     # Note: Query performance relies on index on (org_id, created_at) for meeting table
+    # Intentionally limits to most recent meetings as older meetings are less relevant for current context
     rows = (
         db.execute(
             text(

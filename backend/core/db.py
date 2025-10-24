@@ -28,9 +28,19 @@ def _create_engine() -> Engine:
             if database and database != ":memory:":
                 db_path = Path(database).expanduser()
                 if not db_path.is_absolute():
-                    # Resolve relative to project root
-                    # This file is at backend/core/db.py, so parent.parent.parent gives us the project root
-                    project_root = Path(__file__).parent.parent.parent
+                    # Resolve relative to project root using marker file for robustness
+                    current_file = Path(__file__).resolve()
+                    # Look for project root by finding .git directory or pyproject.toml
+                    project_root = current_file.parent
+                    while project_root != project_root.parent:
+                        if (project_root / ".git").exists() or (
+                            project_root / "pyproject.toml"
+                        ).exists():
+                            break
+                        project_root = project_root.parent
+                    else:
+                        # Fallback to parent.parent.parent if no marker found
+                        project_root = current_file.parent.parent.parent
                     db_path = project_root / db_path
                 db_path.parent.mkdir(parents=True, exist_ok=True)
             # Allow usage across threads when FastAPI spins up multiple workers

@@ -150,6 +150,7 @@ def semantic_pgvector(
 
     # Use cosine distance operator (<->) for ANN search
     # pgvector will use HNSW or IVFFLAT index automatically
+    # Cast :qvec to vector type to resolve operator type ambiguity
     rows = (
         db.execute(
             text(
@@ -157,11 +158,11 @@ def semantic_pgvector(
       SELECT mo.source, mo.foreign_id, mo.title, mo.url, mo.meta_json, 
              mc.text, mc.seq,
              EXTRACT(EPOCH FROM mc.created_at) AS cts,
-             (embedding_vec <-> :qvec) AS dist
+             (embedding_vec <-> :qvec::vector) AS dist
       FROM memory_chunk mc
       JOIN memory_object mo ON mo.id = mc.object_id
       WHERE mo.org_id = :o {source_filter}
-      ORDER BY embedding_vec <-> :qvec
+      ORDER BY embedding_vec <-> :qvec::vector
       LIMIT :lim
     """
             ),

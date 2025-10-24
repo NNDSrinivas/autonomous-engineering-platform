@@ -16,7 +16,7 @@
 #    instances. Measure in your environment and lower if you see memory pressure.
 #  - Operational guidance: If you see Slack rate-limit errors, reduce this value or
 #    increase sync spacing; if you have ample memory and higher API allowance, raise it.
-MAX_CHANNELS_PER_SYNC = 20  # Slack channels to sync per request
+MAX_CHANNELS_PER_SYNC = 20  # Slack channels per sync operation
 SLACK_HISTORY_LIMIT = 300  # Messages per channel per sync
 CONFLUENCE_PAGE_LIMIT = 200  # Pages to fetch per sync
 MAX_CONTENT_LENGTH = 200000  # Max characters for text content

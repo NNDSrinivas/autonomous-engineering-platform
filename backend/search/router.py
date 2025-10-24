@@ -262,7 +262,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
             newest = validate_slack_timestamp(cur)
             if cur is not None and newest is None:
                 logger.warning(
-                    "Invalid cursor value for org_id=%s: %r, resetting to None",
+                    "Invalid cursor value for org_id=%s: %r, ignoring invalid cursor",
                     org,
                     cur,
                 )

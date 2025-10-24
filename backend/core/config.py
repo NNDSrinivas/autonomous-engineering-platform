@@ -96,6 +96,13 @@ class Settings(BaseSettings):
     # Storage
     vector_db_path: str = "./data/vector_store"
 
+    # Vector search backend configuration (PR-16)
+    vector_backend: str = "pgvector"  # Options: pgvector | faiss | json
+    embed_dim: int = 1536  # Embedding dimension (OpenAI ada-002 default)
+    pgvector_index: str = "hnsw"  # Options: hnsw | ivfflat
+    bm25_enabled: bool = True  # Enable BM25/FTS hybrid ranking
+    faiss_index_path: str = "./data/faiss/index.faiss"  # FAISS index file path
+
     # Features
     enable_real_time: bool = True
     enable_github_integration: bool = True

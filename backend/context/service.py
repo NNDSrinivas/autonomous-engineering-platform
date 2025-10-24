@@ -1,4 +1,5 @@
 """Context Pack service layer - policy filtering and agent notes"""
+
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Dict, Any
@@ -68,7 +69,11 @@ def fetch_relevant_notes(
             "context": r["context"],
             "summary": r["summary"],
             "importance": r["importance"],
-            "tags": json.loads(r["tags"] or "[]"),
+            "tags": (
+                r["tags"]
+                if isinstance(r["tags"], list)
+                else json.loads(r["tags"] or "[]")
+            ),
             "created_at": r["created_at"].isoformat() if r["created_at"] else None,
             "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
         }

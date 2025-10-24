@@ -2,7 +2,8 @@
 
 Prometheus metrics for observability
 """
-from prometheus_client import Histogram, Gauge
+
+from prometheus_client import Histogram
 
 # Context pack retrieval latency (milliseconds)
 CTX_LAT_MS = Histogram(

@@ -2,6 +2,7 @@
 
 Provides episodic memory recording and agent note consolidation
 """
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -129,7 +130,11 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
         context=note["context"],
         summary=note["summary"],
         importance=note["importance"],
-        tags=json.loads(note["tags"] or "[]"),
+        tags=(
+            note["tags"]
+            if isinstance(note["tags"], list)
+            else json.loads(note["tags"] or "[]")
+        ),
         created_at=note["created_at"].isoformat() if note["created_at"] else None,
         updated_at=note["updated_at"].isoformat() if note["updated_at"] else None,
     )
@@ -163,7 +168,11 @@ def get_notes(task_key: str, db: Session = Depends(get_db)):
             context=r["context"],
             summary=r["summary"],
             importance=r["importance"],
-            tags=json.loads(r["tags"] or "[]"),
+            tags=(
+                r["tags"]
+                if isinstance(r["tags"], list)
+                else json.loads(r["tags"] or "[]")
+            ),
             created_at=r["created_at"].isoformat() if r["created_at"] else None,
             updated_at=r["updated_at"].isoformat() if r["updated_at"] else None,
         )

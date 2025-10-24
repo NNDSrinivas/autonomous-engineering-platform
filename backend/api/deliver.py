@@ -111,14 +111,13 @@ def audit_delivery_action(
     global _audit_table_exists
 
     try:
-        # Check table existence once and cache the result
+        # Check table existence once and cache the result (cross-database compatible)
         if _audit_table_exists is None:
-            table_check = db.execute(
-                text(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'"
-                )
-            ).fetchone()
-            _audit_table_exists = table_check is not None
+            # Use SQLAlchemy inspector for cross-database compatibility
+            from sqlalchemy import inspect
+
+            inspector = inspect(db.get_bind())
+            _audit_table_exists = "audit_log" in inspector.get_table_names()
 
         if not _audit_table_exists:
             logger.warning("Audit log table does not exist, skipping audit logging")

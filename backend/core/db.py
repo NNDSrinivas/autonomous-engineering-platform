@@ -60,36 +60,6 @@ def get_engine() -> Engine:
     return _engine
 
 
-# For backward compatibility - create a module-level 'engine' that lazily initializes
-class _EngineLazy:
-    def __getattr__(self, name):
-        return getattr(get_engine(), name)
-
-    def __call__(self, *args, **kwargs):
-        return get_engine()(*args, **kwargs)
-
-    def __repr__(self):
-        return repr(get_engine())
-
-    def __str__(self):
-        return str(get_engine())
-
-
-engine = _EngineLazy()
-
-
-# For backward compatibility - create a lazy SessionLocal
-class _SessionLocalLazy:
-    def __call__(self, **kwargs):
-        return _get_session_local()(**kwargs)
-
-    def __getattr__(self, name):
-        return getattr(_get_session_local(), name)
-
-
-SessionLocal = _SessionLocalLazy()
-
-
 def _get_session_local():
     """Get or create SessionLocal (lazy initialization)."""
     global _SessionLocal
@@ -98,6 +68,31 @@ def _get_session_local():
             bind=get_engine(), autoflush=False, autocommit=False
         )
     return _SessionLocal
+
+
+# Reusable lazy proxy for backward compatibility
+class LazyProxy:
+    """Generic lazy proxy that defers initialization until first access."""
+
+    def __init__(self, getter):
+        self._getter = getter
+
+    def __getattr__(self, name):
+        return getattr(self._getter(), name)
+
+    def __call__(self, *args, **kwargs):
+        return self._getter()(*args, **kwargs)
+
+    def __repr__(self):
+        return repr(self._getter())
+
+    def __str__(self):
+        return str(self._getter())
+
+
+# For backward compatibility - create module-level lazy proxies
+engine = LazyProxy(get_engine)
+SessionLocal = LazyProxy(_get_session_local)
 
 
 class Base(DeclarativeBase):

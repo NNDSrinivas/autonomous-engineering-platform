@@ -267,7 +267,6 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                 {"o": org},
             ).scalar()
             # Log warning and proceed with full sync if cursor is invalid (recoverable from manual edits).
-            newest = None
             newest = validate_slack_timestamp(cur)
             if newest is None and cur is not None:
                 logger.warning(

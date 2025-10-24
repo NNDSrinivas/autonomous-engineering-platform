@@ -12,9 +12,9 @@ def scan_docs(root="docs") -> List[Dict]:
     """
     Scan local docs directory for markdown files.
 
-    Uses relative paths to avoid title collisions in nested directories, creating unique
-    identifiers like 'subfolder/file.md' rather than just 'file.md' when files with the same
-    name exist in different directories.
+    Uses root + relative path to create unique identifiers that prevent collisions
+    if different root directories contain files with the same relative paths.
+    For example: 'docs/api/overview.md' vs 'wiki/api/overview.md'
 
     NOTE: The title is used as the foreign_id in upsert_memory_object (see backend/search/router.py),
     which makes this uniqueness critical for deduplication when ingesting wiki pages.
@@ -25,8 +25,8 @@ def scan_docs(root="docs") -> List[Dict]:
         for f in p.rglob("*.md"):
             try:
                 content = f.read_text(encoding="utf-8")[:MAX_CONTENT_LENGTH]
-                # Use relative path for unique title
-                title = str(f.relative_to(p))
+                # Include root in title to avoid collisions across different root directories
+                title = str(Path(root) / f.relative_to(p))
                 out.append({"title": title, "url": None, "content": content})
             except (UnicodeDecodeError, IOError, OSError) as e:
                 logger.warning("Failed to read wiki file %s: %s", f, e)

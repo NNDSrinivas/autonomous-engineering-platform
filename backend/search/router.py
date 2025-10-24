@@ -223,7 +223,18 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                 ),
                 {"o": org},
             ).scalar()
-            newest = cur
+            # Validate cursor timestamp - if invalid, start from None
+            newest = None
+            if cur:
+                try:
+                    float(cur)
+                    newest = cur
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Invalid cursor value for org_id=%s: %r, resetting to None",
+                        org,
+                        cur,
+                    )
             count = 0
             # Log if channels are being truncated to help operators understand sync limits
             if len(chans) > MAX_CHANNELS_PER_SYNC:

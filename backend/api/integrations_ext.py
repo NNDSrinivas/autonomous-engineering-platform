@@ -96,20 +96,21 @@ def slack_connect(
     # At runtime, verify the index for SQLite to provide an actionable error message
     # instead of failing with a cryptic database error.
     engine = getattr(db, "bind", None)
-    if (
-        engine is not None
-        and getattr(engine, "dialect", None) is not None
-        and engine.dialect.name == "sqlite"
-    ):
+    # Get dialect name defensively and compare to 'sqlite' for readability
+    dialect_name = getattr(getattr(engine, "dialect", None), "name", None)
+    if dialect_name == "sqlite":
         try:
             idx_rows = list(db.execute(text("PRAGMA index_list('slack_connection')")))
             found = False
             for idx in idx_rows:
-                idx_name = idx[1] if len(idx) > 1 else None
+                # Prefer attribute access on Row objects, fall back to tuple indexing
+                idx_name = getattr(idx, "name", None) or (idx[1] if len(idx) > 1 else None)
                 if not idx_name:
                     continue
                 info = list(db.execute(text(f"PRAGMA index_info('{idx_name}')")))
-                cols = [r[2] for r in info]
+                # PRAGMA index_info returns rows where the column name is typically at index 2;
+                # support Row attribute access where available, otherwise fall back to indexing.
+                cols = [getattr(r, "name", None) or (r[2] if len(r) > 2 else None) for r in info]
                 if set(cols) == {"org_id", "team_id"}:
                     found = True
                     break

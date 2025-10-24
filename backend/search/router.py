@@ -258,14 +258,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                 ),
                 {"o": org},
             ).scalar()
-            # Validate cursor timestamp using shared validation logic.
-            # If cursor exists but is invalid, newest will be None and we log a warning
-            # then proceed without a cursor (fetching all recent messages).
-            # RATIONALE: We continue rather than raising an exception because:
-            # 1. Invalid cursor could result from manual DB edits or migration issues (recoverable)
-            # 2. Re-syncing from scratch is safer than blocking all Slack sync operations
-            # 3. Warning log alerts operators to investigate while maintaining service availability
-            # 4. Alternative (raising HTTPException) would require manual intervention for every org
+            # Log warning and proceed with full sync if cursor is invalid (recoverable from manual edits).
             newest = validate_slack_timestamp(cur)
             if newest is None and cur is not None:
                 logger.warning(

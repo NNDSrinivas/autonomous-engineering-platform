@@ -17,67 +17,67 @@ depends_on = None
 
 
 def upgrade():
-    # Check if tables already exist before creating
-    connection = op.get_bind()
-    inspector = sa.inspect(connection)
-    existing_tables = inspector.get_table_names()
-    
-    print(f"DEBUG: Existing tables: {existing_tables}")
-    print(f"DEBUG: session_event in existing_tables: {'session_event' in existing_tables}")
-    
+    # Drop tables if they exist (handles re-running migration)
+    try:
+        op.drop_table("session_event")
+    except Exception:
+        pass
+
+    try:
+        op.drop_table("agent_note")
+    except Exception:
+        pass
+
     # Create session_event table for episodic memory
-    if "session_event" not in existing_tables:
-        print("DEBUG: Creating session_event table...")
-        op.create_table(
-            "session_event",
-            sa.Column("id", sa.Integer, primary_key=True),
-            sa.Column("org_id", sa.String(64), nullable=False),
-            sa.Column("session_id", sa.String(64), nullable=False),
-            sa.Column(
-                "event_type", sa.String(32), nullable=False
-            ),  # plan|decision|error|qa|exec|meeting
-            sa.Column("task_key", sa.String(64), nullable=True),  # Optional task reference
-            sa.Column("context", sa.Text, nullable=False),
-            sa.Column("metadata", sa.Text),  # JSON metadata
-            sa.Column(
-                "created_at",
-                sa.DateTime(timezone=True),
-                server_default=sa.text("CURRENT_TIMESTAMP"),
-            ),
-        )
-        op.create_index(
-            "ix_session_event_org_session",
-            "session_event",
-            ["org_id", "session_id"],
-        )
+    op.create_table(
+        "session_event",
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("org_id", sa.String(64), nullable=False),
+        sa.Column("session_id", sa.String(64), nullable=False),
+        sa.Column(
+            "event_type", sa.String(32), nullable=False
+        ),  # plan|decision|error|qa|exec|meeting
+        sa.Column("task_key", sa.String(64), nullable=True),  # Optional task reference
+        sa.Column("context", sa.Text, nullable=False),
+        sa.Column("metadata", sa.Text),  # JSON metadata
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+    )
+    op.create_index(
+        "ix_session_event_org_session",
+        "session_event",
+        ["org_id", "session_id"],
+    )
 
     # Create agent_note table for long-term consolidated memory
-    if "agent_note" not in existing_tables:
-        op.create_table(
-            "agent_note",
-            sa.Column("id", sa.Integer, primary_key=True),
-            sa.Column("org_id", sa.String(64), nullable=False),
-            sa.Column("task_key", sa.String(64), nullable=False),  # Task identifier
-            sa.Column("context", sa.Text, nullable=False),  # Full context/details
-            sa.Column("summary", sa.Text, nullable=False),  # Consolidated summary
-            sa.Column("importance", sa.Integer, server_default="5"),  # 1-10 scale
-            sa.Column("tags", sa.Text),  # JSON array of tags
-            sa.Column(
-                "created_at",
-                sa.DateTime(timezone=True),
-                server_default=sa.text("CURRENT_TIMESTAMP"),
-            ),
-            sa.Column(
-                "updated_at",
-                sa.DateTime(timezone=True),
-                server_default=sa.text("CURRENT_TIMESTAMP"),
-            ),
-        )
-        op.create_index(
-            "ix_agent_note_org_task",
-            "agent_note",
-            ["org_id", "task_key"],
-        )
+    op.create_table(
+        "agent_note",
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("org_id", sa.String(64), nullable=False),
+        sa.Column("task_key", sa.String(64), nullable=False),  # Task identifier
+        sa.Column("context", sa.Text, nullable=False),  # Full context/details
+        sa.Column("summary", sa.Text, nullable=False),  # Consolidated summary
+        sa.Column("importance", sa.Integer, server_default="5"),  # 1-10 scale
+        sa.Column("tags", sa.Text),  # JSON array of tags
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+    )
+    op.create_index(
+        "ix_agent_note_org_task",
+        "agent_note",
+        ["org_id", "task_key"],
+    )
 
 
 def downgrade():

@@ -258,9 +258,11 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                 ),
                 {"o": org},
             ).scalar()
-            # Validate cursor timestamp using shared validation logic
+            # Validate cursor timestamp using shared validation logic.
+            # If cursor exists but is invalid, newest will be None and we log a warning
+            # then proceed without a cursor (fetching all recent messages).
             newest = validate_slack_timestamp(cur)
-            if cur is not None and newest is None:
+            if newest is None and cur is not None:
                 logger.warning(
                     "Invalid cursor value for org_id=%s: %r, ignoring invalid cursor",
                     org,

@@ -49,7 +49,8 @@ def _extract_results(response_json: dict, space_key: str) -> List[Dict]:
 
     Args:
         response_json: The JSON response from Confluence API
-        space_key: The space key for logging context
+        space_key: The space key for logging context (helps identify which space
+                   has unexpected response structure during debugging)
 
     Returns:
         List of page results

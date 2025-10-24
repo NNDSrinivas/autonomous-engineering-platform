@@ -64,12 +64,10 @@ def upgrade():
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
         op.execute(
-            "COMMENT ON COLUMN slack_connection.bot_token IS "
-            "'SENSITIVE: Slack bot token. Must be encrypted at rest before production. See GitHub Issue #18.'"
+            """COMMENT ON COLUMN slack_connection.bot_token IS 'SENSITIVE: Slack bot token. Must be encrypted at rest before production. See GitHub Issue #18.'"""
         )
         op.execute(
-            "COMMENT ON COLUMN confluence_connection.access_token IS "
-            "'SENSITIVE: Confluence access token. Must be encrypted at rest before production. See GitHub Issue #18.'"
+            """COMMENT ON COLUMN confluence_connection.access_token IS 'SENSITIVE: Confluence access token. Must be encrypted at rest before production. See GitHub Issue #18.'"""
         )
 
     op.create_table(

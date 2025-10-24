@@ -19,15 +19,8 @@ depends_on = None
 
 def upgrade():
     # Drop tables if they exist (handles re-running migration)
-    try:
-        op.drop_table("session_event")
-    except Exception:
-        pass
-
-    try:
-        op.drop_table("agent_note")
-    except Exception:
-        pass
+    op.drop_table("session_event", if_exists=True)
+    op.drop_table("agent_note", if_exists=True)
 
     # Create session_event table for episodic memory
     op.create_table(
@@ -62,6 +55,8 @@ def upgrade():
         sa.Column("context", sa.Text, nullable=False),  # Full context/details
         sa.Column("summary", sa.Text, nullable=False),  # Consolidated summary
         sa.Column("importance", sa.Integer, server_default="5"),  # 1-10 scale
+        # NOTE: Using Text for tags instead of JSONB for cross-database compatibility (SQLite/PostgreSQL)
+        # Application layer handles JSON parsing via parse_tags_field() helper in context/service.py
         sa.Column("tags", sa.Text),  # JSON array of tags
         sa.Column(
             "created_at",

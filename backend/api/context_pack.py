@@ -33,7 +33,9 @@ def get_context_pack(req: ContextPackRequest, db: Session = Depends(get_db)):
     """
     t0 = time.time()
 
-    # Default org_id for MVP (should come from auth in production)
+    # TODO: SECURITY - Hardcoded org_id bypasses tenant isolation
+    # This is MVP code - in production, extract org_id from authenticated user context
+    # to prevent unauthorized access to other organizations' data
     org_id = "default_org"
 
     # Build hybrid context pack

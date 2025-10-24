@@ -5,6 +5,7 @@ Revises: 0010_ext_connectors
 Create Date: 2025-10-24 12:30:00.000000
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 

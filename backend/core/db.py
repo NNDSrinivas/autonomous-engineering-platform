@@ -32,10 +32,6 @@ def _create_engine() -> Engine:
                     # This file is at backend/core/db.py, so parent.parent.parent gives us the project root
                     project_root = Path(__file__).parent.parent.parent
                     db_path = project_root / db_path
-                    # Debug logging for CI troubleshooting
-                    logging.info(
-                        f"Resolving SQLite path: __file__={__file__}, project_root={project_root}, db_path={db_path}"
-                    )
                 db_path.parent.mkdir(parents=True, exist_ok=True)
             # Allow usage across threads when FastAPI spins up multiple workers
             return create_engine(
@@ -46,12 +42,48 @@ def _create_engine() -> Engine:
 
         return create_engine(database_url, pool_pre_ping=True)
     except Exception as e:
+        # Log error but don't prevent module import - let the actual usage fail with a clear error
         logging.error(f"Failed to create database engine: {e}", exc_info=True)
-        raise RuntimeError(f"Database engine creation failed: {e}") from e
+        raise
 
 
-engine = _create_engine()
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+# Lazy initialization - create engine on first access to avoid import-time failures
+_engine: Optional[Engine] = None
+_SessionLocal = None
+
+
+def get_engine() -> Engine:
+    """Get or create the database engine (lazy initialization)."""
+    global _engine
+    if _engine is None:
+        _engine = _create_engine()
+    return _engine
+
+
+# For backward compatibility - create a module-level 'engine' that lazily initializes
+class _EngineLazy:
+    def __getattr__(self, name):
+        return getattr(get_engine(), name)
+
+    def connect(self):
+        return get_engine().connect()
+
+    @property
+    def dialect(self):
+        return get_engine().dialect
+
+
+engine = _EngineLazy()
+
+
+def _get_session_local():
+    """Get or create SessionLocal (lazy initialization)."""
+    global _SessionLocal
+    if _SessionLocal is None:
+        _SessionLocal = sessionmaker(
+            bind=get_engine(), autoflush=False, autocommit=False
+        )
+    return _SessionLocal
 
 
 class Base(DeclarativeBase):
@@ -59,6 +91,7 @@ class Base(DeclarativeBase):
 
 
 def get_db():
+    SessionLocal = _get_session_local()
     db = SessionLocal()
     try:
         yield db

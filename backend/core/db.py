@@ -1,4 +1,5 @@
 from pathlib import Path
+import threading
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
@@ -57,26 +58,34 @@ def _create_engine() -> Engine:
         raise
 
 
-# Lazy initialization - create engine on first access to avoid import-time failures
+# Lazy initialization - create engine on first access to avoid import-time failures (thread-safe)
 _engine: Optional[Engine] = None
 _SessionLocal = None
+_engine_lock = threading.Lock()
+_session_lock = threading.Lock()
 
 
 def get_engine() -> Engine:
-    """Get or create the database engine (lazy initialization)."""
+    """Get or create the database engine (lazy initialization, thread-safe)."""
     global _engine
     if _engine is None:
-        _engine = _create_engine()
+        with _engine_lock:
+            # Double-check pattern to avoid race conditions
+            if _engine is None:
+                _engine = _create_engine()
     return _engine
 
 
 def _get_session_local():
-    """Get or create SessionLocal (lazy initialization)."""
+    """Get or create SessionLocal (lazy initialization, thread-safe)."""
     global _SessionLocal
     if _SessionLocal is None:
-        _SessionLocal = sessionmaker(
-            bind=get_engine(), autoflush=False, autocommit=False
-        )
+        with _session_lock:
+            # Double-check pattern to avoid race conditions
+            if _SessionLocal is None:
+                _SessionLocal = sessionmaker(
+                    bind=get_engine(), autoflush=False, autocommit=False
+                )
     return _SessionLocal
 
 

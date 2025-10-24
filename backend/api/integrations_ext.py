@@ -102,8 +102,9 @@ def slack_connect(
     # At runtime, verify the index for SQLite to provide an actionable error message
     # instead of failing with a cryptic database error.
     engine = getattr(db, "bind", None)
-    # Get dialect name defensively and compare to 'sqlite' for readability
-    dialect_name = getattr(getattr(engine, "dialect", None), "name", None)
+    # Get dialect name defensively with clearer intermediate steps
+    dialect = getattr(engine, "dialect", None)
+    dialect_name = getattr(dialect, "name", None)
     if dialect_name == "sqlite":
         try:
             idx_rows = list(db.execute(text("PRAGMA index_list('slack_connection')")))

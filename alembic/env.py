@@ -37,11 +37,10 @@ def run_migrations_offline():
 
 
 def run_migrations_online():
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Use our custom engine which handles directory creation for SQLite
+    from backend.core.db import engine as custom_engine
+    
+    connectable = custom_engine
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():

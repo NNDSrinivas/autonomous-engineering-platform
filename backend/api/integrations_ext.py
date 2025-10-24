@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Body, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+import sqlalchemy
 from ..core.db import get_db
 
 logger = logging.getLogger(__name__)
@@ -90,19 +91,62 @@ def slack_connect(
     # Use ON CONFLICT to handle existing connections (update token and timestamp)
     # NOTE: SQLAlchemy logs parameters at DEBUG level. Do not enable DEBUG logging in
     # production as it would expose plaintext tokens. See SQLAlchemy echo=False in config.
-    db.execute(
-        text(
-            """
-            INSERT INTO slack_connection (org_id, bot_token, team_id) 
-            VALUES (:o,:t,:team)
-            ON CONFLICT (org_id, team_id) DO UPDATE SET 
-                bot_token=:t, 
-                updated_at=CURRENT_TIMESTAMP
-            """
-        ),
-        {"o": org, "t": token, "team": team},
-    )
-    db.commit()
+    # REQUIREMENT: The slack_connection table MUST have a unique constraint on
+    # (org_id, team_id) for this ON CONFLICT clause to work in SQLite and Postgres.
+    # At runtime, verify the index for SQLite to provide an actionable error message
+    # instead of failing with a cryptic database error.
+    engine = getattr(db, "bind", None)
+    if (
+        engine is not None
+        and getattr(engine, "dialect", None) is not None
+        and engine.dialect.name == "sqlite"
+    ):
+        try:
+            idx_rows = list(db.execute(text("PRAGMA index_list('slack_connection')")))
+            found = False
+            for idx in idx_rows:
+                idx_name = idx[1] if len(idx) > 1 else None
+                if not idx_name:
+                    continue
+                info = list(db.execute(text(f"PRAGMA index_info('{idx_name}')")))
+                cols = [r[2] for r in info]
+                if set(cols) == {"org_id", "team_id"}:
+                    found = True
+                    break
+            if not found:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        "slack_connection table must have a unique/index on (org_id, team_id) "
+                        "for ON CONFLICT to work in SQLite. Check migrations or add the index."
+                    ),
+                )
+        except sqlalchemy.exc.DatabaseError as e:
+            logger.error("Error checking SQLite indexes for slack_connection: %s", e)
+
+    try:
+        db.execute(
+            text(
+                """
+                INSERT INTO slack_connection (org_id, bot_token, team_id) 
+                VALUES (:o,:t,:team)
+                ON CONFLICT (org_id, team_id) DO UPDATE SET 
+                    bot_token=:t, 
+                    updated_at=CURRENT_TIMESTAMP
+                """
+            ),
+            {"o": org, "t": token, "team": team},
+        )
+        db.commit()
+    except sqlalchemy.exc.DatabaseError as e:
+        logger.error("Database error during Slack connect: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Database error during Slack connect. Ensure slack_connection has a "
+                "unique constraint on (org_id, team_id) and the database supports ON CONFLICT."
+            ),
+        )
     return {"ok": True}
 
 

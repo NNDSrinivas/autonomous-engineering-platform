@@ -39,7 +39,7 @@ def run_migrations_offline():
 def run_migrations_online():
     # Use our custom engine which handles directory creation for SQLite
     from backend.core.db import engine as custom_engine
-    
+
     connectable = custom_engine
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)

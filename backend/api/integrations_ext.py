@@ -125,11 +125,17 @@ def slack_connect(
                     col_name = getattr(r, "name", None)
                     if col_name is not None:
                         cols.append(col_name)
-                    elif isinstance(r, (tuple, list)) and len(r) > 2 and isinstance(r[2], str):
+                    elif (
+                        isinstance(r, (tuple, list))
+                        and len(r) > 2
+                        and isinstance(r[2], str)
+                    ):
+                        # PRAGMA index_info returns (seqno, cid, name) in that order, so index 2 is the column name
                         cols.append(r[2])
                     else:
                         logger.warning(
-                            "Unexpected PRAGMA index_info row format: %r (expected 'name' attribute or string at index 2)", r
+                            "Unexpected PRAGMA index_info row format: %r (expected 'name' attribute or string at index 2)",
+                            r,
                         )
                         cols.append(None)
                 if set(cols) == {"org_id", "team_id"}:

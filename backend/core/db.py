@@ -20,25 +20,34 @@ def _create_engine() -> Engine:
     OperationalError during engine initialization. We proactively create the
     directory when we detect a SQLite URL so imports succeed in test environments.
     """
-    database_url = settings.sqlalchemy_url
-    url = make_url(database_url)
-    if url.get_backend_name() == "sqlite":
-        database = url.database
-        if database and database != ":memory:":
-            db_path = Path(database).expanduser()
-            if not db_path.is_absolute():
-                # Resolve relative to project root
-                # This file is at backend/core/db.py, so parent.parent.parent gives us the project root
-                db_path = Path(__file__).parent.parent.parent / db_path
-            db_path.parent.mkdir(parents=True, exist_ok=True)
-        # Allow usage across threads when FastAPI spins up multiple workers
-        return create_engine(
-            database_url,
-            pool_pre_ping=True,
-            connect_args={"check_same_thread": False},
-        )
+    try:
+        database_url = settings.sqlalchemy_url
+        url = make_url(database_url)
+        if url.get_backend_name() == "sqlite":
+            database = url.database
+            if database and database != ":memory:":
+                db_path = Path(database).expanduser()
+                if not db_path.is_absolute():
+                    # Resolve relative to project root
+                    # This file is at backend/core/db.py, so parent.parent.parent gives us the project root
+                    project_root = Path(__file__).parent.parent.parent
+                    db_path = project_root / db_path
+                    # Debug logging for CI troubleshooting
+                    logging.info(
+                        f"Resolving SQLite path: __file__={__file__}, project_root={project_root}, db_path={db_path}"
+                    )
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+            # Allow usage across threads when FastAPI spins up multiple workers
+            return create_engine(
+                database_url,
+                pool_pre_ping=True,
+                connect_args={"check_same_thread": False},
+            )
 
-    return create_engine(database_url, pool_pre_ping=True)
+        return create_engine(database_url, pool_pre_ping=True)
+    except Exception as e:
+        logging.error(f"Failed to create database engine: {e}", exc_info=True)
+        raise RuntimeError(f"Database engine creation failed: {e}") from e
 
 
 engine = _create_engine()

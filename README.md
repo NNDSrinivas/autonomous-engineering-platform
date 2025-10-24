@@ -850,3 +850,285 @@ For production deployments:
 
 Stay tuned for **PR-14B** to expand memory coverage!
 
+---
+
+## 🔌 PR-14B: Extended Connectors (Slack, Confluence, Wiki, Zoom/Teams)
+
+### 🎯 **Expanded Memory Coverage**
+
+PR-14B extends PR-14's memory search to cover your entire knowledge base:
+- **Slack**: Messages, threads, channels (incremental sync with cursor)
+- **Confluence**: Wiki pages, documentation spaces
+- **Local Wiki**: Markdown files from `docs/` directory
+- **Zoom/Teams**: Meeting transcripts and summaries
+
+All content is **read-only**, **org-scoped**, and **indexed into memory** for unified semantic search.
+
+### 🏗️ **Architecture**
+
+```
+backend/
+├── integrations_ext/          # Read-only connectors
+│   ├── slack_read.py          # Slack Web API client
+│   ├── confluence_read.py     # Confluence REST API
+│   └── wiki_read.py           # Local markdown scanner
+├── api/integrations_ext.py    # Connection management endpoints
+├── search/router.py           # Extended reindex endpoints
+└── telemetry/ingest_metrics.py # Prometheus counters
+
+alembic/versions/
+└── 0010_ext_connectors.py     # slack_connection, confluence_connection, sync_cursor, wiki_page
+```
+
+### 🚀 **Getting Started**
+
+#### **1. Apply Migration**
+```bash
+make migrate  # applies 0010_ext_connectors
+```
+
+#### **2. Connect Integrations**
+
+**Slack:**
+```bash
+curl -X POST http://localhost:8002/api/integrations-ext/slack/connect \
+  -H 'Content-Type: application/json' \
+  -H 'X-Org-Id: default' \
+  -d '{"bot_token":"xoxb-your-token","team_id":"T12345"}'
+```
+
+**Confluence:**
+```bash
+curl -X POST http://localhost:8002/api/integrations-ext/confluence/connect \
+  -H 'Content-Type: application/json' \
+  -H 'X-Org-Id: default' \
+  -d '{
+    "base_url":"https://your.atlassian.net/wiki",
+    "access_token":"your-token",
+    "email":"you@org.com"
+  }'
+```
+
+#### **3. Reindex Content**
+
+```bash
+# Reindex all extended sources
+make reindex-ext
+
+# Or individually:
+curl -X POST http://localhost:8002/api/search/reindex/slack -H 'X-Org-Id: default'
+curl -X POST http://localhost:8002/api/search/reindex/confluence \
+  -H 'X-Org-Id: default' \
+  -H 'Content-Type: application/json' \
+  -d '{"space_key":"ENG"}'
+curl -X POST http://localhost:8002/api/search/reindex/wiki -H 'X-Org-Id: default'
+curl -X POST http://localhost:8002/api/search/reindex/zoom_teams -H 'X-Org-Id: default'
+```
+
+#### **4. Search Across Sources**
+
+```bash
+curl -X POST http://localhost:8002/api/search/ \
+  -H 'Content-Type: application/json' \
+  -H 'X-Org-Id: default' \
+  -d '{"q":"authentication flow","k":10}'
+```
+
+**Response includes results from all sources:**
+```json
+{
+  "hits": [
+    {"source":"slack","score":0.89,"title":"#eng-auth 1698765432.123","excerpt":"We decided to use OAuth2..."},
+    {"source":"confluence","score":0.86,"title":"Auth Architecture","url":"https://...","excerpt":"..."},
+    {"source":"wiki","score":0.82,"title":"security","excerpt":"Authentication patterns..."},
+    {"source":"meeting","score":0.78,"title":"Meeting 42","excerpt":"Discussed MFA implementation..."}
+  ]
+}
+```
+
+### 📊 **API Endpoints**
+
+#### **Connection Management**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/integrations-ext/slack/connect` | POST | Connect Slack workspace |
+| `/api/integrations-ext/confluence/connect` | POST | Connect Confluence instance |
+
+**Request Headers:**
+- `X-Org-Id`: Organization identifier (required)
+- `Content-Type: application/json`
+
+**Slack Connect Body:**
+```json
+{
+  "bot_token": "xoxb-...",  // required: Slack Bot User OAuth Token
+  "team_id": "T12345"       // optional: Team ID
+}
+```
+
+**Confluence Connect Body:**
+```json
+{
+  "base_url": "https://your.atlassian.net/wiki",  // required
+  "access_token": "...",                          // required: API token or OAuth
+  "email": "you@org.com"                          // optional
+}
+```
+
+#### **Reindex Endpoints**
+
+| Endpoint | Method | Description | Body |
+|----------|--------|-------------|------|
+| `/api/search/reindex/slack` | POST | Index Slack messages (incremental) | None |
+| `/api/search/reindex/confluence` | POST | Index Confluence pages | `{"space_key":"KEY"}` |
+| `/api/search/reindex/wiki` | POST | Index local markdown docs | None |
+| `/api/search/reindex/zoom_teams` | POST | Index Zoom/Teams transcripts | None |
+
+**All reindex endpoints:**
+- Return: `{"ok": true, "count": <num_docs>}`
+- Headers: `X-Org-Id` required
+- Rate-limited and audited (existing middleware)
+
+### 🔒 **Security Features**
+
+- **Read-only access**: No writes to Slack/Confluence/etc.
+- **Org isolation**: `X-Org-Id` header enforced on all endpoints
+- **Token storage**: ⚠️ Currently stored in plaintext (encryption planned - see [Issue #18](https://github.com/NNDSrinivas/autonomous-engineering-platform/issues/18))
+- **Incremental sync**: Slack uses cursor-based pagination
+- **Rate limiting**: Inherited from existing API middleware
+- **Audit logs**: All API calls logged with request IDs
+
+> **⚠️ SECURITY NOTE**: Token encryption at rest is not yet implemented. This is acceptable for development/testing environments but **must be addressed before production deployment**. See `backend/api/integrations_ext.py` for TODO comments with implementation options.
+
+### 📈 **Metrics (Prometheus)**
+
+```python
+# backend/telemetry/ingest_metrics.py
+INGEST_DOCS = Counter('aep_ingest_docs_total', 'Docs ingested into memory', ['source'])
+INGEST_ERRORS = Counter('aep_ingest_errors_total', 'Ingestion errors', ['source'])
+```
+
+**Usage in endpoints:**
+```python
+from backend.telemetry.ingest_metrics import INGEST_DOCS, INGEST_ERRORS
+
+INGEST_DOCS.labels(source="slack").inc(count)
+INGEST_ERRORS.labels(source="confluence").inc()
+```
+
+### 🗄️ **Database Schema**
+
+**slack_connection** - Slack workspace credentials
+```sql
+CREATE TABLE slack_connection (
+  id INTEGER PRIMARY KEY,
+  org_id VARCHAR(64) NOT NULL,
+  bot_token TEXT NOT NULL,
+  team_id VARCHAR(64),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**confluence_connection** - Confluence instance credentials
+```sql
+CREATE TABLE confluence_connection (
+  id INTEGER PRIMARY KEY,
+  org_id VARCHAR(64) NOT NULL,
+  base_url TEXT NOT NULL,
+  access_token TEXT NOT NULL,
+  email TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**sync_cursor** - Incremental sync state (e.g., Slack message timestamps)
+```sql
+CREATE TABLE sync_cursor (
+  id INTEGER PRIMARY KEY,
+  org_id VARCHAR(64) NOT NULL,
+  source VARCHAR(32) NOT NULL,  -- slack|confluence|wiki|zoom|teams
+  cursor TEXT,                  -- timestamp/etag/id
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX ix_sync_cursor_org_src ON sync_cursor(org_id, source);
+```
+
+**wiki_page** - Local wiki/docs content cache (optional)
+```sql
+CREATE TABLE wiki_page (
+  id INTEGER PRIMARY KEY,
+  org_id VARCHAR(64) NOT NULL,
+  title TEXT NOT NULL,
+  url TEXT,
+  content TEXT,
+  updated TIMESTAMP
+);
+```
+
+### 🎯 **Acceptance Criteria**
+
+✅ Connections persisted and audited  
+✅ Reindex endpoints populate `memory_object`/`memory_chunk`  
+✅ Slack incremental sync with cursor (no duplicates)  
+✅ Confluence pages indexed with HTML→text cleaning  
+✅ Local wiki markdown files scanned from `docs/`  
+✅ Zoom/Teams meeting transcripts reused from PR-3 tables  
+✅ `/api/search` returns unified results across all sources  
+✅ Source badges, titles, excerpts, URLs displayed correctly  
+✅ Prometheus metrics track ingestion counts and errors  
+✅ All endpoints enforce `X-Org-Id` header requirement  
+
+### 🚧 **Future Enhancements (PR-15+)**
+
+**Planned improvements:**
+- **OAuth flows** for Slack/Confluence (vs. token-based)
+- **Webhook-based sync** for real-time updates
+- **Attachment indexing** (PDFs, images with OCR)
+- **Vector database upgrade** (pgvector/FAISS for >10k chunks)
+- **Hybrid search** (BM25 + semantic for better recall)
+- **Data residency controls** (PII filtering, field-level policies)
+- **Retrieval-Augmented Context** (auto-attach relevant docs to coding tasks)
+
+### 🛠️ **Development Tips**
+
+**Testing locally:**
+```bash
+# 1. Connect test workspace (get tokens from Slack/Confluence admin)
+curl -X POST http://localhost:8002/api/integrations-ext/slack/connect \
+  -H 'Content-Type: application/json' \
+  -H 'X-Org-Id: test-org' \
+  -d '{"bot_token":"xoxb-test"}'
+
+# 2. Reindex (will use cursor for incremental updates)
+make reindex-ext
+
+# 3. Search
+curl -X POST http://localhost:8002/api/search/ \
+  -H 'Content-Type: application/json' \
+  -H 'X-Org-Id: test-org' \
+  -d '{"q":"your search query","k":5}' | jq .
+```
+
+**Monitoring:**
+```bash
+# Check Prometheus metrics
+curl http://localhost:8002/metrics | grep aep_ingest
+
+# View recent ingestion logs
+docker logs aep_core | grep "reindex"
+```
+
+**Debugging sync issues:**
+```sql
+-- Check current sync cursor
+SELECT * FROM sync_cursor WHERE org_id='default' AND source='slack';
+
+-- Reset cursor (force full reindex)
+DELETE FROM sync_cursor WHERE org_id='default' AND source='slack';
+```
+
+---
+
+**Next up:** PR-15 (Retrieval-Augmented Context Pack) will auto-attach top-k memory hits to coding tasks!
+

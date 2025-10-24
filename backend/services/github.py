@@ -3,6 +3,7 @@ import datetime as dt
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 from ..models.integrations import GhConnection, GhRepo, GhFile, GhIssuePr
+from ..core.crypto import encrypt_token
 
 # Configuration constants
 MAX_BODY_LENGTH = 8000
@@ -19,7 +20,7 @@ class GitHubService:
     def save_connection(db: Session, access_token: str) -> GhConnection:
         conn = GhConnection(
             id=GitHubService._id(),
-            access_token=access_token,
+            access_token=encrypt_token(access_token),
             scopes=["repo", "read:org"],
         )
         db.add(conn)

@@ -3,6 +3,7 @@ import datetime as dt
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 from ..models.integrations import JiraConnection, JiraProjectConfig, JiraIssue
+from ..core.crypto import encrypt_token
 
 # Configuration constants
 MAX_DESCRIPTION_LENGTH = 8000
@@ -22,7 +23,7 @@ class JiraService:
         conn = JiraConnection(
             id=JiraService._id(),
             cloud_base_url=base_url,
-            access_token=access_token,
+            access_token=encrypt_token(access_token),
             scopes=["read"],
         )
         db.add(conn)

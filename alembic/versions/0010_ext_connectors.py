@@ -8,6 +8,9 @@ Create Date: 2025-10-23
 
 from alembic import op
 import sqlalchemy as sa
+import logging
+
+logger = logging.getLogger(__name__)
 
 # revision identifiers, used by Alembic.
 revision = "0010_ext_connectors"
@@ -68,6 +71,11 @@ def upgrade():
         )
         op.execute(
             """COMMENT ON COLUMN confluence_connection.access_token IS 'SENSITIVE: Confluence access token. Must be encrypted at rest before production. See GitHub Issue #18.'"""
+        )
+    else:
+        logger.info(
+            "Skipping column comments for %s database (PostgreSQL-specific feature)",
+            bind.dialect.name,
         )
 
     op.create_table(

@@ -1,6 +1,8 @@
 # 🧠 Autonomous Engineering Intelligence Platform
 > *The AI-Powered Digital Coworker for Software Engineering Teams*
 
+⚖️ **Licensed under Business Source License 1.1 (BSL). Commercial use prohibited without agreement with NavraLabs.**
+
 ---
 
 ## 🚀 Vision

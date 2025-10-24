@@ -366,18 +366,9 @@ def reindex_confluence(
             count = 0
             for p in pages:
                 text_html = p["html"]
-                # Robust HTML cleaning: Truncate raw HTML before parsing for performance.
-                # Use BeautifulSoup to handle malformed tags, and apply an overhead factor
-                # to account for HTML tags vs extracted text size. See HTML_OVERHEAD_MULTIPLIER
-                # in backend/search/constants.py for configuration.
-                # Note: We truncate before parsing (rather than parsing full HTML then truncating text)
-                # to avoid memory/CPU issues with multi-MB Confluence pages. Truncation may occur
-                # mid-tag (e.g., <div class="foo), but BeautifulSoup handles malformed HTML gracefully.
-                # We multiply by HTML_OVERHEAD_MULTIPLIER (3x) to estimate raw HTML size
-                # from the desired text length, ensuring we capture enough HTML to extract the target
-                # amount of text after tag removal. This multiplier handles pages with heavy markup
-                # (tables, nested divs, inline styles) that can have 3-4x HTML-to-text ratios.
-                # See constants.py for detailed rationale and tuning guidance.
+                # Truncate raw HTML before parsing for performance (avoid memory/CPU issues with large pages).
+                # Apply overhead multiplier to ensure enough HTML is captured to extract target text length.
+                # See HTML_OVERHEAD_MULTIPLIER in constants.py for detailed rationale.
                 max_html_length = MAX_CONTENT_LENGTH * HTML_OVERHEAD_MULTIPLIER
                 # Use 'lxml' parser if available (faster and more robust with malformed HTML),
                 # otherwise use 'html.parser' built-in. This is especially important when truncating

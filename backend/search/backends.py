@@ -63,8 +63,8 @@ def _authority_score(meta: Dict[str, Any]) -> float:
         meta: Metadata dictionary with authority signals
 
     Returns:
-        Score between 0.0 and 0.5. Individual signals may sum to more than 0.5,
-        but the final score is capped at 0.5 before being returned.
+        Returns a score capped at 0.5 (range 0.0-0.5). Individual signals may contribute
+        values that sum above 0.5, but the final returned score is limited to a maximum of 0.5.
     """
     score = 0.0
 
@@ -238,13 +238,25 @@ def semantic_json(
     def cosine_similarity(a: List[float], b: List[float]) -> float:
         """Compute cosine similarity between two vectors"""
         dot_product = sum(x * y for x, y in zip(a, b))
-        norm_a = math.sqrt(sum(x * x for x in a)) if any(a) else 1.0
-        norm_b = math.sqrt(sum(x * x for x in b)) if any(b) else 1.0
+        norm_a = math.sqrt(sum(x * x for x in a))
+        norm_b = math.sqrt(sum(x * x for x in b))
+        epsilon = 1e-8
+        norm_a = norm_a if norm_a > epsilon else 1.0
+        norm_b = norm_b if norm_b > epsilon else 1.0
         return dot_product / (norm_a * norm_b)
 
     scored = []
     for r in rows:
-        vec = json.loads(bytes(r["embedding"]).decode("utf-8"))
+        # Handle different types returned by database (str, bytes, memoryview)
+        embedding_data = r["embedding"]
+        if isinstance(embedding_data, str):
+            vec = json.loads(embedding_data)
+        elif isinstance(embedding_data, (bytes, memoryview)):
+            vec = json.loads(bytes(embedding_data).decode("utf-8"))
+        else:
+            # Fallback: try direct JSON parse
+            vec = json.loads(str(embedding_data))
+
         similarity = cosine_similarity(query_vec, vec)
         scored.append((similarity, dict(r)))
 

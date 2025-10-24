@@ -142,9 +142,13 @@ def backfill_vectors():
 
     except psycopg2.Error as e:
         print(f"Database error: {e}")
+        if conn:
+            conn.rollback()
         sys.exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}")
+        if conn:
+            conn.rollback()
         sys.exit(1)
 
 

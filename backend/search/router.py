@@ -381,11 +381,9 @@ def reindex_confluence(
                 # Remove script and style tags completely (including malformed ones)
                 for tag in soup(["script", "style"]):
                     tag.decompose()
-                # Extract text and normalize whitespace
+                # Extract text and normalize whitespace, then truncate to max length
                 text_clean = soup.get_text(separator=" ")
-                text_clean = re.sub(r"\s+", " ", text_clean).strip()[
-                    :MAX_CONTENT_LENGTH
-                ]
+                text_clean = re.sub(r"\s+", " ", text_clean).strip()[:MAX_CONTENT_LENGTH]
                 try:
                     upsert_memory_object(
                         db,

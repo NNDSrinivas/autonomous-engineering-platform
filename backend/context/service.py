@@ -68,12 +68,17 @@ def fetch_relevant_notes(
              created_at, updated_at
       FROM agent_note
       WHERE org_id = :o
-        AND (task_key = :tk OR tags ? :tk)
+        AND (task_key = :tk OR tags LIKE :tk_pattern)
       ORDER BY importance DESC, updated_at DESC
       LIMIT :lim
     """
             ),
-            {"o": org_id, "tk": task_key, "lim": limit},
+            {
+                "o": org_id,
+                "tk": task_key,
+                "tk_pattern": f'%"{task_key}"%',
+                "lim": limit,
+            },
         )
         .mappings()
         .all()

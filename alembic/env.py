@@ -39,6 +39,7 @@ def run_migrations_offline():
 def run_migrations_online():
     # Create a fresh engine for migrations (don't use LazyProxy)
     from sqlalchemy import create_engine
+
     url = config.get_main_option("sqlalchemy.url")
     connectable = create_engine(url)
 
@@ -46,7 +47,7 @@ def run_migrations_online():
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
-    
+
     connectable.dispose()
 
 

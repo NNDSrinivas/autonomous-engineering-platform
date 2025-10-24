@@ -162,6 +162,7 @@ def reindex_meetings(request: Request = None, db: Session = Depends(get_db)):
       ORDER BY m.created_at DESC LIMIT :limit
     """
             ),
+            # Use MAX_MEETINGS_PER_SYNC constant for consistency across all sync operations
             {"org_id": org, "limit": MAX_MEETINGS_PER_SYNC},
         )
         .mappings()
@@ -465,6 +466,7 @@ def reindex_zoom_teams(request: Request = None, db: Session = Depends(get_db)):
       ORDER BY m.created_at DESC LIMIT :limit
     """
             ),
+            # Use MAX_MEETINGS_PER_SYNC constant for consistency across all sync operations
             {"org_id": org, "limit": MAX_MEETINGS_PER_SYNC},
         )
         .mappings()

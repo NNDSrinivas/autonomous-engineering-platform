@@ -15,6 +15,12 @@ GITHUB_ISSUE_TOKEN_ENCRYPTION = (
     "https://github.com/NNDSrinivas/autonomous-engineering-platform/issues/18"
 )
 
+# SQLite PRAGMA tuple index positions for robust database introspection
+# PRAGMA index_list returns: (seq, name, unique, origin, partial)
+PRAGMA_INDEX_NAME_POSITION = 1
+# PRAGMA index_info returns: (seqno, cid, name)
+PRAGMA_INDEX_INFO_NAME_POSITION = 2
+
 router = APIRouter(prefix="/api/integrations-ext", tags=["integrations-ext"])
 
 
@@ -108,7 +114,7 @@ def slack_connect(
                 if idx_name is None:
                     try:
                         # Defensive: PRAGMA index_list returns (seq, name, unique, origin, partial) in current SQLite
-                        idx_name = idx[1]
+                        idx_name = idx[PRAGMA_INDEX_NAME_POSITION]
                     except (IndexError, TypeError):
                         logger.error(
                             "Unexpected PRAGMA index_list row structure: %r. "
@@ -127,11 +133,11 @@ def slack_connect(
                         cols.append(col_name)
                     elif (
                         isinstance(r, (tuple, list))
-                        and len(r) > 2
-                        and isinstance(r[2], str)
+                        and len(r) > PRAGMA_INDEX_INFO_NAME_POSITION
+                        and isinstance(r[PRAGMA_INDEX_INFO_NAME_POSITION], str)
                     ):
-                        # PRAGMA index_info returns (seqno, cid, name); index 2 is the column name
-                        cols.append(r[2])
+                        # PRAGMA index_info returns (seqno, cid, name); use named constant for column name position
+                        cols.append(r[PRAGMA_INDEX_INFO_NAME_POSITION])
                     else:
                         logger.warning(
                             "Unexpected PRAGMA index_info row format: %r (expected 'name' attribute or string at index 2)",

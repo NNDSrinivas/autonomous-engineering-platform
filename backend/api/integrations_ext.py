@@ -31,13 +31,20 @@ def slack_connect(
         raise HTTPException(status_code=400, detail="bot_token required")
 
     # CRITICAL SECURITY CHECK: Prevent production deployment with plaintext tokens
-    # Use explicit whitelist to ensure production deployments are blocked by default
-    environment = os.getenv("ENVIRONMENT", "development").lower()
+    # Fail closed by default: require explicit opt-in for development mode
+    # If ENVIRONMENT is not set or not in whitelist, assume production and block
+    environment = os.getenv("ENVIRONMENT")
+    if environment is None:
+        raise HTTPException(
+            status_code=501,
+            detail=f"ENVIRONMENT variable not set. Token encryption not implemented. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
+        )
+    environment = environment.lower()
     allowed_environments = {"development", "dev", "test", "testing", "local"}
     if environment not in allowed_environments:
         raise HTTPException(
             status_code=501,
-            detail=f"Token encryption not implemented. Production deployment blocked. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
+            detail=f"Token encryption not implemented. Production deployment blocked (ENVIRONMENT={environment}). See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
         )
 
     # SECURITY WARNING: Tokens are currently stored in plaintext in the database.
@@ -56,13 +63,15 @@ def slack_connect(
     logger.warning(
         "Development mode: Storing tokens in plaintext. See SECURITY.md for production requirements."
     )
-    # Use ON CONFLICT to handle existing connections (update token)
+    # Use ON CONFLICT to handle existing connections (update token and timestamp)
     db.execute(
         text(
             """
             INSERT INTO slack_connection (org_id, bot_token, team_id) 
             VALUES (:o,:t,:team)
-            ON CONFLICT (org_id, team_id) DO UPDATE SET bot_token=:t
+            ON CONFLICT (org_id, team_id) DO UPDATE SET 
+                bot_token=:t, 
+                updated_at=CURRENT_TIMESTAMP
             """
         ),
         {"o": org, "t": token, "team": team},
@@ -88,13 +97,20 @@ def confluence_connect(
         )
 
     # CRITICAL SECURITY CHECK: Prevent production deployment with plaintext tokens
-    # Use explicit whitelist to ensure production deployments are blocked by default
-    environment = os.getenv("ENVIRONMENT", "development").lower()
+    # Fail closed by default: require explicit opt-in for development mode
+    # If ENVIRONMENT is not set or not in whitelist, assume production and block
+    environment = os.getenv("ENVIRONMENT")
+    if environment is None:
+        raise HTTPException(
+            status_code=501,
+            detail=f"ENVIRONMENT variable not set. Token encryption not implemented. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
+        )
+    environment = environment.lower()
     allowed_environments = {"development", "dev", "test", "testing", "local"}
     if environment not in allowed_environments:
         raise HTTPException(
             status_code=501,
-            detail=f"Token encryption not implemented. Production deployment blocked. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
+            detail=f"Token encryption not implemented. Production deployment blocked (ENVIRONMENT={environment}). See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
         )
 
     # TODO: Security improvement - encrypt tokens at rest (same as Slack tokens above)
@@ -102,13 +118,16 @@ def confluence_connect(
     logger.warning(
         "Development mode: Storing tokens in plaintext. See SECURITY.md for production requirements."
     )
-    # Use ON CONFLICT to handle existing connections (update credentials)
+    # Use ON CONFLICT to handle existing connections (update credentials and timestamp)
     db.execute(
         text(
             """
             INSERT INTO confluence_connection (org_id, base_url, access_token, email) 
             VALUES (:o,:b,:a,:e)
-            ON CONFLICT (org_id, base_url) DO UPDATE SET access_token=:a, email=:e
+            ON CONFLICT (org_id, base_url) DO UPDATE SET 
+                access_token=:a, 
+                email=:e, 
+                updated_at=CURRENT_TIMESTAMP
             """
         ),
         {"o": org, "b": base, "a": token, "e": email},

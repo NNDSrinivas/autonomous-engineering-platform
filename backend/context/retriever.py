@@ -13,6 +13,18 @@ from typing import List, Dict, Any
 from ..search.embeddings import embed_texts
 
 
+# Constants for hybrid scoring
+MIN_QUERY_TERMS = 3  # Minimum query terms for keyword scoring normalization
+RECENCY_HALF_LIFE_DAYS = 30.0  # Days for recency score to decay by half
+MAX_CHUNKS_TO_SCAN = 8000  # Maximum memory chunks to scan per query
+EXCERPT_MAX_LENGTH = 700  # Maximum length of excerpt in characters
+
+# Hybrid scoring weights (must sum to 1.0)
+SEMANTIC_WEIGHT = 0.55  # Semantic similarity weight
+KEYWORD_WEIGHT = 0.25  # Keyword overlap weight
+RECENCY_WEIGHT = 0.12  # Time-based recency weight
+AUTHORITY_WEIGHT = 0.08  # Engagement/authority weight
+
 # Simple keyword tokenizer
 KW_SPLIT = re.compile(r"[A-Za-z0-9_]+")
 
@@ -26,13 +38,13 @@ def _kw_score(q: str, txt: str) -> float:
     if not qset:
         return 0.0
     inter = len(qset & tset)
-    return min(1.0, inter / max(3, len(qset)))
+    return min(1.0, inter / max(MIN_QUERY_TERMS, len(qset)))
 
 
 def _recency_score(ts: float, now: float) -> float:
-    """Calculate recency score with 30-day half-life"""
+    """Calculate recency score with configurable half-life decay"""
     days = max(0.0, (now - ts) / 86400.0)
-    return 1.0 / (1.0 + days / 30.0)
+    return 1.0 / (1.0 + days / RECENCY_HALF_LIFE_DAYS)
 
 
 def _authority_score(meta: Dict[str, Any]) -> float:
@@ -76,7 +88,7 @@ def build_context_pack(
       FROM memory_chunk mc
       JOIN memory_object mo ON mo.id = mc.object_id
       WHERE mo.org_id = :o {source_filter}
-      LIMIT 8000
+      LIMIT {MAX_CHUNKS_TO_SCAN}
     """
             ),
             {"o": org_id, "src": sources} if sources else {"o": org_id},
@@ -103,8 +115,13 @@ def build_context_pack(
         meta = json.loads(r["meta_json"] or "{}")
         auth = _authority_score(meta)
 
-        # Hybrid score: semantic (55%), keyword (25%), recency (12%), authority (8%)
-        final = 0.55 * sem + 0.25 * kw + 0.12 * rec + 0.08 * auth
+        # Hybrid score with configurable weights
+        final = (
+            SEMANTIC_WEIGHT * sem
+            + KEYWORD_WEIGHT * kw
+            + RECENCY_WEIGHT * rec
+            + AUTHORITY_WEIGHT * auth
+        )
         scored.append((final, r, {"sem": sem, "kw": kw, "rec": rec, "auth": auth}))
 
     scored.sort(key=lambda x: x[0], reverse=True)
@@ -123,7 +140,7 @@ def build_context_pack(
                 "title": r["title"],
                 "foreign_id": r["foreign_id"],
                 "url": r["url"],
-                "excerpt": (r["text"] or "")[:700],
+                "excerpt": (r["text"] or "")[:EXCERPT_MAX_LENGTH],
                 "score": float(f"{s:.4f}"),
                 "meta": json.loads(r["meta_json"] or "{}"),
             }

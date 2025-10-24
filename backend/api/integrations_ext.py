@@ -31,8 +31,10 @@ def slack_connect(
         raise HTTPException(status_code=400, detail="bot_token required")
 
     # CRITICAL SECURITY CHECK: Prevent production deployment with plaintext tokens
+    # Use explicit whitelist to ensure production deployments are blocked by default
     environment = os.getenv("ENVIRONMENT", "development").lower()
-    if environment == "production":
+    allowed_environments = {"development", "dev", "test", "testing", "local"}
+    if environment not in allowed_environments:
         raise HTTPException(
             status_code=501,
             detail=f"Token encryption not implemented. Production deployment blocked. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
@@ -86,8 +88,10 @@ def confluence_connect(
         )
 
     # CRITICAL SECURITY CHECK: Prevent production deployment with plaintext tokens
+    # Use explicit whitelist to ensure production deployments are blocked by default
     environment = os.getenv("ENVIRONMENT", "development").lower()
-    if environment == "production":
+    allowed_environments = {"development", "dev", "test", "testing", "local"}
+    if environment not in allowed_environments:
         raise HTTPException(
             status_code=501,
             detail=f"Token encryption not implemented. Production deployment blocked. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",

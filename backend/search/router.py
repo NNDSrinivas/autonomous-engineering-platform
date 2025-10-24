@@ -261,10 +261,15 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
             # Validate cursor timestamp using shared validation logic.
             # If cursor exists but is invalid, newest will be None and we log a warning
             # then proceed without a cursor (fetching all recent messages).
+            # RATIONALE: We continue rather than raising an exception because:
+            # 1. Invalid cursor could result from manual DB edits or migration issues (recoverable)
+            # 2. Re-syncing from scratch is safer than blocking all Slack sync operations
+            # 3. Warning log alerts operators to investigate while maintaining service availability
+            # 4. Alternative (raising HTTPException) would require manual intervention for every org
             newest = validate_slack_timestamp(cur)
             if newest is None and cur is not None:
                 logger.warning(
-                    "Invalid cursor value for org_id=%s: %r, ignoring invalid cursor",
+                    "Invalid cursor value for org_id=%s: %r, ignoring invalid cursor and re-syncing from scratch",
                     org,
                     cur,
                 )
@@ -297,7 +302,9 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                             {"channel": c["name"]},
                             text_content,
                         )
-                        # Safely update newest timestamp with error handling
+                        # Update newest timestamp INSIDE try block to track successful upserts.
+                        # This ensures cursor advances only for successfully indexed messages,
+                        # preventing re-processing of already-indexed messages on next sync.
                         newest = safe_update_newest(newest, ts)
                         count += 1
                     except Exception as e:

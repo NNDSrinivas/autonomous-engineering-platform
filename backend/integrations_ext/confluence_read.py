@@ -55,13 +55,11 @@ def _extract_results(response_json: dict, space_key: str) -> List[Dict]:
     Returns:
         List of page results
     """
-    has_page_key = "page" in response_json
-    has_results_key = "results" in response_json
     logger.debug(
         "Confluence API response structure for space %s: page=%s, results=%s",
         space_key,
-        has_page_key,
-        has_results_key,
+        "page" in response_json,
+        "results" in response_json,
     )
 
     # Try nested page.results structure first

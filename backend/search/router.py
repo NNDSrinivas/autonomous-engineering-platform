@@ -371,9 +371,11 @@ def reindex_confluence(
                 # Note: We truncate before parsing (rather than parsing full HTML then truncating text)
                 # to avoid memory/CPU issues with multi-MB Confluence pages. Truncation may occur
                 # mid-tag (e.g., <div class="foo), but BeautifulSoup handles malformed HTML gracefully.
-                # We multiply by HTML_OVERHEAD_MULTIPLIER (typically 2-3x) to estimate raw HTML size
+                # We multiply by HTML_OVERHEAD_MULTIPLIER (3x) to estimate raw HTML size
                 # from the desired text length, ensuring we capture enough HTML to extract the target
-                # amount of text after tag removal. See constants.py for detailed rationale.
+                # amount of text after tag removal. This multiplier handles pages with heavy markup
+                # (tables, nested divs, inline styles) that can have 3-4x HTML-to-text ratios.
+                # See constants.py for detailed rationale and tuning guidance.
                 max_html_length = MAX_CONTENT_LENGTH * HTML_OVERHEAD_MULTIPLIER
                 # Use 'lxml' parser if available (faster and more robust with malformed HTML),
                 # otherwise use 'html.parser' built-in. This is especially important when truncating

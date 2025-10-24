@@ -6,6 +6,7 @@ This module provides endpoints for creating draft GitHub PRs and adding JIRA com
 
 import logging
 import json
+import threading
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Body, HTTPException, Request, Response
 from sqlalchemy.orm import Session
@@ -26,8 +27,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/deliver", tags=["delivery"])
 
-# Cache for audit log table existence to avoid repeated checks
+# Cache for audit log table existence to avoid repeated checks (thread-safe)
 _audit_table_exists = None
+_audit_table_lock = threading.Lock()
 
 
 def get_github_credentials(db: Session, org_id: str) -> str:
@@ -107,17 +109,20 @@ def audit_delivery_action(
     org_id: str,
     details: Dict[str, Any] = None,
 ) -> None:
-    """Record delivery action in audit log"""
+    """Record delivery action in audit log (thread-safe)"""
     global _audit_table_exists
 
     try:
-        # Check table existence once and cache the result (cross-database compatible)
+        # Check table existence once and cache the result (cross-database compatible, thread-safe)
         if _audit_table_exists is None:
-            # Use SQLAlchemy inspector for cross-database compatibility
-            from sqlalchemy import inspect
+            with _audit_table_lock:
+                # Double-check pattern to avoid race conditions
+                if _audit_table_exists is None:
+                    # Use SQLAlchemy inspector for cross-database compatibility
+                    from sqlalchemy import inspect
 
-            inspector = inspect(db.get_bind())
-            _audit_table_exists = "audit_log" in inspector.get_table_names()
+                    inspector = inspect(db.get_bind())
+                    _audit_table_exists = "audit_log" in inspector.get_table_names()
 
         if not _audit_table_exists:
             logger.warning("Audit log table does not exist, skipping audit logging")

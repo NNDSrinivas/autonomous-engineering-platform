@@ -148,6 +148,8 @@ def confluence_connect(
         "Development mode: Storing tokens in plaintext. See SECURITY.md for production requirements."
     )
     # Use ON CONFLICT to handle existing connections (update credentials and timestamp)
+    # NOTE: SQLAlchemy logs parameters at DEBUG level. Do not enable DEBUG logging in
+    # production as it would expose plaintext tokens. See SQLAlchemy echo=False in config.
     db.execute(
         text(
             """

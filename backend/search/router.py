@@ -383,7 +383,9 @@ def reindex_confluence(
                     tag.decompose()
                 # Extract text and normalize whitespace, then truncate to max length
                 text_clean = soup.get_text(separator=" ")
-                text_clean = re.sub(r"\s+", " ", text_clean).strip()[:MAX_CONTENT_LENGTH]
+                text_clean = re.sub(r"\s+", " ", text_clean).strip()[
+                    :MAX_CONTENT_LENGTH
+                ]
                 try:
                     upsert_memory_object(
                         db,

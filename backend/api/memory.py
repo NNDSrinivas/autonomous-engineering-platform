@@ -11,6 +11,7 @@ from typing import List, Optional
 import json
 from ..core.db import get_db
 from ..context.schemas import AgentNoteOut
+from ..context.service import parse_tags_field
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -45,7 +46,9 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
     Stores short-term events like plans, decisions, errors, QA exchanges.
     Events are later consolidated into long-term agent notes.
     """
-    # Default org_id for MVP
+    # TODO: SECURITY - Hardcoded org_id bypasses tenant isolation
+    # This is MVP code - in production, extract org_id from authenticated user context
+    # to prevent unauthorized access/modification of other organizations' data
     org_id = "default_org"
 
     db.execute(
@@ -76,7 +79,9 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
     Takes ephemeral session events and creates a persistent, searchable note.
     Used for long-term memory and context retrieval.
     """
-    # Default org_id for MVP
+    # TODO: SECURITY - Hardcoded org_id bypasses tenant isolation
+    # This is MVP code - in production, extract org_id from authenticated user context
+    # to prevent unauthorized access/modification of other organizations' data
     org_id = "default_org"
 
     # Fetch session events for context
@@ -130,11 +135,7 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
         context=note["context"],
         summary=note["summary"],
         importance=note["importance"],
-        tags=(
-            note["tags"]
-            if isinstance(note["tags"], list)
-            else json.loads(note["tags"] or "[]")
-        ),
+        tags=parse_tags_field(note["tags"]),
         created_at=note["created_at"].isoformat() if note["created_at"] else None,
         updated_at=note["updated_at"].isoformat() if note["updated_at"] else None,
     )
@@ -143,6 +144,9 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
 @router.get("/notes/{task_key}", response_model=List[AgentNoteOut])
 def get_notes(task_key: str, db: Session = Depends(get_db)):
     """Fetch agent notes for task"""
+    # TODO: SECURITY - Hardcoded org_id bypasses tenant isolation
+    # This is MVP code - in production, extract org_id from authenticated user context
+    # to prevent unauthorized access to other organizations' data
     org_id = "default_org"
 
     rows = (
@@ -168,11 +172,7 @@ def get_notes(task_key: str, db: Session = Depends(get_db)):
             context=r["context"],
             summary=r["summary"],
             importance=r["importance"],
-            tags=(
-                r["tags"]
-                if isinstance(r["tags"], list)
-                else json.loads(r["tags"] or "[]")
-            ),
+            tags=parse_tags_field(r["tags"]),
             created_at=r["created_at"].isoformat() if r["created_at"] else None,
             updated_at=r["updated_at"].isoformat() if r["updated_at"] else None,
         )

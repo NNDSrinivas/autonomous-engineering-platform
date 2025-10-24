@@ -2,8 +2,25 @@
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 import json
+
+
+def parse_tags_field(tags: Union[list, str, None]) -> list:
+    """Parse tags field that can be either a list or JSON string.
+
+    Handles cross-database compatibility where PostgreSQL may return
+    native lists but SQLite returns JSON strings.
+
+    Args:
+        tags: Tags as list, JSON string, or None
+
+    Returns:
+        List of tag strings (empty list if None)
+    """
+    if isinstance(tags, list):
+        return tags
+    return json.loads(tags or "[]")
 
 
 def filter_by_policy(
@@ -69,11 +86,7 @@ def fetch_relevant_notes(
             "context": r["context"],
             "summary": r["summary"],
             "importance": r["importance"],
-            "tags": (
-                r["tags"]
-                if isinstance(r["tags"], list)
-                else json.loads(r["tags"] or "[]")
-            ),
+            "tags": parse_tags_field(r["tags"]),
             "created_at": r["created_at"].isoformat() if r["created_at"] else None,
             "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
         }

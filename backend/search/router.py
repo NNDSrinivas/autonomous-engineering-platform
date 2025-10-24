@@ -28,13 +28,42 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 logger = logging.getLogger(__name__)
 
 
+def validate_slack_timestamp(ts: str | None) -> str | None:
+    """Validate a Slack timestamp string.
+
+    Slack timestamps are numeric strings like '1698765432.123'.
+
+    Args:
+        ts: Timestamp string to validate, or None
+
+    Returns:
+        The validated timestamp string if valid, None if invalid or None input.
+    """
+    if ts is None:
+        return None
+    try:
+        float(ts)
+        return ts
+    except (TypeError, ValueError):
+        logger.debug("Invalid Slack timestamp: %r", ts)
+        return None
+
+
 def safe_update_newest(newest: str | None, ts: str) -> str | None:
     """Safely update and return the newest Slack timestamp string.
 
     Slack timestamps are numeric strings like '1698765432.123'. This helper
-    converts to float with error handling and logs invalid formats.
+    compares timestamps and returns the most recent one.
 
-    Returns the chosen newest (string) or the original newest if ts invalid.
+    Args:
+        newest: Current newest timestamp, or None if no timestamp yet
+        ts: New timestamp to compare
+
+    Returns:
+        - The most recent valid timestamp (string)
+        - newest if ts is invalid
+        - ts if newest is invalid or None
+        - None if both newest is None and ts is invalid (no valid timestamp yet)
     """
     try:
         ts_float = float(ts)
@@ -223,18 +252,14 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                 ),
                 {"o": org},
             ).scalar()
-            # Validate cursor timestamp - if invalid, start from None
-            newest = None
-            if cur:
-                try:
-                    float(cur)
-                    newest = cur
-                except (TypeError, ValueError):
-                    logger.warning(
-                        "Invalid cursor value for org_id=%s: %r, resetting to None",
-                        org,
-                        cur,
-                    )
+            # Validate cursor timestamp using shared validation logic
+            newest = validate_slack_timestamp(cur)
+            if cur and newest is None:
+                logger.warning(
+                    "Invalid cursor value for org_id=%s: %r, resetting to None",
+                    org,
+                    cur,
+                )
             count = 0
             # Log if channels are being truncated to help operators understand sync limits
             if len(chans) > MAX_CHANNELS_PER_SYNC:
@@ -333,12 +358,13 @@ def reindex_confluence(
             count = 0
             for p in pages:
                 text_html = p["html"]
-                # Robust HTML cleaning: Truncate raw HTML before parsing for performance,
-                # use BeautifulSoup to handle malformed tags, and apply an overhead factor
+                # Robust HTML cleaning: Truncate raw HTML before parsing for performance.
+                # Use BeautifulSoup to handle malformed tags, and apply an overhead factor
                 # to account for HTML tags vs extracted text size. See HTML_OVERHEAD_MULTIPLIER
                 # in backend/search/constants.py for configuration.
-                # Note: Truncation may occur mid-tag (e.g., <div class="foo), but BeautifulSoup
-                # handles malformed HTML gracefully and still extracts meaningful text content.
+                # Note: We truncate before parsing (rather than parsing full HTML then truncating text)
+                # to avoid memory/CPU issues with multi-MB Confluence pages. Truncation may occur
+                # mid-tag (e.g., <div class="foo), but BeautifulSoup handles malformed HTML gracefully.
                 max_html_length = MAX_CONTENT_LENGTH * HTML_OVERHEAD_MULTIPLIER
                 soup = BeautifulSoup(
                     text_html[:max_html_length],

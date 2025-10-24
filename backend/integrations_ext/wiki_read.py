@@ -26,7 +26,7 @@ def scan_docs(root="docs") -> List[Dict]:
             try:
                 content = f.read_text(encoding="utf-8")[:MAX_CONTENT_LENGTH]
                 # Include root in title to avoid collisions across different root directories
-                title = str(Path(root) / f.relative_to(p))
+                title = f"{root}/{f.relative_to(p)}"
                 out.append({"title": title, "url": None, "content": content})
             except (UnicodeDecodeError, IOError, OSError) as e:
                 logger.warning("Failed to read wiki file %s: %s", f, e)

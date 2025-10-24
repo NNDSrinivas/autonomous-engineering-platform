@@ -17,14 +17,21 @@ depends_on = None
 
 
 def upgrade():
+    # WARNING: bot_token and access_token columns contain sensitive credentials.
+    # Ensure encryption at rest and restrict access. See GitHub Issue #18.
     op.create_table(
         "slack_connection",
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("org_id", sa.String(64), nullable=False),
-        sa.Column("bot_token", sa.Text, nullable=False),
+        sa.Column("bot_token", sa.Text, nullable=False),  # Sensitive: Slack bot token
         sa.Column("team_id", sa.String(64)),
         sa.Column(
             "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
@@ -35,10 +42,17 @@ def upgrade():
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("org_id", sa.String(64), nullable=False),
         sa.Column("base_url", sa.Text, nullable=False),
-        sa.Column("access_token", sa.Text, nullable=False),
+        sa.Column(
+            "access_token", sa.Text, nullable=False
+        ),  # Sensitive: Confluence access token
         sa.Column("email", sa.Text),
         sa.Column(
             "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),

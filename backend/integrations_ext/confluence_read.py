@@ -36,16 +36,20 @@ def _extract_results(response_json: dict, space_key: str) -> List[Dict]:
     page_obj = response_json.get("page")
     if page_obj and isinstance(page_obj, dict):
         page_results = page_obj.get("results")
-        if page_results is not None:
+        if page_results is not None and isinstance(page_results, list):
             return page_results
 
     # Try direct results structure
     if "results" in response_json:
         direct_results = response_json.get("results")
-        if direct_results is not None:
+        if direct_results is not None and isinstance(direct_results, list):
             return direct_results
 
     # Return empty list as fallback
+    logger.warning(
+        "Unexpected Confluence API response structure for space %s: results not found or not a list",
+        space_key,
+    )
     return []
 
 

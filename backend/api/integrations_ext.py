@@ -57,7 +57,7 @@ def slack_connect(
     environment = os.getenv("ENVIRONMENT")
     if environment is None:
         raise HTTPException(
-            status_code=501,
+            status_code=500,
             detail=f"ENVIRONMENT variable not set. Token encryption not implemented. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
         )
     environment = environment.lower()
@@ -67,7 +67,7 @@ def slack_connect(
     allowed_environments = _parse_allowed_environments()
     if environment not in allowed_environments:
         raise HTTPException(
-            status_code=501,
+            status_code=500,
             detail=f"Token encryption not implemented. Production deployment blocked (ENVIRONMENT={environment}). See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
         )
 
@@ -126,7 +126,7 @@ def confluence_connect(
     environment = os.getenv("ENVIRONMENT")
     if environment is None:
         raise HTTPException(
-            status_code=501,
+            status_code=500,
             detail=f"ENVIRONMENT variable not set. Token encryption not implemented. See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
         )
     environment = environment.lower()
@@ -136,7 +136,7 @@ def confluence_connect(
     allowed_environments = _parse_allowed_environments()
     if environment not in allowed_environments:
         raise HTTPException(
-            status_code=501,
+            status_code=500,
             detail=f"Token encryption not implemented. Production deployment blocked (ENVIRONMENT={environment}). See GitHub Issue #18: {GITHUB_ISSUE_TOKEN_ENCRYPTION}",
         )
 

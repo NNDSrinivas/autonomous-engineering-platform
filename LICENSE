@@ -11,13 +11,30 @@ Licensor provides the Licensed Work (AEP) under the terms of this Business Sourc
 Usage Grant
 You may use, modify, and redistribute the Licensed Work, but you may not use the Licensed Work for a Commercial Purpose except under a separate, written agreement with NavraLabs.
 
-"Commercial Purpose" means using the Licensed Work or a modified version to host, provide, or offer a service to third parties, or to sell, license, or distribute it in exchange for a fee or other consideration.
+"Commercial Purpose" means using the Licensed Work or a modified version to:
+  (a) host, provide, or offer a service to third parties (including but not limited to hosting, SaaS, managed services, or any form of public deployment);
+  (b) sell, license, or distribute it in exchange for a fee or other consideration;
+  (c) deploy or publish the Licensed Work or derivatives as a publicly accessible application, website, or service;
+  (d) use the Licensed Work to provide services to external customers, users, or organizations;
+  (e) incorporate the Licensed Work into a product or service offered to third parties.
+
+For clarity, "Commercial Purpose" includes ANY public deployment or hosting, whether or not revenue is generated.
 
 Change Date and License
 On the Change Date, this license will automatically convert to the Change License stated above.
 
 Additional Use Grant
-Internal use, testing, research, and non-production evaluation are permitted.
+The following uses are permitted WITHOUT requiring a commercial agreement:
+  - Internal use within a single organization for non-production purposes
+  - Testing and evaluation in isolated, non-public environments
+  - Academic research and educational purposes
+  - Personal learning and development
+
+PROHIBITED USES (require written commercial agreement):
+  - Any public deployment or hosting (even if free/open to users)
+  - Forking and deploying as a competing service
+  - White-labeling or rebranding for external distribution
+  - Using in production to serve customers or end-users
 
 Conditions
 You must retain this license text and the above notice in all copies or substantial portions of the Licensed Work.

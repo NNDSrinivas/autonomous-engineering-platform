@@ -177,7 +177,7 @@ def semantic_pgvector(
     # Use cosine distance operator (<->) for ANN search
     # Note: pgvector returns distance (0-2 range), converted to similarity (0-1) later
     # pgvector will use HNSW or IVFFLAT index automatically
-    # Cast :qvec to vector type to resolve operator type ambiguity
+    # Cast the :qvec parameter to vector type to resolve operator type ambiguity
     rows = (
         db.execute(
             text(
@@ -268,8 +268,14 @@ def semantic_json(
         elif isinstance(embedding_data, bytes):
             vec = json.loads(embedding_data.decode("utf-8"))
         else:
-            # Fallback: try direct JSON parse
-            vec = json.loads(str(embedding_data))
+            # Unsupported type - log error and raise exception
+            logger.error(
+                f"Unsupported embedding_data type: {type(embedding_data).__name__}"
+            )
+            raise TypeError(
+                f"Cannot parse embedding_data of type {type(embedding_data).__name__}. "
+                f"Expected str, bytes, or memoryview."
+            )
 
         similarity = _cosine_similarity(query_vec, vec)
         scored.append((similarity, dict(r)))
@@ -305,7 +311,7 @@ def semantic(
     elif backend == "faiss":
         # FAISS backend is planned but not yet implemented
         logger.warning(
-            "FAISS backend is not yet implemented (set VECTOR_BACKEND=pgvector or json). "
+            "FAISS backend is not yet implemented (set VECTOR_BACKEND to 'pgvector' or 'json', case-insensitive). "
             "Falling back to JSON vector search."
         )
         return semantic_json(db, org_id, query_vec, sources, limit)

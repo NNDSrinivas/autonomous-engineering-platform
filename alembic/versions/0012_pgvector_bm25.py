@@ -29,6 +29,11 @@ depends_on = None
 EMBED_DIM = int(os.getenv("EMBED_DIM", "1536"))
 
 # Validate EMBED_DIM is within reasonable bounds to prevent SQL issues
+# Lower bound (128): Common minimum for semantic models (e.g., MiniLM, small BERT)
+# Upper bound (4096): Prevents excessive memory usage and index bloat
+#   - HNSW index memory: ~500-1000 bytes per vector + dimension * 4 bytes
+#   - 4096-dim vectors: ~16KB per vector in index structures
+#   - Most modern embeddings (OpenAI, Cohere, etc.) are ≤ 3072 dimensions
 if not (128 <= EMBED_DIM <= 4096):
     raise ValueError(f"EMBED_DIM must be between 128 and 4096, got {EMBED_DIM}")
 
@@ -78,8 +83,13 @@ def upgrade():
             )
 
         # Populate existing rows with tsvector data
-        # Note: For very large tables (millions of rows), consider running this update
-        # in batches outside of the migration to avoid long lock times
+        # Note: For very large tables (millions of rows), this single UPDATE statement
+        # may cause extended lock times during migration. Consider alternatives:
+        #   1. Run migration during maintenance window with acceptable downtime
+        #   2. Use scripts/backfill_pgvector.py for batched, resumable processing
+        #   3. Implement batched UPDATE in separate script with row limit checkpoints
+        # Current implementation prioritizes migration simplicity for typical datasets
+        # (< 1M rows, ~10-30 seconds lock time on modern hardware)
         op.execute(
             "UPDATE memory_chunk SET text_tsv = to_tsvector('english', coalesce(text, ''));"
         )

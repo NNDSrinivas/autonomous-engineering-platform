@@ -50,7 +50,7 @@ def _recency_score(timestamp: float, now: float) -> float:
         now: Current unix timestamp
 
     Returns:
-        Score between 0.0 (exclusive) and 1.0 (1.0 = recent, approaches 0.0 for old items)
+        Score between 0.0 (exclusive) and 1.0 (1.0 = recent, asymptotically approaches 0.0 for old items)
     """
     days_old = max(0.0, (now - timestamp) / 86400.0)
     return 1.0 / (1.0 + days_old / RECENCY_HALF_LIFE_DAYS)
@@ -240,8 +240,9 @@ def semantic_json(
         norm_a = math.sqrt(sum(x * x for x in a))
         norm_b = math.sqrt(sum(x * x for x in b))
         epsilon = 1e-8
-        norm_a = norm_a if norm_a > epsilon else 1.0
-        norm_b = norm_b if norm_b > epsilon else 1.0
+        # Return 0.0 for zero vectors instead of masking with 1.0
+        if norm_a <= epsilon or norm_b <= epsilon:
+            return 0.0
         return dot_product / (norm_a * norm_b)
 
     scored = []
@@ -250,8 +251,10 @@ def semantic_json(
         embedding_data = r["embedding"]
         if isinstance(embedding_data, str):
             vec = json.loads(embedding_data)
-        elif isinstance(embedding_data, (bytes, memoryview)):
-            vec = json.loads(bytes(embedding_data).decode("utf-8"))
+        elif isinstance(embedding_data, memoryview):
+            vec = json.loads(embedding_data.tobytes().decode("utf-8"))
+        elif isinstance(embedding_data, bytes):
+            vec = json.loads(embedding_data.decode("utf-8"))
         else:
             # Fallback: try direct JSON parse
             vec = json.loads(str(embedding_data))

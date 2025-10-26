@@ -79,7 +79,6 @@ def upgrade():
         )
 
         # Create GIN index on precomputed text_tsv column for efficient full-text search
-        # Index the stored tsvector column, not the computed expression
         op.execute(
             "CREATE INDEX IF NOT EXISTS idx_memory_chunk_tsv "
             "ON memory_chunk USING GIN (text_tsv);"

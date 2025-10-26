@@ -13,7 +13,7 @@
 Please **do not open public issues** for security vulnerabilities.
 
 Instead, email:
-**naga.nidamanuri@navralabs.com**
+**naga.nidamanuri@navralabs.ai**
 
 Provide:
 - A detailed description of the issue

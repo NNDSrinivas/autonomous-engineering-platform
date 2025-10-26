@@ -40,6 +40,13 @@ AUTHORITY_WEIGHT = 0.08
 # Recency scoring parameters
 RECENCY_HALF_LIFE_DAYS = 30.0  # Days until recency score decays by 50%
 
+# Hybrid search overfetch multiplier
+# Fetch 5x more results than requested to allow for:
+# - Deduplication of chunks from same document (keeps best chunk per doc)
+# - Reranking with hybrid scores (semantic + BM25 + recency + authority)
+# - Filtering that may remove some results
+HYBRID_OVERFETCH_MULTIPLIER = 5
+
 # JSON vector fallback parameters
 # WARNING: Linear scan can be slow on large tables. Use pgvector for production.
 JSON_VECTOR_SCAN_LIMIT = 2000  # Maximum rows to scan in linear search
@@ -162,6 +169,13 @@ def semantic_pgvector(
 ) -> List[Tuple[float, Dict[str, Any]]]:
     """Semantic search using pgvector ANN
 
+    Uses the pgvector <-> (cosine distance) operator which returns values in
+    the range [0, 2]. These distances are converted to similarity scores via
+    similarity = 1 - distance, resulting in scores in the range [-1, 1], where:
+    - 1.0 = identical vectors (distance 0)
+    - 0.0 = orthogonal vectors (distance 1)
+    - -1.0 = opposite vectors (distance 2)
+
     Args:
         db: Database session
         org_id: Organization ID
@@ -170,7 +184,7 @@ def semantic_pgvector(
         limit: Maximum results
 
     Returns:
-        List of (similarity_score, row_dict) tuples
+        List of (similarity_score, row_dict) tuples with scores in [-1, 1]
     """
     source_filter = "AND mo.source = ANY(:src)" if sources else ""
 
@@ -344,11 +358,15 @@ def hybrid_search(
     # Current timestamp for recency scoring
     now = time.time()
 
-    # Fetch semantic results (overfetch for reranking)
-    sem_results = semantic(db, org_id, query_vec, sources, limit=5 * k)
+    # Fetch semantic results (overfetch for reranking and deduplication)
+    sem_results = semantic(
+        db, org_id, query_vec, sources, limit=HYBRID_OVERFETCH_MULTIPLIER * k
+    )
 
     # Fetch BM25 keyword scores
-    bm25_scores = _bm25(db, org_id, query, sources, limit=5 * k)
+    bm25_scores = _bm25(
+        db, org_id, query, sources, limit=HYBRID_OVERFETCH_MULTIPLIER * k
+    )
 
     # Group results by (source, foreign_id) for deduplication
     buckets: Dict[Tuple[str, str], Dict[str, Any]] = {}
@@ -356,12 +374,17 @@ def hybrid_search(
     for similarity, row in sem_results:
         key = (row["source"], row["foreign_id"])
         if key not in buckets:
-            buckets[key] = {"best_sim": similarity, "best_row": row, "rows": []}
-        buckets[key]["rows"].append((similarity, row))
-        # Track best similarity score for this document
-        if similarity > buckets[key]["best_sim"]:
-            buckets[key]["best_sim"] = similarity
-            buckets[key]["best_row"] = row
+            buckets[key] = {
+                "best_sim": similarity,
+                "best_row": row,
+                "rows": [(similarity, row)],
+            }
+        else:
+            buckets[key]["rows"].append((similarity, row))
+            # Update to best similarity score for this document
+            if similarity > buckets[key]["best_sim"]:
+                buckets[key]["best_sim"] = similarity
+                buckets[key]["best_row"] = row
 
     # Compute hybrid scores
     hybrid_results = []

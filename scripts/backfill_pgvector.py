@@ -114,10 +114,8 @@ def backfill_vectors():
                         truncated_vec = vec[:EMBED_DIM]
                         vec = truncated_vec + [0.0] * (EMBED_DIM - len(truncated_vec))
 
-                    # Format as PostgreSQL vector literal
-                    # Note: String join is acceptable for migration script. For high-throughput
-                    # production code, consider psycopg2 binary format or numpy for optimization.
-                    vec_str = f'[{",".join(str(x) for x in vec)}]'
+                    # Format as PostgreSQL vector literal using json.dumps for efficiency
+                    vec_str = json.dumps(vec)
 
                     # Update row
                     cur.execute(

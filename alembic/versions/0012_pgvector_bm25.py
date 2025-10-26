@@ -121,8 +121,13 @@ def upgrade():
         #          WHERE text_tsv IS NULL
         #          LIMIT 1000
         #        );"
-        #      updated=\$?
-        #      [ \$updated -eq 0 ] && [ \$(psql $DATABASE_URL -t -c "SELECT COUNT(*) FROM memory_chunk WHERE text_tsv IS NULL") -eq 0 ] && break
+        #      if [ $? -ne 0 ]; then
+        #        echo "Error: psql command failed"
+        #        exit 1
+        #      fi
+        #      remaining=$(psql $DATABASE_URL -t -c "SELECT COUNT(*) FROM memory_chunk WHERE text_tsv IS NULL" | xargs)
+        #      echo "Remaining rows: $remaining"
+        #      [ "$remaining" -eq 0 ] && break
         #      sleep 0.1  # Brief pause between batches
         #    done
         if os.getenv("SKIP_TSVECTOR_UPDATE", "0") == "1":

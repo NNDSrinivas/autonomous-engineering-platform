@@ -200,8 +200,9 @@ def semantic_pgvector(
     source_filter = "AND mo.source = ANY(:src)" if sources else ""
 
     # Use cosine distance operator (<->) for ANN search
-    # Note: pgvector <-> operator returns cosine distance in range [0, 2]; we convert to similarity in [-1, 1] via (1 - distance):
+    # Note: The pgvector <-> operator computes cosine distance in range [0, 2]; we convert to similarity in [-1, 1] via (1 - distance):
     #   1.0 = identical vectors (distance 0), 0.0 = orthogonal (distance 1), -1.0 = opposite (distance 2)
+    # This range and conversion apply specifically to the cosine distance metric.
     # pgvector will use HNSW or IVFFLAT index automatically
     # Cast the :qvec parameter to vector type to resolve operator type ambiguity
     rows = (
@@ -413,10 +414,10 @@ def hybrid_search(
         auth_score = _authority_score(meta)
         bm25_score = bm25_scores.get(key, 0.0)
 
-        # Normalize BM25 to [0, 1) range using robust normalization
+        # Normalize BM25 to [0, 1) range (asymptotically approaches 1.0 for large scores)
         # ts_rank returns non-negative values, but we clamp to ensure valid input
         # ts_rank can return values > 1.0 for highly relevant matches, so we use
-        # a smooth normalization function instead of hard ceiling with min()
+        # a smooth normalization function x/(1+x) instead of hard ceiling with min()
         bm25_score = max(0.0, bm25_score)
         bm25_score = bm25_score / (1.0 + bm25_score)
 

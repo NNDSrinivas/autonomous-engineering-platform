@@ -181,11 +181,15 @@ def semantic_pgvector(
     """Semantic search using pgvector ANN
 
     Uses the pgvector <-> (cosine distance) operator which returns values in
-    the range [0, 2]. These distances are converted to similarity scores via
-    similarity = 1 - distance, resulting in scores in the range [-1, 1], where:
+    the range [0, 2] for normalized vectors. These distances are converted to
+    similarity scores via similarity = 1 - distance, resulting in scores in the
+    range [-1, 1], where:
     - 1.0 = identical vectors (distance 0)
     - 0.0 = orthogonal vectors (distance 1)
     - -1.0 = opposite vectors (distance 2)
+
+    Note: Assumes embedding vectors are L2-normalized (standard for most
+    embedding models like OpenAI, Cohere, sentence-transformers).
 
     Args:
         db: Database session

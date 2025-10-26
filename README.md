@@ -1284,7 +1284,7 @@ On **2029-01-01**, this license automatically converts to **Apache License 2.0**
 
 Need to deploy AEP in production or offer it as a service?
 
-**Contact:** legal@navralabs.com  
+**Contact:** legal@navralabs.ai  
 **Founder:** NagaDurga S. Nidamanuri
 
 We offer flexible commercial licenses for:

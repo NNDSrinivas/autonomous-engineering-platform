@@ -28,7 +28,7 @@ from ..core.config import settings
 from .embeddings import embed_texts
 
 
-# Hybrid ranking weights (configurable via PR-15 constants)
+# Hybrid ranking weights
 SEMANTIC_WEIGHT = 0.55
 KEYWORD_WEIGHT = 0.25
 RECENCY_WEIGHT = 0.12
@@ -300,9 +300,7 @@ def semantic(
     if backend == "pgvector":
         return semantic_pgvector(db, org_id, query_vec, sources, limit)
     elif backend == "faiss":
-        # TODO: Implement FAISS backend (optional for PR-16)
-        # from .faiss_index import semantic_faiss
-        # return semantic_faiss(db, org_id, query_vec, sources, limit)
+        # TODO: Implement FAISS backend in a future PR
         # Fallback to JSON for now
         return semantic_json(db, org_id, query_vec, sources, limit)
     else:

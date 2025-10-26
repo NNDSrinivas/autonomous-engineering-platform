@@ -107,29 +107,10 @@ def upgrade():
         # - Production deployments can plan maintenance windows or skip this step
         # - Post-migration batched backfill provides better observability and control
         #
-        # For large tables (>1M rows), we strongly recommend:
-        # 1. Set SKIP_TSVECTOR_UPDATE=1 to skip this step entirely
-        # 2. Run batched UPDATE post-migration using a script with separate transactions:
-        #    #!/bin/bash
-        #    # Batched tsvector update script (run outside migration)
-        #    while true; do
-        #      psql $DATABASE_URL -c "
-        #        UPDATE memory_chunk
-        #        SET text_tsv = to_tsvector('english', coalesce(text, ''))
-        #        WHERE id IN (
-        #          SELECT id FROM memory_chunk
-        #          WHERE text_tsv IS NULL
-        #          LIMIT 1000
-        #        );"
-        #      if [ $? -ne 0 ]; then
-        #        echo "Error: psql command failed"
-        #        exit 1
-        #      fi
-        #      remaining=$(psql $DATABASE_URL -t -c "SELECT COUNT(*) FROM memory_chunk WHERE text_tsv IS NULL" | xargs)
-        #      echo "Remaining rows: $remaining"
-        #      [ "$remaining" -eq 0 ] && break
-        #      sleep 0.1  # Brief pause between batches
-        #    done
+        # For large tables (>1M rows):
+        # 1. Set SKIP_TSVECTOR_UPDATE=1 to skip this step
+        # 2. Run batched UPDATE post-migration with separate transactions (1000 rows per batch)
+        # 3. See scripts/backfill_pgvector.py for reference batching pattern
         if os.getenv("SKIP_TSVECTOR_UPDATE", "0") == "1":
             print(
                 "[alembic/0012_pgvector_bm25] Skipping tsvector UPDATE due to SKIP_TSVECTOR_UPDATE=1. "

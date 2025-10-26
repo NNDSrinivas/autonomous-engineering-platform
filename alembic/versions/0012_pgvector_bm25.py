@@ -90,9 +90,20 @@ def upgrade():
         #   3. Implement batched UPDATE in separate script with row limit checkpoints
         # Current implementation prioritizes migration simplicity for typical datasets
         # (< 1M rows, ~10-30 seconds lock time on modern hardware)
-        op.execute(
-            "UPDATE memory_chunk SET text_tsv = to_tsvector('english', coalesce(text, ''));"
-        )
+        if os.getenv("SKIP_TSVECTOR_UPDATE", "0") == "1":
+            print(
+                "[alembic/0012_pgvector_bm25] Skipping tsvector UPDATE due to SKIP_TSVECTOR_UPDATE=1. "
+                "You must populate text_tsv for existing rows after migration (e.g., via batched UPDATE)."
+            )
+        else:
+            print(
+                "[alembic/0012_pgvector_bm25] WARNING: Running single UPDATE to populate text_tsv. "
+                "This may lock memory_chunk table on large datasets. "
+                "For >1M rows, consider setting SKIP_TSVECTOR_UPDATE=1 and running batched updates."
+            )
+            op.execute(
+                "UPDATE memory_chunk SET text_tsv = to_tsvector('english', coalesce(text, ''));"
+            )
 
         # Create GIN index on precomputed text_tsv column for efficient full-text search
         op.execute(

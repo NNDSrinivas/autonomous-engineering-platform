@@ -30,6 +30,8 @@ MIN_EMBED_DIM = 128  # Common minimum for semantic models (MiniLM, small BERT)
 MAX_EMBED_DIM = 4096  # Prevents excessive memory usage and index bloat
 
 # Get embedding dimension from environment or use default
+# Note: This must match backend/core/config.py:embed_dim for consistency.
+# We read from env here because migrations run independently of application config.
 EMBED_DIM = int(os.getenv("EMBED_DIM", "1536"))
 
 

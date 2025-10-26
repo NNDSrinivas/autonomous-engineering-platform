@@ -40,6 +40,7 @@ def backfill_vectors():
     print(f"Embedding dimension: {EMBED_DIM}")
     print(f"Batch size: {BATCH_SIZE}")
 
+    conn = None  # Initialize to avoid NameError in exception handlers
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()

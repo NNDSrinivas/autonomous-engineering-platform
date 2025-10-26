@@ -42,6 +42,26 @@ JSON_VECTOR_SCAN_LIMIT = 8000  # Maximum rows to scan in linear search
 EXCERPT_MAX_LENGTH = 700  # Maximum excerpt length in characters
 
 
+def _cosine_similarity(a: List[float], b: List[float]) -> float:
+    """Compute cosine similarity between two vectors
+
+    Args:
+        a: First vector
+        b: Second vector
+
+    Returns:
+        Cosine similarity score between -1.0 and 1.0, or 0.0 for zero vectors
+    """
+    dot_product = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    epsilon = 1e-8
+    # Return 0.0 for zero vectors instead of masking with 1.0
+    if norm_a <= epsilon or norm_b <= epsilon:
+        return 0.0
+    return dot_product / (norm_a * norm_b)
+
+
 def _recency_score(timestamp: float, now: float) -> float:
     """Calculate recency score with exponential decay
 
@@ -234,17 +254,6 @@ def semantic_json(
         .all()
     )
 
-    def cosine_similarity(a: List[float], b: List[float]) -> float:
-        """Compute cosine similarity between two vectors"""
-        dot_product = sum(x * y for x, y in zip(a, b))
-        norm_a = math.sqrt(sum(x * x for x in a))
-        norm_b = math.sqrt(sum(x * x for x in b))
-        epsilon = 1e-8
-        # Return 0.0 for zero vectors instead of masking with 1.0
-        if norm_a <= epsilon or norm_b <= epsilon:
-            return 0.0
-        return dot_product / (norm_a * norm_b)
-
     scored = []
     for r in rows:
         # Handle different types returned by database (str, bytes, memoryview)
@@ -259,7 +268,7 @@ def semantic_json(
             # Fallback: try direct JSON parse
             vec = json.loads(str(embedding_data))
 
-        similarity = cosine_similarity(query_vec, vec)
+        similarity = _cosine_similarity(query_vec, vec)
         scored.append((similarity, dict(r)))
 
     # Sort by similarity descending and return top-k

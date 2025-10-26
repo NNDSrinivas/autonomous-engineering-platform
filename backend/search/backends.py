@@ -302,11 +302,11 @@ def semantic(
     if backend == "pgvector":
         return semantic_pgvector(db, org_id, query_vec, sources, limit)
     elif backend == "faiss":
-        # TODO: Implement FAISS backend in a future PR
+        # FAISS backend is planned but not yet implemented
         logger.warning(
-            "FAISS backend configured but not implemented, falling back to JSON vector search"
+            "FAISS backend is not yet implemented (set VECTOR_BACKEND=pgvector or json). "
+            "Falling back to JSON vector search."
         )
-        # Fallback to JSON for now
         return semantic_json(db, org_id, query_vec, sources, limit)
     else:
         # Default to JSON backend

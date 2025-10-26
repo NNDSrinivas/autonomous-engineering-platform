@@ -288,7 +288,8 @@ def semantic_json(
             )
             raise TypeError(
                 f"Cannot parse embedding_data of type {type(embedding_data).__name__}. "
-                f"Expected str, bytes, or memoryview."
+                f"Expected str, bytes, or memoryview. "
+                f"This may indicate a database configuration issue. Please verify the embedding column data type in the database schema."
             )
 
         similarity = _cosine_similarity(query_vec, vec)

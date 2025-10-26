@@ -45,6 +45,8 @@ RECENCY_HALF_LIFE_DAYS = 30.0  # Days until recency score decays by 50%
 # - Deduplication of chunks from same document (keeps best chunk per doc)
 # - Reranking with hybrid scores (semantic + BM25 + recency + authority)
 # - Filtering that may remove some results
+# Note: 5x is a conservative constant. Could be made adaptive based on deduplication
+# rates, but would require tracking historical metrics and adds complexity.
 HYBRID_OVERFETCH_MULTIPLIER = 5
 
 # JSON vector fallback parameters
@@ -62,7 +64,13 @@ def _cosine_similarity(a: List[float], b: List[float]) -> float:
 
     Returns:
         Cosine similarity score between -1.0 and 1.0, or 0.0 for zero vectors
+
+    Raises:
+        ValueError: If vectors have different dimensions
     """
+    if len(a) != len(b):
+        raise ValueError(f"Vectors must have same dimension, got {len(a)} and {len(b)}")
+
     dot_product = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
@@ -128,6 +136,7 @@ def _bm25(
     Returns:
         Dictionary mapping (source, foreign_id) tuples to BM25 scores
     """
+    # Early return if BM25 is disabled - avoid unnecessary processing
     if not settings.bm25_enabled:
         return {}
 

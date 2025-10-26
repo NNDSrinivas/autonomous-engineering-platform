@@ -14,6 +14,7 @@ Implements hybrid ranking with configurable weights:
 """
 
 import json
+import logging
 import math
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -27,6 +28,8 @@ from ..core.config import settings
 # This is safe because embeddings.py doesn't import from backends
 from .embeddings import embed_texts
 
+
+logger = logging.getLogger(__name__)
 
 # Hybrid ranking weights
 SEMANTIC_WEIGHT = 0.55
@@ -146,7 +149,6 @@ def _bm25(
         return {(r["source"], r["foreign_id"]): float(r["rnk"] or 0.0) for r in rows}
     else:
         # SQLite fallback: simple keyword overlap scoring
-        # TODO: Implement FTS5 for SQLite if needed
         return {}
 
 
@@ -301,6 +303,9 @@ def semantic(
         return semantic_pgvector(db, org_id, query_vec, sources, limit)
     elif backend == "faiss":
         # TODO: Implement FAISS backend in a future PR
+        logger.warning(
+            "FAISS backend configured but not implemented, falling back to JSON vector search"
+        )
         # Fallback to JSON for now
         return semantic_json(db, org_id, query_vec, sources, limit)
     else:

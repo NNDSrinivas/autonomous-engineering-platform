@@ -74,6 +74,8 @@ def upgrade():
             )
 
         # Populate existing rows with tsvector data
+        # Note: For very large tables (millions of rows), consider running this update
+        # in batches outside of the migration to avoid long lock times
         op.execute(
             "UPDATE memory_chunk SET text_tsv = to_tsvector('english', coalesce(text, ''));"
         )

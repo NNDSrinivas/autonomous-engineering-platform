@@ -111,9 +111,8 @@ def backfill_vectors():
                             f"Warning: Row {chunk_id} has dimension {len(vec)}, expected {EMBED_DIM}. Padding/truncating."
                         )
                         # Truncate first, then pad only what's needed for efficiency
-                        vec = vec[:EMBED_DIM] + [0.0] * (
-                            EMBED_DIM - len(vec[:EMBED_DIM])
-                        )
+                        truncated_vec = vec[:EMBED_DIM]
+                        vec = truncated_vec + [0.0] * (EMBED_DIM - len(truncated_vec))
 
                     # Format as PostgreSQL vector literal
                     vec_str = f'[{",".join(str(x) for x in vec)}]'

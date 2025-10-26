@@ -28,6 +28,10 @@ depends_on = None
 # Get embedding dimension from environment or use default
 EMBED_DIM = int(os.getenv("EMBED_DIM", "1536"))
 
+# Validate EMBED_DIM is within reasonable bounds to prevent SQL issues
+if not (128 <= EMBED_DIM <= 4096):
+    raise ValueError(f"EMBED_DIM must be between 128 and 4096, got {EMBED_DIM}")
+
 
 def upgrade():
     # Enable pgvector extension (safe if not PostgreSQL or already exists)

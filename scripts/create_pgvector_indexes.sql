@@ -5,7 +5,7 @@
 -- HNSW (Hierarchical Navigable Small World):
 --   - Best for: High recall, fast queries
 --   - Requires: pgvector >= 0.5.0
---   - Memory: ~200 bytes per vector
+--   - Memory: ~500-1000 bytes per vector (depends on M, ef_construction parameters)
 --   - Build time: Slower
 -- 
 -- IVFFLAT (Inverted File with Flat):

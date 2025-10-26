@@ -41,7 +41,8 @@ AUTHORITY_WEIGHT = 0.08
 RECENCY_HALF_LIFE_DAYS = 30.0  # Days until recency score decays by 50%
 
 # JSON vector fallback parameters
-JSON_VECTOR_SCAN_LIMIT = 8000  # Maximum rows to scan in linear search
+# WARNING: Linear scan can be slow on large tables. Use pgvector for production.
+JSON_VECTOR_SCAN_LIMIT = 2000  # Maximum rows to scan in linear search
 EXCERPT_MAX_LENGTH = 700  # Maximum excerpt length in characters
 
 
@@ -174,6 +175,7 @@ def semantic_pgvector(
     source_filter = "AND mo.source = ANY(:src)" if sources else ""
 
     # Use cosine distance operator (<->) for ANN search
+    # Note: pgvector returns distance (0-2 range), converted to similarity (0-1) later
     # pgvector will use HNSW or IVFFLAT index automatically
     # Cast :qvec to vector type to resolve operator type ambiguity
     rows = (
@@ -234,7 +236,6 @@ def semantic_json(
         List of (similarity_score, row_dict) tuples
     """
     source_filter = "AND mo.source = ANY(:src)" if sources else ""
-    scan_limit = getattr(settings, "json_vector_scan_limit", JSON_VECTOR_SCAN_LIMIT)
 
     rows = (
         db.execute(
@@ -250,7 +251,7 @@ def semantic_json(
       LIMIT :scan_limit
     """
             ),
-            {"o": org_id, "src": sources, "scan_limit": scan_limit},
+            {"o": org_id, "src": sources, "scan_limit": JSON_VECTOR_SCAN_LIMIT},
         )
         .mappings()
         .all()

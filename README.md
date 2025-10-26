@@ -1276,7 +1276,7 @@ This project is licensed under the **Business Source License 1.1**.
 - ❌ **Rebrand** - Cannot white-label or use "NavraLabs" trademarks
 - ❌ **Production Use** - Cannot use to serve external customers
 
-### Change Date: January 1, 2029
+### Change Date: 2029-01-01
 
 On **2029-01-01**, this license automatically converts to **Apache License 2.0**, making it fully permissive and open-source.
 

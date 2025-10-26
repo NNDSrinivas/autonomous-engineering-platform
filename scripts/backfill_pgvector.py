@@ -114,7 +114,7 @@ def backfill_vectors():
                         truncated_vec = vec[:EMBED_DIM]
                         vec = truncated_vec + [0.0] * (EMBED_DIM - len(truncated_vec))
 
-                    # Format as PostgreSQL vector literal using json.dumps for efficiency
+                    # Format as JSON array for pgvector parameter binding
                     vec_str = json.dumps(vec)
 
                     # Update row

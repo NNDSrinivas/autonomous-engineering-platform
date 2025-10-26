@@ -40,6 +40,15 @@ AUTHORITY_WEIGHT = 0.08
 # Recency scoring parameters
 RECENCY_HALF_LIFE_DAYS = 30.0  # Half-life parameter in recency decay formula (score reaches 0.5 when days == RECENCY_HALF_LIFE_DAYS)
 
+# Authority scoring parameters
+AUTHORITY_COMPLETED_STATUSES = frozenset(("Done", "Merged", "Closed"))
+AUTHORITY_HIGH_REPLIES_THRESHOLD = 5
+AUTHORITY_HIGH_VIEWS_THRESHOLD = 50
+AUTHORITY_COMPLETED_SCORE = 0.3
+AUTHORITY_HIGH_REPLIES_SCORE = 0.2
+AUTHORITY_HIGH_VIEWS_SCORE = 0.1
+AUTHORITY_MAX_SCORE = 0.5
+
 # Hybrid search overfetch multiplier
 # Fetch 5x more results than requested to allow for:
 # - Deduplication of chunks from same document (keeps best chunk per doc)
@@ -109,18 +118,18 @@ def _authority_score(meta: Dict[str, Any]) -> float:
     score = 0.0
 
     # Completed work signals quality
-    if meta.get("ticket_status") in ("Done", "Merged", "Closed"):
-        score += 0.3
+    if meta.get("ticket_status") in AUTHORITY_COMPLETED_STATUSES:
+        score += AUTHORITY_COMPLETED_SCORE
 
     # High engagement signals importance
-    if meta.get("replies", 0) > 5:
-        score += 0.2
+    if meta.get("replies", 0) > AUTHORITY_HIGH_REPLIES_THRESHOLD:
+        score += AUTHORITY_HIGH_REPLIES_SCORE
 
     # View count indicates relevance
-    if meta.get("views", 0) > 50:
-        score += 0.1
+    if meta.get("views", 0) > AUTHORITY_HIGH_VIEWS_THRESHOLD:
+        score += AUTHORITY_HIGH_VIEWS_SCORE
 
-    return min(0.5, score)
+    return min(AUTHORITY_MAX_SCORE, score)
 
 
 def _bm25(

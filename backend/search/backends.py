@@ -38,7 +38,7 @@ RECENCY_WEIGHT = 0.12
 AUTHORITY_WEIGHT = 0.08
 
 # Recency scoring parameters
-RECENCY_HALF_LIFE_DAYS = 30.0  # Days until recency score decays by 50%
+RECENCY_HALF_LIFE_DAYS = 30.0  # Half-life parameter in recency decay formula (score reaches 0.5 when days == RECENCY_HALF_LIFE_DAYS)
 
 # Hybrid search overfetch multiplier
 # Fetch 5x more results than requested to allow for:
@@ -53,6 +53,9 @@ HYBRID_OVERFETCH_MULTIPLIER = 5
 # WARNING: Linear scan can be slow on large tables. Use pgvector for production.
 JSON_VECTOR_SCAN_LIMIT = 2000  # Maximum rows to scan in linear search
 EXCERPT_MAX_LENGTH = 700  # Maximum excerpt length in characters
+
+# Numerical stability parameters
+EPSILON = 1e-8  # Small value to prevent division by zero in cosine similarity
 
 
 def _cosine_similarity(a: List[float], b: List[float]) -> float:
@@ -74,9 +77,8 @@ def _cosine_similarity(a: List[float], b: List[float]) -> float:
     dot_product = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
-    epsilon = 1e-8
     # Return 0.0 for zero vectors instead of masking with 1.0
-    if norm_a <= epsilon or norm_b <= epsilon:
+    if norm_a <= EPSILON or norm_b <= EPSILON:
         return 0.0
     return dot_product / (norm_a * norm_b)
 

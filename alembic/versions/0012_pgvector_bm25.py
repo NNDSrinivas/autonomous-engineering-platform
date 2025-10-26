@@ -25,6 +25,10 @@ down_revision = "0011_context_pack_memory_notes"
 branch_labels = None
 depends_on = None
 
+# Embedding dimension validation constants
+MIN_EMBED_DIM = 128  # Common minimum for semantic models (MiniLM, small BERT)
+MAX_EMBED_DIM = 4096  # Prevents excessive memory usage and index bloat
+
 # Get embedding dimension from environment or use default
 EMBED_DIM = int(os.getenv("EMBED_DIM", "1536"))
 
@@ -37,9 +41,9 @@ def upgrade():
     #   - HNSW index memory: ~500-1000 bytes per vector + dimension * 4 bytes
     #   - 4096-dim vectors: ~16KB per vector in index structures
     #   - Most modern embeddings (OpenAI, Cohere, etc.) are ≤ 3072 dimensions
-    if not (128 <= EMBED_DIM <= 4096):
+    if not (MIN_EMBED_DIM <= EMBED_DIM <= MAX_EMBED_DIM):
         raise ValueError(
-            f"EMBED_DIM must be between 128 and 4096, got {EMBED_DIM}. "
+            f"EMBED_DIM must be between {MIN_EMBED_DIM} and {MAX_EMBED_DIM}, got {EMBED_DIM}. "
             "This ensures compatibility with common embedding models and prevents excessive memory usage. "
             "Check your EMBED_DIM environment variable and ensure it matches your embedding model's dimensions."
         )

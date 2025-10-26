@@ -224,7 +224,9 @@ def semantic_pgvector(
                 "o": org_id,
                 "src": sources,
                 "lim": limit,
-                "qvec": f'[{",".join(str(x) for x in query_vec)}]',
+                "qvec": json.dumps(
+                    query_vec
+                ),  # More efficient than str join for large arrays
             },
         )
         .mappings()

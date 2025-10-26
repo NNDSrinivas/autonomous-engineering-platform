@@ -109,18 +109,22 @@ def upgrade():
         #
         # For large tables (>1M rows), we strongly recommend:
         # 1. Set SKIP_TSVECTOR_UPDATE=1 to skip this step entirely
-        # 2. Run batched UPDATE post-migration with explicit transaction control:
-        #    DO $$
-        #    DECLARE batch_size INT := 1000; updated INT;
-        #    BEGIN
-        #      LOOP
-        #        UPDATE memory_chunk SET text_tsv = to_tsvector('english', coalesce(text, ''))
-        #        WHERE id IN (SELECT id FROM memory_chunk WHERE text_tsv IS NULL LIMIT batch_size);
-        #        GET DIAGNOSTICS updated = ROW_COUNT;
-        #        COMMIT; -- Release locks between batches
-        #        EXIT WHEN updated < batch_size;
-        #      END LOOP;
-        #    END $$;
+        # 2. Run batched UPDATE post-migration using a script with separate transactions:
+        #    #!/bin/bash
+        #    # Batched tsvector update script (run outside migration)
+        #    while true; do
+        #      psql $DATABASE_URL -c "
+        #        UPDATE memory_chunk
+        #        SET text_tsv = to_tsvector('english', coalesce(text, ''))
+        #        WHERE id IN (
+        #          SELECT id FROM memory_chunk
+        #          WHERE text_tsv IS NULL
+        #          LIMIT 1000
+        #        );"
+        #      updated=\$?
+        #      [ \$updated -eq 0 ] && [ \$(psql $DATABASE_URL -t -c "SELECT COUNT(*) FROM memory_chunk WHERE text_tsv IS NULL") -eq 0 ] && break
+        #      sleep 0.1  # Brief pause between batches
+        #    done
         if os.getenv("SKIP_TSVECTOR_UPDATE", "0") == "1":
             print(
                 "[alembic/0012_pgvector_bm25] Skipping tsvector UPDATE due to SKIP_TSVECTOR_UPDATE=1. "

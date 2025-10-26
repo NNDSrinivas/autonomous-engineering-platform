@@ -121,12 +121,12 @@ def upgrade():
         # 2. Run batched UPDATE post-migration with separate transactions (1000 rows per batch)
         # 3. See scripts/backfill_pgvector.py for reference batching pattern
         if os.getenv("SKIP_TSVECTOR_UPDATE", "0") == "1":
-            print(
+            logger.info(
                 "[alembic/0012_pgvector_bm25] Skipping tsvector UPDATE due to SKIP_TSVECTOR_UPDATE=1. "
                 "You must populate text_tsv for existing rows after migration (e.g., via batched UPDATE)."
             )
         else:
-            print(
+            logger.warning(
                 "[alembic/0012_pgvector_bm25] WARNING: Running single UPDATE to populate text_tsv. "
                 "This may lock memory_chunk table on large datasets. "
                 "For >1M rows, consider setting SKIP_TSVECTOR_UPDATE=1 and running batched updates."

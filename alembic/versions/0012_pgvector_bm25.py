@@ -104,8 +104,8 @@ def upgrade():
         # Note: For very large tables (millions of rows), this single UPDATE statement
         # may cause extended lock times during migration. Consider alternatives:
         #   1. Run migration during maintenance window with acceptable downtime
-        #   2. Use scripts/backfill_pgvector.py for batched, resumable processing
-        #   3. Implement batched UPDATE in separate script with row limit checkpoints
+        #   2. Implement batched UPDATE in separate script with row limit checkpoints
+        #      (Note: scripts/backfill_pgvector.py handles embedding_vec migration only)
         # Current implementation prioritizes migration simplicity for typical datasets
         # (< 1M rows, ~10-30 seconds lock time on modern hardware)
         #

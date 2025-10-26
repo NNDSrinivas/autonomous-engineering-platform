@@ -38,7 +38,11 @@ def upgrade():
     #   - 4096-dim vectors: ~16KB per vector in index structures
     #   - Most modern embeddings (OpenAI, Cohere, etc.) are ≤ 3072 dimensions
     if not (128 <= EMBED_DIM <= 4096):
-        raise ValueError(f"EMBED_DIM must be between 128 and 4096, got {EMBED_DIM}")
+        raise ValueError(
+            f"EMBED_DIM must be between 128 and 4096, got {EMBED_DIM}. "
+            "This ensures compatibility with common embedding models and prevents excessive memory usage. "
+            "Check your EMBED_DIM environment variable and ensure it matches your embedding model's dimensions."
+        )
 
     # Enable pgvector extension (safe if not PostgreSQL or already exists)
     try:
@@ -98,6 +102,21 @@ def upgrade():
         # - Batched updates require complex state tracking and error recovery
         # - Production deployments can plan maintenance windows or skip this step
         # - Post-migration batched backfill provides better observability and control
+        #
+        # For large tables (>1M rows), we strongly recommend:
+        # 1. Set SKIP_TSVECTOR_UPDATE=1 to skip this step entirely
+        # 2. Run batched UPDATE post-migration with explicit transaction control:
+        #    DO $$
+        #    DECLARE batch_size INT := 1000; updated INT;
+        #    BEGIN
+        #      LOOP
+        #        UPDATE memory_chunk SET text_tsv = to_tsvector('english', coalesce(text, ''))
+        #        WHERE id IN (SELECT id FROM memory_chunk WHERE text_tsv IS NULL LIMIT batch_size);
+        #        GET DIAGNOSTICS updated = ROW_COUNT;
+        #        COMMIT; -- Release locks between batches
+        #        EXIT WHEN updated < batch_size;
+        #      END LOOP;
+        #    END $$;
         if os.getenv("SKIP_TSVECTOR_UPDATE", "0") == "1":
             print(
                 "[alembic/0012_pgvector_bm25] Skipping tsvector UPDATE due to SKIP_TSVECTOR_UPDATE=1. "

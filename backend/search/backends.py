@@ -138,7 +138,7 @@ def _bm25(
           FROM memory_chunk mc
           JOIN memory_object mo ON mo.id = mc.object_id
           WHERE mo.org_id = :o {source_filter}
-          ORDER BY rnk DESC NULLS LAST
+          ORDER BY rnk DESC
           LIMIT :lim
         """
                 ),
@@ -311,7 +311,7 @@ def semantic(
     elif backend == "faiss":
         # FAISS backend is planned but not yet implemented
         logger.warning(
-            "FAISS backend is not yet implemented (set VECTOR_BACKEND to 'pgvector' or 'json', case-insensitive). "
+            "FAISS backend is not yet implemented (set VECTOR_BACKEND to 'pgvector' or 'json'). "
             "Falling back to JSON vector search."
         )
         return semantic_json(db, org_id, query_vec, sources, limit)

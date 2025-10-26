@@ -72,9 +72,6 @@ def backfill_vectors():
         processed = 0
         errors = 0
 
-        # Pre-create zero padding list for efficiency
-        zero_pad = [0.0] * EMBED_DIM
-
         while processed < total:
             # Fetch batch
             cur.execute(
@@ -113,7 +110,10 @@ def backfill_vectors():
                         print(
                             f"Warning: Row {chunk_id} has dimension {len(vec)}, expected {EMBED_DIM}. Padding/truncating."
                         )
-                        vec = (vec + zero_pad)[:EMBED_DIM]
+                        # Truncate first, then pad only what's needed for efficiency
+                        vec = vec[:EMBED_DIM] + [0.0] * (
+                            EMBED_DIM - len(vec[:EMBED_DIM])
+                        )
 
                     # Format as PostgreSQL vector literal
                     vec_str = f'[{",".join(str(x) for x in vec)}]'

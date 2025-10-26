@@ -200,7 +200,8 @@ def semantic_pgvector(
     source_filter = "AND mo.source = ANY(:src)" if sources else ""
 
     # Use cosine distance operator (<->) for ANN search
-    # Note: pgvector <-> operator returns cosine distance in range [0, 2], converted to similarity [-1, 1] after query
+    # Note: pgvector <-> operator returns cosine distance in range [0, 2]; we convert to similarity in [1, -1] via (1 - distance):
+    #   1.0 = identical vectors (distance 0), 0.0 = orthogonal (distance 1), -1.0 = opposite (distance 2)
     # pgvector will use HNSW or IVFFLAT index automatically
     # Cast the :qvec parameter to vector type to resolve operator type ambiguity
     rows = (

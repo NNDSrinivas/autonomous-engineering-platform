@@ -416,10 +416,10 @@ def hybrid_search(
         auth_score = _authority_score(meta)
         bm25_score = bm25_scores.get(key, 0.0)
 
-        # Normalize BM25 using x/(1+x) which produces values in [0, 1) that asymptotically
-        # approach but never reach 1.0 as x increases. ts_rank returns non-negative values
-        # but can exceed 1.0 for highly relevant matches, so this smooth normalization
-        # avoids the hard ceiling of min(1.0, x).
+        # Normalize BM25 using x/(1+x), which produces values in [0, 1) that
+        # asymptotically approach 1.0 as x increases to infinity. ts_rank returns
+        # non-negative values but can exceed 1.0 for highly relevant matches, so this
+        # smooth normalization avoids the hard ceiling of min(1.0, x).
         bm25_score = max(0.0, bm25_score)
         bm25_score = bm25_score / (1.0 + bm25_score)
 

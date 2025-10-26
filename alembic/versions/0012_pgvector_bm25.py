@@ -90,6 +90,13 @@ def upgrade():
         #   3. Implement batched UPDATE in separate script with row limit checkpoints
         # Current implementation prioritizes migration simplicity for typical datasets
         # (< 1M rows, ~10-30 seconds lock time on modern hardware)
+        #
+        # Design decision: We provide SKIP_TSVECTOR_UPDATE flag rather than implementing
+        # batched updates directly in the migration because:
+        # - Alembic migrations should be simple and atomic (all-or-nothing)
+        # - Batched updates require complex state tracking and error recovery
+        # - Production deployments can plan maintenance windows or skip this step
+        # - Post-migration batched backfill provides better observability and control
         if os.getenv("SKIP_TSVECTOR_UPDATE", "0") == "1":
             print(
                 "[alembic/0012_pgvector_bm25] Skipping tsvector UPDATE due to SKIP_TSVECTOR_UPDATE=1. "

@@ -28,17 +28,18 @@ depends_on = None
 # Get embedding dimension from environment or use default
 EMBED_DIM = int(os.getenv("EMBED_DIM", "1536"))
 
-# Validate EMBED_DIM is within reasonable bounds to prevent SQL issues
-# Lower bound (128): Common minimum for semantic models (e.g., MiniLM, small BERT)
-# Upper bound (4096): Prevents excessive memory usage and index bloat
-#   - HNSW index memory: ~500-1000 bytes per vector + dimension * 4 bytes
-#   - 4096-dim vectors: ~16KB per vector in index structures
-#   - Most modern embeddings (OpenAI, Cohere, etc.) are ≤ 3072 dimensions
-if not (128 <= EMBED_DIM <= 4096):
-    raise ValueError(f"EMBED_DIM must be between 128 and 4096, got {EMBED_DIM}")
-
 
 def upgrade():
+    # Validate EMBED_DIM is within reasonable bounds to prevent SQL issues
+    # Fail fast before attempting any DDL operations
+    # Lower bound (128): Common minimum for semantic models (e.g., MiniLM, small BERT)
+    # Upper bound (4096): Prevents excessive memory usage and index bloat
+    #   - HNSW index memory: ~500-1000 bytes per vector + dimension * 4 bytes
+    #   - 4096-dim vectors: ~16KB per vector in index structures
+    #   - Most modern embeddings (OpenAI, Cohere, etc.) are ≤ 3072 dimensions
+    if not (128 <= EMBED_DIM <= 4096):
+        raise ValueError(f"EMBED_DIM must be between 128 and 4096, got {EMBED_DIM}")
+
     # Enable pgvector extension (safe if not PostgreSQL or already exists)
     try:
         op.execute("CREATE EXTENSION IF NOT EXISTS vector;")

@@ -323,9 +323,9 @@ def semantic(
     if backend == "pgvector":
         return semantic_pgvector(db, org_id, query_vec, sources, limit)
     elif backend == "faiss":
-        # FAISS backend is planned but not yet implemented
+        # FAISS backend is recognized but not yet implemented
         logger.warning(
-            "FAISS backend is not yet implemented (set VECTOR_BACKEND to 'pgvector' or 'json'). "
+            "FAISS backend is recognized but not yet implemented. "
             "Falling back to JSON vector search."
         )
         return semantic_json(db, org_id, query_vec, sources, limit)
@@ -401,8 +401,10 @@ def hybrid_search(
         bm25_score = bm25_scores.get(key, 0.0)
 
         # Normalize BM25 to [0, 1) range using robust normalization
+        # ts_rank returns non-negative values, but we clamp to ensure valid input
         # ts_rank can return values > 1.0 for highly relevant matches, so we use
         # a smooth normalization function instead of hard ceiling with min()
+        bm25_score = max(0.0, bm25_score)
         bm25_score = bm25_score / (1.0 + bm25_score)
 
         # Compute final hybrid score

@@ -70,7 +70,7 @@ def _recency_score(timestamp: float, now: float) -> float:
         now: Current unix timestamp
 
     Returns:
-        Score between 0.0 (exclusive) and 1.0 (1.0 = recent, asymptotically approaches 0.0 for old items)
+        Score between 0.0 and 1.0 (1.0 = recent, asymptotically approaches 0.0 for old items)
     """
     days_old = max(0.0, (now - timestamp) / 86400.0)
     return 1.0 / (1.0 + days_old / RECENCY_HALF_LIFE_DAYS)

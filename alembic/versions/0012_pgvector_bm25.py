@@ -19,6 +19,9 @@ Changes:
 from alembic import op
 import sqlalchemy as sa
 import os
+import logging
+
+logger = logging.getLogger("alembic.0012_pgvector_bm25")
 
 revision = "0012_pgvector_bm25"
 down_revision = "0011_context_pack_memory_notes"
@@ -53,8 +56,10 @@ def upgrade():
     # Enable pgvector extension (safe if not PostgreSQL or already exists)
     try:
         op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-    except Exception:
-        # SQLite or other databases don't support pgvector
+    except Exception as e:
+        # Expected for SQLite or databases without pgvector
+        # Log for debugging in case of unexpected PostgreSQL issues (permissions, version)
+        logger.debug(f"Could not enable pgvector extension: {e}")
         pass
 
     # Add vector column for ANN search
@@ -65,15 +70,17 @@ def upgrade():
             "memory_chunk",
             sa.Column("embedding_vec", sa.types.UserDefinedType(), nullable=True),
         )
-    except Exception:
+    except Exception as e:
         # Fallback to raw SQL for vector type
         # Use EMBED_DIM from configuration for consistency
+        logger.debug(f"UserDefinedType failed, trying raw SQL: {e}")
         try:
             op.execute(
                 f"ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS embedding_vec vector({EMBED_DIM});"
             )
-        except Exception:
-            # SQLite fallback - no vector support
+        except Exception as e2:
+            # Expected for SQLite or databases without vector support
+            logger.debug(f"Could not add embedding_vec column: {e2}")
             pass
 
     # Add tsvector column and GIN index for BM25/FTS (PostgreSQL only)

@@ -97,9 +97,8 @@ class Settings(BaseSettings):
     vector_db_path: str = "./data/vector_store"
 
     # Vector search backend configuration (PR-16)
-    vector_backend: str = (
-        "pgvector"  # Options: pgvector (production, requires PostgreSQL), faiss (experimental), json (fallback, slower linear scan)
-    )
+    # Options: pgvector (production, PostgreSQL), faiss (experimental), json (fallback, linear scan)
+    vector_backend: str = "pgvector"
     embed_dim: int = 1536  # Embedding dimension (OpenAI ada-002 default)
     pgvector_index: str = "hnsw"  # Options: hnsw | ivfflat
     bm25_enabled: bool = True  # Enable BM25/FTS hybrid ranking

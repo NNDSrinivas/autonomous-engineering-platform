@@ -7,9 +7,8 @@ Verifies that:
 4. Subgraph returned matches query depth and k parameters
 """
 
-import pytest
 from httpx import Client
-from tests.conftest import TEST_ORG_ID, assert_response_ok
+from tests.conftest import assert_response_ok
 
 
 def test_explain_contains_citations(api_client: Client, seeded_graph):
@@ -27,7 +26,7 @@ def test_explain_contains_citations(api_client: Client, seeded_graph):
         f"Narrative too short or empty: {len(narrative)} chars"
     
     # Extract node IDs and foreign IDs
-    node_ids = {node["id"] for node in data["nodes"]}
+    {node["id"] for node in data["nodes"]}
     foreign_ids = {node["foreign_id"] for node in data["nodes"]}
     
     # Check if any node IDs or foreign IDs appear in narrative
@@ -42,7 +41,7 @@ def test_explain_contains_citations(api_client: Client, seeded_graph):
     if ids_in_narrative:
         print(f"✅ Narrative cites: {', '.join(ids_in_narrative)}")
     else:
-        print(f"✅ Narrative has citations field")
+        print("✅ Narrative has citations field")
 
 
 def test_explain_contains_causality_chain(api_client: Client, seeded_graph):

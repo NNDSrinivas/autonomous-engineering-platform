@@ -7,7 +7,6 @@ Verifies that:
 4. No data leakage between organizations
 """
 
-import pytest
 from httpx import Client
 from tests.conftest import TEST_ORG_ID, assert_response_ok
 
@@ -35,7 +34,7 @@ def test_cross_org_forbidden_timeline(api_client: Client, other_org_client: Clie
         data = response.json()
         assert len(data) == 0, \
             f"Cross-org timeline should be empty, got {len(data)} items"
-        print(f"✅ Cross-org timeline returns empty")
+        print("✅ Cross-org timeline returns empty")
     else:
         assert response.status_code in (401, 403), \
             f"Expected 401/403 for cross-org timeline, got {response.status_code}"
@@ -56,7 +55,7 @@ def test_cross_org_forbidden_query(api_client: Client, other_org_client: Client,
         for node in data.get("nodes", []):
             assert node["org_id"] != TEST_ORG_ID, \
                 f"Cross-org query returned node from wrong org: {node}"
-        print(f"✅ Cross-org query returns no data from other org")
+        print("✅ Cross-org query returns no data from other org")
     else:
         assert response.status_code in (401, 403), \
             f"Expected 401/403 for cross-org query, got {response.status_code}"
@@ -99,7 +98,7 @@ def test_org_scoped_rebuild(api_client: Client, other_org_client: Client, seeded
     
     if response_cross.status_code in (200, 202):
         # If allowed, org_id in request body should be validated against header
-        print(f"⚠️  Rebuild allows org_id mismatch (may be intentional for admin)")
+        print("⚠️  Rebuild allows org_id mismatch (may be intentional for admin)")
     else:
         print(f"✅ Cross-org rebuild blocked: HTTP {response_cross.status_code}")
 
@@ -162,7 +161,7 @@ def test_node_foreign_id_can_duplicate_across_orgs(test_db, seeded_graph):
     test_db.delete(other_eng102)
     test_db.commit()
     
-    print(f"✅ Foreign IDs can duplicate across orgs (proper multi-tenancy)")
+    print("✅ Foreign IDs can duplicate across orgs (proper multi-tenancy)")
 
 
 def test_audit_log_includes_org_id(api_client: Client, seeded_graph):
@@ -175,4 +174,4 @@ def test_audit_log_includes_org_id(api_client: Client, seeded_graph):
     # Actual audit log verification would require database access
     # or log inspection, which could be added if audit_log table exists
     
-    print(f"✅ API request completed with org context (audit logging assumed)")
+    print("✅ API request completed with org context (audit logging assumed)")

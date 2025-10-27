@@ -7,10 +7,9 @@ Verifies that:
 4. Timeline includes all relevant nodes
 """
 
-import pytest
 from httpx import Client
 from datetime import datetime
-from tests.conftest import TEST_ORG_ID, assert_response_ok
+from tests.conftest import assert_response_ok
 
 
 def test_timeline_is_ordered(api_client: Client, seeded_graph):
@@ -66,7 +65,7 @@ def test_expected_sequence(api_client: Client, seeded_graph):
     
     # Find indices of each keyword
     indices = []
-    timeline_text = " ".join(titles)
+    " ".join(titles)
     
     for keyword in expected_sequence_keywords:
         # Find first occurrence of keyword
@@ -93,7 +92,7 @@ def test_expected_sequence(api_client: Client, seeded_graph):
     if deploy_idx is not None and incident_idx is not None:
         assert deploy_idx < incident_idx, "Deploy should come before Incident"
     
-    print(f"✅ Timeline sequence validated")
+    print("✅ Timeline sequence validated")
     print(f"   Events: {' → '.join([item.get('title', '?')[:30] for item in data])}")
 
 
@@ -176,8 +175,8 @@ def test_empty_timeline_for_nonexistent_issue(api_client: Client, seeded_graph):
         f"Expected 200 or 404, got {response.status_code}"
     
     if response.status_code == 200:
-        data = response.json()
+        response.json()  # Validate JSON response
         # Empty timeline is acceptable
-        print(f"✅ Non-existent issue returns empty timeline")
+        print("✅ Non-existent issue returns empty timeline")
     else:
-        print(f"✅ Non-existent issue returns 404")
+        print("✅ Non-existent issue returns 404")

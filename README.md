@@ -1,6 +1,8 @@
 # 🧠 Autonomous Engineering Intelligence Platform
 > *The AI-Powered Digital Coworker for Software Engineering Teams*
 
+⚖️ **Licensed under Business Source License 1.1 (BSL). Commercial use prohibited without agreement with NavraLabs.**
+
 ---
 
 ## 🚀 Vision
@@ -1251,4 +1253,67 @@ DELETE FROM sync_cursor WHERE org_id='default' AND source='slack';
 ---
 
 **Next up:** PR-15 (Retrieval-Augmented Context Pack) will auto-attach top-k memory hits to coding tasks!
+
+---
+
+## ⚖️ License & Usage
+
+### Business Source License 1.1 (BSL)
+
+This project is licensed under the **Business Source License 1.1**. 
+
+**What You CAN Do:**
+- ✅ **Study & Learn** - Read and understand the code
+- ✅ **Fork for Learning** - Create private forks for educational purposes
+- ✅ **Internal Testing** - Test within your organization (non-production)
+- ✅ **Research** - Use for academic or personal research
+- ✅ **Contribute** - Submit PRs (requires signing CLA)
+
+**What You CANNOT Do:**
+- ❌ **Deploy Publicly** - No hosting or publishing as a public app/service
+- ❌ **Commercial Use** - No SaaS, hosting, or commercial deployment
+- ❌ **Sell or License** - Cannot resell or sublicense the software
+- ❌ **Rebrand** - Cannot white-label or use "NavraLabs" trademarks
+- ❌ **Production Use** - Cannot use to serve external customers
+
+### Change Date: 2029-01-01
+
+On **2029-01-01**, this license automatically converts to **Apache License 2.0**, making it fully permissive and open-source.
+
+### Commercial Licensing
+
+Need to deploy AEP in production or offer it as a service?
+
+**Contact:** legal@navralabs.ai  
+**Founder:** NagaDurga S. Nidamanuri
+
+We offer flexible commercial licenses for:
+- Enterprise deployments
+- White-label solutions
+- SaaS hosting rights
+- Custom support and features
+
+### Enforcement
+
+Unauthorized deployments are actively monitored and will be subject to:
+- DMCA takedown requests
+- Cease and desist notices
+- Legal action for trademark infringement
+- Reporting to hosting providers (AWS, GCP, Azure, etc.)
+
+See [ENFORCEMENT_PLAYBOOK.md](ENFORCEMENT_PLAYBOOK.md) for details.
+
+---
+
+## 📄 Additional Legal Documents
+
+- [LICENSE](LICENSE) - Full BSL 1.1 license text
+- [TRADEMARK.md](TRADEMARK.md) - NavraLabs trademark policy
+- [SECURITY.md](SECURITY.md) - Security vulnerability disclosure
+- [CLA.md](CLA.md) - Contributor License Agreement
+- [NOTICE](NOTICE) - Copyright and ownership notice
+
+---
+
+**Copyright © 2025 NavraLabs, Inc. All rights reserved.**
 

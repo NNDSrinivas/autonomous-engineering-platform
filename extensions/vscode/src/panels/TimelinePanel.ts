@@ -86,7 +86,7 @@ export class TimelinePanel {
 
             const nodeData = await nodeResponse.json();
 
-            // Fetch timeline
+            // Fetch timeline (note: 'issue' param works for any entity type: JIRA issues, PRs, files, etc.)
             const timelineResponse = await fetch(`${apiUrl}/api/memory/timeline?issue=${entityId}&window=30d`, {
                 headers: {
                     'X-Org-Id': orgId
@@ -331,7 +331,7 @@ export class TimelinePanel {
                     if (node.meta && node.meta.url) {
                         html += '<div class="timeline-links">';
                         html += '<button class="link-button" data-url="' + 
-                                escapeHtml(node.meta.url) + '">Open</button>';
+                                escapeAttribute(node.meta.url) + '">Open</button>';
                         html += '</div>';
                     }
                     
@@ -368,6 +368,18 @@ export class TimelinePanel {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+        
+        // Properly escape attribute values to prevent XSS in attribute context
+        function escapeAttribute(text) {
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/`/g, '&#96;');
         }
     </script>
 </body>

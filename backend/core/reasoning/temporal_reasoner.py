@@ -8,7 +8,6 @@ Uses weighted BFS for uniform weights, Dijkstra for variable weights.
 """
 
 import logging
-import re
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple, Set
 from sqlalchemy.orm import Session
@@ -23,6 +22,7 @@ from backend.core.constants import (
     MAX_PATHS_IN_CONTEXT,
     PR_NUMBER_PATTERN,
     SLACK_THREAD_PATTERN,
+    parse_time_window,
 )
 
 logger = logging.getLogger(__name__)
@@ -300,10 +300,13 @@ class TemporalReasoner:
 
         paths = []
 
+        # Helper to check if we can add more paths
+        def can_add_path() -> bool:
+            return len(paths) < MAX_CAUSALITY_PATHS
+
         # Find paths from each source node
         for source in source_nodes:
-            # Check global path limit before processing next source
-            if len(paths) >= MAX_CAUSALITY_PATHS:
+            if not can_add_path():
                 break
 
             if source.id not in adj:
@@ -314,7 +317,7 @@ class TemporalReasoner:
             queue = [(source, [])]  # (node, path_so_far)
 
             # Prevent excessive path exploration that could impact performance and context length
-            while queue and len(paths) < MAX_CAUSALITY_PATHS:
+            while queue and can_add_path():
                 current_node, path = queue.pop(0)
 
                 if (
@@ -325,14 +328,7 @@ class TemporalReasoner:
                 if current_node.id not in adj:
                     if path:  # Only add non-empty paths
                         paths.append(path)
-                        # Break from while loop if limit reached
-                        if len(paths) >= MAX_CAUSALITY_PATHS:
-                            break
                     continue
-
-                # Check if we've already hit the limit before exploring more paths
-                if len(paths) >= MAX_CAUSALITY_PATHS:
-                    break
 
                 for next_node, edge in adj[current_node.id]:
                     if next_node.id in visited:
@@ -368,7 +364,7 @@ class TemporalReasoner:
         context = f"Query: {query}\n\n"
 
         context += "## Relevant Entities:\n"
-        # Respect caller's k parameter (limited by MAX_NODES_IN_CONTEXT) to prevent excessive LLM context
+        # Defensive slice: k is validated in API but this ensures robustness if called directly
         for node in nodes[:k]:
             context += (
                 f"- [{node.foreign_id}] {node.title or 'Untitled'} ({node.kind})\n"
@@ -429,10 +425,7 @@ Provide a concise explanation (2-3 paragraphs) that directly answers the query."
 
     def _parse_window(self, window: str) -> int:
         """Parse window string to days (e.g., '30d' -> 30, '7d' -> 7)"""
-        match = re.match(r"(\d+)d", window.lower())
-        if match:
-            return int(match.group(1))
-        return 30  # Default
+        return parse_time_window(window)
 
     def _path_to_dict(
         self, path: List[Tuple[MemoryNode, MemoryEdge]]

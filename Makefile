@@ -49,3 +49,24 @@ lint:
 
 test:
 	pytest -q
+
+# PR-17: Memory Graph & Temporal Reasoning
+CORE ?= http://localhost:8000
+
+pr17-seed:
+	python scripts/seed_graph_fixture.py data/seed/pr17_fixture.json
+
+pr17-smoke:
+	bash scripts/smoke_pr17.sh
+
+graph-rebuild:
+	curl -s -X POST "$(CORE)/api/memory/graph/rebuild" \
+	  -H "Content-Type: application/json" \
+	  -H "X-Org-Id: default" \
+	  -d '{"org_id":"default","since":"30d"}' | jq .
+
+pr17-test:
+	pytest tests/test_graph_edges_accuracy.py tests/test_timeline_order.py tests/test_explain_paths.py tests/test_rbac_isolation.py -v
+
+pr17-all: pr17-seed pr17-smoke pr17-test
+	@echo "✅ PR-17 full validation complete"

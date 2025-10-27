@@ -7,15 +7,14 @@ Verifies that:
 4. No duplicate edges exist
 """
 
-import pytest
 from httpx import Client
-from tests.conftest import TEST_ORG_ID, assert_response_ok
+from tests.conftest import assert_response_ok
 
 
 def test_edges_accuracy(api_client: Client, seeded_graph):
     """Verify ≥80% of expected edges created and all core relations present"""
     # Get ENG-102 neighborhood
-    response = api_client.get(f"/api/memory/graph/node/ENG-102")
+    response = api_client.get("/api/memory/graph/node/ENG-102")
     data = assert_response_ok(response)
     
     # Extract relation types
@@ -52,7 +51,7 @@ def test_edges_accuracy(api_client: Client, seeded_graph):
 
 def test_edge_weights_and_confidence(api_client: Client, seeded_graph):
     """Verify edge weights and confidence scores are in valid range [0, 1]"""
-    response = api_client.get(f"/api/memory/graph/node/ENG-102")
+    response = api_client.get("/api/memory/graph/node/ENG-102")
     data = assert_response_ok(response)
     
     for edge in data["edges"]:
@@ -73,7 +72,7 @@ def test_edge_weights_and_confidence(api_client: Client, seeded_graph):
 
 def test_no_duplicate_edges(api_client: Client, seeded_graph):
     """Verify no duplicate edges exist"""
-    response = api_client.get(f"/api/memory/graph/node/ENG-102")
+    response = api_client.get("/api/memory/graph/node/ENG-102")
     data = assert_response_ok(response)
     
     # Create edge signatures (src_id, dst_id, relation)
@@ -92,7 +91,7 @@ def test_no_duplicate_edges(api_client: Client, seeded_graph):
 
 def test_bidirectional_edges_symmetric(api_client: Client, seeded_graph):
     """Verify bidirectional edges (next/previous) are symmetric"""
-    response = api_client.get(f"/api/memory/graph/node/ENG-102")
+    response = api_client.get("/api/memory/graph/node/ENG-102")
     data = assert_response_ok(response)
     
     # Build edge map
@@ -118,7 +117,7 @@ def test_bidirectional_edges_symmetric(api_client: Client, seeded_graph):
 
 def test_specific_fixture_edges(api_client: Client, seeded_graph):
     """Verify specific expected edges from fixture are created"""
-    response = api_client.get(f"/api/memory/graph/node/ENG-102")
+    response = api_client.get("/api/memory/graph/node/ENG-102")
     data = assert_response_ok(response)
     
     # Build node foreign_id lookup
@@ -149,4 +148,4 @@ def test_specific_fixture_edges(api_client: Client, seeded_graph):
         assert expected in actual_edges, \
             f"Expected edge missing: {expected[0]} --[{expected[2]}]--> {expected[1]}"
     
-    print(f"✅ All critical fixture edges present")
+    print("✅ All critical fixture edges present")

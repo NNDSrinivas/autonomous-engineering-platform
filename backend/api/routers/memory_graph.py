@@ -90,7 +90,7 @@ class GraphQueryRequest(BaseModel):
         default=10,
         ge=1,
         le=10,
-        description="Maximum nodes to return (narrative uses first 10)",
+        description="Maximum nodes to return (up to 10 used for narrative generation)",
     )
 
 

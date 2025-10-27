@@ -291,9 +291,14 @@ class GraphBuilder:
             # Normalize comparison: PR numbers may or may not have '#' prefix
             matched = False
             if pr_num:
-                # Compare numeric part only, stripping '#' if present
+                # Compare numeric part only, safely removing single '#' prefix if present
+                foreign_id_normalized = (
+                    other_node.foreign_id[1:]
+                    if other_node.foreign_id.startswith("#")
+                    else other_node.foreign_id
+                )
                 matched = (
-                    pr_num == other_node.foreign_id.lstrip("#")
+                    pr_num == foreign_id_normalized
                     or f"#{pr_num}" == other_node.foreign_id
                 )
             else:
@@ -514,7 +519,7 @@ class GraphBuilder:
             "jira": NodeKind.JIRA_ISSUE.value,
             "slack": NodeKind.SLACK_THREAD.value,
             "meeting": NodeKind.MEETING.value,
-            "github": NodeKind.PR.value,  # Assume GitHub artifacts are PRs
+            "github": NodeKind.PR.value,  # Only GitHub PRs are supported; GitHub issues/discussions are not handled. Update this mapping if other GitHub entity types are ingested.
             "confluence": NodeKind.DOC.value,
             "wiki": NodeKind.WIKI.value,
         }

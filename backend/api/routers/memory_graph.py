@@ -69,7 +69,6 @@ except ImportError:
 
 # Request/Response models
 class GraphRebuildRequest(BaseModel):
-    org_id: str
     since: Optional[str] = Field(
         default="30d", description="Time window (e.g., '30d', '90d')"
     )
@@ -108,10 +107,16 @@ def get_org_id(x_org_id: Optional[str] = Header(None)) -> str:
     return x_org_id
 
 
-# Helper: Create AIService instance (consider making this a singleton or FastAPI dependency)
+# Helper: Create AIService instance as singleton
+_ai_service_instance: Optional[AIService] = None
+
+
 def get_ai_service() -> AIService:
-    """Get AIService instance. Called per-request but could be optimized as singleton."""
-    return AIService()
+    """Get AIService singleton instance. Reuses same instance across requests for efficiency."""
+    global _ai_service_instance
+    if _ai_service_instance is None:
+        _ai_service_instance = AIService()
+    return _ai_service_instance
 
 
 # Dependency: Audit logging
@@ -146,13 +151,6 @@ async def rebuild_graph(
     **RBAC**: Requires org-level write access
     """
     start_time = time.time()
-
-    # Verify org_id matches
-    if org_id != req.org_id:
-        raise HTTPException(
-            status_code=403,
-            detail="X-Org-Id does not match request org_id",
-        )
 
     try:
         # Parse since parameter with validation

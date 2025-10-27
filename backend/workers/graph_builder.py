@@ -7,7 +7,7 @@ Heuristics implemented:
 1. JIRA key matching: Extract JIRA keys from PR titles, commits, Slack messages
 2. PR fixes/closes: Parse PR descriptions for "fixes #123", "closes JIRA-456"
 3. Slack thread links: Thread replies create 'discusses' edges
-4. Temporal adjacency: Meeting -> PR within 48h with shared terms
+4. Temporal adjacency: Meeting -> PR within TEMPORAL_WINDOW_HOURS with shared terms
 5. Semantic similarity: Embedding cosine > threshold
 6. Commit reverts: Detect git revert commits for 'caused_by' edges
 """
@@ -34,6 +34,7 @@ from backend.core.constants import (
     REVERT_PATTERN,
     TEMPORAL_WINDOW_HOURS,
     MIN_SHARED_TERMS_COUNT,
+    STOPWORDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -286,9 +287,21 @@ class GraphBuilder:
 
         for match in matches:
             pr_num, jira_key = match
-            target_id = f"#{pr_num}" if pr_num else jira_key
 
-            if target_id == other_node.foreign_id:
+            # Normalize comparison: PR numbers may or may not have '#' prefix
+            matched = False
+            if pr_num:
+                # Compare numeric part only, stripping '#' if present
+                matched = (
+                    pr_num == other_node.foreign_id.lstrip("#")
+                    or f"#{pr_num}" == other_node.foreign_id
+                )
+            else:
+                # JIRA key comparison is exact
+                matched = jira_key == other_node.foreign_id
+
+            if matched:
+                target_id = f"#{pr_num}" if pr_num else jira_key
                 edges.append(
                     {
                         "src_id": pr_node.id,
@@ -450,25 +463,12 @@ class GraphBuilder:
         text1 = f"{node1.title or ''} {node1.summary or ''}".lower()
         text2 = f"{node2.title or ''} {node2.summary or ''}".lower()
 
-        # Simple tokenization (exclude common words)
-        stopwords = {
-            "the",
-            "a",
-            "an",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-        }
+        # Simple tokenization (exclude common words using shared STOPWORDS constant)
         words1 = set(
-            w for w in re.findall(r"\w+", text1) if len(w) > 3 and w not in stopwords
+            w for w in re.findall(r"\w+", text1) if len(w) > 3 and w not in STOPWORDS
         )
         words2 = set(
-            w for w in re.findall(r"\w+", text2) if len(w) > 3 and w not in stopwords
+            w for w in re.findall(r"\w+", text2) if len(w) > 3 and w not in STOPWORDS
         )
 
         return len(words1 & words2)

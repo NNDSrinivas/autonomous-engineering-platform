@@ -23,4 +23,26 @@ REVERT_PATTERN = re.compile(r"revert|reverts", re.IGNORECASE)
 TEMPORAL_WINDOW_HOURS = 48
 MIN_SHARED_TERMS_COUNT = 3
 
+# Temporal reasoning limits
+MAX_CAUSALITY_PATHS = 10
+MAX_PATH_LENGTH = 5
+
+# Text processing
+STOPWORDS = {
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "is",
+    "of",
+    "with",
+}
+
 # Future: SEMANTIC_SIMILARITY_THRESHOLD = 0.75  # Requires embedding vectors

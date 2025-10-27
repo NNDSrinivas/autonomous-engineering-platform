@@ -19,6 +19,8 @@ from backend.core.constants import (
     JIRA_KEY_PATTERN,
     PR_NUMBER_PATTERN,
     SLACK_THREAD_PATTERN,
+    MAX_CAUSALITY_PATHS,
+    MAX_PATH_LENGTH,
 )
 
 logger = logging.getLogger(__name__)
@@ -286,12 +288,15 @@ class TemporalReasoner:
             # Weighted BFS (assuming relatively uniform weights)
             visited = {source.id}
             queue = [(source, [])]  # (node, path_so_far)
-            max_path_length = 5
 
-            while queue and len(paths) < 10:  # Limit paths
+            while (
+                queue and len(paths) < MAX_CAUSALITY_PATHS
+            ):  # Limit paths using constant
                 current_node, path = queue.pop(0)
 
-                if len(path) >= max_path_length:
+                if (
+                    len(path) >= MAX_PATH_LENGTH
+                ):  # Use constant instead of hardcoded value
                     continue
 
                 if current_node.id not in adj:

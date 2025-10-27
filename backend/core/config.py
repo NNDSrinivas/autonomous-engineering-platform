@@ -99,6 +99,7 @@ class Settings(BaseSettings):
     # Vector search backend configuration (PR-16)
     # Options: pgvector (production, PostgreSQL), faiss (experimental), json (fallback, linear scan)
     vector_backend: str = "pgvector"
+    # NOTE: embed_dim must match the actual embedding model's output dimension and must be kept in sync with the EMBED_DIM environment variable used in database migrations.
     embed_dim: int = 1536  # Embedding dimension (OpenAI ada-002 default)
     pgvector_index: str = "hnsw"  # Options: hnsw | ivfflat
     bm25_enabled: bool = True  # Enable BM25/FTS hybrid ranking

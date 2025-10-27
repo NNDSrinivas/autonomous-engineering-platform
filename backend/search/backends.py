@@ -501,7 +501,7 @@ def hybrid_search(
                 "title": row["title"],
                 "url": row["url"],
                 "excerpt": (row["text"] or "")[:EXCERPT_MAX_LENGTH],
-                "score": float(f"{score:.4f}"),
+                "score": round(score, 4),
                 "meta": json.loads(row["meta_json"] or "{}"),
             }
         )

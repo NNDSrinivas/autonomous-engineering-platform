@@ -182,7 +182,7 @@ class MemoryEdge(Base):
         comment="Edge metadata: source_heuristic, timestamp_diff, etc.",
     )
     created_at: Mapped[datetime] = Column(
-        DateTime(timezone=True), nullable=False, server_default="CURRENT_TIMESTAMP"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     # Relationships

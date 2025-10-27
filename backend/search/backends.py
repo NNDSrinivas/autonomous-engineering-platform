@@ -265,7 +265,7 @@ def semantic_pgvector(
                 "o": org_id,
                 "src": sources,
                 "lim": limit,
-                # Parameter binding via psycopg2 requires the vector as a JSON string array
+                # pgvector parameter binding requires the vector as a JSON string array
                 # (e.g., "[0.1, 0.2, 0.3]"), which is cast to vector type in the query using ::vector.
                 "qvec": json.dumps(query_vec),
             },

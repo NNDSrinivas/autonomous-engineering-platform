@@ -128,7 +128,7 @@ def backfill_vectors():
             # Commit batch
             conn.commit()
             processed += len(rows)
-            print(f"Progress: {processed}/{total} rows ({100*processed//total}%)")
+            print(f"Progress: {processed}/{total} rows ({100.0*processed/total:.1f}%)")
 
         print("\n✅ Backfill complete!")
         print(f"   Processed: {processed} rows")

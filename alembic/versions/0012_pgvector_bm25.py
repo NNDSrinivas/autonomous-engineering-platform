@@ -160,6 +160,10 @@ def upgrade():
                         f"[alembic/0012_pgvector_bm25] Updated {updated_rows} rows in memory_chunk.text_tsv"
                     )
 
+            logger.info(
+                "[alembic/0012_pgvector_bm25] Batched update for memory_chunk.text_tsv complete."
+            )
+
         # Create GIN index on precomputed text_tsv column for efficient full-text search
         op.execute(
             "CREATE INDEX IF NOT EXISTS idx_memory_chunk_tsv "

@@ -86,8 +86,8 @@ export class TimelinePanel {
 
             const nodeData = await nodeResponse.json();
 
-            // Fetch timeline (note: 'issue' param works for any entity type: JIRA issues, PRs, files, etc.)
-            const timelineResponse = await fetch(`${apiUrl}/api/memory/timeline?issue=${entityId}&window=30d`, {
+            // Fetch timeline for any entity type (JIRA issues, PRs, files, Slack threads, etc.)
+            const timelineResponse = await fetch(`${apiUrl}/api/memory/timeline?entity_id=${entityId}&window=30d`, {
                 headers: {
                     'X-Org-Id': orgId
                 }

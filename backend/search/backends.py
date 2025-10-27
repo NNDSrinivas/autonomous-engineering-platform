@@ -233,9 +233,7 @@ def semantic_pgvector(
                 "o": org_id,
                 "src": sources,
                 "lim": limit,
-                "qvec": json.dumps(
-                    query_vec
-                ),  # More efficient than str join for large arrays
+                "qvec": "[" + ",".join(map(str, query_vec)) + "]",
             },
         )
         .mappings()
@@ -313,7 +311,9 @@ def semantic_json(
             raise TypeError(
                 f"Cannot parse embedding_data of type {type(embedding_data).__name__}. "
                 f"Expected str, bytes, or memoryview. "
-                f"This may indicate a database configuration issue. Please verify the embedding column data type in the database schema."
+                f"This may indicate a database configuration issue. "
+                f"Check that the embedding column is defined as TEXT or BLOB in your database schema. "
+                f"If using PostgreSQL, ensure the column type is TEXT or BYTEA, not JSONB."
             )
 
         similarity = _cosine_similarity(query_vec, vec)
@@ -429,6 +429,9 @@ def hybrid_search(
         # asymptotically approach 1.0 as x increases to infinity. ts_rank returns
         # non-negative values but can exceed 1.0 for highly relevant matches, so this
         # smooth normalization avoids the hard ceiling of min(1.0, x).
+        # Note: While BM25 has built-in length normalization, ts_rank scores are
+        # unbounded and can vary widely. This transformation maps them to [0, 1) for
+        # consistent weighting with other normalized components (semantic, recency, authority).
         bm25_score = max(0.0, bm25_score)
         bm25_score = bm25_score / (1.0 + bm25_score)
 

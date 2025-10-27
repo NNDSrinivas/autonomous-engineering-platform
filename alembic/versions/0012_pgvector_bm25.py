@@ -127,13 +127,37 @@ def upgrade():
             )
         else:
             logger.warning(
-                "[alembic/0012_pgvector_bm25] WARNING: Running single UPDATE to populate text_tsv. "
-                "This may lock memory_chunk table on large datasets. "
-                "For >1M rows, consider setting SKIP_TSVECTOR_UPDATE=1 and running batched updates."
+                "[alembic/0012_pgvector_bm25] WARNING: Running batched UPDATE to populate text_tsv. "
+                "This minimizes lock duration but may take longer for large datasets."
             )
-            op.execute(
-                "UPDATE memory_chunk SET text_tsv = to_tsvector('english', coalesce(text, ''));"
-            )
+            # Batched update to avoid long table locks
+            batch_size = 1000
+            updated_rows = batch_size
+            conn = op.get_bind()
+            while updated_rows == batch_size:
+                result = conn.execute(
+                    sa.text(
+                        """
+                        WITH cte AS (
+                            SELECT ctid
+                            FROM memory_chunk
+                            WHERE text_tsv IS NULL
+                            LIMIT :batch_size
+                        )
+                        UPDATE memory_chunk
+                        SET text_tsv = to_tsvector('english', coalesce(text, ''))
+                        FROM cte
+                        WHERE memory_chunk.ctid = cte.ctid
+                        RETURNING memory_chunk.ctid
+                        """
+                    ),
+                    {"batch_size": batch_size},
+                )
+                updated_rows = result.rowcount
+                if updated_rows:
+                    logger.info(
+                        f"[alembic/0012_pgvector_bm25] Updated {updated_rows} rows in memory_chunk.text_tsv"
+                    )
 
         # Create GIN index on precomputed text_tsv column for efficient full-text search
         op.execute(

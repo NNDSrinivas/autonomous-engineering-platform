@@ -148,10 +148,14 @@ def _normalize_bm25_score(score: float) -> float:
     return score / (1.0 + score)
 
 
-def _bm25(
+def _ts_rank_score(
     db: Session, org_id: str, query: str, sources: Optional[List[str]], limit: int
 ) -> Dict[Tuple[str, str], float]:
-    """BM25 keyword search using PostgreSQL full-text search
+    """Full-text search using PostgreSQL's ts_rank (BM25 approximation)
+
+    Note: This uses ts_rank as an approximation of BM25. While BM25 has built-in
+    length normalization, ts_rank uses a different algorithm. The scores are later
+    normalized using x/(1+x) transformation for hybrid ranking.
 
     Args:
         db: Database session
@@ -161,7 +165,7 @@ def _bm25(
         limit: Maximum number of results
 
     Returns:
-        Dictionary mapping (source, foreign_id) tuples to BM25 scores
+        Dictionary mapping (source, foreign_id) tuples to ts_rank scores
     """
     # Early return if BM25 is disabled - avoid unnecessary processing
     if not settings.bm25_enabled:
@@ -229,7 +233,8 @@ def semantic_pgvector(
     source_filter = "AND mo.source = ANY(:src)" if sources else ""
 
     # pgvector will use HNSW or IVFFLAT index automatically
-    # Cast the :qvec parameter to vector type to resolve operator type ambiguity
+    # When using parameter binding, PostgreSQL cannot automatically determine whether :qvec is a text[] or a vector type.
+    # Explicitly casting :qvec to vector (::vector) is necessary to resolve operator type ambiguity and ensure pgvector uses the correct similarity operator.
     rows = (
         db.execute(
             text(
@@ -405,8 +410,8 @@ def hybrid_search(
         db, org_id, query_vec, sources, limit=HYBRID_OVERFETCH_MULTIPLIER * k
     )
 
-    # Fetch BM25 keyword scores
-    bm25_scores = _bm25(
+    # Fetch BM25 keyword scores (using ts_rank as approximation)
+    bm25_scores = _ts_rank_score(
         db, org_id, query, sources, limit=HYBRID_OVERFETCH_MULTIPLIER * k
     )
 

@@ -134,7 +134,7 @@ def upgrade():
             batch_size = 1000
             updated_rows = batch_size
             conn = op.get_bind()
-            max_iterations = 10000  # Prevent infinite loops (e.g., 10M rows max)
+            max_iterations = 10000  # Prevent infinite loops (upper bound: 10M rows with current batch_size)
             iteration = 0
             while updated_rows == batch_size and iteration < max_iterations:
                 iteration += 1
@@ -151,7 +151,6 @@ def upgrade():
                         SET text_tsv = to_tsvector('english', coalesce(text, ''))
                         FROM cte
                         WHERE memory_chunk.ctid = cte.ctid
-                        RETURNING memory_chunk.ctid
                         """
                     ),
                     {"batch_size": batch_size},

@@ -166,6 +166,24 @@ class TemporalReasoner:
             "source_entities": entities,
         }
 
+    def get_node_neighborhood(
+        self,
+        root: MemoryNode,
+        depth: int = 1,
+        since: Optional[datetime] = None,
+    ) -> Tuple[Set[MemoryNode], Set[MemoryEdge]]:
+        """Public method to get node neighborhood (wrapper for _build_subgraph)
+
+        Args:
+            root: Starting node
+            depth: Maximum graph traversal depth
+            since: Optional datetime filter for nodes
+
+        Returns:
+            Tuple of (nodes, edges) in the subgraph
+        """
+        return self._build_subgraph(root, depth, since)
+
     def _build_subgraph(
         self,
         root: MemoryNode,
@@ -210,11 +228,7 @@ class TemporalReasoner:
             # Get inbound edges
             for edge in current_node.inbound_edges:
                 if edge.org_id != root.org_id:
-                    continue  # Enforce org isolation
-
-                # Also verify source node belongs to same org to prevent data leaks
-                if edge.source_node.org_id != root.org_id:
-                    continue
+                    continue  # Enforce org isolation at edge level
 
                 if since and edge.source_node.created_at < since:
                     continue
@@ -299,9 +313,8 @@ class TemporalReasoner:
             visited = {source.id}
             queue = [(source, [])]  # (node, path_so_far)
 
-            while (
-                queue and len(paths) < MAX_CAUSALITY_PATHS
-            ):  # Prevent excessive path exploration that could impact performance and context length
+            # Prevent excessive path exploration that could impact performance and context length
+            while queue and len(paths) < MAX_CAUSALITY_PATHS:
                 current_node, path = queue.pop(0)
 
                 if (

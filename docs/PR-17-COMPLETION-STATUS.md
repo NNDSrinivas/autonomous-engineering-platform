@@ -372,11 +372,10 @@ Meeting → ENG-102 → PR#456 → DEPLOY-456 → INC-789 → PR#478 (hotfix)
 - 🎯 Target: P95 < 600ms for depth ≤ 3, k ≤ 12
 
 ### Test Coverage ✅
-- � Current: **27 test cases written** (execution pending)
+- 📊 Current: **27 test cases written** (execution pending)
 - 🎯 Target: **≥80%** code coverage
 - 🎯 Target: All acceptance criteria passing
 - ✅ 4 test modules covering edges, timeline, narratives, RBAC
-- 📊 Current: **0%** (no tests written)
 - 🎯 Target: **≥80%** code coverage
 ## 🎯 Completion Summary
 

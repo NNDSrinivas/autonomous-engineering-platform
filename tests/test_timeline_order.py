@@ -65,7 +65,6 @@ def test_expected_sequence(api_client: Client, seeded_graph):
     
     # Find indices of each keyword
     indices = []
-    " ".join(titles)
     
     for keyword in expected_sequence_keywords:
         # Find first occurrence of keyword

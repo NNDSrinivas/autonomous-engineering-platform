@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from backend.database.models.memory_graph import MemoryNode, MemoryEdge
+from backend.database.models.memory_graph import MemoryNode, MemoryEdge, Base
 from backend.core.config import settings
 
 def load_fixture(fixture_path: str) -> Dict[str, Any]:
@@ -145,7 +145,14 @@ def main():
     print(f"Description: {fixture.get('description', 'N/A')}")
     
     # Connect to database
-    engine = create_engine(settings.DATABASE_URL)
+    db_url = settings.database_url or f"postgresql://{settings.db_user}:{settings.db_password}@{settings.db_host}:{settings.db_port}/{settings.db_name}"
+    engine = create_engine(db_url)
+    
+    # Create tables if they don't exist
+    print("📋 Creating tables if needed...")
+    Base.metadata.create_all(engine)
+    print()
+    
     Session = sessionmaker(bind=engine)
     session = Session()
     

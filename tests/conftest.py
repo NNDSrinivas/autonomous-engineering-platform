@@ -29,7 +29,8 @@ FIXTURE_PATH = "data/seed/pr17_fixture.json"
 @pytest.fixture(scope="session")
 def test_engine():
     """Create database engine for tests"""
-    engine = create_engine(settings.DATABASE_URL)
+    db_url = settings.database_url or f"postgresql://{settings.db_user}:{settings.db_password}@{settings.db_host}:{settings.db_port}/{settings.db_name}"
+    engine = create_engine(db_url)
     yield engine
     engine.dispose()
 

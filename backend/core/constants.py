@@ -8,9 +8,11 @@ updates easier.
 import re
 
 # Entity identifier patterns
+# JIRA keys: Use negative lookbehind/lookahead for robustness in URL contexts
+# Example: Matches "ENG-123" in "jira.com/browse/ENG-123" where word boundaries may fail
 JIRA_KEY_PATTERN = re.compile(
-    r"\b[A-Z]{2,10}-\d+\b"
-)  # JIRA project keys are 2-10 chars, word boundaries enforced
+    r"(?<![A-Z0-9])[A-Z]{2,10}-\d+(?![A-Z0-9])"
+)  # JIRA project keys are 2-10 chars; negative assertions prevent false matches in URLs
 PR_NUMBER_PATTERN = re.compile(r"#(\d+)")
 SLACK_THREAD_PATTERN = re.compile(r"p\d{10,}")
 

@@ -271,6 +271,7 @@ def semantic_pgvector(
       FROM memory_chunk mc
       JOIN memory_object mo ON mo.id = mc.object_id
       WHERE mo.org_id = :o {source_filter}
+        AND mc.embedding_vec IS NOT NULL
       ORDER BY embedding_vec <-> :qvec::vector
       LIMIT :lim
     """
@@ -332,6 +333,7 @@ def semantic_json(
       FROM memory_chunk mc
       JOIN memory_object mo ON mo.id = mc.object_id
       WHERE mo.org_id = :o {source_filter}
+        AND mc.embedding IS NOT NULL
       LIMIT :scan_limit
     """
             ),

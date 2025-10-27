@@ -132,6 +132,22 @@ def _authority_score(meta: Dict[str, Any]) -> float:
     return min(AUTHORITY_MAX_SCORE, score)
 
 
+def _normalize_bm25_score(score: float) -> float:
+    """Normalize BM25/ts_rank score to [0, 1) range using x/(1+x) transformation
+
+    This smooth normalization avoids the hard ceiling of min(1.0, x) and produces
+    values that asymptotically approach 1.0 as x increases to infinity.
+
+    Args:
+        score: Raw BM25/ts_rank score (non-negative, unbounded)
+
+    Returns:
+        Normalized score in [0, 1) range for consistent weighting with other components
+    """
+    score = max(0.0, score)
+    return score / (1.0 + score)
+
+
 def _bm25(
     db: Session, org_id: str, query: str, sources: Optional[List[str]], limit: int
 ) -> Dict[Tuple[str, str], float]:
@@ -221,6 +237,7 @@ def semantic_pgvector(
       SELECT mo.source, mo.foreign_id, mo.title, mo.url, mo.meta_json, 
              mc.text, mc.seq,
              EXTRACT(EPOCH FROM mc.created_at) AS cts,
+             -- pgvector <-> operator returns cosine distance in [0, 2] for normalized vectors
              (embedding_vec <-> :qvec::vector) AS dist
       FROM memory_chunk mc
       JOIN memory_object mo ON mo.id = mc.object_id
@@ -433,8 +450,7 @@ def hybrid_search(
         # While BM25 has built-in length normalization, ts_rank uses a different algorithm and its scores
         # are unbounded and can vary widely. This transformation maps them to [0, 1) for consistent weighting
         # with other normalized components (semantic, recency, authority).
-        bm25_score = max(0.0, bm25_score)
-        bm25_score = bm25_score / (1.0 + bm25_score)
+        bm25_score = _normalize_bm25_score(bm25_score)
 
         # Compute final hybrid score
         final_score = (

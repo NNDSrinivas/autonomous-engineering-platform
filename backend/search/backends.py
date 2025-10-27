@@ -261,8 +261,8 @@ def semantic_pgvector(
                 "o": org_id,
                 "src": sources,
                 "lim": limit,
-                # pgvector requires the vector parameter as a JSON string (e.g., "[0.1, 0.2, 0.3]").
-                # The ::vector cast in the SQL query converts this string to the native vector type.
+                # Parameter binding via psycopg2 requires the vector as a JSON string array
+                # (e.g., "[0.1, 0.2, 0.3]"), which is cast to vector type in the query using ::vector.
                 "qvec": json.dumps(query_vec),
             },
         )
@@ -333,14 +333,15 @@ def semantic_json(
             vec = json.loads(embedding_data.tobytes().decode("utf-8"))
         elif isinstance(embedding_data, bytes):
             vec = json.loads(embedding_data.decode("utf-8"))
+        elif isinstance(embedding_data, dict):
+            vec = embedding_data
         else:
             # Unsupported type - raise exception
             raise TypeError(
                 f"Cannot parse embedding_data of type {type(embedding_data).__name__}. "
-                f"Expected str, bytes, or memoryview. "
+                f"Expected str, bytes, memoryview, or dict. "
                 f"This may indicate a database configuration issue. "
-                f"Check that the embedding column is defined as TEXT or BLOB in your database schema. "
-                f"If using PostgreSQL, ensure the column type is TEXT or BYTEA, not JSONB."
+                f"Check that the embedding column is defined as TEXT, BLOB, or JSON/JSONB in your database schema."
             )
 
         similarity = _cosine_similarity(query_vec, vec)

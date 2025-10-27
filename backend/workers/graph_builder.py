@@ -551,15 +551,10 @@ class GraphBuilder:
             # Try metadata first (most reliable)
             if meta and isinstance(meta, dict) and "type" in meta:
                 entity_type = meta["type"].lower()
-                if entity_type in ("pull_request", "pr"):
-                    return NodeKind.PR.value
-                elif entity_type == "issue":
-                    # Note: Currently NodeKind.GITHUB_ISSUE doesn't exist, treating as PR
-                    # TODO: Add NodeKind.GITHUB_ISSUE when ingestion differentiates
-                    return NodeKind.PR.value
-                elif entity_type == "discussion":
-                    # Note: Currently NodeKind.GITHUB_DISCUSSION doesn't exist
-                    # TODO: Add NodeKind.GITHUB_DISCUSSION when ingestion differentiates
+                if entity_type in ("pull_request", "pr", "issue", "discussion"):
+                    # Note: Currently NodeKind.GITHUB_ISSUE and NodeKind.GITHUB_DISCUSSION don't exist
+                    # TODO: Add NodeKind.GITHUB_ISSUE and NodeKind.GITHUB_DISCUSSION when ingestion differentiates
+                    # All GitHub entities treated as PR for backward compatibility
                     return NodeKind.PR.value
 
             # Fallback to foreign_id pattern matching

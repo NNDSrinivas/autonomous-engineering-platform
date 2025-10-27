@@ -87,12 +87,12 @@ class MemoryNode(Base):
         JSON, nullable=True, comment="Metadata: url, assignee, status, etc."
     )
     created_at: Mapped[datetime] = Column(
-        DateTime(timezone=True), nullable=False, server_default="CURRENT_TIMESTAMP"
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = Column(
         DateTime(timezone=True),
         nullable=False,
-        server_default="CURRENT_TIMESTAMP",
+        server_default=func.now(),
         onupdate=func.now(),
         comment="Updated automatically by SQLAlchemy ORM on update",
     )

@@ -330,8 +330,8 @@ export class TimelinePanel {
                     
                     if (node.meta && node.meta.url) {
                         html += '<div class="timeline-links">';
-                        html += '<button class="link-button" onclick="openLink(\'' + 
-                                escapeHtml(node.meta.url) + '\')">Open</button>';
+                        html += '<button class="link-button" data-url="' + 
+                                escapeHtml(node.meta.url) + '">Open</button>';
                         html += '</div>';
                     }
                     
@@ -344,6 +344,16 @@ export class TimelinePanel {
             html += '</div>';
             
             document.getElementById('content').innerHTML = html;
+            
+            // Attach event listeners to buttons after DOM is updated
+            document.querySelectorAll('.link-button').forEach(button => {
+                button.addEventListener('click', function() {
+                    const url = this.getAttribute('data-url');
+                    if (url) {
+                        openLink(url);
+                    }
+                });
+            });
         }
         
         function openLink(url) {

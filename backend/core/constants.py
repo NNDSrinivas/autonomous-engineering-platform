@@ -8,7 +8,7 @@ updates easier.
 import re
 
 # Entity identifier patterns
-JIRA_KEY_PATTERN = re.compile(r"[A-Z]{2,}-\d+")
+JIRA_KEY_PATTERN = re.compile(r"[A-Z]{2,10}-\d+")  # JIRA project keys are 2-10 chars
 PR_NUMBER_PATTERN = re.compile(r"#(\d+)")
 SLACK_THREAD_PATTERN = re.compile(r"p\d{10,}")
 

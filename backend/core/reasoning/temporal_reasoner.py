@@ -355,7 +355,9 @@ class TemporalReasoner:
             nodes: Relevant nodes in graph
             edges: Relevant edges
             paths: Causality paths found
-            k: Maximum nodes to include in context (respects caller's limit)
+            k: Maximum nodes to include in context (respects caller's limit).
+               Defensive slicing is applied to prevent unbounded context even
+               when called from tests or background workers without validation.
 
         Returns:
             Natural language explanation with citations

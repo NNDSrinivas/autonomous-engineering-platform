@@ -303,9 +303,9 @@ class GraphBuilder:
                     if other_node.foreign_id.startswith("#")
                     else other_node.foreign_id
                 )
-                # Validate that normalized foreign_id is numeric to avoid false matches
+                # Validate that normalized foreign_id is numeric before comparison to avoid false matches
                 matched = (
-                    pr_num == foreign_id_normalized and foreign_id_normalized.isdigit()
+                    foreign_id_normalized.isdigit() and pr_num == foreign_id_normalized
                 )
             else:
                 # JIRA key comparison is exact
@@ -528,6 +528,10 @@ class GraphBuilder:
         whether they are pull requests, issues, or discussions. If other GitHub entity types
         (such as issues or discussions) are ingested in the future, update this logic to differentiate
         between them, for example by inspecting the foreign_id or other metadata.
+
+        TODO: Distinguish between GitHub PRs, issues, and discussions to prevent incorrect
+        relationship detection and improve graph accuracy. Consider using foreign_id patterns
+        (e.g., "#123" for PRs, "GH-123" for issues) or additional metadata fields.
         """
         mapping = {
             "jira": NodeKind.JIRA_ISSUE.value,

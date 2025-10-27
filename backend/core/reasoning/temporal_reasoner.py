@@ -15,6 +15,11 @@ from sqlalchemy.orm import Session
 
 from backend.database.models.memory_graph import MemoryNode, MemoryEdge, EdgeRelation
 from backend.core.ai_service import AIService
+from backend.core.constants import (
+    JIRA_KEY_PATTERN,
+    PR_NUMBER_PATTERN,
+    SLACK_THREAD_PATTERN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -369,20 +374,18 @@ Provide a concise explanation (2-3 paragraphs) that directly answers the query."
             return f"Found {len(nodes)} related entities and {len(edges)} relationships. Manual review recommended."
 
     def _extract_entities(self, query: str) -> List[str]:
-        """Extract entity identifiers from query text"""
+        """Extract entity identifiers from query text using shared patterns"""
         entities = []
 
         # JIRA keys
-        jira_pattern = r"[A-Z]{2,}-\d+"
-        entities.extend(re.findall(jira_pattern, query))
+        entities.extend(JIRA_KEY_PATTERN.findall(query))
 
         # PR numbers
-        pr_pattern = r"#(\d+)"
-        entities.extend([f"#{m}" for m in re.findall(pr_pattern, query)])
+        pr_matches = PR_NUMBER_PATTERN.findall(query)
+        entities.extend([f"#{m}" for m in pr_matches])
 
         # Slack thread IDs
-        thread_pattern = r"p\d{10,}"
-        entities.extend(re.findall(thread_pattern, query))
+        entities.extend(SLACK_THREAD_PATTERN.findall(query))
 
         return list(set(entities))
 

@@ -87,7 +87,12 @@ class GraphRebuildResponse(BaseModel):
 class GraphQueryRequest(BaseModel):
     query: str = Field(..., description="Natural language query")
     depth: int = Field(default=3, ge=1, le=5, description="Maximum search depth")
-    k: int = Field(default=12, ge=1, le=50, description="Maximum nodes to return")
+    k: int = Field(
+        default=10,
+        ge=1,
+        le=10,
+        description="Maximum nodes to return (narrative uses first 10)",
+    )
 
 
 class TimelineQuery(BaseModel):
@@ -317,16 +322,12 @@ async def query_graph(
 @router.get("/timeline")
 async def get_timeline(
     issue: str,
-    window: str = "30d",
-    request: Request = None,
     org_id: str = Depends(get_org_id),
     db: Session = Depends(get_db),
+    window: str = "30d",
+    request: Request = None,
 ):
     """Get timeline for an entity
-
-    Returns chronologically ordered events related to the entity.
-
-    **RBAC**: Requires org-level read access
 
     Query params:
     - issue: Entity foreign_id (e.g., ENG-102, PR#456)
@@ -348,21 +349,14 @@ async def get_timeline(
             graph_query_counter.labels(org_id=org_id, endpoint="timeline").inc()
             graph_query_latency.labels(endpoint="timeline").observe(elapsed_ms)
 
-        # Audit log
+        # Audit log (request provided by FastAPI)
         if request:
-            audit_log(
-                request,
-                org_id,
-                "timeline",
-                {"issue": issue, "window": window},
-                elapsed_ms,
-            )
+            audit_log(request, org_id, "timeline", {"issue": issue}, elapsed_ms)
 
-        result["elapsed_ms"] = elapsed_ms
         return result
 
     except Exception as e:
         logger.error(
-            f"Timeline query failed for {issue}, org={org_id}: {e}", exc_info=True
+            f"Timeline fetch failed for issue={issue}, org={org_id}: {e}", exc_info=True
         )
-        raise HTTPException(status_code=500, detail=f"Timeline query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Timeline fetch failed: {str(e)}")

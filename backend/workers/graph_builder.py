@@ -297,10 +297,7 @@ class GraphBuilder:
                     if other_node.foreign_id.startswith("#")
                     else other_node.foreign_id
                 )
-                matched = (
-                    pr_num == foreign_id_normalized
-                    or f"#{pr_num}" == other_node.foreign_id
-                )
+                matched = pr_num == foreign_id_normalized
             else:
                 # JIRA key comparison is exact
                 matched = jira_key == other_node.foreign_id

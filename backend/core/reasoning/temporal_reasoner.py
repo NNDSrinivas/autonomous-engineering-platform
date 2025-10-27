@@ -303,7 +303,7 @@ class TemporalReasoner:
 
             while (
                 queue and len(paths) < MAX_CAUSALITY_PATHS
-            ):  # Limit paths using constant
+            ):  # Prevent excessive path exploration that could impact performance and context length
                 current_node, path = queue.pop(0)
 
                 if (
@@ -354,7 +354,9 @@ class TemporalReasoner:
 
         context += "## Relevant Entities:\n"
         # Respect caller's k parameter while protecting against excessive context
-        for node in nodes[:k]:  # Use k parameter instead of hardcoded 10
+        for node in nodes[
+            :k
+        ]:  # Limit nodes to k to prevent excessive context in LLM prompt
             context += (
                 f"- [{node.foreign_id}] {node.title or 'Untitled'} ({node.kind})\n"
             )

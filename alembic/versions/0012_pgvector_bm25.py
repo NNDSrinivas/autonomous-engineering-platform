@@ -134,7 +134,10 @@ def upgrade():
             batch_size = 1000
             updated_rows = batch_size
             conn = op.get_bind()
-            while updated_rows == batch_size:
+            max_iterations = 10000  # Prevent infinite loops (e.g., 10M rows max)
+            iteration = 0
+            while updated_rows == batch_size and iteration < max_iterations:
+                iteration += 1
                 result = conn.execute(
                     sa.text(
                         """

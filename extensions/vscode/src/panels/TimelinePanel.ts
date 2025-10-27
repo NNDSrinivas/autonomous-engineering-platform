@@ -118,7 +118,7 @@ export class TimelinePanel {
     private _openFile(path: string) {
         vscode.workspace.openTextDocument(path).then(doc => {
             vscode.window.showTextDocument(doc);
-        }).catch(error => {
+        }, (error: unknown) => {
             vscode.window.showErrorMessage(`Failed to open file: ${error}`);
         });
     }
@@ -373,13 +373,14 @@ export class TimelinePanel {
         // Properly escape attribute values to prevent XSS in attribute context
         function escapeAttribute(text) {
             if (!text) return '';
+            const backtickRegex = new RegExp(String.fromCharCode(96), 'g');
             return String(text)
                 .replace(/&/g, '&amp;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
-                .replace(/`/g, '&#96;');
+                .replace(backtickRegex, '&#96;');
         }
     </script>
 </body>

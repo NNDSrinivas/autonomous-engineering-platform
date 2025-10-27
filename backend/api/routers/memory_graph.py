@@ -324,7 +324,7 @@ async def get_timeline(
     org_id: str = Depends(get_org_id),
     db: Session = Depends(get_db),
     window: str = "30d",
-    request: Request = None,
+    request: Request = Depends(),
 ):
     """Get timeline for an entity
 

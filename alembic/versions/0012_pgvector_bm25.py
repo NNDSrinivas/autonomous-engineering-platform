@@ -129,7 +129,9 @@ def upgrade():
             batch_size = 1000
             updated_rows = batch_size
             conn = op.get_bind()
-            max_iterations = 10000  # Prevent infinite loops (upper bound: 10M rows with current batch_size)
+            # Prevent infinite loops: max iterations calculated for expected maximum dataset size
+            MAX_EXPECTED_ROWS = 10_000_000  # 10M rows
+            max_iterations = MAX_EXPECTED_ROWS // batch_size
             iteration = 0
             while updated_rows == batch_size and iteration < max_iterations:
                 iteration += 1

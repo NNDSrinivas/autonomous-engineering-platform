@@ -123,7 +123,7 @@ def upgrade():
                 "You must populate text_tsv for existing rows after migration (e.g., via batched UPDATE)."
             )
         else:
-            logger.warning(
+            logger.info(
                 "[alembic/0012_pgvector_bm25] Running batched UPDATE to populate text_tsv. "
                 "This minimizes lock duration but may take longer for large datasets."
             )

@@ -60,7 +60,13 @@ HYBRID_OVERFETCH_MULTIPLIER = 5
 
 # JSON vector fallback parameters
 # WARNING: Linear scan can be slow on large tables. Use pgvector for production.
-JSON_VECTOR_SCAN_LIMIT = 2000  # Maximum rows to scan in linear search
+# Limit the number of rows to scan when using the JSON fallback for vector search.
+# 2000 is a conservative default chosen to balance recall (completeness) and performance:
+# - Higher values increase the chance of finding relevant results, but slow down queries linearly.
+# - Lower values improve performance, but may miss relevant matches.
+# - This fallback is intended for development or small datasets only; for production, use pgvector or another ANN backend.
+# Adjust this limit based on your dataset size and acceptable latency.
+JSON_VECTOR_SCAN_LIMIT = 2000
 EXCERPT_MAX_LENGTH = 700  # Maximum excerpt length in characters
 
 # Numerical stability parameters
@@ -255,6 +261,8 @@ def semantic_pgvector(
                 "o": org_id,
                 "src": sources,
                 "lim": limit,
+                # pgvector requires the vector parameter as a JSON string (e.g., "[0.1, 0.2, 0.3]").
+                # The ::vector cast in the SQL query converts this string to the native vector type.
                 "qvec": json.dumps(query_vec),
             },
         )

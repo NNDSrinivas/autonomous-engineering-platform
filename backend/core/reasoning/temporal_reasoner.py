@@ -364,8 +364,7 @@ class TemporalReasoner:
         context = f"Query: {query}\n\n"
 
         context += "## Relevant Entities:\n"
-        # Defensive slice: This protects against unbounded context length regardless of the caller.
-        # Even if k is validated in the API, this ensures robustness if called from tests or background workers.
+        # Note: k is validated by API layer (1 <= k <= MAX_NODES_IN_CONTEXT), caller must ensure valid k
         for node in nodes[:k]:
             context += (
                 f"- [{node.foreign_id}] {node.title or 'Untitled'} ({node.kind})\n"

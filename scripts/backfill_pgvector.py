@@ -34,9 +34,7 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "500"))
 
 def backfill_vectors():
     """Backfill vector embeddings from JSON to pgvector format"""
-    print(
-        f"Connecting to database: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else DATABASE_URL}"
-    )
+    print("Connecting to database...")
     print(f"Embedding dimension: {EMBED_DIM}")
     print(f"Batch size: {BATCH_SIZE}")
 

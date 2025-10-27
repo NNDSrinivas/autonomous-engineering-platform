@@ -299,7 +299,6 @@ class GraphBuilder:
                 matched = jira_key == other_node.foreign_id
 
             if matched:
-                target_id = f"#{pr_num}" if pr_num else jira_key
                 edges.append(
                     {
                         "src_id": pr_node.id,
@@ -308,7 +307,10 @@ class GraphBuilder:
                         "weight": 1.0,
                         "confidence": 0.98,
                         "org_id": pr_node.org_id,
-                        "meta": {"heuristic": "pr_fixes", "pattern": target_id},
+                        "meta": {
+                            "heuristic": "pr_fixes",
+                            "pattern": f"#{pr_num}" if pr_num else jira_key,
+                        },
                     }
                 )
 

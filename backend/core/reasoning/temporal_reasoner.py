@@ -196,11 +196,7 @@ class TemporalReasoner:
             # Get outbound edges
             for edge in current_node.outbound_edges:
                 if edge.org_id != root.org_id:
-                    continue  # Enforce org isolation
-
-                # Also verify destination node belongs to same org to prevent data leaks
-                if edge.destination_node.org_id != root.org_id:
-                    continue
+                    continue  # Enforce org isolation at edge level
 
                 if since and edge.destination_node.created_at < since:
                     continue

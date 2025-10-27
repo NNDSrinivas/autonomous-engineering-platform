@@ -289,6 +289,11 @@ class GraphBuilder:
         matches = FIXES_PATTERN.findall(pr_text)
 
         for match in matches:
+            # `FIXES_PATTERN.findall` returns tuples like (pr_num, jira_key)
+            # where exactly one of the two will be set and the other will be None
+            # (the regex captures either a PR number or a JIRA key). We unpack
+            # here for readability; subsequent logic checks `if pr_num:` to
+            # handle the two cases safely.
             pr_num, jira_key = match
 
             # Normalize comparison: PR numbers may or may not have '#' prefix

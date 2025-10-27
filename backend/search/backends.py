@@ -379,7 +379,7 @@ def semantic(
         # FAISS backend is recognized but not yet implemented
         logger.warning(
             "FAISS backend is recognized but not yet implemented. "
-            "Falling back to JSON vector search."
+            "Falling back to JSON vector search. For better performance, consider installing and configuring the 'pgvector' backend, or update the VECTOR_BACKEND configuration setting."
         )
         return semantic_json(db, org_id, query_vec, sources, limit)
     else:

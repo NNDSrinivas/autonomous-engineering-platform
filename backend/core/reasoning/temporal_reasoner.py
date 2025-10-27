@@ -352,9 +352,7 @@ class TemporalReasoner:
 
         context += "## Relevant Entities:\n"
         # Respect caller's k parameter while protecting against excessive context
-        for node in nodes[
-            :k
-        ]:  # Respects the caller's specified k limit for context size
+        for node in nodes[:k]:
             context += (
                 f"- [{node.foreign_id}] {node.title or 'Untitled'} ({node.kind})\n"
             )

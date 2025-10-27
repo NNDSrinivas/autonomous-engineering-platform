@@ -528,11 +528,10 @@ class GraphBuilder:
         whether they are pull requests, issues, or discussions. If other GitHub entity types
         (such as issues or discussions) are ingested in the future, update this logic to differentiate
         between them, for example by inspecting the foreign_id or other metadata.
-
-        TODO: Distinguish between GitHub PRs, issues, and discussions to prevent incorrect
-        relationship detection and improve graph accuracy. Consider using foreign_id patterns
-        (e.g., "#123" for PRs, "GH-123" for issues) or additional metadata fields.
         """
+        # TODO: Distinguish between GitHub PRs, issues, and discussions to prevent incorrect
+        # relationship detection and improve graph accuracy. Consider using foreign_id patterns
+        # (e.g., "#123" for PRs, "GH-123" for issues) or additional metadata fields.
         mapping = {
             "jira": NodeKind.JIRA_ISSUE.value,
             "slack": NodeKind.SLACK_THREAD.value,

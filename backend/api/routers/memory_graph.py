@@ -13,6 +13,7 @@ import logging
 import time
 from datetime import datetime, timedelta
 from typing import Optional
+from threading import Lock
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -108,15 +109,19 @@ def get_org_id(x_org_id: Optional[str] = Header(None)) -> str:
     return x_org_id
 
 
-# Helper: Create AIService instance as singleton
+# Helper: Create AIService instance as singleton (thread-safe)
 _ai_service_instance: Optional[AIService] = None
+_ai_service_lock = Lock()
 
 
 def get_ai_service() -> AIService:
-    """Get AIService singleton instance. Reuses same instance across requests for efficiency."""
+    """Get AIService singleton instance. Thread-safe, reuses same instance across requests for efficiency."""
     global _ai_service_instance
     if _ai_service_instance is None:
-        _ai_service_instance = AIService()
+        with _ai_service_lock:
+            # Double-check pattern to avoid race conditions
+            if _ai_service_instance is None:
+                _ai_service_instance = AIService()
     return _ai_service_instance
 
 

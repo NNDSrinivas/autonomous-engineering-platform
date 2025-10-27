@@ -233,8 +233,6 @@ def semantic_pgvector(
     source_filter = "AND mo.source = ANY(:src)" if sources else ""
 
     # pgvector will use HNSW or IVFFLAT index automatically
-    # When using parameter binding, PostgreSQL cannot automatically determine whether :qvec is a text[] or a vector type.
-    # Explicitly casting :qvec to vector (::vector) is necessary to resolve operator type ambiguity and ensure pgvector uses the correct similarity operator.
     rows = (
         db.execute(
             text(
@@ -243,6 +241,7 @@ def semantic_pgvector(
              mc.text, mc.seq,
              EXTRACT(EPOCH FROM mc.created_at) AS cts,
              -- pgvector <-> operator returns cosine distance in [0, 2] for normalized vectors
+             -- Cast :qvec to vector type (::vector) to resolve parameter type ambiguity (text[] vs vector)
              (embedding_vec <-> :qvec::vector) AS dist
       FROM memory_chunk mc
       JOIN memory_object mo ON mo.id = mc.object_id
@@ -447,14 +446,7 @@ def hybrid_search(
         auth_score = _authority_score(meta)
         bm25_score = bm25_scores.get(key, 0.0)
 
-        # Normalize BM25 using x/(1+x), which produces values in [0, 1) that
-        # asymptotically approach 1.0 as x increases to infinity. ts_rank returns
-        # non-negative values but can exceed 1.0 for highly relevant matches, so this
-        # smooth normalization avoids the hard ceiling of min(1.0, x).
-        # Note: This uses PostgreSQL's ts_rank as an approximation of BM25, not true BM25 scoring.
-        # While BM25 has built-in length normalization, ts_rank uses a different algorithm and its scores
-        # are unbounded and can vary widely. This transformation maps them to [0, 1) for consistent weighting
-        # with other normalized components (semantic, recency, authority).
+        # Apply x/(1+x) normalization to map unbounded ts_rank scores to [0, 1) - see _normalize_bm25_score
         bm25_score = _normalize_bm25_score(bm25_score)
 
         # Compute final hybrid score

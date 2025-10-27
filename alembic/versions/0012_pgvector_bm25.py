@@ -100,26 +100,21 @@ def upgrade():
                 "ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS text_tsv tsvector;"
             )
 
-        # Populate existing rows with tsvector data
-        # Note: For very large tables (millions of rows), this single UPDATE statement
-        # may cause extended lock times during migration. Consider alternatives:
-        #   1. Run migration during maintenance window with acceptable downtime
-        #   2. Implement batched UPDATE in separate script with row limit checkpoints
-        #      (Note: scripts/backfill_pgvector.py handles embedding_vec migration only)
-        # Current implementation prioritizes migration simplicity for typical datasets
-        # (< 1M rows, ~10-30 seconds lock time on modern hardware)
+        # Populate existing rows with tsvector data using batched updates
+        # Note: This migration implements batched updates by default to populate the text_tsv column.
+        # Rows are updated in batches (default: 1000 per batch) to minimize lock duration and reduce
+        # migration impact on large tables. This approach is safe for most datasets (<1M rows).
         #
-        # Design decision: We provide SKIP_TSVECTOR_UPDATE flag rather than implementing
-        # batched updates directly in the migration because:
-        # - Alembic migrations should be simple and atomic (all-or-nothing)
-        # - Batched updates require complex state tracking and error recovery
-        # - Production deployments can plan maintenance windows or skip this step
-        # - Post-migration batched backfill provides better observability and control
+        # For very large tables (millions of rows), even batched updates may take significant time.
+        # In such cases, you can skip the batched update during migration by setting:
+        #   SKIP_TSVECTOR_UPDATE=1
+        # This will skip the entire batched update process. You must then backfill text_tsv
+        # for existing rows after migration (e.g., using a custom script).
         #
-        # For large tables (>1M rows):
-        # 1. Set SKIP_TSVECTOR_UPDATE=1 to skip this step
-        # 2. Run batched UPDATE post-migration with separate transactions (1000 rows per batch)
-        # 3. See scripts/backfill_pgvector.py for reference batching pattern
+        # Guidance for large tables (>1M rows):
+        #   1. Set SKIP_TSVECTOR_UPDATE=1 to skip the batched update in migration.
+        #   2. Run a batched UPDATE post-migration with separate transactions (e.g., 1000 rows per batch).
+        #   3. See scripts/backfill_pgvector.py for a reference batching pattern.
         if os.getenv("SKIP_TSVECTOR_UPDATE", "0") == "1":
             logger.info(
                 "[alembic/0012_pgvector_bm25] Skipping tsvector UPDATE due to SKIP_TSVECTOR_UPDATE=1. "

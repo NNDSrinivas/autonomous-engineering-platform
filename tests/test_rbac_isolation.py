@@ -26,7 +26,7 @@ def test_cross_org_forbidden_timeline(api_client: Client, other_org_client: Clie
     """Verify cross-org timeline access returns 403/401 or empty results"""
     response = other_org_client.get(
         "/api/memory/timeline",
-        params={"issue": "ENG-102", "window": "30d"}
+        params={"entity_id": "ENG-102", "window": "30d"}
     )
     
     # Should block or return empty

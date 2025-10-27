@@ -325,7 +325,7 @@ async def query_graph(
 
 @router.get("/timeline")
 async def get_timeline(
-    issue: str,
+    entity_id: str,
     org_id: str = Depends(get_org_id),
     db: Session = Depends(get_db),
     window: str = "30d",
@@ -334,7 +334,7 @@ async def get_timeline(
     """Get timeline for an entity
 
     Query params:
-    - issue: Entity foreign_id (e.g., ENG-102, PR#456)
+    - entity_id: Entity foreign_id (e.g., ENG-102, #456, SLACK-p123)
     - window: Time window (default: 30d)
     """
     start_time = time.time()
@@ -345,7 +345,7 @@ async def get_timeline(
         reasoner = TemporalReasoner(db, ai_service)
 
         # Execute timeline
-        result = reasoner.timeline_for(org_id, issue, window)
+        result = reasoner.timeline_for(org_id, entity_id, window)
 
         elapsed_ms = (time.time() - start_time) * 1000
 
@@ -355,12 +355,13 @@ async def get_timeline(
 
         # Audit log (request provided by FastAPI)
         if request:
-            audit_log(request, org_id, "timeline", {"issue": issue}, elapsed_ms)
+            audit_log(request, org_id, "timeline", {"entity_id": entity_id}, elapsed_ms)
 
         return result
 
     except Exception as e:
         logger.error(
-            f"Timeline fetch failed for issue={issue}, org={org_id}: {e}", exc_info=True
+            f"Timeline fetch failed for entity_id={entity_id}, org={org_id}: {e}",
+            exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"Timeline fetch failed: {str(e)}")

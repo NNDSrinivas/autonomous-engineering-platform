@@ -309,9 +309,9 @@ class GraphBuilder:
                     if other_node.foreign_id.startswith("#")
                     else other_node.foreign_id
                 )
-                # Validate that normalized foreign_id is numeric before comparison to avoid false matches
-                matched = (
-                    foreign_id_normalized.isdigit() and pr_num == foreign_id_normalized
+                # Validate numeric before comparison; use int equality for true numeric comparison
+                matched = foreign_id_normalized.isdigit() and int(pr_num) == int(
+                    foreign_id_normalized
                 )
             else:
                 # JIRA key comparison is exact

@@ -20,6 +20,7 @@ from sqlalchemy import (
     ForeignKey,
     JSON,
     Index,
+    func,
 )
 from sqlalchemy.orm import relationship, Mapped
 from sqlalchemy.ext.declarative import declarative_base
@@ -92,7 +93,8 @@ class MemoryNode(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default="CURRENT_TIMESTAMP",
-        onupdate="CURRENT_TIMESTAMP",
+        onupdate=func.now(),
+        comment="Updated via trigger or application code",
     )
 
     # Relationships

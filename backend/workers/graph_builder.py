@@ -27,22 +27,16 @@ from backend.database.models.memory_graph import (
     EdgeRelation,
 )
 from backend.core.ai_service import AIService
+from backend.core.constants import (
+    JIRA_KEY_PATTERN,
+    PR_NUMBER_PATTERN,
+    FIXES_PATTERN,
+    REVERT_PATTERN,
+    TEMPORAL_WINDOW_HOURS,
+    MIN_SHARED_TERMS_COUNT,
+)
 
 logger = logging.getLogger(__name__)
-
-# Regex patterns for heuristics
-JIRA_KEY_PATTERN = re.compile(r"\b([A-Z]{2,10}-\d+)\b")
-PR_NUMBER_PATTERN = re.compile(r"#(\d+)")
-FIXES_PATTERN = re.compile(
-    r"(?:fixes?|closes?|resolves?)\s+(?:#(\d+)|([A-Z]{2,10}-\d+))",
-    re.IGNORECASE,
-)
-REVERT_PATTERN = re.compile(r"revert|reverts", re.IGNORECASE)
-
-# Thresholds for edge creation
-SEMANTIC_SIMILARITY_THRESHOLD = 0.75
-TEMPORAL_WINDOW_HOURS = 48
-MIN_SHARED_TERMS_COUNT = 3
 
 
 class GraphBuilder:
@@ -292,10 +286,6 @@ class GraphBuilder:
 
         for match in matches:
             pr_num, jira_key = match
-            # Skip if both are empty
-            if not pr_num and not jira_key:
-                continue
-
             target_id = f"#{pr_num}" if pr_num else jira_key
 
             if target_id == other_node.foreign_id:

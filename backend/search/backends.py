@@ -135,8 +135,9 @@ def _authority_score(meta: Dict[str, Any]) -> float:
 def _normalize_bm25_score(score: float) -> float:
     """Normalize BM25/ts_rank score to [0, 1) range using x/(1+x) transformation
 
-    This smooth normalization avoids the hard ceiling of min(1.0, x) and produces
-    values that asymptotically approach 1.0 as x increases to infinity.
+    This smooth normalization avoids the hard ceiling of min(1.0, x). The transformation
+    maps unbounded scores to the half-open interval [0, 1), where values asymptotically
+    approach but never reach 1.0 as x increases to infinity.
 
     Args:
         score: Raw BM25/ts_rank score (non-negative, unbounded)
@@ -254,7 +255,7 @@ def semantic_pgvector(
                 "o": org_id,
                 "src": sources,
                 "lim": limit,
-                "qvec": "[" + ",".join(map(str, query_vec)) + "]",
+                "qvec": json.dumps(query_vec),
             },
         )
         .mappings()
@@ -441,14 +442,14 @@ def hybrid_search(
         # Parse metadata
         meta = json.loads(row["meta_json"] or "{}")
 
-        # Compute component scores
         rec_score = _recency_score(row["cts"] or now, now)
         auth_score = _authority_score(meta)
         bm25_score = bm25_scores.get(key, 0.0)
 
-        # Apply x/(1+x) normalization to map unbounded ts_rank scores to [0, 1) - see _normalize_bm25_score
+        # Normalize ts_rank scores to [0, 1) for consistent hybrid weighting
         bm25_score = _normalize_bm25_score(bm25_score)
 
+        # Compute final hybrid score
         # Compute final hybrid score
         final_score = (
             SEMANTIC_WEIGHT * sem_score

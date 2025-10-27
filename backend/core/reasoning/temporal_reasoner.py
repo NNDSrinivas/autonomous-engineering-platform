@@ -17,10 +17,12 @@ from backend.database.models.memory_graph import MemoryNode, MemoryEdge, EdgeRel
 from backend.core.ai_service import AIService
 from backend.core.constants import (
     JIRA_KEY_PATTERN,
+    MAX_CAUSALITY_PATHS,
+    MAX_EDGES_IN_CONTEXT,
+    MAX_PATH_LENGTH,
+    MAX_PATHS_IN_CONTEXT,
     PR_NUMBER_PATTERN,
     SLACK_THREAD_PATTERN,
-    MAX_CAUSALITY_PATHS,
-    MAX_PATH_LENGTH,
 )
 
 logger = logging.getLogger(__name__)
@@ -356,7 +358,7 @@ class TemporalReasoner:
         # Respect caller's k parameter while protecting against excessive context
         for node in nodes[
             :k
-        ]:  # Limit nodes to k to prevent excessive context in LLM prompt
+        ]:  # Respects the caller's specified k limit for context size
             context += (
                 f"- [{node.foreign_id}] {node.title or 'Untitled'} ({node.kind})\n"
             )
@@ -364,14 +366,14 @@ class TemporalReasoner:
                 context += f"  Summary: {node.summary[:200]}...\n"
 
         context += "\n## Relationships:\n"
-        for edge in edges[:20]:  # Limit context
+        for edge in edges[:MAX_EDGES_IN_CONTEXT]:  # Limit context
             src = next((n for n in nodes if n.id == edge.src_id), None)
             dst = next((n for n in nodes if n.id == edge.dst_id), None)
             if src and dst:
                 context += f"- {src.foreign_id} --[{edge.relation}]--> {dst.foreign_id} (confidence: {edge.confidence:.2f})\n"
 
         context += "\n## Causality Chains:\n"
-        for i, path in enumerate(paths[:5]):  # Limit paths
+        for i, path in enumerate(paths[:MAX_PATHS_IN_CONTEXT]):  # Limit paths
             context += f"Path {i+1}: "
             path_str = " → ".join(
                 [f"{node.foreign_id} ({edge.relation})" for node, edge in path]

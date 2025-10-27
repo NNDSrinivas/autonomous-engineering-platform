@@ -242,7 +242,7 @@ async def get_node_neighborhood(
         # Get 1-hop neighborhood (using helper to get AIService instance)
         ai_service = get_ai_service()
         reasoner = TemporalReasoner(db, ai_service)
-        nodes, edges = reasoner._build_subgraph(node, depth=1)
+        nodes, edges = reasoner.get_node_neighborhood(node, depth=1)
 
         elapsed_ms = (time.time() - start_time) * 1000
 

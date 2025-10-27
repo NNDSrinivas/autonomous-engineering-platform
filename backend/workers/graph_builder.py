@@ -294,8 +294,12 @@ class GraphBuilder:
             # Strip '#' from foreign_id to compare numeric parts consistently
             matched = False
             if pr_num:
-                # Compare numeric part only, safely removing '#' prefix
-                foreign_id_normalized = other_node.foreign_id.lstrip("#")
+                # Compare numeric part only, safely removing single '#' prefix
+                foreign_id_normalized = (
+                    other_node.foreign_id[1:]
+                    if other_node.foreign_id.startswith("#")
+                    else other_node.foreign_id
+                )
                 matched = pr_num == foreign_id_normalized
             else:
                 # JIRA key comparison is exact
@@ -367,7 +371,7 @@ class GraphBuilder:
     def _heuristic_temporal_adjacency(
         self, node1: MemoryNode, node2: MemoryNode
     ) -> List[Dict[str, Any]]:
-        """Meeting -> PR within 48 hours (see TEMPORAL_WINDOW_HOURS) with shared terms creates 'derived_from' edge"""
+        """Meeting -> PR within TEMPORAL_WINDOW_HOURS with shared terms creates 'derived_from' edge"""
         edges = []
 
         # Check if one is a meeting and other is PR/doc

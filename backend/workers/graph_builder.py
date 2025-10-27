@@ -289,6 +289,9 @@ class GraphBuilder:
             pr_num, jira_key = match
 
             # Normalize comparison: PR numbers may or may not have '#' prefix
+            # Note: PR foreign_ids in DB may be stored as "#123" or "123" depending on source
+            # FIXES_PATTERN extracts digits only (pr_num = "123")
+            # Strip '#' from foreign_id to compare numeric parts consistently
             matched = False
             if pr_num:
                 # Compare numeric part only, safely removing '#' prefix

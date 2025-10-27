@@ -94,7 +94,7 @@ class MemoryNode(Base):
         nullable=False,
         server_default="CURRENT_TIMESTAMP",
         onupdate=func.now(),
-        comment="Updated via trigger or application code",
+        comment="Updated automatically by SQLAlchemy ORM on update",
     )
 
     # Relationships

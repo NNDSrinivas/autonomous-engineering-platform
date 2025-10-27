@@ -137,8 +137,20 @@ class GraphBuilder:
 
         nodes_created = 0
         for row in rows:
-            # Map source to node kind
-            kind = self._map_source_to_kind(row.source)
+            # Parse metadata first (needed for kind detection)
+            try:
+                if row.meta_json and row.meta_json.strip():
+                    meta_json = json.loads(row.meta_json)
+                else:
+                    meta_json = {}
+            except json.JSONDecodeError:
+                logger.warning(
+                    f"Invalid JSON in meta_json for {row.foreign_id}, using empty dict"
+                )
+                meta_json = {}
+
+            # Map source to node kind (with foreign_id and meta for GitHub type detection)
+            kind = self._map_source_to_kind(row.source, row.foreign_id, meta_json)
             if not kind:
                 continue
 
@@ -150,18 +162,7 @@ class GraphBuilder:
             )
 
             if not existing:
-                # Create new node with safe JSON parsing
-                try:
-                    if row.meta_json and row.meta_json.strip():
-                        meta_json = json.loads(row.meta_json)
-                    else:
-                        meta_json = {}
-                except json.JSONDecodeError:
-                    logger.warning(
-                        f"Invalid JSON in meta_json for {row.foreign_id}, using empty dict"
-                    )
-                    meta_json = {}
-
+                # Create new node
                 node = MemoryNode(
                     org_id=row.org_id,
                     kind=kind,
@@ -526,22 +527,66 @@ class GraphBuilder:
         self.db.add(edge)
         return True
 
-    def _map_source_to_kind(self, source: str) -> Optional[str]:
+    def _map_source_to_kind(
+        self,
+        source: str,
+        foreign_id: Optional[str] = None,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
         """Map memory_object source to node kind
 
-        Note: All GitHub source types are currently mapped to PRs (NodeKind.PR), regardless of
-        whether they are pull requests, issues, or discussions. If other GitHub entity types
-        (such as issues or discussions) are ingested in the future, update this logic to differentiate
-        between them, for example by inspecting the foreign_id or other metadata.
+        For GitHub sources, attempts to distinguish between PRs, issues, and discussions
+        by inspecting foreign_id patterns or metadata. Falls back to PR for backward compatibility.
+
+        Args:
+            source: Source system (e.g., 'github', 'jira', 'slack')
+            foreign_id: Entity identifier (e.g., '#123', 'GH-456')
+            meta: Additional metadata that may contain 'type' field
+
+        Returns:
+            Node kind string or None if source is unknown
         """
-        # TODO: Distinguish between GitHub PRs, issues, and discussions to prevent incorrect
-        # relationship detection and improve graph accuracy. Consider using foreign_id patterns
-        # (e.g., "#123" for PRs, "GH-123" for issues) or additional metadata fields.
+        # Handle GitHub with entity type detection
+        if source.lower() == "github":
+            # Try metadata first (most reliable)
+            if meta and isinstance(meta, dict) and "type" in meta:
+                entity_type = meta["type"].lower()
+                if entity_type in ("pull_request", "pr"):
+                    return NodeKind.PR.value
+                elif entity_type == "issue":
+                    # Note: Currently NodeKind.GITHUB_ISSUE doesn't exist, treating as PR
+                    # TODO: Add NodeKind.GITHUB_ISSUE when ingestion differentiates
+                    return NodeKind.PR.value
+                elif entity_type == "discussion":
+                    # Note: Currently NodeKind.GITHUB_DISCUSSION doesn't exist
+                    # TODO: Add NodeKind.GITHUB_DISCUSSION when ingestion differentiates
+                    return NodeKind.PR.value
+
+            # Fallback to foreign_id pattern matching
+            if foreign_id:
+                fid = foreign_id.lower()
+                # PR patterns: "#123" (most common)
+                if fid.startswith("#"):
+                    return NodeKind.PR.value
+                # Issue patterns: "GH-123", "ISSUE-123"
+                elif fid.startswith("gh-") or fid.startswith("issue-"):
+                    return (
+                        NodeKind.PR.value
+                    )  # Treat as PR until NodeKind.GITHUB_ISSUE exists
+                # Discussion patterns: "DISCUSSION-123"
+                elif fid.startswith("discussion-"):
+                    return (
+                        NodeKind.PR.value
+                    )  # Treat as PR until NodeKind.GITHUB_DISCUSSION exists
+
+            # Default to PR for backward compatibility
+            return NodeKind.PR.value
+
+        # Standard mapping for non-GitHub sources
         mapping = {
             "jira": NodeKind.JIRA_ISSUE.value,
             "slack": NodeKind.SLACK_THREAD.value,
             "meeting": NodeKind.MEETING.value,
-            "github": NodeKind.PR.value,
             "confluence": NodeKind.DOC.value,
             "wiki": NodeKind.WIKI.value,
         }

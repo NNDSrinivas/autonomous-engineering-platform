@@ -379,7 +379,7 @@ export class TimelinePanel {
                 .replace(/'/g, '&#39;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
-                .replace(/\\x60/g, '&#96;');  // \\x60 is backtick in hex
+                .replace(/\u0060/g, '&#96;');  // \u0060 is backtick (U+0060)
         }
     </script>
 </body>

@@ -160,7 +160,7 @@ def _normalize_bm25_score(score: float) -> float:
         score: Raw BM25/ts_rank score (non-negative, unbounded)
 
     Returns:
-        Normalized score in [0, 1) range for consistent weighting with other components
+        Normalized score in [0, 1) range (approaches but never equals 1.0) for consistent weighting with other components
     """
     score = max(0.0, score)
     return score / (1.0 + score)
@@ -266,7 +266,6 @@ def semantic_pgvector(
              mc.text, mc.seq,
              EXTRACT(EPOCH FROM mc.created_at) AS cts,
              -- pgvector <-> operator returns cosine distance in [0, 2] for normalized vectors
-             -- Cast :qvec to vector type (::vector) to resolve parameter type ambiguity (text vs vector)
              (embedding_vec <-> :qvec::vector) AS dist
       FROM memory_chunk mc
       JOIN memory_object mo ON mo.id = mc.object_id
@@ -281,7 +280,8 @@ def semantic_pgvector(
                 "src": sources,
                 "lim": limit,
                 # pgvector parameter binding requires the vector as a JSON string array
-                # (e.g., "[0.1, 0.2, 0.3]"), which is cast to vector type in the query using ::vector.
+                # (e.g., "[0.1, 0.2, 0.3]"), which is cast to vector type in the query using ::vector
+                # to resolve parameter type ambiguity between text and vector types.
                 "qvec": json.dumps(query_vec),
             },
         )

@@ -22,7 +22,7 @@ from backend.core.reasoning.temporal_reasoner import TemporalReasoner
 from backend.workers.graph_builder import GraphBuilder
 from backend.database.models.memory_graph import MemoryNode, MemoryEdge
 from backend.core.ai_service import AIService
-from backend.core.constants import MAX_NODES_IN_CONTEXT
+from backend.core.constants import MAX_NODES_IN_CONTEXT, parse_time_window
 
 logger = logging.getLogger(__name__)
 
@@ -154,10 +154,10 @@ async def rebuild_graph(
     start_time = time.time()
 
     try:
-        # Parse since parameter with validation
+        # Parse since parameter using shared utility
         if req.since.endswith("d"):
             try:
-                days = int(req.since.rstrip("d"))
+                days = parse_time_window(req.since)
                 since = datetime.utcnow() - timedelta(days=days)
             except ValueError:
                 raise HTTPException(

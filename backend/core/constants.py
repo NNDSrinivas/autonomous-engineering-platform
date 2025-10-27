@@ -51,3 +51,26 @@ STOPWORDS = {
 }
 
 # Future: SEMANTIC_SIMILARITY_THRESHOLD = 0.75  # Requires embedding vectors
+
+
+def parse_time_window(window_str: str) -> int:
+    """Parse time window string to days
+
+    Args:
+        window_str: Time window string (e.g., '30d', '7d')
+
+    Returns:
+        Number of days as integer, defaults to 30 if parsing fails
+
+    Examples:
+        >>> parse_time_window('7d')
+        7
+        >>> parse_time_window('invalid')
+        30
+    """
+    import re
+
+    match = re.match(r"(\d+)d", window_str.lower())
+    if match:
+        return int(match.group(1))
+    return 30  # Default to 30 days

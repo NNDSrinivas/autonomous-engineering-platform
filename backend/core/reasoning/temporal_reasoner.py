@@ -196,6 +196,10 @@ class TemporalReasoner:
                 if edge.org_id != root.org_id:
                     continue  # Enforce org isolation
 
+                # Also verify destination node belongs to same org to prevent data leaks
+                if edge.destination_node.org_id != root.org_id:
+                    continue
+
                 if since and edge.destination_node.created_at < since:
                     continue
 
@@ -209,6 +213,10 @@ class TemporalReasoner:
             for edge in current_node.inbound_edges:
                 if edge.org_id != root.org_id:
                     continue  # Enforce org isolation
+
+                # Also verify source node belongs to same org to prevent data leaks
+                if edge.source_node.org_id != root.org_id:
+                    continue
 
                 if since and edge.source_node.created_at < since:
                     continue
@@ -301,6 +309,9 @@ class TemporalReasoner:
 
                 if current_node.id not in adj:
                     if path:  # Only add non-empty paths
+                        # Check limit before appending to ensure we don't exceed MAX_CAUSALITY_PATHS
+                        if len(paths) >= MAX_CAUSALITY_PATHS:
+                            break
                         paths.append(path)
                     continue
 

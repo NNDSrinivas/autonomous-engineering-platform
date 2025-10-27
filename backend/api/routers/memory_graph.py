@@ -22,6 +22,7 @@ from backend.core.reasoning.temporal_reasoner import TemporalReasoner
 from backend.workers.graph_builder import GraphBuilder
 from backend.database.models.memory_graph import MemoryNode, MemoryEdge
 from backend.core.ai_service import AIService
+from backend.core.constants import MAX_NODES_IN_CONTEXT
 
 logger = logging.getLogger(__name__)
 
@@ -87,10 +88,10 @@ class GraphQueryRequest(BaseModel):
     query: str = Field(..., description="Natural language query")
     depth: int = Field(default=3, ge=1, le=5, description="Maximum search depth")
     k: int = Field(
-        default=10,
+        default=MAX_NODES_IN_CONTEXT,
         ge=1,
-        le=10,
-        description="Maximum nodes to return (up to 10 used for narrative generation)",
+        le=MAX_NODES_IN_CONTEXT,
+        description=f"Maximum nodes to return (up to {MAX_NODES_IN_CONTEXT} used for narrative generation)",
     )
 
 

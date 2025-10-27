@@ -4,8 +4,7 @@ Combines semantic search with keyword matching, recency, and authority scoring.
 
 NOTE (PR-16): This module now serves as a thin wrapper around the new
 search.backends module which provides pgvector ANN, FAISS, and hybrid BM25 support.
-The legacy constants and scoring functions below are kept for backwards compatibility
-but are no longer actively used in the main retrieval path.
+All retrieval logic has been consolidated in search.backends for better maintainability.
 """
 
 from sqlalchemy.orm import Session

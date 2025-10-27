@@ -13,7 +13,6 @@ import logging
 import time
 from datetime import datetime, timedelta
 from typing import Optional
-from functools import lru_cache
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -109,11 +108,13 @@ def get_org_id(x_org_id: Optional[str] = Header(None)) -> str:
     return x_org_id
 
 
-# Helper: Create AIService instance as singleton using lru_cache (thread-safe, no global state)
-@lru_cache(maxsize=1)
+# Helper: Create AIService instance as singleton (thread-safe, no global state)
+ai_service = AIService()
+
+
 def get_ai_service() -> AIService:
-    """Get AIService singleton instance. Thread-safe via lru_cache, reuses same instance across requests."""
-    return AIService()
+    """Get AIService singleton instance. Reuses same instance across requests."""
+    return ai_service
 
 
 # Dependency: Audit logging

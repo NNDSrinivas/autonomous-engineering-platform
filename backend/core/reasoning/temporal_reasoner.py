@@ -8,6 +8,7 @@ Uses weighted BFS for uniform weights, Dijkstra for variable weights.
 """
 
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple, Set
 from sqlalchemy.orm import Session
@@ -369,12 +370,10 @@ Provide a concise explanation (2-3 paragraphs) that directly answers the query."
 
     def _extract_entities(self, query: str) -> List[str]:
         """Extract entity identifiers from query text"""
-        import re
-
         entities = []
 
         # JIRA keys
-        jira_pattern = r"\b([A-Z]{2,10}-\d+)\b"
+        jira_pattern = r"[A-Z]{2,}-\d+"
         entities.extend(re.findall(jira_pattern, query))
 
         # PR numbers
@@ -389,8 +388,6 @@ Provide a concise explanation (2-3 paragraphs) that directly answers the query."
 
     def _parse_window(self, window: str) -> int:
         """Parse window string to days (e.g., '30d' -> 30, '7d' -> 7)"""
-        import re
-
         match = re.match(r"(\d+)d", window.lower())
         if match:
             return int(match.group(1))

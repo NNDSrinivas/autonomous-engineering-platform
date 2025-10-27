@@ -155,14 +155,22 @@ class GraphBuilder:
             )
 
             if not existing:
-                # Create new node
+                # Create new node with safe JSON parsing
+                try:
+                    meta_json = json.loads(row.meta_json) if row.meta_json else {}
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"Invalid JSON in meta_json for {row.foreign_id}, using empty dict"
+                    )
+                    meta_json = {}
+
                 node = MemoryNode(
                     org_id=row.org_id,
                     kind=kind,
                     foreign_id=row.foreign_id,
                     title=row.title,
                     summary=None,  # Will be generated async
-                    meta_json=json.loads(row.meta_json) if row.meta_json else {},
+                    meta_json=meta_json,
                     created_at=row.created_at,
                 )
                 self.db.add(node)
@@ -284,6 +292,10 @@ class GraphBuilder:
 
         for match in matches:
             pr_num, jira_key = match
+            # Skip if both are empty
+            if not pr_num and not jira_key:
+                continue
+
             target_id = f"#{pr_num}" if pr_num else jira_key
 
             if target_id == other_node.foreign_id:

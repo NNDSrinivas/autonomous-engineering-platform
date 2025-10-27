@@ -99,8 +99,14 @@ class TimelineQuery(BaseModel):
 def get_org_id(x_org_id: Optional[str] = Header(None)) -> str:
     """Extract and validate org_id from request header"""
     if not x_org_id:
-        raise HTTPException(status_code=400, detail="X-Org-Id header required")
+        raise HTTPException(status_code=401, detail="X-Org-Id header required")
     return x_org_id
+
+
+# Helper: Create AIService instance (consider making this a singleton or FastAPI dependency)
+def get_ai_service() -> AIService:
+    """Get AIService instance. Called per-request but could be optimized as singleton."""
+    return AIService()
 
 
 # Dependency: Audit logging
@@ -144,12 +150,27 @@ async def rebuild_graph(
         )
 
     try:
-        # Parse since parameter
-        days = int(req.since.rstrip("d"))
-        since = datetime.utcnow() - timedelta(days=days)
+        # Parse since parameter with validation
+        if req.since.endswith("d"):
+            try:
+                days = int(req.since.rstrip("d"))
+                since = datetime.utcnow() - timedelta(days=days)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid 'since' parameter: {req.since}. Expected format like '30d'.",
+                )
+        else:
+            try:
+                since = datetime.fromisoformat(req.since)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid 'since' parameter: {req.since}. Expected ISO format or '30d'.",
+                )
 
-        # Initialize builder
-        ai_service = AIService()  # Initialize from settings
+        # Initialize builder (using helper to get AIService instance)
+        ai_service = get_ai_service()
         builder = GraphBuilder(db, ai_service)
 
         # Execute rebuild
@@ -214,8 +235,8 @@ async def get_node_neighborhood(
         if not node:
             raise HTTPException(status_code=404, detail=f"Node {foreign_id} not found")
 
-        # Get 1-hop neighborhood
-        ai_service = AIService()
+        # Get 1-hop neighborhood (using helper to get AIService instance)
+        ai_service = get_ai_service()
         reasoner = TemporalReasoner(db, ai_service)
         nodes, edges = reasoner._build_subgraph(node, depth=1)
 
@@ -261,8 +282,8 @@ async def query_graph(
     start_time = time.time()
 
     try:
-        # Initialize reasoner
-        ai_service = AIService()
+        # Initialize reasoner (using helper to get AIService instance)
+        ai_service = get_ai_service()
         reasoner = TemporalReasoner(db, ai_service)
 
         # Execute explain
@@ -314,8 +335,8 @@ async def get_timeline(
     start_time = time.time()
 
     try:
-        # Initialize reasoner
-        ai_service = AIService()
+        # Initialize reasoner (using helper to get AIService instance)
+        ai_service = get_ai_service()
         reasoner = TemporalReasoner(db, ai_service)
 
         # Execute timeline

@@ -64,8 +64,8 @@ def upgrade():
             "updated_at",
             sa.DateTime(timezone=True),
             server_default=sa.text("CURRENT_TIMESTAMP"),
-            onupdate=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
+            comment="Updated via trigger or application code",
         ),
     )
 

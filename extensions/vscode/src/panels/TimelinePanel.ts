@@ -118,6 +118,8 @@ export class TimelinePanel {
     private _openFile(path: string) {
         vscode.workspace.openTextDocument(path).then(doc => {
             vscode.window.showTextDocument(doc);
+        }).catch(error => {
+            vscode.window.showErrorMessage(`Failed to open file: ${error}`);
         });
     }
 

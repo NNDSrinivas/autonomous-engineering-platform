@@ -131,7 +131,7 @@ def upgrade():
             batch_size = 1000
             updated_rows = batch_size
             conn = op.get_bind()
-            # Prevent infinite loops: configurable via MAX_TSVECTOR_ROWS env var (default: 10M rows)
+            # Limit iterations for very large tables: configurable via MAX_TSVECTOR_ROWS env var (default: 10M rows)
             MAX_EXPECTED_ROWS = int(os.getenv("MAX_TSVECTOR_ROWS", "10000000"))
             max_iterations = MAX_EXPECTED_ROWS // batch_size
             iteration = 0

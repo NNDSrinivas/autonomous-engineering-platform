@@ -109,7 +109,8 @@ def backfill_vectors():
                             f"Warning: Row {chunk_id} has dimension {len(vec)}, expected {EMBED_DIM}. Padding/truncating."
                         )
                         # Truncate to EMBED_DIM and pad with zeros if needed
-                        vec = (vec[:EMBED_DIM] + [0.0] * EMBED_DIM)[:EMBED_DIM]
+                        vec = vec[:EMBED_DIM]
+                        vec.extend([0.0] * (EMBED_DIM - len(vec)))
 
                     # Format as JSON array for pgvector parameter binding
                     vec_str = json.dumps(vec)

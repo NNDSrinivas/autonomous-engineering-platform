@@ -330,6 +330,10 @@ class TemporalReasoner:
                             break
                     continue
 
+                # Check if we've already hit the limit before exploring more paths
+                if len(paths) >= MAX_CAUSALITY_PATHS:
+                    break
+
                 for next_node, edge in adj[current_node.id]:
                     if next_node.id in visited:
                         continue
@@ -364,7 +368,7 @@ class TemporalReasoner:
         context = f"Query: {query}\n\n"
 
         context += "## Relevant Entities:\n"
-        # Respect caller's k parameter while protecting against excessive context
+        # Respect caller's k parameter (limited by MAX_NODES_IN_CONTEXT) to prevent excessive LLM context
         for node in nodes[:k]:
             context += (
                 f"- [{node.foreign_id}] {node.title or 'Untitled'} ({node.kind})\n"

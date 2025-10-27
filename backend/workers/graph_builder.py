@@ -152,7 +152,10 @@ class GraphBuilder:
             if not existing:
                 # Create new node with safe JSON parsing
                 try:
-                    meta_json = json.loads(row.meta_json) if row.meta_json else {}
+                    if row.meta_json and row.meta_json.strip():
+                        meta_json = json.loads(row.meta_json)
+                    else:
+                        meta_json = {}
                 except json.JSONDecodeError:
                     logger.warning(
                         f"Invalid JSON in meta_json for {row.foreign_id}, using empty dict"

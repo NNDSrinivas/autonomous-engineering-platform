@@ -68,8 +68,6 @@ def parse_time_window(window_str: str) -> int:
         >>> parse_time_window('invalid')
         30
     """
-    import re
-
     match = re.match(r"(\d+)d", window_str.lower())
     if match:
         return int(match.group(1))

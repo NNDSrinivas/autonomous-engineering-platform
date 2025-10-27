@@ -127,7 +127,7 @@ def upgrade():
             )
         else:
             logger.warning(
-                "[alembic/0012_pgvector_bm25] WARNING: Running batched UPDATE to populate text_tsv. "
+                "[alembic/0012_pgvector_bm25] Running batched UPDATE to populate text_tsv. "
                 "This minimizes lock duration but may take longer for large datasets."
             )
             # Batched update to avoid long table locks

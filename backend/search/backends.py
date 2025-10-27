@@ -93,7 +93,7 @@ def _cosine_similarity(a: List[float], b: List[float]) -> float:
 
 
 def _recency_score(timestamp: float, now: float) -> float:
-    """Calculate recency score with exponential decay
+    """Calculate recency score with hyperbolic decay
 
     Args:
         timestamp: Unix timestamp of the item
@@ -429,9 +429,10 @@ def hybrid_search(
         # asymptotically approach 1.0 as x increases to infinity. ts_rank returns
         # non-negative values but can exceed 1.0 for highly relevant matches, so this
         # smooth normalization avoids the hard ceiling of min(1.0, x).
-        # Note: While BM25 has built-in length normalization, ts_rank scores are
-        # unbounded and can vary widely. This transformation maps them to [0, 1) for
-        # consistent weighting with other normalized components (semantic, recency, authority).
+        # Note: This uses PostgreSQL's ts_rank as an approximation of BM25, not true BM25 scoring.
+        # While BM25 has built-in length normalization, ts_rank uses a different algorithm and its scores
+        # are unbounded and can vary widely. This transformation maps them to [0, 1) for consistent weighting
+        # with other normalized components (semantic, recency, authority).
         bm25_score = max(0.0, bm25_score)
         bm25_score = bm25_score / (1.0 + bm25_score)
 

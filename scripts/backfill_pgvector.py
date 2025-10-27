@@ -105,8 +105,12 @@ def backfill_vectors():
 
                     # Validate and pad/truncate to expected dimension
                     if len(vec) != EMBED_DIM:
+                        if len(vec) > EMBED_DIM:
+                            action = "Truncating to EMBED_DIM"
+                        else:
+                            action = "Padding with zeros"
                         print(
-                            f"Warning: Row {chunk_id} has dimension {len(vec)}, expected {EMBED_DIM}. Padding/truncating."
+                            f"Warning: Row {chunk_id} has dimension {len(vec)}, expected {EMBED_DIM}. {action}."
                         )
                         # Truncate to EMBED_DIM and pad with zeros if needed
                         vec = vec[:EMBED_DIM] + [0.0] * max(0, EMBED_DIM - len(vec))

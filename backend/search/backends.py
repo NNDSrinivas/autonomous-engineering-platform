@@ -94,6 +94,13 @@ def _cosine_similarity(a: List[float], b: List[float]) -> float:
     norm_b = math.sqrt(sum(x * x for x in b))
     # Return 0.0 for zero vectors instead of masking with 1.0
     if norm_a <= EPSILON or norm_b <= EPSILON:
+        logger.warning(
+            "Zero vector encountered in _cosine_similarity: norm_a=%.3g, norm_b=%.3g, len(a)=%d, len(b)=%d",
+            norm_a,
+            norm_b,
+            len(a),
+            len(b),
+        )
         return 0.0
     return dot_product / (norm_a * norm_b)
 
@@ -165,8 +172,9 @@ def _ts_rank_score(
     """Full-text search using PostgreSQL's ts_rank (BM25 approximation)
 
     Note: This uses ts_rank as an approximation of BM25. While BM25 has built-in
-    length normalization, ts_rank uses a different algorithm. The scores are later
-    normalized using x/(1+x) transformation for hybrid ranking.
+    length normalization, ts_rank uses a different algorithm. The scores are
+    normalized using x/(1+x) transformation to [0, 1) for consistent weighting
+    with other hybrid ranking components.
 
     Args:
         db: Database session
@@ -176,7 +184,7 @@ def _ts_rank_score(
         limit: Maximum number of results
 
     Returns:
-        Dictionary mapping (source, foreign_id) tuples to ts_rank scores
+        Dictionary mapping (source, foreign_id) tuples to normalized ts_rank scores in [0, 1)
     """
     # Early return if BM25 is disabled - avoid unnecessary processing
     if not settings.bm25_enabled:
@@ -205,7 +213,13 @@ def _ts_rank_score(
             .mappings()
             .all()
         )
-        return {(r["source"], r["foreign_id"]): float(r["rnk"] or 0.0) for r in rows}
+        # Normalize ts_rank scores using x/(1+x) transformation
+        return {
+            (r["source"], r["foreign_id"]): _normalize_bm25_score(
+                float(r["rnk"] or 0.0)
+            )
+            for r in rows
+        }
     else:
         # SQLite fallback: simple keyword overlap scoring
         return {}
@@ -454,10 +468,8 @@ def hybrid_search(
 
         rec_score = _recency_score(row["cts"] or now, now)
         auth_score = _authority_score(meta)
+        # bm25_score is already normalized by _ts_rank_score
         bm25_score = bm25_scores.get(key, 0.0)
-
-        # Normalize ts_rank scores to [0, 1) for consistent hybrid weighting
-        bm25_score = _normalize_bm25_score(bm25_score)
 
         # Compute final hybrid score
         final_score = (

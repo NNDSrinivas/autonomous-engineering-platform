@@ -135,7 +135,7 @@ def upgrade():
             MAX_EXPECTED_ROWS = int(os.getenv("MAX_TSVECTOR_ROWS", "10000000"))
             max_iterations = MAX_EXPECTED_ROWS // batch_size
             iteration = 0
-            while updated_rows == batch_size and iteration < max_iterations:
+            while updated_rows > 0 and iteration < max_iterations:
                 iteration += 1
                 result = conn.execute(
                     sa.text(

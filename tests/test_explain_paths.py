@@ -25,8 +25,7 @@ def test_explain_contains_citations(api_client: Client, seeded_graph):
     assert narrative and len(narrative) > 50, \
         f"Narrative too short or empty: {len(narrative)} chars"
     
-    # Extract node IDs and foreign IDs
-    {node["id"] for node in data["nodes"]}
+    # Extract foreign IDs to check for citations
     foreign_ids = {node["foreign_id"] for node in data["nodes"]}
     
     # Check if any node IDs or foreign IDs appear in narrative
@@ -204,3 +203,5 @@ def test_explain_with_invalid_query(api_client: Client, seeded_graph):
         data = response_nonexistent.json()
         # Empty results are acceptable
         print(f"✅ Non-existent entity query handled gracefully: {len(data.get('nodes', []))} nodes")
+    else:
+        print(f"✅ Non-existent entity query returned: {response_nonexistent.status_code}")

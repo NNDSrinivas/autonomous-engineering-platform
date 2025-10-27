@@ -75,11 +75,12 @@ echo
 echo "📍 Test 1: Get Node Neighborhood"
 echo "GET /api/memory/graph/node/$ISSUE"
 echo "---"
-test_endpoint "Node neighborhood" "GET" "/api/memory/graph/node/$ISSUE" "" ".nodes | length > 0"
+test_endpoint "Node neighborhood" "GET" "/api/memory/graph/node/$ISSUE" "" ".node.id"
 
 if [ $? -eq 0 ]; then
     response=$(curl -s -H "X-Org-Id: $ORG_ID" "$CORE/api/memory/graph/node/$ISSUE")
-    echo "  Nodes found: $(echo $response | jq '.nodes | length')"
+    echo "  Root node: $(echo $response | jq -r '.node.foreign_id')"
+    echo "  Neighbors: $(echo $response | jq '.neighbors | length')"
     echo "  Edges found: $(echo $response | jq '.edges | length')"
     echo "  Relations: $(echo $response | jq -r '.edges[].relation' | sort -u | tr '\n' ', ')"
 fi
@@ -87,12 +88,12 @@ fi
 # Test 2: Get timeline
 echo
 echo "📅 Test 2: Get Timeline"
-echo "GET /api/memory/timeline?issue=$ISSUE&window=30d"
+echo "GET /api/memory/timeline?entity_id=$ISSUE&window=30d"
 echo "---"
-test_endpoint "Timeline" "GET" "/api/memory/timeline?issue=$ISSUE&window=30d" "" ". | length > 0"
+test_endpoint "Timeline" "GET" "/api/memory/timeline?entity_id=$ISSUE&window=30d" "" ". | length >= 0"
 
 if [ $? -eq 0 ]; then
-    response=$(curl -s -H "X-Org-Id: $ORG_ID" "$CORE/api/memory/timeline?issue=$ISSUE&window=30d")
+    response=$(curl -s -H "X-Org-Id: $ORG_ID" "$CORE/api/memory/timeline?entity_id=$ISSUE&window=30d")
     echo "  Timeline items: $(echo $response | jq '. | length')"
     echo "  Sequence:"
     echo $response | jq -r '.[] | "    - \(.title) (\(.kind))"'

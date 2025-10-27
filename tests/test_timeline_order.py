@@ -16,7 +16,7 @@ def test_timeline_is_ordered(api_client: Client, seeded_graph):
     """Verify timeline returns strictly increasing timestamps"""
     response = api_client.get(
         "/api/memory/timeline",
-        params={"issue": "ENG-102", "window": "30d"}
+        params={"entity_id": "ENG-102", "window": "30d"}
     )
     data = assert_response_ok(response)
     
@@ -41,7 +41,7 @@ def test_expected_sequence(api_client: Client, seeded_graph):
     """Verify expected coarse sequence of events"""
     response = api_client.get(
         "/api/memory/timeline",
-        params={"issue": "ENG-102", "window": "30d"}
+        params={"entity_id": "ENG-102", "window": "30d"}
     )
     data = assert_response_ok(response)
     
@@ -101,14 +101,14 @@ def test_timeline_window_filtering(api_client: Client, seeded_graph):
     # Get 30d window
     response_30d = api_client.get(
         "/api/memory/timeline",
-        params={"issue": "ENG-102", "window": "30d"}
+        params={"entity_id": "ENG-102", "window": "30d"}
     )
     data_30d = assert_response_ok(response_30d)
     
     # Get 7d window (should have fewer or equal items)
     response_7d = api_client.get(
         "/api/memory/timeline",
-        params={"issue": "ENG-102", "window": "7d"}
+        params={"entity_id": "ENG-102", "window": "7d"}
     )
     data_7d = assert_response_ok(response_7d)
     
@@ -123,7 +123,7 @@ def test_timeline_includes_all_node_types(api_client: Client, seeded_graph):
     """Verify timeline includes diverse node types from fixture"""
     response = api_client.get(
         "/api/memory/timeline",
-        params={"issue": "ENG-102", "window": "30d"}
+        params={"entity_id": "ENG-102", "window": "30d"}
     )
     data = assert_response_ok(response)
     
@@ -145,7 +145,7 @@ def test_timeline_has_required_fields(api_client: Client, seeded_graph):
     """Verify each timeline item has required fields"""
     response = api_client.get(
         "/api/memory/timeline",
-        params={"issue": "ENG-102", "window": "30d"}
+        params={"entity_id": "ENG-102", "window": "30d"}
     )
     data = assert_response_ok(response)
     
@@ -167,7 +167,7 @@ def test_empty_timeline_for_nonexistent_issue(api_client: Client, seeded_graph):
     """Verify timeline returns empty for non-existent issue"""
     response = api_client.get(
         "/api/memory/timeline",
-        params={"issue": "NONEXISTENT-999", "window": "30d"}
+        params={"entity_id": "NONEXISTENT-999", "window": "30d"}
     )
     
     # Should return 200 with empty list, not 404

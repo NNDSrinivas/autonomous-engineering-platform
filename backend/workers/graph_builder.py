@@ -303,7 +303,10 @@ class GraphBuilder:
                     if other_node.foreign_id.startswith("#")
                     else other_node.foreign_id
                 )
-                matched = pr_num == foreign_id_normalized
+                # Validate that normalized foreign_id is numeric to avoid false matches
+                matched = (
+                    pr_num == foreign_id_normalized and foreign_id_normalized.isdigit()
+                )
             else:
                 # JIRA key comparison is exact
                 matched = jira_key == other_node.foreign_id
@@ -521,8 +524,10 @@ class GraphBuilder:
     def _map_source_to_kind(self, source: str) -> Optional[str]:
         """Map memory_object source to node kind
 
-        Note: Only GitHub PRs are currently supported. GitHub issues/discussions
-        are not handled. Update this mapping if other GitHub entity types are ingested.
+        Note: All GitHub source types are currently mapped to PRs (NodeKind.PR), regardless of
+        whether they are pull requests, issues, or discussions. If other GitHub entity types
+        (such as issues or discussions) are ingested in the future, update this logic to differentiate
+        between them, for example by inspecting the foreign_id or other metadata.
         """
         mapping = {
             "jira": NodeKind.JIRA_ISSUE.value,

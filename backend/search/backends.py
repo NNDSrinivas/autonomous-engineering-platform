@@ -38,7 +38,7 @@ RECENCY_WEIGHT = 0.12
 AUTHORITY_WEIGHT = 0.08
 
 # Recency scoring parameters
-RECENCY_HALF_LIFE_DAYS = 30.0  # Half-life parameter in recency decay formula (score reaches 0.5 when days == RECENCY_HALF_LIFE_DAYS)
+RECENCY_HALF_LIFE_DAYS = 30.0  # Days for recency score to decay to 0.5 (half-life)
 
 # Authority scoring parameters
 AUTHORITY_COMPLETED_STATUSES = frozenset(("Done", "Merged", "Closed"))
@@ -326,10 +326,7 @@ def semantic_json(
         elif isinstance(embedding_data, bytes):
             vec = json.loads(embedding_data.decode("utf-8"))
         else:
-            # Unsupported type - log error and raise exception
-            logger.error(
-                f"Unsupported embedding_data type: {type(embedding_data).__name__}"
-            )
+            # Unsupported type - raise exception
             raise TypeError(
                 f"Cannot parse embedding_data of type {type(embedding_data).__name__}. "
                 f"Expected str, bytes, or memoryview. "
@@ -449,7 +446,6 @@ def hybrid_search(
         # Normalize ts_rank scores to [0, 1) for consistent hybrid weighting
         bm25_score = _normalize_bm25_score(bm25_score)
 
-        # Compute final hybrid score
         # Compute final hybrid score
         final_score = (
             SEMANTIC_WEIGHT * sem_score

@@ -514,12 +514,16 @@ class GraphBuilder:
         return True
 
     def _map_source_to_kind(self, source: str) -> Optional[str]:
-        """Map memory_object source to node kind"""
+        """Map memory_object source to node kind
+
+        Note: Only GitHub PRs are currently supported. GitHub issues/discussions
+        are not handled. Update this mapping if other GitHub entity types are ingested.
+        """
         mapping = {
             "jira": NodeKind.JIRA_ISSUE.value,
             "slack": NodeKind.SLACK_THREAD.value,
             "meeting": NodeKind.MEETING.value,
-            "github": NodeKind.PR.value,  # Only GitHub PRs are supported; GitHub issues/discussions are not handled. Update this mapping if other GitHub entity types are ingested.
+            "github": NodeKind.PR.value,
             "confluence": NodeKind.DOC.value,
             "wiki": NodeKind.WIKI.value,
         }

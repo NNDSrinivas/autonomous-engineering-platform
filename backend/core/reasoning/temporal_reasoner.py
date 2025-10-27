@@ -152,7 +152,7 @@ class TemporalReasoner:
 
         # Generate narrative via model router
         narrative = self._generate_narrative(
-            query, list(all_nodes), list(all_edges), paths
+            query, list(all_nodes), list(all_edges), paths, k
         )
 
         return {
@@ -290,6 +290,10 @@ class TemporalReasoner:
 
         # Find paths from each source node
         for source in source_nodes:
+            # Check global path limit before processing next source
+            if len(paths) >= MAX_CAUSALITY_PATHS:
+                break
+
             if source.id not in adj:
                 continue
 
@@ -309,10 +313,10 @@ class TemporalReasoner:
 
                 if current_node.id not in adj:
                     if path:  # Only add non-empty paths
-                        # Check limit before appending to ensure we don't exceed MAX_CAUSALITY_PATHS
+                        paths.append(path)
+                        # Break from while loop if limit reached
                         if len(paths) >= MAX_CAUSALITY_PATHS:
                             break
-                        paths.append(path)
                     continue
 
                 for next_node, edge in adj[current_node.id]:
@@ -331,6 +335,7 @@ class TemporalReasoner:
         nodes: List[MemoryNode],
         edges: List[MemoryEdge],
         paths: List[List[Tuple[MemoryNode, MemoryEdge]]],
+        k: int = 10,
     ) -> str:
         """Generate natural language narrative using AI model
 
@@ -339,6 +344,7 @@ class TemporalReasoner:
             nodes: Relevant nodes in graph
             edges: Relevant edges
             paths: Causality paths found
+            k: Maximum nodes to include in context (respects caller's limit)
 
         Returns:
             Natural language explanation with citations
@@ -347,7 +353,8 @@ class TemporalReasoner:
         context = f"Query: {query}\n\n"
 
         context += "## Relevant Entities:\n"
-        for node in nodes[:10]:  # Limit context
+        # Respect caller's k parameter while protecting against excessive context
+        for node in nodes[:k]:  # Use k parameter instead of hardcoded 10
             context += (
                 f"- [{node.foreign_id}] {node.title or 'Untitled'} ({node.kind})\n"
             )

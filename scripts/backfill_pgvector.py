@@ -92,9 +92,23 @@ def backfill_vectors():
                     if isinstance(embedding_blob, str):
                         embedding_str = embedding_blob
                     elif isinstance(embedding_blob, bytes):
-                        embedding_str = embedding_blob.decode("utf-8")
+                        try:
+                            embedding_str = embedding_blob.decode("utf-8")
+                        except UnicodeDecodeError as ude:
+                            print(
+                                f"Error decoding bytes as UTF-8 for row {chunk_id}: {ude}"
+                            )
+                            errors += 1
+                            continue
                     elif isinstance(embedding_blob, memoryview):
-                        embedding_str = embedding_blob.tobytes().decode("utf-8")
+                        try:
+                            embedding_str = embedding_blob.tobytes().decode("utf-8")
+                        except UnicodeDecodeError as ude:
+                            print(
+                                f"Error decoding memoryview as UTF-8 for row {chunk_id}: {ude}"
+                            )
+                            errors += 1
+                            continue
                     else:
                         raise TypeError(
                             f"Unsupported embedding_blob type: {type(embedding_blob)}"

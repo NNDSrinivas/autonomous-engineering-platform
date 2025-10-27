@@ -44,7 +44,7 @@ def upgrade():
     # Lower bound (128): Common minimum for semantic models (e.g., MiniLM, small BERT)
     # Upper bound (4096): Prevents excessive memory usage and index bloat
     #   - HNSW index memory: ~500-1000 bytes per vector + dimension * 4 bytes
-    #   - 4096-dim vectors: ~16KB per vector in index structures
+    #   - 4096-dim vectors: ~16KB per vector (vector data only; actual memory usage per vector is ~16KB + HNSW overhead)
     #   - Most modern embeddings (OpenAI, Cohere, etc.) are ≤ 3072 dimensions
     if not (MIN_EMBED_DIM <= EMBED_DIM <= MAX_EMBED_DIM):
         raise ValueError(
@@ -105,15 +105,16 @@ def upgrade():
         # Populate existing rows with tsvector data using batched updates
         # Note: This migration implements batched updates by default to populate the text_tsv column.
         # Rows are updated in batches (default: 1000 per batch) to minimize lock duration and reduce
-        # migration impact on large tables. This approach is safe for most datasets (<1M rows).
+        # migration impact on large tables. This approach is safe for most datasets (<1M rows);
+        # for tables with 1M+ rows, consider SKIP_TSVECTOR_UPDATE=1.
         #
-        # For very large tables (millions of rows), even batched updates may take significant time.
+        # For large tables (1M+ rows), even batched updates may take significant time.
         # In such cases, you can skip the batched update during migration by setting:
         #   SKIP_TSVECTOR_UPDATE=1
         # This will skip the entire batched update process. You must then backfill text_tsv
         # for existing rows after migration (e.g., using a custom script).
         #
-        # Guidance for large tables (>1M rows):
+        # Guidance for large tables (1M+ rows):
         #   1. Set SKIP_TSVECTOR_UPDATE=1 to skip the batched update in migration.
         #   2. Run a batched UPDATE post-migration with separate transactions (e.g., 1000 rows per batch).
         #   3. See scripts/backfill_pgvector.py for a reference batching pattern.

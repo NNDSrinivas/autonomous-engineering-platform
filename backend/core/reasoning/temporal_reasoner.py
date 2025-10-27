@@ -320,9 +320,7 @@ class TemporalReasoner:
             while queue and can_add_path():
                 current_node, path = queue.pop(0)
 
-                if (
-                    len(path) >= MAX_PATH_LENGTH
-                ):  # Use constant instead of hardcoded value
+                if len(path) >= MAX_PATH_LENGTH:
                     continue
 
                 if current_node.id not in adj:

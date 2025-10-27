@@ -13,7 +13,7 @@ import logging
 import time
 from datetime import datetime, timedelta
 from typing import Optional
-from threading import Lock
+from functools import lru_cache
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -109,20 +109,11 @@ def get_org_id(x_org_id: Optional[str] = Header(None)) -> str:
     return x_org_id
 
 
-# Helper: Create AIService instance as singleton (thread-safe)
-_ai_service_instance: Optional[AIService] = None
-_ai_service_lock = Lock()
-
-
+# Helper: Create AIService instance as singleton using lru_cache (thread-safe, no global state)
+@lru_cache(maxsize=1)
 def get_ai_service() -> AIService:
-    """Get AIService singleton instance. Thread-safe, reuses same instance across requests for efficiency."""
-    global _ai_service_instance
-    if _ai_service_instance is None:
-        with _ai_service_lock:
-            # Double-check pattern to avoid race conditions
-            if _ai_service_instance is None:
-                _ai_service_instance = AIService()
-    return _ai_service_instance
+    """Get AIService singleton instance. Thread-safe via lru_cache, reuses same instance across requests."""
+    return AIService()
 
 
 # Dependency: Audit logging
@@ -353,9 +344,8 @@ async def get_timeline(
             graph_query_counter.labels(org_id=org_id, endpoint="timeline").inc()
             graph_query_latency.labels(endpoint="timeline").observe(elapsed_ms)
 
-        # Audit log (request provided by FastAPI)
-        if request:
-            audit_log(request, org_id, "timeline", {"entity_id": entity_id}, elapsed_ms)
+        # Audit log
+        audit_log(request, org_id, "timeline", {"entity_id": entity_id}, elapsed_ms)
 
         return result
 

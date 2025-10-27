@@ -373,14 +373,13 @@ export class TimelinePanel {
         // Properly escape attribute values to prevent XSS in attribute context
         function escapeAttribute(text) {
             if (!text) return '';
-            const backtickRegex = new RegExp(String.fromCharCode(96), 'g');
             return String(text)
                 .replace(/&/g, '&amp;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
-                .replace(backtickRegex, '&#96;');
+                .replace(/\\x60/g, '&#96;');  // \\x60 is backtick in hex
         }
     </script>
 </body>

@@ -108,13 +108,10 @@ def get_org_id(x_org_id: Optional[str] = Header(None)) -> str:
     return x_org_id
 
 
-# Helper: Create AIService instance as singleton (thread-safe, no global state)
-ai_service = AIService()
-
-
+# Dependency: Provide AIService instance (per-request, stateless)
 def get_ai_service() -> AIService:
-    """Get AIService singleton instance. Reuses same instance across requests."""
-    return ai_service
+    """Create a new AIService instance per request (stateless, safe for DI)."""
+    return AIService()
 
 
 # Dependency: Audit logging

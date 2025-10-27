@@ -9,6 +9,7 @@ Create Date: 2025-10-27 17:00:00.000000
 import os
 import sqlalchemy as sa
 from alembic import op
+from pgvector.sqlalchemy import Vector
 
 # revision identifiers, used by Alembic.
 revision = "0013_memory_graph"
@@ -73,7 +74,7 @@ def upgrade():
     try:
         op.add_column(
             "memory_node",
-            sa.Column("embedding_vec", sa.types.UserDefinedType(), nullable=True),
+            sa.Column("embedding_vec", Vector(EMBED_DIM), nullable=True),
         )
     except Exception:
         # Fallback to raw SQL for PostgreSQL

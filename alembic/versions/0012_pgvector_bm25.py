@@ -95,10 +95,12 @@ def upgrade():
                 sa.Column("text_tsv", postgresql.TSVECTOR(), nullable=True),
             )
         except ImportError:
-            # Fallback to raw SQL if dialect not available
-            op.execute(
-                "ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS text_tsv tsvector;"
-            )
+            # Fallback to raw SQL if dialect not available, but only if the DB is PostgreSQL
+            bind = op.get_bind()
+            if bind.dialect.name == "postgresql":
+                op.execute(
+                    "ALTER TABLE memory_chunk ADD COLUMN IF NOT EXISTS text_tsv tsvector;"
+                )
 
         # Populate existing rows with tsvector data using batched updates
         # Note: This migration implements batched updates by default to populate the text_tsv column.

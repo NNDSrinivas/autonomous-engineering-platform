@@ -248,7 +248,7 @@ def semantic_pgvector(
              mc.text, mc.seq,
              EXTRACT(EPOCH FROM mc.created_at) AS cts,
              -- pgvector <-> operator returns cosine distance in [0, 2] for normalized vectors
-             -- Cast :qvec to vector type (::vector) to resolve parameter type ambiguity (text[] vs vector)
+             -- Cast :qvec to vector type (::vector) to resolve parameter type ambiguity (text vs vector)
              (embedding_vec <-> :qvec::vector) AS dist
       FROM memory_chunk mc
       JOIN memory_object mo ON mo.id = mc.object_id

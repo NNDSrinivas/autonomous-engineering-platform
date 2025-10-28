@@ -1,11 +1,14 @@
 """FastAPI dependencies for authentication and authorization."""
 
+import logging
 import os
 from typing import Annotated, Optional
 
 from fastapi import Depends, Header, HTTPException, status
 
 from backend.core.auth.models import Role, User
+
+logger = logging.getLogger(__name__)
 
 
 def get_current_user(
@@ -38,6 +41,14 @@ def get_current_user(
 
     # Role: read from DEV_USER_ROLE env, default to viewer (secure-by-default)
     role_str = os.getenv("DEV_USER_ROLE", "viewer").lower()
+    valid_roles = {"viewer", "planner", "admin"}
+    if role_str not in valid_roles:
+        logger.warning(
+            f"Invalid DEV_USER_ROLE '{role_str}' specified. "
+            f"Valid roles are: {', '.join(valid_roles)}. Defaulting to 'viewer'."
+        )
+        role_str = "viewer"
+
     try:
         role = Role(role_str)
     except ValueError:

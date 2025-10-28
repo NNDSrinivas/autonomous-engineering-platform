@@ -23,42 +23,10 @@ from backend.core.auth.deps import require_role
 from backend.core.auth.models import Role, User
 from backend.api.security import check_policy_inline
 from backend.core.policy.engine import PolicyEngine, get_policy_engine
-
-# SessionLocal is imported at module level for explicit session lifecycle management
-# in SSE streaming endpoints. SSE streams are long-lived connections that must not
-# hold database sessions/connections for their entire duration. We use SessionLocal
-# directly to create short-lived sessions for validation, then close them before
-# returning the streaming response.
-from backend.core.db import SessionLocal
-from contextlib import contextmanager
+from backend.core.db_utils import get_short_lived_session
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
-
-
-@contextmanager
-def get_short_lived_session():
-    """
-    Context manager for short-lived database sessions.
-
-    Use this for validation checks before returning long-lived streaming responses
-    (e.g., SSE endpoints) to avoid holding database connections indefinitely.
-
-    Yields:
-        Session: SQLAlchemy database session that will be automatically closed
-
-    Example:
-        with get_short_lived_session() as db:
-            plan = db.query(LivePlan).filter(...).first()
-            if not plan:
-                raise HTTPException(404)
-        # Session is closed here, before returning streaming response
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def _channel(plan_id: str) -> str:

@@ -28,3 +28,23 @@ LLM_LATENCY = Histogram(
     ["phase", "model"],
     buckets=(10, 25, 50, 100, 200, 400, 800, 1600, 3200, 6400, 12800),
 )
+
+# Plan Mode metrics
+plan_events_total = Counter(
+    "aep_plan_events_total",
+    "Total plan events",
+    ["event", "org_id"],
+)
+
+plan_step_latency = Histogram(
+    "aep_plan_step_latency_ms",
+    "Plan step latency in milliseconds",
+    ["org_id"],
+    buckets=(10, 25, 50, 100, 200, 400, 800),
+)
+
+plan_active_total = Counter(
+    "aep_plan_active_total",
+    "Total active plan sessions",
+    ["org_id"],
+)

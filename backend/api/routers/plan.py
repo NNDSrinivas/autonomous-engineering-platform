@@ -168,18 +168,19 @@ async def add_step(
     except (ConnectionError, TimeoutError) as e:
         # Network/Redis issues - log but don't fail the request
         logger.error(
-            f"Broadcaster connection error for plan {req.plan_id}: {e}",
+            f"Broadcaster connection error for plan {req.plan_id} (channel: {channel}): {e}",
             exc_info=True,
         )
     except (TypeError, ValueError) as e:
         # JSON serialization issues - this indicates a code bug
         logger.error(
-            f"Failed to serialize step for plan {req.plan_id}: {e}", exc_info=True
+            f"Failed to serialize step for plan {req.plan_id} (channel: {channel}): {e}",
+            exc_info=True,
         )
     except Exception as e:
         # Catch-all for unexpected errors
         logger.error(
-            f"Unexpected error broadcasting step to plan {req.plan_id}: {e}",
+            f"Unexpected error broadcasting step to plan {req.plan_id} (channel: {channel}): {e}",
             exc_info=True,
         )
 

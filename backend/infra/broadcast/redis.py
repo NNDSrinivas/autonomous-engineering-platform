@@ -65,6 +65,8 @@ class RedisBroadcaster(Broadcast):
                     # timeout=1.0: Balance between responsiveness (check _closed flag)
                     # and CPU efficiency (avoid tight polling loop). 1s is reasonable
                     # for graceful shutdown without excessive resource usage.
+                    # If get_message returns None after timeout, the loop continues,
+                    # allowing the _closed flag to be checked for graceful shutdown.
                     message = await pubsub.get_message(
                         ignore_subscribe_messages=True, timeout=1.0
                     )

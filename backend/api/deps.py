@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from functools import lru_cache
 
 from backend.infra.broadcast.base import Broadcast, BroadcastRegistry
@@ -15,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 BROADCAST_KEY = "plan_broadcast"
 
+# Thread-safe initialization lock
+_broadcaster_lock = threading.Lock()
+
 
 @lru_cache(maxsize=1)
 def _make_broadcaster() -> Broadcast:
@@ -22,23 +26,30 @@ def _make_broadcaster() -> Broadcast:
     Create and register a broadcaster instance.
 
     Automatically selects Redis if REDIS_URL is set, otherwise uses in-memory.
+    Thread-safe initialization with lock to prevent race conditions.
     """
-    redis_url = settings.REDIS_URL
+    with _broadcaster_lock:
+        # Check if already created by another thread
+        existing = BroadcastRegistry.get(BROADCAST_KEY)
+        if existing is not None:
+            return existing
 
-    if redis_url:
-        logger.info(f"Using Redis broadcaster: {redis_url}")
-        inst = RedisBroadcaster(redis_url)
-    else:
-        logger.info("Using in-memory broadcaster (dev mode)")
-        if os.getenv("ENV") in {"production", "prod", "staging"}:
-            logger.warning(
-                "Production environment detected but REDIS_URL not set! "
-                "In-memory broadcaster will NOT work with multiple server instances."
-            )
-        inst = InMemoryBroadcaster()
+        redis_url = settings.REDIS_URL
 
-    BroadcastRegistry.set(BROADCAST_KEY, inst)
-    return inst
+        if redis_url:
+            logger.info(f"Using Redis broadcaster: {redis_url}")
+            inst = RedisBroadcaster(redis_url)
+        else:
+            logger.info("Using in-memory broadcaster (dev mode)")
+            if os.getenv("ENV") in {"production", "prod", "staging"}:
+                logger.warning(
+                    "Production environment detected but REDIS_URL not set! "
+                    "In-memory broadcaster will NOT work with multiple server instances."
+                )
+            inst = InMemoryBroadcaster()
+
+        BroadcastRegistry.set(BROADCAST_KEY, inst)
+        return inst
 
 
 def get_broadcaster() -> Broadcast:

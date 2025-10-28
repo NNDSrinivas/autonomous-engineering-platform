@@ -49,9 +49,9 @@ class TestRBACHappyPaths:
 
     def test_viewer_can_stream_plans(self, client):
         """Viewer role can subscribe to SSE stream."""
-        # Mock plan lookup
         from backend.database.models.live_plan import LivePlan
 
+        # Mock SessionLocal for the endpoint's short-lived session
         mock_plan = LivePlan(
             id="plan-123",
             org_id="org-1",
@@ -61,28 +61,34 @@ class TestRBACHappyPaths:
             archived=False,
         )
 
-        def get_mock_db_with_plan():
-            mock_session = MagicMock()
-            mock_session.query.return_value.filter.return_value.first.return_value = (
-                mock_plan
-            )
-            return mock_session
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter.return_value.first.return_value = (
+            mock_plan
+        )
+        mock_session.close = MagicMock()
 
-        app.dependency_overrides[get_db] = get_mock_db_with_plan
+        with patch("backend.api.routers.plan.SessionLocal", return_value=mock_session):
+            env_vars = {
+                "DEV_USER_ID": "u-viewer",
+                "DEV_USER_ROLE": "viewer",
+                "DEV_ORG_ID": "org-1",
+            }
+            with patch.dict(os.environ, env_vars):
+                # Use streaming context to avoid blocking
+                with client.stream(
+                    "GET",
+                    "/api/plan/plan-123/stream",
+                    headers={"X-Org-Id": "org-1"},
+                ) as response:
+                    # Verify we got 200 (not 403 forbidden)
+                    assert response.status_code == 200
 
-        env_vars = {
-            "DEV_USER_ID": "u-viewer",
-            "DEV_USER_ROLE": "viewer",
-            "DEV_ORG_ID": "org-1",
-        }
-        with patch.dict(os.environ, env_vars):
-            response = client.get(
-                "/api/plan/plan-123/stream",
-                headers={"X-Org-Id": "org-1"},
-            )
+                    # Read first chunk to verify SSE format
+                    first_chunk = next(response.iter_bytes())
+                    assert b"data:" in first_chunk
 
-            # Should start streaming (200) or fail for other reasons, not 403
-            assert response.status_code != 403
+                    # Close immediately to avoid blocking test
+                    response.close()
 
     def test_planner_can_start_plan(self, client):
         """Planner role can create new plans."""

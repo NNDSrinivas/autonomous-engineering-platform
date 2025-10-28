@@ -235,21 +235,28 @@ async def add_step(
 async def stream_plan_updates(
     plan_id: str,
     x_org_id: str = Header(..., alias="X-Org-Id"),
-    db: Session = Depends(get_db),
     bc: Broadcast = Depends(get_broadcaster),
     user: User = Depends(require_role(Role.VIEWER)),
 ):
     """Server-Sent Events stream for real-time plan updates (requires viewer role)"""
 
-    # Verify plan exists
-    plan = (
-        db.query(LivePlan)
-        .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
-        .first()
-    )
+    # Verify plan exists with a short-lived session
+    # IMPORTANT: We must close the DB session before returning the infinite stream
+    # to avoid holding a connection for the entire SSE duration
+    from backend.core.db import SessionLocal
 
-    if not plan:
-        raise HTTPException(status_code=404, detail="Plan not found")
+    db = SessionLocal()
+    try:
+        plan = (
+            db.query(LivePlan)
+            .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
+            .first()
+        )
+
+        if not plan:
+            raise HTTPException(status_code=404, detail="Plan not found")
+    finally:
+        db.close()
 
     channel = _channel(plan_id)
 

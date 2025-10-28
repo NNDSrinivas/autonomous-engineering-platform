@@ -5,7 +5,7 @@
 import { useQuery, useMutation, UseQueryResult, UseMutationResult } from '@tanstack/react-query';
 import { api } from '../api/client';
 
-interface Node {
+export interface Node {
   id: number;
   foreign_id: string;
   kind: string;
@@ -14,7 +14,7 @@ interface Node {
   created_at: string;
 }
 
-interface Edge {
+export interface Edge {
   id: number;
   src_id: number;
   dst_id: number;
@@ -23,14 +23,14 @@ interface Edge {
   confidence: number;
 }
 
-interface NodeNeighborhoodResponse {
+export interface NodeNeighborhoodResponse {
   node: Node;
   neighbors: Node[];
   edges: Edge[];
   elapsed_ms: number;
 }
 
-interface TimelineItem {
+export interface TimelineItem {
   id: number;
   ts: string;
   created_at: string;
@@ -41,18 +41,23 @@ interface TimelineItem {
   summary?: string;
 }
 
-interface GraphQueryRequest {
+export interface GraphQueryRequest {
   query: string;
   depth?: number;
   k?: number;
 }
 
-interface GraphQueryResponse {
+export interface GraphPath {
+  weight: number;
+  node_sequence: string[];
+}
+
+export interface GraphQueryResponse {
   nodes: Node[];
   edges: Edge[];
   timeline: TimelineItem[];
   narrative: string;
-  paths?: any[];
+  paths?: GraphPath[];
 }
 
 /**

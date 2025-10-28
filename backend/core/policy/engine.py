@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -105,16 +106,26 @@ class PolicyEngine:
                 step_name = context.get("step_name", "")
                 forbidden_patterns = deny_if["step_name_contains"]
                 for pattern in forbidden_patterns:
-                    if pattern.lower() in step_name.lower():
-                        reason = policy.get(
-                            "reason",
-                            f"Step contains forbidden pattern: {pattern}",
+                    # Use regex with case-insensitive flag to prevent bypasses
+                    # like 'Rm -Rf' or 'dRoP tAbLe'
+                    try:
+                        regex = re.compile(re.escape(pattern), re.IGNORECASE)
+                        if regex.search(step_name):
+                            reason = policy.get(
+                                "reason",
+                                f"Step contains forbidden pattern: {pattern}",
+                            )
+                            logger.warning(
+                                f"Policy denied action={action}: {reason} "
+                                f"(matched pattern '{pattern}' in '{step_name}')"
+                            )
+                            return False, reason
+                    except re.error as e:
+                        logger.error(
+                            f"Invalid regex pattern '{pattern}' in policy: {e}"
                         )
-                        logger.warning(
-                            f"Policy denied action={action}: {reason} "
-                            f"(matched pattern '{pattern}' in '{step_name}')"
-                        )
-                        return False, reason
+                        # Continue checking other patterns even if one is invalid
+                        continue
 
             # Pattern: plan_id_matches (example for future extension)
             if "plan_id_matches" in deny_if:

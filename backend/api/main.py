@@ -27,6 +27,7 @@ from ..search.router import router as search_router
 from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
 from .memory import router as memory_router
+from .routers.plan import router as live_plan_router
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -152,6 +153,7 @@ def context_for_task(key: str, db: Session = Depends(get_db)):
 
 app.include_router(ctx_router)
 app.include_router(plan_router)
+app.include_router(live_plan_router)  # PR-19: Live Plan Mode
 
 # ---- Feature 1 endpoints (Finalize + Query) ----
 

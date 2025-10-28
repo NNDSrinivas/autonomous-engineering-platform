@@ -1,6 +1,8 @@
 import React from 'react'
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { MemoryGraphPage } from './pages/MemoryGraphPage'
+import { PlansListPage } from './pages/PlansListPage'
+import { PlanView } from './pages/PlanView'
 
 function HomePage() {
   return (
@@ -19,6 +21,14 @@ function HomePage() {
                   className="block bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
                 >
                   📊 Memory Graph Explorer
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  to="/plans" 
+                  className="block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                >
+                  📋 Live Plan Mode
                 </Link>
               </li>
             </ul>
@@ -52,6 +62,12 @@ function Layout({ children }: { children: React.ReactNode }) {
               >
                 Memory Graph
               </Link>
+              <Link 
+                to="/plans" 
+                className="text-gray-700 hover:text-indigo-600 font-medium transition-colors"
+              >
+                📋 Plans
+              </Link>
             </div>
           </div>
         </div>
@@ -67,6 +83,8 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/memory/graph" element={<MemoryGraphPage />} />
+        <Route path="/plans" element={<PlansListPage />} />
+        <Route path="/plan/:id" element={<PlanView />} />
       </Routes>
     </Layout>
   )

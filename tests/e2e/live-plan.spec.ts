@@ -32,7 +32,7 @@ async function waitForStepText(page: Page, text: string, timeout = 5000) {
  * Helper to navigate to a plan page
  */
 async function navigateToPlan(page: Page, planId: string) {
-  // Use the baseURL from page context which comes from Playwright config
+  // Use the baseURL from playwright.config.ts; the leading `/` makes this path relative to baseURL
   await page.goto(`/plan/${planId}`);
 }
 

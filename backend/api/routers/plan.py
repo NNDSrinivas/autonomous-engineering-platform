@@ -165,9 +165,22 @@ async def add_step(
     channel = _channel(req.plan_id)
     try:
         await bc.publish(channel, json.dumps(step))
-    except Exception as e:
+    except (ConnectionError, TimeoutError) as e:
+        # Network/Redis issues - log but don't fail the request
         logger.error(
-            f"Failed to broadcast step to plan {req.plan_id}: {e}", exc_info=True
+            f"Broadcaster connection error for plan {req.plan_id}: {e}",
+            exc_info=True,
+        )
+    except (TypeError, ValueError) as e:
+        # JSON serialization issues - this indicates a code bug
+        logger.error(
+            f"Failed to serialize step for plan {req.plan_id}: {e}", exc_info=True
+        )
+    except Exception as e:
+        # Catch-all for unexpected errors
+        logger.error(
+            f"Unexpected error broadcasting step to plan {req.plan_id}: {e}",
+            exc_info=True,
         )
 
     # Metrics

@@ -62,6 +62,9 @@ class RedisBroadcaster(Broadcast):
 
             while not self._closed:
                 try:
+                    # timeout=1.0: Balance between responsiveness (check _closed flag)
+                    # and CPU efficiency (avoid tight polling loop). 1s is reasonable
+                    # for graceful shutdown without excessive resource usage.
                     message = await pubsub.get_message(
                         ignore_subscribe_messages=True, timeout=1.0
                     )

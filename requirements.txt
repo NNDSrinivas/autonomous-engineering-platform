@@ -20,8 +20,8 @@ openai>=1.0.0
 anthropic>=0.25.0
 pyyaml>=6.0
 
-# Redis / Queue
-redis==5.0.8
+# Redis / Queue (hiredis provides faster C parser for production)
+redis[hiredis]>=5.0.8
 
 # Observability and Monitoring
 prometheus-client==0.20.0
@@ -61,4 +61,8 @@ python-json-logger==2.0.7
 
 # Security - Token encryption
 cryptography>=41.0.0
+boto3>=1.28.0
+
+# Optional: Legacy scripts (backfill_pgvector.py uses psycopg2)
+psycopg2-binary>=2.9.0
 boto3>=1.28.0

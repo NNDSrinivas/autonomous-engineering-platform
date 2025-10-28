@@ -1,0 +1,17 @@
+{
+  "name": "autonomous-engineering-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Autonomous Engineering Intelligence Platform - E2E Tests",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

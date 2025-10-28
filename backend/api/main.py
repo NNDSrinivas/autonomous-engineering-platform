@@ -152,8 +152,11 @@ def context_for_task(key: str, db: Session = Depends(get_db)):
 
 
 app.include_router(ctx_router)
-app.include_router(plan_router)
+# Include the real-time "live plan" router first so static endpoints like
+# /api/plan/start resolve before the parameterized ModelRouter endpoint
+# (which uses /api/plan/{key}). This prevents accidental route shadowing.
 app.include_router(live_plan_router)  # PR-19: Live Plan Mode
+app.include_router(plan_router)
 
 # ---- Feature 1 endpoints (Finalize + Query) ----
 

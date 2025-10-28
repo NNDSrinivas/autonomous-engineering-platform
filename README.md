@@ -82,6 +82,49 @@ python -m backend.api.realtime    # Realtime API (port 8001)
 cd frontend && npm start          # Web UI (port 3000)
 \`\`\`
 
+### 🧩 Redis Broadcaster Mode (Production)
+
+For **Live Plan Mode** real-time collaboration across multiple servers, configure Redis Pub/Sub:
+
+#### **Local Development with Docker**
+\`\`\`bash
+# Start Redis
+docker run -d -p 6379:6379 redis:7-alpine
+
+# Or use docker-compose
+docker-compose up -d redis
+\`\`\`
+
+#### **Environment Configuration**
+\`\`\`bash
+# .env
+REDIS_URL=redis://localhost:6379/0
+PLAN_CHANNEL_PREFIX=plan:
+\`\`\`
+
+#### **Production Deployment**
+- **AWS**: Use ElastiCache for Redis
+- **Azure**: Use Azure Cache for Redis
+- **GCP**: Use Memorystore for Redis
+- **Self-hosted**: Configure Redis Cluster with TLS
+
+**Note:** If `REDIS_URL` is not set, the platform falls back to in-memory broadcasting (single-server only).
+
+#### **Docker Compose Example**
+\`\`\`yaml
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  redis-data:
+\`\`\`
+
 ---
 
 ## 🧭 Development Roadmap

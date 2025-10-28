@@ -214,11 +214,6 @@ async def stream_plan_updates(
                 step = await queue.get()
                 yield f"data: {json.dumps(step)}\n\n"
 
-        except asyncio.CancelledError:
-            # Log SSE connection cancellation for debugging
-            logger.debug(f"SSE connection cancelled for plan {plan_id}, org {x_org_id}")
-            # Re-raise to properly propagate cancellation (finally block will still execute for cleanup)
-            raise
         finally:
             # Cleanup
             if plan_id in _active_streams:

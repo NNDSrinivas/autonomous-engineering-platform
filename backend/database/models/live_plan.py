@@ -18,7 +18,8 @@ class LivePlan(Base):
     description = Column(String, nullable=True)
     steps = Column(
         JSON, default=lambda: []
-    )  # [{"id": "...", "text": "...", "owner": "...", "ts": "..."}]
+    )  # [{"id": "uuid", "text": "...", "owner": "...", "ts": "ISO8601"}]
+    # Step structure: id is server-assigned UUID, ts is ISO8601 timestamp
     participants = Column(JSON, default=lambda: [])  # ["user1", "user2"]
     archived = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)

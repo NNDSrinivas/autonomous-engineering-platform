@@ -141,6 +141,10 @@ async def add_step(
     # Update plan - append to JSON array
     # NOTE: For plans with 50+ steps, consider using a separate steps table
     # or PostgreSQL's jsonb_insert for better performance
+    # WARNING: This read-modify-write pattern has race condition potential under
+    # concurrent writes. For production use with high concurrency, consider:
+    # - PostgreSQL's native jsonb_set/jsonb_insert for atomic updates
+    # - Optimistic locking with a version field to detect conflicts
     steps = plan.steps or []
     steps.append(step)
     plan.steps = steps
@@ -150,6 +154,8 @@ async def add_step(
     # Use exponential thresholds to avoid log flooding: 50, 100, 200, 400, 800...
     step_count = len(steps)
     # Warn at explicit, exponentially-spaced thresholds to avoid frequent log noise
+    # Note: Exact threshold matching intentionally used - if steps are added in batches
+    # and skip a threshold, that's acceptable (reduces noise further)
     warning_thresholds = [50, 100, 200, 400, 800, 1600, 3200]
     if step_count in warning_thresholds:
         logger.warning(
@@ -252,7 +258,7 @@ def archive_plan(
         raise HTTPException(status_code=404, detail="Plan not found")
 
     if plan.archived:
-        # Idempotent: already archived, return success with existing memory_node_id
+        # Idempotent: already archived, check for existing memory node
         node = (
             db.query(MemoryNode)
             .filter(
@@ -262,16 +268,26 @@ def archive_plan(
             )
             .first()
         )
-        memory_node_id = node.id if node else None
-        return {
-            "status": "archived",
-            "plan_id": plan_id,
-            "memory_node_id": memory_node_id,
-        }
 
-    # Mark as archived
-    plan.archived = True
-    plan.updated_at = datetime.utcnow()
+        if node:
+            # Node exists, return success
+            return {
+                "status": "archived",
+                "plan_id": plan_id,
+                "memory_node_id": node.id,
+            }
+
+        # Edge case: Plan marked archived but memory node missing (previous failure)
+        # Attempt to create the missing node to restore consistency
+        logger.warning(
+            f"Plan {plan_id} is archived but memory node missing - creating it now"
+        )
+        # Fall through to create the memory node below
+
+    # Mark as archived (or already archived from edge case above)
+    if not plan.archived:
+        plan.archived = True
+        plan.updated_at = datetime.utcnow()
 
     # Create memory graph node
     node = MemoryNode(

@@ -268,8 +268,8 @@ async def add_step(
 async def stream_plan_updates(
     plan_id: str,
     x_org_id: str = Header(..., alias="X-Org-Id"),
-    bc: Broadcast = Depends(get_broadcaster),
     user: User = Depends(require_role(Role.VIEWER)),
+    bc: Broadcast = Depends(get_broadcaster),
 ):
     """Server-Sent Events stream for real-time plan updates (requires viewer role)"""
 

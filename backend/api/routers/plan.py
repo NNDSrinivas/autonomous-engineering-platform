@@ -156,7 +156,8 @@ async def add_step(
     # Warn at explicit, exponentially-spaced thresholds to avoid frequent log noise
     # Note: Exact threshold matching intentionally used - if steps are added in batches
     # and skip a threshold, that's acceptable (reduces noise further)
-    warning_thresholds = [50, 100, 200, 400, 800, 1600, 3200]
+    # Using set for O(1) lookup performance
+    warning_thresholds = {50, 100, 200, 400, 800, 1600, 3200}
     if step_count in warning_thresholds:
         logger.warning(
             f"Plan {req.plan_id} has {step_count} steps. "
@@ -170,8 +171,15 @@ async def add_step(
         for queue in _active_streams[req.plan_id]:
             try:
                 await queue.put(step)
-            except Exception:
-                pass
+            except asyncio.QueueFull:
+                logger.warning(
+                    f"Queue for plan {req.plan_id} is full; step may be delayed or dropped"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error broadcasting step to plan {req.plan_id}: {e}",
+                    exc_info=True,
+                )
 
     # Metrics
     try:

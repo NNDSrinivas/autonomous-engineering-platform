@@ -188,7 +188,7 @@ async def add_step(
     policy_engine: PolicyEngine = Depends(get_policy_engine),
 ):
     # Policy check before executing
-    await check_policy_inline(
+    check_policy_inline(
         "plan.add_step",
         {"step_name": step.text},
         policy_engine

@@ -149,6 +149,12 @@ async def cursor_update(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Organization ID mismatch",
         )
+    # Validate plan_id consistency between path and body
+    if body.plan_id != plan_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plan ID mismatch between path and body",
+        )
 
     payload = body.model_copy(update={"ts": int(time.time())})
     await bc.publish(cursor_channel(plan_id), payload.model_dump_json())

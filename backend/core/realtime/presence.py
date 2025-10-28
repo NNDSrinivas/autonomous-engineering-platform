@@ -19,6 +19,30 @@ _presence_cache: Dict[Tuple[str, str], int] = {}
 _cache_lock = threading.Lock()
 
 
+def _cleanup_presence_cache() -> None:
+    """
+    Periodic cleanup task to remove expired presence entries.
+    Prevents memory leaks in long-running servers.
+    """
+    cleanup_interval = 60  # seconds
+    while True:
+        time.sleep(cleanup_interval)
+        now = int(time.time())
+        with _cache_lock:
+            keys_to_delete = [
+                key
+                for key, ts in _presence_cache.items()
+                if (now - ts) > settings.PRESENCE_TTL_SEC
+            ]
+            for key in keys_to_delete:
+                del _presence_cache[key]
+
+
+# Start background cleanup thread on module import
+_cleanup_thread = threading.Thread(target=_cleanup_presence_cache, daemon=True)
+_cleanup_thread.start()
+
+
 def presence_channel(plan_id: str) -> str:
     """Get Redis channel name for presence events."""
     return f"presence:{settings.PLAN_CHANNEL_PREFIX}{plan_id}"

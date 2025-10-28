@@ -28,6 +28,8 @@ export const PlanView: React.FC = () => {
     const seen = new Set<string>();
     // Deduplicate by 'id' (unique step ID) to handle concurrent step additions
     return steps.filter((step) => {
+      // Skip steps without ID (shouldn't happen but defensive check)
+      if (!step.id) return true;
       if (seen.has(step.id)) return false;
       seen.add(step.id);
       return true;

@@ -214,8 +214,9 @@ Real-time collaboration features for the Live Plan canvas.
 
 **Configuration:**
 ```env
-PRESENCE_TTL_SEC=60    # Idle timeout before user marked offline
-HEARTBEAT_SEC=20       # Client heartbeat interval
+PRESENCE_TTL_SEC=60                  # Idle timeout before user marked offline
+HEARTBEAT_SEC=20                     # Client heartbeat interval
+PRESENCE_CLEANUP_INTERVAL_SEC=60     # Cache cleanup interval (tune for traffic)
 ```
 
 **Endpoints:**

@@ -23,10 +23,11 @@ def _cleanup_presence_cache() -> None:
     """
     Periodic cleanup task to remove expired presence entries.
     Prevents memory leaks in long-running servers.
+
+    Cleanup interval is configurable via PRESENCE_CLEANUP_INTERVAL_SEC setting.
     """
-    cleanup_interval = 60  # seconds
     while True:
-        time.sleep(cleanup_interval)
+        time.sleep(settings.PRESENCE_CLEANUP_INTERVAL_SEC)
         now = int(time.time())
         with _cache_lock:
             keys_to_delete = [

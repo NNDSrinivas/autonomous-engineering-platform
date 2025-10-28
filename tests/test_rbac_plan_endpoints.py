@@ -69,7 +69,6 @@ class TestRBACHappyPaths:
     def test_viewer_can_stream_plans(self, client):
         """Viewer role can subscribe to SSE stream."""
         from backend.database.models.live_plan import LivePlan
-        from unittest.mock import MagicMock
 
         # Mock the short-lived session context manager
         mock_plan = LivePlan(

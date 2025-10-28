@@ -21,7 +21,9 @@ class SessionEventRequest(BaseModel):
     """Record episodic memory event"""
 
     session_id: str = Field(..., description="IDE/agent session identifier")
-    event_type: str = Field(..., description="Event type: plan, decision, error, qa, exec, meeting")
+    event_type: str = Field(
+        ..., description="Event type: plan, decision, error, qa, exec, meeting"
+    )
     task_key: Optional[str] = Field(None, description="Associated task key")
     context: str = Field(..., description="Event context/details")
     metadata: Optional[dict] = Field(default_factory=dict)

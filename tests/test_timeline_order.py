@@ -133,7 +133,9 @@ def test_timeline_includes_all_node_types(api_client: Client, seeded_graph):
 
     # Verify major types are present
     for expected_kind in expected_kinds:
-        assert expected_kind in kinds, f"Timeline missing expected node type: {expected_kind}"
+        assert (
+            expected_kind in kinds
+        ), f"Timeline missing expected node type: {expected_kind}"
 
     print(f"✅ Timeline includes all node types: {', '.join(sorted(kinds))}")
 
@@ -152,7 +154,9 @@ def test_timeline_has_required_fields(api_client: Client, seeded_graph):
             assert field in item, f"Timeline item {idx} missing required field: {field}"
 
         # Should have at least one timestamp field
-        assert "created_at" in item or "ts" in item, f"Timeline item {idx} missing timestamp field"
+        assert (
+            "created_at" in item or "ts" in item
+        ), f"Timeline item {idx} missing timestamp field"
 
     print(f"✅ All {len(data)} timeline items have required fields")
 

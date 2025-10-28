@@ -8,8 +8,12 @@ class ContextPackRequest(BaseModel):
     """Request schema for building a context pack"""
 
     query: str = Field(..., description="Search query for context retrieval")
-    task_key: Optional[str] = Field(None, description="Associated task key (e.g., JIRA issue)")
-    active_path: Optional[str] = Field(None, description="Currently active file path for context")
+    task_key: Optional[str] = Field(
+        None, description="Associated task key (e.g., JIRA issue)"
+    )
+    active_path: Optional[str] = Field(
+        None, description="Currently active file path for context"
+    )
     k: int = Field(8, description="Number of results to return", ge=1, le=100)
     sources: Optional[List[str]] = Field(
         None,
@@ -52,6 +56,8 @@ class ContextPackResponse(BaseModel):
     hits: List[ContextHit] = Field(
         default_factory=list, description="Context hits from memory search"
     )
-    notes: List[AgentNoteOut] = Field(default_factory=list, description="Relevant agent notes")
+    notes: List[AgentNoteOut] = Field(
+        default_factory=list, description="Relevant agent notes"
+    )
     latency_ms: int = Field(..., description="Retrieval latency in milliseconds")
     total: int = Field(..., description="Total number of hits returned")

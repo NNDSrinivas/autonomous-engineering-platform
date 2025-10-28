@@ -86,7 +86,11 @@ class TeamService:
 
             # Filter by project if specified
             if project_id:
-                results = [r for r in results if r.get("metadata", {}).get("project") == project_id]
+                results = [
+                    r
+                    for r in results
+                    if r.get("metadata", {}).get("project") == project_id
+                ]
 
             # Format results
             formatted_results = []
@@ -166,7 +170,9 @@ class TeamService:
                 if "author" in metadata:
                     authors.add(metadata["author"])
 
-            summary_parts = [f"Found {len(results)} relevant knowledge items for '{query}'."]
+            summary_parts = [
+                f"Found {len(results)} relevant knowledge items for '{query}'."
+            ]
 
             if categories:
                 summary_parts.append(f"Categories covered: {', '.join(categories)}.")
@@ -177,7 +183,9 @@ class TeamService:
             # Add top recommendation
             if results:
                 top_result = results[0]
-                summary_parts.append(f"Top recommendation: {top_result['content'][:100]}...")
+                summary_parts.append(
+                    f"Top recommendation: {top_result['content'][:100]}..."
+                )
 
             return " ".join(summary_parts)
 
@@ -185,7 +193,9 @@ class TeamService:
             logger.warning(f"Error generating summary: {e}")
             return f"Found {len(results)} relevant items for '{query}'."
 
-    async def add_team_knowledge(self, content: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+    async def add_team_knowledge(
+        self, content: str, metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Add new knowledge to the team knowledge base
         """
@@ -195,7 +205,9 @@ class TeamService:
             # Add timestamp to metadata
             metadata["added_at"] = datetime.now().isoformat()
 
-            self.vector_store.add_document(content=content, metadata=metadata, doc_id=doc_id)
+            self.vector_store.add_document(
+                content=content, metadata=metadata, doc_id=doc_id
+            )
 
             logger.info(f"Added team knowledge: {doc_id}")
 
@@ -215,7 +227,9 @@ class TeamService:
                 "message": "Failed to add knowledge to team database",
             }
 
-    async def get_team_analytics(self, project_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_team_analytics(
+        self, project_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Get analytics about team knowledge and usage
         """

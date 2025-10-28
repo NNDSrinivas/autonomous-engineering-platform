@@ -74,8 +74,12 @@ def seeded_graph(test_db_session):
     # Verify data is present
     session = test_db_session()
     try:
-        node_count = session.query(MemoryNode).filter(MemoryNode.org_id == TEST_ORG_ID).count()
-        edge_count = session.query(MemoryEdge).filter(MemoryEdge.org_id == TEST_ORG_ID).count()
+        node_count = (
+            session.query(MemoryNode).filter(MemoryNode.org_id == TEST_ORG_ID).count()
+        )
+        edge_count = (
+            session.query(MemoryEdge).filter(MemoryEdge.org_id == TEST_ORG_ID).count()
+        )
 
         assert node_count == 6, f"Expected 6 nodes, found {node_count}"
         assert edge_count == 12, f"Expected 12 edges, found {edge_count}"
@@ -94,7 +98,9 @@ def api_client(seeded_graph):
     Automatically includes X-Org-Id header and depends on seeded_graph
     to ensure data is present.
     """
-    with Client(base_url=TEST_BASE_URL, headers={"X-Org-Id": TEST_ORG_ID}, timeout=30.0) as client:
+    with Client(
+        base_url=TEST_BASE_URL, headers={"X-Org-Id": TEST_ORG_ID}, timeout=30.0
+    ) as client:
         yield client
 
 
@@ -115,7 +121,9 @@ def test_db(test_db_session, seeded_graph):
 @pytest.fixture
 def other_org_client():
     """HTTP client with different org for cross-org testing"""
-    with Client(base_url=TEST_BASE_URL, headers={"X-Org-Id": "other_org"}, timeout=30.0) as client:
+    with Client(
+        base_url=TEST_BASE_URL, headers={"X-Org-Id": "other_org"}, timeout=30.0
+    ) as client:
         yield client
 
 
@@ -128,7 +136,9 @@ def assert_response_ok(response, expected_status=200):
     return response.json()
 
 
-def get_node_by_foreign_id(session: Session, foreign_id: str, org_id: str = TEST_ORG_ID):
+def get_node_by_foreign_id(
+    session: Session, foreign_id: str, org_id: str = TEST_ORG_ID
+):
     """Helper to fetch node by foreign_id"""
     return (
         session.query(MemoryNode)

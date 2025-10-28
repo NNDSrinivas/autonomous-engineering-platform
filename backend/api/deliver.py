@@ -61,7 +61,9 @@ def get_github_credentials(db: Session, org_id: str) -> str:
 
     except Exception as e:
         logger.error(f"Failed to get GitHub credentials: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve GitHub credentials")
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve GitHub credentials"
+        )
 
 
 def get_jira_credentials(db: Session, org_id: str) -> Tuple[str, str, str]:
@@ -85,13 +87,17 @@ def get_jira_credentials(db: Session, org_id: str) -> Tuple[str, str, str]:
         )
 
         if not result:
-            raise HTTPException(status_code=400, detail="No JIRA connection found for organization")
+            raise HTTPException(
+                status_code=400, detail="No JIRA connection found for organization"
+            )
 
         return result["base_url"], result["access_token"], result["email"]
 
     except Exception as e:
         logger.error(f"Failed to get JIRA credentials: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve JIRA credentials")
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve JIRA credentials"
+        )
 
 
 def audit_delivery_action(
@@ -162,7 +168,9 @@ async def create_draft_pr(
     # Require organization ID from headers
     org_id = http_request.headers.get("X-Org-Id")
     if not org_id:
-        raise HTTPException(status_code=400, detail="Missing required 'X-Org-Id' header")
+        raise HTTPException(
+            status_code=400, detail="Missing required 'X-Org-Id' header"
+        )
 
     try:
         logger.info(f"Creating draft PR for org {org_id}: {request.repo_full_name}")
@@ -223,7 +231,9 @@ async def create_draft_pr(
             details={"error": str(e)},
         )
 
-        raise HTTPException(status_code=500, detail=f"Failed to create draft PR: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create draft PR: {str(e)}"
+        )
 
 
 @router.post("/jira/comment", response_model=JiraCommentResponse)
@@ -257,7 +267,9 @@ async def add_jira_comment(
     # Require organization ID from headers
     org_id = http_request.headers.get("X-Org-Id")
     if not org_id:
-        raise HTTPException(status_code=400, detail="Missing required 'X-Org-Id' header")
+        raise HTTPException(
+            status_code=400, detail="Missing required 'X-Org-Id' header"
+        )
 
     try:
         logger.info(f"Adding JIRA comment for org {org_id}: {request.issue_key}")
@@ -362,7 +374,9 @@ async def add_jira_comment(
             details={"error": str(e)},
         )
 
-        raise HTTPException(status_code=500, detail=f"Failed to add JIRA comment: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to add JIRA comment: {str(e)}"
+        )
 
 
 @router.get("/health")

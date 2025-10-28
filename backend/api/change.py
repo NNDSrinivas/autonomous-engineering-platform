@@ -42,7 +42,9 @@ def submit_change(
 
     # Load organization policy
     policy = (
-        db.execute(text("SELECT * FROM org_policy WHERE org_id=:o"), {"o": org}).mappings().first()
+        db.execute(text("SELECT * FROM org_policy WHERE org_id=:o"), {"o": org})
+        .mappings()
+        .first()
         or {}
     )
 
@@ -113,7 +115,9 @@ def submit_change(
 
 
 @router.get("/{change_id}", summary="Get change request details")
-def get_change(change_id: int, request: Request, db: Session = Depends(get_db)) -> Dict[str, Any]:
+def get_change(
+    change_id: int, request: Request, db: Session = Depends(get_db)
+) -> Dict[str, Any]:
     """
     Retrieve details of a specific change request.
 
@@ -205,7 +209,9 @@ def review_change(
     )
 
     if not role or role["role"] not in ("admin", "maintainer"):
-        raise HTTPException(403, "Forbidden: only maintainers/admins can review changes")
+        raise HTTPException(
+            403, "Forbidden: only maintainers/admins can review changes"
+        )
 
     decision = payload.get("decision")
     if decision not in ("approve", "reject"):

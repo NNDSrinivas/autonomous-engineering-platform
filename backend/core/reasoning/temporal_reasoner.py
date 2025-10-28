@@ -56,7 +56,9 @@ class TemporalReasoner:
 
         # Find root node
         root_node = (
-            self.db.query(MemoryNode).filter_by(org_id=org_id, foreign_id=root_foreign_id).first()
+            self.db.query(MemoryNode)
+            .filter_by(org_id=org_id, foreign_id=root_foreign_id)
+            .first()
         )
 
         if not root_node:
@@ -81,7 +83,9 @@ class TemporalReasoner:
             "root_foreign_id": root_foreign_id,
         }
 
-    def explain(self, org_id: str, query: str, depth: int = 3, k: int = 12) -> Dict[str, Any]:
+    def explain(
+        self, org_id: str, query: str, depth: int = 3, k: int = 12
+    ) -> Dict[str, Any]:
         """Explain a query by finding paths and generating narrative
 
         Args:
@@ -136,16 +140,22 @@ class TemporalReasoner:
 
         # Limit to top k nodes by relevance
         if len(all_nodes) > k:
-            all_nodes = set(sorted(all_nodes, key=lambda n: n.created_at, reverse=True)[:k])
+            all_nodes = set(
+                sorted(all_nodes, key=lambda n: n.created_at, reverse=True)[:k]
+            )
 
         # Find interesting paths (with caused_by, fixes, derived_from relations)
-        paths = self._find_causality_paths(list(all_nodes), list(all_edges), source_nodes)
+        paths = self._find_causality_paths(
+            list(all_nodes), list(all_edges), source_nodes
+        )
 
         # Create timeline
         timeline = self._create_timeline(list(all_nodes), list(all_edges))
 
         # Generate narrative via model router
-        narrative = self._generate_narrative(query, list(all_nodes), list(all_edges), paths, k)
+        narrative = self._generate_narrative(
+            query, list(all_nodes), list(all_edges), paths, k
+        )
 
         return {
             "nodes": [n.to_dict() for n in all_nodes],
@@ -244,7 +254,9 @@ class TemporalReasoner:
         timeline = []
         for node in sorted_nodes:
             # Find related events (edges pointing to/from this node)
-            related = [e.to_dict() for e in edges if e.src_id == node.id or e.dst_id == node.id]
+            related = [
+                e.to_dict() for e in edges if e.src_id == node.id or e.dst_id == node.id
+            ]
 
             timeline.append(
                 {
@@ -354,7 +366,9 @@ class TemporalReasoner:
         context += "## Relevant Entities:\n"
         # Note: k is validated by API layer (1 <= k <= MAX_NODES_IN_CONTEXT), caller must ensure valid k
         for node in nodes[:k]:
-            context += f"- [{node.foreign_id}] {node.title or 'Untitled'} ({node.kind})\n"
+            context += (
+                f"- [{node.foreign_id}] {node.title or 'Untitled'} ({node.kind})\n"
+            )
             if node.summary:
                 context += f"  Summary: {node.summary[:200]}...\n"
 
@@ -368,7 +382,9 @@ class TemporalReasoner:
         context += "\n## Causality Chains:\n"
         for i, path in enumerate(paths[:MAX_PATHS_IN_CONTEXT]):  # Limit paths
             context += f"Path {i+1}: "
-            path_str = " → ".join([f"{node.foreign_id} ({edge.relation})" for node, edge in path])
+            path_str = " → ".join(
+                [f"{node.foreign_id} ({edge.relation})" for node, edge in path]
+            )
             context += path_str + "\n"
 
         # Generate narrative
@@ -411,7 +427,9 @@ Provide a concise explanation (2-3 paragraphs) that directly answers the query."
         """Parse window string to days (e.g., '30d' -> 30, '7d' -> 7)"""
         return parse_time_window(window)
 
-    def _path_to_dict(self, path: List[Tuple[MemoryNode, MemoryEdge]]) -> Dict[str, Any]:
+    def _path_to_dict(
+        self, path: List[Tuple[MemoryNode, MemoryEdge]]
+    ) -> Dict[str, Any]:
         """Convert path to dict for JSON serialization"""
         return {
             "steps": [

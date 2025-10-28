@@ -147,12 +147,19 @@ async def add_step(
     plan.updated_at = datetime.utcnow()
 
     # Warn if plan is getting large (performance concern)
+    # Use exponential thresholds to avoid log flooding: 50, 100, 200, 400, 800...
     step_count = len(steps)
-    if step_count >= 50 and step_count % 10 == 0:  # Warn at 50, 60, 70, etc.
-        logger.warning(
-            f"Plan {req.plan_id} has {step_count} steps. "
-            "Consider migrating to a separate steps table for better performance."
-        )
+    if step_count >= 50:
+        # Check if this is a power-of-2 threshold after 50
+        import math
+
+        if step_count == 50 or (
+            step_count >= 100 and step_count & (step_count - 1) == 0
+        ):
+            logger.warning(
+                f"Plan {req.plan_id} has {step_count} steps. "
+                "Consider migrating to a separate steps table for better performance."
+            )
 
     db.commit()
 
@@ -214,7 +221,7 @@ async def stream_plan_updates(
         except asyncio.CancelledError:
             # Log SSE connection cancellation for debugging
             logger.debug(f"SSE connection cancelled for plan {plan_id}, org {x_org_id}")
-            # Re-raise to properly propagate cancellation - finally block will still execute for cleanup
+            # Re-raise to properly propagate cancellation
             raise
         finally:
             # Cleanup

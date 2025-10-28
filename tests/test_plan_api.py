@@ -10,8 +10,9 @@ from sqlalchemy.orm import sessionmaker
 from backend.api.main import app
 from backend.core.db import Base
 
-# Test database
-TEST_DATABASE_URL = "sqlite:///./test_plan.db"
+# Use in-memory SQLite database for tests to avoid file persistence
+# This prevents conflicts in CI/CD and enables parallel test execution
+TEST_DATABASE_URL = "sqlite:///:memory:"
 engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

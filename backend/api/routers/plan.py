@@ -144,12 +144,7 @@ async def add_step(
 ):
     """Add a step to the plan and broadcast to all listeners (requires planner role + policy check)"""
 
-    # Check policy guardrails before modifying plan
-    check_policy_inline(
-        "plan.add_step",
-        {"plan_id": req.plan_id, "step_name": req.text},
-        policy_engine,
-    )
+    # Verify plan exists first to provide better error messages
     plan = (
         db.query(LivePlan)
         .filter(LivePlan.id == req.plan_id, LivePlan.org_id == x_org_id)
@@ -161,6 +156,13 @@ async def add_step(
 
     if plan.archived:
         raise HTTPException(status_code=400, detail="Cannot modify archived plan")
+
+    # Check policy guardrails before modifying plan
+    check_policy_inline(
+        "plan.add_step",
+        {"plan_id": req.plan_id, "step_name": req.text},
+        policy_engine,
+    )
 
     # Create step object with unique ID
     step = {

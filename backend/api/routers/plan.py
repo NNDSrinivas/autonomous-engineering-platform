@@ -147,6 +147,14 @@ async def add_step(
     plan.steps = steps
     plan.updated_at = datetime.utcnow()
 
+    # Warn if plan is getting large (performance concern)
+    step_count = len(steps)
+    if step_count >= 50 and step_count % 10 == 0:  # Warn at 50, 60, 70, etc.
+        logger.warning(
+            f"Plan {req.plan_id} has {step_count} steps. "
+            "Consider migrating to a separate steps table for better performance."
+        )
+
     db.commit()
 
     # Broadcast to all active streams
@@ -207,7 +215,7 @@ async def stream_plan_updates(
         except asyncio.CancelledError:
             # Log SSE connection cancellation for debugging
             logger.debug(f"SSE connection cancelled for plan {plan_id}, org {x_org_id}")
-            # Re-raise after logging - finally block executes before exception propagates
+            # Re-raise to properly propagate cancellation - finally block will still execute for cleanup
             raise
         finally:
             # Cleanup

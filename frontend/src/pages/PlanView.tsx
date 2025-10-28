@@ -27,18 +27,18 @@ export const PlanView: React.FC = () => {
     const steps = [...(plan?.steps || []), ...liveSteps];
     const seen = new Set<string>();
     
-    // Deduplicate by 'id' (unique step ID) to handle concurrent step additions
+    // Deduplicate by both 'id' (if present) and fallback key to handle all cases
     return steps.filter((step) => {
-      // For steps without ID, use timestamp+owner+text as fallback unique key
-      if (!step.id) {
-        const fallbackKey = `${step.ts}-${step.owner}-${step.text}`;
-        if (seen.has(fallbackKey)) return false;
-        seen.add(fallbackKey);
-        return true;
+      const fallbackKey = `${step.ts}-${step.owner}-${step.text}`;
+      
+      // Check if either the id or fallbackKey has been seen
+      if ((step.id && seen.has(step.id)) || seen.has(fallbackKey)) {
+        return false;
       }
       
-      if (seen.has(step.id)) return false;
-      seen.add(step.id);
+      // Track both id and fallback key to catch duplicates with or without IDs
+      if (step.id) seen.add(step.id);
+      seen.add(fallbackKey);
       return true;
     });
   }, [plan?.steps, liveSteps]);

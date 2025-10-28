@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient, UseQueryResult, UseMutationResul
 import { api } from '../api/client';
 
 export interface PlanStep {
-  // id may be absent for transient/local steps before the server assigns one
+  // id is optional only for type compatibility (e.g., when constructing objects locally before sending to the server); the server always assigns an id
   id?: string;
   text: string;
   owner: string;

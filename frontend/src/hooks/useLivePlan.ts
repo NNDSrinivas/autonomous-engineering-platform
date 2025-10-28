@@ -6,7 +6,8 @@ import { useQuery, useMutation, useQueryClient, UseQueryResult, UseMutationResul
 import { api } from '../api/client';
 
 export interface PlanStep {
-  id: string;
+  // id may be absent for transient/local steps before the server assigns one
+  id?: string;
   text: string;
   owner: string;
   ts: string;

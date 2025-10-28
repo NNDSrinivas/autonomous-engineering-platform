@@ -149,17 +149,13 @@ async def add_step(
     # Warn if plan is getting large (performance concern)
     # Use exponential thresholds to avoid log flooding: 50, 100, 200, 400, 800...
     step_count = len(steps)
-    if step_count >= 50:
-        # Check if this is a power-of-2 threshold after 50
-        import math
-
-        if step_count == 50 or (
-            step_count >= 100 and step_count & (step_count - 1) == 0
-        ):
-            logger.warning(
-                f"Plan {req.plan_id} has {step_count} steps. "
-                "Consider migrating to a separate steps table for better performance."
-            )
+    # Warn at explicit, exponentially-spaced thresholds to avoid frequent log noise
+    warning_thresholds = [50, 100, 200, 400, 800, 1600, 3200]
+    if step_count in warning_thresholds:
+        logger.warning(
+            f"Plan {req.plan_id} has {step_count} steps. "
+            "Consider migrating to a separate steps table for better performance."
+        )
 
     db.commit()
 

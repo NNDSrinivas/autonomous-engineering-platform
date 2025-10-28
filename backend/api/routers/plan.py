@@ -24,6 +24,13 @@ from backend.core.auth.models import Role, User
 from backend.api.security import check_policy_inline
 from backend.core.policy.engine import PolicyEngine, get_policy_engine
 
+# SessionLocal is imported at module level for explicit session lifecycle management
+# in SSE streaming endpoints. SSE streams are long-lived connections that must not
+# hold database sessions/connections for their entire duration. We use SessionLocal
+# directly to create short-lived sessions for validation, then close them before
+# returning the streaming response.
+from backend.core.db import SessionLocal
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
@@ -242,9 +249,8 @@ async def stream_plan_updates(
 
     # Verify plan exists with a short-lived session
     # IMPORTANT: We must close the DB session before returning the infinite stream
-    # to avoid holding a connection for the entire SSE duration
-    from backend.core.db import SessionLocal
-
+    # to avoid holding a connection for the entire SSE duration.
+    # SessionLocal is imported at module level (see imports section for documentation).
     db = SessionLocal()
     try:
         plan = (

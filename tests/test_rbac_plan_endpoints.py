@@ -11,11 +11,30 @@ from backend.core.db import get_db
 
 
 def get_mock_db():
-    """Create a mock database session."""
+    """
+    Create a mock database session with pre-configured query chain.
+
+    Sets up: query().filter().order_by().limit().all() -> []
+    This helper improves readability over inline chained mock configuration.
+    """
     mock_session = MagicMock()
-    mock_session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = (
-        []
-    )
+
+    # Configure the query chain step-by-step for clarity
+    mock_all = MagicMock(return_value=[])
+    mock_limit = MagicMock()
+    mock_limit.all = mock_all
+
+    mock_order_by = MagicMock()
+    mock_order_by.limit.return_value = mock_limit
+
+    mock_filter = MagicMock()
+    mock_filter.order_by.return_value = mock_order_by
+
+    mock_query = MagicMock()
+    mock_query.filter.return_value = mock_filter
+
+    mock_session.query.return_value = mock_query
+
     return mock_session
 
 

@@ -28,7 +28,11 @@ export default defineConfig({
   
   /* Shared settings for all the projects below */
   use: {
-    /* Base URL to use in actions like `await page.goto('/')` */
+    /**
+     * Base URL to use in actions like `await page.goto('/')`.
+     * Defaults to 'http://localhost:5173' (Vite dev server default port).
+     * Override with E2E_BASE_URL environment variable if frontend runs on different port.
+     */
     baseURL: process.env.E2E_BASE_URL || 'http://localhost:5173',
     
     /* Collect trace when retrying the failed test */

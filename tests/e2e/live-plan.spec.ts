@@ -16,6 +16,11 @@ const PLAN_ID = 'e2e-test-plan-' + Date.now();
 const STEP_INPUT_SELECTOR = 'input[placeholder*="step" i], textarea[placeholder*="step" i], input[type="text"]';
 const ADD_BUTTON_SELECTOR = 'button:has-text("Add Step"), button:has-text("Add"), button[type="submit"]';
 
+// Timing constants
+const NETWORK_OFFLINE_DELAY = 1000; // Time to wait after going offline/online
+const STEP_SUBMISSION_DELAY = 100; // Delay between rapid step submissions
+const STEPS_RENDER_DELAY = 2000; // Time to wait for all steps to render
+
 /**
  * Helper to wait for an element containing specific text
  */
@@ -83,20 +88,20 @@ test.describe('Live Plan - Real-time Multi-Client Collaboration', () => {
 
     // Add initial step
     await page.fill(STEP_INPUT_SELECTOR, 'Step before disconnect');
-    await page.click('button:has-text("Add")');
+    await page.click(ADD_BUTTON_SELECTOR);
     await waitForStepText(page, 'Step before disconnect', 3000);
 
     // Simulate network offline
     await context.setOffline(true);
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(NETWORK_OFFLINE_DELAY);
 
     // Go back online
     await context.setOffline(false);
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(NETWORK_OFFLINE_DELAY);
 
     // Add another step after reconnection
     await page.fill(STEP_INPUT_SELECTOR, 'Step after reconnect');
-    await page.click('button:has-text("Add")');
+    await page.click(ADD_BUTTON_SELECTOR);
     await waitForStepText(page, 'Step after reconnect', 3000);
 
     // Verify both steps are visible
@@ -133,12 +138,12 @@ test.describe('Live Plan - Performance', () => {
     // Add 5 steps rapidly
     for (let i = 1; i <= 5; i++) {
       await page.fill(STEP_INPUT_SELECTOR, `Rapid step ${i}`);
-      await page.click('button:has-text("Add")');
-      await page.waitForTimeout(100); // Small delay between steps
+      await page.click(ADD_BUTTON_SELECTOR);
+      await page.waitForTimeout(STEP_SUBMISSION_DELAY);
     }
 
     // Wait for all steps to appear
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(STEPS_RENDER_DELAY);
 
     // Verify all 5 steps are visible
     for (let i = 1; i <= 5; i++) {

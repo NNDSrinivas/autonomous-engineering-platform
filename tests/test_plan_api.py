@@ -9,7 +9,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from backend.api.main import app
 from backend.core.db import Base
-from backend.database.models.live_plan import LivePlan
 
 # Test database
 TEST_DATABASE_URL = "sqlite:///./test_plan.db"

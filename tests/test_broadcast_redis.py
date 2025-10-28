@@ -2,6 +2,7 @@
 
 import os
 import asyncio
+import logging
 import pytest
 
 from backend.infra.broadcast.redis import RedisBroadcaster
@@ -9,6 +10,8 @@ from backend.infra.broadcast.redis import RedisBroadcaster
 REDIS_URL = os.getenv("REDIS_URL")
 
 pytestmark = pytest.mark.skipif(not REDIS_URL, reason="REDIS_URL not set")
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio
@@ -34,7 +37,10 @@ async def test_redis_broadcast_roundtrip():
     try:
         await asyncio.wait_for(ready.wait(), timeout=2.0)
     except asyncio.TimeoutError:
-        pass  # Continue anyway if subscriber doesn't signal
+        logger.warning(
+            "Subscriber did not signal readiness within 2s - test may be flaky"
+        )
+        # Continue anyway, but this could indicate timing issues
 
     await bc.publish("test:redis:ch", "one")
     await bc.publish("test:redis:ch", "two")
@@ -82,7 +88,9 @@ async def test_redis_multiple_subscribers():
             asyncio.gather(ready1.wait(), ready2.wait()), timeout=2.0
         )
     except asyncio.TimeoutError:
-        pass
+        logger.warning(
+            "One or both subscribers did not signal readiness within 2s - test may be flaky"
+        )
 
     # Publish from a third broadcaster instance
     bc_publisher = RedisBroadcaster(REDIS_URL)

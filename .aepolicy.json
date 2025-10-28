@@ -20,12 +20,5 @@
       },
       "reason": "Dangerous commands or patterns not allowed in plan steps"
     }
-  ],
-  "legacy": {
-    "allow": {
-      "commands": ["pytest", "npm", "pnpm", "yarn", "mvn", "gradle", "git"],
-      "paths": ["src/**", "backend/**", "web/**", "tests/**"]
-    },
-    "deny": { "commands": ["docker login", "curl http://"] }
-  }
+  ]
 }

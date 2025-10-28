@@ -1,16 +1,20 @@
 """Security dependencies for fine-grained authorization."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, NoReturn
 
 from fastapi import Depends, HTTPException, status
 
 from backend.core.policy.engine import PolicyEngine, get_policy_engine
 
 
-def require_policy(action: str, context_fn=None):
+def require_policy(action: str, context_fn=None) -> NoReturn:
     """
-    [PLACEHOLDER] Dependency factory to enforce policy guardrails on actions.
+    NOT YET IMPLEMENTED. Placeholder for future policy dependency.
 
+    This function is a placeholder and will always raise NotImplementedError.
+    Do not use this function. Use `check_policy_inline` instead.
+
+    Background:
     This function is currently not implemented because FastAPI's dependency injection
     system cannot easily extract route arguments for dynamic context building.
 
@@ -24,7 +28,7 @@ def require_policy(action: str, context_fn=None):
         context_fn: Optional callable that would extract context from route args
 
     Raises:
-        NotImplementedError: This function is a placeholder and not yet implemented.
+        NotImplementedError: Always raised - this function is not implemented.
     """
     raise NotImplementedError(
         "require_policy is a placeholder and not yet implemented. "

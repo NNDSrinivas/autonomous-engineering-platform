@@ -283,9 +283,8 @@ async def stream_plan_updates(
             .first()
         )
 
-    # Raise exception after session cleanup to ensure proper FastAPI exception handling
-    if not plan:
-        raise HTTPException(status_code=404, detail="Plan not found")
+        if not plan:
+            raise HTTPException(status_code=404, detail="Plan not found")
 
     channel = _channel(plan_id)
 

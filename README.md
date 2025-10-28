@@ -158,8 +158,6 @@ DEV_PROJECTS=aep
 
 Fine-grained authorization policies prevent dangerous operations. Policies are defined in `.aepolicy.json`:
 
-\`\`\`json
-
 ```json
 {
   "version": "1.0",
@@ -180,9 +178,6 @@ Fine-grained authorization policies prevent dangerous operations. Policies are d
 ```
 
 **Note**: Patterns use regex with escape sequences (e.g., `\s*` matches optional whitespace). See `.aepolicy.json` for the full production configuration.
-
-
-\`\`\`
 
 #### **How It Works**
 

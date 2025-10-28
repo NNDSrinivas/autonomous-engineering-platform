@@ -13,7 +13,7 @@ import asyncio
 
 from backend.core.db import get_db
 from backend.database.models.live_plan import LivePlan
-from backend.database.models.memory_graph import MemoryNode, MemoryEdge
+from backend.database.models.memory_graph import MemoryNode
 
 
 router = APIRouter(prefix="/api/plan", tags=["plan"])
@@ -139,7 +139,7 @@ async def add_step(
     
     # Metrics
     try:
-        from backend.telemetry.metrics import plan_events_total, plan_step_latency
+        from backend.telemetry.metrics import plan_events_total
         plan_events_total.labels(event="PLAN_STEP", org_id=x_org_id).inc()
     except Exception:
         pass

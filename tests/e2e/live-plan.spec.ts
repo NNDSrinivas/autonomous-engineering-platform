@@ -12,6 +12,10 @@ import { test, expect, Page } from '@playwright/test';
 const BACKEND_URL = process.env.E2E_BACKEND_URL || 'http://localhost:8000';
 const PLAN_ID = 'e2e-test-plan-' + Date.now();
 
+// Reusable selectors
+const STEP_INPUT_SELECTOR = 'input[placeholder*="step" i], textarea[placeholder*="step" i], input[type="text"]';
+const ADD_BUTTON_SELECTOR = 'button:has-text("Add Step"), button:has-text("Add"), button[type="submit"]';
+
 /**
  * Helper to wait for an element containing specific text
  */
@@ -46,16 +50,16 @@ test.describe('Live Plan - Real-time Multi-Client Collaboration', () => {
     await pageB.waitForLoadState('networkidle');
 
     // Add a step from Tab A
-    await pageA.fill('input[placeholder*="step" i], textarea[placeholder*="step" i], input[type="text"]', 'E2E: First collaborative step');
-    await pageA.click('button:has-text("Add Step"), button:has-text("Add"), button[type="submit"]');
+    await pageA.fill(STEP_INPUT_SELECTOR, 'E2E: First collaborative step');
+    await pageA.click(ADD_BUTTON_SELECTOR);
 
     // Both tabs should show the step within 2 seconds
     await waitForStepText(pageA, 'E2E: First collaborative step', 3000);
     await waitForStepText(pageB, 'E2E: First collaborative step', 3000);
 
     // Add another step from Tab B
-    await pageB.fill('input[placeholder*="step" i], textarea[placeholder*="step" i], input[type="text"]', 'E2E: Second collaborative step');
-    await pageB.click('button:has-text("Add Step"), button:has-text("Add"), button[type="submit"]');
+    await pageB.fill(STEP_INPUT_SELECTOR, 'E2E: Second collaborative step');
+    await pageB.click(ADD_BUTTON_SELECTOR);
 
     // Both tabs should show the second step
     await waitForStepText(pageA, 'E2E: Second collaborative step', 3000);
@@ -78,7 +82,7 @@ test.describe('Live Plan - Real-time Multi-Client Collaboration', () => {
     await page.waitForLoadState('networkidle');
 
     // Add initial step
-    await page.fill('input[type="text"], textarea', 'Step before disconnect');
+    await page.fill(STEP_INPUT_SELECTOR, 'Step before disconnect');
     await page.click('button:has-text("Add")');
     await waitForStepText(page, 'Step before disconnect', 3000);
 
@@ -91,7 +95,7 @@ test.describe('Live Plan - Real-time Multi-Client Collaboration', () => {
     await page.waitForTimeout(1000);
 
     // Add another step after reconnection
-    await page.fill('input[type="text"], textarea', 'Step after reconnect');
+    await page.fill(STEP_INPUT_SELECTOR, 'Step after reconnect');
     await page.click('button:has-text("Add")');
     await waitForStepText(page, 'Step after reconnect', 3000);
 
@@ -106,9 +110,8 @@ test.describe('Live Plan - Real-time Multi-Client Collaboration', () => {
     const context = await browser.newContext();
     const page = await context.newPage();
 
-    // Navigate to plans list
-    const baseURL = 'http://localhost:5173';
-    await page.goto(`${baseURL}/plans`);
+    // Navigate to plans list (uses baseURL from playwright config)
+    await page.goto('/plans');
     await page.waitForLoadState('networkidle');
 
     // Should show some UI elements
@@ -129,7 +132,7 @@ test.describe('Live Plan - Performance', () => {
 
     // Add 5 steps rapidly
     for (let i = 1; i <= 5; i++) {
-      await page.fill('input[type="text"], textarea', `Rapid step ${i}`);
+      await page.fill(STEP_INPUT_SELECTOR, `Rapid step ${i}`);
       await page.click('button:has-text("Add")');
       await page.waitForTimeout(100); // Small delay between steps
     }

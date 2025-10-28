@@ -43,7 +43,7 @@ async def test_inmemory_multiple_subscribers():
     """Test that multiple subscribers receive the same messages."""
     bc = InMemoryBroadcaster()
 
-    async def consumer(collected, name):
+    async def consumer(collected):
         async for msg in bc.subscribe("multi-channel"):
             collected.append(msg)
             if len(collected) >= 2:
@@ -52,8 +52,8 @@ async def test_inmemory_multiple_subscribers():
     collected1 = []
     collected2 = []
 
-    task1 = asyncio.create_task(consumer(collected1, "sub1"))
-    task2 = asyncio.create_task(consumer(collected2, "sub2"))
+    task1 = asyncio.create_task(consumer(collected1))
+    task2 = asyncio.create_task(consumer(collected2))
 
     await asyncio.sleep(0.01)
 

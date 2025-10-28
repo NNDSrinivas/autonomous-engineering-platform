@@ -335,6 +335,58 @@ class TestPolicyEnforcement:
             assert response.status_code == 403
             assert "policy violation" in response.json()["detail"].lower()
 
+    def test_dangerous_command_blocked_with_whitespace_variations(self, client):
+        """Policy blocks commands with multiple spaces or tabs."""
+        from backend.database.models.live_plan import LivePlan
+
+        mock_plan = LivePlan(
+            id="plan-123",
+            org_id="org-1",
+            title="Test Plan",
+            steps=[],
+            participants=[],
+            archived=False,
+        )
+
+        def get_mock_db_for_policy():
+            mock_session = MagicMock()
+            mock_session.query.return_value.filter.return_value.first.return_value = (
+                mock_plan
+            )
+            return mock_session
+
+        app.dependency_overrides[get_db] = get_mock_db_for_policy
+
+        env_vars = {
+            "DEV_USER_ID": "u-planner",
+            "DEV_USER_ROLE": "planner",
+            "DEV_ORG_ID": "org-1",
+        }
+
+        # Test with double spaces
+        with patch.dict(os.environ, env_vars):
+            response = client.post(
+                "/api/plan/step",
+                json={
+                    "plan_id": "plan-123",
+                    "text": "Clean up with rm  -rf /tmp/*",  # double space
+                },
+                headers={"X-Org-Id": "org-1"},
+            )
+            assert response.status_code == 403
+
+        # Test with tabs
+        with patch.dict(os.environ, env_vars):
+            response = client.post(
+                "/api/plan/step",
+                json={
+                    "plan_id": "plan-123",
+                    "text": "DROP\t\tTABLE users",  # tabs
+                },
+                headers={"X-Org-Id": "org-1"},
+            )
+            assert response.status_code == 403
+
     def test_safe_command_allowed(self, client):
         """Policy allows safe commands."""
         from backend.database.models.live_plan import LivePlan

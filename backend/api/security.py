@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status
 from backend.core.policy.engine import PolicyEngine, get_policy_engine
 
 
-async def check_policy_inline(
+def check_policy_inline(
     action: str,
     context: dict[str, Any],
     policy_engine: Annotated[PolicyEngine, Depends(get_policy_engine)],
@@ -23,7 +23,7 @@ async def check_policy_inline(
             policy_engine: PolicyEngine = Depends(get_policy_engine),
         ):
             # Check policy inline after we have the step data
-            await check_policy_inline(
+            check_policy_inline(
                 "plan.add_step",
                 {"plan_id": plan_id, "step_name": step.name},
                 policy_engine

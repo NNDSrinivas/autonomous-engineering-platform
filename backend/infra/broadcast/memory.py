@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, List
 
 from .base import Broadcast
+
+logger = logging.getLogger(__name__)
 
 
 class InMemoryBroadcaster(Broadcast):
@@ -28,7 +31,10 @@ class InMemoryBroadcaster(Broadcast):
                 q.put_nowait(message)
             except asyncio.QueueFull:
                 # Drop message; consumers should keep up for SSE
-                pass
+                logger.warning(
+                    f"Dropped message for channel {channel}: queue full "
+                    f"(subscriber not keeping up with message rate)"
+                )
 
     @asynccontextmanager
     async def _subscription(self, channel: str) -> AsyncIterator[asyncio.Queue[str]]:

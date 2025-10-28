@@ -22,8 +22,17 @@ export const PlanView: React.FC = () => {
   const [ownerName, setOwnerName] = useState('user');
   const [archiveError, setArchiveError] = useState<string | null>(null);
 
-  // Merge backend steps with live streamed steps
-  const allSteps = [...(plan?.steps || []), ...liveSteps];
+  // Merge backend steps with live streamed steps, deduplicating by timestamp
+  const allSteps = React.useMemo(() => {
+    const steps = [...(plan?.steps || []), ...liveSteps];
+    const seen = new Set<string>();
+    // Deduplicate by 'ts' (timestamp) which should be unique per step
+    return steps.filter((step) => {
+      if (seen.has(step.ts)) return false;
+      seen.add(step.ts);
+      return true;
+    });
+  }, [plan?.steps, liveSteps]);
 
   // Real-time event stream
   useEffect(() => {

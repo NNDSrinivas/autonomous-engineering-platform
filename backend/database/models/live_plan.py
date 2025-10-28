@@ -15,8 +15,8 @@ class LivePlan(Base):
     org_id = Column(String, nullable=False, index=True)
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
-    steps = Column(JSON, default=list)  # [{"text": "...", "owner": "...", "ts": "..."}]
-    participants = Column(JSON, default=list)  # ["user1", "user2"]
+    steps = Column(JSON, default=lambda: [])  # [{"text": "...", "owner": "...", "ts": "..."}]
+    participants = Column(JSON, default=lambda: [])  # ["user1", "user2"]
     archived = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False)

@@ -2,7 +2,7 @@
  * GraphView - Interactive graph visualization using vis-network
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { Network } from 'vis-network/standalone';
 import type { Node, Edge } from '../hooks/useMemoryGraph';
 
@@ -25,6 +25,14 @@ const NODE_COLORS: Record<string, string> = {
 export const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onSelectNode }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const networkRef = useRef<Network | null>(null);
+  
+  // Store callback in ref to avoid recreating network on callback change
+  const onSelectNodeRef = useRef(onSelectNode);
+  
+  // Update ref when callback changes
+  useEffect(() => {
+    onSelectNodeRef.current = onSelectNode;
+  }, [onSelectNode]);
 
   useEffect(() => {
     if (!containerRef.current || nodes.length === 0) return;
@@ -98,8 +106,8 @@ export const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onSelectNode
       if (params.nodes.length > 0) {
         const nodeId = params.nodes[0];
         const selectedNode = nodes.find((n) => n.id === nodeId);
-        if (selectedNode && onSelectNode) {
-          onSelectNode(selectedNode.foreign_id || String(selectedNode.id));
+        if (selectedNode && onSelectNodeRef.current) {
+          onSelectNodeRef.current(selectedNode.foreign_id || String(selectedNode.id));
         }
       }
     });
@@ -108,7 +116,7 @@ export const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onSelectNode
     return () => {
       network.destroy();
     };
-  }, [nodes, edges, onSelectNode]);
+  }, [nodes, edges]); // Removed onSelectNode from dependencies
 
   if (nodes.length === 0) {
     return (

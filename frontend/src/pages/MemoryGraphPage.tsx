@@ -3,7 +3,7 @@
  * Combines GraphView, TimelineView, and Query Overlay
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { GraphView } from '../components/GraphView';
 import { TimelineView } from '../components/TimelineView';
 import { 
@@ -48,21 +48,21 @@ export const MemoryGraphPage: React.FC = () => {
     );
   };
 
-  const handleNodeClick = (foreignId: string) => {
+  const handleNodeClick = useCallback((foreignId: string) => {
     setRootId(foreignId);
     setOverlay(null); // Clear overlay when changing root
     setQueryError(null); // Clear error when changing root
-  };
+  }, []);
 
-  const handleWindowChange = (newWindow: string) => {
+  const handleWindowChange = useCallback((newWindow: string) => {
     setWindowDays(newWindow);
     setOverlay(null); // Clear overlay when changing window
     setQueryError(null); // Clear error when changing window
-  };
+  }, []);
 
-  const handleOpenLink = (url: string) => {
+  const handleOpenLink = useCallback((url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');
-  };
+  }, []);
 
   // Determine which data to display
   // IMPORTANT: Include root node in graph so it can be clicked

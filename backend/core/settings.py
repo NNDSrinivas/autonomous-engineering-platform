@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # Presence/cursor configuration
     PRESENCE_TTL_SEC: int = 60
     HEARTBEAT_SEC: int = 20
+    PRESENCE_CLEANUP_INTERVAL_SEC: int = 60  # How often to clean expired cache entries
 
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # Note: To avoid loading .env during tests, override settings in pytest fixtures

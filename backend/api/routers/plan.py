@@ -195,7 +195,7 @@ async def stream_plan_updates(
         except asyncio.CancelledError:
             # Log SSE connection cancellation for debugging
             logger.debug(f"SSE connection cancelled for plan {plan_id}, org {x_org_id}")
-            pass
+            raise  # Re-raise to properly propagate cancellation
         finally:
             # Cleanup
             if plan_id in _active_streams:
@@ -234,8 +234,22 @@ def archive_plan(
         raise HTTPException(status_code=404, detail="Plan not found")
 
     if plan.archived:
-        # Idempotent: already archived, return success
-        return {"status": "archived", "plan_id": plan_id, "memory_node_id": None}
+        # Idempotent: already archived, return success with existing memory_node_id
+        node = (
+            db.query(MemoryNode)
+            .filter(
+                MemoryNode.org_id == x_org_id,
+                MemoryNode.kind == "plan_session",
+                MemoryNode.foreign_id == plan_id,
+            )
+            .first()
+        )
+        memory_node_id = node.id if node else None
+        return {
+            "status": "archived",
+            "plan_id": plan_id,
+            "memory_node_id": memory_node_id,
+        }
 
     # Mark as archived
     plan.archived = True

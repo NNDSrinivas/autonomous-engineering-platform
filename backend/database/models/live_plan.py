@@ -1,6 +1,7 @@
 """
 Live Plan - Real-time collaborative planning sessions
 """
+
 from sqlalchemy import Column, String, JSON, DateTime, Boolean, Index
 from sqlalchemy.sql import func
 from backend.core.db import Base
@@ -8,22 +9,24 @@ from backend.core.db import Base
 
 class LivePlan(Base):
     """Live collaborative plan session"""
-    
+
     __tablename__ = "live_plan"
 
     id = Column(String, primary_key=True)
     org_id = Column(String, nullable=False, index=True)
     title = Column(String, nullable=False)
     description = Column(String, nullable=True)
-    steps = Column(JSON, default=lambda: [])  # [{"text": "...", "owner": "...", "ts": "..."}]
+    steps = Column(
+        JSON, default=lambda: []
+    )  # [{"text": "...", "owner": "...", "ts": "..."}]
     participants = Column(JSON, default=lambda: [])  # ["user1", "user2"]
     archived = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False)
-
-    __table_args__ = (
-        Index('ix_live_plan_org_archived', 'org_id', 'archived'),
+    updated_at = Column(
+        DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False
     )
+
+    __table_args__ = (Index("ix_live_plan_org_archived", "org_id", "archived"),)
 
     def to_dict(self):
         """Serialize to dictionary"""

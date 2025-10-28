@@ -331,10 +331,10 @@ rm -rf node_modules/.vite
 ```json
 {
   "dependencies": {
-    "axios": "^1.7.9",
-    "@tanstack/react-query": "^5.62.14",
+    "axios": "^1.13.0",
+    "@tanstack/react-query": "^5.90.5",
     "vis-network": "^10.0.2",
-    "dayjs": "^1.11.13",
+    "dayjs": "^1.11.18",
     "clsx": "^2.1.1",
     "react-router-dom": "^7.9.4"
   }

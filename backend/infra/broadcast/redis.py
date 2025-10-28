@@ -69,8 +69,7 @@ class RedisBroadcaster(Broadcast):
                         data = message.get("data")
                         if data is not None:
                             yield str(data)
-                    else:
-                        await asyncio.sleep(0.01)
+                    # No sleep needed after timeout - get_message already waited
                 except asyncio.CancelledError:
                     break
                 except Exception as e:

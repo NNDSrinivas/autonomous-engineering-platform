@@ -23,7 +23,7 @@ def _make_broadcaster() -> Broadcast:
 
     Automatically selects Redis if REDIS_URL is set, otherwise uses in-memory.
     """
-    redis_url = settings.REDIS_URL or os.getenv("REDIS_URL")
+    redis_url = settings.REDIS_URL
 
     if redis_url:
         logger.info(f"Using Redis broadcaster: {redis_url}")

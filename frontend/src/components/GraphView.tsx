@@ -2,7 +2,8 @@
  * GraphView - Interactive graph visualization using vis-network
  */
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef } from 'react';
+// Using standalone version which bundles all dependencies (no peer deps needed)
 import { Network } from 'vis-network/standalone';
 import type { Node, Edge } from '../hooks/useMemoryGraph';
 

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class RedisBroadcaster(Broadcast):
-    """Redis Pub/Sub broadcaster using aioredis."""
+    """Redis Pub/Sub broadcaster using redis.asyncio."""
 
     def __init__(self, url: str) -> None:
         self._url = url

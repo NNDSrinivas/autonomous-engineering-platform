@@ -54,10 +54,12 @@ class PolicyEngine:
 
         self.policy_file = policy_file
         self.policies: dict[str, Any] = DEFAULT_POLICY_STRUCTURE.copy()
+        # Cache for precompiled regex patterns to avoid recompilation on each check
+        self._compiled_patterns: dict[str, list[tuple[re.Pattern, str]]] = {}
         self._load_policies()
 
     def _load_policies(self) -> None:
-        """Load policies from JSON file."""
+        """Load policies from JSON file and precompile regex patterns."""
         if not self.policy_file.exists():
             logger.warning(
                 f"Policy file not found: {self.policy_file}. "
@@ -72,6 +74,9 @@ class PolicyEngine:
                 f"Loaded {len(self.policies.get('policies', []))} "
                 f"policies from {self.policy_file}"
             )
+
+            # Precompile all regex patterns for performance
+            self._precompile_patterns()
         except json.JSONDecodeError as e:
             logger.error(
                 f"Failed to parse policy file {self.policy_file}: {e}. "
@@ -82,6 +87,40 @@ class PolicyEngine:
                 f"Failed to load policy file {self.policy_file}: {e}. "
                 "Running with empty policy set."
             )
+
+    def _precompile_patterns(self) -> None:
+        """Precompile all regex patterns from policies for performance."""
+        self._compiled_patterns.clear()
+
+        for policy in self.policies.get("policies", []):
+            action = policy.get("action")
+            if not action:
+                continue
+
+            deny_if = policy.get("deny_if", {})
+
+            # Precompile step_name_contains patterns
+            if "step_name_contains" in deny_if:
+                patterns = []
+                reason_template = policy.get(
+                    "reason", "Step contains forbidden pattern: {pattern}"
+                )
+
+                for pattern_str in deny_if["step_name_contains"]:
+                    try:
+                        compiled = re.compile(re.escape(pattern_str), re.IGNORECASE)
+                        # Store (compiled_pattern, original_string, reason) tuple
+                        patterns.append((compiled, pattern_str, reason_template))
+                    except re.error as e:
+                        logger.error(
+                            f"Invalid regex pattern '{pattern_str}' in policy "
+                            f"for action '{action}': {e}"
+                        )
+
+                if patterns:
+                    if action not in self._compiled_patterns:
+                        self._compiled_patterns[action] = []
+                    self._compiled_patterns[action].extend(patterns)
 
     def check(self, action: str, context: dict[str, Any]) -> tuple[bool, str]:
         """
@@ -97,38 +136,28 @@ class PolicyEngine:
             - (True, "") if allowed
             - (False, reason) if denied with explanation
         """
+        # Use precompiled patterns for step_name_contains checks
+        if action in self._compiled_patterns:
+            step_name = context.get("step_name", "")
+            for (
+                compiled_pattern,
+                original_pattern,
+                reason_template,
+            ) in self._compiled_patterns[action]:
+                if compiled_pattern.search(step_name):
+                    reason = reason_template.replace("{pattern}", original_pattern)
+                    logger.warning(
+                        f"Policy denied action={action}: {reason} "
+                        f"(matched pattern '{original_pattern}' in '{step_name}')"
+                    )
+                    return False, reason
+
+        # Fallback: check other policy types that don't use precompiled patterns
         for policy in self.policies.get("policies", []):
             if policy.get("action") != action:
                 continue
 
-            # Check deny conditions
             deny_if = policy.get("deny_if", {})
-
-            # Pattern: step_name_contains
-            if "step_name_contains" in deny_if:
-                step_name = context.get("step_name", "")
-                forbidden_patterns = deny_if["step_name_contains"]
-                for pattern in forbidden_patterns:
-                    # Use regex with case-insensitive flag to prevent bypasses
-                    # like 'Rm -Rf' or 'dRoP tAbLe'
-                    try:
-                        regex = re.compile(re.escape(pattern), re.IGNORECASE)
-                        if regex.search(step_name):
-                            reason = policy.get(
-                                "reason",
-                                f"Step contains forbidden pattern: {pattern}",
-                            )
-                            logger.warning(
-                                f"Policy denied action={action}: {reason} "
-                                f"(matched pattern '{pattern}' in '{step_name}')"
-                            )
-                            return False, reason
-                    except re.error as e:
-                        logger.error(
-                            f"Invalid regex pattern '{pattern}' in policy: {e}"
-                        )
-                        # Continue checking other patterns even if one is invalid
-                        continue
 
             # Pattern: plan_id_matches (example for future extension)
             if "plan_id_matches" in deny_if:

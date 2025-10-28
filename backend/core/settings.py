@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pydantic_settings import BaseSettings
-import os
 
 
 class Settings(BaseSettings):
@@ -18,12 +17,11 @@ class Settings(BaseSettings):
     PLAN_CHANNEL_PREFIX: str = "plan:"
 
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
-    # During test runs (pytest), avoid loading the repository .env to prevent
-    # test environment contamination. Pytest sets the PYTEST_CURRENT_TEST
-    # environment variable during collection/execution.
-    _env_file = None if os.environ.get("PYTEST_CURRENT_TEST") else ".env"
+    # Note: To avoid loading .env during tests, override settings in pytest fixtures
+    # or set environment variables explicitly in test configuration instead of
+    # relying on import-time detection (which can be unreliable).
     model_config = {
-        "env_file": _env_file,
+        "env_file": ".env",
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

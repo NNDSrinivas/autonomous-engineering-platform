@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from functools import lru_cache
 
 from backend.infra.broadcast.base import Broadcast, BroadcastRegistry
 from backend.infra.broadcast.memory import InMemoryBroadcaster
@@ -16,23 +15,29 @@ logger = logging.getLogger(__name__)
 
 BROADCAST_KEY = "plan_broadcast"
 
-# Thread-safe initialization lock
+# Thread-safe singleton pattern
+_broadcaster_instance: Broadcast | None = None
 _broadcaster_lock = threading.Lock()
 
 
-@lru_cache(maxsize=1)
 def _make_broadcaster() -> Broadcast:
     """
     Create and register a broadcaster instance.
 
     Automatically selects Redis if REDIS_URL is set, otherwise uses in-memory.
-    Thread-safe initialization with lock to prevent race conditions.
+    Thread-safe initialization using double-checked locking pattern.
     """
+    global _broadcaster_instance
+
+    # Fast path: instance already created (no lock needed)
+    if _broadcaster_instance is not None:
+        return _broadcaster_instance
+
+    # Slow path: need to create instance (acquire lock)
     with _broadcaster_lock:
-        # Check if already created by another thread
-        existing = BroadcastRegistry.get(BROADCAST_KEY)
-        if existing is not None:
-            return existing
+        # Double-check: another thread might have created it while we waited
+        if _broadcaster_instance is not None:
+            return _broadcaster_instance
 
         redis_url = settings.REDIS_URL
 
@@ -49,6 +54,7 @@ def _make_broadcaster() -> Broadcast:
             inst = InMemoryBroadcaster()
 
         BroadcastRegistry.set(BROADCAST_KEY, inst)
+        _broadcaster_instance = inst
         return inst
 
 

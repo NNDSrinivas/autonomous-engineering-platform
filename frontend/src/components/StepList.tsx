@@ -22,7 +22,10 @@ export const StepList: React.FC<StepListProps> = ({ steps }) => {
   return (
     <div className="divide-y divide-gray-200">
       {steps.map((step, idx) => (
-        <div key={idx} className="py-3 px-4 hover:bg-gray-50 transition-colors">
+        <div
+          key={step.id ?? `${step.ts}-${idx}`}
+          className="py-3 px-4 hover:bg-gray-50 transition-colors"
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="text-sm text-gray-900">

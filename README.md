@@ -127,6 +127,77 @@ volumes:
 
 ---
 
+## 🔒 Security & Policies
+
+### **Role-Based Access Control (RBAC)**
+
+The platform enforces role-based access on all Live Plan APIs:
+
+| Role | Permissions |
+|------|------------|
+| **viewer** | Read-only access: list plans, view plans, subscribe to SSE streams |
+| **planner** | All viewer permissions + create plans, add steps, publish changes, archive plans |
+| **admin** | All planner permissions + manage users, settings, and configurations |
+
+#### **Development Authentication (Phase 1)**
+
+For local development and CI, use environment variables to simulate authenticated user context:
+
+\`\`\`bash
+# .env
+DEV_USER_ID=u-123
+DEV_USER_EMAIL=dev@navralabs.io
+DEV_ORG_ID=org-1
+DEV_USER_ROLE=planner  # Options: viewer, planner, admin (default: viewer)
+DEV_PROJECTS=aep
+\`\`\`
+
+**Phase 2 (Roadmap)**: Replace DEV_* shims with JWT/SSO authentication parsing real user claims from Authorization header.
+
+### **Policy Guardrails**
+
+Fine-grained authorization policies prevent dangerous operations. Policies are defined in `.aepolicy.json`:
+
+\`\`\`json
+{
+  "version": "1.0",
+  "policies": [
+    {
+      "action": "plan.add_step",
+      "deny_if": {
+        "step_name_contains": ["rm -rf", "DROP TABLE", "sudo rm"]
+      },
+      "reason": "Dangerous commands not allowed in plan steps"
+    }
+  ]
+}
+\`\`\`
+
+#### **How It Works**
+
+1. **RBAC Check**: FastAPI dependencies (`require_role(Role.PLANNER)`) enforce minimum role requirements
+2. **Policy Check**: PolicyEngine validates action against `.aepolicy.json` rules before execution
+3. **Secure Defaults**: Missing roles default to `viewer` (read-only), blocked actions return HTTP 403
+
+Example endpoint with RBAC + Policy:
+
+\`\`\`python
+@router.post("/step")
+async def add_step(
+    user: User = Depends(require_role(Role.PLANNER)),
+    policy_engine: PolicyEngine = Depends(get_policy_engine),
+):
+    # Policy check before executing
+    await check_policy_inline(
+        "plan.add_step",
+        {"step_name": step.text},
+        policy_engine
+    )
+    # ... business logic
+\`\`\`
+
+---
+
 ## 🧭 Development Roadmap
 
 | Phase | Focus | Timeline |

@@ -13,6 +13,8 @@ const BACKEND_URL = process.env.E2E_BACKEND_URL || 'http://localhost:8000';
 const PLAN_ID = 'e2e-test-plan-' + Date.now();
 
 // Reusable selectors
+// NOTE: Prefer data-testid attributes in app code for robustness. Currently using
+// placeholder-based matching as fallback to input[type="text"] can match unintended elements.
 const STEP_INPUT_SELECTOR = 'input[placeholder*="step" i], textarea[placeholder*="step" i], input[type="text"]';
 const ADD_BUTTON_SELECTOR = 'button:has-text("Add Step"), button:has-text("Add"), button[type="submit"]';
 

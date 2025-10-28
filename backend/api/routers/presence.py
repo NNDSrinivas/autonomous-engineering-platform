@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Header, status
 
 from backend.api.deps import get_broadcaster
 from backend.core.auth.deps import require_role
@@ -33,19 +33,32 @@ async def presence_join(
     body: PresenceJoin,
     user: Annotated[User, Depends(require_role(Role.VIEWER))],
     bc: Annotated[Broadcast, Depends(get_broadcaster)],
+    x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """User joins a plan - broadcast presence event and start TTL tracking."""
-    note_heartbeat(plan_id, body.user_id)
+    # SECURITY: Validate that client cannot impersonate other users or orgs
+    if body.user_id != user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot join as a different user",
+        )
+    if body.org_id != x_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization ID mismatch",
+        )
+
+    note_heartbeat(plan_id, user.user_id)
     evt = PresenceEvent(
         type="join",
         plan_id=plan_id,
-        user_id=body.user_id,
-        email=body.email,
-        org_id=body.org_id,
-        display_name=body.display_name,
+        user_id=user.user_id,
+        email=user.email or body.email,
+        org_id=x_org_id,
+        display_name=body.display_name or user.display_name,
         ts=int(time.time()),
     )
-    await bc.publish(presence_channel(plan_id), evt.json())
+    await bc.publish(presence_channel(plan_id), evt.model_dump_json())
     return {"ok": True}
 
 
@@ -55,18 +68,31 @@ async def presence_heartbeat(
     body: PresenceHeartbeat,
     user: Annotated[User, Depends(require_role(Role.VIEWER))],
     bc: Annotated[Broadcast, Depends(get_broadcaster)],
+    x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """Periodic heartbeat to maintain presence - updates TTL."""
-    note_heartbeat(plan_id, body.user_id)
+    # SECURITY: Validate that client cannot send heartbeat for other users
+    if body.user_id != user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot send heartbeat for a different user",
+        )
+    if body.org_id != x_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization ID mismatch",
+        )
+
+    note_heartbeat(plan_id, user.user_id)
     evt = PresenceEvent(
         type="heartbeat",
         plan_id=plan_id,
-        user_id=body.user_id,
+        user_id=user.user_id,
         email=user.email or "",
-        org_id=body.org_id,
+        org_id=x_org_id,
         ts=int(time.time()),
     )
-    await bc.publish(presence_channel(plan_id), evt.json())
+    await bc.publish(presence_channel(plan_id), evt.model_dump_json())
     return {"ok": True}
 
 
@@ -76,17 +102,30 @@ async def presence_leave(
     body: PresenceLeave,
     user: Annotated[User, Depends(require_role(Role.VIEWER))],
     bc: Annotated[Broadcast, Depends(get_broadcaster)],
+    x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """User leaves a plan - broadcast leave event."""
+    # SECURITY: Validate that client cannot send leave for other users
+    if body.user_id != user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot leave as a different user",
+        )
+    if body.org_id != x_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization ID mismatch",
+        )
+
     evt = PresenceEvent(
         type="leave",
         plan_id=plan_id,
-        user_id=body.user_id,
+        user_id=user.user_id,
         email=user.email or "",
-        org_id=body.org_id,
+        org_id=x_org_id,
         ts=int(time.time()),
     )
-    await bc.publish(presence_channel(plan_id), evt.json())
+    await bc.publish(presence_channel(plan_id), evt.model_dump_json())
     return {"ok": True}
 
 
@@ -96,8 +135,21 @@ async def cursor_update(
     body: CursorEvent,
     user: Annotated[User, Depends(require_role(Role.VIEWER))],
     bc: Annotated[Broadcast, Depends(get_broadcaster)],
+    x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """Broadcast cursor position update to other clients."""
-    payload = body.copy(update={"ts": int(time.time())})
-    await bc.publish(cursor_channel(plan_id), payload.json())
+    # SECURITY: Validate that client cannot send cursor updates for other users
+    if body.user_id != user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot send cursor update for a different user",
+        )
+    if body.org_id != x_org_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization ID mismatch",
+        )
+
+    payload = body.model_copy(update={"ts": int(time.time())})
+    await bc.publish(cursor_channel(plan_id), payload.model_dump_json())
     return {"ok": True}

@@ -70,3 +70,22 @@ pr17-test:
 
 pr17-all: pr17-seed pr17-smoke pr17-test
 	@echo "✅ PR-17 full validation complete"
+
+# PR-18: Memory Graph UI
+ui-dev:
+	cd frontend && npm run dev
+
+ui-build:
+	cd frontend && npm run build
+
+ui-preview:
+	cd frontend && npm run preview
+
+ui-test:
+	@echo "Testing Memory Graph UI..."
+	@cd frontend && npm run build > /dev/null 2>&1 && echo "✅ UI build successful" || (echo "❌ UI build failed" && exit 1)
+
+pr18-dev: dev ui-dev
+
+pr18-all: ui-test
+	@echo "✅ PR-18 UI validation complete"

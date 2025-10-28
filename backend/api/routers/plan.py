@@ -19,6 +19,10 @@ from backend.database.models.live_plan import LivePlan
 from backend.database.models.memory_graph import MemoryNode
 from backend.api.deps import get_broadcaster
 from backend.infra.broadcast.base import Broadcast
+from backend.core.auth.deps import require_role
+from backend.core.auth.models import Role, User
+from backend.api.security import check_policy_inline
+from backend.core.policy.engine import PolicyEngine, get_policy_engine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
@@ -57,8 +61,9 @@ def start_plan(
     req: StartPlanRequest,
     db: Session = Depends(get_db),
     x_org_id: str = Header(..., alias="X-Org-Id"),
+    user: User = Depends(require_role(Role.PLANNER)),
 ):
-    """Create a new live plan session"""
+    """Create a new live plan session (requires planner role)"""
     plan_id = str(uuid4())
 
     plan = LivePlan(
@@ -86,13 +91,35 @@ def start_plan(
     return {"plan_id": plan_id, "status": "started"}
 
 
+@router.get("/list")
+def list_plans(
+    archived: Optional[bool] = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    x_org_id: str = Header(..., alias="X-Org-Id"),
+    user: User = Depends(require_role(Role.VIEWER)),
+):
+    """List plans for organization (requires viewer role)"""
+    query = db.query(LivePlan).filter(LivePlan.org_id == x_org_id)
+
+    if archived is not None:
+        query = query.filter(LivePlan.archived == archived)
+
+    query = query.order_by(LivePlan.updated_at.desc()).limit(limit)
+
+    plans = query.all()
+
+    return {"plans": [p.to_dict() for p in plans], "count": len(plans)}
+
+
 @router.get("/{plan_id}")
 def get_plan(
     plan_id: str,
     db: Session = Depends(get_db),
     x_org_id: str = Header(..., alias="X-Org-Id"),
+    user: User = Depends(require_role(Role.VIEWER)),
 ):
-    """Get plan details"""
+    """Get plan details (requires viewer role)"""
     plan = (
         db.query(LivePlan)
         .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
@@ -111,8 +138,17 @@ async def add_step(
     db: Session = Depends(get_db),
     x_org_id: str = Header(..., alias="X-Org-Id"),
     bc: Broadcast = Depends(get_broadcaster),
+    user: User = Depends(require_role(Role.PLANNER)),
+    policy_engine: PolicyEngine = Depends(get_policy_engine),
 ):
-    """Add a step to the plan and broadcast to all listeners"""
+    """Add a step to the plan and broadcast to all listeners (requires planner role + policy check)"""
+    
+    # Check policy guardrails before modifying plan
+    await check_policy_inline(
+        "plan.add_step",
+        {"plan_id": req.plan_id, "step_name": req.text},
+        policy_engine,
+    )
     plan = (
         db.query(LivePlan)
         .filter(LivePlan.id == req.plan_id, LivePlan.org_id == x_org_id)
@@ -201,8 +237,9 @@ async def stream_plan_updates(
     x_org_id: str = Header(..., alias="X-Org-Id"),
     db: Session = Depends(get_db),
     bc: Broadcast = Depends(get_broadcaster),
+    user: User = Depends(require_role(Role.VIEWER)),
 ):
-    """Server-Sent Events stream for real-time plan updates"""
+    """Server-Sent Events stream for real-time plan updates (requires viewer role)"""
 
     # Verify plan exists
     plan = (
@@ -246,8 +283,9 @@ def archive_plan(
     plan_id: str,
     db: Session = Depends(get_db),
     x_org_id: str = Header(..., alias="X-Org-Id"),
+    user: User = Depends(require_role(Role.PLANNER)),
 ):
-    """Archive plan and store in memory graph"""
+    """Archive plan and store in memory graph (requires planner role)"""
     plan = (
         db.query(LivePlan)
         .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
@@ -328,23 +366,3 @@ def archive_plan(
         pass
 
     return {"status": "archived", "plan_id": plan_id, "memory_node_id": node.id}
-
-
-@router.get("/list")
-def list_plans(
-    archived: Optional[bool] = None,
-    limit: int = 50,
-    db: Session = Depends(get_db),
-    x_org_id: str = Header(..., alias="X-Org-Id"),
-):
-    """List plans for organization"""
-    query = db.query(LivePlan).filter(LivePlan.org_id == x_org_id)
-
-    if archived is not None:
-        query = query.filter(LivePlan.archived == archived)
-
-    query = query.order_by(LivePlan.updated_at.desc()).limit(limit)
-
-    plans = query.all()
-
-    return {"plans": [p.to_dict() for p in plans], "count": len(plans)}

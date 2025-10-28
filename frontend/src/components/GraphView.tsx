@@ -54,7 +54,7 @@ export const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onSelectNode
       arrows: 'to',
       font: { size: 11, align: 'middle' },
       color: { color: '#94a3b8', highlight: '#f59e0b' },
-      smooth: { type: 'curvedCW', roundness: 0.2 },
+      smooth: { enabled: true, type: 'curvedCW', roundness: 0.2 },
     }));
 
     const data = {
@@ -65,7 +65,7 @@ export const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onSelectNode
     const options = {
       nodes: {
         shape: 'box',
-        margin: 10,
+        margin: { top: 10, right: 10, bottom: 10, left: 10 },
         widthConstraint: { maximum: 200 },
       },
       edges: {

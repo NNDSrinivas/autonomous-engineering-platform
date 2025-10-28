@@ -13,15 +13,21 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@tanstack/react-query": "^5.90.5",
     "@types/react": "^18.3.26",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.16",
+    "axios": "^1.13.0",
+    "clsx": "^2.1.1",
+    "dayjs": "^1.11.18",
     "postcss": "^8.4.31",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-router-dom": "^7.9.4",
     "tailwindcss": "^3.3.0",
     "typescript": "^5.2.2",
+    "vis-network": "^10.0.2",
     "vite": "^5.0.0"
   }
 }

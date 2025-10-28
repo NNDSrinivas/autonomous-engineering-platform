@@ -3,11 +3,14 @@
 **Status:** ✅ Complete  
 **Branch:** `feat/pr-19-live-plan-mode`  
 **Type:** Feature  
-**Related:** Enhanced by PR-18 (Memory Graph UI for visualizing archived plans)
+**Related:** Enhanced by PR-18 (Memory Graph UI for visualizing archived plans)  
+**Production Upgrade:** PR-20 adds Redis Pub/Sub broadcaster for multi-node horizontal scaling
 
 ## 📋 Overview
 
 Live Plan Mode introduces a real-time collaborative planning environment where multiple users can work together on engineering plans. Teams can create plan sessions, add steps in real-time, see each other's contributions live via Server-Sent Events (SSE), and archive completed plans to the memory graph for historical context.
+
+**Note:** PR-19 uses in-memory broadcasting (single-server). For production multi-node deployments, see **PR-20: Redis Pub/Sub Broadcaster**.
 
 ### Key Features
 
@@ -18,6 +21,7 @@ Live Plan Mode introduces a real-time collaborative planning environment where m
 - **Frontend dashboard** - React UI for browsing, creating, and collaborating on plans
 - **VS Code extension** - Open plan panels directly from the IDE
 - **Telemetry** - Prometheus metrics for plan events, latency, and active sessions
+- **Broadcaster abstraction** *(PR-20)* - Pluggable in-memory or Redis Pub/Sub for production scaling
 
 ## 🏗️ Architecture
 

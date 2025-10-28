@@ -52,7 +52,7 @@ def start_plan(
     x_org_id: str = Header(..., alias="X-Org-Id")
 ):
     """Create a new live plan session"""
-    plan_id = uuid4().hex
+    plan_id = str(uuid4())
     
     plan = LivePlan(
         id=plan_id,
@@ -72,7 +72,7 @@ def start_plan(
     try:
         from backend.telemetry.metrics import plan_events_total
         plan_events_total.labels(event="PLAN_START", org_id=x_org_id).inc()
-    except:
+    except Exception:
         pass
     
     return {"plan_id": plan_id, "status": "started"}
@@ -134,17 +134,17 @@ async def add_step(
         for queue in _active_streams[req.plan_id]:
             try:
                 await queue.put(step)
-            except:
+            except Exception:
                 pass
     
     # Metrics
     try:
         from backend.telemetry.metrics import plan_events_total, plan_step_latency
         plan_events_total.labels(event="PLAN_STEP", org_id=x_org_id).inc()
-    except:
+    except Exception:
         pass
     
-    return {"status": "ok", "step": step}
+    return {"status": "step_added", "step": step}
 
 
 @router.get("/{plan_id}/stream")
@@ -191,7 +191,7 @@ async def stream_plan_updates(
                     _active_streams[plan_id].remove(queue)
                     if not _active_streams[plan_id]:
                         del _active_streams[plan_id]
-                except:
+                except Exception:
                     pass
     
     return StreamingResponse(
@@ -221,7 +221,12 @@ def archive_plan(
         raise HTTPException(status_code=404, detail="Plan not found")
     
     if plan.archived:
-        raise HTTPException(status_code=400, detail="Plan already archived")
+        # Idempotent: already archived, return success
+        return {
+            "status": "archived",
+            "plan_id": plan_id,
+            "memory_node_id": None
+        }
     
     # Mark as archived
     plan.archived = True
@@ -250,7 +255,7 @@ def archive_plan(
     try:
         from backend.telemetry.metrics import plan_events_total
         plan_events_total.labels(event="PLAN_ARCHIVE", org_id=x_org_id).inc()
-    except:
+    except Exception:
         pass
     
     return {

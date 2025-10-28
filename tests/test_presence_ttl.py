@@ -1,7 +1,6 @@
 """Unit tests for presence TTL and cursor endpoints."""
 
 import os
-import time
 
 from fastapi.testclient import TestClient
 
@@ -55,7 +54,7 @@ def test_cursor_post_ok():
             "org_id": "o1",
             "x": 12.3,
             "y": 45.6,
-            "ts": int(time.time()),
+            # ts is optional and will be auto-populated by server
         },
     )
     assert cur.status_code == 200
@@ -104,3 +103,26 @@ def test_presence_join_org_mismatch_blocked():
     )
     assert resp.status_code == 403
     assert "organization" in resp.json()["detail"].lower()
+
+
+def test_cursor_plan_id_mismatch_blocked():
+    """Test that cursor endpoint validates plan_id consistency."""
+    os.environ["DEV_USER_ROLE"] = "viewer"
+    os.environ["DEV_USER_ID"] = "u1"
+    os.environ["DEV_USER_EMAIL"] = "u1@example.com"
+    os.environ["DEV_ORG_ID"] = "o1"
+
+    # Try to send cursor with mismatched plan_id
+    resp = client.post(
+        "/api/plan/pz1/cursor",
+        headers={"X-Org-Id": "o1"},
+        json={
+            "plan_id": "pz2",  # Different from path parameter
+            "user_id": "u1",
+            "org_id": "o1",
+            "x": 12.3,
+            "y": 45.6,
+        },
+    )
+    assert resp.status_code == 400
+    assert "plan id mismatch" in resp.json()["detail"].lower()

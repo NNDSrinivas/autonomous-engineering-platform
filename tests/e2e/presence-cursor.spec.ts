@@ -6,11 +6,15 @@ async function join(page, userId = 'u-e2e') {
   await page.evaluate(async ([pid, uid]) => {
     await fetch(`/api/plan/${pid}/presence/join`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Org-Id': 'org-1'
+      },
       body: JSON.stringify({
         user_id: uid,
         email: 'e2e@navralabs.io',
-        org_id: 'org-1'
+        org_id: 'org-1',
+        display_name: uid
       })
     });
   }, [PLAN_ID, userId]);

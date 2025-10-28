@@ -40,4 +40,4 @@ class CursorEvent(BaseModel):
     org_id: str
     x: float
     y: float
-    ts: int
+    ts: Optional[int] = None  # Server-only field, auto-populated

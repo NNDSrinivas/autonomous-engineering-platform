@@ -25,23 +25,42 @@ export const PlanView: React.FC = () => {
   // Merge backend steps with live streamed steps, deduplicating by unique ID
   const allSteps = React.useMemo(() => {
     const steps = [...(plan?.steps || []), ...liveSteps];
-    const seen = new Set<string>();
+    const seenIds = new Set<string>();
+    const seenFallbacks = new Set<string>();
     
-    // Deduplicate by both 'id' (if present) and fallback key to handle all cases
+    // Deduplicate using separate Sets to avoid false positives
+    // - If step has ID, check/track by ID only
+    // - If step has no ID, check/track by fallback key (ts+owner+text)
     return steps.filter((step) => {
-      const fallbackKey = `${step.ts}-${step.owner}-${step.text}`;
-      
-      // Check if either the id or fallbackKey has been seen
-      if ((step.id && seen.has(step.id)) || seen.has(fallbackKey)) {
-        return false;
+      if (step.id) {
+        if (seenIds.has(step.id)) {
+          return false;
+        }
+        seenIds.add(step.id);
+        return true;
+      } else {
+        const fallbackKey = `${step.ts}-${step.owner}-${step.text}`;
+        if (seenFallbacks.has(fallbackKey)) {
+          return false;
+        }
+        seenFallbacks.add(fallbackKey);
+        return true;
       }
-      
-      // Track both id and fallback key to catch duplicates with or without IDs
-      if (step.id) seen.add(step.id);
-      seen.add(fallbackKey);
-      return true;
     });
   }, [plan?.steps, liveSteps]);
+
+  // Type guard for validating PlanStep structure from SSE
+  const isPlanStep = (obj: any): obj is PlanStep => {
+    return (
+      obj &&
+      typeof obj === 'object' &&
+      typeof obj.text === 'string' &&
+      typeof obj.owner === 'string' &&
+      typeof obj.ts === 'string' &&
+      // id is optional in the interface but typically present
+      (obj.id === undefined || typeof obj.id === 'string')
+    );
+  };
 
   // Real-time event stream
   useEffect(() => {
@@ -57,8 +76,8 @@ export const PlanView: React.FC = () => {
         const data = JSON.parse(event.data);
         if (data.type === 'connected') {
           console.log('Connected to plan stream:', data.plan_id);
-        } else if (data.id && data.text && data.owner && data.ts) {
-          // New step received with unique ID
+        } else if (isPlanStep(data)) {
+          // New step received - validated structure
           setLiveSteps((prev) => [...prev, data]);
         }
       } catch (err) {

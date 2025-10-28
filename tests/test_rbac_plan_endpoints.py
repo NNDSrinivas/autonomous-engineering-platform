@@ -1,6 +1,5 @@
 """Tests for RBAC and policy enforcement on Live Plan APIs."""
 
-import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,7 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.api.main import app
-from backend.core.auth.models import Role
 from backend.core.db import get_db
 
 
@@ -88,6 +86,7 @@ class TestRBACHappyPaths:
 
     def test_planner_can_start_plan(self, client):
         """Planner role can create new plans."""
+
         def get_mock_db_for_create():
             mock_session = MagicMock()
             mock_session.add = MagicMock()
@@ -161,7 +160,6 @@ class TestRBACHappyPaths:
 
             assert response.status_code == 200
             assert response.json()["status"] == "step_added"
-
 
 
 class TestRBACDenyPaths:

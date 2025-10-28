@@ -12,7 +12,7 @@ from backend.core.policy.engine import PolicyEngine, get_policy_engine
 def require_policy(action: str, context_fn=None):
     """
     Dependency factory to enforce policy guardrails on actions.
-    
+
     Usage:
         @router.post("/plan/{plan_id}/step")
         async def add_step(
@@ -31,15 +31,15 @@ def require_policy(action: str, context_fn=None):
         ):
             # Policy has already been checked; safe to proceed
             ...
-    
+
     Args:
         action: Action identifier (e.g., "plan.add_step")
         context_fn: Optional callable that extracts context dict from
                     endpoint arguments. If None, only action is checked.
-                    
+
     Returns:
         FastAPI dependency that validates policy
-        
+
     Raises:
         HTTPException 403: If policy denies the action
     """
@@ -74,7 +74,7 @@ async def check_policy_inline(
 ) -> None:
     """
     Inline policy check helper for use within route handlers.
-    
+
     Usage:
         @router.post("/plan/{plan_id}/step")
         async def add_step(
@@ -90,12 +90,12 @@ async def check_policy_inline(
             )
             # Proceed with business logic
             ...
-    
+
     Args:
         action: Action identifier
         context: Context dictionary with action-specific data
         policy_engine: PolicyEngine instance (injected by FastAPI)
-        
+
     Raises:
         HTTPException 403: If policy denies the action
     """

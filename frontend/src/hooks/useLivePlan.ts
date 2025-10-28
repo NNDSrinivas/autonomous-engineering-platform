@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient, UseQueryResult, UseMutationResul
 import { api } from '../api/client';
 
 export interface PlanStep {
+  id: string;
   text: string;
   owner: string;
   ts: string;

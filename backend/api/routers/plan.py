@@ -1,6 +1,7 @@
 """
 Live Plan API - Real-time collaborative planning
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Header
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -10,12 +11,13 @@ from uuid import uuid4
 from datetime import datetime
 import json
 import asyncio
+import logging
 
 from backend.core.db import get_db
 from backend.database.models.live_plan import LivePlan
 from backend.database.models.memory_graph import MemoryNode
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
 # In-memory broadcast mechanism (replace with Redis in production)
@@ -49,11 +51,11 @@ class PlanResponse(BaseModel):
 def start_plan(
     req: StartPlanRequest,
     db: Session = Depends(get_db),
-    x_org_id: str = Header(..., alias="X-Org-Id")
+    x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """Create a new live plan session"""
     plan_id = str(uuid4())
-    
+
     plan = LivePlan(
         id=plan_id,
         org_id=x_org_id,
@@ -61,20 +63,21 @@ def start_plan(
         description=req.description,
         steps=[],
         participants=req.participants or [],
-        archived=False
+        archived=False,
     )
-    
+
     db.add(plan)
     db.commit()
     db.refresh(plan)
-    
+
     # Audit log (if available)
     try:
         from backend.telemetry.metrics import plan_events_total
+
         plan_events_total.labels(event="PLAN_START", org_id=x_org_id).inc()
     except Exception:
         pass
-    
+
     return {"plan_id": plan_id, "status": "started"}
 
 
@@ -82,17 +85,18 @@ def start_plan(
 def get_plan(
     plan_id: str,
     db: Session = Depends(get_db),
-    x_org_id: str = Header(..., alias="X-Org-Id")
+    x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """Get plan details"""
-    plan = db.query(LivePlan).filter(
-        LivePlan.id == plan_id,
-        LivePlan.org_id == x_org_id
-    ).first()
-    
+    plan = (
+        db.query(LivePlan)
+        .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
+        .first()
+    )
+
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    
+
     return plan.to_dict()
 
 
@@ -100,27 +104,29 @@ def get_plan(
 async def add_step(
     req: AddStepRequest,
     db: Session = Depends(get_db),
-    x_org_id: str = Header(..., alias="X-Org-Id")
+    x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """Add a step to the plan and broadcast to all listeners"""
-    plan = db.query(LivePlan).filter(
-        LivePlan.id == req.plan_id,
-        LivePlan.org_id == x_org_id
-    ).first()
-    
+    plan = (
+        db.query(LivePlan)
+        .filter(LivePlan.id == req.plan_id, LivePlan.org_id == x_org_id)
+        .first()
+    )
+
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    
+
     if plan.archived:
         raise HTTPException(status_code=400, detail="Cannot modify archived plan")
-    
-    # Create step object
+
+    # Create step object with unique ID
     step = {
+        "id": str(uuid4()),
         "text": req.text,
         "owner": req.owner,
-        "ts": datetime.utcnow().isoformat()
+        "ts": datetime.utcnow().isoformat(),
     }
-    
+
     # Update plan - append to JSON array
     # NOTE: For plans with 50+ steps, consider using a separate steps table
     # or PostgreSQL's jsonb_insert for better performance
@@ -128,9 +134,9 @@ async def add_step(
     steps.append(step)
     plan.steps = steps
     plan.updated_at = datetime.utcnow()
-    
+
     db.commit()
-    
+
     # Broadcast to all active streams
     if req.plan_id in _active_streams:
         for queue in _active_streams[req.plan_id]:
@@ -138,14 +144,15 @@ async def add_step(
                 await queue.put(step)
             except Exception:
                 pass
-    
+
     # Metrics
     try:
         from backend.telemetry.metrics import plan_events_total
+
         plan_events_total.labels(event="PLAN_STEP", org_id=x_org_id).inc()
     except Exception:
         pass
-    
+
     return {"status": "step_added", "step": step}
 
 
@@ -153,41 +160,41 @@ async def add_step(
 async def stream_plan_updates(
     plan_id: str,
     x_org_id: str = Header(..., alias="X-Org-Id"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Server-Sent Events stream for real-time plan updates"""
-    
+
     # Verify plan exists
-    plan = db.query(LivePlan).filter(
-        LivePlan.id == plan_id,
-        LivePlan.org_id == x_org_id
-    ).first()
-    
+    plan = (
+        db.query(LivePlan)
+        .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
+        .first()
+    )
+
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    
+
     # Create queue for this connection
     queue = asyncio.Queue()
-    
+
     # Register queue
     if plan_id not in _active_streams:
         _active_streams[plan_id] = []
     _active_streams[plan_id].append(queue)
-    
+
     async def event_generator():
         try:
             # Send initial connection message
             yield f"data: {json.dumps({'type': 'connected', 'plan_id': plan_id})}\n\n"
-            
+
             # Stream updates
             while True:
                 step = await queue.get()
                 yield f"data: {json.dumps(step)}\n\n"
-                
+
         except asyncio.CancelledError:
             # Log SSE connection cancellation for debugging
-            import logging
-            logging.debug(f"SSE connection cancelled for plan {plan_id}, org {x_org_id}")
+            logger.debug(f"SSE connection cancelled for plan {plan_id}, org {x_org_id}")
             pass
         finally:
             # Cleanup
@@ -198,15 +205,15 @@ async def stream_plan_updates(
                         del _active_streams[plan_id]
                 except Exception:
                     pass
-    
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
-        }
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -214,29 +221,26 @@ async def stream_plan_updates(
 def archive_plan(
     plan_id: str,
     db: Session = Depends(get_db),
-    x_org_id: str = Header(..., alias="X-Org-Id")
+    x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """Archive plan and store in memory graph"""
-    plan = db.query(LivePlan).filter(
-        LivePlan.id == plan_id,
-        LivePlan.org_id == x_org_id
-    ).first()
-    
+    plan = (
+        db.query(LivePlan)
+        .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
+        .first()
+    )
+
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    
+
     if plan.archived:
         # Idempotent: already archived, return success
-        return {
-            "status": "archived",
-            "plan_id": plan_id,
-            "memory_node_id": None
-        }
-    
+        return {"status": "archived", "plan_id": plan_id, "memory_node_id": None}
+
     # Mark as archived
     plan.archived = True
     plan.updated_at = datetime.utcnow()
-    
+
     # Create memory graph node
     node = MemoryNode(
         org_id=x_org_id,
@@ -245,39 +249,37 @@ def archive_plan(
         title=plan.title,
         summary=f"Plan with {len(plan.steps or [])} steps, {len(plan.participants or [])} participants",
         link=f"/plan/{plan_id}",
-        content=json.dumps({
-            "title": plan.title,
-            "description": plan.description,
-            "steps": plan.steps or [],
-            "participants": plan.participants or [],
-            "created_at": plan.created_at.isoformat() if plan.created_at else None,
-            "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
-            "archived": plan.archived,
-            "plan_id": plan_id
-        }),
+        content=json.dumps(
+            {
+                "title": plan.title,
+                "description": plan.description,
+                "steps": plan.steps or [],
+                "participants": plan.participants or [],
+                "created_at": plan.created_at.isoformat() if plan.created_at else None,
+                "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
+                "plan_id": plan_id,
+            }
+        ),
         metadata={
             "steps_count": len(plan.steps or []),
             "participants": plan.participants,
-            "archived_at": datetime.utcnow().isoformat()
+            "archived_at": datetime.utcnow().isoformat(),
         },
-        created_at=plan.created_at
+        created_at=plan.created_at,
     )
-    
+
     db.add(node)
     db.commit()
-    
+
     # Metrics
     try:
         from backend.telemetry.metrics import plan_events_total
+
         plan_events_total.labels(event="PLAN_ARCHIVE", org_id=x_org_id).inc()
     except Exception:
         pass
-    
-    return {
-        "status": "archived",
-        "plan_id": plan_id,
-        "memory_node_id": node.id
-    }
+
+    return {"status": "archived", "plan_id": plan_id, "memory_node_id": node.id}
 
 
 @router.get("/list")
@@ -285,19 +287,16 @@ def list_plans(
     archived: Optional[bool] = None,
     limit: int = 50,
     db: Session = Depends(get_db),
-    x_org_id: str = Header(..., alias="X-Org-Id")
+    x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """List plans for organization"""
     query = db.query(LivePlan).filter(LivePlan.org_id == x_org_id)
-    
+
     if archived is not None:
         query = query.filter(LivePlan.archived == archived)
-    
+
     query = query.order_by(LivePlan.updated_at.desc()).limit(limit)
-    
+
     plans = query.all()
-    
-    return {
-        "plans": [p.to_dict() for p in plans],
-        "count": len(plans)
-    }
+
+    return {"plans": [p.to_dict() for p in plans], "count": len(plans)}

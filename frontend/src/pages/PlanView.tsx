@@ -22,14 +22,14 @@ export const PlanView: React.FC = () => {
   const [ownerName, setOwnerName] = useState('user');
   const [archiveError, setArchiveError] = useState<string | null>(null);
 
-  // Merge backend steps with live streamed steps, deduplicating by timestamp
+  // Merge backend steps with live streamed steps, deduplicating by unique ID
   const allSteps = React.useMemo(() => {
     const steps = [...(plan?.steps || []), ...liveSteps];
     const seen = new Set<string>();
-    // Deduplicate by 'ts' (timestamp) which should be unique per step
+    // Deduplicate by 'id' (unique step ID) to handle concurrent step additions
     return steps.filter((step) => {
-      if (seen.has(step.ts)) return false;
-      seen.add(step.ts);
+      if (seen.has(step.id)) return false;
+      seen.add(step.id);
       return true;
     });
   }, [plan?.steps, liveSteps]);
@@ -48,8 +48,8 @@ export const PlanView: React.FC = () => {
         const data = JSON.parse(event.data);
         if (data.type === 'connected') {
           console.log('Connected to plan stream:', data.plan_id);
-        } else if (data.text && data.owner && data.ts) {
-          // New step received
+        } else if (data.id && data.text && data.owner && data.ts) {
+          // New step received with unique ID
           setLiveSteps((prev) => [...prev, data]);
         }
       } catch (err) {

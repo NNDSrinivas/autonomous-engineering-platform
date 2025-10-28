@@ -4,22 +4,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { Network } from 'vis-network/standalone';
-
-interface Node {
-  id: number;
-  title?: string;
-  kind?: string;
-  foreign_id?: string;
-}
-
-interface Edge {
-  id: number;
-  src_id: number;
-  dst_id: number;
-  relation: string;
-  weight?: number;
-  confidence?: number;
-}
+import type { Node, Edge } from '../hooks/useMemoryGraph';
 
 interface GraphViewProps {
   nodes: Node[];

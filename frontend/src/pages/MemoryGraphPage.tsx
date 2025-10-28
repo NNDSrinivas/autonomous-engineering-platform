@@ -6,13 +6,19 @@
 import React, { useState } from 'react';
 import { GraphView } from '../components/GraphView';
 import { TimelineView } from '../components/TimelineView';
-import { useNodeNeighborhood, useTimeline, useGraphQuery } from '../hooks/useMemoryGraph';
+import { 
+  useNodeNeighborhood, 
+  useTimeline, 
+  useGraphQuery,
+  GraphQueryResponse 
+} from '../hooks/useMemoryGraph';
 
 export const MemoryGraphPage: React.FC = () => {
   const [rootId, setRootId] = useState('ENG-102');
   const [windowDays, setWindowDays] = useState('30d');
   const [question, setQuestion] = useState('why was ENG-102 reopened?');
-  const [overlay, setOverlay] = useState<any | null>(null);
+  const [overlay, setOverlay] = useState<GraphQueryResponse | null>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
 
   // Data hooks
   const { data: baseData, isLoading: loadingBase, error: errorBase } = useNodeNeighborhood(rootId);
@@ -21,6 +27,8 @@ export const MemoryGraphPage: React.FC = () => {
 
   const handleExplain = () => {
     if (!question.trim()) return;
+    
+    setQueryError(null); // Clear previous errors
     
     graphQuery.mutate(
       {
@@ -34,7 +42,7 @@ export const MemoryGraphPage: React.FC = () => {
         },
         onError: (err) => {
           console.error('Graph query failed:', err);
-          alert('Failed to explain. See console for details.');
+          setQueryError(err instanceof Error ? err.message : 'Failed to explain. Please try again.');
         },
       }
     );
@@ -43,11 +51,13 @@ export const MemoryGraphPage: React.FC = () => {
   const handleNodeClick = (foreignId: string) => {
     setRootId(foreignId);
     setOverlay(null); // Clear overlay when changing root
+    setQueryError(null); // Clear error when changing root
   };
 
   const handleWindowChange = (newWindow: string) => {
     setWindowDays(newWindow);
     setOverlay(null); // Clear overlay when changing window
+    setQueryError(null); // Clear error when changing window
   };
 
   const handleOpenLink = (url: string) => {
@@ -55,7 +65,8 @@ export const MemoryGraphPage: React.FC = () => {
   };
 
   // Determine which data to display
-  const displayNodes = overlay?.nodes || baseData?.neighbors || [];
+  // IMPORTANT: Include root node in graph so it can be clicked
+  const displayNodes = overlay?.nodes || (baseData ? [baseData.node, ...baseData.neighbors] : []);
   const displayEdges = overlay?.edges || baseData?.edges || [];
   const displayTimeline = overlay?.timeline || baseTimeline || [];
 
@@ -151,6 +162,25 @@ export const MemoryGraphPage: React.FC = () => {
           </div>
         )}
 
+        {/* Query Error Display */}
+        {queryError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-red-800 font-medium">Query failed</p>
+                <p className="text-red-600 text-sm mt-1">{queryError}</p>
+              </div>
+              <button
+                onClick={() => setQueryError(null)}
+                className="text-red-600 hover:text-red-800 text-xl leading-none"
+                aria-label="Dismiss error"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Loading State */}
         {loadingBase && !overlay && (
           <div className="bg-white rounded-lg shadow p-12 text-center mb-6">
@@ -205,7 +235,7 @@ export const MemoryGraphPage: React.FC = () => {
                   <div className="mt-6">
                     <h3 className="text-sm font-semibold text-gray-900 mb-2">Paths Explored:</h3>
                     <ul className="space-y-2">
-                      {overlay.paths.map((path: any, idx: number) => (
+                      {overlay.paths.map((path, idx) => (
                         <li key={idx} className="text-xs text-gray-600">
                           <span className="font-medium">Weight {path.weight?.toFixed(2) || 'N/A'}:</span>{' '}
                           {path.node_sequence?.join(' → ') || 'N/A'}

@@ -5,17 +5,7 @@
 import React from 'react';
 import dayjs from 'dayjs';
 import clsx from 'clsx';
-
-interface TimelineItem {
-  id: number;
-  ts?: string;
-  created_at?: string;
-  title: string;
-  kind: string;
-  foreign_id?: string;
-  link?: string;
-  summary?: string;
-}
+import type { TimelineItem } from '../hooks/useMemoryGraph';
 
 interface TimelineViewProps {
   items: TimelineItem[];

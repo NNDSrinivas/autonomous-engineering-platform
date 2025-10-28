@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # Channel namespace for plan streams
     PLAN_CHANNEL_PREFIX: str = "plan:"
 
+    # Presence/cursor configuration
+    PRESENCE_TTL_SEC: int = 60
+    HEARTBEAT_SEC: int = 20
+
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # Note: To avoid loading .env during tests, override settings in pytest fixtures
     # or set environment variables explicitly in test configuration instead of

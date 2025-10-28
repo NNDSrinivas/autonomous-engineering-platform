@@ -28,6 +28,7 @@ from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
 from .memory import router as memory_router
 from .routers.plan import router as live_plan_router
+from .routers import presence as presence_router
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -156,6 +157,7 @@ app.include_router(ctx_router)
 # /api/plan/start resolve before the parameterized ModelRouter endpoint
 # (which uses /api/plan/{key}). This prevents accidental route shadowing.
 app.include_router(live_plan_router)  # PR-19: Live Plan Mode
+app.include_router(presence_router.router)  # PR-22: Presence & Cursor Sync
 app.include_router(plan_router)
 
 # ---- Feature 1 endpoints (Finalize + Query) ----

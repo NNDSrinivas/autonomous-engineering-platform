@@ -200,7 +200,45 @@ async def add_step(
         policy_engine
     )
     # ... business logic
-\`\`\`
+```
+
+---
+
+### 🚀 Presence & Cursor Sync (PR-22)
+
+Real-time collaboration features for the Live Plan canvas.
+
+**Channels:**
+- `presence:plan:{id}` - User join/leave/heartbeat events
+- `cursor:plan:{id}` - Cursor position updates
+
+**Configuration:**
+```env
+PRESENCE_TTL_SEC=60    # Idle timeout before user marked offline
+HEARTBEAT_SEC=20       # Client heartbeat interval
+```
+
+**Endpoints:**
+- `POST /api/plan/{id}/presence/join` - User joins plan (viewer+)
+- `POST /api/plan/{id}/presence/heartbeat` - Keep-alive ping (viewer+)
+- `POST /api/plan/{id}/presence/leave` - User leaves plan (viewer+)
+- `POST /api/plan/{id}/cursor` - Broadcast cursor position (viewer+)
+
+**Frontend Integration:**
+Subscribe to the unified `/api/plan/{id}/stream` endpoint which broadcasts both presence events and cursor updates. The frontend renders:
+- Live presence list (avatars, online/away status)
+- Ghost carets showing other users' cursor positions
+- Automatic cleanup after TTL expiration
+
+**Testing:**
+```bash
+# Unit tests
+pytest -q tests/test_presence_ttl.py
+
+# E2E tests
+npx playwright install --with-deps
+npm run e2e -- tests/e2e/presence-cursor.spec.ts
+```
 
 ---
 

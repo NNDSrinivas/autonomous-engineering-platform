@@ -69,8 +69,9 @@ class TestRBACHappyPaths:
     def test_viewer_can_stream_plans(self, client):
         """Viewer role can subscribe to SSE stream."""
         from backend.database.models.live_plan import LivePlan
+        from unittest.mock import MagicMock
 
-        # Mock SessionLocal for the endpoint's short-lived session
+        # Mock the short-lived session context manager
         mock_plan = LivePlan(
             id="plan-123",
             org_id="org-1",
@@ -84,9 +85,16 @@ class TestRBACHappyPaths:
         mock_session.query.return_value.filter.return_value.first.return_value = (
             mock_plan
         )
-        mock_session.close = MagicMock()
 
-        with patch("backend.api.routers.plan.SessionLocal", return_value=mock_session):
+        # Patch the context manager instead of SessionLocal for robustness
+        mock_context_manager = MagicMock()
+        mock_context_manager.__enter__.return_value = mock_session
+        mock_context_manager.__exit__.return_value = None
+
+        with patch(
+            "backend.api.routers.plan.get_short_lived_session",
+            return_value=mock_context_manager,
+        ):
             env_vars = {
                 "DEV_USER_ID": "u-viewer",
                 "DEV_USER_ROLE": "viewer",

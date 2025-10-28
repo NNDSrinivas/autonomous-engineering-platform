@@ -51,7 +51,7 @@ export const PlanView: React.FC = () => {
       typeof obj.text === 'string' &&
       typeof obj.owner === 'string' &&
       typeof obj.ts === 'string' &&
-      // id is optional in the interface but typically present
+      // id is always present for steps from the backend; optional typing is for edge cases (e.g., during loading or optimistic updates)
       (obj.id === undefined || typeof obj.id === 'string')
     );
   };

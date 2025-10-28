@@ -11,7 +11,8 @@ from backend.api.main import app
 from backend.core.db import Base
 
 # Use in-memory SQLite database for tests to avoid file persistence
-# This prevents conflicts in CI/CD and enables parallel test execution
+# This prevents conflicts in CI/CD and enables parallel test execution.
+# NOTE: SQLite's JSON handling differs from PostgreSQL's JSONB. Tests involving JSON fields may pass here but fail on PostgreSQL due to type coercion or feature differences.
 TEST_DATABASE_URL = "sqlite:///:memory:"
 engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

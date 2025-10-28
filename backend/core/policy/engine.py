@@ -9,6 +9,9 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
+# Default empty policy structure when no policy file is found
+DEFAULT_POLICY_STRUCTURE: dict[str, Any] = {"version": "1.0", "policies": []}
+
 
 class PolicyEngine:
     """
@@ -50,7 +53,7 @@ class PolicyEngine:
                 policy_file = Path.cwd() / ".aepolicy.json"
 
         self.policy_file = policy_file
-        self.policies: dict[str, Any] = {"version": "1.0", "policies": []}
+        self.policies: dict[str, Any] = DEFAULT_POLICY_STRUCTURE.copy()
         self._load_policies()
 
     def _load_policies(self) -> None:

@@ -20,12 +20,14 @@ class Role(str, Enum):
     PLANNER = "planner"
     ADMIN = "admin"
 
+    # Role hierarchy order for comparison operations
+    _ROLE_ORDER = {VIEWER: 0, PLANNER: 1, ADMIN: 2}
+
     def __lt__(self, other):
         """Define ordering for role hierarchy comparisons."""
         if not isinstance(other, Role):
             return NotImplemented
-        order = {Role.VIEWER: 0, Role.PLANNER: 1, Role.ADMIN: 2}
-        return order[self] < order[other]
+        return self._ROLE_ORDER[self] < self._ROLE_ORDER[other]
 
     def __le__(self, other):
         """Define less-than-or-equal for role hierarchy."""

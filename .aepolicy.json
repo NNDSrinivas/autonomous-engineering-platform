@@ -1,7 +1,24 @@
 {
-  "allow": {
-    "commands": ["pytest", "npm", "pnpm", "yarn", "mvn", "gradle", "git"],
-    "paths": ["src/**", "backend/**", "web/**", "tests/**"]
-  },
-  "deny": { "commands": ["docker login", "curl http://"] }
+  "version": "1.0",
+  "policies": [
+    {
+      "action": "plan.add_step",
+      "deny_if": {
+        "step_name_contains": [
+          "rm\\s*-?\\s*rf",
+          "sudo\\s*rm",
+          "DROP\\s+TABLE",
+          "DROP\\s+DATABASE",
+          "DELETE\\s+FROM",
+          "TRUNCATE",
+          "curl\\s*\\|\\s*bash",
+          "wget\\s*\\|\\s*sh",
+          "\\beval\\s*\\(",
+          "\\bexec\\s*\\(",
+          "\\b__import__\\b"
+        ]
+      },
+      "reason": "Dangerous commands or patterns not allowed in plan steps"
+    }
+  ]
 }

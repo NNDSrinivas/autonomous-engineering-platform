@@ -173,7 +173,7 @@ async def add_step(
                 await queue.put(step)
             except asyncio.QueueFull:
                 logger.warning(
-                    f"Queue for plan {req.plan_id} is full; step may be delayed or dropped"
+                    f"Queue for plan {req.plan_id} is full; step will be dropped for this client"
                 )
             except Exception as e:
                 logger.error(

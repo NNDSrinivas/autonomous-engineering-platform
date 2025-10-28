@@ -3,7 +3,7 @@
 **Status:** ✅ Complete  
 **Branch:** `feat/pr-19-live-plan-mode`  
 **Type:** Feature  
-**Dependencies:** PR-18 (Memory Graph UI)
+**Related:** Enhanced by PR-18 (Memory Graph UI for visualizing archived plans)
 
 ## 📋 Overview
 

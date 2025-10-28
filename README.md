@@ -54,7 +54,7 @@ Transform how engineering teams work by providing an **autonomous AI assistant**
 - Redis (optional)
 
 ### Installation
-\`\`\`bash
+```bash
 git clone <repository-url>
 cd autonomous-engineering-platform
 
@@ -73,7 +73,7 @@ cp .env.template .env
 \`\`\`
 
 ### Run Services
-\`\`\`bash
+```bash
 # Start backend services
 python -m backend.api.main        # Core API (port 8000)
 python -m backend.api.realtime    # Realtime API (port 8001)
@@ -87,7 +87,7 @@ cd frontend && npm start          # Web UI (port 3000)
 For **Live Plan Mode** real-time collaboration across multiple servers, configure Redis Pub/Sub:
 
 #### **Local Development with Docker**
-\`\`\`bash
+```bash
 # Start Redis
 docker run -d -p 6379:6379 redis:7-alpine
 
@@ -96,7 +96,7 @@ docker-compose up -d redis
 \`\`\`
 
 #### **Environment Configuration**
-\`\`\`bash
+```bash
 # .env
 REDIS_URL=redis://localhost:6379/0
 PLAN_CHANNEL_PREFIX=plan:
@@ -143,7 +143,7 @@ The platform enforces role-based access on all Live Plan APIs:
 
 For local development and CI, use environment variables to simulate authenticated user context:
 
-\`\`\`bash
+```bash
 # .env
 DEV_USER_ID=u-123
 DEV_USER_EMAIL=dev@navralabs.io
@@ -187,7 +187,7 @@ Fine-grained authorization policies prevent dangerous operations. Policies are d
 
 Example endpoint with RBAC + Policy:
 
-\`\`\`python
+```python
 @router.post("/step")
 async def add_step(
     user: User = Depends(require_role(Role.PLANNER)),

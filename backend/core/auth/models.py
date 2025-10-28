@@ -5,6 +5,9 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+# Role hierarchy order for comparison operations
+_ROLE_ORDER = {"viewer": 0, "planner": 1, "admin": 2}
+
 
 class Role(str, Enum):
     """
@@ -20,14 +23,11 @@ class Role(str, Enum):
     PLANNER = "planner"
     ADMIN = "admin"
 
-    # Role hierarchy order for comparison operations
-    _ROLE_ORDER = {"viewer": 0, "planner": 1, "admin": 2}
-
     def __lt__(self, other):
         """Define ordering for role hierarchy comparisons."""
         if not isinstance(other, Role):
             return NotImplemented
-        return self._ROLE_ORDER[self.value] < self._ROLE_ORDER[other.value]
+        return _ROLE_ORDER[self.value] < _ROLE_ORDER[other.value]
 
     def __le__(self, other):
         """Define less-than-or-equal for role hierarchy."""

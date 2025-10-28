@@ -55,7 +55,8 @@ class PolicyEngine:
         self.policy_file = policy_file
         self.policies: dict[str, Any] = DEFAULT_POLICY_STRUCTURE.copy()
         # Cache for precompiled regex patterns to avoid recompilation on each check
-        self._compiled_patterns: dict[str, list[tuple[re.Pattern, str]]] = {}
+        # Structure: {action: [(compiled_pattern, original_string, reason_template), ...]}
+        self._compiled_patterns: dict[str, list[tuple[re.Pattern, str, str]]] = {}
         self._load_policies()
 
     def _load_policies(self) -> None:

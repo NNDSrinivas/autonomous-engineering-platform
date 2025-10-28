@@ -10,7 +10,7 @@ React-based user interface for exploring the Memory Graph with interactive visua
 - **Tailwind CSS 3.3.0** - Styling
 - **React Router 7.9.4** - Client-side routing
 - **TanStack Query 5.x** - Data fetching and caching
-- **vis-network** - Graph visualization library
+- **vis-network 10.0.2** - Graph visualization library
 - **axios** - HTTP client
 - **dayjs** - Date formatting
 - **clsx** - Conditional class names
@@ -333,7 +333,7 @@ rm -rf node_modules/.vite
   "dependencies": {
     "axios": "^1.7.9",
     "@tanstack/react-query": "^5.62.14",
-    "vis-network": "^9.1.9",
+    "vis-network": "^10.0.2",
     "dayjs": "^1.11.13",
     "clsx": "^2.1.1",
     "react-router-dom": "^7.9.4"

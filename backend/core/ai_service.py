@@ -16,10 +16,7 @@ class AIService:
     def __init__(self):
         # Configure OpenAI with API key from settings
         self.client = None
-        if (
-            settings.openai_api_key
-            and settings.openai_api_key != "your-openai-api-key-here"
-        ):
+        if settings.openai_api_key and settings.openai_api_key != "your-openai-api-key-here":
             try:
                 self.client = openai.OpenAI(api_key=settings.openai_api_key)
                 logger.info("AIService initialized with OpenAI API")
@@ -27,9 +24,7 @@ class AIService:
                 logger.warning(f"Failed to initialize OpenAI client: {e}")
                 self.client = None
         else:
-            logger.warning(
-                "OpenAI API key not configured. AI features will use mock responses."
-            )
+            logger.warning("OpenAI API key not configured. AI features will use mock responses.")
 
         logger.info("AIService initialized")
 
@@ -172,9 +167,7 @@ Provide analysis in this JSON format:
                         "complexity_score": 8,
                         "maintainability_score": 6,
                         "security_concerns": ["No input sanitization"],
-                        "performance_notes": [
-                            "O(2^n) time complexity - consider memoization"
-                        ],
+                        "performance_notes": ["O(2^n) time complexity - consider memoization"],
                     },
                     "javascript": {
                         "issues": ["No error handling", "Variable scope concerns"],
@@ -185,18 +178,14 @@ Provide analysis in this JSON format:
                         "complexity_score": 5,
                         "maintainability_score": 7,
                         "security_concerns": ["Potential XSS if handling user input"],
-                        "performance_notes": [
-                            "Consider async/await for better performance"
-                        ],
+                        "performance_notes": ["Consider async/await for better performance"],
                     },
                 }
 
                 analysis = mock_analysis.get(
                     language.lower(),
                     {
-                        "issues": [
-                            "Language-specific analysis not available in demo mode"
-                        ],
+                        "issues": ["Language-specific analysis not available in demo mode"],
                         "suggestions": [
                             "Enable AI features with OpenAI API key for detailed analysis"
                         ],

@@ -229,9 +229,7 @@ class TestPlanList:
         # Archive one plan
         test_client.post(f"/api/plan/{multiple_plans[0]}/archive", headers=headers)
 
-        response = test_client.get(
-            "/api/plan/list", headers=headers, params={"archived": "true"}
-        )
+        response = test_client.get("/api/plan/list", headers=headers, params={"archived": "true"})
 
         assert response.status_code == 200
         data = response.json()
@@ -263,9 +261,7 @@ class TestArchivePlan:
 
     def test_archive_plan_success(self, test_client, headers, created_plan_id):
         """Test archiving a plan"""
-        response = test_client.post(
-            f"/api/plan/{created_plan_id}/archive", headers=headers
-        )
+        response = test_client.post(f"/api/plan/{created_plan_id}/archive", headers=headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -290,9 +286,7 @@ class TestArchivePlan:
         test_client.post(f"/api/plan/{created_plan_id}/archive", headers=headers)
 
         # Try to archive again (should still succeed)
-        response = test_client.post(
-            f"/api/plan/{created_plan_id}/archive", headers=headers
-        )
+        response = test_client.post(f"/api/plan/{created_plan_id}/archive", headers=headers)
 
         assert response.status_code == 200
 
@@ -314,9 +308,7 @@ class TestSSEStream:
         """Test SSE stream endpoint responds"""
         # Note: TestClient has limitations with streaming responses
         # This tests basic connectivity, not actual streaming behavior
-        response = test_client.get(
-            f"/api/plan/{created_plan_id}/stream", headers=headers
-        )
+        response = test_client.get(f"/api/plan/{created_plan_id}/stream", headers=headers)
 
         # Should get 200 or streaming response
         assert response.status_code in [200, 499]  # 499 = client closed

@@ -83,9 +83,7 @@ def _get_session_local():
         with _session_lock:
             # Double-check pattern to avoid race conditions
             if _SessionLocal is None:
-                _SessionLocal = sessionmaker(
-                    bind=get_engine(), autoflush=False, autocommit=False
-                )
+                _SessionLocal = sessionmaker(bind=get_engine(), autoflush=False, autocommit=False)
     return _SessionLocal
 
 

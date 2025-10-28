@@ -47,9 +47,7 @@ class ModelRouter:
                 sanitized_str = unicodedata.normalize("NFKC", value)
 
                 # Remove control characters (except whitespace: \t, \n, \r)
-                sanitized_str = re.sub(
-                    r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]", "", sanitized_str
-                )
+                sanitized_str = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]", "", sanitized_str)
 
                 # Remove potentially dangerous Unicode categories
                 sanitized_str = "".join(
@@ -275,9 +273,7 @@ class ModelRouter:
                 continue
 
         # All models failed
-        raise RuntimeError(
-            f"All models failed for phase {phase}. Last error: {last_error}"
-        )
+        raise RuntimeError(f"All models failed for phase {phase}. Last error: {last_error}")
 
     def _validate_metrics_params(
         self,
@@ -329,10 +325,8 @@ class ModelRouter:
         """
         try:
             # Validate parameters once for efficiency
-            phase, candidate, status, latency_ms, tokens, cost = (
-                self._validate_metrics_params(
-                    phase, candidate, status, latency_ms, tokens, cost
-                )
+            phase, candidate, status, latency_ms, tokens, cost = self._validate_metrics_params(
+                phase, candidate, status, latency_ms, tokens, cost
             )
 
             LLM_CALLS.labels(phase=phase, model=candidate, status=status).inc()
@@ -366,20 +360,14 @@ class ModelRouter:
         return {
             "models": self.usage_stats,
             "total_calls": sum(stats["calls"] for stats in self.usage_stats.values()),
-            "total_tokens": sum(
-                stats["total_tokens"] for stats in self.usage_stats.values()
-            ),
-            "total_cost": sum(
-                stats["total_cost"] for stats in self.usage_stats.values()
-            ),
+            "total_tokens": sum(stats["total_tokens"] for stats in self.usage_stats.values()),
+            "total_cost": sum(stats["total_cost"] for stats in self.usage_stats.values()),
         }
 
     def check_budget(self, phase: str) -> Dict[str, bool]:
         """Check if current usage is within budget limits for the specified phase."""
         phase_stats = self.usage_stats.get(phase, {})
-        phase_budget = self.budgets.get(
-            phase, {"tokens": float("inf"), "seconds": float("inf")}
-        )
+        phase_budget = self.budgets.get(phase, {"tokens": float("inf"), "seconds": float("inf")})
 
         phase_tokens = phase_stats.get("total_tokens", 0)
         token_budget = phase_budget.get("tokens", float("inf"))
@@ -388,7 +376,5 @@ class ModelRouter:
             "within_token_budget": phase_tokens <= token_budget,
             "tokens_used": phase_tokens,
             "token_budget": token_budget,
-            "token_usage_percent": (
-                (phase_tokens / token_budget * 100) if token_budget > 0 else 0
-            ),
+            "token_usage_percent": ((phase_tokens / token_budget * 100) if token_budget > 0 else 0),
         }

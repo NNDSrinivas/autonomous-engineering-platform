@@ -137,9 +137,7 @@ class VectorStore:
         }
 
         try:
-            collection.add(
-                documents=[content], metadatas=[entry_metadata], ids=[entry_id]
-            )
+            collection.add(documents=[content], metadatas=[entry_metadata], ids=[entry_id])
 
             logger.info(
                 "Added knowledge to vector store",
@@ -202,9 +200,7 @@ class VectorStore:
                 if search_results and search_results["documents"]:
                     for i, doc in enumerate(search_results["documents"][0]):
                         metadata = (
-                            search_results["metadatas"][0][i]
-                            if search_results["metadatas"]
-                            else {}
+                            search_results["metadatas"][0][i] if search_results["metadatas"] else {}
                         )
                         distance = (
                             search_results["distances"][0][i]
@@ -212,17 +208,14 @@ class VectorStore:
                             else 0.0
                         )
                         doc_id = (
-                            search_results["ids"][0][i]
-                            if search_results["ids"]
-                            else f"unknown_{i}"
+                            search_results["ids"][0][i] if search_results["ids"] else f"unknown_{i}"
                         )
 
                         results.append(
                             SearchResult(
                                 content=doc,
                                 metadata=metadata,
-                                score=1.0
-                                - distance,  # Convert distance to similarity score
+                                score=1.0 - distance,  # Convert distance to similarity score
                                 id=doc_id,
                             )
                         )
@@ -267,14 +260,10 @@ class VectorStore:
                 if search_results and search_results["documents"]:
                     for i, doc in enumerate(search_results["documents"]):
                         metadata = (
-                            search_results["metadatas"][i]
-                            if search_results["metadatas"]
-                            else {}
+                            search_results["metadatas"][i] if search_results["metadatas"] else {}
                         )
                         doc_id = (
-                            search_results["ids"][i]
-                            if search_results["ids"]
-                            else f"recent_{i}"
+                            search_results["ids"][i] if search_results["ids"] else f"recent_{i}"
                         )
 
                         results.append(

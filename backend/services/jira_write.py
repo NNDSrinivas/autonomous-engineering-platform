@@ -80,9 +80,7 @@ class JiraWriteService:
             async with self._client() as client:
                 logger.info(f"Adding comment to JIRA issue: {issue_key}")
 
-                response = await client.post(
-                    f"/rest/api/3/issue/{issue_key}/comment", json=payload
-                )
+                response = await client.post(f"/rest/api/3/issue/{issue_key}/comment", json=payload)
                 response.raise_for_status()
 
                 comment_data = response.json()
@@ -161,9 +159,7 @@ class JiraWriteService:
                 )
                 transition_response.raise_for_status()
 
-                logger.info(
-                    f"Successfully transitioned {issue_key} to {transition_name}"
-                )
+                logger.info(f"Successfully transitioned {issue_key} to {transition_name}")
 
                 return {
                     "success": True,

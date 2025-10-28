@@ -64,9 +64,7 @@ def refresh_task_links() -> None:
         if len(task_ids) == 1:
             # Single task case
             links_result = db.execute(
-                text(
-                    "SELECT task_id, type, key, url FROM task_link WHERE task_id = :task_id"
-                ),
+                text("SELECT task_id, type, key, url FROM task_link WHERE task_id = :task_id"),
                 {"task_id": task_ids[0]},
             ).mappings()
         else:
@@ -102,12 +100,8 @@ def refresh_task_links() -> None:
         if status_updates:
             # Fetch all tasks to update in one query
             task_ids_to_update = list(status_updates.keys())
-            placeholders = ",".join(
-                f":task_id_{i}" for i in range(len(task_ids_to_update))
-            )
-            params = {
-                f"task_id_{i}": task_id for i, task_id in enumerate(task_ids_to_update)
-            }
+            placeholders = ",".join(f":task_id_{i}" for i in range(len(task_ids_to_update)))
+            params = {f"task_id_{i}": task_id for i, task_id in enumerate(task_ids_to_update)}
 
             # Bulk update status using raw SQL for efficiency
             db.execute(

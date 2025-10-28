@@ -39,9 +39,7 @@ def test_edges_accuracy(api_client: Client, seeded_graph):
     all_nodes = [data["node"]] + data["neighbors"]
 
     # Verify minimum node count (6 nodes in fixture, expect at least 3 in 1-hop)
-    assert (
-        len(all_nodes) >= 3
-    ), f"Expected ≥3 nodes in neighborhood, found {len(all_nodes)}"
+    assert len(all_nodes) >= 3, f"Expected ≥3 nodes in neighborhood, found {len(all_nodes)}"
 
     # Verify edge count threshold (12 edges expected in full graph, ≥4 in 1-hop)
     # 1-hop from ENG-102 should have: derived_from, implements, fixes, references
@@ -63,9 +61,7 @@ def test_edge_weights_and_confidence(api_client: Client, seeded_graph):
         weight = edge.get("weight", 1.0)
         confidence = edge.get("confidence", 1.0)
 
-        assert (
-            0.0 <= weight <= 1.0
-        ), f"Edge {edge['id']} weight {weight} out of range [0, 1]"
+        assert 0.0 <= weight <= 1.0, f"Edge {edge['id']} weight {weight} out of range [0, 1]"
 
         assert (
             0.0 <= confidence <= 1.0
@@ -146,9 +142,7 @@ def test_specific_fixture_edges(api_client: Client, seeded_graph):
         src_node = nodes_by_id.get(edge["src_id"])
         dst_node = nodes_by_id.get(edge["dst_id"])
         if src_node and dst_node:
-            actual_edges.add(
-                (src_node["foreign_id"], dst_node["foreign_id"], edge["relation"])
-            )
+            actual_edges.add((src_node["foreign_id"], dst_node["foreign_id"], edge["relation"]))
 
     # Verify expected edges exist
     for expected in expected_edges:

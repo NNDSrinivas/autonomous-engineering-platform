@@ -217,7 +217,7 @@ async def stream_plan_updates(
         except asyncio.CancelledError:
             # Log SSE connection cancellation for debugging
             logger.debug(f"SSE connection cancelled for plan {plan_id}, org {x_org_id}")
-            # Re-raise to properly propagate cancellation
+            # Re-raise to properly propagate cancellation (finally block will still execute for cleanup)
             raise
         finally:
             # Cleanup

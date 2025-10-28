@@ -109,7 +109,7 @@ class PolicyEngine:
 
                 for pattern_str in deny_if["step_name_contains"]:
                     try:
-                        compiled = re.compile(re.escape(pattern_str), re.IGNORECASE)
+                        compiled = re.compile(pattern_str, re.IGNORECASE)
                         # Store (compiled_pattern, original_string, reason) tuple
                         patterns.append((compiled, pattern_str, reason_template))
                     except re.error as e:

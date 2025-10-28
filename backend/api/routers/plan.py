@@ -145,7 +145,7 @@ async def add_step(
     """Add a step to the plan and broadcast to all listeners (requires planner role + policy check)"""
 
     # Check policy guardrails before modifying plan
-    await check_policy_inline(
+    check_policy_inline(
         "plan.add_step",
         {"plan_id": req.plan_id, "step_name": req.text},
         policy_engine,
@@ -244,6 +244,14 @@ async def stream_plan_updates(
     # Verify plan exists with a short-lived session that closes before streaming
     # IMPORTANT: SSE streams are long-lived connections that must not hold
     # database sessions/connections for their entire duration.
+    #
+    # NOTE: There is a theoretical race condition where the plan could be deleted
+    # between this validation check and when clients consume the stream. This is
+    # acceptable edge-case behavior since:
+    # 1. Plan deletion is rare in production workflows
+    # 2. Clients will simply receive no further updates if plan is deleted
+    # 3. Implementing soft-delete with 'archived' flag would add complexity
+    #    without significant benefit for the current use case
     with get_short_lived_session() as db:
         plan = (
             db.query(LivePlan)

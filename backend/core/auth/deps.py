@@ -49,11 +49,7 @@ def get_current_user(
         )
         role_str = "viewer"
 
-    try:
-        role = Role(role_str)
-    except ValueError:
-        # Invalid role in env → default to viewer
-        role = Role.VIEWER
+    role = Role(role_str)
 
     # Org: prefer X-Org-Id header, fallback to DEV_ORG_ID env
     org_id = x_org_id or os.getenv("DEV_ORG_ID")

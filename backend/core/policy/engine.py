@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Optional
 
@@ -109,6 +110,10 @@ class PolicyEngine:
 
                 for pattern_str in deny_if["step_name_contains"]:
                     try:
+                        # Note: Using re.IGNORECASE because malicious commands often use
+                        # mixed case obfuscation (e.g., "Rm -RF", "DrOp TaBlE"). While
+                        # Unix shells are case-sensitive, our policy aims to catch intent
+                        # rather than exact syntax. This is a defense-in-depth measure.
                         compiled = re.compile(pattern_str, re.IGNORECASE)
                         # Store (compiled_pattern, original_string, reason) tuple
                         patterns.append((compiled, pattern_str, reason_template))
@@ -140,10 +145,22 @@ class PolicyEngine:
         # Use precompiled patterns for step_name_contains checks
         if action in self._compiled_patterns:
             step_name = context.get("step_name", "")
-            # SECURITY: Normalize all whitespace to single spaces and strip.
-            # This is critical to prevent attackers from bypassing dangerous pattern
-            # detection by inserting tabs, newlines, or multiple spaces between characters.
-            # Without this, malicious input like "r m   -rf" or "r\tm -rf" could evade detection.
+
+            # SECURITY: Normalize input to prevent obfuscation bypasses
+            # 1. Unicode normalization (NFKC) - handles lookalike characters
+            #    (e.g., Cyrillic 'р' U+0440 vs Latin 'r' U+0072)
+            # 2. Remove zero-width characters (U+200B, U+FEFF, etc.)
+            # 3. Collapse whitespace (tabs, newlines, multiple spaces to single space)
+            # Without this, attacks like "r​m -rf" (zero-width space) or "гm -rf"
+            # (Cyrillic 'г') could evade detection.
+            step_name = unicodedata.normalize("NFKC", step_name)
+            # Remove zero-width and non-printable characters
+            step_name = "".join(
+                ch
+                for ch in step_name
+                if unicodedata.category(ch)[0] != "C" or ch in "\t\n\r "
+            )
+            # Normalize whitespace
             step_name = re.sub(r"\s+", " ", step_name).strip()
 
             for (

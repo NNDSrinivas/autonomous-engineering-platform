@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 BROADCAST_KEY = "plan_broadcast"
 
 
-@lru_cache
+@lru_cache(maxsize=1)
 def _make_broadcaster() -> Broadcast:
     """
     Create and register a broadcaster instance.

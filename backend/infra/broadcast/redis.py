@@ -26,7 +26,12 @@ class RedisBroadcaster(Broadcast):
                 import redis.asyncio as aioredis
 
                 self._pool = aioredis.from_url(
-                    self._url, encoding="utf-8", decode_responses=True
+                    self._url,
+                    encoding="utf-8",
+                    decode_responses=True,
+                    max_connections=10,
+                    socket_timeout=5,
+                    socket_connect_timeout=5,
                 )
                 logger.info(f"Redis broadcaster connected to {self._url}")
             except ImportError:

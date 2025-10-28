@@ -18,7 +18,6 @@ class Settings(BaseSettings):
     PLAN_CHANNEL_PREFIX: str = "plan:"
 
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
-    # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # During test runs (pytest), avoid loading the repository .env to prevent
     # test environment contamination. Pytest sets the PYTEST_CURRENT_TEST
     # environment variable during collection/execution.

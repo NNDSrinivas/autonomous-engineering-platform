@@ -110,6 +110,7 @@ async def add_step(
     req: AddStepRequest,
     db: Session = Depends(get_db),
     x_org_id: str = Header(..., alias="X-Org-Id"),
+    bc: Broadcast = Depends(get_broadcaster),
 ):
     """Add a step to the plan and broadcast to all listeners"""
     plan = (
@@ -162,7 +163,6 @@ async def add_step(
 
     # Broadcast to all active streams via broadcaster
     channel = _channel(req.plan_id)
-    bc: Broadcast = get_broadcaster()
     try:
         await bc.publish(channel, json.dumps(step))
     except Exception as e:

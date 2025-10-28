@@ -12,6 +12,7 @@ from datetime import datetime
 import json
 import asyncio
 import logging
+import os
 
 from backend.core.db import get_db
 from backend.database.models.live_plan import LivePlan
@@ -26,8 +27,6 @@ router = APIRouter(prefix="/api/plan", tags=["plan"])
 _active_streams = {}  # {plan_id: [asyncio.Queue, ...]}
 
 # Log warning on module load if production-like env detected
-import os
-
 if os.getenv("ENV") in ["production", "prod", "staging"]:
     logger.warning(
         "Live Plan Mode using in-memory SSE broadcasting. "

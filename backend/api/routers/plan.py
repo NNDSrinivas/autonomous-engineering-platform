@@ -121,7 +121,9 @@ async def add_step(
         "ts": datetime.utcnow().isoformat()
     }
     
-    # Update plan
+    # Update plan - append to JSON array
+    # NOTE: For plans with 50+ steps, consider using a separate steps table
+    # or PostgreSQL's jsonb_insert for better performance
     steps = plan.steps or []
     steps.append(step)
     plan.steps = steps
@@ -183,6 +185,9 @@ async def stream_plan_updates(
                 yield f"data: {json.dumps(step)}\n\n"
                 
         except asyncio.CancelledError:
+            # Log SSE connection cancellation for debugging
+            import logging
+            logging.debug(f"SSE connection cancelled for plan {plan_id}, org {x_org_id}")
             pass
         finally:
             # Cleanup
@@ -240,6 +245,16 @@ def archive_plan(
         title=plan.title,
         summary=f"Plan with {len(plan.steps or [])} steps, {len(plan.participants or [])} participants",
         link=f"/plan/{plan_id}",
+        content=json.dumps({
+            "title": plan.title,
+            "description": plan.description,
+            "steps": plan.steps or [],
+            "participants": plan.participants or [],
+            "created_at": plan.created_at.isoformat() if plan.created_at else None,
+            "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
+            "archived": plan.archived,
+            "plan_id": plan_id
+        }),
         metadata={
             "steps_count": len(plan.steps or []),
             "participants": plan.participants,

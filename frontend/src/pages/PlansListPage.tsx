@@ -27,6 +27,7 @@ export const PlansListPage: React.FC = () => {
       const result = await startPlanMutation.mutateAsync({
         title: newPlanTitle.trim(),
         description: newPlanDescription.trim() || undefined,
+        // TODO: Replace with actual authenticated user from auth context
         participants: ['user'],
       });
       

@@ -47,7 +47,7 @@ export function usePlan(planId?: string): UseQueryResult<LivePlan, Error> {
       return response.data;
     },
     enabled: !!planId,
-    staleTime: 5000, // 5 seconds
+    staleTime: 60000, // 60 seconds - SSE provides real-time updates
     retry: 1,
   });
 }

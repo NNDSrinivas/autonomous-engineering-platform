@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 
 const PLAN_ID = 'presence-plan-1';
 
-async function join(page, userId = 'u-e2e') {
+async function join(page: Page, userId: string = 'u-e2e'): Promise<void> {
   await page.evaluate(async ([pid, uid]) => {
     await fetch(`/api/plan/${pid}/presence/join`, {
       method: 'POST',

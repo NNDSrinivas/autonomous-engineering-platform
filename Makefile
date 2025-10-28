@@ -89,3 +89,22 @@ pr18-dev: dev ui-dev
 
 pr18-all: ui-test
 	@echo "✅ PR-18 UI validation complete"
+
+# PR-19: Live Plan Mode + Real-Time Collaboration
+pr19-dev:
+	uvicorn backend.api.main:app --reload --port 8000
+
+pr19-migrate:
+	alembic upgrade head
+
+pr19-test:
+	pytest tests/test_plan_api.py -v
+
+pr19-smoke:
+	@bash scripts/pr19_smoke_test.sh
+
+ui-plan-dev:
+	cd frontend && npm run dev
+
+pr19-all: pr19-migrate pr19-test pr19-smoke
+	@echo "✅ PR-19 full validation complete"

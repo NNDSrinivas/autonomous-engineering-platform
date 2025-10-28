@@ -140,6 +140,10 @@ class PolicyEngine:
         # Use precompiled patterns for step_name_contains checks
         if action in self._compiled_patterns:
             step_name = context.get("step_name", "")
+            # Normalize all whitespace to single spaces and strip to prevent bypass
+            # via mixed whitespace types (tabs, newlines, multiple spaces)
+            step_name = re.sub(r'\s+', ' ', step_name).strip()
+            
             for (
                 compiled_pattern,
                 original_pattern,

@@ -159,18 +159,29 @@ DEV_PROJECTS=aep
 Fine-grained authorization policies prevent dangerous operations. Policies are defined in `.aepolicy.json`:
 
 \`\`\`json
+
+```json
 {
   "version": "1.0",
   "policies": [
     {
       "action": "plan.add_step",
       "deny_if": {
-        "step_name_contains": ["rm -rf", "DROP TABLE", "sudo rm"]
+        "step_name_contains": [
+          "rm\\s*-?\\s*rf",
+          "sudo\\s*rm",
+          "DROP\\s+TABLE"
+        ]
       },
       "reason": "Dangerous commands not allowed in plan steps"
     }
   ]
 }
+```
+
+**Note**: Patterns use regex with escape sequences (e.g., `\s*` matches optional whitespace). See `.aepolicy.json` for the full production configuration.
+
+
 \`\`\`
 
 #### **How It Works**

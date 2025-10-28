@@ -5,10 +5,8 @@
       "action": "plan.add_step",
       "deny_if": {
         "step_name_contains": [
-          "rm\\s*-\\s*rf",
-          "rm-?rf",
+          "rm\\s*-?\\s*rf",
           "sudo\\s*rm",
-          "sudorm",
           "DROP\\s+TABLE",
           "DROP\\s+DATABASE",
           "DELETE\\s+FROM",

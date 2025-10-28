@@ -258,11 +258,12 @@ async def stream_plan_updates(
             .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
             .first()
         )
-
-        if not plan:
-            raise HTTPException(status_code=404, detail="Plan not found")
     finally:
         db.close()
+
+    # Raise exception after cleanup to ensure proper FastAPI exception handling
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
 
     channel = _channel(plan_id)
 

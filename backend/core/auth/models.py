@@ -37,7 +37,7 @@ class Role(str, Enum):
         """Define greater-than for role hierarchy."""
         if not isinstance(other, Role):
             return NotImplemented
-        return not self <= other
+        return other < self
 
     def __ge__(self, other):
         """Define greater-than-or-equal for role hierarchy."""

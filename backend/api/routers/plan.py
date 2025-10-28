@@ -144,8 +144,8 @@ async def add_step(
 ):
     """Add a step to the plan and broadcast to all listeners (requires planner role + policy check)"""
 
-    # Verify plan exists and is accessible before policy check to return a specific
-    # 404 error if not found, instead of a generic 403 error
+    # Verify plan exists before policy check to avoid information disclosure:
+    # return 404 for non-existent plans, 403 for policy violations.
     plan = (
         db.query(LivePlan)
         .filter(LivePlan.id == req.plan_id, LivePlan.org_id == x_org_id)

@@ -21,7 +21,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
 # In-memory broadcast mechanism (replace with Redis in production)
+# WARNING: This will NOT work in multi-server deployments!
+# TODO: Implement Redis Pub/Sub for production horizontal scaling
 _active_streams = {}  # {plan_id: [asyncio.Queue, ...]}
+
+# Log warning on module load if production-like env detected
+import os
+
+if os.getenv("ENV") in ["production", "prod", "staging"]:
+    logger.warning(
+        "Live Plan Mode using in-memory SSE broadcasting. "
+        "This will NOT work with multiple server instances! "
+        "Implement Redis Pub/Sub for production deployment."
+    )
 
 
 class StartPlanRequest(BaseModel):
@@ -195,7 +207,8 @@ async def stream_plan_updates(
         except asyncio.CancelledError:
             # Log SSE connection cancellation for debugging
             logger.debug(f"SSE connection cancelled for plan {plan_id}, org {x_org_id}")
-            raise  # Re-raise to properly propagate cancellation
+            # Re-raise after logging - finally block executes before exception propagates
+            raise
         finally:
             # Cleanup
             if plan_id in _active_streams:

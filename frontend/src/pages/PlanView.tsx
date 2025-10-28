@@ -26,10 +26,17 @@ export const PlanView: React.FC = () => {
   const allSteps = React.useMemo(() => {
     const steps = [...(plan?.steps || []), ...liveSteps];
     const seen = new Set<string>();
+    
     // Deduplicate by 'id' (unique step ID) to handle concurrent step additions
     return steps.filter((step) => {
-      // Skip steps without ID (shouldn't happen but defensive check)
-      if (!step.id) return true;
+      // For steps without ID, use timestamp+owner+text as fallback unique key
+      if (!step.id) {
+        const fallbackKey = `${step.ts}-${step.owner}-${step.text}`;
+        if (seen.has(fallbackKey)) return false;
+        seen.add(fallbackKey);
+        return true;
+      }
+      
       if (seen.has(step.id)) return false;
       seen.add(step.id);
       return true;

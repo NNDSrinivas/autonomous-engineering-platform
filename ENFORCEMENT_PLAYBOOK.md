@@ -173,5 +173,3 @@ If the offender is a company or funded startup:
   - Trademark filings: "Autonomous Engineering Platform", "NavraLabs", "AEP"
 
 ---
-
-*This playbook ensures you can act swiftly and legally to protect your IP.*

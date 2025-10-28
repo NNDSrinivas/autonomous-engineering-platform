@@ -12,27 +12,21 @@ from datetime import datetime
 import json
 import asyncio
 import logging
-import os
 
 from backend.core.db import get_db
+from backend.core.settings import settings
 from backend.database.models.live_plan import LivePlan
 from backend.database.models.memory_graph import MemoryNode
+from backend.api.deps import get_broadcaster
+from backend.infra.broadcast.base import Broadcast
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
-# In-memory broadcast mechanism (replace with Redis in production)
-# WARNING: This will NOT work in multi-server deployments!
-# TODO: Implement Redis Pub/Sub for production horizontal scaling
-_active_streams = {}  # {plan_id: [asyncio.Queue, ...]}
 
-# Log warning on module load if production-like env detected
-if os.getenv("ENV") in ["production", "prod", "staging"]:
-    logger.warning(
-        "Live Plan Mode using in-memory SSE broadcasting. "
-        "This will NOT work with multiple server instances! "
-        "Implement Redis Pub/Sub for production deployment."
-    )
+def _channel(plan_id: str) -> str:
+    """Generate Redis/broadcast channel name for a plan."""
+    return f"{settings.PLAN_CHANNEL_PREFIX}{plan_id}"
 
 
 class StartPlanRequest(BaseModel):
@@ -166,20 +160,15 @@ async def add_step(
 
     db.commit()
 
-    # Broadcast to all active streams
-    if req.plan_id in _active_streams:
-        for queue in _active_streams[req.plan_id]:
-            try:
-                await queue.put(step)
-            except asyncio.QueueFull:
-                logger.warning(
-                    f"Queue for plan {req.plan_id} is full; step will be dropped for this client"
-                )
-            except Exception as e:
-                logger.error(
-                    f"Unexpected error broadcasting step to plan {req.plan_id}: {e}",
-                    exc_info=True,
-                )
+    # Broadcast to all active streams via broadcaster
+    channel = _channel(req.plan_id)
+    bc: Broadcast = get_broadcaster()
+    try:
+        await bc.publish(channel, json.dumps(step))
+    except Exception as e:
+        logger.error(
+            f"Failed to broadcast step to plan {req.plan_id}: {e}", exc_info=True
+        )
 
     # Metrics
     try:
@@ -197,6 +186,7 @@ async def stream_plan_updates(
     plan_id: str,
     x_org_id: str = Header(..., alias="X-Org-Id"),
     db: Session = Depends(get_db),
+    bc: Broadcast = Depends(get_broadcaster),
 ):
     """Server-Sent Events stream for real-time plan updates"""
 
@@ -210,33 +200,21 @@ async def stream_plan_updates(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    # Create queue for this connection
-    queue = asyncio.Queue()
-
-    # Register queue
-    if plan_id not in _active_streams:
-        _active_streams[plan_id] = []
-    _active_streams[plan_id].append(queue)
+    channel = _channel(plan_id)
 
     async def event_generator():
         try:
             # Send initial connection message
             yield f"data: {json.dumps({'type': 'connected', 'plan_id': plan_id})}\n\n"
 
-            # Stream updates
-            while True:
-                step = await queue.get()
-                yield f"data: {json.dumps(step)}\n\n"
+            # Stream updates from broadcaster
+            async for msg in bc.subscribe(channel):
+                yield f"data: {msg}\n\n"
 
-        finally:
-            # Cleanup
-            if plan_id in _active_streams:
-                try:
-                    _active_streams[plan_id].remove(queue)
-                    if not _active_streams[plan_id]:
-                        del _active_streams[plan_id]
-                except Exception:
-                    pass
+        except asyncio.CancelledError:
+            # Client disconnected
+            logger.debug(f"SSE connection cancelled for plan {plan_id}")
+            raise
 
     return StreamingResponse(
         event_generator(),

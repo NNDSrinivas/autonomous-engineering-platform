@@ -23,8 +23,8 @@ async function waitForStepText(page: Page, text: string, timeout = 5000) {
  * Helper to navigate to a plan page
  */
 async function navigateToPlan(page: Page, planId: string) {
-  const baseURL = page.context().browser()?.contexts()[0]?.pages()[0]?.url() || 'http://localhost:5173';
-  await page.goto(`${baseURL.replace(/\/$/, '')}/plan/${planId}`);
+  // Use the baseURL from page context which comes from Playwright config
+  await page.goto(`/plan/${planId}`);
 }
 
 test.describe('Live Plan - Real-time Multi-Client Collaboration', () => {

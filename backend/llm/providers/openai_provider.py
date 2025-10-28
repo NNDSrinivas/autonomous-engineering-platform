@@ -72,6 +72,4 @@ class OpenAIProvider:
 
         except Exception as e:
             logger.error(f"OpenAI API error for model {self.model}: {str(e)}")
-            raise RuntimeError(
-                "OpenAI API error. Please check your request and try again."
-            )
+            raise RuntimeError("OpenAI API error. Please check your request and try again.")

@@ -242,9 +242,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
 
     row = (
         db.execute(
-            text(
-                "SELECT bot_token FROM slack_connection WHERE org_id=:o ORDER BY id DESC LIMIT 1"
-            ),
+            text("SELECT bot_token FROM slack_connection WHERE org_id=:o ORDER BY id DESC LIMIT 1"),
             {"o": org},
         )
         .mappings()
@@ -261,9 +259,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
             chans = await sr.list_channels(client)
             # incremental cursor
             cur = db.execute(
-                text(
-                    "SELECT cursor FROM sync_cursor WHERE org_id=:o AND source='slack'"
-                ),
+                text("SELECT cursor FROM sync_cursor WHERE org_id=:o AND source='slack'"),
                 {"o": org},
             ).scalar()
             # Log warning and proceed with full sync if cursor is invalid (recoverable from manual edits).
@@ -285,9 +281,7 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
             # Count of successfully indexed messages (reset per sync run)
             count = 0
             for c in chans[:MAX_CHANNELS_PER_SYNC]:
-                msgs = await sr.history(
-                    client, c["id"], oldest=newest, limit=SLACK_HISTORY_LIMIT
-                )
+                msgs = await sr.history(client, c["id"], oldest=newest, limit=SLACK_HISTORY_LIMIT)
                 for m in msgs:
                     try:
                         ts = m.get("ts")
@@ -394,9 +388,7 @@ def reindex_confluence(
                     tag.decompose()
                 # Extract text and normalize whitespace, then truncate to max length
                 text_clean = soup.get_text(separator=" ")
-                text_clean = re.sub(r"\s+", " ", text_clean).strip()[
-                    :MAX_CONTENT_LENGTH
-                ]
+                text_clean = re.sub(r"\s+", " ", text_clean).strip()[:MAX_CONTENT_LENGTH]
                 try:
                     upsert_memory_object(
                         db,

@@ -93,11 +93,7 @@ def get_plan(
     x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """Get plan details"""
-    plan = (
-        db.query(LivePlan)
-        .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
-        .first()
-    )
+    plan = db.query(LivePlan).filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id).first()
 
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -113,9 +109,7 @@ async def add_step(
 ):
     """Add a step to the plan and broadcast to all listeners"""
     plan = (
-        db.query(LivePlan)
-        .filter(LivePlan.id == req.plan_id, LivePlan.org_id == x_org_id)
-        .first()
+        db.query(LivePlan).filter(LivePlan.id == req.plan_id, LivePlan.org_id == x_org_id).first()
     )
 
     if not plan:
@@ -166,9 +160,7 @@ async def add_step(
     try:
         await bc.publish(channel, json.dumps(step))
     except Exception as e:
-        logger.error(
-            f"Failed to broadcast step to plan {req.plan_id}: {e}", exc_info=True
-        )
+        logger.error(f"Failed to broadcast step to plan {req.plan_id}: {e}", exc_info=True)
 
     # Metrics
     try:
@@ -191,11 +183,7 @@ async def stream_plan_updates(
     """Server-Sent Events stream for real-time plan updates"""
 
     # Verify plan exists
-    plan = (
-        db.query(LivePlan)
-        .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
-        .first()
-    )
+    plan = db.query(LivePlan).filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id).first()
 
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -234,11 +222,7 @@ def archive_plan(
     x_org_id: str = Header(..., alias="X-Org-Id"),
 ):
     """Archive plan and store in memory graph"""
-    plan = (
-        db.query(LivePlan)
-        .filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id)
-        .first()
-    )
+    plan = db.query(LivePlan).filter(LivePlan.id == plan_id, LivePlan.org_id == x_org_id).first()
 
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -265,9 +249,7 @@ def archive_plan(
 
         # Edge case: Plan marked archived but memory node missing (previous failure)
         # Attempt to create the missing node to restore consistency
-        logger.warning(
-            f"Plan {plan_id} is archived but memory node missing - creating it now"
-        )
+        logger.warning(f"Plan {plan_id} is archived but memory node missing - creating it now")
         # Fall through to create the memory node below
 
     # Mark as archived (or already archived from edge case above)

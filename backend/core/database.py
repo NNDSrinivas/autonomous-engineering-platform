@@ -77,9 +77,7 @@ class KnowledgeEntry(Base):
     type = Column(String(50), nullable=False)  # code, discussion, documentation, etc.
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
-    entry_metadata = Column(
-        JSON, nullable=True
-    )  # Renamed from metadata to avoid conflict
+    entry_metadata = Column(JSON, nullable=True)  # Renamed from metadata to avoid conflict
     author_id = Column(Integer, ForeignKey("team_members.id"), nullable=True)
     tags = Column(JSON, nullable=True)  # List of tags
     vector_id = Column(String(255), nullable=True)  # ChromaDB vector ID
@@ -142,21 +140,15 @@ class AutonomousTask(Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
-    task_type = Column(
-        String(50), nullable=False
-    )  # coding, testing, documentation, etc.
-    status = Column(
-        String(50), default="pending"
-    )  # pending, in_progress, completed, failed
+    task_type = Column(String(50), nullable=False)  # coding, testing, documentation, etc.
+    status = Column(String(50), default="pending")  # pending, in_progress, completed, failed
     priority = Column(String(10), default="medium")  # low, medium, high, critical
 
     # Task execution details
     assigned_files = Column(JSON, nullable=True)  # List of files to work on
     generated_code = Column(Text, nullable=True)
     test_results = Column(JSON, nullable=True)
-    approval_status = Column(
-        String(50), default="pending"
-    )  # pending, approved, rejected
+    approval_status = Column(String(50), default="pending")  # pending, approved, rejected
 
     # Metadata
     estimated_effort = Column(String(50), nullable=True)  # small, medium, large

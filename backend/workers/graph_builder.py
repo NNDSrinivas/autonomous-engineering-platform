@@ -47,9 +47,7 @@ class GraphBuilder:
         self.db = db
         self.ai_service = ai_service
 
-    def rebuild_graph(
-        self, org_id: str, since: Optional[datetime] = None
-    ) -> Dict[str, int]:
+    def rebuild_graph(self, org_id: str, since: Optional[datetime] = None) -> Dict[str, int]:
         """Batch rebuild graph for an organization
 
         Args:
@@ -89,9 +87,7 @@ class GraphBuilder:
             logger.warning(f"Node {node_id} not found")
             return 0
 
-        logger.info(
-            f"Attaching edges for node {node_id} ({node.kind}:{node.foreign_id})"
-        )
+        logger.info(f"Attaching edges for node {node_id} ({node.kind}:{node.foreign_id})")
 
         edges_created = 0
 
@@ -144,9 +140,7 @@ class GraphBuilder:
                 else:
                     meta_json = {}
             except json.JSONDecodeError:
-                logger.warning(
-                    f"Invalid JSON in meta_json for {row.foreign_id}, using empty dict"
-                )
+                logger.warning(f"Invalid JSON in meta_json for {row.foreign_id}, using empty dict")
                 meta_json = {}
 
             # Map source to node kind (with foreign_id and meta for GitHub type detection)
@@ -198,9 +192,7 @@ class GraphBuilder:
         self.db.commit()
         return edges_created
 
-    def _apply_heuristics(
-        self, node1: MemoryNode, node2: MemoryNode
-    ) -> List[Dict[str, Any]]:
+    def _apply_heuristics(self, node1: MemoryNode, node2: MemoryNode) -> List[Dict[str, Any]]:
         """Apply all heuristics to detect relationships between two nodes
 
         Returns list of edge specifications: {src_id, dst_id, relation, weight, confidence, meta}
@@ -266,9 +258,7 @@ class GraphBuilder:
 
         return edges
 
-    def _heuristic_pr_fixes(
-        self, node1: MemoryNode, node2: MemoryNode
-    ) -> List[Dict[str, Any]]:
+    def _heuristic_pr_fixes(self, node1: MemoryNode, node2: MemoryNode) -> List[Dict[str, Any]]:
         """Parse PR descriptions for 'fixes #123', 'closes JIRA-456'"""
         edges = []
 
@@ -310,9 +300,7 @@ class GraphBuilder:
                     else other_node.foreign_id
                 )
                 # Compare strings directly (both are numeric strings, no int conversion needed)
-                matched = (
-                    pr_num == foreign_id_normalized if foreign_id_normalized else False
-                )
+                matched = pr_num == foreign_id_normalized if foreign_id_normalized else False
             else:
                 # JIRA key comparison is exact
                 matched = jira_key == other_node.foreign_id
@@ -342,10 +330,7 @@ class GraphBuilder:
         edges = []
 
         # Both must be Slack threads
-        if (
-            node1.kind != NodeKind.SLACK_THREAD.value
-            or node2.kind != NodeKind.SLACK_THREAD.value
-        ):
+        if node1.kind != NodeKind.SLACK_THREAD.value or node2.kind != NodeKind.SLACK_THREAD.value:
             return edges
 
         # Check if one is a reply to the other (via metadata)
@@ -403,9 +388,7 @@ class GraphBuilder:
         artifact_node = node2 if node1.kind == NodeKind.MEETING.value else node1
 
         # Check temporal proximity (within 48 hours)
-        time_diff = abs(
-            (artifact_node.created_at - meeting_node.created_at).total_seconds() / 3600
-        )
+        time_diff = abs((artifact_node.created_at - meeting_node.created_at).total_seconds() / 3600)
         if time_diff > TEMPORAL_WINDOW_HOURS:
             return edges
 
@@ -483,12 +466,8 @@ class GraphBuilder:
         text2 = f"{node2.title or ''} {node2.summary or ''}".lower()
 
         # Simple tokenization (exclude common words using shared STOPWORDS constant)
-        words1 = set(
-            w for w in re.findall(r"\w+", text1) if len(w) > 3 and w not in STOPWORDS
-        )
-        words2 = set(
-            w for w in re.findall(r"\w+", text2) if len(w) > 3 and w not in STOPWORDS
-        )
+        words1 = set(w for w in re.findall(r"\w+", text1) if len(w) > 3 and w not in STOPWORDS)
+        words2 = set(w for w in re.findall(r"\w+", text2) if len(w) > 3 and w not in STOPWORDS)
 
         return len(words1 & words2)
 
@@ -565,14 +544,10 @@ class GraphBuilder:
                     return NodeKind.PR.value
                 # Issue patterns: "GH-123", "ISSUE-123"
                 elif fid.startswith("gh-") or fid.startswith("issue-"):
-                    return (
-                        NodeKind.PR.value
-                    )  # Treat as PR until NodeKind.GITHUB_ISSUE exists
+                    return NodeKind.PR.value  # Treat as PR until NodeKind.GITHUB_ISSUE exists
                 # Discussion patterns: "DISCUSSION-123"
                 elif fid.startswith("discussion-"):
-                    return (
-                        NodeKind.PR.value
-                    )  # Treat as PR until NodeKind.GITHUB_DISCUSSION exists
+                    return NodeKind.PR.value  # Treat as PR until NodeKind.GITHUB_DISCUSSION exists
 
             # Default to PR for backward compatibility
             return NodeKind.PR.value

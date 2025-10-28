@@ -24,9 +24,7 @@ class SlackReader:
         r.raise_for_status()
         j = r.json()
         if not j.get("ok"):
-            logger.error(
-                "Slack API error in list_channels: %s", j.get("error", "unknown error")
-            )
+            logger.error("Slack API error in list_channels: %s", j.get("error", "unknown error"))
             return []
         return j.get("channels", [])
 

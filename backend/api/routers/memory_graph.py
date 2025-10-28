@@ -70,9 +70,7 @@ except ImportError:
 
 # Request/Response models
 class GraphRebuildRequest(BaseModel):
-    since: Optional[str] = Field(
-        default="30d", description="Time window (e.g., '30d', '90d')"
-    )
+    since: Optional[str] = Field(default="30d", description="Time window (e.g., '30d', '90d')")
 
 
 class GraphRebuildResponse(BaseModel):
@@ -177,9 +175,7 @@ async def rebuild_graph(
         # Update metrics
         if METRICS_ENABLED:
             graph_build_counter.labels(org_id=org_id, status="success").inc()
-            graph_build_latency.labels(org_id=org_id).observe(
-                (time.time() - start_time) * 1000
-            )
+            graph_build_latency.labels(org_id=org_id).observe((time.time() - start_time) * 1000)
 
             # Update gauges
             node_count = db.query(MemoryNode).filter_by(org_id=org_id).count()
@@ -226,9 +222,7 @@ async def get_node_neighborhood(
 
     try:
         # Find node
-        node = (
-            db.query(MemoryNode).filter_by(org_id=org_id, foreign_id=foreign_id).first()
-        )
+        node = db.query(MemoryNode).filter_by(org_id=org_id, foreign_id=foreign_id).first()
 
         if not node:
             raise HTTPException(status_code=404, detail=f"Node {foreign_id} not found")
@@ -257,9 +251,7 @@ async def get_node_neighborhood(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Node query failed for {foreign_id}, org={org_id}: {e}", exc_info=True
-        )
+        logger.error(f"Node query failed for {foreign_id}, org={org_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Node query failed: {str(e)}")
 
 
@@ -306,9 +298,7 @@ async def query_graph(
         return result
 
     except Exception as e:
-        logger.error(
-            f"Graph query failed for '{req.query}', org={org_id}: {e}", exc_info=True
-        )
+        logger.error(f"Graph query failed for '{req.query}', org={org_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Graph query failed: {str(e)}")
 
 

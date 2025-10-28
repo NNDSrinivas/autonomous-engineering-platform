@@ -132,16 +132,12 @@ def upsert_policy(
             vals[k] = None
 
     # Check if policy exists
-    exists = db.execute(
-        text("SELECT 1 FROM org_policy WHERE org_id=:o"), {"o": org_id}
-    ).fetchone()
+    exists = db.execute(text("SELECT 1 FROM org_policy WHERE org_id=:o"), {"o": org_id}).fetchone()
 
     if exists:
         # Update existing policy - safe because keys are validated against ALLOWED_FIELDS whitelist
         update_sql = (
-            "UPDATE org_policy SET "
-            + ", ".join([f"{k}=:{k}" for k in keys])
-            + " WHERE org_id=:o"
+            "UPDATE org_policy SET " + ", ".join([f"{k}=:{k}" for k in keys]) + " WHERE org_id=:o"
         )
         db.execute(text(update_sql), dict(vals, o=org_id))
     else:

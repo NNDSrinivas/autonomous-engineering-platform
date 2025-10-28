@@ -97,17 +97,14 @@ def check_action(policy: Dict, action: Dict) -> Dict:
             return False
 
         # Deny-check: if any token matches a deny pattern, deny immediately
-        denied = any(
-            any(token_matches_pattern(tok, d) for d in deny_cmds) for tok in tokens
-        )
+        denied = any(any(token_matches_pattern(tok, d) for d in deny_cmds) for tok in tokens)
         if denied:
             reasons.append(f"command denied: {cmd}")
         else:
             # Allow-check: if an allow list exists, require at least one token to match
             if allow_cmds:
                 allowed = any(
-                    any(token_matches_pattern(tok, a) for a in allow_cmds)
-                    for tok in tokens
+                    any(token_matches_pattern(tok, a) for a in allow_cmds) for tok in tokens
                 )
                 if not allowed:
                     reasons.append(f"command not in allow list: {cmd}")

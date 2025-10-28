@@ -264,15 +264,11 @@ def jira_config(body: JiraConfigReq, db: Session = Depends(get_db)):
         HTTPException: If configuration creation fails
     """
     try:
-        cfg = jsvc.set_project_config(
-            db, body.connection_id, body.project_keys, body.default_jql
-        )
+        cfg = jsvc.set_project_config(db, body.connection_id, body.project_keys, body.default_jql)
         return {"config_id": cfg.id}
     except Exception as e:
         logger.error(f"Failed to create JIRA configuration: {e}")
-        raise HTTPException(
-            status_code=500, detail="Failed to create JIRA configuration"
-        )
+        raise HTTPException(status_code=500, detail="Failed to create JIRA configuration")
 
 
 @app.post("/api/integrations/jira/sync")
@@ -347,9 +343,7 @@ def gh_connect(body: GhConnectReq, db: Session = Depends(get_db)):
         return {"connection_id": conn.id}
     except Exception as e:
         logger.error(f"Failed to create GitHub connection: {e}")
-        raise HTTPException(
-            status_code=500, detail="Failed to create GitHub connection"
-        )
+        raise HTTPException(status_code=500, detail="Failed to create GitHub connection")
 
 
 class GhIndexReq(BaseModel):
@@ -417,9 +411,7 @@ def gh_search_issues(
     Returns:
         List of matching issues and pull requests
     """
-    return {
-        "hits": ghsvc.search_issues(db, repo=repo, q=q, updated_since=updated_since)
-    }
+    return {"hits": ghsvc.search_issues(db, repo=repo, q=q, updated_since=updated_since)}
 
 
 # TODO: Write actions (comment, transition, PR create) will ship in a later PR.

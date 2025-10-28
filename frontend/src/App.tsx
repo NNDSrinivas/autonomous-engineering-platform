@@ -1,22 +1,74 @@
 import React from 'react'
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { MemoryGraphPage } from './pages/MemoryGraphPage'
+
+function HomePage() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-8">
+      <div className="max-w-2xl w-full bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20 p-8">
+        <h1 className="text-4xl font-bold text-white mb-6 text-center">
+          🤖 Autonomous Engineering Platform
+        </h1>
+        <div className="space-y-4">
+          <div className="bg-white/5 rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-3 text-white">Available Features</h2>
+            <ul className="space-y-3">
+              <li>
+                <Link 
+                  to="/memory/graph" 
+                  className="block bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                >
+                  📊 Memory Graph Explorer
+                </Link>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Layout({ children }: { children: React.ReactNode }) {
+  const location = useLocation()
+  
+  // Don't show nav on home page
+  if (location.pathname === '/') {
+    return <>{children}</>
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <nav className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <Link to="/" className="text-xl font-bold text-gray-900 hover:text-purple-600 transition-colors">
+              🤖 AEP
+            </Link>
+            <div className="flex space-x-6">
+              <Link 
+                to="/memory/graph" 
+                className="text-gray-700 hover:text-purple-600 font-medium transition-colors"
+              >
+                Memory Graph
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
+      {children}
+    </div>
+  )
+}
 
 function App() {
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h1 style={{ color: '#2563eb' }}>🤖 Autonomous Engineering Platform</h1>
-      <p>Platform is loading...</p>
-      <div style={{ 
-        backgroundColor: '#f3f4f6', 
-        padding: '10px', 
-        borderRadius: '8px',
-        marginTop: '20px'
-      }}>
-        <h2>Quick Test</h2>
-        <p>✅ React is working</p>
-        <p>✅ Frontend server is running on port 3000</p>
-        <p>⏳ Loading full dashboard...</p>
-      </div>
-    </div>
+    <Layout>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/memory/graph" element={<MemoryGraphPage />} />
+      </Routes>
+    </Layout>
   )
 }
 

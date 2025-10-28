@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 class Role(str, Enum):
     """
     User roles for role-based access control (RBAC).
-    
+
     Hierarchy: viewer < planner < admin
     - viewer: read-only access (can subscribe to SSE streams)
     - planner: can modify plans (add steps, publish)
@@ -49,7 +49,7 @@ class Role(str, Enum):
 class User(BaseModel):
     """
     User context for authentication and authorization.
-    
+
     In production, this would be populated from JWT claims or session.
     For development, use DEV_* environment variables as a shim.
     """

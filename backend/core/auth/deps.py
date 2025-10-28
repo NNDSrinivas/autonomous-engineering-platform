@@ -13,16 +13,16 @@ def get_current_user(
 ) -> User:
     """
     Extract current user from request context.
-    
+
     Phase 1 (this PR): Uses DEV_* environment variables as auth shim.
     Phase 2 (future): Will parse JWT tokens from Authorization header.
-    
+
     Args:
         x_org_id: Optional organization ID from X-Org-Id header
-        
+
     Returns:
         User object with role and context
-        
+
     Raises:
         HTTPException: If DEV_USER_ID is missing (required for dev mode)
     """
@@ -35,7 +35,7 @@ def get_current_user(
         )
 
     email = os.getenv("DEV_USER_EMAIL")
-    
+
     # Role: read from DEV_USER_ROLE env, default to viewer (secure-by-default)
     role_str = os.getenv("DEV_USER_ROLE", "viewer").lower()
     try:
@@ -63,19 +63,19 @@ def get_current_user(
 def require_role(minimum_role: Role):
     """
     Dependency factory to enforce minimum role requirement.
-    
+
     Usage:
         @router.post("/plan/{plan_id}/publish")
         async def publish(user: User = Depends(require_role(Role.PLANNER))):
             # Only planner+ can execute this endpoint
             ...
-    
+
     Args:
         minimum_role: Minimum role required (viewer, planner, or admin)
-        
+
     Returns:
         FastAPI dependency that validates user role
-        
+
     Raises:
         HTTPException 403: If user's role is insufficient
     """

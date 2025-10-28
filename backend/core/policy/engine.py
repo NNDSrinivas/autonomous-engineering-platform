@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 class PolicyEngine:
     """
     File-based policy engine for authorization guardrails.
-    
+
     Loads policies from .aepolicy.json in repo root.
     Supports action-based rules with pattern matching.
-    
+
     Example .aepolicy.json:
     {
       "version": "1.0",
@@ -34,7 +34,7 @@ class PolicyEngine:
     def __init__(self, policy_file: Optional[Path] = None):
         """
         Initialize policy engine.
-        
+
         Args:
             policy_file: Path to .aepolicy.json file. If None, searches for
                          .aepolicy.json in current working directory or
@@ -82,12 +82,12 @@ class PolicyEngine:
     def check(self, action: str, context: dict[str, Any]) -> tuple[bool, str]:
         """
         Check if an action is allowed by policies.
-        
+
         Args:
             action: Action identifier (e.g., "plan.add_step", "plan.publish")
             context: Context dictionary with action-specific data
                      (e.g., {"step_name": "deploy to prod", "plan_id": "123"})
-        
+
         Returns:
             Tuple of (allowed: bool, reason: str)
             - (True, "") if allowed
@@ -99,7 +99,7 @@ class PolicyEngine:
 
             # Check deny conditions
             deny_if = policy.get("deny_if", {})
-            
+
             # Pattern: step_name_contains
             if "step_name_contains" in deny_if:
                 step_name = context.get("step_name", "")
@@ -142,7 +142,7 @@ _policy_engine: Optional[PolicyEngine] = None
 def get_policy_engine() -> PolicyEngine:
     """
     Get or create the global PolicyEngine singleton.
-    
+
     Returns:
         Singleton PolicyEngine instance
     """

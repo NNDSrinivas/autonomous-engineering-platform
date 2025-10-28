@@ -142,7 +142,7 @@ async def add_step(
     policy_engine: PolicyEngine = Depends(get_policy_engine),
 ):
     """Add a step to the plan and broadcast to all listeners (requires planner role + policy check)"""
-    
+
     # Check policy guardrails before modifying plan
     await check_policy_inline(
         "plan.add_step",

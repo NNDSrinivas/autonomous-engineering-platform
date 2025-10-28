@@ -25,28 +25,22 @@ export const PlanView: React.FC = () => {
   // Merge backend steps with live streamed steps, deduplicating by unique ID
   const allSteps = React.useMemo(() => {
     const steps = [...(plan?.steps || []), ...liveSteps];
-    const seenIds = new Set<string>();
-    const seenFallbacks = new Set<string>();
     
-    // Deduplicate using separate Sets to avoid false positives
-    // - If step has ID, check/track by ID only
-    // - If step has no ID, check/track by fallback key (ts+owner+text)
-    return steps.filter((step) => {
-      if (step.id) {
-        if (seenIds.has(step.id)) {
-          return false;
-        }
-        seenIds.add(step.id);
-        return true;
-      } else {
-        const fallbackKey = `${step.ts}-${step.owner}-${step.text}`;
-        if (seenFallbacks.has(fallbackKey)) {
-          return false;
-        }
-        seenFallbacks.add(fallbackKey);
-        return true;
+    // Use Map for O(1) deduplication by id or fallback key
+    // This is more efficient for large step lists than Set + filter
+    const stepMap = new Map<string, PlanStep>();
+    
+    for (const step of steps) {
+      // Prefer ID if present, otherwise use composite fallback key
+      const key = step.id ? step.id : `${step.ts}-${step.owner}-${step.text}`;
+      
+      // Keep first occurrence (backend steps come before live steps in array)
+      if (!stepMap.has(key)) {
+        stepMap.set(key, step);
       }
-    });
+    }
+    
+    return Array.from(stepMap.values());
   }, [plan?.steps, liveSteps]);
 
   // Type guard for validating PlanStep structure from SSE

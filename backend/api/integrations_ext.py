@@ -39,7 +39,9 @@ def _parse_allowed_environments(default: str = "development,local") -> set[str]:
     """
     allowed_environments_raw = os.getenv("ALLOWED_ENVIRONMENTS", default)
     return {
-        stripped.lower() for env in allowed_environments_raw.split(",") if (stripped := env.strip())
+        stripped.lower()
+        for env in allowed_environments_raw.split(",")
+        if (stripped := env.strip())
     }
 
 
@@ -195,7 +197,9 @@ def confluence_connect(
     token = payload.get("access_token")
     email = payload.get("email")
     if not base or not token:
-        raise HTTPException(status_code=400, detail="base_url and access_token required")
+        raise HTTPException(
+            status_code=400, detail="base_url and access_token required"
+        )
 
     # CRITICAL SECURITY CHECK: Prevent production deployment with plaintext tokens
     # Fail closed by default: require explicit opt-in for development mode

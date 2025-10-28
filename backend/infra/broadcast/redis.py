@@ -25,7 +25,9 @@ class RedisBroadcaster(Broadcast):
             try:
                 import redis.asyncio as aioredis
 
-                self._pool = aioredis.from_url(self._url, encoding="utf-8", decode_responses=True)
+                self._pool = aioredis.from_url(
+                    self._url, encoding="utf-8", decode_responses=True
+                )
                 logger.info(f"Redis broadcaster connected to {self._url}")
             except ImportError:
                 logger.error(
@@ -55,7 +57,9 @@ class RedisBroadcaster(Broadcast):
 
             while not self._closed:
                 try:
-                    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                    message = await pubsub.get_message(
+                        ignore_subscribe_messages=True, timeout=1.0
+                    )
                     if message and message.get("type") == "message":
                         data = message.get("data")
                         if data is not None:

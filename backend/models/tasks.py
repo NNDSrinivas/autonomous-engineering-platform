@@ -20,9 +20,15 @@ class Task(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     assignee: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     priority: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    due_date: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    due_date: Mapped[Optional[datetime]] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
     org_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     events: Mapped[List["TaskEvent"]] = relationship(
@@ -37,10 +43,14 @@ class TaskEvent(Base):
     __tablename__ = "task_event"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
-    task_id: Mapped[str] = mapped_column(ForeignKey("task.id", ondelete="CASCADE"), nullable=False)
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("task.id", ondelete="CASCADE"), nullable=False
+    )
     type: Mapped[str] = mapped_column(Text, nullable=False)
     data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
 
     task: Mapped[Task] = relationship("Task", back_populates="events")
 
@@ -49,7 +59,9 @@ class TaskDependency(Base):
     __tablename__ = "task_dependency"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
-    task_id: Mapped[str] = mapped_column(ForeignKey("task.id", ondelete="CASCADE"), nullable=False)
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("task.id", ondelete="CASCADE"), nullable=False
+    )
     depends_on_task_id: Mapped[str] = mapped_column(
         ForeignKey("task.id", ondelete="CASCADE"), nullable=False
     )
@@ -59,7 +71,9 @@ class TaskLink(Base):
     __tablename__ = "task_link"
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
-    task_id: Mapped[str] = mapped_column(ForeignKey("task.id", ondelete="CASCADE"), nullable=False)
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("task.id", ondelete="CASCADE"), nullable=False
+    )
     type: Mapped[str] = mapped_column(Text, nullable=False)
     key: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

@@ -215,7 +215,9 @@ def _ts_rank_score(
         )
         # Normalize ts_rank scores using x/(1+x) transformation
         return {
-            (r["source"], r["foreign_id"]): _normalize_bm25_score(float(r["rnk"] or 0.0))
+            (r["source"], r["foreign_id"]): _normalize_bm25_score(
+                float(r["rnk"] or 0.0)
+            )
             for r in rows
         }
     else:
@@ -430,10 +432,14 @@ def hybrid_search(
     now = time.time()
 
     # Fetch semantic results (overfetch for reranking and deduplication)
-    sem_results = semantic(db, org_id, query_vec, sources, limit=HYBRID_OVERFETCH_MULTIPLIER * k)
+    sem_results = semantic(
+        db, org_id, query_vec, sources, limit=HYBRID_OVERFETCH_MULTIPLIER * k
+    )
 
     # Fetch BM25 keyword scores (using ts_rank as approximation)
-    bm25_scores = _ts_rank_score(db, org_id, query, sources, limit=HYBRID_OVERFETCH_MULTIPLIER * k)
+    bm25_scores = _ts_rank_score(
+        db, org_id, query, sources, limit=HYBRID_OVERFETCH_MULTIPLIER * k
+    )
 
     # Group results by (source, foreign_id) for deduplication
     buckets: Dict[Tuple[str, str], Dict[str, Any]] = {}

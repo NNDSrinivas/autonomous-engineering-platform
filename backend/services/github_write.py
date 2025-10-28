@@ -153,7 +153,9 @@ class GitHubWriteService:
 
                 # Create new PR
                 logger.info(f"Creating new draft PR: {formatted_title}")
-                create_response = await client.post(f"/repos/{repo_full_name}/pulls", json=payload)
+                create_response = await client.post(
+                    f"/repos/{repo_full_name}/pulls", json=payload
+                )
                 create_response.raise_for_status()
 
                 pr_data = create_response.json()
@@ -166,17 +168,23 @@ class GitHubWriteService:
                 }
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"GitHub API error: {e.response.status_code} {e.response.text}")
+            logger.error(
+                f"GitHub API error: {e.response.status_code} {e.response.text}"
+            )
             raise ValueError(f"GitHub API error: {e.response.status_code}")
         except Exception as e:
             logger.error(f"Unexpected error in draft_pr: {e}")
             raise ValueError(f"Failed to create PR: {str(e)}")
 
-    async def get_pr_status(self, repo_full_name: str, pr_number: int) -> Dict[str, Any]:
+    async def get_pr_status(
+        self, repo_full_name: str, pr_number: int
+    ) -> Dict[str, Any]:
         """Get status of existing PR"""
         try:
             async with self._client() as client:
-                response = await client.get(f"/repos/{repo_full_name}/pulls/{pr_number}")
+                response = await client.get(
+                    f"/repos/{repo_full_name}/pulls/{pr_number}"
+                )
                 response.raise_for_status()
 
                 pr_data = response.json()

@@ -21,7 +21,9 @@ class JiraProjectConfig(Base):
     __tablename__ = "jira_project_config"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     org_id: Mapped[str | None] = mapped_column(String)
-    connection_id: Mapped[str] = mapped_column(ForeignKey("jira_connection.id", ondelete="CASCADE"))
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("jira_connection.id", ondelete="CASCADE")
+    )
     project_keys: Mapped[list[str]] = mapped_column(JSON)
     default_jql: Mapped[str | None] = mapped_column(String)
     last_sync_at: Mapped[object | None] = mapped_column(TIMESTAMP(timezone=True))
@@ -30,7 +32,9 @@ class JiraProjectConfig(Base):
 class JiraIssue(Base):
     __tablename__ = "jira_issue"
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    connection_id: Mapped[str] = mapped_column(ForeignKey("jira_connection.id", ondelete="CASCADE"))
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("jira_connection.id", ondelete="CASCADE")
+    )
     project_key: Mapped[str] = mapped_column(String)
     issue_key: Mapped[str] = mapped_column(String)
     summary: Mapped[str | None] = mapped_column(String)
@@ -65,7 +69,9 @@ class GhConnection(Base):
 class GhRepo(Base):
     __tablename__ = "gh_repo"
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    connection_id: Mapped[str] = mapped_column(ForeignKey("gh_connection.id", ondelete="CASCADE"))
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("gh_connection.id", ondelete="CASCADE")
+    )
     repo_full_name: Mapped[str] = mapped_column(String)
     default_branch: Mapped[str | None] = mapped_column(String)
     is_private: Mapped[bool | None] = mapped_column(Boolean)

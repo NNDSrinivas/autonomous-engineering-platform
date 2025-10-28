@@ -74,4 +74,6 @@ def record_budget_violation(phase: str, limit_type: str, org_id: str = "default"
         limit_type: 'tokens' or 'usd'
         org_id: Organization identifier
     """
-    budget_violations_total.labels(phase=phase, limit_type=limit_type, org_id=org_id).inc()
+    budget_violations_total.labels(
+        phase=phase, limit_type=limit_type, org_id=org_id
+    ).inc()

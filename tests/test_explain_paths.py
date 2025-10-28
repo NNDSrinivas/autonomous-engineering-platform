@@ -39,7 +39,9 @@ def test_explain_contains_citations(api_client: Client, seeded_graph):
     # Alternative: check for explicit citations field
     has_citations = "citations" in data or len(ids_in_narrative) > 0
 
-    assert has_citations, f"Narrative contains no citations to nodes. Narrative: {narrative[:200]}"
+    assert (
+        has_citations
+    ), f"Narrative contains no citations to nodes. Narrative: {narrative[:200]}"
 
     if ids_in_narrative:
         print(f"✅ Narrative cites: {', '.join(ids_in_narrative)}")
@@ -100,7 +102,9 @@ def test_explain_respects_depth_parameter(api_client: Client, seeded_graph):
     shallow_nodes = len(data_shallow["nodes"])
     deep_nodes = len(data_deep["nodes"])
 
-    print(f"✅ Depth parameter: depth=1 → {shallow_nodes} nodes, depth=3 → {deep_nodes} nodes")
+    print(
+        f"✅ Depth parameter: depth=1 → {shallow_nodes} nodes, depth=3 → {deep_nodes} nodes"
+    )
 
     # At minimum, both should return some nodes
     assert shallow_nodes >= 1, "Shallow query returned no nodes"
@@ -154,10 +158,16 @@ def test_explain_returns_edges_for_subgraph(api_client: Client, seeded_graph):
     node_ids = {node["id"] for node in data["nodes"]}
 
     for edge in data["edges"]:
-        assert edge["src_id"] in node_ids, f"Edge src_id {edge['src_id']} not in node set"
-        assert edge["dst_id"] in node_ids, f"Edge dst_id {edge['dst_id']} not in node set"
+        assert (
+            edge["src_id"] in node_ids
+        ), f"Edge src_id {edge['src_id']} not in node set"
+        assert (
+            edge["dst_id"] in node_ids
+        ), f"Edge dst_id {edge['dst_id']} not in node set"
 
-    print(f"✅ Subgraph has {len(data['edges'])} edges connecting {len(data['nodes'])} nodes")
+    print(
+        f"✅ Subgraph has {len(data['edges'])} edges connecting {len(data['nodes'])} nodes"
+    )
 
 
 def test_explain_narrative_is_coherent(api_client: Client, seeded_graph):
@@ -171,9 +181,13 @@ def test_explain_narrative_is_coherent(api_client: Client, seeded_graph):
     narrative = data["narrative"]
 
     # Basic coherence checks
-    assert len(narrative) >= 100, f"Narrative too short to be coherent: {len(narrative)} chars"
+    assert (
+        len(narrative) >= 100
+    ), f"Narrative too short to be coherent: {len(narrative)} chars"
 
-    assert len(narrative) <= 5000, f"Narrative too long (possible error): {len(narrative)} chars"
+    assert (
+        len(narrative) <= 5000
+    ), f"Narrative too long (possible error): {len(narrative)} chars"
 
     # Should have multiple sentences
     sentence_count = narrative.count(".") + narrative.count("!") + narrative.count("?")
@@ -184,7 +198,9 @@ def test_explain_narrative_is_coherent(api_client: Client, seeded_graph):
     has_errors = any(marker in narrative.lower() for marker in error_markers)
     assert not has_errors, f"Narrative contains error markers: {narrative[:200]}"
 
-    print(f"✅ Narrative is coherent: {len(narrative)} chars, ~{sentence_count} sentences")
+    print(
+        f"✅ Narrative is coherent: {len(narrative)} chars, ~{sentence_count} sentences"
+    )
 
 
 def test_explain_with_invalid_query(api_client: Client, seeded_graph):
@@ -215,4 +231,6 @@ def test_explain_with_invalid_query(api_client: Client, seeded_graph):
             f"✅ Non-existent entity query handled gracefully: {len(data.get('nodes', []))} nodes"
         )
     else:
-        print(f"✅ Non-existent entity query returned: {response_nonexistent.status_code}")
+        print(
+            f"✅ Non-existent entity query returned: {response_nonexistent.status_code}"
+        )

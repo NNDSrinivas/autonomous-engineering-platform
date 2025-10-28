@@ -27,7 +27,9 @@ def test_cross_org_forbidden_node_access(
     print(f"✅ Cross-org node access blocked: HTTP {response.status_code}")
 
 
-def test_cross_org_forbidden_timeline(api_client: Client, other_org_client: Client, seeded_graph):
+def test_cross_org_forbidden_timeline(
+    api_client: Client, other_org_client: Client, seeded_graph
+):
     """Verify cross-org timeline access returns 403/401 or empty results"""
     response = other_org_client.get(
         "/api/memory/timeline", params={"entity_id": "ENG-102", "window": "30d"}
@@ -36,7 +38,9 @@ def test_cross_org_forbidden_timeline(api_client: Client, other_org_client: Clie
     # Should block or return empty
     if response.status_code == 200:
         data = response.json()
-        assert len(data) == 0, f"Cross-org timeline should be empty, got {len(data)} items"
+        assert (
+            len(data) == 0
+        ), f"Cross-org timeline should be empty, got {len(data)} items"
         print("✅ Cross-org timeline returns empty")
     else:
         assert response.status_code in (
@@ -46,7 +50,9 @@ def test_cross_org_forbidden_timeline(api_client: Client, other_org_client: Clie
         print(f"✅ Cross-org timeline blocked: HTTP {response.status_code}")
 
 
-def test_cross_org_forbidden_query(api_client: Client, other_org_client: Client, seeded_graph):
+def test_cross_org_forbidden_query(
+    api_client: Client, other_org_client: Client, seeded_graph
+):
     """Verify cross-org graph query returns 403/401 or empty results"""
     response = other_org_client.post(
         "/api/memory/graph/query",
@@ -127,7 +133,10 @@ def test_data_isolation_between_orgs(test_db, seeded_graph):
 
     # Get all node IDs for default org
     default_node_ids = {
-        node.id for node in test_db.query(MemoryNode).filter(MemoryNode.org_id == TEST_ORG_ID).all()
+        node.id
+        for node in test_db.query(MemoryNode)
+        .filter(MemoryNode.org_id == TEST_ORG_ID)
+        .all()
     }
 
     # Verify all edges only connect nodes within the same org

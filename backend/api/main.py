@@ -86,6 +86,10 @@ app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 
+# Admin RBAC endpoints (PR-24)
+from .routers.admin_rbac import router as admin_rbac_router
+app.include_router(admin_rbac_router)
+
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])
 

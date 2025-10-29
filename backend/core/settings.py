@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     PLAN_CHANNEL_PREFIX: str = "plan:"
 
     # Presence/cursor configuration
-    # Presence/cursor configuration
     # NOTE: HEARTBEAT_SEC should be significantly smaller than PRESENCE_TTL_SEC
     # to avoid race conditions where a user could be marked expired between
     # heartbeats. As a guideline we prefer HEARTBEAT_SEC < PRESENCE_TTL_SEC / 2
@@ -43,7 +42,7 @@ settings = Settings()
 # Basic runtime validation to catch obviously invalid configurations early.
 # This is intentionally done at import time because settings are loaded from
 # environment variables and we want misconfigurations to fail fast.
-if not (settings.HEARTBEAT_SEC * 2 < settings.PRESENCE_TTL_SEC):
+if settings.HEARTBEAT_SEC >= settings.PRESENCE_TTL_SEC / 2:
     raise ValueError(
         f"Invalid presence timing: HEARTBEAT_SEC={settings.HEARTBEAT_SEC} must be < PRESENCE_TTL_SEC/2={settings.PRESENCE_TTL_SEC/2}"
     )

@@ -82,7 +82,7 @@ def get_current_user(
 
         # Role: read from DEV_USER_ROLE env, default to viewer (secure-by-default)
         role_str = os.getenv("DEV_USER_ROLE", "viewer").lower()
-        valid_roles = {"viewer", "planner", "admin"}
+        valid_roles = {r.value for r in Role}
         if role_str not in valid_roles:
             logger.warning(
                 f"Invalid DEV_USER_ROLE '{role_str}' specified. "

@@ -47,9 +47,7 @@ def get_current_user(
             )
 
         try:
-            # Verify token and extract claims
-            # Note: verify_token returns processed claims with 'display_name' key
-            # (transformed from JWT's 'name' field by extract_user_claims)
+            # Verify token and extract claims (includes 'display_name' key)
             claims = verify_token(credentials.credentials)
 
             return User(

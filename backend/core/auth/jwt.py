@@ -1,13 +1,19 @@
-"""JWT token verification and claims extraction."""
+"""JWT token verification and user claims extraction."""
+
+from __future__ import annotations
 
 import logging
 
 from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError, JWTClaimsError
 
+from backend.core.auth.models import Role
 from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Valid role values from the Role enum
+VALID_ROLES = {role.value for role in Role}
 
 
 class JWTVerificationError(Exception):
@@ -85,12 +91,13 @@ def extract_user_claims(payload: dict) -> dict:
         raise JWTVerificationError("Missing required claim: 'org_id'")
 
     role = payload.get("role", "viewer")  # Default to viewer for security
-    if role not in {"viewer", "planner", "admin"}:
+    if role not in VALID_ROLES:
         logger.warning(f"Invalid role '{role}' in JWT, defaulting to 'viewer'")
         role = "viewer"
 
     # Optional claims
     email = payload.get("email")
+    # Transform JWT's 'name' claim to 'display_name' for consistency with User model
     display_name = payload.get("name")
     projects = payload.get("projects", [])
     if isinstance(projects, str):

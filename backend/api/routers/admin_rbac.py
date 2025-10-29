@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend.api.deps import get_db
+from backend.database.session import get_db
 from backend.core.auth.deps import require_role
 from backend.core.auth.models import Role, User
 from backend.core.auth.role_service import invalidate_role_cache

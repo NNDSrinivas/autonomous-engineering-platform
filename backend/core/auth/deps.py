@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from typing import Annotated, Optional
 
 from fastapi import Depends, Header, HTTPException, status
@@ -15,8 +16,26 @@ from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Rate-limited logging to avoid log spam in non-multi-tenant deployments
+_log_timestamps: dict[str, float] = {}
+_LOG_THROTTLE_SECONDS = 300  # Log each unique message at most once per 5 minutes
+
 # HTTP Bearer token scheme for JWT authentication
 security = HTTPBearer(auto_error=False)
+
+
+def _log_once(message: str, level: int = logging.WARNING) -> None:
+    """
+    Log a message at most once per _LOG_THROTTLE_SECONDS.
+
+    Prevents log spam for recurring warnings in long-running applications.
+    """
+    now = time.time()
+    last_logged = _log_timestamps.get(message, 0)
+
+    if now - last_logged >= _LOG_THROTTLE_SECONDS:
+        logger.log(level, message)
+        _log_timestamps[message] = now
 
 
 def get_current_user(
@@ -144,7 +163,7 @@ def require_role(minimum_role: Role):
         try:
             # Warn if org_id is missing but continue with fallback
             if user.org_id is None:
-                logger.warning(
+                _log_once(
                     "User org_id is None when resolving effective role. "
                     "Falling back to JWT-only authorization. "
                     "This may indicate a configuration issue or non-multi-tenant setup."

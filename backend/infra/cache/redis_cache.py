@@ -4,6 +4,12 @@ Optional Redis cache utility with in-memory fallback.
 Provides simple key-value caching for role resolution and other
 frequently-accessed data. Falls back to in-process dict if Redis
 is not configured or unavailable.
+
+NOTE: This module currently uses the deprecated aioredis library.
+For future migration to redis.asyncio, note that connection parameters
+differ: socket_timeout and socket_connect_timeout should be passed via
+connection pool config or Redis() constructor rather than from_url().
+Example: redis.asyncio.from_url(url, socket_connect_timeout=5)
 """
 
 import json

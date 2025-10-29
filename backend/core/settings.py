@@ -56,3 +56,10 @@ if settings.HEARTBEAT_SEC * 2 >= settings.PRESENCE_TTL_SEC:
     raise ValueError(
         f"Invalid presence timing: HEARTBEAT_SEC={settings.HEARTBEAT_SEC} must be < PRESENCE_TTL_SEC/2={settings.PRESENCE_TTL_SEC/2}"
     )
+
+# Validate JWT configuration: JWT_SECRET is required when JWT_ENABLED=true
+if settings.JWT_ENABLED and not settings.JWT_SECRET:
+    raise ValueError(
+        "JWT_SECRET must be set when JWT_ENABLED=true. "
+        "Set the JWT_SECRET environment variable or disable JWT authentication."
+    )

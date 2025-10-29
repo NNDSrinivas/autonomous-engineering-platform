@@ -29,6 +29,7 @@ from .context_pack import router as context_pack_router
 from .memory import router as memory_router
 from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
+from ..core.realtime import presence as presence_lifecycle
 
 logger = setup_logging()
 app = FastAPI(title=f"{settings.app_name} - Core API")
@@ -43,6 +44,18 @@ app.add_middleware(
 app.add_middleware(RequestIDMiddleware, service_name="core")
 app.add_middleware(RateLimitMiddleware, service_name="core", rpm=60)
 app.add_middleware(AuditMiddleware, service_name="core")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Application startup: initialize background services."""
+    presence_lifecycle.start_cleanup_thread()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Application shutdown: cleanup background services."""
+    presence_lifecycle.stop_cleanup_thread()
 
 
 @app.get("/health")

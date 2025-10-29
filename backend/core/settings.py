@@ -27,14 +27,13 @@ class Settings(BaseSettings):
 
     # JWT Authentication configuration
     # Set JWT_ENABLED=true to require JWT tokens instead of DEV_* env variables
+    # Note: Token expiration is verified using the 'exp' claim in the JWT itself.
+    #       Typical expiration: 1 hour (3600 seconds). Configure this in your auth service.
     JWT_ENABLED: bool = False  # Default: use dev shim for local development
     JWT_SECRET: str | None = None  # Required when JWT_ENABLED=true
     JWT_ALGORITHM: str = "HS256"  # Algorithm for JWT signature verification
     JWT_AUDIENCE: str | None = None  # Expected 'aud' claim (optional)
     JWT_ISSUER: str | None = None  # Expected 'iss' claim (optional)
-    JWT_EXPIRATION_SECONDS: int = (
-        3600  # Reference value for external auth services generating JWTs; not used for verification (which relies on the 'exp' claim in the token)
-    )
 
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # Note: To avoid loading .env during tests, override settings in pytest fixtures

@@ -201,9 +201,7 @@ def upsert_user(
         db.add(user)
     else:
         user.email = body.email
-        user.display_name = (
-            body.display_name if body.display_name is not None else user.display_name
-        )
+        user.display_name = body.display_name
 
     db.commit()
     db.refresh(user)

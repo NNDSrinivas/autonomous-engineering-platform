@@ -95,7 +95,7 @@ def extract_user_claims(payload: dict) -> dict:
     # Role validation: default to viewer if missing or invalid
     role = payload.get("role", "viewer")
     if role not in _VALID_ROLES:
-        logger.error(
+        logger.warning(
             f"Invalid role '{role}' in JWT (valid: {_VALID_ROLES}), defaulting to 'viewer'"
         )
         role = "viewer"

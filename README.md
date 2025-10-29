@@ -186,6 +186,87 @@ DEV_PROJECTS=aep       # Comma-separated project IDs
 
 > **Note**: Development mode is for local testing only. Always use JWT mode in production environments.
 
+#### **Admin RBAC (PR-24): Database-Backed User & Role Management**
+
+AEP now persists **Organizations**, **Users**, and **Roles** in the database, enabling centralized user management and flexible role assignments.
+
+**Database Tables:**
+- `organizations` - Multi-tenancy support with unique org keys
+- `users` - User records linked to organizations via JWT `sub` claim
+- `roles` - Standard roles: `viewer`, `planner`, `admin`
+- `user_roles` - Role assignments (org-wide or project-scoped)
+
+**Admin Endpoints** (require `admin` role):
+
+```http
+POST   /api/admin/rbac/orgs          # Create organization
+GET    /api/admin/rbac/orgs          # List all organizations
+POST   /api/admin/rbac/users         # Create/update user record
+GET    /api/admin/rbac/users/{org_key}/{sub}  # Get user with roles
+POST   /api/admin/rbac/roles/grant   # Grant role to user
+DELETE /api/admin/rbac/roles/revoke  # Revoke role from user
+```
+
+**Example: Creating org and granting roles**
+```bash
+# 1. Create organization
+curl -X POST http://localhost:8000/api/admin/rbac/orgs \
+  -H "Authorization: Bearer $ADMIN_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"org_key": "navra", "name": "Navra Labs"}'
+
+# 2. Create user (links JWT sub to org)
+curl -X POST http://localhost:8000/api/admin/rbac/users \
+  -H "Authorization: Bearer $ADMIN_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sub": "user-123",
+    "email": "user@navra.io", 
+    "display_name": "Jane Doe",
+    "org_key": "navra"
+  }'
+
+# 3. Grant org-wide planner role
+curl -X POST http://localhost:8000/api/admin/rbac/roles/grant \
+  -H "Authorization: Bearer $ADMIN_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sub": "user-123",
+    "org_key": "navra",
+    "role": "planner"
+  }'
+
+# 4. Grant project-scoped admin role
+curl -X POST http://localhost:8000/api/admin/rbac/roles/grant \
+  -H "Authorization: Bearer $ADMIN_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sub": "user-123",
+    "org_key": "navra",
+    "role": "admin",
+    "project_key": "special-project"
+  }'
+```
+
+**Effective Role Resolution:**
+- Runtime role = **max(JWT role, DB roles)** where `admin > planner > viewer`
+- Cached for 60 seconds (Redis if configured, else in-memory)
+- Cache invalidated automatically on role changes
+
+**Migration:**
+```bash
+# Apply RBAC schema
+alembic upgrade head
+
+# Verify tables created
+sqlite3 data/engineering_platform.db ".tables"
+# Should show: organizations, roles, users, user_roles
+```
+
+**Configuration:**
+- Uses existing `DATABASE_URL` from your environment
+- Optional `REDIS_URL` for role cache (fallback to in-process if not set)
+
 ### **Policy Guardrails**
 
 Fine-grained authorization policies prevent dangerous operations. Policies are defined in `.aepolicy.json`:

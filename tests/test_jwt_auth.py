@@ -3,14 +3,18 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
 from jose import jwt
 
+from backend.core.auth.deps import get_current_user
 from backend.core.auth.jwt import (
     JWTVerificationError,
     decode_jwt,
     extract_user_claims,
     verify_token,
 )
+from backend.core.auth.models import User
 from backend.core.settings import settings
 
 
@@ -28,6 +32,22 @@ def enable_jwt(jwt_secret, monkeypatch):
     monkeypatch.setattr(settings, "JWT_ALGORITHM", "HS256")
     monkeypatch.setattr(settings, "JWT_AUDIENCE", None)
     monkeypatch.setattr(settings, "JWT_ISSUER", None)
+
+
+@pytest.fixture
+def test_app():
+    """Create a FastAPI test app with authentication endpoint."""
+    app = FastAPI()
+
+    @app.get("/test")
+    def test_endpoint(user: User = Depends(get_current_user)):
+        return {
+            "user_id": user.user_id,
+            "role": user.role.value,
+            "org_id": user.org_id,
+        }
+
+    return app
 
 
 def create_test_token(
@@ -264,24 +284,9 @@ class TestVerifyToken:
 class TestJWTWithFastAPI:
     """Integration tests with FastAPI dependency."""
 
-    def test_get_current_user_with_jwt(self, enable_jwt, jwt_secret):
+    def test_get_current_user_with_jwt(self, enable_jwt, jwt_secret, test_app):
         """Test get_current_user dependency with valid JWT."""
-        from fastapi import FastAPI, Depends
-        from fastapi.testclient import TestClient
-        from backend.core.auth.deps import get_current_user
-        from backend.core.auth.models import User
-
-        app = FastAPI()
-
-        @app.get("/test")
-        def test_endpoint(user: User = Depends(get_current_user)):
-            return {
-                "user_id": user.user_id,
-                "role": user.role.value,
-                "org_id": user.org_id,
-            }
-
-        client = TestClient(app)
+        client = TestClient(test_app)
 
         # Create valid token
         token = create_test_token(
@@ -299,20 +304,9 @@ class TestJWTWithFastAPI:
         assert response.json()["role"] == "admin"
         assert response.json()["org_id"] == "api-org"
 
-    def test_get_current_user_missing_token(self, enable_jwt):
+    def test_get_current_user_missing_token(self, enable_jwt, test_app):
         """Test get_current_user rejects requests without token."""
-        from fastapi import FastAPI, Depends
-        from fastapi.testclient import TestClient
-        from backend.core.auth.deps import get_current_user
-        from backend.core.auth.models import User
-
-        app = FastAPI()
-
-        @app.get("/test")
-        def test_endpoint(user: User = Depends(get_current_user)):
-            return {"user_id": user.user_id}
-
-        client = TestClient(app)
+        client = TestClient(test_app)
 
         # Request without token
         response = client.get("/test")
@@ -320,20 +314,9 @@ class TestJWTWithFastAPI:
         assert response.status_code == 401
         assert "Authorization" in response.json()["detail"]
 
-    def test_get_current_user_invalid_token(self, enable_jwt):
+    def test_get_current_user_invalid_token(self, enable_jwt, test_app):
         """Test get_current_user rejects invalid tokens."""
-        from fastapi import FastAPI, Depends
-        from fastapi.testclient import TestClient
-        from backend.core.auth.deps import get_current_user
-        from backend.core.auth.models import User
-
-        app = FastAPI()
-
-        @app.get("/test")
-        def test_endpoint(user: User = Depends(get_current_user)):
-            return {"user_id": user.user_id}
-
-        client = TestClient(app)
+        client = TestClient(test_app)
 
         # Request with malformed token
         response = client.get(

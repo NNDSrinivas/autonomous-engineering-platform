@@ -38,6 +38,7 @@ def get_current_user(
         )
 
     email = os.getenv("DEV_USER_EMAIL")
+    display_name = os.getenv("DEV_USER_DISPLAY_NAME")
 
     # Role: read from DEV_USER_ROLE env, default to viewer (secure-by-default)
     role_str = os.getenv("DEV_USER_ROLE", "viewer").lower()
@@ -61,6 +62,7 @@ def get_current_user(
     return User(
         user_id=user_id,
         email=email,
+        display_name=display_name,
         role=role,
         org_id=org_id,
         projects=projects,

@@ -58,6 +58,7 @@ class User(BaseModel):
 
     user_id: str = Field(..., description="Unique user identifier")
     email: Optional[str] = Field(None, description="User email address")
+    display_name: Optional[str] = Field(None, description="User display name")
     role: Role = Field(
         default=Role.VIEWER, description="User role (viewer, planner, admin)"
     )

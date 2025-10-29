@@ -57,7 +57,7 @@ def create_test_token(
     role: str = "planner",
     email: str = "test@example.com",
     name: str = "Test User",
-    projects: list = None,
+    projects: list | None = None,
     exp_delta: timedelta = timedelta(hours=1),
     **extra_claims,
 ) -> str:

@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"  # Algorithm for JWT signature verification
     JWT_AUDIENCE: str | None = None  # Expected 'aud' claim (optional)
     JWT_ISSUER: str | None = None  # Expected 'iss' claim (optional)
-    JWT_EXPIRATION_SECONDS: int = 3600  # Token expiration time (1 hour default)
+    JWT_EXPIRATION_SECONDS: int = (
+        3600  # Reference value for external auth services generating JWTs; not used for verification (which relies on the 'exp' claim in the token)
+    )
 
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # Note: To avoid loading .env during tests, override settings in pytest fixtures

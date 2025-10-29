@@ -139,20 +139,52 @@ The platform enforces role-based access on all Live Plan APIs:
 | **planner** | All viewer permissions + create plans, add steps, publish changes, archive plans |
 | **admin** | All planner permissions + manage users, settings, and configurations |
 
-#### **Development Authentication (Phase 1)**
+#### **Authentication Modes**
 
-For local development and CI, use environment variables to simulate authenticated user context:
+The platform supports two authentication modes:
+
+**1. JWT Mode (Production)** - Token-based authentication with JWT verification
+
+Set `JWT_ENABLED=true` in your `.env` file and configure JWT settings:
 
 ```bash
 # .env
+JWT_ENABLED=true
+JWT_SECRET=your-secret-key-256-bits-minimum
+JWT_ALGORITHM=HS256  # or RS256 for asymmetric
+JWT_AUDIENCE=api.yourcompany.com  # optional
+JWT_ISSUER=auth.yourcompany.com   # optional
+```
+
+All API requests must include a valid JWT token in the Authorization header:
+
+```bash
+curl -H "Authorization: Bearer eyJhbGc..." https://api.example.com/api/plan/p123
+```
+
+**Expected JWT Claims:**
+- `sub` (required): user ID
+- `org_id` (required): organization ID  
+- `role` (defaults to viewer): `viewer`, `planner`, or `admin`
+- `email` (optional): user's email address
+- `name` (optional): display name
+- `projects` (optional): array of accessible project IDs
+
+**2. Development Mode (Local)** - Environment variable-based auth shim
+
+Set `JWT_ENABLED=false` (default) and use DEV_* environment variables:
+
+```bash
+# .env
+JWT_ENABLED=false  # Default for local development
 DEV_USER_ID=u-123
 DEV_USER_EMAIL=dev@navralabs.io
 DEV_ORG_ID=org-1
 DEV_USER_ROLE=planner  # Options: viewer, planner, admin (default: viewer)
-DEV_PROJECTS=aep
-\`\`\`
+DEV_PROJECTS=aep       # Comma-separated project IDs
+```
 
-**Phase 2 (Roadmap)**: Replace DEV_* shims with JWT/SSO authentication parsing real user claims from Authorization header.
+> **Note**: Development mode is for local testing only. Always use JWT mode in production environments.
 
 ### **Policy Guardrails**
 

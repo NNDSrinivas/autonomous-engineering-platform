@@ -13,6 +13,10 @@ from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Valid role values from Role enum - computed once at module load for performance
+# Note: If Role enum is modified, the module must be reloaded for changes to take effect
+_VALID_ROLES = frozenset(r.value for r in Role)
+
 
 class JWTVerificationError(Exception):
     """Raised when JWT token verification fails."""
@@ -89,14 +93,13 @@ def extract_user_claims(payload: dict) -> dict:
         raise JWTVerificationError("Missing required claim: 'org_id'")
 
     # Role validation with appropriate logging
-    valid_roles = {r.value for r in Role}
     if "role" not in payload:
         role = "viewer"  # Default to viewer for security; missing role is expected
     else:
         role = payload.get("role")
-        if role not in valid_roles:
+        if role not in _VALID_ROLES:
             logger.error(
-                f"Invalid role '{role}' in JWT (valid: {valid_roles}), defaulting to 'viewer'"
+                f"Invalid role '{role}' in JWT (valid: {_VALID_ROLES}), defaulting to 'viewer'"
             )
             role = "viewer"
 

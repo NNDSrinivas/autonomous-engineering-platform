@@ -56,10 +56,12 @@ def decode_jwt(token: str) -> dict:
     except ExpiredSignatureError:
         raise JWTVerificationError("Token has expired")
     except JWTClaimsError as e:
-        raise JWTVerificationError(f"Invalid token claims: {str(e)}")
+        logger.debug(f"JWT claims validation error details: {str(e)}")
+        raise JWTVerificationError("Invalid token claims")
     except JWTError as e:
-        logger.warning(f"JWT verification failed: {str(e)}")
-        raise JWTVerificationError(f"Token verification failed: {str(e)}")
+        logger.warning("JWT verification failed")
+        logger.debug(f"JWT verification error details: {str(e)}")
+        raise JWTVerificationError("Token verification failed")
 
 
 def extract_user_claims(payload: dict) -> dict:

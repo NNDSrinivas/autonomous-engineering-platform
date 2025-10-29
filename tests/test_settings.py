@@ -27,8 +27,8 @@ except ValueError as e:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = os.environ.copy()
     env["JWT_ENABLED"] = "true"
-    env["JWT_SECRET"] = ""
     env["PYTHONPATH"] = project_root
+    # Note: subprocess code will delete JWT_SECRET if present
 
     with tempfile.TemporaryDirectory() as tmpdir:
         result = subprocess.run(
@@ -93,8 +93,8 @@ except Exception as e:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = os.environ.copy()
     env["JWT_ENABLED"] = "false"
-    env["JWT_SECRET"] = ""
     env["PYTHONPATH"] = project_root
+    # Note: subprocess code will delete JWT_SECRET if present
 
     with tempfile.TemporaryDirectory() as tmpdir:
         result = subprocess.run(

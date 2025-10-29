@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.core.auth.jwt import JWTVerificationError, verify_token
 from backend.core.auth.models import Role, User
+from backend.core.auth.utils import parse_comma_separated
 from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -95,8 +96,7 @@ def get_current_user(
         org_id = x_org_id or os.getenv("DEV_ORG_ID")
 
         # Projects: comma-separated list from env
-        projects_str = os.getenv("DEV_PROJECTS", "")
-        projects = [p.strip() for p in projects_str.split(",") if p.strip()]
+        projects = parse_comma_separated(os.getenv("DEV_PROJECTS"))
 
         return User(
             user_id=user_id,

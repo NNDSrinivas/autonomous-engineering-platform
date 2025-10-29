@@ -1,4 +1,5 @@
 import datetime as dt
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,9 +29,25 @@ from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
 from .memory import router as memory_router
 from .routers.plan import router as live_plan_router
+from .routers import presence as presence_router
+from ..core.realtime import presence as presence_lifecycle
 
 logger = setup_logging()
-app = FastAPI(title=f"{settings.app_name} - Core API")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: manage startup/shutdown of background services."""
+    # Startup: initialize background services
+    presence_lifecycle.start_cleanup_thread()
+    yield
+    # Shutdown: cleanup background services
+    presence_lifecycle.stop_cleanup_thread()
+
+
+app = FastAPI(title=f"{settings.app_name} - Core API", lifespan=lifespan)
+
+app = FastAPI(title=f"{settings.app_name} - Core API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -156,6 +173,7 @@ app.include_router(ctx_router)
 # /api/plan/start resolve before the parameterized ModelRouter endpoint
 # (which uses /api/plan/{key}). This prevents accidental route shadowing.
 app.include_router(live_plan_router)  # PR-19: Live Plan Mode
+app.include_router(presence_router.router)  # PR-22: Presence & Cursor Sync
 app.include_router(plan_router)
 
 # ---- Feature 1 endpoints (Finalize + Query) ----

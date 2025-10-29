@@ -55,12 +55,12 @@ def decode_jwt(token: str) -> dict:
 
     except ExpiredSignatureError:
         raise JWTVerificationError("Token has expired")
-    except JWTClaimsError as e:
-        logger.debug(f"JWT claims validation error details: {str(e)}")
+    except JWTClaimsError:
+        # Note: Detailed error information not logged to avoid leaking JWT validation logic
         raise JWTVerificationError("Invalid token claims")
-    except JWTError as e:
+    except JWTError:
         logger.warning("JWT verification failed")
-        logger.debug(f"JWT verification error details: {str(e)}")
+        # Note: Detailed error information not logged to avoid leaking sensitive JWT structure/config
         raise JWTVerificationError("Token verification failed")
 
 

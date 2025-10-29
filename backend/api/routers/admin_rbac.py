@@ -6,13 +6,19 @@ user management workflows.
 
 ASYNC PATTERN NOTES:
 Some endpoints (grant_role, revoke_role) are async despite using synchronous
-database operations. This is because they call invalidate_role_cache (async).
-FastAPI handles this by running sync dependencies (like get_db) in a threadpool.
+database operations. This is an intentional FastAPI pattern where:
+  - Sync dependencies (get_db) are automatically run in a threadpool
+  - Async operations (invalidate_role_cache) are awaited normally
+  - No event loop blocking occurs due to FastAPI's automatic handling
 
-Known limitation: This pattern is FastAPI-specific. For production use in other
-async frameworks, consider either:
+This pattern is SAFE and RECOMMENDED in FastAPI but is framework-specific.
+For migration to other async frameworks, consider:
 1. Using fully async database operations (e.g., SQLAlchemy async sessions), or
 2. Running cache invalidation with asyncio.create_task() to avoid blocking.
+
+References:
+- https://fastapi.tiangolo.com/async/#very-technical-details
+- https://fastapi.tiangolo.com/tutorial/dependencies/#dependencies-with-yield
 """
 
 from typing import Literal, Optional

@@ -4,12 +4,6 @@ Optional Redis cache utility with in-memory fallback.
 Provides simple key-value caching for role resolution and other
 frequently-accessed data. Falls back to in-process dict if Redis
 is not configured or unavailable.
-
-NOTE: This module currently uses the deprecated aioredis library.
-For future migration to redis.asyncio, note that connection parameters
-differ: socket_timeout and socket_connect_timeout should be passed via
-connection pool config or Redis() constructor rather than from_url().
-Example: redis.asyncio.from_url(url, socket_connect_timeout=5)
 """
 
 import json
@@ -18,12 +12,12 @@ import time
 from typing import Any, Optional
 
 try:
-    import aioredis  # type: ignore
+    from redis import asyncio as aioredis
 
-    HAS_AIOREDIS = True
+    HAS_REDIS = True
 except ImportError:
     aioredis = None
-    HAS_AIOREDIS = False
+    HAS_REDIS = False
 
 REDIS_URL = os.getenv("REDIS_URL")
 
@@ -38,7 +32,7 @@ class Cache:
 
     def __init__(self) -> None:
         self._mem: dict[str, tuple[int, str]] = {}
-        # Redis client instance (aioredis.Redis) or None if not configured
+        # Redis client instance (redis.asyncio.Redis) or None if not configured
         self._r: Optional[Any] = None
 
     async def _ensure(self) -> Optional[Any]:
@@ -48,7 +42,7 @@ class Cache:
         Returns:
             Redis client instance if successfully connected, None otherwise.
         """
-        if not REDIS_URL or not HAS_AIOREDIS:
+        if not REDIS_URL or not HAS_REDIS:
             return None
         if self._r is None:
             try:
@@ -56,8 +50,8 @@ class Cache:
                     REDIS_URL,
                     encoding="utf-8",
                     decode_responses=True,
-                    socket_timeout=5,
-                    socket_connect_timeout=5,
+                    socket_connect_timeout=5.0,
+                    socket_timeout=5.0,
                     max_connections=50,
                 )
             except Exception:

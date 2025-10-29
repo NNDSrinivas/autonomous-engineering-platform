@@ -286,8 +286,12 @@ async def grant_role(
 
     Note: This function is async because it calls invalidate_role_cache (async),
     even though database operations are synchronous. FastAPI handles this correctly
-    by running sync dependencies (like get_db) in a threadpool. This pattern may not
-    be portable to other async frameworks without similar threadpool handling.
+    by running sync dependencies (like get_db) in a threadpool.
+
+    Known limitation: This pattern is FastAPI-specific and not portable to other
+    async frameworks. For production use in other frameworks, consider either:
+    1. Using fully async database operations (e.g., SQLAlchemy async sessions), or
+    2. Running cache invalidation with asyncio.create_task() to avoid blocking.
 
     Requires admin role.
 
@@ -353,8 +357,12 @@ async def revoke_role(
 
     Note: This function is async because it calls invalidate_role_cache (async),
     even though database operations are synchronous. FastAPI handles this correctly
-    by running sync dependencies (like get_db) in a threadpool. This pattern may not
-    be portable to other async frameworks without similar threadpool handling.
+    by running sync dependencies (like get_db) in a threadpool.
+
+    Known limitation: This pattern is FastAPI-specific and not portable to other
+    async frameworks. For production use in other frameworks, consider either:
+    1. Using fully async database operations (e.g., SQLAlchemy async sessions), or
+    2. Running cache invalidation with asyncio.create_task() to avoid blocking.
 
     Requires admin role.
 

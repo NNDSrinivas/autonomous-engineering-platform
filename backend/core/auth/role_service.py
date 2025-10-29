@@ -82,16 +82,21 @@ async def resolve_effective_role(
         # Could auto-provision user here if desired
         return jwt_role
 
-    # Compute maximum role from all DB assignments
-    # Default to 'viewer' if user has no role assignments in the database.
-    # This ensures users have at least viewer access even with no explicit roles.
-    max_db_role: RoleName = "viewer"
+    # Query all DB role assignments for this user
     role_assignments = (
         session.query(DBRole.name)
         .join(UserRole, UserRole.role_id == DBRole.id)
         .filter(UserRole.user_id == user.id)
         .all()
     )
+
+    # If no DB role assignments, return JWT role directly
+    # This ensures JWT is the single source of truth when DB roles are absent
+    if not role_assignments:
+        return jwt_role
+
+    # Compute maximum role from all DB assignments
+    max_db_role: RoleName = role_assignments[0][0]
 
     for (role_name,) in role_assignments:
         # Validate role name is in our hierarchy

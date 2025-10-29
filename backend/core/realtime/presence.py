@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from backend.core.settings import settings
 
@@ -17,6 +17,8 @@ from backend.core.settings import settings
 # Current implementation is suitable for single-server or development environments.
 _presence_cache: Dict[Tuple[str, str], int] = {}
 _cache_lock = threading.Lock()
+_cleanup_thread: Optional[threading.Thread] = None
+_cleanup_stop_event = threading.Event()
 
 
 def _cleanup_presence_cache() -> None:
@@ -25,9 +27,12 @@ def _cleanup_presence_cache() -> None:
     Prevents memory leaks in long-running servers.
 
     Cleanup interval is configurable via PRESENCE_CLEANUP_INTERVAL_SEC setting.
+    Stops when _cleanup_stop_event is set.
     """
-    while True:
-        time.sleep(settings.PRESENCE_CLEANUP_INTERVAL_SEC)
+    while not _cleanup_stop_event.is_set():
+        _cleanup_stop_event.wait(timeout=settings.PRESENCE_CLEANUP_INTERVAL_SEC)
+        if _cleanup_stop_event.is_set():
+            break
         now = int(time.time())
         with _cache_lock:
             keys_to_delete = [
@@ -39,9 +44,34 @@ def _cleanup_presence_cache() -> None:
                 del _presence_cache[key]
 
 
-# Start background cleanup thread on module import
-_cleanup_thread = threading.Thread(target=_cleanup_presence_cache, daemon=True)
-_cleanup_thread.start()
+def start_cleanup_thread() -> None:
+    """
+    Start the background cleanup thread.
+
+    Safe to call multiple times - will not create duplicate threads.
+    Called automatically from application startup (see backend/api/main.py).
+    """
+    global _cleanup_thread
+    with _cache_lock:
+        if _cleanup_thread is None or not _cleanup_thread.is_alive():
+            _cleanup_stop_event.clear()
+            _cleanup_thread = threading.Thread(
+                target=_cleanup_presence_cache, daemon=True, name="presence-cleanup"
+            )
+            _cleanup_thread.start()
+
+
+def stop_cleanup_thread() -> None:
+    """
+    Stop the background cleanup thread gracefully.
+
+    Called during application shutdown or in tests for cleanup.
+    """
+    global _cleanup_thread
+    if _cleanup_thread is not None and _cleanup_thread.is_alive():
+        _cleanup_stop_event.set()
+        _cleanup_thread.join(timeout=2.0)
+        _cleanup_thread = None
 
 
 def presence_channel(plan_id: str) -> str:

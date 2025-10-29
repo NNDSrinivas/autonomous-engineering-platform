@@ -95,7 +95,7 @@ def presence_channel(plan_id: str) -> str:
     Format: presence:plan:{plan_id}
     Note: `PLAN_CHANNEL_PREFIX` is defined in settings and already includes the
     trailing colon (for example "plan:"). This function simply prepends the
-    namespace and appends the plan id. Example: presence_channel("pz1") ->
+    namespace and appends the plan ID. Example: presence_channel("pz1") ->
     "presence:plan:pz1"
     """
     return f"presence:{settings.PLAN_CHANNEL_PREFIX}{plan_id}"
@@ -108,7 +108,7 @@ def cursor_channel(plan_id: str) -> str:
     Format: cursor:plan:{plan_id}
     Note: `PLAN_CHANNEL_PREFIX` is defined in settings and already includes the
     trailing colon (for example "plan:"). This function simply prepends the
-    namespace and appends the plan id. Example: cursor_channel("pz1") ->
+    namespace and appends the plan ID. Example: cursor_channel("pz1") ->
     "cursor:plan:pz1"
     """
     return f"cursor:{settings.PLAN_CHANNEL_PREFIX}{plan_id}"

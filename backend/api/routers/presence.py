@@ -156,6 +156,8 @@ async def cursor_update(
             detail="Plan ID mismatch between path and body",
         )
 
+    # Use Pydantic v2 model_copy to override ts with server timestamp
+    # This ensures server-controlled timestamp regardless of client value
     payload = body.model_copy(update={"ts": int(time.time())})
     await bc.publish(cursor_channel(plan_id), payload.model_dump_json())
     return {"ok": True}

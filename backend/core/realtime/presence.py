@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Dict, Optional, Tuple
 
 from backend.core.settings import settings
+
+logger = logging.getLogger(__name__)
 
 # In-process cache for quick TTL checks (authoritative broadcast is Redis)
 # key = (plan_id, user_id) -> last heartbeat ts
@@ -66,21 +69,39 @@ def stop_cleanup_thread() -> None:
     Stop the background cleanup thread gracefully.
 
     Called during application shutdown or in tests for cleanup.
+    Logs a warning if the thread doesn't terminate within timeout.
     """
     global _cleanup_thread
     if _cleanup_thread is not None and _cleanup_thread.is_alive():
         _cleanup_stop_event.set()
         _cleanup_thread.join(timeout=2.0)
+        if _cleanup_thread.is_alive():
+            logger.warning(
+                "Presence cleanup thread did not terminate within 2s timeout. "
+                "Thread will continue running as daemon and be terminated on process exit."
+            )
         _cleanup_thread = None
 
 
 def presence_channel(plan_id: str) -> str:
-    """Get Redis channel name for presence events."""
+    """
+    Get Redis channel name for presence events.
+
+    Format: presence:plan:{plan_id}
+    PLAN_CHANNEL_PREFIX="plan:" is intentionally included with trailing colon.
+    Example: presence_channel("pz1") -> "presence:plan:pz1"
+    """
     return f"presence:{settings.PLAN_CHANNEL_PREFIX}{plan_id}"
 
 
 def cursor_channel(plan_id: str) -> str:
-    """Get Redis channel name for cursor events."""
+    """
+    Get Redis channel name for cursor events.
+
+    Format: cursor:plan:{plan_id}
+    PLAN_CHANNEL_PREFIX="plan:" is intentionally included with trailing colon.
+    Example: cursor_channel("pz1") -> "cursor:plan:pz1"
+    """
     return f"cursor:{settings.PLAN_CHANNEL_PREFIX}{plan_id}"
 
 

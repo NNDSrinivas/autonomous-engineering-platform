@@ -86,7 +86,23 @@ def create_test_token(
     exp_delta: timedelta = timedelta(hours=1),
     **extra_claims,
 ) -> str:
-    """Helper to create test JWT tokens."""
+    """
+    Create a JWT token for testing purposes with customizable claims.
+
+    Args:
+        jwt_secret: The secret key used to sign the JWT
+        user_id: The user ID to include in the 'sub' claim. Defaults to "test-user-123"
+        org_id: The organization ID to include in the 'org_id' claim. Defaults to "org-abc"
+        role: The user role to include in the 'role' claim. Defaults to "planner"
+        email: The user's email address. Defaults to "test@example.com"
+        name: The user's name. Defaults to "Test User"
+        projects: List of project IDs. Defaults to ["proj1", "proj2"] if None
+        exp_delta: Time delta for the token's expiration. Defaults to 1 hour
+        **extra_claims: Additional claims to include in the JWT payload (e.g., aud, iss)
+
+    Returns:
+        The encoded JWT token as a string
+    """
     if projects is None:
         projects = ["proj1", "proj2"]
 

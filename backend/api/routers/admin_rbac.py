@@ -206,7 +206,8 @@ def upsert_user(
             status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found"
         )
 
-    user = db.query(DBUser).filter_by(sub=body.sub, org_id=org.id).one_or_none()
+    # Query by sub only since it's unique across all organizations
+    user = db.query(DBUser).filter_by(sub=body.sub).one_or_none()
     if not user:
         user = DBUser(
             sub=body.sub,

@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 # Rate-limited logging to avoid log spam in non-multi-tenant deployments
 _log_timestamps: dict[str, float] = {}
 _log_lock = threading.Lock()
-_LOG_THROTTLE_SECONDS = 300  # Log each unique message at most once per 5 minutes
+# Configurable throttle period: default 5 minutes, override via LOG_THROTTLE_SECONDS env var
+_LOG_THROTTLE_SECONDS = int(os.getenv("LOG_THROTTLE_SECONDS", "300"))
 
 # HTTP Bearer token scheme for JWT authentication
 security = HTTPBearer(auto_error=False)
@@ -163,9 +164,13 @@ def require_role(minimum_role: Role):
         """
         Validate user has required role by resolving effective role from JWT + DB.
 
-        Note: This async function uses a synchronous SQLAlchemy Session (db).
-        FastAPI automatically runs sync dependencies in a threadpool, so this
-        pattern is safe and doesn't block the event loop.
+        This function is async despite using a synchronous SQLAlchemy Session.
+        This is a FastAPI best practice where:
+        - Sync dependencies (get_db) are automatically run in a threadpool
+        - Async operations (resolve_effective_role) are awaited normally
+        - No event loop blocking occurs due to FastAPI's automatic handling
+
+        See: https://fastapi.tiangolo.com/async/#very-technical-details
         """
         # Import here to avoid circular dependency
         from sqlalchemy.exc import OperationalError, SQLAlchemyError

@@ -67,7 +67,10 @@ async def resolve_effective_role(
     # Check cache first
     cached = await cache.get_json(cache_key)
     if cached:
-        return _max_role(jwt_role, cached["role"])  # type: ignore
+        cached_role = cached.get("role")
+        if cached_role and cached_role in ROLE_RANK:
+            return _max_role(jwt_role, cached_role)
+        # Cache corrupted or invalid - fall through to DB lookup
 
     # Look up organization
     org = session.query(Organization).filter_by(org_key=org_key).one_or_none()
@@ -100,12 +103,13 @@ async def resolve_effective_role(
     max_db_role: Optional[RoleName] = None
 
     for (role_name,) in role_assignments:
-        # Validate role name is in our hierarchy
+        # Validate role name is in our hierarchy and cast to RoleName type
         if role_name in ROLE_RANK:
+            validated_role = role_name  # Database guarantees this is a valid RoleName
             if max_db_role is None:
-                max_db_role = role_name  # type: ignore
+                max_db_role = validated_role
             else:
-                max_db_role = _max_role(max_db_role, role_name)  # type: ignore
+                max_db_role = _max_role(max_db_role, validated_role)
 
     # If no valid roles found in DB, fallback to JWT role
     if max_db_role is None:

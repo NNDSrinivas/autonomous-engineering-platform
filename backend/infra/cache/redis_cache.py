@@ -16,7 +16,7 @@ try:
 
     HAS_REDIS = True
 except ImportError:
-    aioredis = None
+    aioredis: Optional[Any] = None
     HAS_REDIS = False
 
 REDIS_URL = os.getenv("REDIS_URL")

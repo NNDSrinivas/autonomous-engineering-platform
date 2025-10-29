@@ -248,7 +248,8 @@ def get_user(
     user = db.query(DBUser).filter_by(sub=sub, org_id=org.id).one_or_none()
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found in organization"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in organization",
         )
 
     # Fetch all role assignments
@@ -327,9 +328,7 @@ async def grant_role(
         return RoleGrantResponse(ok=True, granted=False)
 
     # Create new role assignment
-    db.add(
-        UserRole(user_id=user.id, role_id=role.id, project_key=body.project_key)
-    )
+    db.add(UserRole(user_id=user.id, role_id=role.id, project_key=body.project_key))
     db.commit()
 
     # Invalidate cache for this user

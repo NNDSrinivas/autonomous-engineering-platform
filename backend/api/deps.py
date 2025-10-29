@@ -14,7 +14,7 @@ from backend.core.settings import settings
 # Re-export database session dependency for convenience
 from backend.database.session import get_db  # noqa: F401
 
-__all__ = ["get_broadcast", "get_db"]
+__all__ = ["get_broadcaster", "get_db"]
 
 logger = logging.getLogger(__name__)
 

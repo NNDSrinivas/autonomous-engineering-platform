@@ -42,6 +42,8 @@ async def presence_join(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot join as a different user",
         )
+    # Validate org consistency between body and header
+    # Note: user.org_id is derived from X-Org-Id header in dev mode
     if body.org_id != x_org_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -77,6 +79,8 @@ async def presence_heartbeat(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot send heartbeat as a different user",
         )
+    # Validate org consistency between body and header
+    # Note: user.org_id is derived from X-Org-Id header in dev mode
     if body.org_id != x_org_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -111,6 +115,8 @@ async def presence_leave(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot leave as a different user",
         )
+    # Validate org consistency between body and header
+    # Note: user.org_id is derived from X-Org-Id header in dev mode
     if body.org_id != x_org_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -144,6 +150,8 @@ async def cursor_update(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot send cursor update as a different user",
         )
+    # Validate org consistency between body and header
+    # Note: user.org_id is derived from X-Org-Id header in dev mode
     if body.org_id != x_org_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

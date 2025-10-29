@@ -137,6 +137,8 @@ def require_role(minimum_role: Role):
         db: Session = Depends(_get_db_for_auth),
     ) -> User:
         # Import here to avoid circular dependency
+        from sqlalchemy.exc import OperationalError, SQLAlchemyError
+
         from backend.core.auth.role_service import resolve_effective_role
 
         try:
@@ -181,7 +183,7 @@ def require_role(minimum_role: Role):
             user.role = effective_role
             return user
 
-        except Exception as e:
+        except (OperationalError, SQLAlchemyError) as e:
             # If role resolution fails (e.g., DB not available, tables don't exist),
             # fall back to JWT-only authorization for backward compatibility
             logger.debug(f"Role resolution failed, using JWT-only auth: {e}")
@@ -204,6 +206,6 @@ def _get_db_for_auth():
     """
     from backend.database.session import get_db
 
-    # The lazy import above (line 205) avoids circular dependencies.
+    # The lazy import above avoids circular dependencies.
     # We use 'yield from' to forward the generator.
     yield from get_db()

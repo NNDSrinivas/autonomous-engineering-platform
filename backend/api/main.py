@@ -1,4 +1,5 @@
 import datetime as dt
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +33,21 @@ from .routers import presence as presence_router
 from ..core.realtime import presence as presence_lifecycle
 
 logger = setup_logging()
-app = FastAPI(title=f"{settings.app_name} - Core API")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: manage startup/shutdown of background services."""
+    # Startup: initialize background services
+    presence_lifecycle.start_cleanup_thread()
+    yield
+    # Shutdown: cleanup background services
+    presence_lifecycle.stop_cleanup_thread()
+
+
+app = FastAPI(title=f"{settings.app_name} - Core API", lifespan=lifespan)
+
+app = FastAPI(title=f"{settings.app_name} - Core API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,18 +59,6 @@ app.add_middleware(
 app.add_middleware(RequestIDMiddleware, service_name="core")
 app.add_middleware(RateLimitMiddleware, service_name="core", rpm=60)
 app.add_middleware(AuditMiddleware, service_name="core")
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Application startup: initialize background services."""
-    presence_lifecycle.start_cleanup_thread()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Application shutdown: cleanup background services."""
-    presence_lifecycle.stop_cleanup_thread()
 
 
 @app.get("/health")

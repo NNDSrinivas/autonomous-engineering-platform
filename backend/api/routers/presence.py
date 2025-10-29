@@ -75,7 +75,7 @@ async def presence_heartbeat(
     if body.user_id != user.user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot send heartbeat for a different user",
+            detail="Cannot send heartbeat as a different user",
         )
     if body.org_id != x_org_id:
         raise HTTPException(
@@ -142,7 +142,7 @@ async def cursor_update(
     if body.user_id != user.user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot send cursor update for a different user",
+            detail="Cannot send cursor update as a different user",
         )
     if body.org_id != x_org_id:
         raise HTTPException(

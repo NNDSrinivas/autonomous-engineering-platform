@@ -1,7 +1,6 @@
 """JWT token verification and claims extraction."""
 
 import logging
-from typing import Dict
 
 from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError, JWTClaimsError
@@ -15,7 +14,7 @@ class JWTVerificationError(Exception):
     """Raised when JWT token verification fails."""
 
 
-def decode_jwt(token: str) -> Dict:
+def decode_jwt(token: str) -> dict:
     """
     Decode and verify JWT token.
 
@@ -55,7 +54,7 @@ def decode_jwt(token: str) -> Dict:
         raise JWTVerificationError(f"Token verification failed: {str(e)}")
 
 
-def extract_user_claims(payload: Dict) -> Dict:
+def extract_user_claims(payload: dict) -> dict:
     """
     Extract user claims from JWT payload.
 
@@ -108,7 +107,7 @@ def extract_user_claims(payload: Dict) -> Dict:
     }
 
 
-def verify_token(token: str) -> Dict:
+def verify_token(token: str) -> dict:
     """
     Verify JWT token and extract user claims.
 

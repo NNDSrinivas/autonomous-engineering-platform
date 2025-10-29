@@ -1,6 +1,5 @@
 """FastAPI dependencies for authentication and authorization."""
 
-import asyncio
 import logging
 import os
 from typing import Annotated, Optional

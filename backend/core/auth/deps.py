@@ -204,5 +204,7 @@ def _get_db_for_auth():
     """
     from backend.database.session import get_db
 
-    # get_db is a generator, so we need to properly yield from it
+    # get_db is a generator that yields a session.
+    # We use 'yield from' here to forward the generator, and this indirection
+    # is necessary to avoid circular imports between auth and database modules.
     yield from get_db()

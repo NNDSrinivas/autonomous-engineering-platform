@@ -1,7 +1,7 @@
 """RBAC models for organizations, users, and roles.
 
 Revision ID: 0015_rbac_models
-Revises: ba72f0e6da5f
+Revises: 0014_live_plan
 Create Date: 2025-10-29
 
 """

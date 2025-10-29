@@ -22,8 +22,8 @@ def parse_comma_separated(value: str | list[str] | None) -> list[str]:
         ['proj1', 'proj2', 'proj3']
         >>> parse_comma_separated("proj1,,proj2")
         ['proj1', 'proj2']
-        >>> parse_comma_separated(["proj1", "proj2"])
-        ['proj1', 'proj2']
+        >>> parse_comma_separated(["proj1", " proj2 ", "proj3"])
+        ['proj1', 'proj2', 'proj3']
         >>> parse_comma_separated(None)
         []
         >>> parse_comma_separated("")
@@ -33,7 +33,8 @@ def parse_comma_separated(value: str | list[str] | None) -> list[str]:
         return []
 
     if isinstance(value, list):
-        return value
+        # Strip whitespace from list elements for consistency
+        return [item.strip() for item in value if item.strip()]
 
     # Parse comma-separated string, filtering out empty entries
     return [item.strip() for item in value.split(",") if item.strip()]

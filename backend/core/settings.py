@@ -42,7 +42,7 @@ settings = Settings()
 # Basic runtime validation to catch obviously invalid configurations early.
 # This is intentionally done at import time because settings are loaded from
 # environment variables and we want misconfigurations to fail fast.
-if settings.HEARTBEAT_SEC >= settings.PRESENCE_TTL_SEC / 2:
+if settings.HEARTBEAT_SEC * 2 >= settings.PRESENCE_TTL_SEC:
     raise ValueError(
         f"Invalid presence timing: HEARTBEAT_SEC={settings.HEARTBEAT_SEC} must be < PRESENCE_TTL_SEC/2={settings.PRESENCE_TTL_SEC/2}"
     )

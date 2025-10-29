@@ -1,4 +1,4 @@
-"""rbac models for orgs users roles
+"""RBAC models for organizations, users, and roles.
 
 Revision ID: 0015_rbac_models
 Revises: ba72f0e6da5f

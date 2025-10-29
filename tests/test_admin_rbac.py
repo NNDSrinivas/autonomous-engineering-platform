@@ -18,7 +18,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.api.main import app
-from backend.core.database import Base
+from backend.core.db import Base
 from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole
 from backend.database.session import get_db
 

@@ -7,6 +7,7 @@ for synchronous database operations.
 
 from contextlib import contextmanager
 from typing import Generator
+from urllib.parse import quote_plus
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -18,7 +19,10 @@ settings = get_settings()
 database_url = settings.database_url
 if not database_url:
     # Construct from components if not explicitly set
-    database_url = f"postgresql://{settings.db_user}:{settings.db_password}@{settings.db_host}:{settings.db_port}/{settings.db_name}"
+    # URL-encode credentials to handle special characters
+    user = quote_plus(settings.db_user or "")
+    password = quote_plus(settings.db_password or "")
+    database_url = f"postgresql://{user}:{password}@{settings.db_host}:{settings.db_port}/{settings.db_name}"
 engine = create_engine(database_url, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -31,14 +35,14 @@ def db_session() -> Generator[Session, None, None]:
     Usage:
         with db_session() as session:
             user = session.query(User).filter_by(id=1).first()
-            session.commit()
+            session.commit()  # Explicit commit required
 
-    Automatically handles commit on success and rollback on error.
+    Note: Transaction management is left to the caller.
+    Automatically rolls back on exceptions.
     """
     session = SessionLocal()
     try:
         yield session
-        session.commit()
     except Exception:
         session.rollback()
         raise

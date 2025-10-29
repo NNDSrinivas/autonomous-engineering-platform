@@ -1,11 +1,13 @@
 """FastAPI dependencies for authentication and authorization."""
 
+import asyncio
 import logging
 import os
 from typing import Annotated, Optional
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
 from backend.core.auth.jwt import JWTVerificationError, verify_token
 from backend.core.auth.models import Role, User
@@ -112,6 +114,9 @@ def require_role(minimum_role: Role):
     """
     Dependency factory to enforce minimum role requirement.
 
+    Integrates with role resolution service to merge JWT roles with
+    database-assigned roles, using the maximum precedence (when RBAC tables exist).
+
     Usage:
         @router.post("/plan/{plan_id}/publish")
         async def publish(user: User = Depends(require_role(Role.PLANNER))):
@@ -125,16 +130,64 @@ def require_role(minimum_role: Role):
         FastAPI dependency that validates user role
 
     Raises:
-        HTTPException 403: If user's role is insufficient
+        HTTPException 403: If user's effective role is insufficient
     """
 
-    def role_checker(user: User = Depends(get_current_user)) -> User:
-        if user.role < minimum_role:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Requires {minimum_role.value} role or higher "
-                f"(you have {user.role.value})",
+    async def role_checker(
+        user: User = Depends(get_current_user),
+        db: Session = Depends(_get_db_for_auth),
+    ) -> User:
+        # Import here to avoid circular dependency
+        from backend.core.auth.role_service import resolve_effective_role
+
+        try:
+            # Resolve effective role (merges JWT + DB roles)
+            # Falls back to JWT role if RBAC tables don't exist or aren't populated
+            effective_role_name = await resolve_effective_role(
+                session=db,
+                sub=user.user_id,  # JWT subject
+                org_key=user.org_id or "default",  # Organization key
+                jwt_role=user.role.value,  # JWT role as baseline
             )
-        return user
+
+            # Convert resolved role name to Role enum
+            effective_role = Role(effective_role_name)
+
+            # Check if effective role meets minimum requirement
+            if effective_role < minimum_role:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Requires {minimum_role.value} role or higher "
+                    f"(you have {user.role.value} in JWT, "
+                    f"effective role: {effective_role.value})",
+                )
+
+            # Update user object with effective role for downstream use
+            user.role = effective_role
+            return user
+
+        except Exception as e:
+            # If role resolution fails (e.g., DB not available, tables don't exist),
+            # fall back to JWT-only authorization for backward compatibility
+            logger.debug(f"Role resolution failed, using JWT-only auth: {e}")
+            if user.role < minimum_role:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Requires {minimum_role.value} role or higher "
+                    f"(you have {user.role.value})",
+                )
+            return user
 
     return role_checker
+
+
+def _get_db_for_auth():
+    """
+    Database session dependency for auth checks.
+
+    Lazy import to avoid circular dependencies.
+    """
+    from backend.database.session import get_db
+
+    # get_db is a generator, so we need to properly yield from it
+    yield from get_db()

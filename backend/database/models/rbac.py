@@ -8,7 +8,7 @@ Supports both org-wide and project-scoped role grants.
 from sqlalchemy import Column, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 
-from backend.core.database import Base
+from backend.core.db import Base
 
 
 class Organization(Base):

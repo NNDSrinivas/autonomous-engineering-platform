@@ -1,10 +1,10 @@
 """JWT token verification and claims extraction."""
 
 import logging
-from datetime import datetime, timezone
 from typing import Dict
 
 from jose import JWTError, jwt
+from jose.exceptions import ExpiredSignatureError, JWTClaimsError
 
 from backend.core.settings import settings
 
@@ -37,7 +37,7 @@ def decode_jwt(token: str) -> Dict:
         raise JWTVerificationError("JWT_SECRET is required when JWT_ENABLED=true")
 
     try:
-        # Decode and verify token
+        # Decode and verify token (includes expiration check)
         payload = jwt.decode(
             token,
             settings.JWT_SECRET,
@@ -46,21 +46,11 @@ def decode_jwt(token: str) -> Dict:
             issuer=settings.JWT_ISSUER,
         )
 
-        # Verify expiration manually for better error messages
-        exp = payload.get("exp")
-        if exp:
-            exp_datetime = datetime.fromtimestamp(exp, tz=timezone.utc)
-            now = datetime.now(timezone.utc)
-            if now >= exp_datetime:
-                raise JWTVerificationError(
-                    f"Token expired at {exp_datetime.isoformat()}"
-                )
-
         return payload
 
-    except jwt.ExpiredSignatureError:
+    except ExpiredSignatureError:
         raise JWTVerificationError("Token has expired")
-    except jwt.JWTClaimsError as e:
+    except JWTClaimsError as e:
         raise JWTVerificationError(f"Invalid token claims: {str(e)}")
     except JWTError as e:
         logger.warning(f"JWT verification failed: {str(e)}")

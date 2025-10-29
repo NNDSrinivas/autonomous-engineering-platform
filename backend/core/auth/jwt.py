@@ -8,6 +8,7 @@ from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError, JWTClaimsError
 
 from backend.core.auth.models import Role
+from backend.core.auth.utils import parse_comma_separated
 from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -99,10 +100,7 @@ def extract_user_claims(payload: dict) -> dict:
     email = payload.get("email")
     # Transform JWT's 'name' claim to 'display_name' for consistency with User model
     display_name = payload.get("name")
-    projects = payload.get("projects", [])
-    if isinstance(projects, str):
-        # Support comma-separated string
-        projects = [p.strip() for p in projects.split(",") if p.strip()]
+    projects = parse_comma_separated(payload.get("projects"))
 
     return {
         "user_id": user_id,

@@ -35,6 +35,31 @@ def enable_jwt(jwt_secret, monkeypatch):
 
 
 @pytest.fixture
+def configure_jwt(jwt_secret, monkeypatch):
+    """
+    Helper fixture to configure JWT settings with custom values.
+
+    Usage:
+        configure_jwt(audience="api.example.com")
+        configure_jwt(issuer="auth.example.com")
+    """
+
+    def _configure(
+        enabled: bool = True,
+        secret: str | None = None,
+        audience: str | None = None,
+        issuer: str | None = None,
+    ):
+        monkeypatch.setattr(settings, "JWT_ENABLED", enabled)
+        monkeypatch.setattr(settings, "JWT_SECRET", secret or jwt_secret)
+        monkeypatch.setattr(settings, "JWT_ALGORITHM", "HS256")
+        monkeypatch.setattr(settings, "JWT_AUDIENCE", audience)
+        monkeypatch.setattr(settings, "JWT_ISSUER", issuer)
+
+    return _configure
+
+
+@pytest.fixture
 def test_app():
     """Create a FastAPI test app with authentication endpoint."""
     app = FastAPI()
@@ -127,11 +152,9 @@ class TestDecodeJWT:
         with pytest.raises(JWTVerificationError, match="not enabled"):
             decode_jwt("any-token")
 
-    def test_decode_with_audience(self, jwt_secret, monkeypatch):
+    def test_decode_with_audience(self, jwt_secret, configure_jwt):
         """Test token verification with audience claim."""
-        monkeypatch.setattr(settings, "JWT_ENABLED", True)
-        monkeypatch.setattr(settings, "JWT_SECRET", jwt_secret)
-        monkeypatch.setattr(settings, "JWT_AUDIENCE", "api.example.com")
+        configure_jwt(audience="api.example.com")
 
         # Token with correct audience
         token = create_test_token(jwt_secret, aud="api.example.com")
@@ -143,11 +166,9 @@ class TestDecodeJWT:
         with pytest.raises(JWTVerificationError, match="claims"):
             decode_jwt(wrong_token)
 
-    def test_decode_with_issuer(self, jwt_secret, monkeypatch):
+    def test_decode_with_issuer(self, jwt_secret, configure_jwt):
         """Test token verification with issuer claim."""
-        monkeypatch.setattr(settings, "JWT_ENABLED", True)
-        monkeypatch.setattr(settings, "JWT_SECRET", jwt_secret)
-        monkeypatch.setattr(settings, "JWT_ISSUER", "auth.example.com")
+        configure_jwt(issuer="auth.example.com")
 
         # Token with correct issuer
         token = create_test_token(jwt_secret, iss="auth.example.com")

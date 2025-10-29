@@ -60,11 +60,11 @@ def get_current_user(
                 projects=claims.get("projects", []),
             )
 
-        except JWTVerificationError as e:
-            logger.warning(f"JWT verification failed: {str(e)}")
+        except JWTVerificationError:
+            logger.warning("JWT verification failed due to invalid or expired token")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Invalid or expired token: {str(e)}",
+                detail="Invalid or expired token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 

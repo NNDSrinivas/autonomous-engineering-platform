@@ -90,20 +90,20 @@ def create_test_token(
     Create a JWT token for testing purposes with customizable claims.
 
     Args:
-        jwt_secret: The secret key used to sign the JWT
-        user_id: The user ID to include in the 'sub' claim. Defaults to "test-user-123"
-        org_id: The organization ID to include in the 'org_id' claim. Defaults to "org-abc"
-        role: The user role to include in the 'role' claim. Defaults to "planner"
-        email: The user's email address. Defaults to "test@example.com"
-        name: The user's name. Defaults to "Test User"
-        projects: List of project IDs. Defaults to ["proj1", "proj2"] if None
+        jwt_secret: The secret key used to sign the JWT.
+        user_id: The user ID to include in the 'sub' claim. Defaults to "test-user-123".
+        org_id: The organization ID to include in the 'org_id' claim. Defaults to "org-abc".
+        role: The user role to include in the 'role' claim. Defaults to "planner".
+        email: The user's email address. Defaults to "test@example.com".
+        name: The user's name. Defaults to "Test User".
+        projects: List of project IDs. Defaults to ["proj1", "proj2"] if None.
         exp_delta: Time delta for the token's expiration. Defaults to 1 hour.
             Use negative values (e.g., timedelta(seconds=-10)) to create expired tokens
             for testing expiration handling.
-        **extra_claims: Additional claims to include in the JWT payload (e.g., aud, iss)
+        **extra_claims: Additional claims to include in the JWT payload (e.g., aud, iss).
 
     Returns:
-        The encoded JWT token as a string
+        The encoded JWT token as a string.
     """
     if projects is None:
         projects = ["proj1", "proj2"]

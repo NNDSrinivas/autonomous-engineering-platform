@@ -3,6 +3,16 @@ Admin RBAC endpoints for managing organizations, users, and role assignments.
 
 All endpoints require admin role and are intended for administrative
 user management workflows.
+
+ASYNC PATTERN NOTES:
+Some endpoints (grant_role, revoke_role) are async despite using synchronous
+database operations. This is because they call invalidate_role_cache (async).
+FastAPI handles this by running sync dependencies (like get_db) in a threadpool.
+
+Known limitation: This pattern is FastAPI-specific. For production use in other
+async frameworks, consider either:
+1. Using fully async database operations (e.g., SQLAlchemy async sessions), or
+2. Running cache invalidation with asyncio.create_task() to avoid blocking.
 """
 
 from typing import Literal, Optional
@@ -284,15 +294,6 @@ async def grant_role(
     """
     Grant a role to a user (org-wide or project-scoped).
 
-    Note: This function is async because it calls invalidate_role_cache (async),
-    even though database operations are synchronous. FastAPI handles this correctly
-    by running sync dependencies (like get_db) in a threadpool.
-
-    Known limitation: This pattern is FastAPI-specific and not portable to other
-    async frameworks. For production use in other frameworks, consider either:
-    1. Using fully async database operations (e.g., SQLAlchemy async sessions), or
-    2. Running cache invalidation with asyncio.create_task() to avoid blocking.
-
     Requires admin role.
 
     Args:
@@ -354,15 +355,6 @@ async def revoke_role(
 ):
     """
     Revoke a role from a user.
-
-    Note: This function is async because it calls invalidate_role_cache (async),
-    even though database operations are synchronous. FastAPI handles this correctly
-    by running sync dependencies (like get_db) in a threadpool.
-
-    Known limitation: This pattern is FastAPI-specific and not portable to other
-    async frameworks. For production use in other frameworks, consider either:
-    1. Using fully async database operations (e.g., SQLAlchemy async sessions), or
-    2. Running cache invalidation with asyncio.create_task() to avoid blocking.
 
     Requires admin role.
 

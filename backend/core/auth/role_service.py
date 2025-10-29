@@ -8,7 +8,7 @@ Determines effective user role by combining:
 The highest role wins: admin > planner > viewer
 """
 
-from typing import Literal
+from typing import Literal, Optional
 
 from sqlalchemy.orm import Session
 
@@ -96,12 +96,20 @@ async def resolve_effective_role(
         return jwt_role
 
     # Compute maximum role from all DB assignments
-    max_db_role: RoleName = role_assignments[0][0]
+    # Initialize with None and only set when we find a valid role
+    max_db_role: Optional[RoleName] = None
 
     for (role_name,) in role_assignments:
         # Validate role name is in our hierarchy
         if role_name in ROLE_RANK:
-            max_db_role = _max_role(max_db_role, role_name)  # type: ignore
+            if max_db_role is None:
+                max_db_role = role_name  # type: ignore
+            else:
+                max_db_role = _max_role(max_db_role, role_name)  # type: ignore
+
+    # If no valid roles found in DB, fallback to JWT role
+    if max_db_role is None:
+        return jwt_role
 
     # Cache the DB result
     await cache.set_json(cache_key, {"role": max_db_role}, ttl_sec=60)

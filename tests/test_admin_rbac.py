@@ -24,8 +24,8 @@ from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole
 from backend.database.session import get_db
 
 # Test database setup
-# Using shared memory cache to ensure all connections see the same database
-TEST_DATABASE_URL = "sqlite:///file::memory:?cache=shared&uri=true"
+# Using shared in-memory database to ensure all connections see the same database
+TEST_DATABASE_URL = "sqlite:///file:memdb1?mode=memory&cache=shared"
 
 engine = create_engine(
     TEST_DATABASE_URL, connect_args={"check_same_thread": False, "uri": True}

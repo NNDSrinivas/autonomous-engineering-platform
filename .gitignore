@@ -34,6 +34,7 @@ env/
 *.db
 *.sqlite
 *.sqlite3
+file:memdb*
 
 # Vector Store Data
 data/

@@ -14,8 +14,6 @@ logger = logging.getLogger(__name__)
 class JWTVerificationError(Exception):
     """Raised when JWT token verification fails."""
 
-    pass
-
 
 def decode_jwt(token: str) -> Dict:
     """

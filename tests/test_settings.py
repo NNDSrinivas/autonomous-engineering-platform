@@ -26,18 +26,17 @@ except ValueError as e:
     # Run in temp directory to avoid loading .env file, but keep PYTHONPATH
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = os.environ.copy()
-    env['JWT_ENABLED'] = 'true'
-    env['JWT_SECRET'] = ''
-    env['PYTHONPATH'] = project_root
-    
+    env["JWT_ENABLED"] = "true"
+    env["JWT_SECRET"] = ""
+    env["PYTHONPATH"] = project_root
+
     with tempfile.TemporaryDirectory() as tmpdir:
         result = subprocess.run(
-            [sys.executable, "-c", code], 
-            capture_output=True, 
-            cwd=tmpdir,
-            env=env
+            [sys.executable, "-c", code], capture_output=True, cwd=tmpdir, env=env
         )
-    assert result.returncode == 0, f"Expected ValueError was not raised. stderr: {result.stderr.decode()}"
+    assert (
+        result.returncode == 0
+    ), f"Expected ValueError was not raised. stderr: {result.stderr.decode()}"
 
 
 def test_jwt_enabled_with_secret_succeeds():
@@ -60,18 +59,17 @@ except Exception as e:
     # Run in temp directory to avoid loading .env file, but keep PYTHONPATH
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = os.environ.copy()
-    env['JWT_ENABLED'] = 'true'
-    env['JWT_SECRET'] = 'test-secret-key'
-    env['PYTHONPATH'] = project_root
-    
+    env["JWT_ENABLED"] = "true"
+    env["JWT_SECRET"] = "test-secret-key"
+    env["PYTHONPATH"] = project_root
+
     with tempfile.TemporaryDirectory() as tmpdir:
         result = subprocess.run(
-            [sys.executable, "-c", code], 
-            capture_output=True, 
-            cwd=tmpdir,
-            env=env
+            [sys.executable, "-c", code], capture_output=True, cwd=tmpdir, env=env
         )
-    assert result.returncode == 0, f"Settings validation failed. stderr: {result.stderr.decode()}"
+    assert (
+        result.returncode == 0
+    ), f"Settings validation failed. stderr: {result.stderr.decode()}"
 
 
 def test_jwt_disabled_without_secret_succeeds():
@@ -94,18 +92,14 @@ except Exception as e:
     # Run in temp directory to avoid loading .env file, but keep PYTHONPATH
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = os.environ.copy()
-    env['JWT_ENABLED'] = 'false'
-    env['JWT_SECRET'] = ''
-    env['PYTHONPATH'] = project_root
-    
+    env["JWT_ENABLED"] = "false"
+    env["JWT_SECRET"] = ""
+    env["PYTHONPATH"] = project_root
+
     with tempfile.TemporaryDirectory() as tmpdir:
         result = subprocess.run(
-            [sys.executable, "-c", code], 
-            capture_output=True, 
-            cwd=tmpdir,
-            env=env
+            [sys.executable, "-c", code], capture_output=True, cwd=tmpdir, env=env
         )
-    assert result.returncode == 0, f"Settings validation failed. stderr: {result.stderr.decode()}"
-
-
-
+    assert (
+        result.returncode == 0
+    ), f"Settings validation failed. stderr: {result.stderr.decode()}"

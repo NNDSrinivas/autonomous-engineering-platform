@@ -97,7 +97,9 @@ def create_test_token(
         email: The user's email address. Defaults to "test@example.com"
         name: The user's name. Defaults to "Test User"
         projects: List of project IDs. Defaults to ["proj1", "proj2"] if None
-        exp_delta: Time delta for the token's expiration. Defaults to 1 hour
+        exp_delta: Time delta for the token's expiration. Defaults to 1 hour.
+            Use negative values (e.g., timedelta(seconds=-10)) to create expired tokens
+            for testing expiration handling.
         **extra_claims: Additional claims to include in the JWT payload (e.g., aud, iss)
 
     Returns:

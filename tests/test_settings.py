@@ -11,10 +11,6 @@ def test_jwt_enabled_requires_secret():
     # Run in subprocess with a temp directory to avoid .env file loading
     code = """
 import sys
-import os
-os.environ['JWT_ENABLED'] = 'true'
-if 'JWT_SECRET' in os.environ:
-    del os.environ['JWT_SECRET']
 try:
     from backend.core.settings import settings
     sys.exit(1)  # Should not reach here
@@ -27,8 +23,8 @@ except ValueError as e:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = os.environ.copy()
     env["JWT_ENABLED"] = "true"
+    env.pop("JWT_SECRET", None)  # Ensure JWT_SECRET is not set
     env["PYTHONPATH"] = project_root
-    # Note: subprocess code will delete JWT_SECRET if present
 
     with tempfile.TemporaryDirectory() as tmpdir:
         result = subprocess.run(
@@ -44,9 +40,6 @@ def test_jwt_enabled_with_secret_succeeds():
     # Run in subprocess with a temp directory to avoid .env file loading
     code = """
 import sys
-import os
-os.environ['JWT_ENABLED'] = 'true'
-os.environ['JWT_SECRET'] = 'test-secret-key'
 try:
     from backend.core.settings import settings
     assert settings.JWT_ENABLED is True
@@ -77,10 +70,6 @@ def test_jwt_disabled_without_secret_succeeds():
     # Run in subprocess with a temp directory to avoid .env file loading
     code = """
 import sys
-import os
-os.environ['JWT_ENABLED'] = 'false'
-if 'JWT_SECRET' in os.environ:
-    del os.environ['JWT_SECRET']
 try:
     from backend.core.settings import settings
     assert settings.JWT_ENABLED is False
@@ -93,8 +82,8 @@ except Exception as e:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     env = os.environ.copy()
     env["JWT_ENABLED"] = "false"
+    env.pop("JWT_SECRET", None)  # Ensure JWT_SECRET is not set
     env["PYTHONPATH"] = project_root
-    # Note: subprocess code will delete JWT_SECRET if present
 
     with tempfile.TemporaryDirectory() as tmpdir:
         result = subprocess.run(

@@ -7,7 +7,6 @@ for synchronous database operations.
 
 from contextlib import contextmanager
 from typing import Generator
-from urllib.parse import quote_plus
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -16,14 +15,8 @@ from backend.core.config import get_settings
 
 # Initialize engine and session factory
 settings = get_settings()
-database_url = settings.database_url
-if not database_url:
-    # Construct from components if not explicitly set
-    # URL-encode credentials to handle special characters
-    user = quote_plus(settings.db_user or "")
-    password = quote_plus(settings.db_password or "")
-    database_url = f"postgresql://{user}:{password}@{settings.db_host}:{settings.db_port}/{settings.db_name}"
-engine = create_engine(database_url, echo=False)
+# Use sqlalchemy_url property which handles URL construction and encoding
+engine = create_engine(settings.sqlalchemy_url, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

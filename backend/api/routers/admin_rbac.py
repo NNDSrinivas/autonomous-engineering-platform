@@ -45,7 +45,7 @@ class UserUpsert(BaseModel):
 
     sub: str = Field(..., description="JWT subject claim (stable user ID)")
     email: str = Field(..., description="User email address")
-    display_name: Optional[str] = Field("", description="User display name")
+    display_name: Optional[str] = Field(None, description="User display name")
     org_key: str = Field(..., description="Organization key to assign user to")
 
 
@@ -195,13 +195,15 @@ def upsert_user(
         user = DBUser(
             sub=body.sub,
             email=body.email,
-            display_name=body.display_name or "",
+            display_name=body.display_name if body.display_name is not None else "",
             org_id=org.id,
         )
         db.add(user)
     else:
         user.email = body.email
-        user.display_name = body.display_name or user.display_name
+        user.display_name = (
+            body.display_name if body.display_name is not None else user.display_name
+        )
 
     db.commit()
     db.refresh(user)

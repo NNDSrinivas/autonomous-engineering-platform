@@ -14,10 +14,15 @@ logger = logging.getLogger(__name__)
 # In-process cache for quick TTL checks (authoritative broadcast is Redis)
 # key = (plan_id, user_id) -> last heartbeat ts
 #
-# LIMITATION: This cache is per-server instance. In horizontal scaling (multi-server),
-# each server maintains separate state. For production multi-server deployments,
-# consider storing presence state in Redis with SETEX for automatic TTL expiration.
-# Current implementation is suitable for single-server or development environments.
+# DESIGN TRADEOFF: Using in-memory cache instead of Redis for presence state.
+# - Pros: Fast local checks, simpler implementation, no Redis SETEX overhead
+# - Cons: State is per-server in horizontal scaling (each server has separate view)
+# - Current: Acceptable for single-server deployments and development
+# - Future: If multi-server consistency is required, migrate to Redis with SETEX for
+#   automatic TTL expiration. This would require:
+#   1. Replace _presence_cache with Redis SETEX calls
+#   2. Use Redis key expiration instead of cleanup thread
+#   3. Handle Redis connection failures gracefully
 _presence_cache: Dict[Tuple[str, str], int] = {}
 _cache_lock = threading.Lock()
 _cleanup_thread: Optional[threading.Thread] = None

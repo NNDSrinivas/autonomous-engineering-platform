@@ -92,16 +92,13 @@ def extract_user_claims(payload: dict) -> dict:
     if not org_id:
         raise JWTVerificationError("Missing required claim: 'org_id'")
 
-    # Role validation with appropriate logging
-    if "role" not in payload:
-        role = "viewer"  # Default to viewer for security; missing role is expected
-    else:
-        role = payload.get("role")
-        if role not in _VALID_ROLES:
-            logger.error(
-                f"Invalid role '{role}' in JWT (valid: {_VALID_ROLES}), defaulting to 'viewer'"
-            )
-            role = "viewer"
+    # Role validation: default to viewer if missing or invalid
+    role = payload.get("role", "viewer")
+    if role not in _VALID_ROLES:
+        logger.error(
+            f"Invalid role '{role}' in JWT (valid: {_VALID_ROLES}), defaulting to 'viewer'"
+        )
+        role = "viewer"
 
     # Optional claims
     email = payload.get("email")

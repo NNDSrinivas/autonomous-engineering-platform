@@ -18,7 +18,7 @@ depends_on = None
 
 def upgrade() -> None:
     """Create RBAC tables: organizations, roles, users, user_roles."""
-    
+
     # Organizations table
     op.create_table(
         "organizations",
@@ -43,8 +43,12 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
         sa.Column("sub", sa.String(length=128), nullable=False, unique=True),
         sa.Column("email", sa.String(length=255), nullable=False),
-        sa.Column("display_name", sa.String(length=255), nullable=False, server_default=""),
-        sa.Column("org_id", sa.Integer, sa.ForeignKey("organizations.id"), nullable=False),
+        sa.Column(
+            "display_name", sa.String(length=255), nullable=False, server_default=""
+        ),
+        sa.Column(
+            "org_id", sa.Integer, sa.ForeignKey("organizations.id"), nullable=False
+        ),
     )
     op.create_index("ix_users_sub", "users", ["sub"])
     op.create_index("ix_users_email", "users", ["email"])
@@ -56,19 +60,21 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id"), nullable=False),
         sa.Column("role_id", sa.Integer, sa.ForeignKey("roles.id"), nullable=False),
         sa.Column("project_key", sa.String(length=128), nullable=True),
-        sa.UniqueConstraint("user_id", "role_id", "project_key", name="uq_user_role_scope"),
+        sa.UniqueConstraint(
+            "user_id", "role_id", "project_key", name="uq_user_role_scope"
+        ),
     )
 
 
 def downgrade() -> None:
     """Drop RBAC tables in reverse order."""
     op.drop_table("user_roles")
-    
+
     op.drop_index("ix_users_email", table_name="users")
     op.drop_index("ix_users_sub", table_name="users")
     op.drop_table("users")
-    
+
     op.drop_table("roles")
-    
+
     op.drop_index("ix_organizations_org_key", table_name="organizations")
     op.drop_table("organizations")

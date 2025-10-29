@@ -34,8 +34,20 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
         sa.Column("name", sa.String(length=32), nullable=False, unique=True),
     )
-    # Seed standard roles
-    op.execute("INSERT INTO roles(name) VALUES ('viewer'), ('planner'), ('admin')")
+
+    # Seed standard roles using bulk_insert for database compatibility
+    roles_table = sa.table(
+        "roles",
+        sa.column("name", sa.String(length=32)),
+    )
+    op.bulk_insert(
+        roles_table,
+        [
+            {"name": "viewer"},
+            {"name": "planner"},
+            {"name": "admin"},
+        ],
+    )
 
     # Users table
     op.create_table(

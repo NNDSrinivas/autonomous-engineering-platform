@@ -2,6 +2,7 @@
 
 import logging
 import os
+import threading
 import time
 from typing import Annotated, Optional
 
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Rate-limited logging to avoid log spam in non-multi-tenant deployments
 _log_timestamps: dict[str, float] = {}
+_log_lock = threading.Lock()
 _LOG_THROTTLE_SECONDS = 300  # Log each unique message at most once per 5 minutes
 
 # HTTP Bearer token scheme for JWT authentication
@@ -29,13 +31,16 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
     Log a message at most once per _LOG_THROTTLE_SECONDS.
 
     Prevents log spam for recurring warnings in long-running applications.
+    Thread-safe via lock to prevent race conditions.
     """
     now = time.time()
-    last_logged = _log_timestamps.get(message, 0)
 
-    if now - last_logged >= _LOG_THROTTLE_SECONDS:
-        logger.log(level, message)
-        _log_timestamps[message] = now
+    with _log_lock:
+        last_logged = _log_timestamps.get(message, 0)
+
+        if now - last_logged >= _LOG_THROTTLE_SECONDS:
+            logger.log(level, message)
+            _log_timestamps[message] = now
 
 
 def get_current_user(
@@ -155,6 +160,13 @@ def require_role(minimum_role: Role):
         user: User = Depends(get_current_user),
         db: Session = Depends(_get_db_for_auth),
     ) -> User:
+        """
+        Validate user has required role by resolving effective role from JWT + DB.
+
+        Note: This async function uses a synchronous SQLAlchemy Session (db).
+        FastAPI automatically runs sync dependencies in a threadpool, so this
+        pattern is safe and doesn't block the event loop.
+        """
         # Import here to avoid circular dependency
         from sqlalchemy.exc import OperationalError, SQLAlchemyError
 

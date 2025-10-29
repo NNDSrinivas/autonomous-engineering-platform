@@ -126,3 +126,25 @@ def test_cursor_plan_id_mismatch_blocked():
     )
     assert resp.status_code == 400
     assert "plan id mismatch" in resp.json()["detail"].lower()
+
+
+def test_presence_join_header_body_org_mismatch_blocked():
+    """Test that body.org_id must match X-Org-Id header."""
+    os.environ["DEV_USER_ID"] = "u1"
+    os.environ["DEV_USER_EMAIL"] = "u1@example.com"
+    os.environ["DEV_ORG_ID"] = "o1"
+
+    # Try to join with mismatched body.org_id and X-Org-Id header
+    resp = client.post(
+        "/api/plan/pz1/presence/join",
+        headers={"X-Org-Id": "o2"},  # Header says org o2
+        json={
+            "user_id": "u1",
+            "email": "u1@example.com",
+            "org_id": "o1",  # Body says org o1 - mismatch!
+            "display_name": "U1",
+        },
+    )
+    # Should reject: body.org_id (o1) != X-Org-Id header (o2)
+    assert resp.status_code == 403
+    assert "organization" in resp.json()["detail"].lower()

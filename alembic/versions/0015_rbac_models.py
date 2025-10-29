@@ -43,9 +43,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
         sa.Column("sub", sa.String(length=128), nullable=False, unique=True),
         sa.Column("email", sa.String(length=255), nullable=False),
-        sa.Column(
-            "display_name", sa.String(length=255), nullable=False, server_default=""
-        ),
+        sa.Column("display_name", sa.String(length=255), nullable=True),
         sa.Column(
             "org_id", sa.Integer, sa.ForeignKey("organizations.id"), nullable=False
         ),

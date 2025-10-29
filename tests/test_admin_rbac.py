@@ -11,6 +11,7 @@ Tests cover:
 
 import json
 import os
+import uuid
 from typing import Generator
 
 import pytest
@@ -25,7 +26,9 @@ from backend.database.session import get_db
 
 # Test database setup
 # Using shared in-memory database to ensure all connections see the same database
-TEST_DATABASE_URL = "sqlite:///file:memdb1?mode=memory&cache=shared"
+# Unique identifier prevents cross-test contamination
+_TEST_DB_ID = uuid.uuid4().hex[:8]
+TEST_DATABASE_URL = f"sqlite:///file:memdb_rbac_{_TEST_DB_ID}?mode=memory&cache=shared"
 
 engine = create_engine(
     TEST_DATABASE_URL, connect_args={"check_same_thread": False, "uri": True}

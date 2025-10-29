@@ -284,6 +284,9 @@ async def grant_role(
     """
     Grant a role to a user (org-wide or project-scoped).
 
+    Note: This function is async because it calls invalidate_role_cache (async),
+    even though database operations are synchronous. FastAPI handles this correctly.
+
     Requires admin role.
 
     Args:
@@ -345,6 +348,9 @@ async def revoke_role(
 ):
     """
     Revoke a role from a user.
+
+    Note: This function is async because it calls invalidate_role_cache (async),
+    even though database operations are synchronous. FastAPI handles this correctly.
 
     Requires admin role.
 

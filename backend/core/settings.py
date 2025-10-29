@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     HEARTBEAT_SEC: int = 20
     PRESENCE_CLEANUP_INTERVAL_SEC: int = 60  # How often to clean expired cache entries
 
+    # JWT Authentication configuration
+    # Set JWT_ENABLED=true to require JWT tokens instead of DEV_* env variables
+    JWT_ENABLED: bool = False  # Default: use dev shim for local development
+    JWT_SECRET: str | None = None  # Required when JWT_ENABLED=true
+    JWT_ALGORITHM: str = "HS256"  # Algorithm for JWT signature verification
+    JWT_AUDIENCE: str | None = None  # Expected 'aud' claim (optional)
+    JWT_ISSUER: str | None = None  # Expected 'iss' claim (optional)
+    JWT_EXPIRATION_SECONDS: int = 3600  # Token expiration time (1 hour default)
+
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # Note: To avoid loading .env during tests, override settings in pytest fixtures
     # or set environment variables explicitly in test configuration instead of

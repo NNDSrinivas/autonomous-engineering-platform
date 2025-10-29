@@ -55,7 +55,7 @@ class UserResponse(BaseModel):
     id: int
     sub: str
     email: str
-    display_name: str
+    display_name: Optional[str]
     org_id: int
 
 
@@ -91,7 +91,7 @@ class UserDetailResponse(BaseModel):
 
     sub: str
     email: str
-    display_name: str
+    display_name: Optional[str]
     org_key: str
     roles: list[RoleAssignment]
 
@@ -195,7 +195,7 @@ def upsert_user(
         user = DBUser(
             sub=body.sub,
             email=body.email,
-            display_name=body.display_name if body.display_name is not None else "",
+            display_name=body.display_name,
             org_id=org.id,
         )
         db.add(user)

@@ -44,7 +44,7 @@ class DBUser(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     sub = Column(String(128), unique=True, index=True, nullable=False)  # JWT subject
     email = Column(String(255), index=True, nullable=False)
-    display_name = Column(String(255), nullable=False, default="")
+    display_name = Column(String(255), nullable=True, default=None)
     org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
 
     # Relationships

@@ -31,12 +31,14 @@ def db_session() -> Generator[Session, None, None]:
             session.commit()  # Explicit commit required
 
     Note: Transaction management is left to the caller.
-    Automatically rolls back on exceptions.
+    Automatically rolls back on database exceptions.
     """
+    from sqlalchemy.exc import SQLAlchemyError
+
     session = SessionLocal()
     try:
         yield session
-    except Exception:
+    except SQLAlchemyError:
         session.rollback()
         raise
     finally:

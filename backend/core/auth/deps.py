@@ -140,12 +140,28 @@ def require_role(minimum_role: Role):
         from backend.core.auth.role_service import resolve_effective_role
 
         try:
+            # Warn if org_id is missing but continue with fallback
+            if user.org_id is None:
+                logger.warning(
+                    "User org_id is None when resolving effective role. "
+                    "Falling back to JWT-only authorization. "
+                    "This may indicate a configuration issue or non-multi-tenant setup."
+                )
+                # Use JWT role only if org_id is missing
+                if user.role < minimum_role:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Requires {minimum_role.value} role or higher "
+                        f"(you have {user.role.value})",
+                    )
+                return user
+
             # Resolve effective role (merges JWT + DB roles)
             # Falls back to JWT role if RBAC tables don't exist or aren't populated
             effective_role_name = await resolve_effective_role(
                 session=db,
                 sub=user.user_id,  # JWT subject
-                org_key=user.org_id or "default",  # Organization key
+                org_key=user.org_id,  # Organization key
                 jwt_role=user.role.value,  # JWT role as baseline
             )
 

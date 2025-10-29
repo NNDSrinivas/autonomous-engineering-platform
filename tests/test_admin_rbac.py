@@ -9,6 +9,7 @@ Tests cover:
 - Cache invalidation
 """
 
+import json
 import os
 from typing import Generator
 
@@ -347,8 +348,6 @@ class TestRoleAssignments:
         db.commit()
 
         # Revoke role
-        import json
-
         response = client.request(
             method="DELETE",
             url="/api/admin/rbac/roles/revoke",

@@ -19,7 +19,7 @@ security = HTTPBearer(auto_error=False)
 
 def get_current_user(
     x_org_id: Annotated[Optional[str], Header()] = None,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> User:
     """
     Extract current user from request context.

@@ -26,7 +26,9 @@ class Organization(Base):
     name = Column(String(255), nullable=False)
 
     # Relationships
-    users = relationship("DBUser", back_populates="organization", cascade="all, delete-orphan")
+    users = relationship(
+        "DBUser", back_populates="organization", cascade="all, delete-orphan"
+    )
 
 
 class DBUser(Base):
@@ -47,7 +49,9 @@ class DBUser(Base):
 
     # Relationships
     organization = relationship("Organization", back_populates="users")
-    roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
+    roles = relationship(
+        "UserRole", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class DBRole(Base):
@@ -83,5 +87,7 @@ class UserRole(Base):
     role = relationship("DBRole")
 
     __table_args__ = (
-        UniqueConstraint("user_id", "role_id", "project_key", name="uq_user_role_scope"),
+        UniqueConstraint(
+            "user_id", "role_id", "project_key", name="uq_user_role_scope"
+        ),
     )

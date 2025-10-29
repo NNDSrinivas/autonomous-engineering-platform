@@ -13,6 +13,7 @@ from typing import Any, Optional
 
 try:
     import aioredis  # type: ignore
+
     HAS_AIOREDIS = True
 except ImportError:
     aioredis = None

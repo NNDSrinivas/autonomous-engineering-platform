@@ -16,7 +16,7 @@ import time
 from typing import cast
 
 import backend.core.auth.deps as deps
-from backend.core.auth.role_service import ROLE_RANK, RoleName
+from backend.core.auth.role_service import ROLE_RANK, RoleName, _max_role
 from backend.infra.cache.redis_cache import cache
 
 
@@ -38,6 +38,54 @@ def test_role_validation():
 
     assert len(valid_roles) == 3, f"Expected 3 valid roles, got {len(valid_roles)}"
     print(f"✓ Role validation test passed - {len(valid_roles)} valid roles found\n")
+
+
+def test_role_service_implementation():
+    """Test the actual role service _max_role function and cast usage."""
+    print("=== Testing Role Service Implementation ===")
+
+    # Test role ranking with cast() for type safety (this is what we fixed)
+    test_cases = [
+        {
+            "role_a": "admin",
+            "role_b": "viewer",
+            "expected": "admin",
+            "description": "admin overrides viewer",
+        },
+        {
+            "role_a": "viewer",
+            "role_b": "planner",
+            "expected": "planner",
+            "description": "planner overrides viewer",
+        },
+        {
+            "role_a": "planner",
+            "role_b": "admin",
+            "expected": "admin",
+            "description": "admin overrides planner",
+        },
+        {
+            "role_a": "viewer",
+            "role_b": "viewer",
+            "expected": "viewer",
+            "description": "same roles return same role",
+        },
+    ]
+
+    for case in test_cases:
+        # Cast the roles to ensure type safety (this is the cast() fix we implemented)
+        role_a = cast(RoleName, case["role_a"])
+        role_b = cast(RoleName, case["role_b"])
+        expected = cast(RoleName, case["expected"])
+
+        result = _max_role(role_a, role_b)
+
+        assert (
+            result == expected
+        ), f"Expected {expected}, got {result} for: {case['description']}"
+        print(f"✓ {case['description']}: {result}")
+
+    print("✓ Role service implementation test passed\n")
 
 
 async def test_cache_thread_safety():
@@ -147,6 +195,7 @@ async def main():
     print("Running Copilot fixes verification...\n")
 
     test_role_validation()
+    test_role_service_implementation()
     await test_cache_thread_safety()
     test_error_handling()
     test_log_throttling_cleanup()

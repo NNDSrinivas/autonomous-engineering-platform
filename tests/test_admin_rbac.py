@@ -32,7 +32,7 @@ from backend.database.session import get_db
 def db() -> Generator[Session, None, None]:
     """Create a fresh database for each test."""
     # Generate a unique DB ID and engine per test function
-    test_db_id = uuid.uuid4().hex[:8]
+    test_db_id = uuid.uuid4().hex
     test_database_url = (
         f"sqlite:///file:memdb_rbac_{test_db_id}?mode=memory&cache=shared"
     )

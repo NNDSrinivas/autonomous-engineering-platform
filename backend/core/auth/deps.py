@@ -65,7 +65,7 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
             _log_timestamps.update(
                 {k: v for k, v in old_timestamps.items() if v >= cutoff_time}
             )
-            _last_cleanup_time = now
+            _last_cleanup_time = now  # Update last cleanup time for next interval check
 
         last_logged = _log_timestamps.get(message, 0)
 

@@ -48,7 +48,7 @@ class Cache:
             return None
         if self._r is None:
             try:
-                self._r = await aioredis.from_url(
+                self._r = await aioredis.from_url(  # type: ignore[attr-defined]
                     REDIS_URL,
                     encoding="utf-8",
                     decode_responses=True,

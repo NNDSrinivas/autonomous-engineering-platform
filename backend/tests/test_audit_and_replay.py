@@ -87,7 +87,8 @@ def test_replay_api_endpoint():
     plan_id = "test-plan-api"
 
     # First add some events via the database (simulating plan activity)
-    with next(get_db()) as db:
+    db = next(get_db())
+    try:
         append_event(
             db,
             plan_id=plan_id,
@@ -105,6 +106,8 @@ def test_replay_api_endpoint():
             org_key="org-demo",
         )
         db.commit()
+    finally:
+        db.close()
 
     # Test replay all events
     response = client.get(f"/api/plan/{plan_id}/replay")
@@ -158,7 +161,7 @@ def test_audit_middleware_captures_requests():
 
     # Make a POST request (should be audited)
     test_data = {"test": "data"}
-    response = client.post("/api/plan/test-plan-audit/events", json=test_data)
+    client.post("/api/plan/test-plan-audit/events", json=test_data)
 
     # The response might fail (endpoint might not exist), but audit should capture it
 
@@ -187,7 +190,8 @@ def test_event_sequence_monotonic():
     """Test that event sequences are monotonic per plan"""
     plan_id = "test-monotonic"
 
-    with next(get_db()) as db:
+    db = next(get_db())
+    try:
         # Add events in multiple transactions
         evt1 = append_event(
             db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
@@ -207,6 +211,8 @@ def test_event_sequence_monotonic():
         assert evt1.seq == 1
         assert evt2.seq == 2
         assert evt3.seq == 3
+    finally:
+        db.close()
 
         # Events for different plans should have independent sequences
         other_plan_evt = append_event(

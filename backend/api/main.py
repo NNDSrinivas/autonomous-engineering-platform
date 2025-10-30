@@ -30,6 +30,7 @@ from .context_pack import router as context_pack_router
 from .memory import router as memory_router
 from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
+from .routers.admin_rbac import router as admin_rbac_router
 from ..core.realtime import presence as presence_lifecycle
 
 logger = setup_logging()
@@ -85,6 +86,9 @@ app.include_router(search_router)
 app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
+
+# Admin RBAC endpoints (PR-24)
+app.include_router(admin_rbac_router)
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])

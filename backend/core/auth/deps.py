@@ -2,10 +2,13 @@
 
 import logging
 import os
+import threading
+import time
 from typing import Annotated, Optional
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
 from backend.core.auth.jwt import JWTVerificationError, verify_token
 from backend.core.auth.models import Role, User
@@ -14,8 +17,70 @@ from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Rate-limited logging to avoid log spam in non-multi-tenant deployments
+_log_timestamps: dict[str, float] = {}
+_log_lock = threading.Lock()
+# Configurable throttle period: default 5 minutes, override via LOG_THROTTLE_SECONDS env var
+log_throttle_env = os.getenv("LOG_THROTTLE_SECONDS", "300")
+try:
+    _LOG_THROTTLE_SECONDS = int(log_throttle_env)
+except ValueError:
+    logger.warning(
+        f"Invalid value for LOG_THROTTLE_SECONDS: {log_throttle_env}; "
+        "must be an integer. Falling back to default (300 seconds)."
+    )
+    _LOG_THROTTLE_SECONDS = 300
+
+# Cleanup multiplier: remove entries older than 2x throttle period to prevent memory leaks
+_CLEANUP_MULTIPLIER = 2
+
+# Cleanup interval: perform cleanup every 60 seconds to avoid O(n) overhead
+_CLEANUP_INTERVAL_SECONDS = 60
+
+# Last cleanup time for periodic cleanup optimization
+_last_cleanup_time: float = 0.0
+
 # HTTP Bearer token scheme for JWT authentication
 security = HTTPBearer(auto_error=False)
+
+
+def _log_once(message: str, level: int = logging.WARNING) -> None:
+    """
+    Log a message at most once per _LOG_THROTTLE_SECONDS.
+
+    Prevents log spam for recurring warnings in long-running applications.
+    Thread-safe via lock to prevent race conditions.
+    Cleanup is performed periodically to avoid O(n) overhead on every call.
+    """
+    with _log_lock:
+        # global is required here because we reassign _last_cleanup_time below, not just modify it
+        global _last_cleanup_time
+        now = time.time()
+        # Periodic cleanup: only clean every interval to avoid O(n) overhead
+        if now - _last_cleanup_time >= _CLEANUP_INTERVAL_SECONDS:
+            cutoff_time = now - (_CLEANUP_MULTIPLIER * _LOG_THROTTLE_SECONDS)
+            # Efficiently remove expired entries without copying retained entries
+            keys_to_delete = [k for k, v in _log_timestamps.items() if v < cutoff_time]
+            for k in keys_to_delete:
+                del _log_timestamps[k]
+            _last_cleanup_time = now  # Update last cleanup time for next interval check
+
+        last_logged = _log_timestamps.get(message, 0)
+
+        if now - last_logged >= _LOG_THROTTLE_SECONDS:
+            logger.log(level, message)
+            _log_timestamps[message] = now
+
+
+def clear_log_timestamps() -> None:
+    """
+    Clear all log timestamps for testing purposes.
+
+    This is a public API for tests to reset the log throttling state
+    without accessing private module variables directly.
+    """
+    with _log_lock:
+        _log_timestamps.clear()
 
 
 def get_current_user(
@@ -112,6 +177,9 @@ def require_role(minimum_role: Role):
     """
     Dependency factory to enforce minimum role requirement.
 
+    Integrates with role resolution service to merge JWT roles with
+    database-assigned roles, using the maximum precedence (when RBAC tables exist).
+
     Usage:
         @router.post("/plan/{plan_id}/publish")
         async def publish(user: User = Depends(require_role(Role.PLANNER))):
@@ -125,16 +193,105 @@ def require_role(minimum_role: Role):
         FastAPI dependency that validates user role
 
     Raises:
-        HTTPException 403: If user's role is insufficient
+        HTTPException 403: If user's effective role is insufficient
     """
 
-    def role_checker(user: User = Depends(get_current_user)) -> User:
-        if user.role < minimum_role:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Requires {minimum_role.value} role or higher "
-                f"(you have {user.role.value})",
+    async def role_checker(
+        user: User = Depends(get_current_user),
+        db: Session = Depends(_get_db_for_auth),
+    ) -> User:
+        """
+        Validate user has required role by resolving effective role from JWT + DB.
+
+        This function is async despite using a synchronous SQLAlchemy Session.
+        This is a FastAPI best practice where:
+        - Sync dependencies (get_db) are automatically run in a threadpool
+        - Async operations (resolve_effective_role) are awaited normally
+        - No event loop blocking occurs due to FastAPI's automatic handling
+
+        See: https://fastapi.tiangolo.com/async/#very-technical-details
+        """
+        # Import here to avoid circular dependency
+        from sqlalchemy.exc import OperationalError, SQLAlchemyError
+
+        from backend.core.auth.role_service import resolve_effective_role
+
+        try:
+            # Warn if org_id is missing but continue with fallback
+            if user.org_id is None:
+                _log_once(
+                    "User org_id is None when resolving effective role. "
+                    "Falling back to JWT-only authorization. "
+                    "This may indicate a configuration issue or non-multi-tenant setup.",
+                    level=logging.INFO,
+                )
+                # Use JWT role only if org_id is missing
+                if user.role < minimum_role:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Requires {minimum_role.value} role or higher "
+                        f"(you have {user.role.value})",
+                    )
+                return user
+
+            # Resolve effective role (merges JWT + DB roles)
+            # Falls back to JWT role if RBAC tables don't exist or aren't populated
+            effective_role_name = await resolve_effective_role(
+                session=db,
+                sub=user.user_id,  # JWT subject
+                org_key=user.org_id,  # Organization key
+                jwt_role=user.role.value,  # JWT role as baseline
             )
-        return user
+
+            # Convert resolved role name to Role enum
+            effective_role = Role(effective_role_name)
+
+            # Check if effective role meets minimum requirement
+            if effective_role < minimum_role:
+                # Simplify message when JWT and effective roles are the same
+                if user.role == effective_role:
+                    detail_msg = (
+                        f"Requires {minimum_role.value} role or higher "
+                        f"(you have {user.role.value})"
+                    )
+                else:
+                    detail_msg = (
+                        f"Requires {minimum_role.value} role or higher "
+                        f"(JWT: {user.role.value}, effective: {effective_role.value})"
+                    )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=detail_msg,
+                )
+
+            # Update user object with effective role for downstream use
+            user.role = effective_role
+            return user
+
+        except (OperationalError, SQLAlchemyError) as e:
+            # If role resolution fails (e.g., DB not available, tables don't exist),
+            # fall back to JWT-only authorization for backward compatibility
+            logger.debug(f"Role resolution failed, using JWT-only auth: {e}")
+            if user.role < minimum_role:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Requires {minimum_role.value} role or higher "
+                    f"(you have {user.role.value})",
+                )
+            return user
 
     return role_checker
+
+
+def _get_db_for_auth():
+    """
+    Database session dependency for auth checks.
+
+    Lazy import to avoid circular dependencies.
+    """
+    from backend.database.session import get_db
+
+    # Lazy import to avoid circular dependencies.
+    # Uses yield from to efficiently forward the generator without creating additional indirection.
+    # This preserves the cleanup behavior and context management of the original generator.
+    yield from get_db()

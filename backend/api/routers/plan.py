@@ -24,6 +24,7 @@ from backend.core.auth.models import Role, User
 from backend.api.security import check_policy_inline
 from backend.core.policy.engine import PolicyEngine, get_policy_engine
 from backend.core.db_utils import get_short_lived_session
+from backend.core.audit.publisher import append_and_broadcast
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
@@ -201,28 +202,26 @@ async def add_step(
 
     db.commit()
 
-    # Broadcast to all active streams via broadcaster
-    channel = _channel(req.plan_id)
+    # Append to event store and broadcast (PR-25: Audit & Replay)
     try:
-        await bc.publish(channel, json.dumps(step))
-    except (ConnectionError, TimeoutError) as e:
-        # Network/Redis issues - log but don't fail the request
-        logger.error(
-            f"Broadcaster connection error for plan {req.plan_id} (channel: {channel}): {e}",
-            exc_info=True,
-        )
-    except (TypeError, ValueError) as e:
-        # JSON serialization issues - this indicates a code bug
-        logger.error(
-            f"Failed to serialize step for plan {req.plan_id} (channel: {channel}): {e}",
-            exc_info=True,
+        await append_and_broadcast(
+            db,
+            bc=bc,
+            plan_id=req.plan_id,
+            type="step",
+            payload=step,
+            user_sub=user.user_id,
+            org_key=user.org_id,
         )
     except Exception as e:
-        # Catch-all for unexpected errors
-        logger.error(
-            f"Unexpected error broadcasting step to plan {req.plan_id} (channel: {channel}): {e}",
-            exc_info=True,
-        )
+        # Log but don't fail - backward compatibility
+        logger.error(f"Failed to append/broadcast step for plan {req.plan_id}: {e}", exc_info=True)
+        # Fallback to old broadcast method
+        channel = _channel(req.plan_id)
+        try:
+            await bc.publish(channel, json.dumps(step))
+        except Exception as fallback_error:
+            logger.error(f"Fallback broadcast also failed for plan {req.plan_id}: {fallback_error}")
 
     # Metrics
     try:

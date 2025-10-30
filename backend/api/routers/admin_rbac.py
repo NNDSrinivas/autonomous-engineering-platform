@@ -317,20 +317,13 @@ async def upsert_user(
                     detail="User creation failed, please retry.",
                 )
 
-        # Get old org_key before reassignment to avoid redundant DB query
-        old_org = db.query(Organization).filter_by(id=user.org_id).one_or_none()
-        old_org_key: str | None = getattr(old_org, "org_key", None) if old_org else None
+    # Get old org_key before reassignment to avoid redundant DB query
+    old_org = db.query(Organization).filter_by(id=user.org_id).one_or_none()
+    old_org_key: str | None = getattr(old_org, "org_key", None) if old_org else None
 
-        # Handle org reassignment before updating user and committing
-        deleted_count += _handle_org_reassignment(user, org, db)
-        await _update_user_with_cache_invalidation(user, body, org, db, old_org_key)
-    else:
-        # Get old org_key before reassignment to avoid redundant DB query
-        old_org = db.query(Organization).filter_by(id=user.org_id).one_or_none()
-        old_org_key: str | None = getattr(old_org, "org_key", None) if old_org else None
-        # Handle org reassignment before updating user and committing
-        deleted_count += _handle_org_reassignment(user, org, db)
-        await _update_user_with_cache_invalidation(user, body, org, db, old_org_key)
+    # Handle org reassignment before updating user and committing
+    deleted_count += _handle_org_reassignment(user, org, db)
+    await _update_user_with_cache_invalidation(user, body, org, db, old_org_key)
 
     return UserResponse(
         id=user.id,  # type: ignore[arg-type]

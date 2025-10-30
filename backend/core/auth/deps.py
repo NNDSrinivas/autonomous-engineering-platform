@@ -59,12 +59,10 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
         # Periodic cleanup: only clean every interval to avoid O(n) overhead
         if now - _last_cleanup_time >= _CLEANUP_INTERVAL_SECONDS:
             cutoff_time = now - (_CLEANUP_MULTIPLIER * _LOG_THROTTLE_SECONDS)
-            # Use clear and update to modify in-place instead of reassignment
-            old_timestamps = _log_timestamps.copy()
-            _log_timestamps.clear()
-            _log_timestamps.update(
-                {k: v for k, v in old_timestamps.items() if v >= cutoff_time}
-            )
+            # Efficiently remove expired entries without copying retained entries
+            keys_to_delete = [k for k, v in _log_timestamps.items() if v < cutoff_time]
+            for k in keys_to_delete:
+                del _log_timestamps[k]
             _last_cleanup_time = now  # Update last cleanup time for next interval check
 
         last_logged = _log_timestamps.get(message, 0)

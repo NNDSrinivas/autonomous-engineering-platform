@@ -22,9 +22,6 @@ from backend.models.tasks import *  # noqa
 # Explicit RBAC model imports for better namespace control
 from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole  # noqa
 
-# Store RBAC models for validation inside migration functions
-_rbac_models = [DBRole, DBUser, Organization, UserRole]
-
 config = context.config
 if (
     not config.get_main_option("sqlalchemy.url")
@@ -64,7 +61,8 @@ def run_migrations_online():
 
     # Validate RBAC models are registered with Base.metadata
     assert all(
-        model.__tablename__ in Base.metadata.tables for model in _rbac_models
+        model.__tablename__ in Base.metadata.tables
+        for model in [DBRole, DBUser, Organization, UserRole]
     ), "RBAC models must be registered with Base.metadata"
 
     with connectable.connect() as connection:

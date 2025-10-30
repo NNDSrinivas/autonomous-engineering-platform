@@ -289,12 +289,8 @@ async def stream_plan_updates(
 
             # Stream updates from broadcaster
             subscription = await bc.subscribe(channel)
-            try:
-                async for msg in subscription:
-                    yield f"data: {msg}\n\n"
-            finally:
-                # Cleanup handled by broadcaster implementation
-                pass
+            async for msg in subscription:
+                yield f"data: {msg}\n\n"
 
         except asyncio.CancelledError:
             # Client disconnected

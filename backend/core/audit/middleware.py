@@ -63,10 +63,7 @@ class EnhancedAuditMiddleware(BaseHTTPMiddleware):
                     method=request.method,
                     event_type="http.request",
                     resource_id=_extract_resource_id(request),
-                    payload={
-                        "body": payload,
-                        "query_params": dict(request.query_params),
-                    },
+                    payload=payload,
                     status_code=response.status_code,
                 )
                 session.add(audit_record)

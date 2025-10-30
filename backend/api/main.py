@@ -13,6 +13,7 @@ from ..core.metrics import router as metrics_router
 from ..core.middleware import AuditMiddleware
 from ..core.middleware import RateLimitMiddleware
 from ..core.middleware import RequestIDMiddleware
+from ..core.audit.middleware import EnhancedAuditMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
 from ..services import jira as jsvc, github as ghsvc
@@ -31,6 +32,7 @@ from .memory import router as memory_router
 from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
+from .routers.audit import router as audit_router
 from ..core.realtime import presence as presence_lifecycle
 
 logger = setup_logging()
@@ -60,6 +62,7 @@ app.add_middleware(
 app.add_middleware(RequestIDMiddleware, service_name="core")
 app.add_middleware(RateLimitMiddleware, service_name="core", rpm=60)
 app.add_middleware(AuditMiddleware, service_name="core")
+app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
 
 
 @app.get("/health")
@@ -89,6 +92,9 @@ app.include_router(memory_router, prefix="/api")
 
 # Admin RBAC endpoints (PR-24)
 app.include_router(admin_rbac_router)
+
+# Audit & Event Replay endpoints (PR-25)
+app.include_router(audit_router)
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])

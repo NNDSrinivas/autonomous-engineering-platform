@@ -217,8 +217,10 @@ def upsert_user(
         )
         db.add(user)
     else:
+        # Update user details including organization reassignment
         user.email = body.email
         user.display_name = body.display_name
+        user.org_id = org.id  # Allow moving users between organizations
 
     db.commit()
     db.refresh(user)

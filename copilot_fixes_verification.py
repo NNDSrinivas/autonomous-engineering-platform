@@ -11,9 +11,7 @@ This script tests the key fixes implemented to address Copilot's feedback:
 
 import asyncio
 import os
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 from backend.core.auth.role_service import ROLE_RANK, RoleName
 from backend.infra.cache.redis_cache import cache

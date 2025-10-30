@@ -14,7 +14,7 @@ def next_seq(session: Session, plan_id: str) -> int:
     session.execute(
         select(PlanEvent.id)
         .where(PlanEvent.plan_id == plan_id)
-        .with_for_update(skip_locked=True)
+        .with_for_update()
         .limit(1)
     ).first()
 

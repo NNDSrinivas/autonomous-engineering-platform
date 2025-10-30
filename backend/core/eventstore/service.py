@@ -9,9 +9,12 @@ from .models import PlanEvent
 
 
 def next_seq(session: Session, plan_id: str) -> int:
-    """Get the next sequence number for a plan"""
+    """Get the next sequence number for a plan, using row-level locking to prevent race conditions."""
+    # Lock all events for this plan_id to prevent concurrent inserts with the same seq
     last = session.execute(
-        select(func.max(PlanEvent.seq)).where(PlanEvent.plan_id == plan_id)
+        select(func.max(PlanEvent.seq))
+        .where(PlanEvent.plan_id == plan_id)
+        .with_for_update()
     ).scalar()
     return 1 if last is None else int(last) + 1
 

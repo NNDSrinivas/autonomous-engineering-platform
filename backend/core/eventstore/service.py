@@ -11,18 +11,19 @@ from .models import PlanEvent
 def next_seq(session: Session, plan_id: str) -> int:
     """Get the next sequence number for a plan, using PostgreSQL advisory locks for proper concurrency control."""
     import hashlib
-    
+
     # Use PostgreSQL advisory lock based on plan_id hash for proper serialization
     # This ensures even the first insert for a new plan is properly serialized
     plan_hash = int(hashlib.md5(plan_id.encode()).hexdigest()[:8], 16)
-    
+
     # Acquire advisory lock for this plan_id (automatically released at transaction end)
-    session.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": plan_hash})
-    
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": plan_hash}
+    )
+
     # Now safely get the max sequence number
     last = session.execute(
-        select(func.max(PlanEvent.seq))
-        .where(PlanEvent.plan_id == plan_id)
+        select(func.max(PlanEvent.seq)).where(PlanEvent.plan_id == plan_id)
     ).scalar()
     return 1 if last is None else int(last) + 1
 

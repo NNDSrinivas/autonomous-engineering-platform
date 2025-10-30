@@ -188,7 +188,7 @@ def list_orgs(
 
 
 @router.post("/users", response_model=UserResponse)
-def upsert_user(
+async def upsert_user(
     body: UserUpsert,
     db: Session = Depends(get_db),
     _: User = Depends(require_role(Role.ADMIN)),
@@ -262,6 +262,7 @@ def upsert_user(
                         f"when moving from org_id {old_org_id} to {org.id}"
                     )
             user.org_id = org.id
+            await invalidate_role_cache(body.org_key, body.sub)
             db.commit()
             db.refresh(user)
     else:
@@ -284,6 +285,7 @@ def upsert_user(
                 )
         user.org_id = org.id  # Allow moving users between organizations
 
+        await invalidate_role_cache(body.org_key, body.sub)
         db.commit()
         db.refresh(user)
 

@@ -45,7 +45,9 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
     with _log_lock:
         # Clean up old entries to prevent memory leak
         cutoff_time = now - (2 * _LOG_THROTTLE_SECONDS)
-        expired_keys = [key for key, timestamp in _log_timestamps.items() if timestamp < cutoff_time]
+        expired_keys = [
+            key for key, timestamp in _log_timestamps.items() if timestamp < cutoff_time
+        ]
         for key in expired_keys:
             del _log_timestamps[key]
 

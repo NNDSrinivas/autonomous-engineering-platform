@@ -8,7 +8,7 @@ Determines effective user role by combining:
 The highest role wins: admin > planner > viewer
 """
 
-from typing import Literal, Optional
+from typing import Literal, Optional, cast
 
 from sqlalchemy.orm import Session
 
@@ -69,7 +69,9 @@ async def resolve_effective_role(
     if cached:
         cached_role = cached.get("role")
         if cached_role and cached_role in ROLE_RANK:
-            return _max_role(jwt_role, cached_role)
+            # Explicitly cast validated cached role for type consistency
+            cached_role_typed = cast(RoleName, cached_role)
+            return _max_role(jwt_role, cached_role_typed)
         # Cache corrupted or invalid - fall through to DB lookup
 
     # Look up organization

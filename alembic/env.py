@@ -4,6 +4,10 @@ from logging.config import fileConfig
 
 from alembic import context
 
+# Note: Unlike the standard Alembic template, we do not import `engine_from_config` or `pool` from SQLAlchemy.
+# Instead, `run_migrations_online` creates its own engine using `create_engine` directly.
+# This is intentional and avoids unused imports.
+
 # Add project root so backend.* imports work
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from backend.core.config import settings  # noqa

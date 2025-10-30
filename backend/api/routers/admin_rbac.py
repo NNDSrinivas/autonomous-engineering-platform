@@ -26,6 +26,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.database.session import get_db
@@ -224,6 +225,31 @@ def upsert_user(
             org_id=org.id,
         )
         db.add(user)
+        try:
+            db.commit()
+            db.refresh(user)
+        except IntegrityError:
+            # Handle race condition: another request created the user first
+            db.rollback()
+            # Retry lookup and update instead
+            user = db.query(DBUser).filter_by(sub=body.sub).one()
+            user.email = body.email  # type: ignore[assignment]
+            user.display_name = body.display_name  # type: ignore[assignment]
+            if user.org_id != org.id:  # type: ignore[comparison-overlap]
+                old_org_id = user.org_id
+                deleted_count = (
+                    db.query(UserRole)
+                    .filter_by(user_id=user.id)
+                    .delete(synchronize_session=False)
+                )
+                if deleted_count > 0:
+                    logger.info(
+                        f"Removed {deleted_count} role assignment(s) for user {user.sub} "
+                        f"when moving from org_id {old_org_id} to {org.id}"
+                    )
+            user.org_id = org.id
+            db.commit()
+            db.refresh(user)
     else:
         # Update user details including organization reassignment
         user.email = body.email  # type: ignore[assignment]
@@ -231,7 +257,11 @@ def upsert_user(
         if user.org_id != org.id:  # type: ignore[comparison-overlap]
             old_org_id = user.org_id  # Save original org_id for accurate logging
             # Remove all existing role assignments when moving organizations
-            deleted_count = db.query(UserRole).filter_by(user_id=user.id).delete()
+            deleted_count = (
+                db.query(UserRole)
+                .filter_by(user_id=user.id)
+                .delete(synchronize_session=False)
+            )
             if deleted_count > 0:
                 logger.info(
                     f"Removed {deleted_count} role assignment(s) for user {user.sub} "
@@ -239,8 +269,8 @@ def upsert_user(
                 )
         user.org_id = org.id  # Allow moving users between organizations
 
-    db.commit()
-    db.refresh(user)
+        db.commit()
+        db.refresh(user)
 
     return UserResponse(
         id=user.id,  # type: ignore[arg-type]

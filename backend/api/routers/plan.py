@@ -30,6 +30,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
 
+def _safe_isoformat(dt_obj):
+    """Safely convert datetime to ISO format, handling None and Column types"""
+    if dt_obj is None:
+        return None
+    try:
+        return dt_obj.isoformat() if hasattr(dt_obj, 'isoformat') else None
+    except:
+        return None
+
+
 def _channel(plan_id: str) -> str:
     """Generate Redis/broadcast channel name for a plan."""
     return f"{settings.PLAN_CHANNEL_PREFIX}{plan_id}"
@@ -156,7 +166,8 @@ async def add_step(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    if plan.archived:
+    # Use getattr to handle SQLAlchemy Column types properly
+    if getattr(plan, 'archived', False):
         raise HTTPException(status_code=400, detail="Cannot modify archived plan")
 
     # Check policy guardrails before modifying plan
@@ -181,10 +192,10 @@ async def add_step(
     # concurrent writes. For production use with high concurrency, consider:
     # - PostgreSQL's native jsonb_set/jsonb_insert for atomic updates
     # - Optimistic locking with a version field to detect conflicts
-    steps = plan.steps or []
+    steps = getattr(plan, 'steps', []) or []
     steps.append(step)
-    plan.steps = steps
-    plan.updated_at = datetime.utcnow()
+    setattr(plan, 'steps', steps)
+    setattr(plan, 'updated_at', datetime.utcnow())
 
     # Warn if plan is getting large (performance concern)
     # Use exponential thresholds to avoid log flooding: 50, 100, 200, 400, 800...
@@ -308,7 +319,8 @@ def archive_plan(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    if plan.archived:
+    # Use getattr to handle SQLAlchemy Column types properly
+    if getattr(plan, 'archived', False):
         # Idempotent: already archived, check for existing memory node
         node = (
             db.query(MemoryNode)
@@ -336,9 +348,9 @@ def archive_plan(
         # Fall through to create the memory node below
 
     # Mark as archived (or already archived from edge case above)
-    if not plan.archived:
-        plan.archived = True
-        plan.updated_at = datetime.utcnow()
+    if not getattr(plan, 'archived', False):
+        setattr(plan, 'archived', True)
+        setattr(plan, 'updated_at', datetime.utcnow())
 
     # Create memory graph node
     node = MemoryNode(
@@ -346,22 +358,22 @@ def archive_plan(
         kind="plan_session",
         foreign_id=plan_id,
         title=plan.title,
-        summary=f"Plan with {len(plan.steps or [])} steps, {len(plan.participants or [])} participants",
+        summary=f"Plan with {len(getattr(plan, 'steps', []) or [])} steps, {len(getattr(plan, 'participants', []) or [])} participants",
         link=f"/plan/{plan_id}",
         content=json.dumps(
             {
                 "title": plan.title,
                 "description": plan.description,
-                "steps": plan.steps or [],
-                "participants": plan.participants or [],
-                "created_at": plan.created_at.isoformat() if plan.created_at else None,
-                "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
+                "steps": getattr(plan, 'steps', []) or [],
+                "participants": getattr(plan, 'participants', []) or [],
+                "created_at": _safe_isoformat(getattr(plan, 'created_at', None)),
+                "updated_at": _safe_isoformat(getattr(plan, 'updated_at', None)),
                 "plan_id": plan_id,
             }
         ),
         metadata={
-            "steps_count": len(plan.steps or []),
-            "participants": plan.participants,
+            "steps_count": len(getattr(plan, 'steps', []) or []),
+            "participants": getattr(plan, 'participants', []) or [],
             "archived_at": datetime.utcnow().isoformat(),
         },
         created_at=plan.created_at,

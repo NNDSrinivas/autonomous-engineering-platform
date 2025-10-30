@@ -223,7 +223,7 @@ def require_role(minimum_role: Role):
             # Check if effective role meets minimum requirement
             if effective_role < minimum_role:
                 # Simplify message when JWT and effective roles are the same
-                if user.role.value == effective_role.value:
+                if user.role == effective_role:
                     detail_msg = (
                         f"Requires {minimum_role.value} role or higher "
                         f"(you have {user.role.value})"

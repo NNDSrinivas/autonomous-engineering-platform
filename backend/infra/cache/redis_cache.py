@@ -82,7 +82,7 @@ class Cache:
             if not entry:
                 return None
             exp_ts, payload = entry
-            if time.time() > exp_ts:
+            if time.time() >= exp_ts:
                 self._mem.pop(key, None)
                 return None
             return json.loads(payload)

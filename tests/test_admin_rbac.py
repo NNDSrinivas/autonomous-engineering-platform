@@ -233,10 +233,16 @@ class TestUsers:
         assert any(
             r["role"] == "planner" and r["project_key"] == "proj-1"
             for r in data["roles"]
-        ), f"Expected planner role with project_key 'proj-1', got roles: {data['roles']}"
+        ), (
+            "Expected planner role with project_key 'proj-1', got roles: "
+            f"{[(r['role'], r.get('project_key')) for r in data['roles']]}"
+        )
         assert any(
             r["role"] == "admin" and r["project_key"] is None for r in data["roles"]
-        ), f"Expected admin role with no project_key, got roles: {data['roles']}"
+        ), (
+            "Expected admin role with no project_key, got roles: "
+            f"{[(r['role'], r.get('project_key')) for r in data['roles']]}"
+        )
 
 
 class TestRoleAssignments:

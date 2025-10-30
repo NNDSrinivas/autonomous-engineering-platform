@@ -6,7 +6,8 @@ from alembic import context
 
 # Note: Unlike the standard Alembic template, we do not import `engine_from_config` or `pool` from SQLAlchemy.
 # Instead, `run_migrations_online` creates its own engine using `create_engine` directly.
-# This is intentional and avoids unused imports.
+# This is intentional: it avoids unused imports, provides better control over engine configuration,
+# and avoids unnecessary abstraction layers for our use case.
 
 # Add project root so backend.* imports work
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

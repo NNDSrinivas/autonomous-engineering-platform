@@ -199,6 +199,7 @@ def _handle_org_reassignment(user: DBUser, new_org: Organization, db: Session) -
         new_org: New organization to assign user to
         db: Database session
     """
+    # Check if user needs to be moved to a different organization
     if user.org_id != new_org.id:  # type: ignore[comparison-overlap]
         old_org_id = user.org_id
         user_sub = user.sub  # Extract for type safety and reuse
@@ -272,10 +273,10 @@ async def upsert_user(
             try:
                 user = db.query(DBUser).filter_by(sub=body.sub).one()
             except NoResultFound:
-                # Very rare edge case: user was deleted between insert failure and lookup
+                # Very rare edge case: user lookup failed after insert race condition
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="User creation failed due to concurrent operations",
+                    detail="User creation failed due to a race condition with concurrent operations",
                 )
 
             user.email = body.email  # type: ignore[assignment]

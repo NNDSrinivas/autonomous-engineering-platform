@@ -52,16 +52,16 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
     Thread-safe via lock to prevent race conditions.
     Cleanup is performed periodically to avoid O(n) overhead on every call.
     """
-    global _last_cleanup_time
+    global _last_cleanup_time, _log_timestamps
 
     with _log_lock:
         now = time.time()
         # Periodic cleanup: only clean every interval to avoid O(n) overhead
         if now - _last_cleanup_time >= _CLEANUP_INTERVAL_SECONDS:
             cutoff_time = now - (_CLEANUP_MULTIPLIER * _LOG_THROTTLE_SECONDS)
-            to_remove = [k for k, v in _log_timestamps.items() if v < cutoff_time]
-            for k in to_remove:
-                del _log_timestamps[k]
+            _log_timestamps = {
+                k: v for k, v in _log_timestamps.items() if v >= cutoff_time
+            }
             _last_cleanup_time = now
 
         last_logged = _log_timestamps.get(message, 0)

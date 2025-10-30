@@ -52,12 +52,12 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
     Thread-safe via lock to prevent race conditions.
     Cleanup is performed periodically to avoid O(n) overhead on every call.
     """
-    global _last_cleanup_time
-
     with _log_lock:
+        global _last_cleanup_time
         now = time.time()
         # Periodic cleanup: only clean every interval to avoid O(n) overhead
         if now - _last_cleanup_time >= _CLEANUP_INTERVAL_SECONDS:
+            # global is required here because we reassign _log_timestamps below, not just modify it
             global _log_timestamps
             cutoff_time = now - (_CLEANUP_MULTIPLIER * _LOG_THROTTLE_SECONDS)
             _log_timestamps = {

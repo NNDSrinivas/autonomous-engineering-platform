@@ -282,7 +282,7 @@ async def upsert_user(
                 # Very rare edge case: user lookup failed after insert race condition
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="User creation failed due to a race condition with concurrent operations",
+                    detail="User creation failed, please retry.",
                 )
 
             user.email = body.email  # type: ignore[assignment]

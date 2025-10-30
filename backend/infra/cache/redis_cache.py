@@ -120,6 +120,28 @@ class Cache:
             with self._mem_lock:
                 self._mem.pop(key, None)
 
+    async def clear(self) -> None:
+        """
+        Clear all cached entries.
+
+        Useful for testing and cache invalidation scenarios.
+        """
+        r = await self._ensure()
+        if r:
+            await r.flushdb()
+        else:
+            with self._mem_lock:
+                self._mem.clear()
+
+    def clear_sync(self) -> None:
+        """
+        Synchronous version of clear for testing.
+
+        Only clears in-memory cache since Redis requires async operations.
+        """
+        with self._mem_lock:
+            self._mem.clear()
+
 
 # Global cache instance
 cache = Cache()

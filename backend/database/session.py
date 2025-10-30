@@ -5,19 +5,41 @@ Provides dependency injection for FastAPI routes and context managers
 for synchronous database operations.
 """
 
+import threading
 from contextlib import contextmanager
-from typing import Generator
+from typing import Generator, Optional
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.core.config import get_settings
 
-# Initialize engine and session factory
-settings = get_settings()
-# Use sqlalchemy_url property which handles URL construction and encoding
-engine = create_engine(settings.sqlalchemy_url, echo=False)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Lazy initialization to avoid import-time failures (matches pattern in backend/core/db.py)
+_engine: Optional[Engine] = None
+_SessionLocal = None
+_lock = threading.Lock()
+
+
+def _get_engine() -> Engine:
+    """Get or create the database engine (lazy initialization, thread-safe)."""
+    global _engine
+    if _engine is None:
+        with _lock:
+            if _engine is None:
+                settings = get_settings()
+                _engine = create_engine(settings.sqlalchemy_url, echo=False)
+    return _engine
+
+
+def _get_session_local():
+    """Get or create SessionLocal (lazy initialization, thread-safe)."""
+    global _SessionLocal
+    if _SessionLocal is None:
+        with _lock:
+            if _SessionLocal is None:
+                engine = _get_engine()
+                _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    return _SessionLocal
 
 
 @contextmanager
@@ -35,6 +57,7 @@ def db_session() -> Generator[Session, None, None]:
     """
     from sqlalchemy.exc import SQLAlchemyError
 
+    SessionLocal = _get_session_local()
     session = SessionLocal()
     try:
         yield session
@@ -56,6 +79,7 @@ def get_db() -> Generator[Session, None, None]:
 
     The session is automatically closed after the request.
     """
+    SessionLocal = _get_session_local()
     session = SessionLocal()
     try:
         yield session

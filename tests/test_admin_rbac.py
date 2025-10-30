@@ -30,8 +30,9 @@ from backend.database.session import get_db
 _TEST_DB_ID = uuid.uuid4().hex[:8]
 TEST_DATABASE_URL = f"sqlite:///file:memdb_rbac_{_TEST_DB_ID}?mode=memory&cache=shared"
 
+# uri=True is unnecessary - SQLAlchemy auto-detects sqlite:///file: URI format
 engine = create_engine(
-    TEST_DATABASE_URL, connect_args={"check_same_thread": False, "uri": True}
+    TEST_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

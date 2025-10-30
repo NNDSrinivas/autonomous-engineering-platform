@@ -208,11 +208,20 @@ def require_role(minimum_role: Role):
 
             # Check if effective role meets minimum requirement
             if effective_role < minimum_role:
+                # Simplify message when JWT and effective roles are the same
+                if user.role.value == effective_role.value:
+                    detail_msg = (
+                        f"Requires {minimum_role.value} role or higher "
+                        f"(you have {user.role.value})"
+                    )
+                else:
+                    detail_msg = (
+                        f"Requires {minimum_role.value} role or higher "
+                        f"(JWT: {user.role.value}, effective: {effective_role.value})"
+                    )
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Requires {minimum_role.value} role or higher "
-                    f"(you have {user.role.value} in JWT, "
-                    f"effective role: {effective_role.value})",
+                    detail=detail_msg,
                 )
 
             # Update user object with effective role for downstream use

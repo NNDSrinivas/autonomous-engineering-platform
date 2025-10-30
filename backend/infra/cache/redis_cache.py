@@ -9,6 +9,7 @@ is not configured or unavailable.
 import json
 import os
 import time
+import threading
 from typing import Any, Optional
 
 try:
@@ -32,6 +33,7 @@ class Cache:
 
     def __init__(self) -> None:
         self._mem: dict[str, tuple[int, str]] = {}
+        self._mem_lock = threading.Lock()  # Protect in-memory cache operations
         # Redis client instance (redis.asyncio.Redis) or None if not configured
         self._r: Optional[Any] = None
 
@@ -75,14 +77,15 @@ class Cache:
             return json.loads(val) if val else None
 
         # Fallback to in-memory cache
-        entry = self._mem.get(key)
-        if not entry:
-            return None
-        exp_ts, payload = entry
-        if time.time() > exp_ts:
-            self._mem.pop(key, None)
-            return None
-        return json.loads(payload)
+        with self._mem_lock:
+            entry = self._mem.get(key)
+            if not entry:
+                return None
+            exp_ts, payload = entry
+            if time.time() > exp_ts:
+                self._mem.pop(key, None)
+                return None
+            return json.loads(payload)
 
     async def set_json(self, key: str, value: Any, ttl_sec: int = 60) -> None:
         """
@@ -100,7 +103,8 @@ class Cache:
             return
 
         # Fallback to in-memory cache
-        self._mem[key] = (int(time.time()) + ttl_sec, payload)
+        with self._mem_lock:
+            self._mem[key] = (int(time.time()) + ttl_sec, payload)
 
     async def delete(self, key: str) -> None:
         """
@@ -113,7 +117,8 @@ class Cache:
         if r:
             await r.delete(key)
         else:
-            self._mem.pop(key, None)
+            with self._mem_lock:
+                self._mem.pop(key, None)
 
 
 # Global cache instance

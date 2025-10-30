@@ -45,8 +45,9 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
     with _log_lock:
         # Clean up old entries to prevent memory leak
         cutoff_time = now - (2 * _LOG_THROTTLE_SECONDS)
-        global _log_timestamps
-        _log_timestamps = {k: v for k, v in _log_timestamps.items() if v >= cutoff_time}
+        to_remove = [k for k, v in _log_timestamps.items() if v < cutoff_time]
+        for k in to_remove:
+            del _log_timestamps[k]
 
         last_logged = _log_timestamps.get(message, 0)
 

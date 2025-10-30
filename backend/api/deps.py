@@ -11,6 +11,11 @@ from backend.infra.broadcast.memory import InMemoryBroadcaster
 from backend.infra.broadcast.redis import RedisBroadcaster
 from backend.core.settings import settings
 
+# Re-export database session dependency for convenience
+from backend.database.session import get_db  # noqa: F401
+
+__all__ = ["get_broadcaster", "get_db"]
+
 logger = logging.getLogger(__name__)
 
 BROADCAST_KEY = "plan_broadcast"

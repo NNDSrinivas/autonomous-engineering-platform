@@ -116,7 +116,7 @@ def clear_existing_data(session, org_id: str):
 
 def verify_seeded_data(session, org_id: str, expected: Dict[str, Any]):
     """Verify seeded data matches expectations"""
-    print(f"\n✓ Verifying seeded data...")
+    print("\n✓ Verifying seeded data...")
 
     node_count = session.query(MemoryNode).filter(MemoryNode.org_id == org_id).count()
     edge_count = session.query(MemoryEdge).filter(MemoryEdge.org_id == org_id).count()
@@ -132,7 +132,7 @@ def verify_seeded_data(session, org_id: str, expected: Dict[str, Any]):
     )
 
     if node_count != expected_nodes or edge_count != expected_edges:
-        print(f"\n⚠️  WARNING: Actual counts don't match expected!")
+        print("\n⚠️  WARNING: Actual counts don't match expected!")
         return False
 
     return True
@@ -152,8 +152,8 @@ def main():
         print(f"❌ Fixture file not found: {fixture_path}")
         sys.exit(1)
 
-    print(f"🌱 PR-17 Graph Fixture Seeder")
-    print(f"=" * 60)
+    print("🌱 PR-17 Graph Fixture Seeder")
+    print("=" * 60)
     print(f"Fixture: {fixture_path}")
 
     # Load fixture
@@ -195,13 +195,13 @@ def main():
         )
 
         if success:
-            print(f"\n✅ SUCCESS: Fixture seeded successfully!")
-            print(f"\nNext steps:")
-            print(f"  1. Run smoke tests:  make pr17-smoke")
-            print(f"  2. Run test suite:   pytest tests/test_graph_*.py")
-            print(f"  3. View in VS Code:  aep.openTimeline (ENG-102)")
+            print("\n✅ SUCCESS: Fixture seeded successfully!")
+            print("\nNext steps:")
+            print("  1. Run smoke tests:  make pr17-smoke")
+            print("  2. Run test suite:   pytest tests/test_graph_*.py")
+            print("  3. View in VS Code:  aep.openTimeline (ENG-102)")
         else:
-            print(f"\n⚠️  Seeding completed with warnings")
+            print("\n⚠️  Seeding completed with warnings")
 
     except Exception as e:
         session.rollback()

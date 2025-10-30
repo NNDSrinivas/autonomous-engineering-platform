@@ -226,9 +226,14 @@ class TestUsers:
         assert len(data["roles"]) == 2
 
         # Check role assignments
-        roles = {(r["role"], r["project_key"]) for r in data["roles"]}
-        assert ("planner", "proj-1") in roles
-        assert ("admin", None) in roles
+        # Use explicit assertions for clearer failure messages when tests fail
+        assert any(
+            r["role"] == "planner" and r["project_key"] == "proj-1"
+            for r in data["roles"]
+        ), "Expected planner role with project_key 'proj-1'"
+        assert any(
+            r["role"] == "admin" and r["project_key"] is None for r in data["roles"]
+        ), "Expected admin role with no project_key"
 
 
 class TestRoleAssignments:
@@ -529,6 +534,11 @@ class TestFullAdminFlow:
         data = response.json()
         assert len(data["roles"]) == 2
 
-        role_set = {(r["role"], r["project_key"]) for r in data["roles"]}
-        assert ("planner", None) in role_set
-        assert ("admin", "special-project") in role_set
+        # Explicitly assert each expected role assignment for clearer failure messages
+        assert any(
+            r["role"] == "planner" and r["project_key"] is None for r in data["roles"]
+        ), "Expected planner role with no project_key"
+        assert any(
+            r["role"] == "admin" and r["project_key"] == "special-project"
+            for r in data["roles"]
+        ), "Expected admin role with project_key 'special-project'"

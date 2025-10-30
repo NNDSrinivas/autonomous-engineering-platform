@@ -224,12 +224,13 @@ def upsert_user(
         user.email = body.email
         user.display_name = body.display_name
         if user.org_id != org.id:
+            old_org_id = user.org_id  # Save original org_id for accurate logging
             # Remove all existing role assignments when moving organizations
             deleted_count = db.query(UserRole).filter_by(user_id=user.id).delete()
             if deleted_count > 0:
                 logger.info(
                     f"Removed {deleted_count} role assignment(s) for user {user.sub} "
-                    f"when moving from org_id {user.org_id} to {org.id}"
+                    f"when moving from org_id {old_org_id} to {org.id}"
                 )
         user.org_id = org.id  # Allow moving users between organizations
 

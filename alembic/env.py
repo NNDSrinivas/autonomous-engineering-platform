@@ -32,12 +32,15 @@ if (
     not config.get_main_option("sqlalchemy.url")
     or config.get_main_option("sqlalchemy.url") == "sqlite:///"
 ):
-    if not settings.sqlalchemy_url:
-        raise ValueError(
-            "No sqlalchemy.url configured in alembic.ini or environment variables. "
-            "Please set DATABASE_URL or configure sqlalchemy.url in alembic.ini."
-        )
-    config.set_main_option("sqlalchemy.url", settings.sqlalchemy_url)
+    if settings.sqlalchemy_url:
+        config.set_main_option("sqlalchemy.url", settings.sqlalchemy_url)
+
+# After attempting to set, validate that sqlalchemy.url is set
+if not config.get_main_option("sqlalchemy.url"):
+    raise ValueError(
+        "No sqlalchemy.url configured in alembic.ini or environment variables. "
+        "Please set DATABASE_URL or configure sqlalchemy.url in alembic.ini."
+    )
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

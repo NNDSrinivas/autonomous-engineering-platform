@@ -4,6 +4,7 @@ Audit Middleware for capturing mutating HTTP requests
 
 from __future__ import annotations
 import logging
+from contextlib import contextmanager
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
@@ -13,6 +14,16 @@ from backend.core.eventstore.models import AuditLog
 logger = logging.getLogger(__name__)
 
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@contextmanager
+def get_db_session():
+    """Context manager for database sessions to prevent connection leaks."""
+    session = next(get_db())
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 class EnhancedAuditMiddleware(BaseHTTPMiddleware):
@@ -53,16 +64,6 @@ class EnhancedAuditMiddleware(BaseHTTPMiddleware):
         # Persist audit record (never block the response)
         try:
             # Use contextual session management to prevent leaks
-            from contextlib import contextmanager
-            
-            @contextmanager
-            def get_db_session():
-                session = next(get_db())
-                try:
-                    yield session
-                finally:
-                    session.close()
-            
             with get_db_session() as session:
                 audit_record = AuditLog(
                     org_key=org_key,

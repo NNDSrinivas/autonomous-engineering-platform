@@ -361,7 +361,7 @@ def jira_tasks(
 
     return {
         "items": JiraService.search_issues(
-            db, q=q, project=project, updated_since=updated_since
+            db, project=project, q=q, updated_since=updated_since
         )
     }
 

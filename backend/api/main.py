@@ -16,8 +16,8 @@ from ..core.middleware import RequestIDMiddleware
 from ..core.audit.middleware import EnhancedAuditMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
-from ..services.jira import JiraService as jsvc
-from ..services.github import GitHubService as ghsvc
+from ..services.jira import JiraService
+from ..services.github import GitHubService
 from ..workers.queue import process_meeting
 from ..workers.integrations import jira_sync, github_index
 from ..workers.answers import generate_answer
@@ -268,7 +268,7 @@ def jira_connect(body: JiraConnectReq, db: Session = Depends(get_db)):
         HTTPException: If connection creation fails
     """
     try:
-        conn = jsvc.save_connection(db, body.cloud_base_url, body.access_token)
+        conn = JiraService.save_connection(db, body.cloud_base_url, body.access_token)
         return {"connection_id": conn.id}
     except Exception as e:
         logger.error(f"Failed to create JIRA connection: {e}")
@@ -296,7 +296,7 @@ def jira_config(body: JiraConfigReq, db: Session = Depends(get_db)):
         HTTPException: If configuration creation fails
     """
     try:
-        cfg = jsvc.set_project_config(
+        cfg = JiraService.set_project_config(
             db, body.connection_id, body.project_keys, body.default_jql
         )
         return {"config_id": cfg.id}
@@ -332,7 +332,7 @@ def jira_trigger_sync(connection_id: str):
 def jira_tasks(
     q: str | None = None,
     project: str | None = None,
-    assignee: str | None = None,  # Kept for backward compatibility
+    assignee: str | None = None,  # Deprecated: kept for backward compatibility
     updated_since: str | None = None,
     db: Session = Depends(get_db),
 ):
@@ -341,15 +341,23 @@ def jira_tasks(
     Args:
         q: Text search query for summary/description
         project: Filter by project key
-        assignee: Filter by assignee name (currently unused)
+        assignee: DEPRECATED - Filter by assignee name (no longer supported)
         updated_since: Filter by update timestamp
         db: Database session dependency
 
     Returns:
         List of matching JIRA issues
     """
+    if assignee is not None:
+        import warnings
+        warnings.warn(
+            "assignee parameter is deprecated and will be removed in a future version",
+            DeprecationWarning,
+            stacklevel=2
+        )
+    
     return {
-        "items": jsvc.search_issues(
+        "items": JiraService.search_issues(
             db, q=q, project=project, updated_since=updated_since
         )
     }
@@ -375,7 +383,7 @@ def gh_connect(body: GhConnectReq, db: Session = Depends(get_db)):
         HTTPException: If connection creation fails
     """
     try:
-        conn = ghsvc.save_connection(db, body.access_token)
+        conn = GitHubService.save_connection(db, body.access_token)
         return {"connection_id": conn.id}
     except Exception as e:
         logger.error(f"Failed to create GitHub connection: {e}")
@@ -428,7 +436,7 @@ def gh_search_code(
     Returns:
         List of matching code files
     """
-    return {"hits": ghsvc.search_code(db, repo=repo, q=q, path_prefix=path)}
+    return {"hits": GitHubService.search_code(db, repo=repo, q=q, path_prefix=path)}
 
 
 @app.get("/api/github/search/issues")
@@ -450,7 +458,7 @@ def gh_search_issues(
         List of matching issues and pull requests
     """
     return {
-        "hits": ghsvc.search_issues(db, repo=repo, q=q, updated_since=updated_since)
+        "hits": GitHubService.search_issues(db, repo=repo, q=q, updated_since=updated_since)
     }
 
 

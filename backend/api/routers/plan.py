@@ -24,9 +24,20 @@ from backend.core.auth.models import Role, User
 from backend.api.security import check_policy_inline
 from backend.core.policy.engine import PolicyEngine, get_policy_engine
 from backend.core.db_utils import get_short_lived_session
+from backend.core.audit.publisher import append_and_broadcast
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
+
+
+def _safe_isoformat(dt_obj):
+    """Safely convert datetime to ISO format, handling None and Column types"""
+    if dt_obj is None:
+        return None
+    try:
+        return dt_obj.isoformat() if hasattr(dt_obj, "isoformat") else None
+    except Exception:
+        return None
 
 
 def _channel(plan_id: str) -> str:
@@ -155,7 +166,8 @@ async def add_step(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    if plan.archived:
+    # Use getattr to handle SQLAlchemy Column types properly
+    if getattr(plan, "archived", False):
         raise HTTPException(status_code=400, detail="Cannot modify archived plan")
 
     # Check policy guardrails before modifying plan
@@ -180,10 +192,10 @@ async def add_step(
     # concurrent writes. For production use with high concurrency, consider:
     # - PostgreSQL's native jsonb_set/jsonb_insert for atomic updates
     # - Optimistic locking with a version field to detect conflicts
-    steps = plan.steps or []
+    steps = getattr(plan, "steps", []) or []
     steps.append(step)
-    plan.steps = steps
-    plan.updated_at = datetime.utcnow()
+    setattr(plan, "steps", steps)
+    setattr(plan, "updated_at", datetime.utcnow())
 
     # Warn if plan is getting large (performance concern)
     # Use exponential thresholds to avoid log flooding: 50, 100, 200, 400, 800...
@@ -201,28 +213,31 @@ async def add_step(
 
     db.commit()
 
-    # Broadcast to all active streams via broadcaster
-    channel = _channel(req.plan_id)
+    # Append to event store and broadcast (PR-25: Audit & Replay)
     try:
-        await bc.publish(channel, json.dumps(step))
-    except (ConnectionError, TimeoutError) as e:
-        # Network/Redis issues - log but don't fail the request
-        logger.error(
-            f"Broadcaster connection error for plan {req.plan_id} (channel: {channel}): {e}",
-            exc_info=True,
-        )
-    except (TypeError, ValueError) as e:
-        # JSON serialization issues - this indicates a code bug
-        logger.error(
-            f"Failed to serialize step for plan {req.plan_id} (channel: {channel}): {e}",
-            exc_info=True,
+        await append_and_broadcast(
+            db,
+            bc=bc,
+            plan_id=req.plan_id,
+            type="step",
+            payload=step,
+            user_sub=user.user_id,
+            org_key=user.org_id,
         )
     except Exception as e:
-        # Catch-all for unexpected errors
+        # Log but don't fail - backward compatibility
         logger.error(
-            f"Unexpected error broadcasting step to plan {req.plan_id} (channel: {channel}): {e}",
+            f"Failed to append/broadcast step for plan {req.plan_id}: {e}",
             exc_info=True,
         )
+        # Fallback to old broadcast method
+        channel = _channel(req.plan_id)
+        try:
+            await bc.publish(channel, json.dumps(step))
+        except Exception as fallback_error:
+            logger.error(
+                f"Fallback broadcast also failed for plan {req.plan_id}: {fallback_error}"
+            )
 
     # Metrics
     try:
@@ -273,7 +288,8 @@ async def stream_plan_updates(
             yield f"data: {json.dumps({'type': 'connected', 'plan_id': plan_id})}\n\n"
 
             # Stream updates from broadcaster
-            async for msg in bc.subscribe(channel):
+            subscription = await bc.subscribe(channel)
+            async for msg in subscription:
                 yield f"data: {msg}\n\n"
 
         except asyncio.CancelledError:
@@ -309,7 +325,8 @@ def archive_plan(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    if plan.archived:
+    # Use getattr to handle SQLAlchemy Column types properly
+    if getattr(plan, "archived", False):
         # Idempotent: already archived, check for existing memory node
         node = (
             db.query(MemoryNode)
@@ -337,9 +354,9 @@ def archive_plan(
         # Fall through to create the memory node below
 
     # Mark as archived (or already archived from edge case above)
-    if not plan.archived:
-        plan.archived = True
-        plan.updated_at = datetime.utcnow()
+    if not getattr(plan, "archived", False):
+        setattr(plan, "archived", True)
+        setattr(plan, "updated_at", datetime.utcnow())
 
     # Create memory graph node
     node = MemoryNode(
@@ -347,22 +364,22 @@ def archive_plan(
         kind="plan_session",
         foreign_id=plan_id,
         title=plan.title,
-        summary=f"Plan with {len(plan.steps or [])} steps, {len(plan.participants or [])} participants",
+        summary=f"Plan with {len(getattr(plan, 'steps', []) or [])} steps, {len(getattr(plan, 'participants', []) or [])} participants",
         link=f"/plan/{plan_id}",
         content=json.dumps(
             {
                 "title": plan.title,
                 "description": plan.description,
-                "steps": plan.steps or [],
-                "participants": plan.participants or [],
-                "created_at": plan.created_at.isoformat() if plan.created_at else None,
-                "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
+                "steps": getattr(plan, "steps", []) or [],
+                "participants": getattr(plan, "participants", []) or [],
+                "created_at": _safe_isoformat(getattr(plan, "created_at", None)),
+                "updated_at": _safe_isoformat(getattr(plan, "updated_at", None)),
                 "plan_id": plan_id,
             }
         ),
         metadata={
-            "steps_count": len(plan.steps or []),
-            "participants": plan.participants,
+            "steps_count": len(getattr(plan, "steps", []) or []),
+            "participants": getattr(plan, "participants", []) or [],
             "archived_at": datetime.utcnow().isoformat(),
         },
         created_at=plan.created_at,

@@ -1,7 +1,7 @@
 import datetime as dt
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter
+from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -13,9 +13,11 @@ from ..core.metrics import router as metrics_router
 from ..core.middleware import AuditMiddleware
 from ..core.middleware import RateLimitMiddleware
 from ..core.middleware import RequestIDMiddleware
+from ..core.audit.middleware import EnhancedAuditMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
-from ..services import jira as jsvc, github as ghsvc
+from ..services.jira import JiraService
+from ..services.github import GitHubService
 from ..workers.queue import process_meeting
 from ..workers.integrations import jira_sync, github_index
 from ..workers.answers import generate_answer
@@ -31,6 +33,7 @@ from .memory import router as memory_router
 from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
+from .routers.audit import router as audit_router
 from ..core.realtime import presence as presence_lifecycle
 
 logger = setup_logging()
@@ -60,6 +63,7 @@ app.add_middleware(
 app.add_middleware(RequestIDMiddleware, service_name="core")
 app.add_middleware(RateLimitMiddleware, service_name="core", rpm=60)
 app.add_middleware(AuditMiddleware, service_name="core")
+app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
 
 
 @app.get("/health")
@@ -89,6 +93,9 @@ app.include_router(memory_router, prefix="/api")
 
 # Admin RBAC endpoints (PR-24)
 app.include_router(admin_rbac_router)
+
+# Audit & Event Replay endpoints (PR-25)
+app.include_router(audit_router)
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])
@@ -261,7 +268,7 @@ def jira_connect(body: JiraConnectReq, db: Session = Depends(get_db)):
         HTTPException: If connection creation fails
     """
     try:
-        conn = jsvc.save_connection(db, body.cloud_base_url, body.access_token)
+        conn = JiraService.save_connection(db, body.cloud_base_url, body.access_token)
         return {"connection_id": conn.id}
     except Exception as e:
         logger.error(f"Failed to create JIRA connection: {e}")
@@ -289,7 +296,7 @@ def jira_config(body: JiraConfigReq, db: Session = Depends(get_db)):
         HTTPException: If configuration creation fails
     """
     try:
-        cfg = jsvc.set_project_config(
+        cfg = JiraService.set_project_config(
             db, body.connection_id, body.project_keys, body.default_jql
         )
         return {"config_id": cfg.id}
@@ -323,9 +330,10 @@ def jira_trigger_sync(connection_id: str):
 
 @app.get("/api/jira/tasks")
 def jira_tasks(
+    request: Request,
     q: str | None = None,
     project: str | None = None,
-    assignee: str | None = None,
+    assignee: str | None = None,  # DEPRECATED: Will be removed in v2.0
     updated_since: str | None = None,
     db: Session = Depends(get_db),
 ):
@@ -334,16 +342,34 @@ def jira_tasks(
     Args:
         q: Text search query for summary/description
         project: Filter by project key
-        assignee: Filter by assignee name
+        assignee: DEPRECATED - This parameter is no longer functional and will be
+                 removed in v2.0. The underlying JiraService no longer supports
+                 assignee filtering. Use project and query filters instead.
         updated_since: Filter by update timestamp
         db: Database session dependency
 
     Returns:
         List of matching JIRA issues
+
+    Deprecation Notice:
+        The 'assignee' parameter is deprecated as of v1.5 and will be removed in v2.0.
+        It currently has no effect on the search results. Please update your code
+        to use other filtering options.
     """
+    # Issue deprecation warning if assignee parameter is provided in the request
+    if "assignee" in request.query_params:
+        import warnings
+
+        warnings.warn(
+            "The 'assignee' parameter is deprecated and will be removed in v2.0. "
+            "It has no effect on search results. Use 'project' and 'q' parameters instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     return {
-        "items": jsvc.search_issues(
-            db, q=q, project=project, assignee=assignee, updated_since=updated_since
+        "items": JiraService.search_issues(
+            db, project=project, q=q, updated_since=updated_since
         )
     }
 
@@ -368,7 +394,7 @@ def gh_connect(body: GhConnectReq, db: Session = Depends(get_db)):
         HTTPException: If connection creation fails
     """
     try:
-        conn = ghsvc.save_connection(db, body.access_token)
+        conn = GitHubService.save_connection(db, body.access_token)
         return {"connection_id": conn.id}
     except Exception as e:
         logger.error(f"Failed to create GitHub connection: {e}")
@@ -421,7 +447,7 @@ def gh_search_code(
     Returns:
         List of matching code files
     """
-    return {"hits": ghsvc.search_code(db, repo=repo, q=q, path_prefix=path)}
+    return {"hits": GitHubService.search_code(db, repo=repo, q=q, path_prefix=path)}
 
 
 @app.get("/api/github/search/issues")
@@ -443,7 +469,9 @@ def gh_search_issues(
         List of matching issues and pull requests
     """
     return {
-        "hits": ghsvc.search_issues(db, repo=repo, q=q, updated_since=updated_since)
+        "hits": GitHubService.search_issues(
+            db, repo=repo, q=q, updated_since=updated_since
+        )
     }
 
 

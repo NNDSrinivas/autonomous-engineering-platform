@@ -332,6 +332,7 @@ def jira_trigger_sync(connection_id: str):
 def jira_tasks(
     q: str | None = None,
     project: str | None = None,
+    assignee: str | None = None,  # Kept for backward compatibility
     updated_since: str | None = None,
     db: Session = Depends(get_db),
 ):
@@ -340,6 +341,7 @@ def jira_tasks(
     Args:
         q: Text search query for summary/description
         project: Filter by project key
+        assignee: Filter by assignee name (currently unused)
         updated_since: Filter by update timestamp
         db: Database session dependency
 

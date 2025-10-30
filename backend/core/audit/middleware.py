@@ -59,9 +59,18 @@ class EnhancedAuditMiddleware(BaseHTTPMiddleware):
 
         # Persist audit record (never block the response)
         try:
-            # Use dependency injection to get DB session
-            session = next(get_db())
-            try:
+            # Use contextual session management to prevent leaks
+            from contextlib import contextmanager
+            
+            @contextmanager
+            def get_db_session():
+                session = next(get_db())
+                try:
+                    yield session
+                finally:
+                    session.close()
+            
+            with get_db_session() as session:
                 audit_record = AuditLog(
                     org_key=org_key,
                     actor_sub=actor_sub,
@@ -78,8 +87,6 @@ class EnhancedAuditMiddleware(BaseHTTPMiddleware):
                 )
                 session.add(audit_record)
                 session.commit()
-            finally:
-                session.close()
         except Exception as e:
             # Never let audit failures break the response
             logger.warning(f"Audit logging failed: {e}")

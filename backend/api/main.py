@@ -1,7 +1,7 @@
 import datetime as dt
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter
+from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -334,6 +334,7 @@ def jira_trigger_sync(connection_id: str):
 
 @app.get("/api/jira/tasks")
 def jira_tasks(
+    request: Request,
     q: str | None = None,
     project: str | None = None,
     assignee: str | None = None,  # Deprecated: not used by JiraService
@@ -352,7 +353,8 @@ def jira_tasks(
     Returns:
         List of matching JIRA issues
     """
-    if assignee is not None:
+    # Issue deprecation warning if assignee parameter is provided in the request
+    if 'assignee' in request.query_params:
         import warnings
         warnings.warn(
             "assignee parameter is deprecated and not supported by JiraService.search_issues",

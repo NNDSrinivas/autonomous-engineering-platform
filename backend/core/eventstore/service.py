@@ -17,7 +17,7 @@ def next_seq(session: Session, plan_id: str) -> int:
         .with_for_update(skip_locked=True)
         .limit(1)
     ).first()
-    
+
     # Now get the max sequence number (this will be consistent due to the lock)
     last = session.execute(
         select(func.max(PlanEvent.seq)).where(PlanEvent.plan_id == plan_id)

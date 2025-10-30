@@ -347,7 +347,7 @@ def jira_tasks(
         List of matching JIRA issues
     """
     return {
-        "items": jsvc.search_issues(
+        "items": jsvc().search_issues(
             db, q=q, project=project, updated_since=updated_since
         )
     }

@@ -71,6 +71,8 @@ async def resolve_effective_role(
         cached_effective_role = cached.get("effective_role")
         if cached_effective_role and cached_effective_role in ROLE_RANK:
             # Return cached effective role (already merged JWT + DB)
+            # Note: ROLE_RANK validation prevents outdated role names from being returned.
+            # If role definitions change, short TTL (60s) helps minimize stale cache impact.
             return cast(RoleName, cached_effective_role)
         # Cache corrupted or invalid - fall through to DB lookup
 

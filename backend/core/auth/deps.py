@@ -293,5 +293,7 @@ def _get_db_for_auth():
     """
     from backend.database.session import get_db
 
-    # Lazy import to avoid circular dependencies. Uses yield from to forward the generator.
+    # Lazy import to avoid circular dependencies.
+    # Uses yield from to efficiently forward the generator without creating additional indirection.
+    # This preserves the cleanup behavior and context management of the original generator.
     yield from get_db()

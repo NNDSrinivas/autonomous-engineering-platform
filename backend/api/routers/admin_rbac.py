@@ -203,6 +203,7 @@ def _handle_org_reassignment(user: DBUser, new_org: Organization, db: Session) -
         Number of role assignments deleted during reassignment
     """
     # Check if user needs to be moved to a different organization
+    # type: ignore needed due to SQLAlchemy comparison returning ColumnElement rather than bool
     if user.org_id != new_org.id:  # type: ignore[comparison-overlap]
         old_org_id = user.org_id
         user_sub = user.sub  # Extract for type safety and reuse

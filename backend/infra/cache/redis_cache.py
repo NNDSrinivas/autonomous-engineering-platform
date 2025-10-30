@@ -138,7 +138,7 @@ class Cache:
         Clear cached entries matching a pattern.
 
         Args:
-            pattern: Pattern to match (supports * wildcards for Redis, 
+            pattern: Pattern to match (supports * wildcards for Redis,
                      simple prefix matching for in-memory cache)
         """
         r = await self._ensure()

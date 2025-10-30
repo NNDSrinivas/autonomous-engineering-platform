@@ -246,7 +246,7 @@ def upsert_user(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="User creation failed due to concurrent operations",
                 )
-            
+
             user.email = body.email  # type: ignore[assignment]
             user.display_name = body.display_name  # type: ignore[assignment]
             if user.org_id != org.id:  # type: ignore[comparison-overlap]

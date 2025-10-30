@@ -38,7 +38,9 @@ def _get_session_local():
         with _lock:
             if _SessionLocal is None:
                 engine = _get_engine()
-                _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+                _SessionLocal = sessionmaker(
+                    autocommit=False, autoflush=False, bind=engine
+                )
     return _SessionLocal
 
 

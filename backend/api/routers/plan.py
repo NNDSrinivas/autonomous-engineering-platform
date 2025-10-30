@@ -283,7 +283,8 @@ async def stream_plan_updates(
             yield f"data: {json.dumps({'type': 'connected', 'plan_id': plan_id})}\n\n"
 
             # Stream updates from broadcaster
-            async for msg in bc.subscribe(channel):
+            subscription = await bc.subscribe(channel)
+            async for msg in subscription:
                 yield f"data: {msg}\n\n"
 
         except asyncio.CancelledError:

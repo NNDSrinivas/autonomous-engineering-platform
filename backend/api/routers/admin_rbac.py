@@ -76,6 +76,9 @@ class UserResponse(BaseModel):
     email: str
     display_name: Optional[str]
     org_id: int
+    roles_deleted_count: Optional[int] = (
+        None  # Number of roles deleted during org reassignment
+    )
 
 
 class RoleGrant(BaseModel):
@@ -211,6 +214,8 @@ def upsert_user(
 
     # Query by sub only since it's unique across all organizations
     user = db.query(DBUser).filter_by(sub=body.sub).one_or_none()
+    deleted_count = 0  # Track roles deleted during org reassignment
+
     if not user:
         user = DBUser(
             sub=body.sub,
@@ -243,6 +248,7 @@ def upsert_user(
         email=user.email,  # type: ignore[arg-type]
         display_name=user.display_name,  # type: ignore[arg-type]
         org_id=user.org_id,  # type: ignore[arg-type]
+        roles_deleted_count=deleted_count if deleted_count > 0 else None,
     )
 
 
@@ -362,8 +368,17 @@ async def grant_role(
     db.add(UserRole(user_id=user.id, role_id=role.id, project_key=body.project_key))
     db.commit()
 
-    # Invalidate cache for this user
-    await invalidate_role_cache(body.org_key, body.sub)
+    # Invalidate cache for this user (non-blocking for failures)
+    try:
+        await invalidate_role_cache(body.org_key, body.sub)
+    except Exception as e:
+        logger.warning(
+            "Failed to invalidate role cache for org_key=%s, sub=%s: %s",
+            body.org_key,
+            body.sub,
+            e,
+            exc_info=True,
+        )
 
     return RoleGrantResponse(ok=True, granted=True)
 
@@ -425,7 +440,16 @@ async def revoke_role(
     db.delete(assignment)
     db.commit()
 
-    # Invalidate cache for this user
-    await invalidate_role_cache(body.org_key, body.sub)
+    # Invalidate cache for this user (non-blocking for failures)
+    try:
+        await invalidate_role_cache(body.org_key, body.sub)
+    except Exception as e:
+        logger.warning(
+            "Failed to invalidate role cache for org_key=%s, sub=%s: %s",
+            body.org_key,
+            body.sub,
+            e,
+            exc_info=True,
+        )
 
     return {"ok": True, "revoked": True}

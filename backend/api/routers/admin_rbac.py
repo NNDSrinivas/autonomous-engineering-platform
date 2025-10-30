@@ -246,7 +246,7 @@ async def _update_user_with_cache_invalidation(
     user.email = body.email  # type: ignore[assignment]
     user.display_name = body.display_name  # type: ignore[assignment]
 
-    # Handle reassignment happens in the calling function
+    # Note: org_id reassignment and role cleanup happen before this function is called
     db.commit()
     db.refresh(user)
 
@@ -315,13 +315,13 @@ async def upsert_user(
                     detail="User creation failed, please retry.",
                 )
 
-            # Handle user update with cache invalidation
-            await _update_user_with_cache_invalidation(user, body, org, db)
+            # Handle org reassignment before updating user and committing
             deleted_count += _handle_org_reassignment(user, org, db)
+            await _update_user_with_cache_invalidation(user, body, org, db)
     else:
-        # Handle user update with cache invalidation
-        await _update_user_with_cache_invalidation(user, body, org, db)
+        # Handle org reassignment before updating user and committing
         deleted_count += _handle_org_reassignment(user, org, db)
+        await _update_user_with_cache_invalidation(user, body, org, db)
 
     return UserResponse(
         id=user.id,  # type: ignore[arg-type]

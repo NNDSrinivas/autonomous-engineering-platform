@@ -333,7 +333,7 @@ def jira_tasks(
     request: Request,
     q: str | None = None,
     project: str | None = None,
-    assignee: str | None = None,  # Deprecated: kept for backward compatibility
+    assignee: str | None = None,  # DEPRECATED: Will be removed in v2.0
     updated_since: str | None = None,
     db: Session = Depends(get_db),
 ):
@@ -342,19 +342,27 @@ def jira_tasks(
     Args:
         q: Text search query for summary/description
         project: Filter by project key
-        assignee: DEPRECATED - Filter by assignee name (no longer supported)
+        assignee: DEPRECATED - This parameter is no longer functional and will be 
+                 removed in v2.0. The underlying JiraService no longer supports 
+                 assignee filtering. Use project and query filters instead.
         updated_since: Filter by update timestamp
         db: Database session dependency
 
     Returns:
         List of matching JIRA issues
+        
+    Deprecation Notice:
+        The 'assignee' parameter is deprecated as of v1.5 and will be removed in v2.0.
+        It currently has no effect on the search results. Please update your code
+        to use other filtering options.
     """
     # Issue deprecation warning if assignee parameter is provided in the request
     if "assignee" in request.query_params:
         import warnings
 
         warnings.warn(
-            "assignee parameter is deprecated and will be removed in a future version",
+            "The 'assignee' parameter is deprecated and will be removed in v2.0. "
+            "It has no effect on search results. Use 'project' and 'q' parameters instead.",
             DeprecationWarning,
             stacklevel=2,
         )

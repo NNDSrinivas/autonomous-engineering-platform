@@ -19,11 +19,20 @@ MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 @contextmanager
 def get_db_session():
     """Context manager for database sessions to prevent connection leaks."""
-    session = next(get_db())
+    # Use the generator properly with explicit iteration
+    db_generator = get_db()
+    session = None
     try:
+        session = db_generator.__next__()
         yield session
     finally:
-        session.close()
+        if session:
+            session.close()
+        # Properly close the generator to trigger cleanup
+        try:
+            db_generator.__next__()
+        except StopIteration:
+            pass  # Expected when generator is exhausted
 
 
 class EnhancedAuditMiddleware(BaseHTTPMiddleware):

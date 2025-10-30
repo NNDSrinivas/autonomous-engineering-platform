@@ -34,6 +34,7 @@ from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
 from .routers.audit import router as audit_router
+from .routers.intelligence import router as intelligence_router
 from ..core.realtime import presence as presence_lifecycle
 
 logger = setup_logging()
@@ -96,6 +97,9 @@ app.include_router(admin_rbac_router)
 
 # Audit & Event Replay endpoints (PR-25)
 app.include_router(audit_router)
+
+# Intelligent Context Agent endpoints
+app.include_router(intelligence_router)
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])
@@ -332,7 +336,7 @@ def jira_trigger_sync(connection_id: str):
 def jira_tasks(
     q: str | None = None,
     project: str | None = None,
-    assignee: str | None = None,  # Deprecated: kept for backward compatibility
+    assignee: str | None = None,  # Deprecated: not used by JiraService
     updated_since: str | None = None,
     db: Session = Depends(get_db),
 ):
@@ -341,7 +345,7 @@ def jira_tasks(
     Args:
         q: Text search query for summary/description
         project: Filter by project key
-        assignee: DEPRECATED - Filter by assignee name (no longer supported)
+        assignee: DEPRECATED - Not supported by current implementation
         updated_since: Filter by update timestamp
         db: Database session dependency
 
@@ -350,16 +354,15 @@ def jira_tasks(
     """
     if assignee is not None:
         import warnings
-
         warnings.warn(
-            "assignee parameter is deprecated and will be removed in a future version",
+            "assignee parameter is deprecated and not supported by JiraService.search_issues",
             DeprecationWarning,
-            stacklevel=2,
+            stacklevel=2
         )
-
+    
     return {
         "items": JiraService.search_issues(
-            db, q=q, project=project, updated_since=updated_since
+            db, project=project, q=q, updated_since=updated_since
         )
     }
 
@@ -459,9 +462,7 @@ def gh_search_issues(
         List of matching issues and pull requests
     """
     return {
-        "hits": GitHubService.search_issues(
-            db, repo=repo, q=q, updated_since=updated_since
-        )
+        "hits": GitHubService.search_issues(db, repo=repo, q=q, updated_since=updated_since)
     }
 
 

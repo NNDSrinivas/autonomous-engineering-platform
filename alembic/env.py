@@ -17,7 +17,9 @@ from backend.core.db import Base  # noqa
 from backend.models.meetings import *  # noqa
 from backend.models.integrations import *  # noqa
 from backend.models.tasks import *  # noqa
-from backend.database.models.rbac import *  # noqa
+
+# Explicit RBAC model imports for better namespace control
+from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole  # noqa
 
 config = context.config
 if (
@@ -45,7 +47,10 @@ def run_migrations_online():
 
     url = config.get_main_option("sqlalchemy.url")
     if url is None:
-        raise ValueError("No sqlalchemy.url configured")
+        raise ValueError(
+            "No sqlalchemy.url configured in alembic.ini or environment variables. "
+            "Please set DATABASE_URL or configure sqlalchemy.url in alembic.ini."
+        )
     connectable = create_engine(url)
 
     with connectable.connect() as connection:

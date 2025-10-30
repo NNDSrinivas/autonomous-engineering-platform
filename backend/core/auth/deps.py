@@ -21,11 +21,12 @@ logger = logging.getLogger(__name__)
 _log_timestamps: dict[str, float] = {}
 _log_lock = threading.Lock()
 # Configurable throttle period: default 5 minutes, override via LOG_THROTTLE_SECONDS env var
+log_throttle_env = os.getenv("LOG_THROTTLE_SECONDS", "300")
 try:
-    _LOG_THROTTLE_SECONDS = int(os.getenv("LOG_THROTTLE_SECONDS", "300"))
+    _LOG_THROTTLE_SECONDS = int(log_throttle_env)
 except ValueError:
     logger.warning(
-        f"Invalid value for LOG_THROTTLE_SECONDS: {os.getenv('LOG_THROTTLE_SECONDS')}; "
+        f"Invalid value for LOG_THROTTLE_SECONDS: {log_throttle_env}; "
         "must be an integer. Falling back to default (300 seconds)."
     )
     _LOG_THROTTLE_SECONDS = 300

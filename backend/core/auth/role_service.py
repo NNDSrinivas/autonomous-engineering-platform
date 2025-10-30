@@ -107,7 +107,9 @@ async def resolve_effective_role(
     for (role_name,) in role_assignments:
         # Validate role is in hierarchy before casting to RoleName type
         if role_name in ROLE_RANK:
-            validated_role: RoleName = role_name  # Explicitly cast after validation
+            validated_role = cast(
+                RoleName, role_name
+            )  # Explicitly cast after validation
             if max_db_role is None:
                 max_db_role = validated_role
             else:

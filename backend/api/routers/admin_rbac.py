@@ -187,6 +187,38 @@ def list_orgs(
 # --- User Endpoints ---
 
 
+def _handle_org_reassignment(user: DBUser, new_org: Organization, db: Session) -> None:
+    """
+    Handle user reassignment to a different organization.
+
+    Removes all existing role assignments when moving between organizations
+    and logs the operation.
+
+    Args:
+        user: User being reassigned
+        new_org: New organization to assign user to
+        db: Database session
+    """
+    if user.org_id != new_org.id:  # type: ignore[comparison-overlap]
+        old_org_id = user.org_id
+        user_sub = user.sub  # Extract for type safety and reuse
+
+        # Remove all existing role assignments when moving organizations
+        deleted_count = (
+            db.query(UserRole)
+            .filter_by(user_id=user.id)
+            .delete(synchronize_session=False)
+        )
+
+        if deleted_count > 0:
+            logger.info(
+                f"Removed {deleted_count} role assignment(s) for user {user_sub} "
+                f"when moving from org_id {old_org_id} to {new_org.id}"
+            )
+
+        user.org_id = new_org.id
+
+
 @router.post("/users", response_model=UserResponse)
 async def upsert_user(
     body: UserUpsert,
@@ -248,20 +280,7 @@ async def upsert_user(
 
             user.email = body.email  # type: ignore[assignment]
             user.display_name = body.display_name  # type: ignore[assignment]
-            if user.org_id != org.id:  # type: ignore[comparison-overlap]
-                old_org_id = user.org_id
-                deleted_count = (
-                    db.query(UserRole)
-                    .filter_by(user_id=user.id)
-                    .delete(synchronize_session=False)
-                )
-                if deleted_count > 0:
-                    user_sub = user.sub  # Extract for type safety
-                    logger.info(
-                        f"Removed {deleted_count} role assignment(s) for user {user_sub} "
-                        f"when moving from org_id {old_org_id} to {org.id}"
-                    )
-            user.org_id = org.id
+            _handle_org_reassignment(user, org, db)
             db.commit()
             db.refresh(user)
             await invalidate_role_cache(body.org_key, body.sub)
@@ -269,21 +288,7 @@ async def upsert_user(
         # Update user details including organization reassignment
         user.email = body.email  # type: ignore[assignment]
         user.display_name = body.display_name  # type: ignore[assignment]
-        if user.org_id != org.id:  # type: ignore[comparison-overlap]
-            old_org_id = user.org_id  # Save original org_id for accurate logging
-            # Remove all existing role assignments when moving organizations
-            deleted_count = (
-                db.query(UserRole)
-                .filter_by(user_id=user.id)
-                .delete(synchronize_session=False)
-            )
-            if deleted_count > 0:
-                user_sub = user.sub  # Extract for type safety
-                logger.info(
-                    f"Removed {deleted_count} role assignment(s) for user {user_sub} "
-                    f"when moving from org_id {old_org_id} to {org.id}"
-                )
-        user.org_id = org.id  # Allow moving users between organizations
+        _handle_org_reassignment(user, org, db)
 
         db.commit()
         db.refresh(user)

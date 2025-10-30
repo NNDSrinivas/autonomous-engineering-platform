@@ -1,6 +1,7 @@
 """
 Audit and Replay API endpoints
 """
+
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/api", tags=["audit"])
 
 class PlanEventOut(BaseModel):
     """Plan event response model"""
+
     seq: int
     type: str
     payload: dict
@@ -30,44 +32,53 @@ class PlanEventOut(BaseModel):
 @router.get("/plan/{plan_id}/replay", response_model=list[PlanEventOut])
 def replay_plan_events(
     plan_id: str,
-    since: Optional[int] = Query(None, ge=0, description="Replay events with seq > since"),
+    since: Optional[int] = Query(
+        None, ge=0, description="Replay events with seq > since"
+    ),
     limit: int = Query(100, ge=1, le=1000, description="Maximum events to return"),
     db: Session = Depends(get_db),
     user: User = Depends(require_role(Role.VIEWER)),
 ):
     """
     Replay plan events in chronological order.
-    
+
     This endpoint allows reconstruction of plan state by replaying
     all events in sequence. Useful for debugging, auditing, and
     potentially implementing undo/redo functionality.
-    
+
     Only returns events for plans in the user's organization.
     """
     try:
         # Security: Filter events by user's org to prevent cross-org access
         rows = replay(db, plan_id=plan_id, since_seq=since, limit=limit)
-        
+
         # Filter events to only those matching user's org
         filtered_events = []
         for r in rows:
-            if r.org_key == user.org_id or r.org_key is None:  # Allow events without org for backward compatibility
-                filtered_events.append({
-                    "seq": r.seq,
-                    "type": r.type,
-                    "payload": r.payload,
-                    "by": r.user_sub,
-                    "org_key": r.org_key,
-                    "created_at": r.created_at.isoformat(),
-                })
-        
+            if (
+                r.org_key == user.org_id or r.org_key is None
+            ):  # Allow events without org for backward compatibility
+                filtered_events.append(
+                    {
+                        "seq": r.seq,
+                        "type": r.type,
+                        "payload": r.payload,
+                        "by": r.user_sub,
+                        "org_key": r.org_key,
+                        "created_at": r.created_at.isoformat(),
+                    }
+                )
+
         return filtered_events
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to replay events: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to replay events: {str(e)}"
+        )
 
 
 class AuditOut(BaseModel):
     """Audit log response model"""
+
     id: int
     route: str
     method: str
@@ -90,20 +101,20 @@ def list_audit_logs(
 ):
     """
     List audit logs for forensics and compliance.
-    
+
     Admin-only endpoint that provides access to the audit trail
     for security analysis, compliance reporting, and debugging.
     """
     try:
         q = select(AuditLog).order_by(desc(AuditLog.created_at)).limit(limit)
-        
+
         if org:
             q = q.where(AuditLog.org_key == org)
         if actor:
             q = q.where(AuditLog.actor_sub == actor)
-            
+
         rows = db.execute(q).scalars().all()
-        
+
         return [
             {
                 "id": r.id,
@@ -120,7 +131,9 @@ def list_audit_logs(
             for r in rows
         ]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve audit logs: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve audit logs: {str(e)}"
+        )
 
 
 @router.get("/plan/{plan_id}/events/count")
@@ -131,27 +144,29 @@ def get_plan_events_count_endpoint(
 ):
     """
     Get the total number of events for a plan.
-    
+
     Only returns count for plans in the user's organization.
     """
     try:
         # Security: Verify plan belongs to user's org before returning count
         from backend.database.models.live_plan import LivePlan
-        
-        plan = db.query(LivePlan).filter(
-            LivePlan.id == plan_id,
-            LivePlan.org_id == user.org_id
-        ).first()
-        
+
+        plan = (
+            db.query(LivePlan)
+            .filter(LivePlan.id == plan_id, LivePlan.org_id == user.org_id)
+            .first()
+        )
+
         if not plan:
             raise HTTPException(
-                status_code=404, 
-                detail="Plan not found or not accessible"
+                status_code=404, detail="Plan not found or not accessible"
             )
-        
+
         count = get_plan_event_count(db, plan_id)
         return {"plan_id": plan_id, "event_count": count}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get event count: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get event count: {str(e)}"
+        )

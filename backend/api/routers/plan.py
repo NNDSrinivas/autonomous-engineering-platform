@@ -35,8 +35,8 @@ def _safe_isoformat(dt_obj):
     if dt_obj is None:
         return None
     try:
-        return dt_obj.isoformat() if hasattr(dt_obj, 'isoformat') else None
-    except:
+        return dt_obj.isoformat() if hasattr(dt_obj, "isoformat") else None
+    except Exception:
         return None
 
 
@@ -167,7 +167,7 @@ async def add_step(
         raise HTTPException(status_code=404, detail="Plan not found")
 
     # Use getattr to handle SQLAlchemy Column types properly
-    if getattr(plan, 'archived', False):
+    if getattr(plan, "archived", False):
         raise HTTPException(status_code=400, detail="Cannot modify archived plan")
 
     # Check policy guardrails before modifying plan
@@ -192,10 +192,10 @@ async def add_step(
     # concurrent writes. For production use with high concurrency, consider:
     # - PostgreSQL's native jsonb_set/jsonb_insert for atomic updates
     # - Optimistic locking with a version field to detect conflicts
-    steps = getattr(plan, 'steps', []) or []
+    steps = getattr(plan, "steps", []) or []
     steps.append(step)
-    setattr(plan, 'steps', steps)
-    setattr(plan, 'updated_at', datetime.utcnow())
+    setattr(plan, "steps", steps)
+    setattr(plan, "updated_at", datetime.utcnow())
 
     # Warn if plan is getting large (performance concern)
     # Use exponential thresholds to avoid log flooding: 50, 100, 200, 400, 800...
@@ -226,13 +226,18 @@ async def add_step(
         )
     except Exception as e:
         # Log but don't fail - backward compatibility
-        logger.error(f"Failed to append/broadcast step for plan {req.plan_id}: {e}", exc_info=True)
+        logger.error(
+            f"Failed to append/broadcast step for plan {req.plan_id}: {e}",
+            exc_info=True,
+        )
         # Fallback to old broadcast method
         channel = _channel(req.plan_id)
         try:
             await bc.publish(channel, json.dumps(step))
         except Exception as fallback_error:
-            logger.error(f"Fallback broadcast also failed for plan {req.plan_id}: {fallback_error}")
+            logger.error(
+                f"Fallback broadcast also failed for plan {req.plan_id}: {fallback_error}"
+            )
 
     # Metrics
     try:
@@ -321,7 +326,7 @@ def archive_plan(
         raise HTTPException(status_code=404, detail="Plan not found")
 
     # Use getattr to handle SQLAlchemy Column types properly
-    if getattr(plan, 'archived', False):
+    if getattr(plan, "archived", False):
         # Idempotent: already archived, check for existing memory node
         node = (
             db.query(MemoryNode)
@@ -349,9 +354,9 @@ def archive_plan(
         # Fall through to create the memory node below
 
     # Mark as archived (or already archived from edge case above)
-    if not getattr(plan, 'archived', False):
-        setattr(plan, 'archived', True)
-        setattr(plan, 'updated_at', datetime.utcnow())
+    if not getattr(plan, "archived", False):
+        setattr(plan, "archived", True)
+        setattr(plan, "updated_at", datetime.utcnow())
 
     # Create memory graph node
     node = MemoryNode(
@@ -365,16 +370,16 @@ def archive_plan(
             {
                 "title": plan.title,
                 "description": plan.description,
-                "steps": getattr(plan, 'steps', []) or [],
-                "participants": getattr(plan, 'participants', []) or [],
-                "created_at": _safe_isoformat(getattr(plan, 'created_at', None)),
-                "updated_at": _safe_isoformat(getattr(plan, 'updated_at', None)),
+                "steps": getattr(plan, "steps", []) or [],
+                "participants": getattr(plan, "participants", []) or [],
+                "created_at": _safe_isoformat(getattr(plan, "created_at", None)),
+                "updated_at": _safe_isoformat(getattr(plan, "updated_at", None)),
                 "plan_id": plan_id,
             }
         ),
         metadata={
-            "steps_count": len(getattr(plan, 'steps', []) or []),
-            "participants": getattr(plan, 'participants', []) or [],
+            "steps_count": len(getattr(plan, "steps", []) or []),
+            "participants": getattr(plan, "participants", []) or [],
             "archived_at": datetime.utcnow().isoformat(),
         },
         created_at=plan.created_at,

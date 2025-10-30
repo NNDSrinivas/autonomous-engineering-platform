@@ -16,7 +16,6 @@ from ..core.middleware import RequestIDMiddleware
 from ..core.audit.middleware import EnhancedAuditMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
-from ..services import jira as jira_module, github as github_module
 from ..services.jira import JiraService as jsvc
 from ..services.github import GitHubService as ghsvc
 from ..workers.queue import process_meeting

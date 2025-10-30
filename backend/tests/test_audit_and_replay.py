@@ -1,8 +1,8 @@
 """
 Tests for audit logging and event replay functionality
 """
+
 import os
-import json
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -11,7 +11,6 @@ from sqlalchemy import text
 from backend.api.main import app
 from backend.core.db import get_db
 from backend.core.eventstore.service import append_event, replay, get_plan_event_count
-from backend.core.eventstore.models import PlanEvent
 
 client = TestClient(app)
 
@@ -28,11 +27,13 @@ def test_db():
 def test_append_and_replay_plan_events(test_db: Session):
     """Test appending events and replaying them in order"""
     plan_id = "test-plan-replay"
-    
+
     # Clear any existing test data
-    test_db.execute(text("DELETE FROM plan_events WHERE plan_id = :plan_id"), {"plan_id": plan_id})
+    test_db.execute(
+        text("DELETE FROM plan_events WHERE plan_id = :plan_id"), {"plan_id": plan_id}
+    )
     test_db.commit()
-    
+
     # Append multiple events
     evt1 = append_event(
         test_db,
@@ -40,24 +41,24 @@ def test_append_and_replay_plan_events(test_db: Session):
         type="note",
         payload={"text": "First event"},
         user_sub="user-123",
-        org_key="org-test"
+        org_key="org-test",
     )
-    
+
     evt2 = append_event(
         test_db,
         plan_id=plan_id,
         type="step",
         payload={"text": "Second event"},
         user_sub="user-123",
-        org_key="org-test"
+        org_key="org-test",
     )
-    
+
     test_db.commit()
-    
+
     # Verify sequence numbers
     assert evt1.seq == 1
     assert evt2.seq == 2
-    
+
     # Replay all events
     events = replay(test_db, plan_id=plan_id)
     assert len(events) == 2
@@ -65,12 +66,12 @@ def test_append_and_replay_plan_events(test_db: Session):
     assert events[1].seq == 2
     assert events[0].payload == {"text": "First event"}
     assert events[1].payload == {"text": "Second event"}
-    
+
     # Replay since sequence 1
     events_since = replay(test_db, plan_id=plan_id, since_seq=1)
     assert len(events_since) == 1
     assert events_since[0].seq == 2
-    
+
     # Test event count
     count = get_plan_event_count(test_db, plan_id)
     assert count == 2
@@ -82,9 +83,9 @@ def test_replay_api_endpoint():
     os.environ["DEV_USER_ROLE"] = "viewer"
     os.environ["DEV_USER_ID"] = "u-tester"
     os.environ["DEV_ORG_ID"] = "org-demo"
-    
+
     plan_id = "test-plan-api"
-    
+
     # First add some events via the database (simulating plan activity)
     with next(get_db()) as db:
         append_event(
@@ -93,7 +94,7 @@ def test_replay_api_endpoint():
             type="note",
             payload={"text": "API test event 1"},
             user_sub="u-tester",
-            org_key="org-demo"
+            org_key="org-demo",
         )
         append_event(
             db,
@@ -101,10 +102,10 @@ def test_replay_api_endpoint():
             type="step",
             payload={"text": "API test event 2"},
             user_sub="u-tester",
-            org_key="org-demo"
+            org_key="org-demo",
         )
         db.commit()
-    
+
     # Test replay all events
     response = client.get(f"/api/plan/{plan_id}/replay")
     assert response.status_code == 200
@@ -114,13 +115,13 @@ def test_replay_api_endpoint():
     assert events[0]["type"] == "note"
     assert events[1]["seq"] == 2
     assert events[1]["type"] == "step"
-    
+
     # Test replay with since parameter
     response = client.get(f"/api/plan/{plan_id}/replay?since=1")
     assert response.status_code == 200
     events = response.json()
     assert all(event["seq"] > 1 for event in events)
-    
+
     # Test event count endpoint
     response = client.get(f"/api/plan/{plan_id}/events/count")
     assert response.status_code == 200
@@ -135,12 +136,12 @@ def test_audit_endpoint_permissions():
     os.environ["DEV_USER_ROLE"] = "viewer"
     response = client.get("/api/audit")
     assert response.status_code == 403
-    
+
     # Test with planner role (should fail)
     os.environ["DEV_USER_ROLE"] = "planner"
     response = client.get("/api/audit")
     assert response.status_code == 403
-    
+
     # Test with admin role (should succeed)
     os.environ["DEV_USER_ROLE"] = "admin"
     response = client.get("/api/audit?limit=5")
@@ -154,24 +155,26 @@ def test_audit_middleware_captures_requests():
     os.environ["DEV_USER_ROLE"] = "admin"
     os.environ["DEV_USER_ID"] = "u-admin"
     os.environ["DEV_ORG_ID"] = "org-test"
-    
+
     # Make a POST request (should be audited)
     test_data = {"test": "data"}
     response = client.post("/api/plan/test-plan-audit/events", json=test_data)
-    
+
     # The response might fail (endpoint might not exist), but audit should capture it
-    
+
     # Check if audit log was created
     response = client.get("/api/audit?limit=10")
     assert response.status_code == 200
     audit_logs = response.json()
-    
+
     # Look for our request in the audit logs
     matching_logs = [
-        log for log in audit_logs 
-        if log["route"] == "/api/plan/test-plan-audit/events" and log["method"] == "POST"
+        log
+        for log in audit_logs
+        if log["route"] == "/api/plan/test-plan-audit/events"
+        and log["method"] == "POST"
     ]
-    
+
     # We should find at least one matching audit log
     assert len(matching_logs) > 0
     log = matching_logs[0]
@@ -183,24 +186,37 @@ def test_audit_middleware_captures_requests():
 def test_event_sequence_monotonic():
     """Test that event sequences are monotonic per plan"""
     plan_id = "test-monotonic"
-    
+
     with next(get_db()) as db:
         # Add events in multiple transactions
-        evt1 = append_event(db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None)
+        evt1 = append_event(
+            db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
+        )
         db.commit()
-        
-        evt2 = append_event(db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None)
+
+        evt2 = append_event(
+            db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
+        )
         db.commit()
-        
-        evt3 = append_event(db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None)
+
+        evt3 = append_event(
+            db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
+        )
         db.commit()
-        
+
         assert evt1.seq == 1
         assert evt2.seq == 2
         assert evt3.seq == 3
-        
+
         # Events for different plans should have independent sequences
-        other_plan_evt = append_event(db, plan_id="other-plan", type="event", payload={}, user_sub=None, org_key=None)
+        other_plan_evt = append_event(
+            db,
+            plan_id="other-plan",
+            type="event",
+            payload={},
+            user_sub=None,
+            org_key=None,
+        )
         assert other_plan_evt.seq == 1  # Starts at 1 for new plan
 
 

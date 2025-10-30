@@ -54,7 +54,7 @@ def db_session() -> Generator[Session, None, None]:
             user = session.query(User).filter_by(id=1).first()
             session.commit()  # Explicit commit required
 
-    Note: Transaction commits are left to the caller. Automatic rollback occurs on SQLAlchemy exceptions.
+    Note: Transaction commits are left to the caller. Automatic rollback occurs on SQLAlchemyError exceptions only.
     """
     from sqlalchemy.exc import SQLAlchemyError
 

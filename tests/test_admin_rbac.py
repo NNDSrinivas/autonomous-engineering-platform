@@ -24,20 +24,21 @@ from backend.core.db import Base
 from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole
 from backend.database.session import get_db
 
-# Test database setup
-# Using shared in-memory database to ensure all connections see the same database
+# Test database setup - each test gets a unique database
 # Unique identifier prevents cross-test contamination
-_TEST_DB_ID = uuid.uuid4().hex[:8]
-TEST_DATABASE_URL = f"sqlite:///file:memdb_rbac_{_TEST_DB_ID}?mode=memory&cache=shared"
-
-# uri=True is unnecessary - SQLAlchemy auto-detects sqlite:///file: URI format
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 @pytest.fixture(scope="function")
 def db() -> Generator[Session, None, None]:
     """Create a fresh database for each test."""
+    # Generate a unique DB ID and engine per test function
+    test_db_id = uuid.uuid4().hex[:8]
+    test_database_url = (
+        f"sqlite:///file:memdb_rbac_{test_db_id}?mode=memory&cache=shared"
+    )
+    engine = create_engine(test_database_url, connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
     Base.metadata.create_all(bind=engine)
 
     # Clear in-memory cache before each test

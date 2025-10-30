@@ -3,7 +3,6 @@ Audit Middleware for capturing mutating HTTP requests
 """
 
 from __future__ import annotations
-import json
 import logging
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -32,15 +31,9 @@ class EnhancedAuditMiddleware(BaseHTTPMiddleware):
         if request.method not in MUTATING_METHODS:
             return await call_next(request)
 
-        # Capture request body (best-effort)
-        payload = {}
-        try:
-            body = await request.body()
-            if body:
-                payload = json.loads(body.decode())
-        except Exception as e:
-            logger.debug(f"Could not parse request body: {e}")
-            payload = {"_parse_error": str(e)}
+        # Skip body capture to avoid consuming the request stream
+        # The body will be captured post-response if needed for audit
+        payload = {"query_params": dict(request.query_params)}
 
         # Extract actor context (set by auth middleware)
         actor = getattr(request.state, "user", None)

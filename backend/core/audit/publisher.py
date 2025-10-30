@@ -47,8 +47,8 @@ async def append_and_broadcast(
         org_key=org_key,
     )
 
-    # Commit the event to ensure persistence
-    session.commit()
+    # Flush to ensure event is written (caller responsible for commit)
+    session.flush()
 
     # Then broadcast to Redis for real-time updates
     channel = f"{settings.PLAN_CHANNEL_PREFIX}{plan_id}"

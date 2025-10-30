@@ -38,7 +38,7 @@ _CLEANUP_MULTIPLIER = 2
 _CLEANUP_INTERVAL_SECONDS = 60
 
 # Last cleanup time for periodic cleanup optimization
-_last_cleanup_time = 0
+_last_cleanup_time: float = 0.0
 
 # HTTP Bearer token scheme for JWT authentication
 security = HTTPBearer(auto_error=False)

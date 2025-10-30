@@ -13,6 +13,7 @@ import asyncio
 import importlib
 import os
 import time
+from typing import cast
 
 import backend.core.auth.deps as deps
 from backend.core.auth.role_service import ROLE_RANK, RoleName
@@ -28,9 +29,8 @@ def test_role_validation():
 
     for role_name in test_roles:
         if role_name in ROLE_RANK:
-            validated_role: RoleName = (
-                role_name  # type: ignore[assignment] # Type hint for static analysis (validated above)
-            )
+            # Use proper cast() instead of type: ignore for validated roles
+            validated_role = cast(RoleName, role_name)
             valid_roles.append(validated_role)
             print(f"✓ Valid role: {validated_role}")
         else:

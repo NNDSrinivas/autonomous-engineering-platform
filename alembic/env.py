@@ -13,6 +13,7 @@ from backend.core.db import Base  # noqa
 from backend.models.meetings import *  # noqa
 from backend.models.integrations import *  # noqa
 from backend.models.tasks import *  # noqa
+from backend.database.models.rbac import *  # noqa
 
 config = context.config
 if (
@@ -39,6 +40,8 @@ def run_migrations_online():
     from sqlalchemy import create_engine
 
     url = config.get_main_option("sqlalchemy.url")
+    if url is None:
+        raise ValueError("No sqlalchemy.url configured")
     connectable = create_engine(url)
 
     with connectable.connect() as connection:

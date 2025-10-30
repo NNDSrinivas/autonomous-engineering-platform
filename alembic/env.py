@@ -58,8 +58,7 @@ def run_migrations_online():
 
     url = config.get_main_option("sqlalchemy.url")
     # URL is guaranteed to be set by the validation above
-    if url is None:
-        raise RuntimeError("sqlalchemy.url should be set by validation above")
+    assert url is not None  # For type checker - validation above ensures this
     connectable = create_engine(url)
 
     with connectable.connect() as connection:

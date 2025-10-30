@@ -3,6 +3,7 @@ Event Store Models for Audit and Plan Event Replay
 """
 
 from __future__ import annotations
+from typing import Optional
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import Integer, String, DateTime, JSON, Index
 from datetime import datetime, timezone
@@ -29,8 +30,8 @@ class PlanEvent(Base):
     )  # monotonic per plan
     type: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
-    user_sub: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    org_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_sub: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    org_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True, nullable=False
     )
@@ -50,15 +51,15 @@ class AuditLog(Base):
     __tablename__ = "audit_log_enhanced"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    org_key: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
-    actor_sub: Mapped[str | None] = mapped_column(
+    org_key: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
+    actor_sub: Mapped[Optional[str]] = mapped_column(
         String(128), index=True, nullable=True
     )
-    actor_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    actor_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     route: Mapped[str] = mapped_column(String(255), nullable=False)
     method: Mapped[str] = mapped_column(String(16), nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    resource_id: Mapped[str | None] = mapped_column(
+    resource_id: Mapped[Optional[str]] = mapped_column(
         String(128), nullable=True
     )  # e.g., plan_id
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)

@@ -11,7 +11,7 @@ from sqlalchemy import select, desc
 from backend.core.db import get_db
 from backend.core.auth.deps import require_role
 from backend.core.auth.models import User, Role
-from backend.core.eventstore.service import replay
+from backend.core.eventstore.service import replay, get_plan_event_count
 from backend.core.eventstore.models import AuditLog
 
 router = APIRouter(prefix="/api", tags=["audit"])
@@ -33,7 +33,7 @@ def replay_plan_events(
     since: Optional[int] = Query(None, ge=0, description="Replay events with seq > since"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum events to return"),
     db: Session = Depends(get_db),
-    _: User = Depends(require_role(Role.VIEWER)),
+    user: User = Depends(require_role(Role.VIEWER)),
 ):
     """
     Replay plan events in chronological order.
@@ -41,20 +41,27 @@ def replay_plan_events(
     This endpoint allows reconstruction of plan state by replaying
     all events in sequence. Useful for debugging, auditing, and
     potentially implementing undo/redo functionality.
+    
+    Only returns events for plans in the user's organization.
     """
     try:
+        # Security: Filter events by user's org to prevent cross-org access
         rows = replay(db, plan_id=plan_id, since_seq=since, limit=limit)
-        return [
-            {
-                "seq": r.seq,
-                "type": r.type,
-                "payload": r.payload,
-                "by": r.user_sub,
-                "org_key": r.org_key,
-                "created_at": r.created_at.isoformat(),
-            }
-            for r in rows
-        ]
+        
+        # Filter events to only those matching user's org
+        filtered_events = []
+        for r in rows:
+            if r.org_key == user.org_id or r.org_key is None:  # Allow events without org for backward compatibility
+                filtered_events.append({
+                    "seq": r.seq,
+                    "type": r.type,
+                    "payload": r.payload,
+                    "by": r.user_sub,
+                    "org_key": r.org_key,
+                    "created_at": r.created_at.isoformat(),
+                })
+        
+        return filtered_events
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to replay events: {str(e)}")
 
@@ -117,16 +124,34 @@ def list_audit_logs(
 
 
 @router.get("/plan/{plan_id}/events/count")
-def get_plan_event_count(
+def get_plan_events_count_endpoint(
     plan_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_role(Role.VIEWER)),
+    user: User = Depends(require_role(Role.VIEWER)),
 ):
-    """Get the total number of events for a plan"""
-    from backend.core.eventstore.service import get_plan_event_count
+    """
+    Get the total number of events for a plan.
     
+    Only returns count for plans in the user's organization.
+    """
     try:
+        # Security: Verify plan belongs to user's org before returning count
+        from backend.database.models.live_plan import LivePlan
+        
+        plan = db.query(LivePlan).filter(
+            LivePlan.id == plan_id,
+            LivePlan.org_id == user.org_id
+        ).first()
+        
+        if not plan:
+            raise HTTPException(
+                status_code=404, 
+                detail="Plan not found or not accessible"
+            )
+        
         count = get_plan_event_count(db, plan_id)
         return {"plan_id": plan_id, "event_count": count}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get event count: {str(e)}")

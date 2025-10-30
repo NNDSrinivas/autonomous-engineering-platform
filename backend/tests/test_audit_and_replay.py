@@ -6,6 +6,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from backend.api.main import app
 from backend.core.db import get_db
@@ -27,6 +28,10 @@ def test_db():
 def test_append_and_replay_plan_events(test_db: Session):
     """Test appending events and replaying them in order"""
     plan_id = "test-plan-replay"
+    
+    # Clear any existing test data
+    test_db.execute(text("DELETE FROM plan_events WHERE plan_id = :plan_id"), {"plan_id": plan_id})
+    test_db.commit()
     
     # Append multiple events
     evt1 = append_event(

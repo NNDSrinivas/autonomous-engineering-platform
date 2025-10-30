@@ -342,15 +342,15 @@ def jira_tasks(
     Args:
         q: Text search query for summary/description
         project: Filter by project key
-        assignee: DEPRECATED - This parameter is no longer functional and will be 
-                 removed in v2.0. The underlying JiraService no longer supports 
+        assignee: DEPRECATED - This parameter is no longer functional and will be
+                 removed in v2.0. The underlying JiraService no longer supports
                  assignee filtering. Use project and query filters instead.
         updated_since: Filter by update timestamp
         db: Database session dependency
 
     Returns:
         List of matching JIRA issues
-        
+
     Deprecation Notice:
         The 'assignee' parameter is deprecated as of v1.5 and will be removed in v2.0.
         It currently has no effect on the search results. Please update your code

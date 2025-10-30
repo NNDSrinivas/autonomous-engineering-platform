@@ -26,13 +26,15 @@ def upgrade() -> None:
         sa.Column("user_sub", sa.String(length=128), nullable=True),
         sa.Column("org_key", sa.String(length=64), nullable=True),
         sa.Column(
-            "created_at", 
-            sa.DateTime(timezone=True), 
-            nullable=False, 
-            server_default=sa.func.now()
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
         ),
     )
-    op.create_index("ix_events_plan_seq", "plan_events", ["plan_id", "seq"], unique=True)
+    op.create_index(
+        "ix_events_plan_seq", "plan_events", ["plan_id", "seq"], unique=True
+    )
     op.create_index("ix_plan_events_created_at", "plan_events", ["created_at"])
 
     # Create enhanced audit log table (separate from existing audit_log)
@@ -49,15 +51,23 @@ def upgrade() -> None:
         sa.Column("payload", sa.JSON, nullable=False),
         sa.Column("status_code", sa.Integer, nullable=False),
         sa.Column(
-            "created_at", 
-            sa.DateTime(timezone=True), 
-            nullable=False, 
-            server_default=sa.func.now()
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
         ),
     )
-    op.create_index("ix_audit_enhanced_org_created", "audit_log_enhanced", ["org_key", "created_at"])
-    op.create_index("ix_audit_enhanced_actor_created", "audit_log_enhanced", ["actor_sub", "created_at"])
-    op.create_index("ix_audit_enhanced_created_at", "audit_log_enhanced", ["created_at"])
+    op.create_index(
+        "ix_audit_enhanced_org_created", "audit_log_enhanced", ["org_key", "created_at"]
+    )
+    op.create_index(
+        "ix_audit_enhanced_actor_created",
+        "audit_log_enhanced",
+        ["actor_sub", "created_at"],
+    )
+    op.create_index(
+        "ix_audit_enhanced_created_at", "audit_log_enhanced", ["created_at"]
+    )
 
 
 def downgrade() -> None:
@@ -66,7 +76,7 @@ def downgrade() -> None:
     op.drop_index("ix_audit_enhanced_actor_created", table_name="audit_log_enhanced")
     op.drop_index("ix_audit_enhanced_org_created", table_name="audit_log_enhanced")
     op.drop_table("audit_log_enhanced")
-    
+
     # Drop plan events table
     op.drop_index("ix_plan_events_created_at", table_name="plan_events")
     op.drop_index("ix_events_plan_seq", table_name="plan_events")

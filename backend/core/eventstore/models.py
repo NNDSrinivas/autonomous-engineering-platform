@@ -51,7 +51,9 @@ class AuditLog(Base):
     __tablename__ = "audit_log_enhanced"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    org_key: Mapped[Optional[str]] = mapped_column(String(64), index=True, nullable=True)
+    org_key: Mapped[Optional[str]] = mapped_column(
+        String(64), index=True, nullable=True
+    )
     actor_sub: Mapped[Optional[str]] = mapped_column(
         String(128), index=True, nullable=True
     )

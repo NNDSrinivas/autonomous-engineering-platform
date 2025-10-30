@@ -350,12 +350,13 @@ def jira_tasks(
     """
     if assignee is not None:
         import warnings
+
         warnings.warn(
             "assignee parameter is deprecated and will be removed in a future version",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
-    
+
     return {
         "items": JiraService.search_issues(
             db, q=q, project=project, updated_since=updated_since
@@ -458,7 +459,9 @@ def gh_search_issues(
         List of matching issues and pull requests
     """
     return {
-        "hits": GitHubService.search_issues(db, repo=repo, q=q, updated_since=updated_since)
+        "hits": GitHubService.search_issues(
+            db, repo=repo, q=q, updated_since=updated_since
+        )
     }
 
 

@@ -151,9 +151,9 @@ class Cache:
             # Convert Redis pattern to prefix (remove trailing *)
             prefix = pattern.rstrip("*")
             with self._mem_lock:
-                keys_to_delete = [k for k in self._mem.keys() if k.startswith(prefix)]
-                for key in keys_to_delete:
-                    del self._mem[key]
+                self._mem = {
+                    k: v for k, v in self._mem.items() if not k.startswith(prefix)
+                }
 
     def clear_sync(self) -> None:
         """

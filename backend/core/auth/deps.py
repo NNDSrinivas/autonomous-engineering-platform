@@ -34,6 +34,9 @@ except ValueError:
 # Cleanup multiplier: remove entries older than 2x throttle period to prevent memory leaks
 _CLEANUP_MULTIPLIER = 2
 
+# Cleanup interval: perform cleanup every 60 seconds to avoid O(n) overhead
+_CLEANUP_INTERVAL_SECONDS = 60
+
 # Last cleanup time for periodic cleanup optimization
 _last_cleanup_time = 0
 
@@ -53,8 +56,8 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
     now = time.time()
 
     with _log_lock:
-        # Periodic cleanup: only clean every 60 seconds to avoid O(n) overhead
-        if now - _last_cleanup_time >= 60:
+        # Periodic cleanup: only clean every interval to avoid O(n) overhead
+        if now - _last_cleanup_time >= _CLEANUP_INTERVAL_SECONDS:
             cutoff_time = now - (_CLEANUP_MULTIPLIER * _LOG_THROTTLE_SECONDS)
             to_remove = [k for k, v in _log_timestamps.items() if v < cutoff_time]
             for k in to_remove:

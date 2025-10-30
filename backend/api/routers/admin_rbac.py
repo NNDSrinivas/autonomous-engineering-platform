@@ -159,7 +159,6 @@ def create_org(
     except Exception:
         db.rollback()
         raise
-    db.refresh(org)
 
     return OrgResponse(id=org.id, org_key=org.org_key, name=org.name)  # type: ignore[arg-type]
 

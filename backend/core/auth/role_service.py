@@ -114,9 +114,7 @@ async def resolve_effective_role(
                 max_db_role = validated_role
             else:
                 max_db_role = _max_role(max_db_role, validated_role)
-        else:
-            # Skip invalid role names from DB (e.g., from manual insertion or migration errors)
-            continue
+        # Skip invalid role names from DB (e.g., from manual insertion or migration errors)
 
     # If no valid roles found in DB, fallback to JWT role
     if max_db_role is None:

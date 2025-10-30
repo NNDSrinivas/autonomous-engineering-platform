@@ -1,8 +1,8 @@
 """
 Event Store Service for appending and replaying plan events
 """
+
 from __future__ import annotations
-from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from .models import PlanEvent
@@ -30,7 +30,7 @@ def append_event(
 ) -> PlanEvent:
     """
     Append a new event to the plan's event log with monotonic sequence number.
-    
+
     Args:
         session: Database session
         plan_id: Plan identifier
@@ -38,7 +38,7 @@ def append_event(
         payload: Event payload data
         user_sub: User subject who triggered the event
         org_key: Organization key for the event
-        
+
     Returns:
         The created PlanEvent
     """
@@ -65,13 +65,13 @@ def replay(
 ) -> list[PlanEvent]:
     """
     Replay events for a plan in sequence order.
-    
+
     Args:
         session: Database session
         plan_id: Plan identifier
         since_seq: Only return events with seq > since_seq
         limit: Maximum number of events to return
-        
+
     Returns:
         List of PlanEvent objects in sequence order
     """

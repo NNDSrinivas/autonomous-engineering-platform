@@ -133,6 +133,28 @@ class Cache:
             with self._mem_lock:
                 self._mem.clear()
 
+    async def clear_pattern(self, pattern: str) -> None:
+        """
+        Clear cached entries matching a pattern.
+
+        Args:
+            pattern: Pattern to match (supports * wildcards for Redis, 
+                     simple prefix matching for in-memory cache)
+        """
+        r = await self._ensure()
+        if r:
+            # Use Redis SCAN with pattern matching
+            async for key in r.scan_iter(match=pattern):
+                await r.delete(key)
+        else:
+            # For in-memory cache, implement simple prefix matching
+            # Convert Redis pattern to prefix (remove trailing *)
+            prefix = pattern.rstrip("*")
+            with self._mem_lock:
+                keys_to_delete = [k for k in self._mem.keys() if k.startswith(prefix)]
+                for key in keys_to_delete:
+                    del self._mem[key]
+
     def clear_sync(self) -> None:
         """
         Synchronous version of clear for testing.

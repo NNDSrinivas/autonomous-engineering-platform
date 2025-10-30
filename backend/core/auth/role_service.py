@@ -62,16 +62,16 @@ async def resolve_effective_role(
         If org or user doesn't exist in DB, returns jwt_role as fallback.
         Project-scoped roles are included in max computation.
     """
-    cache_key = f"role:{org_key}:{sub}"
+    # Cache key includes JWT role to handle role changes during TTL
+    cache_key = f"role:{org_key}:{sub}:{jwt_role}"
 
     # Check cache first
     cached = await cache.get_json(cache_key)
     if cached:
-        cached_role = cached.get("role")
-        if cached_role and cached_role in ROLE_RANK:
-            # Explicitly cast validated cached role for type consistency
-            cached_role_typed = cast(RoleName, cached_role)
-            return _max_role(jwt_role, cached_role_typed)
+        cached_effective_role = cached.get("effective_role")
+        if cached_effective_role and cached_effective_role in ROLE_RANK:
+            # Return cached effective role (already merged JWT + DB)
+            return cast(RoleName, cached_effective_role)
         # Cache corrupted or invalid - fall through to DB lookup
 
     # Look up organization
@@ -120,13 +120,15 @@ async def resolve_effective_role(
 
     # If no valid roles found in DB, fallback to JWT role
     if max_db_role is None:
-        return jwt_role
+        effective_role = jwt_role
+    else:
+        # Return highest of JWT vs DB
+        effective_role = _max_role(jwt_role, max_db_role)
 
-    # Cache the DB result
-    await cache.set_json(cache_key, {"role": max_db_role}, ttl_sec=60)
+    # Cache the effective role (post-merge)
+    await cache.set_json(cache_key, {"effective_role": effective_role}, ttl_sec=60)
 
-    # Return highest of JWT vs DB
-    return _max_role(jwt_role, max_db_role)
+    return effective_role
 
 
 async def invalidate_role_cache(org_key: str, sub: str) -> None:
@@ -140,5 +142,6 @@ async def invalidate_role_cache(org_key: str, sub: str) -> None:
         org_key: Organization key
         sub: User's JWT subject
     """
-    cache_key = f"role:{org_key}:{sub}"
-    await cache.delete(cache_key)
+    # Delete all cached entries for this user across all JWT roles
+    pattern = f"role:{org_key}:{sub}:*"
+    await cache.clear_pattern(pattern)

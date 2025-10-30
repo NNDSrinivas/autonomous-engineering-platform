@@ -158,9 +158,8 @@ def test_log_throttling_cleanup():
     """Test memory leak prevention in log throttling."""
     print("=== Testing Log Throttling Cleanup ===")
 
-    # Clear existing timestamps
-    with deps._log_lock:
-        deps._log_timestamps.clear()
+    # Clear existing timestamps using public API
+    deps.clear_log_timestamps()
 
     # Add some old entries manually (simulating old logs)
     old_time = time.time() - (

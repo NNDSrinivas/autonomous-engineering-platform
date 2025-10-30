@@ -227,7 +227,11 @@ def _handle_org_reassignment(user: DBUser, new_org: Organization, db: Session) -
 
 
 async def _update_user_with_cache_invalidation(
-    user: DBUser, body: UserUpsert, new_org: Organization, db: Session
+    user: DBUser,
+    body: UserUpsert,
+    new_org: Organization,
+    db: Session,
+    old_org_key: str | None = None,
 ) -> None:
     """
     Update user details and handle cache invalidation for org reassignment.
@@ -237,11 +241,8 @@ async def _update_user_with_cache_invalidation(
         body: User update request data
         new_org: New organization for the user
         db: Database session
+        old_org_key: Optional old organization key (to avoid redundant DB query)
     """
-    # Store old org_key before reassignment
-    old_org = db.query(Organization).filter_by(id=user.org_id).one_or_none()
-    old_org_key: str | None = getattr(old_org, "org_key", None) if old_org else None
-
     # Update user details
     user.email = body.email  # type: ignore[assignment]
     user.display_name = body.display_name  # type: ignore[assignment]
@@ -315,13 +316,21 @@ async def upsert_user(
                     detail="User creation failed, please retry.",
                 )
 
+            # Get old org_key before reassignment to avoid redundant DB query
+            old_org = db.query(Organization).filter_by(id=user.org_id).one_or_none()
+            old_org_key: str | None = (
+                getattr(old_org, "org_key", None) if old_org else None
+            )
             # Handle org reassignment before updating user and committing
             deleted_count += _handle_org_reassignment(user, org, db)
-            await _update_user_with_cache_invalidation(user, body, org, db)
+            await _update_user_with_cache_invalidation(user, body, org, db, old_org_key)
     else:
+        # Get old org_key before reassignment to avoid redundant DB query
+        old_org = db.query(Organization).filter_by(id=user.org_id).one_or_none()
+        old_org_key: str | None = getattr(old_org, "org_key", None) if old_org else None
         # Handle org reassignment before updating user and committing
         deleted_count += _handle_org_reassignment(user, org, db)
-        await _update_user_with_cache_invalidation(user, body, org, db)
+        await _update_user_with_cache_invalidation(user, body, org, db, old_org_key)
 
     return UserResponse(
         id=user.id,  # type: ignore[arg-type]

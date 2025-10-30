@@ -23,16 +23,13 @@ def get_db_session():
     db_generator = get_db()
     session = None
     try:
-        session = db_generator.__next__()
+        session = next(db_generator)
         yield session
     finally:
         if session:
             session.close()
         # Properly close the generator to trigger cleanup
-        try:
-            db_generator.__next__()
-        except StopIteration:
-            pass  # Expected when generator is exhausted
+        next(db_generator, None)
 
 
 class EnhancedAuditMiddleware(BaseHTTPMiddleware):

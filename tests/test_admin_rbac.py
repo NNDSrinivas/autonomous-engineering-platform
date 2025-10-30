@@ -60,7 +60,7 @@ def db() -> Generator[Session, None, None]:
 
 
 @pytest.fixture(scope="function")
-def client(db: Session) -> TestClient:
+def client(db: Session) -> Generator[TestClient, None, None]:
     """Create a test client with database override."""
 
     def override_get_db():
@@ -214,6 +214,8 @@ class TestUsers:
         # Grant roles
         planner_role = db.query(DBRole).filter_by(name="planner").first()
         admin_role = db.query(DBRole).filter_by(name="admin").first()
+        assert planner_role is not None
+        assert admin_role is not None
 
         db.add(UserRole(user_id=user.id, role_id=planner_role.id, project_key="proj-1"))
         db.add(UserRole(user_id=user.id, role_id=admin_role.id, project_key=None))
@@ -270,6 +272,7 @@ class TestRoleAssignments:
 
         # Verify in DB
         planner_role = db.query(DBRole).filter_by(name="planner").first()
+        assert planner_role is not None
         assignment = (
             db.query(UserRole)
             .filter_by(user_id=user.id, role_id=planner_role.id, project_key=None)
@@ -334,6 +337,7 @@ class TestRoleAssignments:
 
         # Verify scope in DB
         admin_role = db.query(DBRole).filter_by(name="admin").first()
+        assert admin_role is not None
         assignment = (
             db.query(UserRole)
             .filter_by(user_id=user.id, role_id=admin_role.id, project_key="my-project")
@@ -355,6 +359,7 @@ class TestRoleAssignments:
         db.commit()
 
         planner_role = db.query(DBRole).filter_by(name="planner").first()
+        assert planner_role is not None
         db.add(UserRole(user_id=user.id, role_id=planner_role.id, project_key=None))
         db.commit()
 
@@ -415,6 +420,7 @@ class TestRoleResolution:
         db.commit()
 
         admin_role = db.query(DBRole).filter_by(name="admin").first()
+        assert admin_role is not None
         db.add(UserRole(user_id=user.id, role_id=admin_role.id, project_key=None))
         db.commit()
 
@@ -441,6 +447,7 @@ class TestRoleResolution:
         db.commit()
 
         viewer_role = db.query(DBRole).filter_by(name="viewer").first()
+        assert viewer_role is not None
         db.add(UserRole(user_id=user.id, role_id=viewer_role.id, project_key=None))
         db.commit()
 
@@ -469,6 +476,8 @@ class TestRoleResolution:
         # Grant viewer and planner roles
         viewer_role = db.query(DBRole).filter_by(name="viewer").first()
         planner_role = db.query(DBRole).filter_by(name="planner").first()
+        assert viewer_role is not None
+        assert planner_role is not None
         db.add(UserRole(user_id=user.id, role_id=viewer_role.id, project_key="proj-1"))
         db.add(UserRole(user_id=user.id, role_id=planner_role.id, project_key="proj-2"))
         db.commit()

@@ -29,7 +29,7 @@ def test_role_validation():
     for role_name in test_roles:
         if role_name in ROLE_RANK:
             validated_role: RoleName = (
-                role_name  # Type hint for static analysis (validated above)
+                role_name  # type: ignore[assignment] # Type hint for static analysis (validated above)
             )
             valid_roles.append(validated_role)
             print(f"✓ Valid role: {validated_role}")

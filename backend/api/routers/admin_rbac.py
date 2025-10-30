@@ -151,7 +151,7 @@ def create_org(
     db.commit()
     db.refresh(org)
 
-    return OrgResponse(id=org.id, org_key=org.org_key, name=org.name)
+    return OrgResponse(id=org.id, org_key=org.org_key, name=org.name)  # type: ignore[arg-type]
 
 
 @router.get("/orgs", response_model=list[OrgResponse])
@@ -172,7 +172,7 @@ def list_orgs(
         List of all organizations
     """
     orgs = db.query(Organization).all()
-    return [OrgResponse(id=o.id, org_key=o.org_key, name=o.name) for o in orgs]
+    return [OrgResponse(id=o.id, org_key=o.org_key, name=o.name) for o in orgs]  # type: ignore[arg-type]
 
 
 # --- User Endpoints ---
@@ -221,9 +221,9 @@ def upsert_user(
         db.add(user)
     else:
         # Update user details including organization reassignment
-        user.email = body.email
-        user.display_name = body.display_name
-        if user.org_id != org.id:
+        user.email = body.email  # type: ignore[assignment]
+        user.display_name = body.display_name  # type: ignore[assignment]
+        if user.org_id != org.id:  # type: ignore[comparison-overlap]
             old_org_id = user.org_id  # Save original org_id for accurate logging
             # Remove all existing role assignments when moving organizations
             deleted_count = db.query(UserRole).filter_by(user_id=user.id).delete()
@@ -238,11 +238,11 @@ def upsert_user(
     db.refresh(user)
 
     return UserResponse(
-        id=user.id,
-        sub=user.sub,
-        email=user.email,
-        display_name=user.display_name,
-        org_id=user.org_id,
+        id=user.id,  # type: ignore[arg-type]
+        sub=user.sub,  # type: ignore[arg-type]
+        email=user.email,  # type: ignore[arg-type]
+        display_name=user.display_name,  # type: ignore[arg-type]
+        org_id=user.org_id,  # type: ignore[arg-type]
     )
 
 
@@ -292,10 +292,10 @@ def get_user(
     )
 
     return UserDetailResponse(
-        sub=user.sub,
-        email=user.email,
-        display_name=user.display_name,
-        org_key=org.org_key,
+        sub=user.sub,  # type: ignore[arg-type]
+        email=user.email,  # type: ignore[arg-type]
+        display_name=user.display_name,  # type: ignore[arg-type]
+        org_key=org.org_key,  # type: ignore[arg-type]
         roles=[
             RoleAssignment(role=role_name, project_key=proj_key)
             for role_name, proj_key in roles

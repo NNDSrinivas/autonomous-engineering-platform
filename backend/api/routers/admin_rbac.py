@@ -243,8 +243,9 @@ def upsert_user(
                     .delete(synchronize_session=False)
                 )
                 if deleted_count > 0:
+                    user_sub = user.sub  # Extract for type safety
                     logger.info(
-                        f"Removed {deleted_count} role assignment(s) for user {user.sub} "
+                        f"Removed {deleted_count} role assignment(s) for user {user_sub} "
                         f"when moving from org_id {old_org_id} to {org.id}"
                     )
             user.org_id = org.id
@@ -263,8 +264,9 @@ def upsert_user(
                 .delete(synchronize_session=False)
             )
             if deleted_count > 0:
+                user_sub = user.sub  # Extract for type safety
                 logger.info(
-                    f"Removed {deleted_count} role assignment(s) for user {user.sub} "
+                    f"Removed {deleted_count} role assignment(s) for user {user_sub} "
                     f"when moving from org_id {old_org_id} to {org.id}"
                 )
         user.org_id = org.id  # Allow moving users between organizations

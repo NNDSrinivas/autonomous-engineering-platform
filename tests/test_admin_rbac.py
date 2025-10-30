@@ -33,6 +33,10 @@ def db() -> Generator[Session, None, None]:
     """Create a fresh database for each test."""
     # Generate a unique DB ID and engine per test function
     test_db_id = uuid.uuid4().hex
+    # Use a named in-memory SQLite database with shared cache.
+    # The 'file:memdb_rbac_{test_db_id}?mode=memory&cache=shared' URI pattern is intentional:
+    # it allows multiple connections to share the same in-memory DB for this test.
+    # See: https://www.sqlite.org/inmemorydb.html
     test_database_url = (
         f"sqlite:///file:memdb_rbac_{test_db_id}?mode=memory&cache=shared"
     )

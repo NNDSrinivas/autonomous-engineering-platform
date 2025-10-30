@@ -22,11 +22,8 @@ from backend.models.tasks import *  # noqa
 # Explicit RBAC model imports for better namespace control
 from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole  # noqa
 
-# Ensure models are registered with Base.metadata for alembic auto-generation
+# Store RBAC models for validation inside migration functions
 _rbac_models = [DBRole, DBUser, Organization, UserRole]
-assert all(
-    model.__tablename__ in Base.metadata.tables for model in _rbac_models
-), "RBAC models must be registered with Base.metadata"
 
 config = context.config
 if (
@@ -64,6 +61,11 @@ def run_migrations_online():
         raise RuntimeError("sqlalchemy.url must be set before running migrations")
     # For type checker - validation above ensures this
     connectable = create_engine(url)
+
+    # Validate RBAC models are registered with Base.metadata
+    assert all(
+        model.__tablename__ in Base.metadata.tables for model in _rbac_models
+    ), "RBAC models must be registered with Base.metadata"
 
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)

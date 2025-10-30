@@ -187,7 +187,7 @@ def list_orgs(
 # --- User Endpoints ---
 
 
-def _handle_org_reassignment(user: DBUser, new_org: Organization, db: Session) -> None:
+def _handle_org_reassignment(user: DBUser, new_org: Organization, db: Session) -> int:
     """
     Handle user reassignment to a different organization.
 
@@ -198,6 +198,9 @@ def _handle_org_reassignment(user: DBUser, new_org: Organization, db: Session) -
         user: User being reassigned
         new_org: New organization to assign user to
         db: Database session
+
+    Returns:
+        Number of role assignments deleted during reassignment
     """
     # Check if user needs to be moved to a different organization
     if user.org_id != new_org.id:  # type: ignore[comparison-overlap]
@@ -218,6 +221,9 @@ def _handle_org_reassignment(user: DBUser, new_org: Organization, db: Session) -
             )
 
         user.org_id = new_org.id
+        return deleted_count
+
+    return 0
 
 
 @router.post("/users", response_model=UserResponse)
@@ -281,7 +287,7 @@ async def upsert_user(
 
             user.email = body.email  # type: ignore[assignment]
             user.display_name = body.display_name  # type: ignore[assignment]
-            _handle_org_reassignment(user, org, db)
+            deleted_count += _handle_org_reassignment(user, org, db)
             db.commit()
             db.refresh(user)
             await invalidate_role_cache(body.org_key, body.sub)
@@ -289,7 +295,7 @@ async def upsert_user(
         # Update user details including organization reassignment
         user.email = body.email  # type: ignore[assignment]
         user.display_name = body.display_name  # type: ignore[assignment]
-        _handle_org_reassignment(user, org, db)
+        deleted_count += _handle_org_reassignment(user, org, db)
 
         db.commit()
         db.refresh(user)

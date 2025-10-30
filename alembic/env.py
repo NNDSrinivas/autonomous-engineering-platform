@@ -25,8 +25,8 @@ from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole 
 # Ensure models are registered with Base.metadata for alembic auto-generation
 _rbac_models = [DBRole, DBUser, Organization, UserRole]
 assert all(
-    hasattr(model, "__tablename__") for model in _rbac_models
-), "RBAC models must be loaded"
+    model.__tablename__ in Base.metadata.tables for model in _rbac_models
+), "RBAC models must be registered with Base.metadata"
 
 config = context.config
 if (

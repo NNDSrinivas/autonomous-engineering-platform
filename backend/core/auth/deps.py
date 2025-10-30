@@ -25,7 +25,8 @@ try:
     _LOG_THROTTLE_SECONDS = int(os.getenv("LOG_THROTTLE_SECONDS", "300"))
 except ValueError:
     logger.warning(
-        "Invalid value for LOG_THROTTLE_SECONDS; must be an integer. Falling back to default (300 seconds)."
+        f"Invalid value for LOG_THROTTLE_SECONDS: {os.getenv('LOG_THROTTLE_SECONDS')}; "
+        "must be an integer. Falling back to default (300 seconds)."
     )
     _LOG_THROTTLE_SECONDS = 300
 
@@ -264,7 +265,5 @@ def _get_db_for_auth():
     """
     from backend.database.session import get_db
 
-    # The lazy import above avoids circular dependencies between auth and database modules.
-    # This wrapper function defers the import until runtime, preventing circular dependency
-    # issues during module initialization. We use 'yield from' to forward the generator.
+    # Lazy import to avoid circular dependencies. Uses yield from to forward the generator.
     yield from get_db()

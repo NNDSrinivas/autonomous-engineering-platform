@@ -53,12 +53,11 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
     Cleanup is performed periodically to avoid O(n) overhead on every call.
     """
     with _log_lock:
-        global _last_cleanup_time
+        # global is required here because we reassign _log_timestamps and _last_cleanup_time below, not just modify them
+        global _last_cleanup_time, _log_timestamps
         now = time.time()
         # Periodic cleanup: only clean every interval to avoid O(n) overhead
         if now - _last_cleanup_time >= _CLEANUP_INTERVAL_SECONDS:
-            # global is required here because we reassign _log_timestamps below, not just modify it
-            global _log_timestamps
             cutoff_time = now - (_CLEANUP_MULTIPLIER * _LOG_THROTTLE_SECONDS)
             _log_timestamps = {
                 k: v for k, v in _log_timestamps.items() if v >= cutoff_time

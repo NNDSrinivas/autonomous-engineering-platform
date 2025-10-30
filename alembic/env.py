@@ -33,8 +33,7 @@ if (
     not config.get_main_option("sqlalchemy.url")
     or config.get_main_option("sqlalchemy.url") == "sqlite:///"
 ):
-    if settings.sqlalchemy_url:
-        config.set_main_option("sqlalchemy.url", settings.sqlalchemy_url)
+    config.set_main_option("sqlalchemy.url", settings.sqlalchemy_url)
 
 # After attempting to set, validate that sqlalchemy.url is set
 if not config.get_main_option("sqlalchemy.url"):

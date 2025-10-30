@@ -226,6 +226,36 @@ def _handle_org_reassignment(user: DBUser, new_org: Organization, db: Session) -
     return 0
 
 
+async def _update_user_with_cache_invalidation(
+    user: DBUser, body: UserUpsert, new_org: Organization, db: Session
+) -> None:
+    """
+    Update user details and handle cache invalidation for org reassignment.
+
+    Args:
+        user: User to update
+        body: User update request data
+        new_org: New organization for the user
+        db: Database session
+    """
+    # Store old org_key before reassignment
+    old_org = db.query(Organization).filter_by(id=user.org_id).one_or_none()
+    old_org_key: str | None = getattr(old_org, "org_key", None) if old_org else None
+
+    # Update user details
+    user.email = body.email  # type: ignore[assignment]
+    user.display_name = body.display_name  # type: ignore[assignment]
+
+    # Handle reassignment happens in the calling function
+    db.commit()
+    db.refresh(user)
+
+    # Invalidate cache for both old and new orgs if changed
+    if old_org_key is not None and old_org_key != body.org_key:
+        await invalidate_role_cache(old_org_key, body.sub)
+    await invalidate_role_cache(body.org_key, body.sub)
+
+
 @router.post("/users", response_model=UserResponse)
 async def upsert_user(
     body: UserUpsert,
@@ -285,21 +315,13 @@ async def upsert_user(
                     detail="User creation failed, please retry.",
                 )
 
-            user.email = body.email  # type: ignore[assignment]
-            user.display_name = body.display_name  # type: ignore[assignment]
+            # Handle user update with cache invalidation
+            await _update_user_with_cache_invalidation(user, body, org, db)
             deleted_count += _handle_org_reassignment(user, org, db)
-            db.commit()
-            db.refresh(user)
-            await invalidate_role_cache(body.org_key, body.sub)
     else:
-        # Update user details including organization reassignment
-        user.email = body.email  # type: ignore[assignment]
-        user.display_name = body.display_name  # type: ignore[assignment]
+        # Handle user update with cache invalidation
+        await _update_user_with_cache_invalidation(user, body, org, db)
         deleted_count += _handle_org_reassignment(user, org, db)
-
-        db.commit()
-        db.refresh(user)
-        await invalidate_role_cache(body.org_key, body.sub)
 
     return UserResponse(
         id=user.id,  # type: ignore[arg-type]

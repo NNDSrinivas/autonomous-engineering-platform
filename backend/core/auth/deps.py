@@ -31,6 +31,9 @@ except ValueError:
     )
     _LOG_THROTTLE_SECONDS = 300
 
+# Cleanup multiplier: remove entries older than 2x throttle period to prevent memory leaks
+_CLEANUP_MULTIPLIER = 2
+
 # HTTP Bearer token scheme for JWT authentication
 security = HTTPBearer(auto_error=False)
 
@@ -46,7 +49,7 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
 
     with _log_lock:
         # Clean up old entries to prevent memory leak
-        cutoff_time = now - (2 * _LOG_THROTTLE_SECONDS)
+        cutoff_time = now - (_CLEANUP_MULTIPLIER * _LOG_THROTTLE_SECONDS)
         to_remove = [k for k, v in _log_timestamps.items() if v < cutoff_time]
         for k in to_remove:
             del _log_timestamps[k]

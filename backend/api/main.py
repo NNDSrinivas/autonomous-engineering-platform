@@ -350,7 +350,7 @@ def jira_tasks(
         List of matching JIRA issues
     """
     # Issue deprecation warning if assignee parameter is provided in the request
-    if 'assignee' in request.query_params:
+    if "assignee" in request.query_params:
         import warnings
 
         warnings.warn(

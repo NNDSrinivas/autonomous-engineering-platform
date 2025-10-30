@@ -49,25 +49,26 @@ def replay_plan_events(
     Only returns events for plans in the user's organization.
     """
     try:
-        # Security: Filter events by user's org to prevent cross-org access
-        rows = replay(db, plan_id=plan_id, since_seq=since, limit=limit)
+        # Security: Filter events by user's org at database level
+        rows = replay(
+            db, plan_id=plan_id, since_seq=since, limit=limit, org_key=user.org_id
+        )
 
-        # Filter events to only those matching user's org (strict security)
-        filtered_events = []
+        # Convert to response format
+        events = []
         for r in rows:
-            if r.org_key == user.org_id:
-                filtered_events.append(
-                    {
-                        "seq": r.seq,
-                        "type": r.type,
-                        "payload": r.payload,
-                        "by": r.user_sub,
-                        "org_key": r.org_key,
-                        "created_at": r.created_at.isoformat(),
-                    }
-                )
+            events.append(
+                {
+                    "seq": r.seq,
+                    "type": r.type,
+                    "payload": r.payload,
+                    "by": r.user_sub,
+                    "org_key": r.org_key,
+                    "created_at": r.created_at.isoformat(),
+                }
+            )
 
-        return filtered_events
+        return events
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to replay events: {str(e)}"

@@ -22,7 +22,11 @@ os.environ["ALLOW_DEV_AUTH"] = "true"
 @pytest.fixture
 def test_db():
     """Get test database session"""
-    return next(get_db())
+    db = next(get_db())
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def test_append_and_replay_plan_events(test_db: Session):

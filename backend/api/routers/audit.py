@@ -52,12 +52,10 @@ def replay_plan_events(
         # Security: Filter events by user's org to prevent cross-org access
         rows = replay(db, plan_id=plan_id, since_seq=since, limit=limit)
 
-        # Filter events to only those matching user's org
+        # Filter events to only those matching user's org (strict security)
         filtered_events = []
         for r in rows:
-            if (
-                r.org_key == user.org_id or r.org_key is None
-            ):  # Allow events without org for backward compatibility
+            if r.org_key == user.org_id:
                 filtered_events.append(
                     {
                         "seq": r.seq,

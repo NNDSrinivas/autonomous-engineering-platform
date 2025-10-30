@@ -16,7 +16,9 @@ from ..core.middleware import RequestIDMiddleware
 from ..core.audit.middleware import EnhancedAuditMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
-from ..services import jira as jsvc, github as ghsvc
+from ..services import jira as jira_module, github as github_module
+from ..services.jira import JiraService as jsvc
+from ..services.github import GitHubService as ghsvc
 from ..workers.queue import process_meeting
 from ..workers.integrations import jira_sync, github_index
 from ..workers.answers import generate_answer
@@ -349,7 +351,7 @@ def jira_tasks(
     """
     return {
         "items": jsvc.search_issues(
-            db, q=q, project=project, assignee=assignee, updated_since=updated_since
+            db, q=q, project=project, updated_since=updated_since
         )
     }
 

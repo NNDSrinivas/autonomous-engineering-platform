@@ -262,9 +262,9 @@ async def upsert_user(
                         f"when moving from org_id {old_org_id} to {org.id}"
                     )
             user.org_id = org.id
-            await invalidate_role_cache(body.org_key, body.sub)
             db.commit()
             db.refresh(user)
+            await invalidate_role_cache(body.org_key, body.sub)
     else:
         # Update user details including organization reassignment
         user.email = body.email  # type: ignore[assignment]
@@ -285,9 +285,9 @@ async def upsert_user(
                 )
         user.org_id = org.id  # Allow moving users between organizations
 
-        await invalidate_role_cache(body.org_key, body.sub)
         db.commit()
         db.refresh(user)
+        await invalidate_role_cache(body.org_key, body.sub)
 
     return UserResponse(
         id=user.id,  # type: ignore[arg-type]

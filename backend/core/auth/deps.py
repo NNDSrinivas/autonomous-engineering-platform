@@ -21,7 +21,13 @@ logger = logging.getLogger(__name__)
 _log_timestamps: dict[str, float] = {}
 _log_lock = threading.Lock()
 # Configurable throttle period: default 5 minutes, override via LOG_THROTTLE_SECONDS env var
-_LOG_THROTTLE_SECONDS = int(os.getenv("LOG_THROTTLE_SECONDS", "300"))
+try:
+    _LOG_THROTTLE_SECONDS = int(os.getenv("LOG_THROTTLE_SECONDS", "300"))
+except ValueError:
+    logger.warning(
+        "Invalid value for LOG_THROTTLE_SECONDS; must be an integer. Falling back to default (300 seconds)."
+    )
+    _LOG_THROTTLE_SECONDS = 300
 
 # HTTP Bearer token scheme for JWT authentication
 security = HTTPBearer(auto_error=False)
@@ -37,6 +43,12 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
     now = time.time()
 
     with _log_lock:
+        # Clean up old entries to prevent memory leak
+        cutoff_time = now - (2 * _LOG_THROTTLE_SECONDS)
+        expired_keys = [key for key, timestamp in _log_timestamps.items() if timestamp < cutoff_time]
+        for key in expired_keys:
+            del _log_timestamps[key]
+
         last_logged = _log_timestamps.get(message, 0)
 
         if now - last_logged >= _LOG_THROTTLE_SECONDS:

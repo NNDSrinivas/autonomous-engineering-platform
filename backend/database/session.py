@@ -53,7 +53,7 @@ def db_session() -> Generator[Session, None, None]:
             session.commit()  # Explicit commit required
 
     Note: Transaction management is left to the caller.
-    Automatically rolls back on database exceptions.
+    Automatically rolls back on SQLAlchemy database exceptions (SQLAlchemyError).
     """
     from sqlalchemy.exc import SQLAlchemyError
 

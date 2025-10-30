@@ -211,8 +211,6 @@ def test_event_sequence_monotonic():
         assert evt1.seq == 1
         assert evt2.seq == 2
         assert evt3.seq == 3
-    finally:
-        db.close()
 
         # Events for different plans should have independent sequences
         other_plan_evt = append_event(
@@ -224,6 +222,8 @@ def test_event_sequence_monotonic():
             org_key=None,
         )
         assert other_plan_evt.seq == 1  # Starts at 1 for new plan
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

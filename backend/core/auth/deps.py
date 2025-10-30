@@ -264,6 +264,6 @@ def _get_db_for_auth():
     from backend.database.session import get_db
 
     # The lazy import above avoids circular dependencies between auth and database modules.
-    # This wrapper function defers the import until runtime, preventing circular dependency 
+    # This wrapper function defers the import until runtime, preventing circular dependency
     # issues during module initialization. We use 'yield from' to forward the generator.
     yield from get_db()

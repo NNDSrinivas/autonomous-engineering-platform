@@ -21,6 +21,7 @@ References:
 - https://fastapi.tiangolo.com/tutorial/dependencies/#dependencies-with-yield
 """
 
+import logging
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -32,6 +33,8 @@ from backend.core.auth.deps import require_role
 from backend.core.auth.models import Role, User
 from backend.core.auth.role_service import invalidate_role_cache
 from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin/rbac", tags=["admin-rbac"])
 
@@ -222,7 +225,12 @@ def upsert_user(
         user.display_name = body.display_name
         if user.org_id != org.id:
             # Remove all existing role assignments when moving organizations
-            db.query(UserRole).filter_by(user_id=user.id).delete()
+            deleted_count = db.query(UserRole).filter_by(user_id=user.id).delete()
+            if deleted_count > 0:
+                logger.info(
+                    f"Removed {deleted_count} role assignment(s) for user {user.sub} "
+                    f"when moving from org_id {user.org_id} to {org.id}"
+                )
         user.org_id = org.id  # Allow moving users between organizations
 
     db.commit()

@@ -17,7 +17,6 @@ import time
 import backend.core.auth.deps as deps
 from backend.core.auth.role_service import ROLE_RANK, RoleName
 from backend.infra.cache.redis_cache import cache
-from backend.core.auth.deps import _log_once, _LOG_THROTTLE_SECONDS
 
 
 def test_role_validation():
@@ -117,8 +116,8 @@ def test_log_throttling_cleanup():
 
     # Add some old entries manually (simulating old logs)
     old_time = time.time() - (
-        3 * _LOG_THROTTLE_SECONDS
-    )  # Older than 2x throttle period
+        3 * deps._LOG_THROTTLE_SECONDS
+    )  # Older than 3x throttle period
     recent_time = time.time() - 10  # Recent
 
     with deps._log_lock:
@@ -130,7 +129,7 @@ def test_log_throttling_cleanup():
     print(f"Initial timestamp count: {initial_count}")
 
     # Trigger cleanup by calling _log_once
-    _log_once("trigger_cleanup_message")
+    deps._log_once("trigger_cleanup_message")
 
     final_count = len(deps._log_timestamps)
     print(f"Final timestamp count: {final_count}")

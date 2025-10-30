@@ -53,15 +53,18 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
     Cleanup is performed periodically to avoid O(n) overhead on every call.
     """
     with _log_lock:
-        # global is required here because we reassign _log_timestamps and _last_cleanup_time below, not just modify them
-        global _last_cleanup_time, _log_timestamps
+        # global is required here because we reassign _last_cleanup_time below, not just modify it
+        global _last_cleanup_time
         now = time.time()
         # Periodic cleanup: only clean every interval to avoid O(n) overhead
         if now - _last_cleanup_time >= _CLEANUP_INTERVAL_SECONDS:
             cutoff_time = now - (_CLEANUP_MULTIPLIER * _LOG_THROTTLE_SECONDS)
-            _log_timestamps = {
-                k: v for k, v in _log_timestamps.items() if v >= cutoff_time
-            }
+            # Use clear and update to modify in-place instead of reassignment
+            old_timestamps = _log_timestamps.copy()
+            _log_timestamps.clear()
+            _log_timestamps.update(
+                {k: v for k, v in old_timestamps.items() if v >= cutoff_time}
+            )
             _last_cleanup_time = now
 
         last_logged = _log_timestamps.get(message, 0)
@@ -69,6 +72,17 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
         if now - last_logged >= _LOG_THROTTLE_SECONDS:
             logger.log(level, message)
             _log_timestamps[message] = now
+
+
+def clear_log_timestamps() -> None:
+    """
+    Clear all log timestamps for testing purposes.
+
+    This is a public API for tests to reset the log throttling state
+    without accessing private module variables directly.
+    """
+    with _log_lock:
+        _log_timestamps.clear()
 
 
 def get_current_user(

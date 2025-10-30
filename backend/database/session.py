@@ -31,8 +31,8 @@ def _get_engine() -> Engine:
     return _engine
 
 
-def _get_session_local():
-    """Get or create SessionLocal (lazy initialization, thread-safe)."""
+def _get_session_local() -> sessionmaker[Session]:
+    """Get or create SessionLocal factory (sessionmaker) (lazy initialization, thread-safe)."""
     global _SessionLocal
     if _SessionLocal is None:
         with _lock:

@@ -43,7 +43,8 @@ def db() -> Generator[Session, None, None]:
     # Clear in-memory cache before each test
     from backend.infra.cache.redis_cache import cache
 
-    cache._mem.clear()
+    with cache._mem_lock:
+        cache._mem.clear()
 
     # Seed roles
     session = TestingSessionLocal()

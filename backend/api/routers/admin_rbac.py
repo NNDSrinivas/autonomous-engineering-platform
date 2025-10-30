@@ -220,6 +220,9 @@ def upsert_user(
         # Update user details including organization reassignment
         user.email = body.email
         user.display_name = body.display_name
+        if user.org_id != org.id:
+            # Remove all existing role assignments when moving organizations
+            db.query(UserRole).filter_by(user_id=user.id).delete()
         user.org_id = org.id  # Allow moving users between organizations
 
     db.commit()

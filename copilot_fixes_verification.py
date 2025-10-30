@@ -10,9 +10,11 @@ This script tests the key fixes implemented to address Copilot's feedback:
 """
 
 import asyncio
+import importlib
 import os
 import time
 
+import backend.core.auth.deps as deps
 from backend.core.auth.role_service import ROLE_RANK, RoleName
 from backend.infra.cache.redis_cache import cache
 from backend.core.auth.deps import _log_once, _LOG_THROTTLE_SECONDS
@@ -27,7 +29,7 @@ def test_role_validation():
     
     for role_name in test_roles:
         if role_name in ROLE_RANK:
-            validated_role: RoleName = role_name  # Type casting as in the fix
+            validated_role: RoleName = role_name  # Type hint for static analysis (validated above)
             valid_roles.append(validated_role)
             print(f"✓ Valid role: {validated_role}")
         else:
@@ -75,8 +77,6 @@ def test_error_handling():
         os.environ['LOG_THROTTLE_SECONDS'] = 'not_a_number'
         
         # Import should handle this gracefully
-        import importlib
-        import backend.core.auth.deps as deps
         importlib.reload(deps)
         
         # Should fallback to default (300)
@@ -102,8 +102,6 @@ def test_error_handling():
 def test_log_throttling_cleanup():
     """Test memory leak prevention in log throttling."""
     print("=== Testing Log Throttling Cleanup ===")
-    
-    import backend.core.auth.deps as deps
     
     # Clear existing timestamps
     with deps._log_lock:

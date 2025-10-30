@@ -45,11 +45,10 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
     with _log_lock:
         # Clean up old entries to prevent memory leak
         cutoff_time = now - (2 * _LOG_THROTTLE_SECONDS)
-        expired_keys = [
-            key for key, timestamp in _log_timestamps.items() if timestamp < cutoff_time
-        ]
-        for key in expired_keys:
-            del _log_timestamps[key]
+        global _log_timestamps
+        _log_timestamps = {
+            k: v for k, v in _log_timestamps.items() if v >= cutoff_time
+        }
 
         last_logged = _log_timestamps.get(message, 0)
 
@@ -197,7 +196,8 @@ def require_role(minimum_role: Role):
                 _log_once(
                     "User org_id is None when resolving effective role. "
                     "Falling back to JWT-only authorization. "
-                    "This may indicate a configuration issue or non-multi-tenant setup."
+                    "This may indicate a configuration issue or non-multi-tenant setup.",
+                    level=logging.INFO,
                 )
                 # Use JWT role only if org_id is missing
                 if user.role < minimum_role:

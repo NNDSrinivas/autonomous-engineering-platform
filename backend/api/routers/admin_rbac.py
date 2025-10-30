@@ -26,7 +26,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlalchemy.orm import Session
 
 from backend.database.session import get_db
@@ -150,9 +150,15 @@ def create_org(
             status_code=status.HTTP_409_CONFLICT, detail="org_key already exists"
         )
 
+    # Create organization with proper transaction handling
     org = Organization(org_key=body.org_key, name=body.name)
     db.add(org)
-    db.commit()
+    try:
+        db.commit()
+        db.refresh(org)
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(org)
 
     return OrgResponse(id=org.id, org_key=org.org_key, name=org.name)  # type: ignore[arg-type]
@@ -231,8 +237,16 @@ def upsert_user(
         except IntegrityError:
             # Handle race condition: another request created the user first
             db.rollback()
-            # Retry lookup and update instead
-            user = db.query(DBUser).filter_by(sub=body.sub).one()
+            # Retry lookup and update instead with robust error handling
+            try:
+                user = db.query(DBUser).filter_by(sub=body.sub).one()
+            except NoResultFound:
+                # Very rare edge case: user was deleted between insert failure and lookup
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="User creation failed due to concurrent operations",
+                )
+            
             user.email = body.email  # type: ignore[assignment]
             user.display_name = body.display_name  # type: ignore[assignment]
             if user.org_id != org.id:  # type: ignore[comparison-overlap]
@@ -396,9 +410,13 @@ async def grant_role(
     if exists:
         return RoleGrantResponse(ok=True, granted=False)
 
-    # Create new role assignment
-    db.add(UserRole(user_id=user.id, role_id=role.id, project_key=body.project_key))
-    db.commit()
+    # Create new role assignment with proper transaction handling
+    try:
+        db.add(UserRole(user_id=user.id, role_id=role.id, project_key=body.project_key))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     # Invalidate cache for this user (non-blocking for failures)
     try:
@@ -469,8 +487,13 @@ async def revoke_role(
             detail="Role assignment not found",
         )
 
-    db.delete(assignment)
-    db.commit()
+    # Delete the assignment with proper transaction handling
+    try:
+        db.delete(assignment)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     # Invalidate cache for this user (non-blocking for failures)
     try:

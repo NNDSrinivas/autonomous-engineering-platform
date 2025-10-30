@@ -34,6 +34,9 @@ except ValueError:
 # Cleanup multiplier: remove entries older than 2x throttle period to prevent memory leaks
 _CLEANUP_MULTIPLIER = 2
 
+# Last cleanup time for periodic cleanup optimization
+_last_cleanup_time = 0
+
 # HTTP Bearer token scheme for JWT authentication
 security = HTTPBearer(auto_error=False)
 
@@ -44,15 +47,19 @@ def _log_once(message: str, level: int = logging.WARNING) -> None:
 
     Prevents log spam for recurring warnings in long-running applications.
     Thread-safe via lock to prevent race conditions.
+    Cleanup is performed periodically to avoid O(n) overhead on every call.
     """
+    global _last_cleanup_time
     now = time.time()
 
     with _log_lock:
-        # Clean up old entries to prevent memory leak
-        cutoff_time = now - (_CLEANUP_MULTIPLIER * _LOG_THROTTLE_SECONDS)
-        to_remove = [k for k, v in _log_timestamps.items() if v < cutoff_time]
-        for k in to_remove:
-            del _log_timestamps[k]
+        # Periodic cleanup: only clean every 60 seconds to avoid O(n) overhead
+        if now - _last_cleanup_time >= 60:
+            cutoff_time = now - (_CLEANUP_MULTIPLIER * _LOG_THROTTLE_SECONDS)
+            to_remove = [k for k, v in _log_timestamps.items() if v < cutoff_time]
+            for k in to_remove:
+                del _log_timestamps[k]
+            _last_cleanup_time = now
 
         last_logged = _log_timestamps.get(message, 0)
 

@@ -36,10 +36,12 @@ def invalidate(key_fn: Callable[..., str]):
         async def inner(*args, **kwargs):
             key = key_fn(*args, **kwargs)
             out = await fn(*args, **kwargs)
-            # best-effort
+            # best-effort cache invalidation
             try:
                 await cache_service.del_key(key)
             except Exception:
+                # Ignore cache invalidation errors to avoid disrupting business logic
+                # The cache entry will expire naturally via TTL
                 pass
             return out
 

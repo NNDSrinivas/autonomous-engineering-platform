@@ -421,7 +421,7 @@ class RateLimitService:
 
             # Remove completed request from queue
             # In a more sophisticated implementation, we'd track specific request IDs
-            result = redis.rpop(queue_key)
+            redis.rpop(queue_key)
 
         except Exception as e:
             logger.error(f"Error recording request completion: {e}")

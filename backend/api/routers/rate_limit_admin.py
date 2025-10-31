@@ -235,26 +235,12 @@ async def rate_limit_health_check(
             "message": "Rate limiting system is operational",
         }
 
-    except (RedisError, RedisConnectionError, OSError) as e:
-        logger.exception(
-            "Redis-related exception during rate limit health check: %s", e
-        )
+    except (RedisError, RedisConnectionError, OSError, ConnectionError) as e:
+        logger.exception("Connection exception during rate limit health check: %s", e)
         return {
             "status": "degraded",
             "redis_status": "error",
             "redis_latency": "error",
             "fallback_status": "available",
-            "message": "Redis connection issues detected. Fallback cache available.",
-        }
-    except Exception as e:
-        logger.exception("Unexpected exception during rate limit health check: %s", e)
-        # Re-raise programming errors instead of masking them
-        if isinstance(e, (AttributeError, TypeError, ValueError)):
-            raise
-        return {
-            "status": "error",
-            "redis_status": "unknown",
-            "redis_latency": "unknown",
-            "fallback_status": "unknown",
-            "message": "Unexpected error in rate limiting system. Check server logs.",
+            "message": "Connection issues detected. Fallback cache available.",
         }

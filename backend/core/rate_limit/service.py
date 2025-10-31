@@ -99,9 +99,11 @@ class RateLimitService:
         else:
             window = timestamp // 60  # Default to minute
 
-        user_key = f"rate_limit:user:{user_id}:{category.value}:{window_type}:{window}"
-        org_key = f"rate_limit:org:{org_id}:{category.value}:{window_type}:{window}"
-        queue_key = f"rate_limit:queue:{org_id}:{category.value}"
+        user_key = f"{settings.RATE_LIMITING_REDIS_KEY_PREFIX}user:{user_id}:{category.value}:{window_type}:{window}"
+        org_key = f"{settings.RATE_LIMITING_REDIS_KEY_PREFIX}org:{org_id}:{category.value}:{window_type}:{window}"
+        queue_key = (
+            f"{settings.RATE_LIMITING_REDIS_KEY_PREFIX}queue:{org_id}:{category.value}"
+        )
 
         return user_key, org_key, queue_key
 
@@ -194,7 +196,9 @@ class RateLimitService:
                 )
 
             # User limits can use burst allowance
-            if (would_exceed_user_minute or would_exceed_user_hour) and not burst_allowed:
+            if (
+                would_exceed_user_minute or would_exceed_user_hour
+            ) and not burst_allowed:
                 # Calculate retry after (time until next window)
                 current_time = int(time.time())
                 next_minute_window = ((current_time // 60) + 1) * 60
@@ -299,7 +303,6 @@ class RateLimitService:
             minute_count >= rule.requests_per_minute
             or hour_count >= rule.requests_per_hour
         ):
-
             next_minute = int((current_time // 60 + 1) * 60)
             retry_after = next_minute - int(current_time)
 

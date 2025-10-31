@@ -12,7 +12,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.core.auth.models import User, Role
 from backend.core.rate_limit.config import RateLimitCategory, DEFAULT_RATE_LIMITS
 from backend.core.rate_limit.middleware import RateLimitMiddleware
 from backend.core.rate_limit.service import RateLimitService, RateLimitResult
@@ -100,18 +99,18 @@ class TestRateLimitService:
             result = await service.check_rate_limit(user2_id, org_id, category)
             assert result.allowed is True
 
-    @pytest.mark.asyncio 
+    @pytest.mark.asyncio
     async def test_org_limits_independent_of_burst(self, service):
         """Test that org limits are enforced independently of user burst allowance."""
         # This tests the core logic fix - org/queue limits are hard limits regardless of burst
         # We'll check this by examining the logic flow rather than full Redis integration
         pass  # Core logic verified by code inspection
-        
+
     @pytest.mark.asyncio
     async def test_queue_limits_independent_of_burst(self, service):
-        """Test that queue depth limits are enforced independently of user burst allowance.""" 
+        """Test that queue depth limits are enforced independently of user burst allowance."""
         # This tests the core logic fix - org/queue limits are hard limits regardless of burst
-        # We'll check this by examining the logic flow rather than full Redis integration  
+        # We'll check this by examining the logic flow rather than full Redis integration
         pass  # Core logic verified by code inspection
 
 
@@ -196,15 +195,6 @@ class TestRateLimitMiddleware:
             allowed=True,
             requests_remaining=99,
             reset_time=int(time.time()) + 60,
-        )
-
-        # Mock user in request state
-        User(
-            user_id="test_user",
-            org_id="test_org",
-            email="test@example.com",
-            display_name="Test User",
-            role=Role.VIEWER,
         )
 
         with patch.object(app, "middleware_stack"):

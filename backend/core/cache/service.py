@@ -51,16 +51,18 @@ async def _cleanup_singleflight():
         async with _singleflight_lock:
             if len(_singleflight) > _max_singleflight_size:
                 current_time = time.time()
-                # Remove locks that haven't been accessed for TTL duration
-                to_remove = []
-                for key, (lock, last_access) in _singleflight.items():
-                    if current_time - last_access > _singleflight_ttl:
-                        to_remove.append(key)
-                    # Only remove half to avoid too aggressive cleanup
-                    if len(to_remove) >= len(_singleflight) // 2:
-                        break
-
-                for key in to_remove:
+                # Collect all stale entries with their last_access time
+                stale_entries = [
+                    (key, last_access)
+                    for key, (lock, last_access) in _singleflight.items()
+                    if current_time - last_access > _singleflight_ttl
+                ]
+                # Sort by last_access (oldest first)
+                stale_entries.sort(key=lambda x: x[1])
+                # Only remove up to half to avoid too aggressive cleanup
+                num_to_remove = min(len(stale_entries), len(_singleflight) // 2)
+                for i in range(num_to_remove):
+                    key = stale_entries[i][0]
                     _singleflight.pop(key, None)
     except Exception as e:
         # Log error but don't raise to avoid crashing the task
@@ -84,8 +86,8 @@ async def _sf_lock(key: str) -> asyncio.Lock:
         # Best-effort access time update (may race, but prevents stale locks)
         try:
             _singleflight[key] = (lock, current_time)
-        except (KeyError, RuntimeError):
-            # Race condition occurred, ignore and proceed
+        except RuntimeError:
+            # Possible concurrent modification during iteration elsewhere; ignore and proceed
             pass
         return lock
 
@@ -101,8 +103,11 @@ async def _sf_lock(key: str) -> asyncio.Lock:
             if len(_singleflight) > _max_singleflight_size:
                 task = asyncio.create_task(_cleanup_singleflight())
                 task.add_done_callback(
-                    lambda t: t.exception()
-                    and logging.error(f"Cleanup task failed: {t.exception()}")
+                    lambda t: (
+                        logging.error(f"Cleanup task failed: {exc}")
+                        if (exc := t.exception())
+                        else None
+                    )
                 )
         else:
             lock, _ = lock_tuple
@@ -173,8 +178,6 @@ class CacheService:
                     return await r.delete(*keys)
             return 0
         except Exception as e:
-            import logging
-
             logging.getLogger(__name__).error(
                 f"Error clearing cache pattern {pattern}: {e}"
             )

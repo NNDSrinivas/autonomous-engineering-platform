@@ -25,7 +25,12 @@ class Cache:
         if self._r is None:
             try:
                 self._r = await aioredis.from_url(
-                    REDIS_URL, encoding="utf-8", decode_responses=True
+                    REDIS_URL,
+                    encoding="utf-8",
+                    decode_responses=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                    max_connections=10,
                 )
             except Exception:
                 self._r = None

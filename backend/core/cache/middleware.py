@@ -31,10 +31,14 @@ class CacheMiddleware(BaseHTTPMiddleware):
         # lightweight counters (best-effort)
         response.headers["X-Cache-Hits"] = str(_hits)
         response.headers["X-Cache-Misses"] = str(_misses)
-        response.headers["Server-Timing"] = (
-            response.headers.get("Server-Timing", "")
-            + f", app;dur={(time.time()-start)*1000:.2f}"
-        )
+        
+        # Add Server-Timing header properly
+        existing_server_timing = response.headers.get("Server-Timing", "")
+        app_timing = f"app;dur={(time.time()-start)*1000:.2f}"
+        if existing_server_timing.strip():
+            response.headers["Server-Timing"] = existing_server_timing + f", {app_timing}"
+        else:
+            response.headers["Server-Timing"] = app_timing
         return response
 
 

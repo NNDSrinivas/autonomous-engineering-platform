@@ -7,7 +7,7 @@ for distributed rate limiting across multiple application instances.
 
 import logging
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, TYPE_CHECKING
 
 from backend.core.rate_limit.config import (
     DEFAULT_RATE_LIMITS,
@@ -18,6 +18,8 @@ from backend.core.rate_limit.config import (
 )
 from backend.core.settings import settings
 
+logger = logging.getLogger(__name__)
+
 try:
     from redis import asyncio as aioredis
 
@@ -26,7 +28,8 @@ except ImportError:
     aioredis = None
     HAS_REDIS = False
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 
 class RateLimitResult:
@@ -51,11 +54,20 @@ class RateLimitService:
     """Redis-based distributed rate limiting service."""
 
     def __init__(self):
-        self._redis: Optional[aioredis.Redis] = None
+        self._redis: Optional["Redis"] = None
         self._fallback_cache: Dict[str, Dict] = {}
         self._last_cleanup = time.time()
 
-    async def _get_redis(self) -> Optional[aioredis.Redis]:
+        # CRITICAL LIMITATION WARNING: Log at service initialization
+        logger.warning(
+            "RATE LIMITING CRITICAL LIMITATION: Using estimated active users "
+            f"({settings.RATE_LIMITING_ESTIMATED_ACTIVE_USERS}) for org-level rate limits. "
+            "This may cause incorrect rate limiting for organizations with different user counts. "
+            "This is a temporary solution - implement presence-based user tracking for production use. "
+            "See TODO comments in check_rate_limit method for implementation details."
+        )
+
+    async def _get_redis(self) -> Optional["Redis"]:
         """Get Redis connection, creating if needed."""
         if not HAS_REDIS or not settings.REDIS_URL:
             return None

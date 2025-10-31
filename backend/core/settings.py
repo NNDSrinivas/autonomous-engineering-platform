@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     RATE_LIMITING_FALLBACK_ENABLED: bool = (
         True  # Use in-memory fallback when Redis unavailable
     )
+    # CRITICAL LIMITATION: Estimated active users per org for rate limiting calculations
+    # TODO: HIGH PRIORITY - Replace with actual active user tracking from presence system
+    # This is a temporary workaround that may cause incorrect rate limiting for orgs
+    # with significantly different user counts. Production deployments should monitor
+    # and adjust this value based on actual org sizes.
+    RATE_LIMITING_ESTIMATED_ACTIVE_USERS: int = 5
 
     # CORS configuration
     CORS_ORIGINS: str = "*"  # Comma-separated list of allowed origins
@@ -79,7 +85,7 @@ settings = Settings()
 # environment variables and we want misconfigurations to fail fast.
 if settings.HEARTBEAT_SEC * 2 >= settings.PRESENCE_TTL_SEC:
     raise ValueError(
-        f"Invalid presence timing: HEARTBEAT_SEC={settings.HEARTBEAT_SEC} must be < PRESENCE_TTL_SEC/2={settings.PRESENCE_TTL_SEC/2}"
+        f"Invalid presence timing: HEARTBEAT_SEC={settings.HEARTBEAT_SEC} must be < PRESENCE_TTL_SEC/2={settings.PRESENCE_TTL_SEC / 2}"
     )
 
 # Validate JWT configuration: JWT_SECRET is required when JWT_ENABLED=true

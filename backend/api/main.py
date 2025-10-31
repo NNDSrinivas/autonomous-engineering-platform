@@ -7,6 +7,15 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+# --- Observability bootstraps (PR-28)
+from ..core.obs.logging import configure_json_logging
+from ..core.obs.tracing import init_tracing
+from ..core.obs.metrics import metrics_app, PROM_ENABLED
+from ..core.obs.middleware import ObservabilityMiddleware
+
+configure_json_logging()
+init_tracing()
+
 from ..core.settings import settings
 from ..core.logging import setup_logging
 from ..core.metrics import router as metrics_router
@@ -52,6 +61,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=f"{settings.APP_NAME} - Core API", lifespan=lifespan)
 
+# Middlewares (place ObservabilityMiddleware high so all routes are observed)
+app.add_middleware(ObservabilityMiddleware)  # PR-28: Request IDs, metrics, structured logs
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -64,6 +75,10 @@ app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
 app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 app.add_middleware(AuditMiddleware, service_name="core")
 app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
+
+# Mount /metrics when enabled (PR-28)
+if PROM_ENABLED:
+    app.mount("/metrics", metrics_app())
 
 
 @app.get("/health")

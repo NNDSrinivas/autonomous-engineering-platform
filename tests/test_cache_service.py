@@ -1,5 +1,4 @@
 import os
-import time
 import pytest
 from unittest.mock import patch
 from backend.core.cache.service import cache_service
@@ -78,16 +77,23 @@ async def test_cache_disabled():
 @pytest.mark.asyncio
 async def test_cache_invalidation():
     key = generic("test", "invalidate")
+    fetch_count = {"n": 0}
 
-    # Set initial value
-    await cache_service.set_json(
-        key, {"data": "original", "__cached_at": int(time.time())}, ttl_sec=60
-    )
+    async def fetch_original():
+        fetch_count["n"] += 1
+        return "original"
 
-    # Verify it's cached
-    val = await cache_service.get_json(key)
-    assert val is not None
-    assert val["data"] == "original"
+    # Cache initial value
+    result = await cache_service.cached_fetch(key, fetcher=fetch_original, ttl_sec=60)
+    assert result.hit is False
+    assert result.value == "original"
+    assert fetch_count["n"] == 1
+
+    # Verify it's cached (should be a hit)
+    result2 = await cache_service.cached_fetch(key, fetcher=fetch_original, ttl_sec=60)
+    assert result2.hit is True
+    assert result2.value == "original"
+    assert fetch_count["n"] == 1  # No additional fetch
 
     # Invalidate
     deleted = await cache_service.del_key(key)

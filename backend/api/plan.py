@@ -8,6 +8,7 @@ import logging
 import os
 
 from ..core.cache import cache
+from ..core.cache.service import _cache_enabled
 from ..core.db import get_db, safe_commit_with_rollback
 from ..core.utils import generate_prompt_hash, validate_header_value
 from ..llm.router import ModelRouter, AuditContext
@@ -218,7 +219,7 @@ async def get_metrics() -> Dict[str, Any]:
         return {
             "usage": usage_stats,
             "budget": budget_check,
-            "cache_enabled": os.getenv("CACHE_ENABLED", "true").lower() == "true",
+            "cache_enabled": _cache_enabled(),
             "timestamp": time.time(),
         }
     except Exception as e:

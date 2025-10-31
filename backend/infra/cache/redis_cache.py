@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import fnmatch
 import json
 import os
 import time
@@ -109,8 +110,6 @@ class Cache:
         else:
             # For in-memory cache, we'll do a simple pattern match
             async with self._mem_lock:
-                import fnmatch
-
                 to_delete = [k for k in self._mem.keys() if fnmatch.fnmatch(k, pattern)]
                 for k in to_delete:
                     del self._mem[k]

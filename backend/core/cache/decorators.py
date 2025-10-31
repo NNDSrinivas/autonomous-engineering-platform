@@ -38,8 +38,6 @@ def invalidate(key_fn: Callable[..., str]):
             out = await fn(*args, **kwargs)
             # best-effort
             try:
-                from .service import cache_service
-
                 await cache_service.del_key(key)
             except Exception:
                 pass

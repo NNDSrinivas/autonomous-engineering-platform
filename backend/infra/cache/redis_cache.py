@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import json
 import os
 import time
@@ -15,29 +16,35 @@ REDIS_URL = os.getenv("REDIS_URL")
 class Cache:
     def __init__(self) -> None:
         self._mem: dict[str, tuple[int, str]] = {}
+        self._mem_lock = asyncio.Lock()  # Async lock for in-memory cache
         self._r = None
 
     async def _ensure(self):
         if not REDIS_URL or aioredis is None:
             return None
         if self._r is None:
-            self._r = await aioredis.from_url(
-                REDIS_URL, encoding="utf-8", decode_responses=True
-            )
+            try:
+                self._r = await aioredis.from_url(
+                    REDIS_URL, encoding="utf-8", decode_responses=True
+                )
+            except Exception:
+                self._r = None
+                return None
         return self._r
 
     async def get(self, key: str) -> Optional[str]:
         r = await self._ensure()
         if r:
             return await r.get(key)
-        ent = self._mem.get(key)
-        if not ent:
-            return None
-        exp, payload = ent
-        if time.time() > exp:
-            self._mem.pop(key, None)
-            return None
-        return payload
+        async with self._mem_lock:
+            ent = self._mem.get(key)
+            if not ent:
+                return None
+            exp, payload = ent
+            if time.time() > exp:
+                self._mem.pop(key, None)
+                return None
+            return payload
 
     async def mget(self, keys: Iterable[str]) -> list[Optional[str]]:
         r = await self._ensure()
@@ -51,7 +58,8 @@ class Cache:
         if r:
             await r.set(key, value, ex=ttl_sec)
             return
-        self._mem[key] = (int(time.time()) + ttl_sec, value)
+        async with self._mem_lock:
+            self._mem[key] = (int(time.time()) + ttl_sec, value)
 
     async def exists(self, key: str) -> bool:
         r = await self._ensure()
@@ -63,7 +71,8 @@ class Cache:
         r = await self._ensure()
         if r:
             return int(await r.delete(key))
-        return 1 if self._mem.pop(key, None) else 0
+        async with self._mem_lock:
+            return 1 if self._mem.pop(key, None) else 0
 
     # Legacy methods for backward compatibility
     async def get_json(self, key: str) -> Optional[Any]:

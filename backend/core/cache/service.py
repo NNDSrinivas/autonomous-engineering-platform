@@ -9,7 +9,6 @@ from typing import Any, Optional, Callable, Awaitable
 from backend.infra.cache.redis_cache import cache as redis
 
 DEFAULT_TTL = int(os.getenv("CACHE_DEFAULT_TTL_SEC", "600"))  # 10m default
-MAX_VALUE_BYTES = int(os.getenv("CACHE_MAX_VALUE_BYTES", "262144"))  # 256 KB
 
 # singleflight map to prevent dogpiling
 _singleflight: dict[str, asyncio.Lock] = {}

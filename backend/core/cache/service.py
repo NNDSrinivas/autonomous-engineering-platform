@@ -100,7 +100,10 @@ async def _sf_lock(key: str) -> asyncio.Lock:
             # Periodic cleanup to prevent memory leaks
             if len(_singleflight) > _max_singleflight_size:
                 task = asyncio.create_task(_cleanup_singleflight())
-                task.add_done_callback(lambda t: t.exception() and logging.error(f"Cleanup task failed: {t.exception()}"))
+                task.add_done_callback(
+                    lambda t: t.exception()
+                    and logging.error(f"Cleanup task failed: {t.exception()}")
+                )
         else:
             lock, _ = lock_tuple
             # Update access time
@@ -159,18 +162,22 @@ class CacheService:
         try:
             # Use Redis SCAN with pattern matching
             from backend.infra.cache.redis_cache import cache as redis_cache
+
             keys = []
             r = await redis_cache._ensure()
             if r:
                 async for key in r.scan_iter(match=pattern):
                     keys.append(key)
-                
+
                 if keys:
                     return await r.delete(*keys)
             return 0
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"Error clearing cache pattern {pattern}: {e}")
+
+            logging.getLogger(__name__).error(
+                f"Error clearing cache pattern {pattern}: {e}"
+            )
             return 0
 
     async def cached_fetch(

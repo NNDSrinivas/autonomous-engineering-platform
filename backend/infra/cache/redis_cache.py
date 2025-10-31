@@ -97,7 +97,7 @@ class Cache:
             keys = []
             async for key in r.scan_iter(match=pattern):
                 keys.append(key)
-            
+
             if keys:
                 return await r.delete(*keys)
             return 0
@@ -105,6 +105,7 @@ class Cache:
             # For in-memory cache, we'll do a simple pattern match
             async with self._mem_lock:
                 import fnmatch
+
                 to_delete = [k for k in self._mem.keys() if fnmatch.fnmatch(k, pattern)]
                 for k in to_delete:
                     del self._mem[k]

@@ -194,7 +194,7 @@ class TestRateLimitMiddleware:
             display_name="Test User",
             role=Role.VIEWER,
         )
-        
+
         with patch.object(app, "middleware_stack"):
             # This is a complex integration test that would need more setup
             # For now, just test that the rate limit result structure is correct

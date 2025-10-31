@@ -33,7 +33,6 @@ from .memory import router as memory_router
 from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
-from .routers.audit import router as audit_router
 from .routers.rate_limit_admin import router as rate_limit_admin_router
 from ..core.realtime import presence as presence_lifecycle
 

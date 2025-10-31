@@ -123,7 +123,37 @@ services:
 
 volumes:
   redis-data:
-\`\`\`
+```
+
+### 📦 Distributed Caching (PR-27)
+
+**Why:** Reduce DB load and speed up reads for hot entities (plans, users, roles, orgs).  
+**How:** Redis-backed JSON cache with singleflight (anti-stampede) and decorator helpers.
+
+**Key pieces**
+- `CacheService.cached_fetch(key, fetcher, ttl)` — central fetch-or-cache
+- Decorators: `@cached(key_fn, ttl)` and `@invalidate(key_fn)`
+- Keys: `plan:{id}`, `plan:{id}:steps`, `user:{org}:{sub}`, `role:{org}:{sub}`, `org:{key}`
+- Middleware adds `X-Cache-*` headers (best-effort counters)
+
+**Config**
+```bash
+CACHE_ENABLED=true
+CACHE_DEFAULT_TTL_SEC=600     # 10 minutes
+CACHE_MAX_VALUE_BYTES=262144  # 256 KB
+```
+
+**Usage**
+```python
+from backend.core.cache.decorators import cached, invalidate
+from backend.core.cache.keys import plan_key
+
+@cached(lambda plan_id: plan_key(plan_id), ttl_sec=300)
+async def read_plan(plan_id: str): ...
+
+@invalidate(lambda plan_id: plan_key(plan_id))
+async def update_plan(plan_id: str, patch: dict): ...
+```
 
 ---
 

@@ -81,7 +81,9 @@ class RateLimitService:
 
         if self._redis is None:
             try:
-                self._redis = aioredis.from_url(
+                if not aioredis:
+                    return None
+                self._redis = aioredis.Redis.from_url(
                     settings.REDIS_URL,
                     decode_responses=True,
                     retry_on_timeout=True,
@@ -419,7 +421,7 @@ class RateLimitService:
 
             # Remove completed request from queue
             # In a more sophisticated implementation, we'd track specific request IDs
-            await redis.rpop(queue_key)
+            redis.rpop(queue_key)
 
         except Exception as e:
             logger.error(f"Error recording request completion: {e}")

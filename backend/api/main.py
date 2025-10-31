@@ -14,6 +14,7 @@ from ..core.middleware import AuditMiddleware
 from ..core.middleware import RequestIDMiddleware
 from ..core.rate_limit.middleware import RateLimitMiddleware
 from ..core.audit.middleware import EnhancedAuditMiddleware
+from ..core.cache.middleware import CacheMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
 from ..services.jira import JiraService
@@ -60,6 +61,7 @@ app.add_middleware(
 )
 app.add_middleware(RequestIDMiddleware, service_name="core")
 app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
+app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 app.add_middleware(AuditMiddleware, service_name="core")
 app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
 

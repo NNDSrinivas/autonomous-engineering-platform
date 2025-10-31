@@ -1,169 +1,118 @@
-"""
-Optional Redis cache utility with in-memory fallback.
-
-Provides simple key-value caching for role resolution and other
-frequently-accessed data. Falls back to in-process dict if Redis
-is not configured or unavailable.
-"""
-
+from __future__ import annotations
+import asyncio
+import fnmatch
 import json
 import os
 import time
-import threading
-from typing import Any, Optional
+from typing import Any, Optional, Iterable
 
 try:
-    from redis import asyncio as aioredis
-
-    HAS_REDIS = True
+    from redis import asyncio as aioredis  # type: ignore
 except ImportError:
-    aioredis: Optional[Any] = None
-    HAS_REDIS = False
+    aioredis = None
 
 REDIS_URL = os.getenv("REDIS_URL")
 
 
 class Cache:
-    """
-    Simple async cache with Redis backend and memory fallback.
-
-    Automatically uses Redis if REDIS_URL is set and aioredis is installed,
-    otherwise falls back to in-process memory cache with TTL support.
-    """
-
     def __init__(self) -> None:
         self._mem: dict[str, tuple[int, str]] = {}
-        self._mem_lock = threading.Lock()  # Protect in-memory cache operations
-        # Redis client instance (redis.asyncio.Redis) or None if not configured
-        self._r: Optional[Any] = None
+        self._mem_lock = asyncio.Lock()  # Async lock for in-memory cache
+        self._r = None
 
-    async def _ensure(self) -> Optional[Any]:
-        """
-        Ensure Redis connection is established if configured.
-
-        Returns:
-            Redis client instance if successfully connected, None otherwise.
-        """
-        if not REDIS_URL or not HAS_REDIS:
+    async def _ensure(self):
+        if not REDIS_URL or aioredis is None:
             return None
         if self._r is None:
             try:
-                self._r = await aioredis.from_url(  # type: ignore[attr-defined]
+                self._r = aioredis.Redis.from_url(
                     REDIS_URL,
-                    encoding="utf-8",
                     decode_responses=True,
-                    socket_connect_timeout=5.0,
-                    socket_timeout=5.0,
-                    max_connections=50,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                    max_connections=10,
                 )
             except Exception:
-                # If Redis connection fails, fall back to in-memory cache
+                self._r = None
                 return None
         return self._r
 
-    async def get_json(self, key: str) -> Optional[Any]:
-        """
-        Retrieve a JSON value from cache.
-
-        Args:
-            key: Cache key
-
-        Returns:
-            Parsed JSON value or None if not found/expired
-        """
+    async def get(self, key: str) -> Optional[str]:
         r = await self._ensure()
         if r:
-            val = await r.get(key)
-            return json.loads(val) if val else None
-
-        # Fallback to in-memory cache
-        with self._mem_lock:
-            entry = self._mem.get(key)
-            if not entry:
+            return await r.get(key)
+        async with self._mem_lock:
+            ent = self._mem.get(key)
+            if not ent:
                 return None
-            exp_ts, payload = entry
-            if time.time() >= exp_ts:
+            exp, payload = ent
+            if time.time() >= exp:
                 self._mem.pop(key, None)
                 return None
-            return json.loads(payload)
+            return payload
+
+    async def mget(self, keys: Iterable[str]) -> list[Optional[str]]:
+        # Convert to list to handle generators and ensure consistent behavior
+        keys = list(keys)
+        r = await self._ensure()
+        if r:
+            vals = await r.mget(keys) if keys else []
+            return list(vals)
+        return [await self.get(k) for k in keys]
+
+    async def setex(self, key: str, ttl_sec: int, value: str) -> None:
+        r = await self._ensure()
+        if r:
+            await r.set(key, value, ex=ttl_sec)
+            return
+        async with self._mem_lock:
+            self._mem[key] = (int(time.time()) + ttl_sec, value)
+
+    async def exists(self, key: str) -> bool:
+        r = await self._ensure()
+        if r:
+            return bool(await r.exists(key))
+        return await self.get(key) is not None
+
+    async def delete(self, key: str) -> int:
+        r = await self._ensure()
+        if r:
+            return int(await r.delete(key))
+        async with self._mem_lock:
+            return 1 if self._mem.pop(key, None) else 0
+
+    # Legacy methods for backward compatibility
+    async def get_json(self, key: str) -> Optional[Any]:
+        raw = await self.get(key)
+        return json.loads(raw) if raw else None
 
     async def set_json(self, key: str, value: Any, ttl_sec: int = 60) -> None:
-        """
-        Store a JSON-serializable value in cache with TTL.
+        await self.setex(key, ttl_sec, json.dumps(value))
 
-        Args:
-            key: Cache key
-            value: JSON-serializable value
-            ttl_sec: Time-to-live in seconds (default: 60)
-        """
-        r = await self._ensure()
-        payload = json.dumps(value)
-        if r:
-            await r.set(key, payload, ex=ttl_sec)
-            return
+    def clear_sync(self) -> None:
+        """Synchronously clear in-memory cache. Only affects local cache, not Redis."""
+        # Clear in-memory cache synchronously for test usage
+        self._mem.clear()
 
-        # Fallback to in-memory cache
-        with self._mem_lock:
-            self._mem[key] = (int(time.time()) + ttl_sec, payload)
-
-    async def delete(self, key: str) -> None:
-        """
-        Delete a key from cache.
-
-        Args:
-            key: Cache key to delete
-        """
-        r = await self._ensure()
-        if r:
-            await r.delete(key)
-        else:
-            with self._mem_lock:
-                self._mem.pop(key, None)
-
-    async def clear(self) -> None:
-        """
-        Clear all cached entries.
-
-        Useful for testing and cache invalidation scenarios.
-        """
-        r = await self._ensure()
-        if r:
-            await r.flushdb()
-        else:
-            with self._mem_lock:
-                self._mem.clear()
-
-    async def clear_pattern(self, pattern: str) -> None:
-        """
-        Clear cached entries matching a pattern.
-
-        Args:
-            pattern: Pattern to match (supports * wildcards for Redis,
-                     simple prefix matching for in-memory cache)
-        """
+    async def clear_pattern(self, pattern: str) -> int:
+        """Clear cache entries matching a pattern. Returns number of keys deleted."""
         r = await self._ensure()
         if r:
             # Use Redis SCAN with pattern matching
+            keys = []
             async for key in r.scan_iter(match=pattern):
-                await r.delete(key)
+                keys.append(key)
+
+            if keys:
+                return await r.delete(*keys)
+            return 0
         else:
-            # For in-memory cache, implement simple prefix matching
-            # Convert Redis pattern to prefix (remove trailing *)
-            prefix = pattern.rstrip("*")
-            with self._mem_lock:
-                self._mem = {
-                    k: v for k, v in self._mem.items() if not k.startswith(prefix)
-                }
-
-    def clear_sync(self) -> None:
-        """
-        Synchronous version of clear for testing.
-
-        Only clears in-memory cache since Redis requires async operations.
-        """
-        with self._mem_lock:
-            self._mem.clear()
+            # For in-memory cache, we'll do a simple pattern match
+            async with self._mem_lock:
+                to_delete = [k for k in self._mem.keys() if fnmatch.fnmatch(k, pattern)]
+                for k in to_delete:
+                    del self._mem[k]
+                return len(to_delete)
 
 
-# Global cache instance
 cache = Cache()

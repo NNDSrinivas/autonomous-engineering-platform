@@ -47,6 +47,8 @@ class Cache:
             return payload
 
     async def mget(self, keys: Iterable[str]) -> list[Optional[str]]:
+        # Convert to list to handle generators and ensure consistent behavior
+        keys = list(keys)
         r = await self._ensure()
         if r:
             vals = await r.mget(*keys) if keys else []

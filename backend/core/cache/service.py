@@ -10,21 +10,25 @@ from backend.infra.cache.redis_cache import cache as redis
 
 DEFAULT_TTL = int(os.getenv("CACHE_DEFAULT_TTL_SEC", "600"))  # 10m default
 
-# singleflight map to prevent dogpiling
-_singleflight: dict[str, asyncio.Lock] = {}
+# singleflight map to prevent dogpiling with last access tracking
+_singleflight: dict[str, tuple[asyncio.Lock, float]] = (
+    {}
+)  # key -> (lock, last_access_time)
 _singleflight_lock = asyncio.Lock()  # Protects singleflight dict creation
 _max_singleflight_size = 1000  # Limit singleflight dict size
+_singleflight_ttl = 300  # Remove locks not accessed for 5 minutes
 
 
 async def _cleanup_singleflight():
-    """Remove unused locks from singleflight dict to prevent memory leaks."""
+    """Remove stale locks from singleflight dict to prevent memory leaks."""
     try:
         async with _singleflight_lock:
             if len(_singleflight) > _max_singleflight_size:
-                # Remove locks that are not currently locked (best effort cleanup)
+                current_time = time.time()
+                # Remove locks that haven't been accessed for TTL duration
                 to_remove = []
-                for key, lock in _singleflight.items():
-                    if not lock.locked():
+                for key, (lock, last_access) in _singleflight.items():
+                    if current_time - last_access > _singleflight_ttl:
                         to_remove.append(key)
                     # Only remove half to avoid too aggressive cleanup
                     if len(to_remove) >= len(_singleflight) // 2:
@@ -47,22 +51,31 @@ class CacheResult:
 
 
 async def _sf_lock(key: str) -> asyncio.Lock:
+    current_time = time.time()
+
     # Fast path - check if lock already exists
-    lock = _singleflight.get(key)
-    if lock is not None:
+    lock_tuple = _singleflight.get(key)
+    if lock_tuple is not None:
+        lock, _ = lock_tuple
+        # Update access time
+        _singleflight[key] = (lock, current_time)
         return lock
 
     # Slow path - create lock with protection against race conditions
     async with _singleflight_lock:
         # Double-check after acquiring the lock
-        lock = _singleflight.get(key)
-        if lock is None:
+        lock_tuple = _singleflight.get(key)
+        if lock_tuple is None:
             lock = asyncio.Lock()
-            _singleflight[key] = lock
+            _singleflight[key] = (lock, current_time)
 
             # Periodic cleanup to prevent memory leaks
             if len(_singleflight) > _max_singleflight_size:
                 asyncio.create_task(_cleanup_singleflight())
+        else:
+            lock, _ = lock_tuple
+            # Update access time
+            _singleflight[key] = (lock, current_time)
         return lock
 
 

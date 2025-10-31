@@ -7,12 +7,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from ..core.config import settings
+from ..core.settings import settings
 from ..core.logging import setup_logging
 from ..core.metrics import router as metrics_router
 from ..core.middleware import AuditMiddleware
-from ..core.middleware import RateLimitMiddleware
 from ..core.middleware import RequestIDMiddleware
+from ..core.rate_limit.middleware import RateLimitMiddleware
 from ..core.audit.middleware import EnhancedAuditMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
@@ -33,7 +33,7 @@ from .memory import router as memory_router
 from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
-from .routers.audit import router as audit_router
+from .routers.rate_limit_admin import router as rate_limit_admin_router
 from ..core.realtime import presence as presence_lifecycle
 
 logger = setup_logging()
@@ -49,9 +49,7 @@ async def lifespan(app: FastAPI):
     presence_lifecycle.stop_cleanup_thread()
 
 
-app = FastAPI(title=f"{settings.app_name} - Core API", lifespan=lifespan)
-
-app = FastAPI(title=f"{settings.app_name} - Core API", lifespan=lifespan)
+app = FastAPI(title=f"{settings.APP_NAME} - Core API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -61,7 +59,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(RequestIDMiddleware, service_name="core")
-app.add_middleware(RateLimitMiddleware, service_name="core", rpm=60)
+app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
 app.add_middleware(AuditMiddleware, service_name="core")
 app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
 
@@ -77,7 +75,7 @@ def health():
 
 @app.get("/version")
 def version():
-    return {"name": settings.app_name, "env": settings.app_env, "version": "0.1.0"}
+    return {"name": settings.APP_NAME, "env": settings.APP_ENV, "version": "0.1.0"}
 
 
 # Prometheus
@@ -94,8 +92,8 @@ app.include_router(memory_router, prefix="/api")
 # Admin RBAC endpoints (PR-24)
 app.include_router(admin_rbac_router)
 
-# Audit & Event Replay endpoints (PR-25)
-app.include_router(audit_router)
+# Rate limiting admin endpoints (PR-26)
+app.include_router(rate_limit_admin_router)
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])
@@ -506,4 +504,4 @@ def manual_generate(body: GenerateReq):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host=settings.api_host, port=settings.api_port)
+    uvicorn.run(app, host=settings.API_HOST, port=settings.API_PORT)

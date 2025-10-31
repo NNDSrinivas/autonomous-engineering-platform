@@ -57,7 +57,8 @@ async def _sf_lock(key: str) -> asyncio.Lock:
     lock_tuple = _singleflight.get(key)
     if lock_tuple is not None:
         lock, _ = lock_tuple
-        # Update access time
+        # Update access time (best-effort, no lock to preserve fast path performance)
+        # Race condition is acceptable - worst case is slightly stale access times
         _singleflight[key] = (lock, current_time)
         return lock
 

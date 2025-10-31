@@ -5,6 +5,7 @@ Provides endpoints for viewing rate limiting statistics,
 adjusting quotas, and monitoring system health.
 """
 
+import logging
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -224,11 +225,12 @@ async def rate_limit_health_check(
             "message": "Rate limiting system is operational",
         }
 
-    except Exception as e:
+    except Exception:
+        logging.exception("Exception during rate limit health check")
         return {
             "status": "degraded",
             "redis_status": "error",
             "redis_latency": "error",
             "fallback_status": "available",
-            "message": f"Rate limiting issues detected: {str(e)}",
+            "message": "Rate limiting issues detected. Please check server logs for details.",
         }

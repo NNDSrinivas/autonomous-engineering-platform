@@ -44,7 +44,7 @@ class TestRateLimitService:
             for _ in range(
                 DEFAULT_RATE_LIMITS.user_rules[category].requests_per_minute
             ):
-                result = await service.check_rate_limit(user_id, org_id, category)
+                await service.check_rate_limit(user_id, org_id, category)
 
             # Next request should be denied
             result = await service.check_rate_limit(user_id, org_id, category)
@@ -64,9 +64,7 @@ class TestRateLimitService:
                     RateLimitCategory.READ
                 ].requests_per_minute
             ):
-                result = await service.check_rate_limit(
-                    user_id, org_id, RateLimitCategory.READ
-                )
+                await service.check_rate_limit(user_id, org_id, RateLimitCategory.READ)
 
             # READ should be rate limited
             result = await service.check_rate_limit(

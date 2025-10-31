@@ -149,7 +149,13 @@ class RateLimitService:
 
             # Calculate org limits (simplified - assumes 5 active users per org)
             quota = self._get_rate_quota(is_premium)
-            estimated_active_users = 5  # TODO: Get from active user tracking
+            # TODO: HIGH PRIORITY - Get actual active user count from presence/session tracking
+            # Current hardcoded value of 5 may cause incorrect rate limiting for orgs with
+            # significantly different user counts. Consider implementing:
+            # 1. Active user tracking via presence system
+            # 2. Session-based user counting
+            # 3. Configurable org-specific multipliers
+            estimated_active_users = 5
             org_minute_limit = int(
                 rule.requests_per_minute * quota.org_multiplier * estimated_active_users
             )

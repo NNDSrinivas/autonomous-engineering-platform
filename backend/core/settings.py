@@ -49,14 +49,16 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
 
+    # Application environment
+    APP_ENV: str = "development"
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Get CORS origins as a list."""
         if self.CORS_ORIGINS == "*":
             return ["*"]
-        return [
-            origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()
-        ]
+        origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
+        return [origin for origin in origins if origin]
 
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # Note: To avoid loading .env during tests, override settings in pytest fixtures

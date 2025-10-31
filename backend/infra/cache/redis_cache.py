@@ -1,5 +1,7 @@
 from __future__ import annotations
-import json, os, time
+import json
+import os
+import time
 from typing import Any, Optional, Iterable
 
 try:
@@ -8,6 +10,7 @@ except Exception:
     aioredis = None
 
 REDIS_URL = os.getenv("REDIS_URL")
+
 
 class Cache:
     def __init__(self) -> None:
@@ -18,7 +21,9 @@ class Cache:
         if not REDIS_URL or aioredis is None:
             return None
         if self._r is None:
-            self._r = await aioredis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
+            self._r = await aioredis.from_url(
+                REDIS_URL, encoding="utf-8", decode_responses=True
+            )
         return self._r
 
     async def get(self, key: str) -> Optional[str]:
@@ -26,10 +31,12 @@ class Cache:
         if r:
             return await r.get(key)
         ent = self._mem.get(key)
-        if not ent: return None
+        if not ent:
+            return None
         exp, payload = ent
         if time.time() > exp:
-            self._mem.pop(key, None); return None
+            self._mem.pop(key, None)
+            return None
         return payload
 
     async def mget(self, keys: Iterable[str]) -> list[Optional[str]]:
@@ -42,7 +49,8 @@ class Cache:
     async def setex(self, key: str, ttl_sec: int, value: str) -> None:
         r = await self._ensure()
         if r:
-            await r.set(key, value, ex=ttl_sec); return
+            await r.set(key, value, ex=ttl_sec)
+            return
         self._mem[key] = (int(time.time()) + ttl_sec, value)
 
     async def exists(self, key: str) -> bool:
@@ -64,5 +72,6 @@ class Cache:
 
     async def set_json(self, key: str, value: Any, ttl_sec: int = 60) -> None:
         await self.setex(key, ttl_sec, json.dumps(value))
+
 
 cache = Cache()

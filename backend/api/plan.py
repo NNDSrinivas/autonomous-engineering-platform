@@ -7,14 +7,13 @@ import time
 import logging
 import os
 
-from ..core.cache import Cache
+from ..core.cache import cache
 from ..core.db import get_db, safe_commit_with_rollback
 from ..core.utils import generate_prompt_hash, validate_header_value
 from ..llm.router import ModelRouter, AuditContext
 
 # Initialize router and dependencies
 router = APIRouter(prefix="/api/plan", tags=["plan"])
-cache = Cache(ttl=3600)  # 1 hour cache
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +84,7 @@ async def generate_plan(
         ).hexdigest()
 
         # Check cache first
-        cached_result = cache.get(cache_key)
+        cached_result = await cache.get_json(cache_key)
         if cached_result:
             logger.info(f"Returning cached plan for key: {key}")
             cached_result["cached"] = True
@@ -189,7 +188,7 @@ async def generate_plan(
 
         # Only cache successful results (not error responses)
         if not telemetry.get("error"):
-            cache.set(cache_key, result)
+            await cache.set_json(cache_key, result, ttl_sec=3600)
 
         # Commit audit transaction after successful plan generation and caching
         if audit_context.db and not telemetry.get("error"):
@@ -219,7 +218,7 @@ async def get_metrics() -> Dict[str, Any]:
         return {
             "usage": usage_stats,
             "budget": budget_check,
-            "cache_size": cache.size(),
+            "cache_enabled": os.getenv("CACHE_ENABLED", "true").lower() == "true",
             "timestamp": time.time(),
         }
     except Exception as e:
@@ -233,9 +232,10 @@ async def get_metrics() -> Dict[str, Any]:
 async def clear_cache() -> Dict[str, str]:
     """Clear the plan cache."""
     try:
-        cache.clear()
-        logger.info("Plan cache cleared")
-        return {"message": "Cache cleared successfully"}
+        # Our distributed cache doesn't support bulk clear
+        # In a production environment, you would typically clear specific keys
+        logger.info("Cache clear requested - distributed cache doesn't support bulk clear")
+        return {"message": "Cache clear requested - individual keys expire naturally"}
     except Exception as e:
         logger.error(f"Cache clearing failed: {type(e).__name__}")
         raise HTTPException(

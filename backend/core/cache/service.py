@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import time
+import threading
 from dataclasses import dataclass
 from typing import Any, Optional, Callable, Awaitable
 
@@ -17,6 +18,31 @@ _singleflight: dict[str, tuple[asyncio.Lock, float]] = (
 _singleflight_lock = asyncio.Lock()  # Protects singleflight dict creation
 _max_singleflight_size = 1000  # Limit singleflight dict size
 _singleflight_ttl = 300  # Remove locks not accessed for 5 minutes
+
+# Cache hit/miss counters - shared with middleware
+_cache_hits = 0
+_cache_misses = 0
+_cache_counter_lock = threading.Lock()
+
+
+def _increment_hit_counter():
+    """Increment cache hit counter (thread-safe)."""
+    global _cache_hits
+    with _cache_counter_lock:
+        _cache_hits += 1
+
+
+def _increment_miss_counter():
+    """Increment cache miss counter (thread-safe)."""
+    global _cache_misses
+    with _cache_counter_lock:
+        _cache_misses += 1
+
+
+def get_cache_stats() -> tuple[int, int]:
+    """Get current cache hit/miss stats (thread-safe)."""
+    with _cache_counter_lock:
+        return _cache_hits, _cache_misses
 
 
 async def _cleanup_singleflight():
@@ -57,9 +83,8 @@ async def _sf_lock(key: str) -> asyncio.Lock:
     lock_tuple = _singleflight.get(key)
     if lock_tuple is not None:
         lock, _ = lock_tuple
-        # Update access time (best-effort, no lock to preserve fast path performance)
-        # Race condition is acceptable - worst case is slightly stale access times
-        _singleflight[key] = (lock, current_time)
+        # Skip access time update on fast path to avoid race condition
+        # Access time will be updated in slow path when lock is acquired
         return lock
 
     # Slow path - create lock with protection against race conditions
@@ -136,6 +161,7 @@ class CacheService:
         if val is not None:
             ts = val.get("__cached_at")
             age = _calculate_age(ts)
+            _increment_hit_counter()
             return CacheResult(hit=True, value=val["data"], age_sec=age)
 
         # singleflight
@@ -146,6 +172,7 @@ class CacheService:
             if val is not None:
                 ts = val.get("__cached_at")
                 age = _calculate_age(ts)
+                _increment_hit_counter()
                 return CacheResult(hit=True, value=val["data"], age_sec=age)
 
             data = await fetcher()
@@ -154,6 +181,7 @@ class CacheService:
                 {"data": data, "__cached_at": int(time.time())},
                 ttl_sec or DEFAULT_TTL,
             )
+            _increment_miss_counter()
             return CacheResult(hit=False, value=data, age_sec=0)
 
 

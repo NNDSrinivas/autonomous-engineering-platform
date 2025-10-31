@@ -51,7 +51,7 @@ class Cache:
         keys = list(keys)
         r = await self._ensure()
         if r:
-            vals = await r.mget(*keys) if keys else []
+            vals = await r.mget(keys) if keys else []
             return list(vals)
         return [await self.get(k) for k in keys]
 
@@ -83,6 +83,32 @@ class Cache:
 
     async def set_json(self, key: str, value: Any, ttl_sec: int = 60) -> None:
         await self.setex(key, ttl_sec, json.dumps(value))
+
+    def clear_sync(self) -> None:
+        """Synchronously clear in-memory cache. Only affects local cache, not Redis."""
+        # Clear in-memory cache synchronously for test usage
+        self._mem.clear()
+
+    async def clear_pattern(self, pattern: str) -> int:
+        """Clear cache entries matching a pattern. Returns number of keys deleted."""
+        r = await self._ensure()
+        if r:
+            # Use Redis SCAN with pattern matching
+            keys = []
+            async for key in r.scan_iter(match=pattern):
+                keys.append(key)
+            
+            if keys:
+                return await r.delete(*keys)
+            return 0
+        else:
+            # For in-memory cache, we'll do a simple pattern match
+            async with self._mem_lock:
+                import fnmatch
+                to_delete = [k for k in self._mem.keys() if fnmatch.fnmatch(k, pattern)]
+                for k in to_delete:
+                    del self._mem[k]
+                return len(to_delete)
 
 
 cache = Cache()

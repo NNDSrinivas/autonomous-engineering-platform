@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Body, HTTPException, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 import hashlib
 import time
@@ -61,7 +61,6 @@ async def generate_plan(
     request: Request,
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks = None,
 ) -> Dict[str, Any]:
     """
     Generate an execution plan for a given ticket using LLM.
@@ -219,6 +218,7 @@ async def get_metrics() -> Dict[str, Any]:
         return {
             "usage": usage_stats,
             "budget": budget_check,
+            "cache_size": cache.size(),
             "cache_enabled": _cache_enabled(),
             "timestamp": time.time(),
         }

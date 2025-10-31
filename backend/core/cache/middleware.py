@@ -1,13 +1,16 @@
 from __future__ import annotations
 import os
 import time
+import threading
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
-# Simple request-scoped counters (process-local)
+# Best-effort counters for single process monitoring
+# Note: These are process-local and not accurate in multi-worker deployments
 _hits = 0
 _misses = 0
+_counter_lock = threading.Lock()
 
 
 def _cache_enabled() -> bool:
@@ -28,9 +31,10 @@ class CacheMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         # annotate response with coarse cache availability
         response.headers["X-Cache-Enabled"] = "true" if _cache_enabled() else "false"
-        # lightweight counters (best-effort)
-        response.headers["X-Cache-Hits"] = str(_hits)
-        response.headers["X-Cache-Misses"] = str(_misses)
+        # lightweight counters (best-effort, thread-safe)
+        with _counter_lock:
+            response.headers["X-Cache-Hits"] = str(_hits)
+            response.headers["X-Cache-Misses"] = str(_misses)
 
         # Add Server-Timing header properly
         existing_server_timing = response.headers.get("Server-Timing", "")
@@ -46,9 +50,11 @@ class CacheMiddleware(BaseHTTPMiddleware):
 
 def count_hit():
     global _hits
-    _hits += 1
+    with _counter_lock:
+        _hits += 1
 
 
 def count_miss():
     global _misses
-    _misses += 1
+    with _counter_lock:
+        _misses += 1

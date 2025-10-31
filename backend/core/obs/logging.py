@@ -1,9 +1,14 @@
 from __future__ import annotations
-import json, logging, os, sys, time
+import json
+import logging
+import os
+import sys
+import time
 from typing import Any, Dict
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 SERVICE_NAME = os.getenv("APP_NAME", "aep")
+
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
@@ -23,12 +28,14 @@ class JsonFormatter(logging.Formatter):
             base["exc"] = self.formatException(record.exc_info)
         return json.dumps(base, ensure_ascii=False)
 
+
 def configure_json_logging() -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+
 
 # Convenience logger
 logger = logging.getLogger("aep")

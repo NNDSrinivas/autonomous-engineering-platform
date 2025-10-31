@@ -3,6 +3,7 @@ import os
 
 OTEL_ENABLED = os.getenv("OTEL_ENABLED", "true").lower() == "true"
 
+
 def init_tracing() -> None:
     if not OTEL_ENABLED:
         return
@@ -10,12 +11,15 @@ def init_tracing() -> None:
     # pip deps: opentelemetry-sdk, opentelemetry-exporter-otlp, opentelemetry-instrumentation-fastapi
     try:
         from opentelemetry import trace
+
         try:
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as OTLPHTTP
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter as OTLPHTTP,
+            )
         except ImportError:
             # Fallback to different import path if needed
             return
-        
+
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -32,7 +36,7 @@ def init_tracing() -> None:
         processor = BatchSpanProcessor(exporter)
         provider.add_span_processor(processor)
 
-        # FastAPI instrumentation will be attached in api.main after app is created  
+        # FastAPI instrumentation will be attached in api.main after app is created
         FastAPIInstrumentor().instrument()  # fixed: call instrument method properly
     except Exception:
         # If Otel deps are absent, skip silently (env-driven)

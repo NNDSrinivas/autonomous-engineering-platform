@@ -41,7 +41,7 @@ class Cache:
             if not ent:
                 return None
             exp, payload = ent
-            if time.time() > exp:
+            if time.time() >= exp:
                 self._mem.pop(key, None)
                 return None
             return payload

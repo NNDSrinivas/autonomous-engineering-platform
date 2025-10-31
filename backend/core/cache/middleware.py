@@ -26,7 +26,6 @@ class CacheMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        global _hits, _misses
         start = time.time()
         response = await call_next(request)
         # annotate response with coarse cache availability

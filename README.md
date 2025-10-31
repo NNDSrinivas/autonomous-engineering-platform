@@ -145,8 +145,8 @@ CACHE_MAX_VALUE_BYTES=262144  # 256 KB
 
 **Usage**
 ```python
-from core.cache.decorators import cached, invalidate
-from core.cache.keys import plan_key
+from backend.core.cache.decorators import cached, invalidate
+from backend.core.cache.keys import plan_key
 
 @cached(lambda plan_id: plan_key(plan_id), ttl_sec=300)
 async def read_plan(plan_id: str): ...

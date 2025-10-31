@@ -37,7 +37,7 @@ class CacheMiddleware(BaseHTTPMiddleware):
 
         # Add Server-Timing header properly
         existing_server_timing = response.headers.get("Server-Timing", "")
-        app_timing = f"app;dur={(time.time()-start)*1000:.2f}"
+        app_timing = f"app;dur={(time.time() - start)*1000:.2f}"
         if existing_server_timing.strip():
             response.headers["Server-Timing"] = (
                 existing_server_timing + f", {app_timing}"

@@ -12,12 +12,12 @@ from .middleware import CacheMiddleware
 
 __all__ = [
     "cache",
-    "cached", 
+    "cached",
     "invalidate",
     "plan_key",
-    "user_key", 
+    "user_key",
     "role_key",
     "org_key_val",
     "generic",
-    "CacheMiddleware"
+    "CacheMiddleware",
 ]

@@ -234,7 +234,9 @@ async def clear_cache() -> Dict[str, str]:
     try:
         # Our distributed cache doesn't support bulk clear
         # In a production environment, you would typically clear specific keys
-        logger.info("Cache clear requested - distributed cache doesn't support bulk clear")
+        logger.info(
+            "Cache clear requested - distributed cache doesn't support bulk clear"
+        )
         return {"message": "Cache clear requested - individual keys expire naturally"}
     except Exception as e:
         logger.error(f"Cache clearing failed: {type(e).__name__}")

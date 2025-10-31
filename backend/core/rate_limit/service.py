@@ -20,6 +20,9 @@ from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Module-level flag to ensure critical limitation warning is only logged once
+_limitation_warning_logged = False
+
 try:
     from redis import asyncio as aioredis
 
@@ -54,18 +57,22 @@ class RateLimitService:
     """Redis-based distributed rate limiting service."""
 
     def __init__(self):
+        global _limitation_warning_logged
+
         self._redis: Optional["Redis"] = None
         self._fallback_cache: Dict[str, Dict] = {}
         self._last_cleanup = time.time()
 
-        # CRITICAL LIMITATION WARNING: Log at service initialization
-        logger.warning(
-            "RATE LIMITING CRITICAL LIMITATION: Using estimated active users "
-            f"({settings.RATE_LIMITING_ESTIMATED_ACTIVE_USERS}) for org-level rate limits. "
-            "This may cause incorrect rate limiting for organizations with different user counts. "
-            "This is a temporary solution - implement presence-based user tracking for production use. "
-            "See TODO comments in check_rate_limit method for implementation details."
-        )
+        # CRITICAL LIMITATION WARNING: Log only once to avoid spam
+        if not _limitation_warning_logged:
+            logger.warning(
+                "RATE LIMITING CRITICAL LIMITATION: Using estimated active users "
+                f"({settings.RATE_LIMITING_ESTIMATED_ACTIVE_USERS}) for org-level rate limits. "
+                "This may cause incorrect rate limiting for organizations with different user counts. "
+                "This is a temporary solution - implement presence-based user tracking for production use. "
+                "See TODO comments in check_rate_limit method for implementation details."
+            )
+            _limitation_warning_logged = True
 
     async def _get_redis(self) -> Optional["Redis"]:
         """Get Redis connection, creating if needed."""

@@ -21,6 +21,8 @@ from backend.core.rate_limit.config import (
 from backend.core.rate_limit.metrics import rate_limit_metrics
 from backend.core.rate_limit.service import rate_limit_service
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/admin/rate-limit", tags=["rate-limiting"])
 
 
@@ -226,7 +228,7 @@ async def rate_limit_health_check(
         }
 
     except Exception:
-        logging.exception("Exception during rate limit health check")
+        logger.exception("Exception during rate limit health check")
         return {
             "status": "degraded",
             "redis_status": "error",

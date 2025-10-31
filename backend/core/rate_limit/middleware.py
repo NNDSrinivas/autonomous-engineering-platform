@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.core.auth.models import User
-from backend.core.rate_limit.config import RateLimitCategory
+from backend.core.rate_limit.config import RateLimitCategory, DEFAULT_RATE_LIMITS
 from backend.core.rate_limit.service import rate_limit_service
 from backend.core.rate_limit.metrics import (
     rate_limit_metrics,
@@ -131,8 +131,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     ) -> JSONResponse:
         """Create a 429 rate limit exceeded response."""
 
+        # Get the actual rate limit from configuration
+        rule = DEFAULT_RATE_LIMITS.user_rules[category]
+        limit = rule.requests_per_minute  # Use per-minute limit for the header
+
         headers = {
-            "X-RateLimit-Limit": str(result.requests_remaining + 1),  # Total limit
+            "X-RateLimit-Limit": str(limit),  # Actual rate limit
             "X-RateLimit-Remaining": str(result.requests_remaining),
             "X-RateLimit-Reset": str(result.reset_time),
         }
@@ -233,8 +237,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # Add rate limit headers to successful responses
             response = await call_next(request)
 
+            # Get the actual rate limit from configuration
+            rule = DEFAULT_RATE_LIMITS.user_rules[category]
+            limit = rule.requests_per_minute  # Use per-minute limit for the header
+
             # Add rate limit info to response headers
-            response.headers["X-RateLimit-Limit"] = str(result.requests_remaining + 1)
+            response.headers["X-RateLimit-Limit"] = str(limit)
             response.headers["X-RateLimit-Remaining"] = str(result.requests_remaining)
             response.headers["X-RateLimit-Reset"] = str(result.reset_time)
             response.headers["X-RateLimit-Category"] = category.value

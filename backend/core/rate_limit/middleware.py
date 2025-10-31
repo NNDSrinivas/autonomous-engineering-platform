@@ -247,9 +247,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             response.headers["X-RateLimit-Reset"] = str(result.reset_time)
             response.headers["X-RateLimit-Category"] = category.value
 
-            # Record request completion
+            # Record request completion - fire and forget with proper error handling
             success = response.status_code < 500  # Don't penalize for server errors
-            asyncio.create_task(
+
+            def handle_completion_error(task):
+                """Handle errors from background completion recording."""
+                try:
+                    task.result()
+                except Exception as e:
+                    logger.error(f"Error recording request completion: {e}")
+
+            completion_task = asyncio.create_task(
                 rate_limit_service.record_request_completion(
                     user_id=user_id,
                     org_id=org_id,
@@ -257,6 +265,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     success=success,
                 )
             )
+            completion_task.add_done_callback(handle_completion_error)
 
             # Clean up tracking
             self._request_start_times.pop(request_id, None)

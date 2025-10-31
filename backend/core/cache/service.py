@@ -18,19 +18,25 @@ _max_singleflight_size = 1000  # Limit singleflight dict size
 
 async def _cleanup_singleflight():
     """Remove unused locks from singleflight dict to prevent memory leaks."""
-    async with _singleflight_lock:
-        if len(_singleflight) > _max_singleflight_size:
-            # Remove locks that are not currently locked (best effort cleanup)
-            to_remove = []
-            for key, lock in _singleflight.items():
-                if not lock.locked():
-                    to_remove.append(key)
-                # Only remove half to avoid too aggressive cleanup
-                if len(to_remove) >= len(_singleflight) // 2:
-                    break
+    try:
+        async with _singleflight_lock:
+            if len(_singleflight) > _max_singleflight_size:
+                # Remove locks that are not currently locked (best effort cleanup)
+                to_remove = []
+                for key, lock in _singleflight.items():
+                    if not lock.locked():
+                        to_remove.append(key)
+                    # Only remove half to avoid too aggressive cleanup
+                    if len(to_remove) >= len(_singleflight) // 2:
+                        break
 
-            for key in to_remove:
-                _singleflight.pop(key, None)
+                for key in to_remove:
+                    _singleflight.pop(key, None)
+    except Exception as e:
+        # Log error but don't raise to avoid crashing the task
+        import logging
+
+        logging.warning(f"Error during singleflight cleanup: {e}")
 
 
 @dataclass
@@ -72,6 +78,19 @@ def _cache_enabled() -> bool:
     return os.getenv("CACHE_ENABLED", "true").lower() == "true"
 
 
+def _calculate_age(cached_timestamp: Any) -> int:
+    """Calculate age in seconds from cached timestamp."""
+    try:
+        return (
+            int(time.time()) - int(cached_timestamp)
+            if cached_timestamp is not None
+            else 0
+        )
+    except (ValueError, TypeError):
+        # Handle invalid timestamp gracefully
+        return 0
+
+
 class CacheService:
     async def get_json(self, key: str) -> Optional[Any]:
         if not _cache_enabled():
@@ -102,11 +121,7 @@ class CacheService:
         val = await self.get_json(key)
         if val is not None:
             ts = val.get("__cached_at")
-            try:
-                age = int(time.time()) - int(ts) if ts is not None else 0
-            except (ValueError, TypeError):
-                # Handle invalid timestamp gracefully
-                age = 0
+            age = _calculate_age(ts)
             return CacheResult(hit=True, value=val["data"], age_sec=age)
 
         # singleflight
@@ -116,11 +131,7 @@ class CacheService:
             val = await self.get_json(key)
             if val is not None:
                 ts = val.get("__cached_at")
-                try:
-                    age = int(time.time()) - int(ts) if ts is not None else 0
-                except (ValueError, TypeError):
-                    # Handle invalid timestamp gracefully
-                    age = 0
+                age = _calculate_age(ts)
                 return CacheResult(hit=True, value=val["data"], age_sec=age)
 
             data = await fetcher()

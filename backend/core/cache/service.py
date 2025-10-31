@@ -3,7 +3,6 @@ import asyncio
 import json
 import os
 import time
-import weakref
 from dataclasses import dataclass
 from typing import Any, Optional, Callable, Awaitable
 
@@ -11,10 +10,11 @@ from backend.infra.cache.redis_cache import cache as redis
 
 DEFAULT_TTL = int(os.getenv("CACHE_DEFAULT_TTL_SEC", "600"))  # 10m default
 
-# singleflight map to prevent dogpiling  
+# singleflight map to prevent dogpiling
 _singleflight: dict[str, asyncio.Lock] = {}
 _singleflight_lock = asyncio.Lock()  # Protects singleflight dict creation
 _max_singleflight_size = 1000  # Limit singleflight dict size
+
 
 async def _cleanup_singleflight():
     """Remove unused locks from singleflight dict to prevent memory leaks."""
@@ -28,7 +28,7 @@ async def _cleanup_singleflight():
                 # Only remove half to avoid too aggressive cleanup
                 if len(to_remove) >= len(_singleflight) // 2:
                     break
-            
+
             for key in to_remove:
                 _singleflight.pop(key, None)
 
@@ -45,7 +45,7 @@ async def _sf_lock(key: str) -> asyncio.Lock:
     lock = _singleflight.get(key)
     if lock is not None:
         return lock
-    
+
     # Slow path - create lock with protection against race conditions
     async with _singleflight_lock:
         # Double-check after acquiring the lock
@@ -53,7 +53,7 @@ async def _sf_lock(key: str) -> asyncio.Lock:
         if lock is None:
             lock = asyncio.Lock()
             _singleflight[key] = lock
-            
+
             # Periodic cleanup to prevent memory leaks
             if len(_singleflight) > _max_singleflight_size:
                 asyncio.create_task(_cleanup_singleflight())

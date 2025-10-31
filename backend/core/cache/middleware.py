@@ -8,6 +8,11 @@ from starlette.responses import Response
 
 # Best-effort counters for single process monitoring
 # Note: These are process-local and not accurate in multi-worker deployments
+#
+# Using threading.Lock instead of asyncio.Lock for simple counter operations:
+# - Lock is held for nanoseconds (just counter increments)
+# - Synchronous operations avoid async overhead for trivial operations
+# - AsyncIO event loop handles brief blocking gracefully for such short operations
 _hits = 0
 _misses = 0
 _counter_lock = threading.Lock()
@@ -45,15 +50,3 @@ class CacheMiddleware(BaseHTTPMiddleware):
         else:
             response.headers["Server-Timing"] = app_timing
         return response
-
-
-def count_hit():
-    global _hits
-    with _counter_lock:
-        _hits += 1
-
-
-def count_miss():
-    global _misses
-    with _counter_lock:
-        _misses += 1

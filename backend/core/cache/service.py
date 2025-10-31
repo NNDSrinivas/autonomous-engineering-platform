@@ -1,9 +1,9 @@
 from __future__ import annotations
 import asyncio
 import json
+import logging
 import os
 import time
-import threading
 from dataclasses import dataclass
 from typing import Any, Optional, Callable, Awaitable
 
@@ -22,26 +22,26 @@ _singleflight_ttl = 300  # Remove locks not accessed for 5 minutes
 # Cache hit/miss counters - shared with middleware
 _cache_hits = 0
 _cache_misses = 0
-_cache_counter_lock = threading.Lock()
+_cache_counter_lock = asyncio.Lock()
 
 
-def _increment_hit_counter():
-    """Increment cache hit counter (thread-safe)."""
+async def _increment_hit_counter():
+    """Increment cache hit counter (async-safe)."""
     global _cache_hits
-    with _cache_counter_lock:
+    async with _cache_counter_lock:
         _cache_hits += 1
 
 
-def _increment_miss_counter():
-    """Increment cache miss counter (thread-safe)."""
+async def _increment_miss_counter():
+    """Increment cache miss counter (async-safe)."""
     global _cache_misses
-    with _cache_counter_lock:
+    async with _cache_counter_lock:
         _cache_misses += 1
 
 
-def get_cache_stats() -> tuple[int, int]:
-    """Get current cache hit/miss stats (thread-safe)."""
-    with _cache_counter_lock:
+async def get_cache_stats() -> tuple[int, int]:
+    """Get current cache hit/miss stats (async-safe)."""
+    async with _cache_counter_lock:
         return _cache_hits, _cache_misses
 
 
@@ -64,8 +64,6 @@ async def _cleanup_singleflight():
                     _singleflight.pop(key, None)
     except Exception as e:
         # Log error but don't raise to avoid crashing the task
-        import logging
-
         logging.warning(f"Error during singleflight cleanup: {e}")
 
 
@@ -83,8 +81,12 @@ async def _sf_lock(key: str) -> asyncio.Lock:
     lock_tuple = _singleflight.get(key)
     if lock_tuple is not None:
         lock, _ = lock_tuple
-        # Skip access time update on fast path to avoid race condition
-        # Access time will be updated in slow path when lock is acquired
+        # Best-effort access time update (may race, but prevents stale locks)
+        try:
+            _singleflight[key] = (lock, current_time)
+        except (KeyError, RuntimeError):
+            # Race condition occurred, ignore and proceed
+            pass
         return lock
 
     # Slow path - create lock with protection against race conditions
@@ -97,7 +99,8 @@ async def _sf_lock(key: str) -> asyncio.Lock:
 
             # Periodic cleanup to prevent memory leaks
             if len(_singleflight) > _max_singleflight_size:
-                asyncio.create_task(_cleanup_singleflight())
+                task = asyncio.create_task(_cleanup_singleflight())
+                task.add_done_callback(lambda t: t.exception() and logging.error(f"Cleanup task failed: {t.exception()}"))
         else:
             lock, _ = lock_tuple
             # Update access time
@@ -147,6 +150,29 @@ class CacheService:
     async def del_key(self, key: str) -> int:
         return await redis.delete(key)
 
+    def size(self) -> int:
+        """Return cache size. For distributed cache, returns -1 to indicate unavailable."""
+        return -1
+
+    async def clear_pattern(self, pattern: str) -> int:
+        """Clear cache entries matching a pattern. Returns number of keys deleted."""
+        try:
+            # Use Redis SCAN with pattern matching
+            from backend.infra.cache.redis_cache import cache as redis_cache
+            keys = []
+            r = await redis_cache._ensure()
+            if r:
+                async for key in r.scan_iter(match=pattern):
+                    keys.append(key)
+                
+                if keys:
+                    return await r.delete(*keys)
+            return 0
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error clearing cache pattern {pattern}: {e}")
+            return 0
+
     async def cached_fetch(
         self,
         key: str,
@@ -161,7 +187,7 @@ class CacheService:
         if val is not None:
             ts = val.get("__cached_at")
             age = _calculate_age(ts)
-            _increment_hit_counter()
+            await _increment_hit_counter()
             return CacheResult(hit=True, value=val["data"], age_sec=age)
 
         # singleflight
@@ -172,7 +198,7 @@ class CacheService:
             if val is not None:
                 ts = val.get("__cached_at")
                 age = _calculate_age(ts)
-                _increment_hit_counter()
+                await _increment_hit_counter()
                 return CacheResult(hit=True, value=val["data"], age_sec=age)
 
             data = await fetcher()
@@ -181,7 +207,7 @@ class CacheService:
                 {"data": data, "__cached_at": int(time.time())},
                 ttl_sec or DEFAULT_TTL,
             )
-            _increment_miss_counter()
+            await _increment_miss_counter()
             return CacheResult(hit=False, value=data, age_sec=0)
 
 

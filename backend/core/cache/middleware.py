@@ -25,8 +25,8 @@ class CacheMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         # annotate response with coarse cache availability
         response.headers["X-Cache-Enabled"] = "true" if _cache_enabled() else "false"
-        # lightweight counters (thread-safe, shared with cache service)
-        hits, misses = get_cache_stats()
+        # lightweight counters (async-safe, shared with cache service)
+        hits, misses = await get_cache_stats()
         response.headers["X-Cache-Hits"] = str(hits)
         response.headers["X-Cache-Misses"] = str(misses)
 

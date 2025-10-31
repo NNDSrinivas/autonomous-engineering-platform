@@ -38,11 +38,13 @@ class Settings(BaseSettings):
     # Rate limiting configuration
     RATE_LIMITING_ENABLED: bool = True
     RATE_LIMITING_REDIS_KEY_PREFIX: str = "aep:rate_limit:"
-    RATE_LIMITING_FALLBACK_ENABLED: bool = True  # Use in-memory fallback when Redis unavailable
+    RATE_LIMITING_FALLBACK_ENABLED: bool = (
+        True  # Use in-memory fallback when Redis unavailable
+    )
 
     # CORS configuration
     CORS_ORIGINS: str = "*"  # Comma-separated list of allowed origins
-    
+
     # API server configuration
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
@@ -52,7 +54,9 @@ class Settings(BaseSettings):
         """Get CORS origins as a list."""
         if self.CORS_ORIGINS == "*":
             return ["*"]
-        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+        return [
+            origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()
+        ]
 
     # Pydantic v2 settings: ignore unknown/extra env vars coming from .env
     # Note: To avoid loading .env during tests, override settings in pytest fixtures

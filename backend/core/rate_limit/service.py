@@ -170,35 +170,45 @@ class RateLimitService:
             would_exceed_org_hour = hour_org_count >= org_hour_limit
             would_exceed_queue = queue_depth >= rule.queue_depth_limit
 
-            # Allow burst if within burst allowance
+            # Allow burst if within burst allowance (only for user limits)
             burst_allowed = (
                 minute_user_count < rule.requests_per_minute + rule.burst_allowance
                 and hour_user_count < rule.requests_per_hour
             )
 
-            if (
-                would_exceed_user_minute
-                or would_exceed_user_hour
-                or would_exceed_org_minute
-                or would_exceed_org_hour
-                or would_exceed_queue
-            ):
+            # Org and queue limits are hard limits - no burst allowed
+            if would_exceed_org_minute or would_exceed_org_hour or would_exceed_queue:
+                # Calculate retry after (time until next window)
+                current_time = int(time.time())
+                next_minute_window = ((current_time // 60) + 1) * 60
+                retry_after = next_minute_window - current_time
 
-                if not burst_allowed:
-                    # Calculate retry after (time until next window)
-                    current_time = int(time.time())
-                    next_minute_window = ((current_time // 60) + 1) * 60
-                    retry_after = next_minute_window - current_time
+                return RateLimitResult(
+                    allowed=False,
+                    requests_remaining=max(
+                        0, rule.requests_per_minute - minute_user_count
+                    ),
+                    reset_time=next_minute_window,
+                    retry_after=retry_after,
+                    queue_depth=queue_depth,
+                )
 
-                    return RateLimitResult(
-                        allowed=False,
-                        requests_remaining=max(
-                            0, rule.requests_per_minute - minute_user_count
-                        ),
-                        reset_time=next_minute_window,
-                        retry_after=retry_after,
-                        queue_depth=queue_depth,
-                    )
+            # User limits can use burst allowance
+            if (would_exceed_user_minute or would_exceed_user_hour) and not burst_allowed:
+                # Calculate retry after (time until next window)
+                current_time = int(time.time())
+                next_minute_window = ((current_time // 60) + 1) * 60
+                retry_after = next_minute_window - current_time
+
+                return RateLimitResult(
+                    allowed=False,
+                    requests_remaining=max(
+                        0, rule.requests_per_minute - minute_user_count
+                    ),
+                    reset_time=next_minute_window,
+                    retry_after=retry_after,
+                    queue_depth=queue_depth,
+                )
 
             # Request allowed - increment counters atomically
             pipe = redis.pipeline()

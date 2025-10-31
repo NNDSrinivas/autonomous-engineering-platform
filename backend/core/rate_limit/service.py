@@ -61,7 +61,7 @@ class RateLimitService:
 
         self._redis: Optional["Redis"] = None
         self._fallback_cache: Dict[str, Dict] = {}
-        self._last_cleanup = time.time()
+        self._last_cleanup = int(time.time())  # Use integer timestamp for consistency
 
         # CRITICAL LIMITATION WARNING: Log only once to avoid spam
         if not _limitation_warning_logged:
@@ -288,7 +288,7 @@ class RateLimitService:
         is_premium: bool = False,
     ) -> RateLimitResult:
         """Fallback in-memory rate limiting when Redis is unavailable."""
-        current_time = time.time()
+        current_time = int(time.time())  # Use integer timestamp for consistency
 
         # Clean up old entries periodically
         if current_time - self._last_cleanup > 60:
@@ -349,7 +349,7 @@ class RateLimitService:
             reset_time=reset_time,
         )
 
-    def _cleanup_fallback_cache(self, current_time: float):
+    def _cleanup_fallback_cache(self, current_time: int):
         """Clean up old entries from fallback cache."""
         hour_ago = current_time - 3600
 

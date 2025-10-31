@@ -102,7 +102,11 @@ class CacheService:
         val = await self.get_json(key)
         if val is not None:
             ts = val.get("__cached_at")
-            age = int(time.time()) - int(ts) if ts else 0
+            try:
+                age = int(time.time()) - int(ts) if ts is not None else 0
+            except (ValueError, TypeError):
+                # Handle invalid timestamp gracefully
+                age = 0
             return CacheResult(hit=True, value=val["data"], age_sec=age)
 
         # singleflight
@@ -112,7 +116,11 @@ class CacheService:
             val = await self.get_json(key)
             if val is not None:
                 ts = val.get("__cached_at")
-                age = int(time.time()) - int(ts) if ts else 0
+                try:
+                    age = int(time.time()) - int(ts) if ts is not None else 0
+                except (ValueError, TypeError):
+                    # Handle invalid timestamp gracefully
+                    age = 0
                 return CacheResult(hit=True, value=val["data"], age_sec=age)
 
             data = await fetcher()

@@ -1,5 +1,4 @@
 import os
-import asyncio
 import time
 import pytest
 from unittest.mock import patch
@@ -23,26 +22,18 @@ def reset_env():
 @pytest.mark.asyncio
 async def test_set_get_invalidate_roundtrip():
     key = generic("test", "roundtrip")
-    
+
     # Use patch.multiple to patch time.time in both modules
-    with patch.multiple(
-        "time",
-        time=lambda: 1000.0
-    ), patch.multiple(
-        "backend.infra.cache.redis_cache.time",
-        time=lambda: 1000.0
+    with patch.multiple("time", time=lambda: 1000.0), patch.multiple(
+        "backend.infra.cache.redis_cache.time", time=lambda: 1000.0
     ):
         await cache_service.set_json(key, {"n": 1}, ttl_sec=1)
         v = await cache_service.get_json(key)
         assert v == {"n": 1}
-    
+
     # Fast forward past expiration
-    with patch.multiple(
-        "time", 
-        time=lambda: 1001.1
-    ), patch.multiple(
-        "backend.infra.cache.redis_cache.time",
-        time=lambda: 1001.1
+    with patch.multiple("time", time=lambda: 1001.1), patch.multiple(
+        "backend.infra.cache.redis_cache.time", time=lambda: 1001.1
     ):
         v2 = await cache_service.get_json(key)
         assert v2 is None  # expired

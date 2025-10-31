@@ -7,8 +7,8 @@ import time
 from typing import Any, Optional, Iterable
 
 try:
-    import aioredis  # type: ignore
-except Exception:
+    from redis import asyncio as aioredis  # type: ignore
+except ImportError:
     aioredis = None
 
 REDIS_URL = os.getenv("REDIS_URL")
@@ -25,9 +25,8 @@ class Cache:
             return None
         if self._r is None:
             try:
-                self._r = await aioredis.from_url(
+                self._r = aioredis.Redis.from_url(
                     REDIS_URL,
-                    encoding="utf-8",
                     decode_responses=True,
                     socket_connect_timeout=5,
                     socket_timeout=5,

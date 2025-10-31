@@ -14,8 +14,7 @@ def _cache_enabled() -> bool:
 
 class CacheMiddleware(BaseHTTPMiddleware):
     """
-    Adds cache capability headers and maintains process-local counters.
-    (If you later add Prometheus, increment metrics here.)
+    Middleware that adds cache-related response headers (X-Cache-*) for monitoring and debugging.
     """
 
     async def dispatch(
@@ -26,6 +25,7 @@ class CacheMiddleware(BaseHTTPMiddleware):
         # annotate response with coarse cache availability
         response.headers["X-Cache-Enabled"] = "true" if _cache_enabled() else "false"
         # lightweight counters (async-safe, shared with cache service)
+        # If you later add Prometheus, increment metrics here
         hits, misses = await get_cache_stats()
         response.headers["X-Cache-Hits"] = str(hits)
         response.headers["X-Cache-Misses"] = str(misses)

@@ -76,6 +76,12 @@ class CacheResult:
     age_sec: int = 0
 
 
+def _log_cleanup_error(task: asyncio.Task) -> None:
+    """Log cleanup task errors if any."""
+    if exc := task.exception():
+        logging.error(f"Cleanup task failed: {exc}")
+
+
 async def _sf_lock(key: str) -> asyncio.Lock:
     current_time = time.time()
 
@@ -102,13 +108,7 @@ async def _sf_lock(key: str) -> asyncio.Lock:
             # Periodic cleanup to prevent memory leaks
             if len(_singleflight) > _max_singleflight_size:
                 task = asyncio.create_task(_cleanup_singleflight())
-                task.add_done_callback(
-                    lambda t: (
-                        logging.error(f"Cleanup task failed: {exc}")
-                        if (exc := t.exception())
-                        else None
-                    )
-                )
+                task.add_done_callback(_log_cleanup_error)
         else:
             lock, _ = lock_tuple
             # Update access time
@@ -166,10 +166,8 @@ class CacheService:
         """Clear cache entries matching a pattern. Returns number of keys deleted."""
         try:
             # Use Redis SCAN with pattern matching
-            from backend.infra.cache.redis_cache import cache as redis_cache
-
             keys = []
-            r = await redis_cache._ensure()
+            r = await redis._ensure()
             if r:
                 async for key in r.scan_iter(match=pattern):
                     keys.append(key)

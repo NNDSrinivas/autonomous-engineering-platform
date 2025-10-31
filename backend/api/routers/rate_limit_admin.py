@@ -23,6 +23,14 @@ from backend.core.rate_limit.service import rate_limit_service
 
 logger = logging.getLogger(__name__)
 
+# Import Redis exceptions for proper error handling
+try:
+    from redis.exceptions import RedisError, ConnectionError as RedisConnectionError
+except ImportError:
+    # Fallback if redis is not available
+    RedisError = Exception
+    RedisConnectionError = Exception
+
 router = APIRouter(prefix="/api/admin/rate-limit", tags=["rate-limiting"])
 
 
@@ -227,12 +235,26 @@ async def rate_limit_health_check(
             "message": "Rate limiting system is operational",
         }
 
-    except Exception:
-        logger.exception("Exception during rate limit health check")
+    except (RedisError, RedisConnectionError, OSError) as e:
+        logger.exception(
+            "Redis-related exception during rate limit health check: %s", e
+        )
         return {
             "status": "degraded",
             "redis_status": "error",
             "redis_latency": "error",
             "fallback_status": "available",
-            "message": "Rate limiting issues detected. Please check server logs for details.",
+            "message": "Redis connection issues detected. Fallback cache available.",
+        }
+    except Exception as e:
+        logger.exception("Unexpected exception during rate limit health check: %s", e)
+        # Re-raise programming errors instead of masking them
+        if isinstance(e, (AttributeError, TypeError, ValueError)):
+            raise
+        return {
+            "status": "error",
+            "redis_status": "unknown",
+            "redis_latency": "unknown",
+            "fallback_status": "unknown",
+            "message": "Unexpected error in rate limiting system. Check server logs.",
         }

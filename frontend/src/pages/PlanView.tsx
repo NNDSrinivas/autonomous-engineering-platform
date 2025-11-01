@@ -12,7 +12,6 @@ import { usePlan, useAddStep, useArchivePlan, type PlanStep } from '../hooks/use
 import { SSEClient } from '../lib/sse/SSEClient';
 import { Outbox } from '../lib/offline/Outbox';
 import { useConnection } from '../state/connection/useConnection';
-import { CORE_API, ORG } from '../api/client';
 
 export const PlanView: React.FC = () => {
   const { id } = useParams<{ id: string }>();

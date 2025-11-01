@@ -5,12 +5,13 @@ from typing import TypedDict, Optional
 # Optional deps (best-effort)
 try:
     from sqlalchemy import text
-    from core.db import db_session
+    from backend.core.db import get_engine
 except Exception:
-    db_session = None  # type: ignore
+    text = None  # type: ignore
+    get_engine = None  # type: ignore
 
 try:
-    from infra.cache.redis_cache import cache
+    from backend.infra.cache.redis_cache import cache
 except Exception:
     cache = None  # type: ignore
 
@@ -47,10 +48,10 @@ def check_self() -> CheckResult:
 
 def check_db() -> CheckResult:
     def _q():
-        if db_session is None:
+        if get_engine is None or text is None:
             raise RuntimeError("db not configured")
-        with db_session() as s:
-            s.execute(text("SELECT 1"))
+        with get_engine().connect() as conn:
+            conn.execute(text("SELECT 1"))
 
     return _timed(_q, "db")
 

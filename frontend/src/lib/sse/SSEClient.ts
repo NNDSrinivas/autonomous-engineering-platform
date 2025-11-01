@@ -7,6 +7,10 @@ export type EventHandler = (evt: { planId: string; type: string; seq?: number; p
 export type TokenGetter = () => string | null;
 
 export class SSEClient {
+  private static readonly MAX_RECONNECT_DELAY = 30000; // 30 seconds
+  private static readonly BASE_DELAY = 1000; // 1 second  
+  private static readonly JITTER_MS = 250; // 250ms jitter
+  
   private source: EventSource | null = null;
   private handlers = new Map<string, Set<EventHandler>>(); // planId -> handlers
   private lastSeq = new Map<string, number>();
@@ -28,6 +32,8 @@ export class SSEClient {
 
     const token = this.tokenGetter();
     const since = this.computeSinceQuery();
+    // NOTE: Token in query parameter is a security risk (exposed in logs/history)
+    // TODO: Implement short-lived stream-specific tokens or use SSE polyfill with headers
     const url = `${CORE_API}/api/plan/${this.primaryPlanForURL()}/stream?token=${encodeURIComponent(token ?? "")}${since}`;
 
     const headers: any = {};
@@ -35,6 +41,7 @@ export class SSEClient {
     if (last) headers["Last-Event-ID"] = String(last);
 
     // Native EventSource can't set headers; we pass token via query.
+    // In production, consider implementing token exchange for short-lived stream tokens.
     this.source = new EventSource(url);
 
     this.source.onopen = () => {
@@ -102,8 +109,11 @@ export class SSEClient {
       this.source = null;
     }
     this.connecting = false;
-    const delay = Math.min(30000, Math.pow(2, this.reconnectAttempt) * 1000 + Math.random() * 250);
-    this.reconnectAttempt += 1;
+    const delay = Math.min(
+      SSEClient.MAX_RECONNECT_DELAY, 
+      Math.pow(2, this.reconnectAttempt) * SSEClient.BASE_DELAY + Math.random() * SSEClient.JITTER_MS
+    );
+    this.reconnectAttempt++;
     setTimeout(() => this.ensureConnected(), delay);
   }
 

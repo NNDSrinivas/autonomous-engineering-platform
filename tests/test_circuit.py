@@ -1,4 +1,5 @@
-import pytest, asyncio
+import pytest
+import asyncio
 from backend.core.resilience.circuit import CircuitBreaker
 
 

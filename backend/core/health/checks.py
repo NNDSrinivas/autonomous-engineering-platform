@@ -34,8 +34,8 @@ def _timed(fn, name: str) -> CheckResult:
             "latency_ms": int((time.time() - start) * 1000),
             "detail": "ok",
         }
-    except Exception as e:
-        logging.error("Health check '%s' failed: %s", name, type(e).__name__)
+    except Exception:
+        logging.error("Health check '%s' failed", name)
         return {
             "name": name,
             "ok": False,
@@ -81,13 +81,13 @@ def readiness_payload() -> dict:
     # include optional checks
     try:
         checks.append(check_db())
-    except Exception as e:
-        logging.error("DB readiness check failed: %s", type(e).__name__)
+    except Exception:
+        logging.error("DB readiness check failed")
         checks.append({"name": "db", "ok": False, "latency_ms": 0, "detail": "internal error"})
     try:
         checks.append(check_redis())
-    except Exception as e:
-        logging.error("Redis readiness check failed: %s", type(e).__name__)
+    except Exception:
+        logging.error("Redis readiness check failed")
         checks.append({"name": "redis", "ok": False, "latency_ms": 0, "detail": "internal error"})
 
     ok = all(c["ok"] for c in checks)

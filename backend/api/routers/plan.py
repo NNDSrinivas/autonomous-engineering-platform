@@ -2,7 +2,7 @@
 Live Plan API - Real-time collaborative planning
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -25,6 +25,14 @@ from backend.api.security import check_policy_inline
 from backend.core.policy.engine import PolicyEngine, get_policy_engine
 from backend.core.db_utils import get_short_lived_session
 from backend.core.audit.publisher import append_and_broadcast
+from backend.core.eventstore.service import replay
+from backend.infra.broadcast.base import Broadcast
+from backend.core.auth.deps import require_role
+from backend.core.auth.models import Role, User
+from backend.api.security import check_policy_inline
+from backend.core.policy.engine import PolicyEngine, get_policy_engine
+from backend.core.db_utils import get_short_lived_session
+from backend.core.audit.publisher import append_and_broadcast
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
@@ -36,7 +44,7 @@ def _safe_isoformat(dt_obj):
         return None
     try:
         return dt_obj.isoformat() if hasattr(dt_obj, "isoformat") else None
-    except Exception:
+    except:
         return None
 
 
@@ -253,11 +261,29 @@ async def add_step(
 @router.get("/{plan_id}/stream")
 async def stream_plan_updates(
     plan_id: str,
+    request: Request,
     x_org_id: str = Header(..., alias="X-Org-Id"),
     user: User = Depends(require_role(Role.VIEWER)),
     bc: Broadcast = Depends(get_broadcaster),
+    since: Optional[int] = Query(None, description="Backfill events since this sequence number"),
 ):
-    """Server-Sent Events stream for real-time plan updates (requires viewer role)"""
+    """
+    Server-Sent Events stream for real-time plan updates with auto-resume support.
+    
+    Supports Last-Event-ID header and ?since= query parameter for backfilling missed events.
+    Emits id: <seq> lines for browser auto-resume capability.
+    """
+
+    # Discover resume point (header has precedence over query param)
+    last_id_header = request.headers.get("Last-Event-ID")
+    since_seq = None
+    try:
+        if last_id_header:
+            since_seq = int(last_id_header)
+        elif since is not None:
+            since_seq = int(since)
+    except ValueError:
+        since_seq = None
 
     # Verify plan exists with a short-lived session that closes before streaming
     # IMPORTANT: SSE streams are long-lived connections that must not hold
@@ -284,13 +310,38 @@ async def stream_plan_updates(
 
     async def event_generator():
         try:
-            # Send initial connection message
-            yield f"data: {json.dumps({'type': 'connected', 'plan_id': plan_id})}\n\n"
+            # Optional backfill from event store
+            if since_seq is not None:
+                with get_short_lived_session() as db:
+                    events = replay(db, plan_id=plan_id, since_seq=since_seq)
+                    for event in events:
+                        # Emit with sequence ID for Last-Event-ID compatibility
+                        yield f"id: {event.seq}\n"
+                        yield f"event: {event.type}\n"
+                        yield f"data: {event.payload}\n\n"
 
-            # Stream updates from broadcaster
+            # Send initial connection message (only if no backfill)
+            if since_seq is None:
+                yield f"data: {json.dumps({'type': 'connected', 'plan_id': plan_id})}\n\n"
+
+            # Stream live updates from broadcaster
             subscription = await bc.subscribe(channel)
             async for msg in subscription:
-                yield f"data: {msg}\n\n"
+                try:
+                    # Parse message to extract sequence and type information
+                    data = json.loads(msg) if isinstance(msg, str) else msg
+                    seq = data.get("seq")
+                    event_type = data.get("type", "message")
+                    payload = data.get("payload", data)
+                    
+                    # Emit with sequence ID for Last-Event-ID compatibility
+                    if seq:
+                        yield f"id: {seq}\n"
+                    yield f"event: {event_type}\n"
+                    yield f"data: {json.dumps(payload)}\n\n"
+                except Exception:
+                    # Fallback for malformed messages
+                    yield f"data: {msg}\n\n"
 
         except asyncio.CancelledError:
             # Client disconnected

@@ -1,12 +1,17 @@
 /**
- * PlanView - Live collaborative planning page
+ * PlanView - Live collaborative planning page with resilience features
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { StepList } from '../components/StepList';
 import { ParticipantList } from '../components/ParticipantList';
+import { ConnectionChip } from '../components/ConnectionChip';
+import { Toast, useToasts } from '../components/Toast';
 import { usePlan, useAddStep, useArchivePlan, type PlanStep } from '../hooks/useLivePlan';
+import { SSEClient } from '../lib/sse/SSEClient';
+import { Outbox } from '../lib/offline/Outbox';
+import { useConnection } from '../state/connection/useConnection';
 import { CORE_API, ORG } from '../api/client';
 
 export const PlanView: React.FC = () => {
@@ -21,6 +26,18 @@ export const PlanView: React.FC = () => {
   const [stepText, setStepText] = useState('');
   const [ownerName, setOwnerName] = useState('user');
   const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  // Resilience features (PR-30)
+  const { online, status, setStatus } = useConnection();
+  const { toasts, showToast, removeToast } = useToasts();
+  const sseClientRef = useRef<SSEClient | null>(null);
+  const outboxRef = useRef<Outbox>(new Outbox());
+
+  // Token getter for SSE authentication
+  const tokenGetter = useCallback(() => {
+    // Get token from localStorage or your auth system
+    return localStorage.getItem('access_token') || null;
+  }, []);
 
   // Merge backend steps with live streamed steps, deduplicating by unique ID
   const allSteps = React.useMemo(() => {
@@ -56,54 +73,103 @@ export const PlanView: React.FC = () => {
     );
   };
 
-  // Real-time event stream
+  // Real-time event stream with resilience (PR-30)
   useEffect(() => {
     if (!id) return;
 
-    const eventSource = new EventSource(
-      `${CORE_API}/api/plan/${id}/stream?org=${ORG}`,
-      { withCredentials: false }
-    );
+    // Initialize SSE client if not already done
+    if (!sseClientRef.current) {
+      sseClientRef.current = new SSEClient(tokenGetter);
+    }
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'connected') {
-          console.log('Connected to plan stream:', data.plan_id);
-        } else if (isPlanStep(data)) {
-          // New step received - validated structure
-          setLiveSteps((prev) => [...prev, data]);
-        }
-      } catch (err) {
-        console.error('Error parsing SSE message:', err);
+    const unsubscribe = sseClientRef.current.subscribe(id, ({ type, payload }) => {
+      setStatus("connected");
+      
+      if (type === 'connected') {
+        console.log('Connected to plan stream:', payload.plan_id);
+      } else if (isPlanStep(payload)) {
+        // New step received - validated structure
+        setLiveSteps((prev) => [...prev, payload]);
       }
-    };
+    });
 
-    eventSource.onerror = (err) => {
-      console.error('EventSource error:', err);
-      eventSource.close();
-    };
-
+    setStatus("connecting");
     return () => {
-      eventSource.close();
+      unsubscribe();
     };
-  }, [id]);
+  }, [id, tokenGetter, setStatus]);
+
+  // Handle offline/online transitions and outbox flushing
+  useEffect(() => {
+    if (online) {
+      // Flush outbox when coming back online
+      outboxRef.current.flush((url, init) => {
+        // Add auth header if available
+        const token = tokenGetter();
+        if (token) {
+          init.headers = { ...init.headers, 'Authorization': `Bearer ${token}` };
+        }
+        return fetch(url, init);
+      }).then(processed => {
+        if (processed > 0) {
+          showToast(`Synced ${processed} queued changes`, "success");
+        }
+      });
+    }
+  }, [online, tokenGetter, showToast]);
 
   const handleAddStep = useCallback(async () => {
     if (!id || !stepText.trim()) return;
 
+    const stepData = {
+      plan_id: id,
+      text: stepText.trim(),
+      owner: ownerName || 'user',
+    };
+
     try {
-      await addStepMutation.mutateAsync({
-        plan_id: id,
-        text: stepText.trim(),
-        owner: ownerName || 'user',
-      });
-      setStepText('');
+      if (online) {
+        // Online: send immediately
+        await addStepMutation.mutateAsync(stepData);
+        setStepText('');
+      } else {
+        // Offline: queue in outbox
+        const url = `/api/plan/${id}/steps`;
+        outboxRef.current.push({
+          id: crypto.randomUUID(),
+          url,
+          method: 'POST',
+          body: stepData,
+        });
+        
+        // Optimistic update for better UX
+        const optimisticStep: PlanStep = {
+          id: `temp-${Date.now()}`,
+          text: stepData.text,
+          owner: stepData.owner,
+          ts: new Date().toISOString(),
+        };
+        setLiveSteps((prev) => [...prev, optimisticStep]);
+        setStepText('');
+        
+        showToast("You're offline. We queued your change and will resend when back online.", "warning");
+      }
     } catch (err) {
       console.error('Failed to add step:', err);
-      alert('Failed to add step. Please try again.');
+      
+      // If online request failed, queue it for retry
+      if (online) {
+        const url = `/api/plan/${id}/steps`;
+        outboxRef.current.push({
+          id: crypto.randomUUID(),
+          url,
+          method: 'POST',
+          body: stepData,
+        });
+        showToast("Request failed. We'll retry when the connection is stable.", "error");
+      }
     }
-  }, [id, stepText, ownerName, addStepMutation]);
+  }, [id, stepText, ownerName, addStepMutation, online, showToast]);
 
   const handleArchive = useCallback(async () => {
     if (!id) return;
@@ -270,6 +336,18 @@ export const PlanView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Connection status and toast notifications (PR-30) */}
+      <ConnectionChip online={online} status={status} />
+      {toasts.map((toast) => (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          duration={toast.duration}
+          onClose={() => removeToast(toast.id)}
+        />
+      ))}
     </div>
   );
 };

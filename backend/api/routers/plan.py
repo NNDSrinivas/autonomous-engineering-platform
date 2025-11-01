@@ -308,7 +308,9 @@ async def stream_plan_updates(
             # Optional backfill from event store
             if since_seq is not None:
                 with get_short_lived_session() as db:
-                    events = replay(db, plan_id=plan_id, since_seq=since_seq, org_key=x_org_id)
+                    events = replay(
+                        db, plan_id=plan_id, since_seq=since_seq, org_key=x_org_id
+                    )
                     for event in events:
                         # Emit with sequence ID for Last-Event-ID compatibility
                         yield f"id: {event.seq}\n"

@@ -10,6 +10,7 @@ from .logging import logger
 from .metrics import REQ_COUNTER, REQ_LATENCY
 
 HEADER_REQ_ID = "X-Request-Id"
+HTTP_STATUS_INTERNAL_ERROR = "500"
 
 # UUID pattern for validating request IDs
 UUID_PATTERN = re.compile(
@@ -59,15 +60,15 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         except Exception:
             dur = time.time() - start
             route = request.url.path
-            REQ_COUNTER.labels(method=request.method, route=route, status="500").inc()
-            REQ_LATENCY.labels(method=request.method, route=route).observe(dur)
+            REQ_COUNTER.labels(service="core", method=request.method, path=route, status=HTTP_STATUS_INTERNAL_ERROR).inc()
+            REQ_LATENCY.labels(service="core", method=request.method, path=route).observe(dur)
             logger.error(
                 "request failed",
                 extra={
                     "request_id": req_id,
                     "route": route,
                     "method": request.method,
-                    "status": 500,
+                    "status": int(HTTP_STATUS_INTERNAL_ERROR),
                 },
             )
             raise
@@ -79,8 +80,8 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
         # metrics
         try:
-            REQ_COUNTER.labels(method=request.method, route=route, status=status).inc()
-            REQ_LATENCY.labels(method=request.method, route=route).observe(dur)
+            REQ_COUNTER.labels(service="core", method=request.method, path=route, status=status).inc()
+            REQ_LATENCY.labels(service="core", method=request.method, path=route).observe(dur)
         except Exception:
             logger.warning(
                 "Failed to record metrics", exc_info=True, extra={"request_id": req_id}
@@ -110,7 +111,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         # headers
         response.headers[HEADER_REQ_ID] = req_id
         existing_server_timing = response.headers.get("Server-Timing", "")
-        dur_ms = f"{dur*1000:.2f}"
+        dur_ms = f"{dur * 1000:.2f}"
         response.headers["Server-Timing"] = (
             f"{existing_server_timing}, app_obs;dur={dur_ms}"
             if existing_server_timing

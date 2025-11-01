@@ -14,10 +14,10 @@ from ..core.obs.metrics import metrics_app, PROM_ENABLED
 from ..core.obs.middleware import ObservabilityMiddleware
 
 from ..core.settings import settings
-from ..core.logging import setup_logging
-from ..core.metrics import router as metrics_router
+# removed unused: setup_logging (using obs logging instead)
+# removed unused: metrics_router (using new /metrics mount)
 from ..core.middleware import AuditMiddleware
-from ..core.middleware import RequestIDMiddleware
+# removed unused: RequestIDMiddleware (ObservabilityMiddleware provides this)
 from ..core.rate_limit.middleware import RateLimitMiddleware
 from ..core.audit.middleware import EnhancedAuditMiddleware
 from ..core.cache.middleware import CacheMiddleware

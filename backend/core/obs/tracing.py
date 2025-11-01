@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+from typing import Any
 
 OTEL_ENABLED = os.getenv("OTEL_ENABLED", "true").lower() == "true"
 
@@ -41,7 +42,7 @@ def init_tracing() -> None:
         pass
 
 
-def instrument_fastapi_app(app):
+def instrument_fastapi_app(app: Any) -> None:
     """Instrument FastAPI app with OpenTelemetry tracing."""
     if not OTEL_ENABLED:
         return

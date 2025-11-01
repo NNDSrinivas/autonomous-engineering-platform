@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-import logging
+import logging as std_logging
 import os
 import sys
 import time
@@ -10,8 +10,8 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 SERVICE_NAME = os.getenv("APP_NAME", "aep")
 
 
-class JsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
+class JsonFormatter(std_logging.Formatter):
+    def format(self, record: std_logging.LogRecord) -> str:
         base: Dict[str, Any] = {
             "ts": int(time.time() * 1000),
             "level": record.levelname,
@@ -30,12 +30,12 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_json_logging() -> None:
-    handler = logging.StreamHandler(sys.stdout)
+    handler = std_logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
-    root = logging.getLogger()
+    root = std_logging.getLogger()
     root.handlers = [handler]
-    root.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+    root.setLevel(getattr(std_logging, LOG_LEVEL, std_logging.INFO))
 
 
 # Convenience logger
-logger = logging.getLogger("aep")
+logger = std_logging.getLogger("aep")

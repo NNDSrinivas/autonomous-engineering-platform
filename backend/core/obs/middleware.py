@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 import time
 import uuid
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -10,6 +11,22 @@ from .metrics import REQ_COUNTER, REQ_LATENCY
 
 HEADER_REQ_ID = "X-Request-Id"
 
+# UUID pattern for validating request IDs
+UUID_PATTERN = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+
+
+def validate_request_id(req_id: str) -> bool:
+    """Validate request ID to prevent injection attacks."""
+    if not req_id:
+        return False
+    
+    # Check length (reasonable limit)
+    if len(req_id) > 100:
+        return False
+    
+    # Check if it's a valid UUID format
+    return UUID_PATTERN.match(req_id) is not None
+
 
 class ObservabilityMiddleware(BaseHTTPMiddleware):
     """
@@ -19,7 +36,15 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        req_id = request.headers.get(HEADER_REQ_ID) or str(uuid.uuid4())
+        # Validate incoming request ID, generate new one if invalid
+        incoming_req_id = request.headers.get(HEADER_REQ_ID)
+        if incoming_req_id and validate_request_id(incoming_req_id):
+            req_id = incoming_req_id
+        else:
+            req_id = str(uuid.uuid4())
+            if incoming_req_id:
+                logger.warning(f"Invalid request ID received, generated new one: {req_id}")
+        
         start = time.time()
 
         # attach for downstream use (e.g., audit)
@@ -52,8 +77,8 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         try:
             REQ_COUNTER.labels(method=request.method, route=route, status=status).inc()
             REQ_LATENCY.labels(method=request.method, route=route).observe(dur)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to record metrics", exc_info=True, extra={"request_id": req_id})
 
         # logs
         try:
@@ -69,12 +94,13 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                     "user_sub": getattr(user, "id", None),
                 },
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Logging request info failed", exc_info=True, extra={"request_id": req_id})
 
         # headers
         response.headers[HEADER_REQ_ID] = req_id
+        existing_server_timing = response.headers.get("Server-Timing", "")
         response.headers["Server-Timing"] = (
-            response.headers.get("Server-Timing", "") + f", app_obs;dur={dur*1000:.2f}"
+            f"{existing_server_timing}, app_obs;dur={dur*1000:.2f}" if existing_server_timing else f"app_obs;dur={dur*1000:.2f}"
         )
         return response

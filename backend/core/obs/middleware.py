@@ -68,7 +68,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 status=HTTP_STATUS_INTERNAL_ERROR,
             ).inc()
             REQ_LATENCY.labels(
-                service="core", method=request.method, path=route
+                service="core", method=request.method, path=route, status=HTTP_STATUS_INTERNAL_ERROR
             ).observe(dur)
             logger.error(
                 "request failed",
@@ -92,7 +92,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                 service="core", method=request.method, path=route, status=status
             ).inc()
             REQ_LATENCY.labels(
-                service="core", method=request.method, path=route
+                service="core", method=request.method, path=route, status=status
             ).observe(dur)
         except Exception:
             logger.warning(

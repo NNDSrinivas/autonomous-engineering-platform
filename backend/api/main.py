@@ -91,8 +91,8 @@ app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
 app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 
 # Conditional audit logging (disabled in test/CI environments to prevent DB errors)
-# Check for SQLite database URL as indicator of test environment
-is_test_env = "sqlite:" in (settings.database_url or "")
+# Check for explicit test environment using app_env
+is_test_env = getattr(settings, "app_env", None) in ["test", "ci"]
 if not is_test_env and getattr(settings, "enable_audit_logging", True):
     app.add_middleware(AuditMiddleware, service_name="core")
     app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging

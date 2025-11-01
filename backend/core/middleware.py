@@ -86,16 +86,19 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.service_name = service_name
 
-    async def dispatch(self, request: Request, call_next: Callable):
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
         req_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         start = time.perf_counter()
         REQ_INFLIGHT.labels(self.service_name).inc()
 
         # Put req_id on scope for downstream
         request.state.req_id = req_id
-        response: Response = None
+        response: Optional[Response] = None
         try:
             response = await call_next(request)
+            if response is None:
+                # This should never happen, but handle it gracefully
+                response = Response("Internal Server Error", status_code=500)
             return response
         finally:
             dur = time.perf_counter() - start
@@ -143,9 +146,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             now = int(time.time())
             # Simple token bucket: refill 1 token per second up to rpm
             # We'll store (tokens, last_ts)
-            data = rds().hgetall(key) or {}
-            tokens = int(data.get("tokens", self.rpm))
-            last_ts = int(data.get("ts", now))
+            redis_client = rds()
+            data = redis_client.hgetall(key) or {}
+            # Ensure data is a dict for type safety
+            if isinstance(data, dict):
+                tokens = int(data.get("tokens", str(self.rpm)))
+                last_ts = int(data.get("ts", str(now)))
+            else:
+                tokens = self.rpm
+                last_ts = now
             # refill
             tokens = min(self.rpm, tokens + max(0, now - last_ts))
             if tokens <= 0:
@@ -156,8 +165,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     media_type="text/plain",
                 )
             tokens -= 1
-            rds().hset(key, mapping={"tokens": tokens, "ts": now})
-            rds().expire(
+            redis_client.hset(key, mapping={"tokens": tokens, "ts": now})
+            redis_client.expire(
                 key, settings.redis_rate_limit_ttl
             )  # Set TTL from settings to prevent unbounded memory growth
         except Exception as e:

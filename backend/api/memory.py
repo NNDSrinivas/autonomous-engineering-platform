@@ -6,6 +6,7 @@ Provides episodic memory recording and agent note consolidation
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import json
@@ -69,14 +70,13 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
             },
         )
         db.commit()
-    except Exception as e:
+    except (OperationalError, ProgrammingError):
         # Handle missing table gracefully in test environments
-        if "no such table: session_event" in str(e):
-            raise HTTPException(
-                status_code=503,
-                detail="Memory service unavailable - database not fully initialized",
-            )
-        raise
+        # These exceptions cover table/schema issues across different databases
+        raise HTTPException(
+            status_code=503,
+            detail="Memory service unavailable - database not fully initialized",
+        )
 
     return {"status": "recorded", "session_id": req.session_id}
 
@@ -110,14 +110,13 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
             .mappings()
             .all()
         )
-    except Exception as e:
+    except (OperationalError, ProgrammingError):
         # Handle missing table gracefully in test environments
-        if "no such table: session_event" in str(e):
-            raise HTTPException(
-                status_code=503,
-                detail="Memory service unavailable - database not fully initialized",
-            )
-        raise
+        # These exceptions cover table/schema issues across different databases
+        raise HTTPException(
+            status_code=503,
+            detail="Memory service unavailable - database not fully initialized",
+        )
 
     if not events:
         raise HTTPException(status_code=404, detail="No events found for session")

@@ -21,7 +21,12 @@ os.environ["ALLOW_DEV_AUTH"] = "true"
 @pytest.fixture
 def test_db():
     """Get test database session"""
-    return next(get_db())
+    db_gen = get_db()
+    db = next(db_gen)
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def test_append_and_replay_plan_events(test_db: Session):
@@ -158,7 +163,7 @@ def test_audit_middleware_captures_requests():
 
     # Make a POST request (should be audited)
     test_data = {"test": "data"}
-    response = client.post("/api/plan/test-plan-audit/events", json=test_data)
+    client.post("/api/plan/test-plan-audit/events", json=test_data)
 
     # The response might fail (endpoint might not exist), but audit should capture it
 

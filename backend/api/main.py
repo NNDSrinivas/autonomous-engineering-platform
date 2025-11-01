@@ -13,6 +13,11 @@ from ..core.obs.tracing import init_tracing, instrument_fastapi_app
 from ..core.obs.metrics import metrics_app, PROM_ENABLED
 from ..core.obs.middleware import ObservabilityMiddleware
 
+# --- Health & Resilience imports (PR-29)
+from ..core.health.router import router as health_router
+from ..core.health.shutdown import on_startup, on_shutdown
+from ..core.resilience.middleware import ResilienceMiddleware
+
 from ..core.settings import settings
 
 # removed unused: setup_logging (using obs logging instead)
@@ -55,10 +60,12 @@ init_tracing()
 async def lifespan(app: FastAPI):
     """Application lifespan: manage startup/shutdown of background services."""
     # Startup: initialize background services
+    await on_startup()  # PR-29: Health system startup
     presence_lifecycle.start_cleanup_thread()
     yield
     # Shutdown: cleanup background services
     presence_lifecycle.stop_cleanup_thread()
+    await on_shutdown()  # PR-29: Graceful shutdown
 
 
 app = FastAPI(title=f"{settings.APP_NAME} - Core API", lifespan=lifespan)
@@ -70,6 +77,9 @@ instrument_fastapi_app(app)
 app.add_middleware(
     ObservabilityMiddleware
 )  # PR-28: Request IDs, metrics, structured logs
+app.add_middleware(
+    ResilienceMiddleware
+)  # PR-29: Circuit breaker support with 503 responses
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -87,14 +97,8 @@ app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
 if PROM_ENABLED:
     app.mount("/metrics", metrics_app())
 
-
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "service": "core",
-        "time": dt.datetime.now(dt.timezone.utc).isoformat(),
-    }
+# Health endpoints (PR-29) - replaces basic /health endpoint
+app.include_router(health_router)
 
 
 @app.get("/version")

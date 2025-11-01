@@ -40,7 +40,7 @@ def _timed(fn, name: str) -> CheckResult:
             "name": name,
             "ok": False,
             "latency_ms": int((time.time() - start) * 1000),
-            "detail": "internal error",
+            "detail": "check failed - see logs",
         }
 
 

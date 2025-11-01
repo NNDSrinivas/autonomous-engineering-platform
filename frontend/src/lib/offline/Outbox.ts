@@ -13,7 +13,7 @@ export class Outbox {
   private key = "aep.outbox.v1";
   private readonly MAX_RETRIES = 3;
   private readonly MAX_AGE_HOURS = 24;
-  private readonly MS_PER_HOUR = 3_600_000; // Milliseconds per hour
+  private readonly MS_PER_HOUR = 60 * 60 * 1000; // Milliseconds per hour
   private cache: OutboxItem[] | null = null; // Write-through cache
 
   push(item: Omit<OutboxItem, "ts" | "retryCount">) {
@@ -57,7 +57,6 @@ export class Outbox {
               timestamp: new Date(it.ts).toISOString()
             });
           }
-          // Drop 4xx errors - they indicate client-side issues that won't resolve with retry
         }
         // If r.ok, don't add to keep (successfully processed)
       } catch {

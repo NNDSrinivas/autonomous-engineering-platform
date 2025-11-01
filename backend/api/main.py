@@ -113,7 +113,7 @@ def health():
 
 @app.get("/version")
 def version():
-    return {"name": settings.APP_NAME, "env": settings.APP_ENV, "version": "0.1.0"}
+    return {"name": settings.app_name, "env": settings.app_env, "version": "0.1.0"}
 
 
 # Routers

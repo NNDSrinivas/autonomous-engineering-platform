@@ -10,6 +10,7 @@ export class SSEClient {
   private static readonly MAX_RECONNECT_DELAY = 30000; // 30 seconds
   private static readonly BASE_DELAY = 1000; // 1 second  
   private static readonly JITTER_MS = 250; // 250ms jitter
+  private static readonly MAX_BACKOFF_MULTIPLIER = 30; // Cap exponential backoff to prevent overflow
   
   private source: EventSource | null = null;
   private handlers = new Map<string, Set<EventHandler>>(); // planId -> handlers
@@ -118,7 +119,7 @@ export class SSEClient {
     this.connecting = false;
     const delay = Math.min(
       SSEClient.MAX_RECONNECT_DELAY, 
-      Math.min(Math.pow(2, this.reconnectAttempt), 30) * SSEClient.BASE_DELAY + Math.random() * SSEClient.JITTER_MS
+      Math.min(Math.pow(2, this.reconnectAttempt), SSEClient.MAX_BACKOFF_MULTIPLIER) * SSEClient.BASE_DELAY + Math.random() * SSEClient.JITTER_MS
     );
     this.reconnectAttempt++;
     setTimeout(() => this.ensureConnected(), delay);

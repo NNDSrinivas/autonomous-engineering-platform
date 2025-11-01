@@ -46,7 +46,7 @@ def metrics_app():
 
     async def metrics(_):
         if not PROM_ENABLED:
-            return PlainTextResponse("prometheus disabled", status_code=404)
+            return PlainTextResponse("Prometheus disabled", status_code=404)
         data = generate_latest(REGISTRY)
         return Response(data, media_type=CONTENT_TYPE_LATEST)
 

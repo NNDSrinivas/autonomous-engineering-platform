@@ -23,7 +23,6 @@ def init_tracing() -> None:
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
         endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
         service_name = os.getenv("APP_NAME", "aep")

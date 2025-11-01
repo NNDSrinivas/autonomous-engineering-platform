@@ -81,7 +81,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         try:
             REQ_COUNTER.labels(method=request.method, route=route, status=status).inc()
             REQ_LATENCY.labels(method=request.method, route=route).observe(dur)
-        except Exception as e:
+        except Exception:
             logger.warning(
                 "Failed to record metrics", exc_info=True, extra={"request_id": req_id}
             )
@@ -100,7 +100,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
                     "user_sub": getattr(user, "id", None),
                 },
             )
-        except Exception as e:
+        except Exception:
             logger.warning(
                 "Logging request info failed",
                 exc_info=True,
@@ -110,9 +110,10 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         # headers
         response.headers[HEADER_REQ_ID] = req_id
         existing_server_timing = response.headers.get("Server-Timing", "")
+        dur_ms = f"{dur*1000:.2f}"
         response.headers["Server-Timing"] = (
-            f"{existing_server_timing}, app_obs;dur={dur*1000:.2f}"
+            f"{existing_server_timing}, app_obs;dur={dur_ms}"
             if existing_server_timing
-            else f"app_obs;dur={dur*1000:.2f}"
+            else f"app_obs;dur={dur_ms}"
         )
         return response

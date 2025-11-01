@@ -36,8 +36,20 @@ def init_tracing() -> None:
         processor = BatchSpanProcessor(exporter)
         provider.add_span_processor(processor)
 
-        # FastAPI instrumentation will be attached in api.main after app is created
-        FastAPIInstrumentor().instrument()  # fixed: call instrument method properly
+        # Note: FastAPI instrumentation is done separately after app creation
     except Exception:
         # If Otel deps are absent, skip silently (env-driven)
+        pass
+
+
+def instrument_fastapi_app(app):
+    """Instrument FastAPI app with OpenTelemetry tracing."""
+    if not OTEL_ENABLED:
+        return
+    
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        FastAPIInstrumentor.instrument_app(app)
+    except Exception:
+        # If Otel deps are absent, skip silently
         pass

@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 # --- Observability imports (PR-28)
 from ..core.obs.logging import configure_json_logging
-from ..core.obs.tracing import init_tracing
+from ..core.obs.tracing import init_tracing, instrument_fastapi_app
 from ..core.obs.metrics import metrics_app, PROM_ENABLED
 from ..core.obs.middleware import ObservabilityMiddleware
 
@@ -47,7 +47,8 @@ from ..core.realtime import presence as presence_lifecycle
 configure_json_logging()
 init_tracing()
 
-logger = setup_logging()
+# Use obs logging instead of setup_logging() to avoid conflict
+from ..core.obs.logging import logger
 
 
 @asynccontextmanager
@@ -62,6 +63,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=f"{settings.APP_NAME} - Core API", lifespan=lifespan)
 
+# Instrument app with OpenTelemetry after creation (PR-28)
+instrument_fastapi_app(app)
+
 # Middlewares (place ObservabilityMiddleware high so all routes are observed)
 app.add_middleware(
     ObservabilityMiddleware
@@ -73,7 +77,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(RequestIDMiddleware, service_name="core")
+# RequestIDMiddleware removed - ObservabilityMiddleware provides this functionality
 app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
 app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 app.add_middleware(AuditMiddleware, service_name="core")
@@ -98,8 +102,8 @@ def version():
     return {"name": settings.APP_NAME, "env": settings.APP_ENV, "version": "0.1.0"}
 
 
-# Prometheus
-app.include_router(metrics_router)
+# Routers
+# Old metrics_router removed - using new /metrics mount (PR-28)
 app.include_router(tasks_router)
 app.include_router(deliver_router)
 app.include_router(policy_router)

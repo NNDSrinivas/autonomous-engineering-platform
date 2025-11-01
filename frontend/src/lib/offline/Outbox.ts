@@ -25,7 +25,7 @@ export class Outbox {
     const list = this.read();
     const keep: OutboxItem[] = [];
     const now = Date.now();
-    const maxAge = this.MAX_AGE_HOURS * this.MS_PER_HOUR; // Convert hours to milliseconds
+    const maxAge = this.MAX_AGE_HOURS * this.MS_PER_HOUR;
     
     for (const it of list) {
       // Remove items that are too old or have exceeded retry limit

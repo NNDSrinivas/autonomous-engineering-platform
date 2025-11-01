@@ -7,13 +7,18 @@ from typing import List
 from typing import Optional
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Module-level constants for performance
 PUNCTUATION_SET = set(string.punctuation)
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"
+    )
     app_env: str = "dev"
     app_name: str = "autonomous-engineering-platform"
 
@@ -112,7 +117,9 @@ class Settings(BaseSettings):
     enable_analytics: bool = True
     enable_ai_assistance: bool = True
     enable_audit_logging: bool = Field(
-        default=True, description="Disable in test environments to prevent DB errors"
+        default=True,
+        alias="ENABLE_AUDIT_LOGGING",
+        description="Disable in test environments to prevent DB errors"
     )
 
     # Common file extensions to validate against for code analysis
@@ -156,9 +163,7 @@ class Settings(BaseSettings):
         ".tf",
     ]
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    # Removed old Config class - replaced with model_config above
 
     @property
     def sqlalchemy_url(self) -> str:

@@ -12,6 +12,7 @@ import { usePlan, useAddStep, useArchivePlan, type PlanStep } from '../hooks/use
 import { SSEClient } from '../lib/sse/SSEClient';
 import { Outbox } from '../lib/offline/Outbox';
 import { useConnection } from '../state/connection/useConnection';
+import { CORE_API, ORG } from '../api/client';
 
 export const PlanView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -114,7 +115,7 @@ export const PlanView: React.FC = () => {
           } else if (init.headers) {
             headersObj = { ...(init.headers as Record<string, string>) };
           }
-          init.headers = { ...headersObj, 'Authorization': `Bearer ${token}` };
+          return fetch(url, { ...init, headers: { ...headersObj, 'Authorization': `Bearer ${token}` } });
         }
         return fetch(url, init);
       }).then(processed => {
@@ -141,14 +142,14 @@ export const PlanView: React.FC = () => {
         setStepText('');
       } else {
         // Offline: queue in outbox using the same API structure as online requests
-        const url = `${import.meta.env.VITE_CORE_API || 'http://localhost:8000'}/api/plan/step`;
+        const url = `${CORE_API}/api/plan/step`;
         outboxRef.current.push({
           id: crypto.randomUUID(),
           url,
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Org-Id': import.meta.env.VITE_ORG_ID || 'default',
+            'X-Org-Id': ORG,
           },
           body: stepData,
         });
@@ -170,11 +171,15 @@ export const PlanView: React.FC = () => {
       
       // If online request failed, queue it for retry
       if (online) {
-        const url = `/api/plan/${id}/steps`;
+        const url = `${CORE_API}/api/plan/step`;
         outboxRef.current.push({
           id: crypto.randomUUID(),
           url,
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Org-Id': ORG,
+          },
           body: stepData,
         });
         showToast("Request failed. We'll retry when the connection is stable.", "error");

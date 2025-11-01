@@ -58,9 +58,9 @@ test.describe("Plan Resilience", () => {
     // Rapid offline/online cycles
     for (let i = 0; i < 3; i++) {
       await context.setOffline(true);
-      await page.waitForTimeout(100);
+      await expect(page.getByText("Offline")).toBeVisible({ timeout: 5000 });
       await context.setOffline(false);
-      await page.waitForTimeout(200);
+      await expect(page.getByText(/live|reconnecting/i)).toBeVisible({ timeout: 10000 });
     }
     
     // Should eventually reconnect

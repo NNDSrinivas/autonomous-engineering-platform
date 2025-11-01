@@ -1,6 +1,6 @@
 from __future__ import annotations
-import os, time
-from typing import TypedDict, Optional
+import time
+from typing import TypedDict
 import logging
 
 # Optional deps (best-effort)
@@ -83,12 +83,16 @@ def readiness_payload() -> dict:
         checks.append(check_db())
     except Exception:
         logging.error("DB readiness check failed")
-        checks.append({"name": "db", "ok": False, "latency_ms": 0, "detail": "internal error"})
+        checks.append(
+            {"name": "db", "ok": False, "latency_ms": 0, "detail": "internal error"}
+        )
     try:
         checks.append(check_redis())
     except Exception:
         logging.error("Redis readiness check failed")
-        checks.append({"name": "redis", "ok": False, "latency_ms": 0, "detail": "internal error"})
+        checks.append(
+            {"name": "redis", "ok": False, "latency_ms": 0, "detail": "internal error"}
+        )
 
     ok = all(c["ok"] for c in checks)
     return {"ok": ok, "checks": checks}

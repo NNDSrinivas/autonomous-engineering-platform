@@ -1699,8 +1699,8 @@ See [ENFORCEMENT_PLAYBOOK.md](ENFORCEMENT_PLAYBOOK.md) for details.
 
 **Metrics (Prometheus)**
 - `/metrics` endpoint (when `PROMETHEUS_ENABLED=true`)
-- `http_requests_total{method,route,status}`
-- `http_request_duration_seconds{method,route}`
+- `http_requests_total{service,method,path,status}`
+- `http_request_latency_seconds{service,method,path,status}`
 - `sse_stream_drops_total{plan_id}`
 - `plan_publish_e2e_seconds{plan_id}`
 

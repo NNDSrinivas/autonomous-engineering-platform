@@ -126,16 +126,15 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         dur_ms = f"{dur * 1000:.2f}"
 
         # Handle Server-Timing header properly
-        if existing_server_timing.strip():
-            # Remove trailing whitespace for accurate check
-            trimmed = existing_server_timing.rstrip()
+        trimmed = existing_server_timing.strip()
+        if trimmed:
             if trimmed.endswith(","):
                 response.headers["Server-Timing"] = (
-                    f"{existing_server_timing} app_obs;dur={dur_ms}"
+                    f"{trimmed} app_obs;dur={dur_ms}"
                 )
             else:
                 response.headers["Server-Timing"] = (
-                    f"{existing_server_timing}, app_obs;dur={dur_ms}"
+                    f"{trimmed}, app_obs;dur={dur_ms}"
                 )
         else:
             response.headers["Server-Timing"] = f"app_obs;dur={dur_ms}"

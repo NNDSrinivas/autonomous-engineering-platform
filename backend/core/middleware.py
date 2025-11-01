@@ -150,8 +150,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             data = redis_client.hgetall(key) or {}
             # Ensure data is a dict for type safety
             if isinstance(data, dict):
-                tokens = int(data.get("tokens", str(self.rpm)))
-                last_ts = int(data.get("ts", str(now)))
+                tokens = int(data.get("tokens", self.rpm))
+                last_ts = int(data.get("ts", now))
             else:
                 tokens = self.rpm
                 last_ts = now

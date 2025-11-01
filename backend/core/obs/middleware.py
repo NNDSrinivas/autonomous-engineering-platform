@@ -36,6 +36,10 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
     Adds a request ID, records latency metrics, and emits structured logs.
     """
 
+    def __init__(self, app, service_name: str = "core"):
+        super().__init__(app)
+        self.service_name = service_name
+
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
@@ -62,13 +66,16 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
             dur = time.time() - start
             route = request.url.path
             REQ_COUNTER.labels(
-                service="core",
+                service=self.service_name,
                 method=request.method,
                 path=route,
                 status=HTTP_STATUS_INTERNAL_ERROR,
             ).inc()
             REQ_LATENCY.labels(
-                service="core", method=request.method, path=route, status=HTTP_STATUS_INTERNAL_ERROR
+                service=self.service_name,
+                method=request.method,
+                path=route,
+                status=HTTP_STATUS_INTERNAL_ERROR,
             ).observe(dur)
             logger.error(
                 "request failed",
@@ -89,10 +96,16 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         # metrics
         try:
             REQ_COUNTER.labels(
-                service="core", method=request.method, path=route, status=status
+                service=self.service_name,
+                method=request.method,
+                path=route,
+                status=status,
             ).inc()
             REQ_LATENCY.labels(
-                service="core", method=request.method, path=route, status=status
+                service=self.service_name,
+                method=request.method,
+                path=route,
+                status=status,
             ).observe(dur)
         except Exception:
             logger.warning(
@@ -129,13 +142,9 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         trimmed = existing_server_timing.strip()
         if trimmed:
             if trimmed.endswith(","):
-                response.headers["Server-Timing"] = (
-                    f"{trimmed} app_obs;dur={dur_ms}"
-                )
+                response.headers["Server-Timing"] = f"{trimmed} app_obs;dur={dur_ms}"
             else:
-                response.headers["Server-Timing"] = (
-                    f"{trimmed}, app_obs;dur={dur_ms}"
-                )
+                response.headers["Server-Timing"] = f"{trimmed}, app_obs;dur={dur_ms}"
         else:
             response.headers["Server-Timing"] = f"app_obs;dur={dur_ms}"
         return response

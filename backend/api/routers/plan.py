@@ -26,13 +26,6 @@ from backend.core.policy.engine import PolicyEngine, get_policy_engine
 from backend.core.db_utils import get_short_lived_session
 from backend.core.audit.publisher import append_and_broadcast
 from backend.core.eventstore.service import replay
-from backend.infra.broadcast.base import Broadcast
-from backend.core.auth.deps import require_role
-from backend.core.auth.models import Role, User
-from backend.api.security import check_policy_inline
-from backend.core.policy.engine import PolicyEngine, get_policy_engine
-from backend.core.db_utils import get_short_lived_session
-from backend.core.audit.publisher import append_and_broadcast
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
@@ -44,7 +37,7 @@ def _safe_isoformat(dt_obj):
         return None
     try:
         return dt_obj.isoformat() if hasattr(dt_obj, "isoformat") else None
-    except:
+    except Exception:
         return None
 
 
@@ -265,11 +258,13 @@ async def stream_plan_updates(
     x_org_id: str = Header(..., alias="X-Org-Id"),
     user: User = Depends(require_role(Role.VIEWER)),
     bc: Broadcast = Depends(get_broadcaster),
-    since: Optional[int] = Query(None, description="Backfill events since this sequence number"),
+    since: Optional[int] = Query(
+        None, description="Backfill events since this sequence number"
+    ),
 ):
     """
     Server-Sent Events stream for real-time plan updates with auto-resume support.
-    
+
     Supports Last-Event-ID header and ?since= query parameter for backfilling missed events.
     Emits id: <seq> lines for browser auto-resume capability.
     """
@@ -333,7 +328,7 @@ async def stream_plan_updates(
                     seq = data.get("seq")
                     event_type = data.get("type", "message")
                     payload = data.get("payload", data)
-                    
+
                     # Emit with sequence ID for Last-Event-ID compatibility
                     if seq:
                         yield f"id: {seq}\n"

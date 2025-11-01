@@ -1,5 +1,12 @@
 // A tiny offline outbox for plan mutations. Uses localStorage for persistence.
-export type OutboxItem = { id: string; url: string; method: string; body: any; ts: number };
+export type OutboxItem = { 
+  id: string; 
+  url: string; 
+  method: string; 
+  headers?: Record<string, string>; 
+  body: any; 
+  ts: number 
+};
 
 export class Outbox {
   private key = "aep.outbox.v1";
@@ -17,7 +24,10 @@ export class Outbox {
       try {
         const r = await fetcher(it.url, { 
           method: it.method, 
-          headers: { "Content-Type": "application/json" }, 
+          headers: { 
+            "Content-Type": "application/json",
+            ...(it.headers || {})
+          }, 
           body: JSON.stringify(it.body) 
         });
         if (!r.ok) keep.push(it); // keep for retry

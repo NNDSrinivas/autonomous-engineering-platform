@@ -1,6 +1,8 @@
 // A resilient SSE client with auto-resume and demultiplexing support
 // Usage: const sse = new SSEClient(tokenGetter); sse.subscribe(planId, handler)
 
+import { CORE_API } from '../../api/client';
+
 export type EventHandler = (evt: { planId: string; type: string; seq?: number; payload: any }) => void;
 export type TokenGetter = () => string | null;
 
@@ -26,7 +28,7 @@ export class SSEClient {
 
     const token = this.tokenGetter();
     const since = this.computeSinceQuery();
-    const url = `/api/plan/${this.primaryPlanForURL()}/stream?token=${encodeURIComponent(token ?? "")}${since}`;
+    const url = `${CORE_API}/api/plan/${this.primaryPlanForURL()}/stream?token=${encodeURIComponent(token ?? "")}${since}`;
 
     const headers: any = {};
     const last = this.computeLastEventId();
@@ -90,7 +92,7 @@ export class SSEClient {
   private primaryPlanForURL(): string {
     // For multiplexing, any planId works to open the stream; the server channel is per-plan.
     // If you run one stream per plan, you can simplify by using that ID.
-    const [first] = this.handlers.keys();
+    const first = this.handlers.keys().next().value;
     return first || "default";
   }
 

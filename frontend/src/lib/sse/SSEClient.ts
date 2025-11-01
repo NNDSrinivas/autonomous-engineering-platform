@@ -20,6 +20,17 @@ export class SSEClient {
 
   constructor(private tokenGetter: TokenGetter) {}
 
+  /**
+   * Calculate exponential backoff delay with jitter.
+   * Uses binary exponential backoff capped at MAX_BACKOFF_MULTIPLIER,
+   * multiplied by BASE_DELAY, with random jitter to prevent thundering herd.
+   */
+  private calculateBackoffDelay(): number {
+    const exponentialDelay = Math.min(Math.pow(2, this.reconnectAttempt), SSEClient.MAX_BACKOFF_MULTIPLIER) * SSEClient.BASE_DELAY;
+    const jitteredDelay = exponentialDelay + Math.random() * SSEClient.JITTER_MS;
+    return Math.min(SSEClient.MAX_RECONNECT_DELAY, jitteredDelay);
+  }
+
   subscribe(planId: string, handler: EventHandler) {
     if (!this.handlers.has(planId)) this.handlers.set(planId, new Set());
     this.handlers.get(planId)!.add(handler);
@@ -33,11 +44,13 @@ export class SSEClient {
 
     const token = this.tokenGetter();
     const since = this.computeSinceQuery();
-    // SECURITY WARNING: Token in query parameter is a significant security risk
+    // CRITICAL SECURITY VULNERABILITY: Token in query parameter
+    // ⚠️  MUST BE FIXED BEFORE PRODUCTION DEPLOYMENT ⚠️
     // - Exposed in browser history, server logs, proxy logs, and referrer headers
     // - Visible in network monitoring tools and browser developer tools
     // - Can be inadvertently shared when URLs are copied/logged
-    // TODO: Critical - Implement one of these solutions before production:
+    // - Creates audit trail of credentials in multiple system logs
+    // TODO: URGENT - Implement one of these solutions immediately:
     //   1. Cookie-based authentication with HttpOnly secure cookies
     //   2. Short-lived stream-specific tokens (5-15 min lifetime)
     //   3. SSE polyfill that supports Authorization headers
@@ -117,10 +130,7 @@ export class SSEClient {
       this.source = null;
     }
     this.connecting = false;
-    const delay = Math.min(
-      SSEClient.MAX_RECONNECT_DELAY, 
-      Math.min(Math.pow(2, this.reconnectAttempt), SSEClient.MAX_BACKOFF_MULTIPLIER) * SSEClient.BASE_DELAY + Math.random() * SSEClient.JITTER_MS
-    );
+    const delay = this.calculateBackoffDelay();
     this.reconnectAttempt++;
     setTimeout(() => this.ensureConnected(), delay);
   }

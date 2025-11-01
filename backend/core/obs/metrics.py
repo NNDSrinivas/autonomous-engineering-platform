@@ -11,17 +11,17 @@ from prometheus_client import (
 PROM_ENABLED = os.getenv("PROMETHEUS_ENABLED", "true").lower() == "true"
 REGISTRY = CollectorRegistry(auto_describe=True)
 
-# Core metrics
+# Core metrics (compatible with existing schema)
 REQ_COUNTER = Counter(
     "http_requests_total",
     "Total HTTP requests",
-    ["method", "route", "status"],
+    ["service", "method", "path", "status"],
     registry=REGISTRY,
 )
 REQ_LATENCY = Histogram(
-    "http_request_duration_seconds",
+    "http_request_duration_seconds", 
     "HTTP request latency (s)",
-    ["method", "route"],
+    ["service", "method", "path"],
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5),
     registry=REGISTRY,
 )

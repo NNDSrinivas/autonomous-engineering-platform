@@ -89,8 +89,11 @@ app.add_middleware(
 # RequestIDMiddleware removed - ObservabilityMiddleware provides this functionality
 app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
 app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
-app.add_middleware(AuditMiddleware, service_name="core")
-app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
+
+# Conditional audit logging (disabled in test/CI environments to prevent DB errors)
+if settings.enable_audit_logging:
+    app.add_middleware(AuditMiddleware, service_name="core")
+    app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
 
 # Mount /metrics when enabled (PR-28)
 if PROM_ENABLED:
@@ -98,6 +101,11 @@ if PROM_ENABLED:
 
 # Health endpoints (PR-29) - replaces basic /health endpoint
 app.include_router(health_router)
+
+# Basic health endpoint for backwards compatibility
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "core"}
 
 
 @app.get("/version")

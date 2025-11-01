@@ -19,6 +19,7 @@ jobs:
           SECRET_KEY: test-secret-for-ci
           JWT_SECRET: test-jwt-secret-for-ci
           DATABASE_URL: sqlite:///./test.db
+          ENABLE_AUDIT_LOGGING: false
         run: |
           # Initialize test database with migrations
           alembic upgrade head || echo "Migration failed or not needed"

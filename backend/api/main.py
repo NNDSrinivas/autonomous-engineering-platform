@@ -14,9 +14,11 @@ from ..core.obs.metrics import metrics_app, PROM_ENABLED
 from ..core.obs.middleware import ObservabilityMiddleware
 
 from ..core.settings import settings
+
 # removed unused: setup_logging (using obs logging instead)
 # removed unused: metrics_router (using new /metrics mount)
 from ..core.middleware import AuditMiddleware
+
 # removed unused: RequestIDMiddleware (ObservabilityMiddleware provides this)
 from ..core.rate_limit.middleware import RateLimitMiddleware
 from ..core.audit.middleware import EnhancedAuditMiddleware
@@ -42,13 +44,11 @@ from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
 from .routers.rate_limit_admin import router as rate_limit_admin_router
 from ..core.realtime import presence as presence_lifecycle
+from ..core.obs.logging import logger
 
 # Initialize observability after imports
 configure_json_logging()
 init_tracing()
-
-# Use obs logging instead of setup_logging() to avoid conflict
-from ..core.obs.logging import logger
 
 
 @asynccontextmanager

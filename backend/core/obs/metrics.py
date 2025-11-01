@@ -19,7 +19,7 @@ REQ_COUNTER = Counter(
     registry=REGISTRY,
 )
 REQ_LATENCY = Histogram(
-    "http_request_duration_seconds", 
+    "http_request_duration_seconds",
     "HTTP request latency (s)",
     ["service", "method", "path"],
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5),

@@ -60,8 +60,15 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         except Exception:
             dur = time.time() - start
             route = request.url.path
-            REQ_COUNTER.labels(service="core", method=request.method, path=route, status=HTTP_STATUS_INTERNAL_ERROR).inc()
-            REQ_LATENCY.labels(service="core", method=request.method, path=route).observe(dur)
+            REQ_COUNTER.labels(
+                service="core",
+                method=request.method,
+                path=route,
+                status=HTTP_STATUS_INTERNAL_ERROR,
+            ).inc()
+            REQ_LATENCY.labels(
+                service="core", method=request.method, path=route
+            ).observe(dur)
             logger.error(
                 "request failed",
                 extra={
@@ -80,8 +87,12 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
         # metrics
         try:
-            REQ_COUNTER.labels(service="core", method=request.method, path=route, status=status).inc()
-            REQ_LATENCY.labels(service="core", method=request.method, path=route).observe(dur)
+            REQ_COUNTER.labels(
+                service="core", method=request.method, path=route, status=status
+            ).inc()
+            REQ_LATENCY.labels(
+                service="core", method=request.method, path=route
+            ).observe(dur)
         except Exception:
             logger.warning(
                 "Failed to record metrics", exc_info=True, extra={"request_id": req_id}

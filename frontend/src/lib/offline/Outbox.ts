@@ -13,6 +13,7 @@ export class Outbox {
   private key = "aep.outbox.v1";
   private readonly MAX_RETRIES = 3;
   private readonly MAX_AGE_HOURS = 24;
+  private readonly MS_PER_HOUR = 3_600_000; // Milliseconds per hour
 
   push(item: Omit<OutboxItem, "ts" | "retryCount">) {
     const list = this.read();
@@ -24,7 +25,7 @@ export class Outbox {
     const list = this.read();
     const keep: OutboxItem[] = [];
     const now = Date.now();
-    const maxAge = this.MAX_AGE_HOURS * 3600000; // 24 hours in milliseconds
+    const maxAge = this.MAX_AGE_HOURS * this.MS_PER_HOUR;
     
     for (const it of list) {
       // Remove items that are too old or have exceeded retry limit

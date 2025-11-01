@@ -337,6 +337,7 @@ async def stream_plan_updates(
                     yield f"data: {json.dumps(payload)}\n\n"
                 except Exception:
                     # Fallback for malformed messages
+                    logger.warning("Malformed SSE message: %s", msg, exc_info=True)
                     yield f"data: {msg}\n\n"
 
         except asyncio.CancelledError:

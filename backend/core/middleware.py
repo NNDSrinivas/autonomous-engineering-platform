@@ -20,18 +20,12 @@ from starlette.responses import Response
 from .config import settings
 from .db import SessionLocal
 
-# Prometheus metrics
-REQ_LATENCY = Histogram(
-    "http_request_latency_seconds",
-    "Latency of HTTP requests",
-    ["service", "method", "path", "status"],
-)
+# Import metrics from observability module to avoid conflicts
+from .obs.metrics import REQ_LATENCY, REQ_COUNTER as REQ_STATUS
+from prometheus_client import Gauge, Counter
+
+# Additional metrics for this module
 REQ_INFLIGHT = Gauge("http_inflight_requests", "In-flight HTTP requests", ["service"])
-REQ_STATUS = Counter(
-    "http_requests_total",
-    "Total HTTP requests",
-    ["service", "method", "path", "status"],
-)
 AUDIT_FAILURES = Counter(
     "audit_failures_total",
     "Total audit logging failures",

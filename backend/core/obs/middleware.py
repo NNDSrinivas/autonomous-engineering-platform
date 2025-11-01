@@ -54,6 +54,7 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
 
         # attach for downstream use (e.g., audit)
         request.state.request_id = req_id
+        request.state.req_id = req_id  # Backward compatibility for AuditMiddleware
 
         try:
             response = await call_next(request)
@@ -123,9 +124,15 @@ class ObservabilityMiddleware(BaseHTTPMiddleware):
         response.headers[HEADER_REQ_ID] = req_id
         existing_server_timing = response.headers.get("Server-Timing", "")
         dur_ms = f"{dur * 1000:.2f}"
-        response.headers["Server-Timing"] = (
-            f"{existing_server_timing}, app_obs;dur={dur_ms}"
-            if existing_server_timing
-            else f"app_obs;dur={dur_ms}"
-        )
+        
+        # Handle Server-Timing header properly
+        if existing_server_timing.strip():
+            # Remove trailing whitespace for accurate check
+            trimmed = existing_server_timing.rstrip()
+            if trimmed.endswith(","):
+                response.headers["Server-Timing"] = f"{existing_server_timing} app_obs;dur={dur_ms}"
+            else:
+                response.headers["Server-Timing"] = f"{existing_server_timing}, app_obs;dur={dur_ms}"
+        else:
+            response.headers["Server-Timing"] = f"app_obs;dur={dur_ms}"
         return response

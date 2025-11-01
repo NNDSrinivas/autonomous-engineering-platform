@@ -107,15 +107,9 @@ export const PlanView: React.FC = () => {
         // Add auth header if available
         const token = tokenGetter();
         if (token) {
-          let headersObj: Record<string, string> = {};
-          if (init.headers instanceof Headers) {
-            init.headers.forEach((value, key) => {
-              headersObj[key] = value;
-            });
-          } else if (init.headers) {
-            headersObj = { ...(init.headers as Record<string, string>) };
-          }
-          return fetch(url, { ...init, headers: { ...headersObj, 'Authorization': `Bearer ${token}` } });
+          const headers = new Headers(init.headers);
+          headers.set('Authorization', `Bearer ${token}`);
+          return fetch(url, { ...init, headers });
         }
         return fetch(url, init);
       }).then(processed => {
@@ -156,7 +150,7 @@ export const PlanView: React.FC = () => {
         
         // Optimistic update for better UX
         const optimisticStep: PlanStep = {
-          id: `temp-${Date.now()}`,
+          id: crypto.randomUUID(),
           text: stepData.text,
           owner: stepData.owner,
           ts: new Date().toISOString(),

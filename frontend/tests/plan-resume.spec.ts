@@ -91,7 +91,7 @@ test.describe("Plan Resilience", () => {
 
   test("shows appropriate error messages for failed requests", async ({ page }) => {
     // Mock the API to return errors
-    await page.route("**/api/plan/*/steps", route => {
+    await page.route("**/api/plan/step", route => {
       route.fulfill({ status: 500, body: "Server Error" });
     });
     

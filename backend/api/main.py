@@ -102,6 +102,7 @@ if PROM_ENABLED:
 # Health endpoints (PR-29) - replaces basic /health endpoint
 app.include_router(health_router)
 
+
 # Basic health endpoint for backwards compatibility
 @app.get("/health")
 def health():

@@ -46,9 +46,10 @@ def instrument_fastapi_app(app):
     """Instrument FastAPI app with OpenTelemetry tracing."""
     if not OTEL_ENABLED:
         return
-    
+
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
         FastAPIInstrumentor.instrument_app(app)
     except Exception:
         # If Otel deps are absent, skip silently

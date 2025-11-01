@@ -43,8 +43,11 @@ export class Outbox {
           body: JSON.stringify(it.body) 
         });
         if (!r.ok) {
-          // Increment retry count and keep for retry
-          keep.push({ ...it, retryCount: it.retryCount + 1 });
+          // Only retry server errors (5xx) - client errors (4xx) will never succeed
+          if (r.status >= 500 && r.status < 600) {
+            keep.push({ ...it, retryCount: it.retryCount + 1 });
+          }
+          // Drop 4xx errors - they indicate client-side issues that won't resolve with retry
         }
         // If r.ok, don't add to keep (successfully processed)
       } catch {

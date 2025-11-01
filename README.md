@@ -1736,6 +1736,163 @@ readinessProbe:
   periodSeconds: 10
 ```
 
+### UI/UX Resilience & Offline Resume (PR-30)
+
+**Bulletproof frontend experience with auto-recovery and offline support**
+
+Enhanced frontend resilience ensures uninterrupted collaboration even with poor network conditions, browser refreshes, or temporary backend outages.
+
+#### Key Features
+- **SSE Auto-Resume** - Automatic reconnection with Last-Event-ID backfill
+- **Offline Outbox** - Queue mutations locally when offline, flush when back online
+- **Connection UI** - Visual indicators and notifications for connection state
+- **Presence Idle Detection** - Smart away/idle state management
+- **Toast Notifications** - User-friendly feedback for network events
+
+#### Architecture
+```
+User Action → Offline Outbox → Network Available? → Backend API
+     ↓              ↓                    ↓             ↓
+SSE Client ← Connection State ← Browser Events → UI Updates
+```
+
+#### Frontend Components
+
+**SSE Client** (`frontend/src/lib/sse/SSEClient.ts`)
+- Resilient SSE client with auto-reconnect and exponential backoff
+- Last-Event-ID tracking for seamless event resume
+- Demultiplexed subscriptions (multiple callbacks per connection)
+- Smart reconnection logic with circuit breaker patterns
+
+**Offline Outbox** (`frontend/src/lib/offline/Outbox.ts`)
+- localStorage-based mutation queueing for offline scenarios
+- Automatic flush when connection restored
+- Persistent across page refreshes and browser restarts
+- FIFO queue with retry logic and error handling
+
+**Connection Management** (`frontend/src/state/connection/useConnection.ts`)
+- Real-time tracking of browser online/offline state
+- SSE connection health monitoring
+- React hooks for component integration
+- Event-driven state updates
+
+**UI Components**
+- `ConnectionChip.tsx` - Visual connection status indicator
+- `Toast.tsx` - Notification system for network events
+- Integrated into `PlanView.tsx` with offline-aware interactions
+
+#### Backend Enhancements
+
+**Enhanced SSE Streaming** (`backend/api/routers/plan.py`)
+```python
+# Last-Event-ID support for resume
+if last_event_id := request.headers.get("Last-Event-ID"):
+    since = int(last_event_id)
+    # Backfill missed events from eventstore
+    backfill_events = eventstore.replay(plan_id, since)
+    for event in backfill_events:
+        yield f"id: {event.seq}\ndata: {json.dumps(event.data)}\n\n"
+
+# Continue with live stream
+async for event in broadcaster.stream(plan_id):
+    yield f"id: {event.seq}\ndata: {json.dumps(event.data)}\n\n"
+```
+
+**Event Sequence Tracking**
+- Every SSE event includes sequence ID for ordered replay
+- Eventstore maintains chronological event history
+- Gap detection and backfill for missed events
+
+#### Usage Example
+
+**Resilient Plan Updates**
+```typescript
+// Auto-reconnecting SSE client
+const sseClient = new SSEClient('/api/plan/stream');
+
+// Subscribe to plan updates with auto-resume
+sseClient.subscribe('plan:123', (event) => {
+  updatePlanUI(event.data);
+});
+
+// Offline-aware mutations
+const handleAddStep = async (step: PlanStep) => {
+  if (!isOnline) {
+    // Queue for later when back online
+    outbox.push({
+      method: 'POST',
+      url: `/api/plan/${planId}/step`,
+      body: step
+    });
+    showToast('Step queued (offline)', 'info');
+    return;
+  }
+  
+  try {
+    await api.addPlanStep(planId, step);
+  } catch (error) {
+    // Fallback to outbox on failure
+    outbox.push({ method: 'POST', url: `/api/plan/${planId}/step`, body: step });
+    showToast('Step queued for retry', 'warning');
+  }
+};
+```
+
+#### Configuration
+
+**Environment Variables**
+```bash
+# SSE reconnection settings
+SSE_RECONNECT_DELAY_MS=1000
+SSE_MAX_RECONNECT_DELAY_MS=30000
+SSE_RECONNECT_BACKOFF_FACTOR=1.5
+
+# Offline outbox settings  
+OUTBOX_MAX_ITEMS=100
+OUTBOX_RETRY_ATTEMPTS=3
+OUTBOX_FLUSH_INTERVAL_MS=5000
+
+# Presence idle detection
+IDLE_TIMEOUT_MS=300000  # 5 minutes
+AWAY_TIMEOUT_MS=600000  # 10 minutes
+```
+
+#### E2E Testing
+
+**Playwright Test Coverage** (`frontend/tests/plan-resume.spec.ts`)
+- Offline/online transition scenarios
+- Connection status UI validation
+- Outbox persistence across page refreshes
+- SSE reconnection and backfill verification
+- Toast notification behavior
+- Error handling and recovery flows
+
+```bash
+# Run resilience tests
+npm run test:e2e -- plan-resume.spec.ts
+```
+
+#### Monitoring & Metrics
+
+**Browser Metrics** (via `performance.mark()`)
+- `sse.reconnect.duration` - Time to restore SSE connection
+- `outbox.flush.duration` - Time to sync offline actions
+- `connection.offline.duration` - Total offline time
+
+**Backend Metrics** (Prometheus)
+- `sse_reconnections_total{plan_id}` - SSE reconnection events
+- `sse_backfill_events_total{plan_id}` - Events replayed on resume
+- `plan_offline_mutations_total{plan_id}` - Queued offline actions
+
+#### Benefits
+
+✅ **Uninterrupted UX** - Seamless experience during network hiccups  
+✅ **Data Consistency** - No lost mutations with offline queueing  
+✅ **Real-time Sync** - Automatic catch-up when connection restored  
+✅ **User Awareness** - Clear visual feedback on connection state  
+✅ **Mobile Friendly** - Handles mobile network switching gracefully  
+✅ **Enterprise Ready** - Robust for corporate networks with proxies
+
 ---
 
 **Copyright © 2025 NavraLabs, Inc. All rights reserved.**

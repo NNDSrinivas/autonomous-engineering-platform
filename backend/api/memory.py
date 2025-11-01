@@ -6,6 +6,7 @@ Provides episodic memory recording and agent note consolidation
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import json
@@ -51,23 +52,31 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
     # to prevent unauthorized access/modification of other organizations' data
     org_id = "default_org"
 
-    db.execute(
-        text(
-            """
-      INSERT INTO session_event (org_id, session_id, event_type, task_key, context, metadata)
-      VALUES (:o, :sid, :et, :tk, :ctx, :meta)
-    """
-        ),
-        {
-            "o": org_id,
-            "sid": req.session_id,
-            "et": req.event_type,
-            "tk": req.task_key,
-            "ctx": req.context,
-            "meta": json.dumps(req.metadata),
-        },
-    )
-    db.commit()
+    try:
+        db.execute(
+            text(
+                """
+          INSERT INTO session_event (org_id, session_id, event_type, task_key, context, metadata)
+          VALUES (:o, :sid, :et, :tk, :ctx, :meta)
+        """
+            ),
+            {
+                "o": org_id,
+                "sid": req.session_id,
+                "et": req.event_type,
+                "tk": req.task_key,
+                "ctx": req.context,
+                "meta": json.dumps(req.metadata),
+            },
+        )
+        db.commit()
+    except (OperationalError, ProgrammingError):
+        # Handle missing table gracefully in test environments
+        # These exceptions cover table/schema issues across different databases
+        raise HTTPException(
+            status_code=503,
+            detail="Memory service unavailable - database not fully initialized",
+        )
 
     return {"status": "recorded", "session_id": req.session_id}
 
@@ -85,21 +94,29 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
     org_id = "default_org"
 
     # Fetch session events for context
-    events = (
-        db.execute(
-            text(
-                """
-      SELECT event_type, context, created_at
-      FROM session_event
-      WHERE org_id = :o AND session_id = :sid
-      ORDER BY created_at ASC
-    """
-            ),
-            {"o": org_id, "sid": req.session_id},
+    try:
+        events = (
+            db.execute(
+                text(
+                    """
+          SELECT event_type, context, created_at
+          FROM session_event
+          WHERE org_id = :o AND session_id = :sid
+          ORDER BY created_at ASC
+        """
+                ),
+                {"o": org_id, "sid": req.session_id},
+            )
+            .mappings()
+            .all()
         )
-        .mappings()
-        .all()
-    )
+    except (OperationalError, ProgrammingError):
+        # Handle missing table gracefully in test environments
+        # These exceptions cover table/schema issues across different databases
+        raise HTTPException(
+            status_code=503,
+            detail="Memory service unavailable - database not fully initialized",
+        )
 
     if not events:
         raise HTTPException(status_code=404, detail="No events found for session")

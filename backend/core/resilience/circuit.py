@@ -2,6 +2,7 @@ from __future__ import annotations
 import time
 from typing import Callable, Awaitable, Optional, Any
 
+
 class CircuitBreaker:
     """
     Minimal async circuit breaker (half-open with success threshold).
@@ -9,8 +10,15 @@ class CircuitBreaker:
     - stay open for `open_sec`, then half-open (1 trial)
     - close after `success_to_close` consecutive successes
     """
-    def __init__(self, name: str, fail_threshold: int = 5, window_sec: int = 60,
-                 open_sec: int = 30, success_to_close: int = 2):
+
+    def __init__(
+        self,
+        name: str,
+        fail_threshold: int = 5,
+        window_sec: int = 60,
+        open_sec: int = 30,
+        success_to_close: int = 2,
+    ):
         self.name = name
         self.fail_threshold = fail_threshold
         self.window_sec = window_sec
@@ -32,7 +40,11 @@ class CircuitBreaker:
             self._half_success = 0
         return self._state == "open"
 
-    async def call(self, fn: Callable[[], Awaitable[Any]], fallback: Optional[Callable[[Exception], Awaitable[Any]]] = None) -> Any:
+    async def call(
+        self,
+        fn: Callable[[], Awaitable[Any]],
+        fallback: Optional[Callable[[Exception], Awaitable[Any]]] = None,
+    ) -> Any:
         now = time.time()
         # short-circuit
         if self._state == "open":

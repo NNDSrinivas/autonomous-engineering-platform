@@ -6,6 +6,7 @@ import string
 from typing import List
 from typing import Optional
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 # Module-level constants for performance
@@ -110,8 +111,8 @@ class Settings(BaseSettings):
     enable_github_integration: bool = True
     enable_analytics: bool = True
     enable_ai_assistance: bool = True
-    enable_audit_logging: bool = (
-        True  # Disable in test environments to prevent DB errors
+    enable_audit_logging: bool = Field(
+        default=True, description="Disable in test environments to prevent DB errors"
     )
 
     # Common file extensions to validate against for code analysis

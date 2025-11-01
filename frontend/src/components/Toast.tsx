@@ -73,7 +73,7 @@ export class ToastManager {
   private static instance: ToastManager;
   private toasts: Array<{ id: string; message: string; type: ToastProps["type"]; duration?: number }> = [];
   private listeners: Set<() => void> = new Set();
-  private timeouts: Map<string, NodeJS.Timeout> = new Map();
+  private timeouts: Map<string, number> = new Map();
 
   static getInstance() {
     if (!ToastManager.instance) {
@@ -89,7 +89,7 @@ export class ToastManager {
     
     if (duration > 0) {
       const timeoutId = setTimeout(() => this.remove(id), duration);
-      this.timeouts.set(id, timeoutId);
+      this.timeouts.set(id, timeoutId as number);
     }
     
     return id;

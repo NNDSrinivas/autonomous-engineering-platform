@@ -150,7 +150,7 @@ export const PlanView: React.FC = () => {
         
         // Optimistic update for better UX
         const optimisticStep: PlanStep = {
-          id: crypto.randomUUID(),
+          id: `offline-${crypto.randomUUID()}`,
           text: stepData.text,
           owner: stepData.owner,
           ts: new Date().toISOString(),

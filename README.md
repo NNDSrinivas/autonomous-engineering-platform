@@ -1789,7 +1789,7 @@ SSE Client ← Connection State ← Browser Events → UI Updates
 if last_event_id := request.headers.get("Last-Event-ID"):
     since = int(last_event_id)
     # Backfill missed events from eventstore
-    backfill_events = await eventstore.replay(plan_id, since)
+    backfill_events = eventstore.replay(plan_id, since)
     for event in backfill_events:
         yield f"id: {event.seq}\ndata: {json.dumps(event.data)}\n\n"
 

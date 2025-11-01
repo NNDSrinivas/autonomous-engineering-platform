@@ -161,8 +161,6 @@ class Settings(BaseSettings):
         ".tf",
     ]
 
-    # Removed old Config class - replaced with model_config above
-
     @property
     def sqlalchemy_url(self) -> str:
         # Use database_url if provided, otherwise construct from components

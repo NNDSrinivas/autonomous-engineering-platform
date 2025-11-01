@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 export type ConnectionStatus = "connected" | "connecting" | "disconnected";
 
 export function useConnection() {
   const [online, setOnline] = useState(navigator.onLine);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     const handleOnline = () => setOnline(true);
@@ -27,6 +28,7 @@ export function useConnection() {
     window.addEventListener("aep-stream-error", handleStreamError);
     
     return () => {
+      mountedRef.current = false;
       window.removeEventListener("aep-stream-open", handleStreamOpen);
       window.removeEventListener("aep-stream-error", handleStreamError);
     };
@@ -34,7 +36,7 @@ export function useConnection() {
 
   // Auto-reset to connecting when coming back online
   useEffect(() => {
-    if (online && status === "disconnected") {
+    if (mountedRef.current && online && status === "disconnected") {
       setStatus("connecting");
     }
   }, [online, status]);

@@ -92,8 +92,8 @@ app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 
 # Conditional audit logging (disabled in test/CI environments to prevent DB errors)
 # Check for explicit test environment using app_env
-is_test_env = getattr(settings, "app_env", None) in ["test", "ci"]
-if not is_test_env and getattr(settings, "enable_audit_logging", True):
+is_test_env = settings.app_env in ["test", "ci"]
+if not is_test_env and settings.enable_audit_logging:
     app.add_middleware(AuditMiddleware, service_name="core")
     app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
 

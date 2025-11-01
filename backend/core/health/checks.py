@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os, time
 from typing import TypedDict, Optional
+import logging
 
 # Optional deps (best-effort)
 try:
@@ -34,11 +35,12 @@ def _timed(fn, name: str) -> CheckResult:
             "detail": "ok",
         }
     except Exception as e:
+        logging.exception("Health check '%s' failed", name)
         return {
             "name": name,
             "ok": False,
             "latency_ms": int((time.time() - start) * 1000),
-            "detail": str(e),
+            "detail": "internal error",
         }
 
 
@@ -80,11 +82,13 @@ def readiness_payload() -> dict:
     try:
         checks.append(check_db())
     except Exception as e:
-        checks.append({"name": "db", "ok": False, "latency_ms": 0, "detail": str(e)})
+        logging.exception("DB readiness check failed")
+        checks.append({"name": "db", "ok": False, "latency_ms": 0, "detail": "internal error"})
     try:
         checks.append(check_redis())
     except Exception as e:
-        checks.append({"name": "redis", "ok": False, "latency_ms": 0, "detail": str(e)})
+        logging.exception("Redis readiness check failed")
+        checks.append({"name": "redis", "ok": False, "latency_ms": 0, "detail": "internal error"})
 
     ok = all(c["ok"] for c in checks)
     return {"ok": ok, "checks": checks}

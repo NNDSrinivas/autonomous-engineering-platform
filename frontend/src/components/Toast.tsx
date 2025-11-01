@@ -82,7 +82,7 @@ export class ToastManager {
   }
 
   show(message: string, type: ToastProps["type"] = "info", duration = 5000) {
-    const id = Math.random().toString(36).substr(2, 9);
+    const id = Math.random().toString(36).substring(2, 11);
     this.toasts.push({ id, message, type, duration });
     this.notifyListeners();
     

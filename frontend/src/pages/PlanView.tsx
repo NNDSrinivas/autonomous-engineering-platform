@@ -106,7 +106,15 @@ export const PlanView: React.FC = () => {
         // Add auth header if available
         const token = tokenGetter();
         if (token) {
-          init.headers = { ...init.headers, 'Authorization': `Bearer ${token}` };
+          let headersObj: Record<string, string> = {};
+          if (init.headers instanceof Headers) {
+            init.headers.forEach((value, key) => {
+              headersObj[key] = value;
+            });
+          } else if (init.headers) {
+            headersObj = { ...(init.headers as Record<string, string>) };
+          }
+          init.headers = { ...headersObj, 'Authorization': `Bearer ${token}` };
         }
         return fetch(url, init);
       }).then(processed => {
@@ -132,12 +140,16 @@ export const PlanView: React.FC = () => {
         await addStepMutation.mutateAsync(stepData);
         setStepText('');
       } else {
-        // Offline: queue in outbox
-        const url = `/api/plan/${id}/steps`;
+        // Offline: queue in outbox using the same API structure as online requests
+        const url = `${import.meta.env.VITE_CORE_API || 'http://localhost:8000'}/api/plan/step`;
         outboxRef.current.push({
           id: crypto.randomUUID(),
           url,
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Org-Id': import.meta.env.VITE_ORG_ID || 'default',
+          },
           body: stepData,
         });
         

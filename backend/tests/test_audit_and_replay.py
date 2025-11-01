@@ -92,7 +92,9 @@ def test_replay_api_endpoint():
     plan_id = "test-plan-api"
 
     # First add some events via the database (simulating plan activity)
-    with next(get_db()) as db:
+    db_gen = get_db()
+    db = next(db_gen)
+    try:
         append_event(
             db,
             plan_id=plan_id,
@@ -110,6 +112,8 @@ def test_replay_api_endpoint():
             org_key="org-demo",
         )
         db.commit()
+    finally:
+        db.close()
 
     # Test replay all events
     response = client.get(f"/api/plan/{plan_id}/replay")
@@ -192,7 +196,9 @@ def test_event_sequence_monotonic():
     """Test that event sequences are monotonic per plan"""
     plan_id = "test-monotonic"
 
-    with next(get_db()) as db:
+    db_gen = get_db()
+    db = next(db_gen)
+    try:
         # Add events in multiple transactions
         evt1 = append_event(
             db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
@@ -223,6 +229,8 @@ def test_event_sequence_monotonic():
             org_key=None,
         )
         assert other_plan_evt.seq == 1  # Starts at 1 for new plan
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

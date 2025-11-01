@@ -14,6 +14,7 @@ export class Outbox {
   private readonly MAX_RETRIES = 3;
   private readonly MAX_AGE_HOURS = 24;
   private readonly MS_PER_HOUR = 3_600_000; // Milliseconds per hour
+  private cache: OutboxItem[] | null = null; // Write-through cache
 
   push(item: Omit<OutboxItem, "ts" | "retryCount">) {
     const list = this.read();
@@ -47,6 +48,14 @@ export class Outbox {
           // Only retry server errors (5xx) - client errors (4xx) will never succeed
           if (r.status >= 500 && r.status < 600) {
             keep.push({ ...it, retryCount: it.retryCount + 1 });
+          } else if (r.status >= 400 && r.status < 500) {
+            // Log dropped 4xx errors for user visibility
+            console.warn(`Outbox: Dropping item due to client error ${r.status}:`, {
+              url: it.url,
+              method: it.method,
+              status: r.status,
+              timestamp: new Date(it.ts).toISOString()
+            });
           }
           // Drop 4xx errors - they indicate client-side issues that won't resolve with retry
         }
@@ -71,19 +80,29 @@ export class Outbox {
   }
 
   private read(): OutboxItem[] {
+    // Return cached data if available
+    if (this.cache !== null) {
+      return this.cache;
+    }
+    
     try {
       const items = JSON.parse(localStorage.getItem(this.key) || "[]");
       // Handle backwards compatibility: add retryCount to existing items
-      return items.map((item: any) => ({
+      const processedItems = items.map((item: any) => ({
         ...item,
         retryCount: item.retryCount ?? 0
       }));
+      this.cache = processedItems;
+      return processedItems;
     } catch {
-      return [];
+      const emptyList: OutboxItem[] = [];
+      this.cache = emptyList;
+      return emptyList;
     }
   }
 
   private write(list: OutboxItem[]) {
+    this.cache = list; // Update cache first
     try {
       localStorage.setItem(this.key, JSON.stringify(list));
     } catch {

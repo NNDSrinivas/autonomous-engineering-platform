@@ -1712,6 +1712,30 @@ See [ENFORCEMENT_PLAYBOOK.md](ENFORCEMENT_PLAYBOOK.md) for details.
 - `X-Request-Id` is attached to every response for correlation
 - `Server-Timing` includes a basic app timing segment
 
+### Health Checks & Circuit Breakers (PR-29)
+
+**Endpoints**
+- `GET /health/live` — liveness (always simple/fast)
+- `GET /health/ready` — readiness: checks DB/Redis with latency per check
+- `GET /health/startup` — mirrors readiness for platforms that require a separate probe
+
+**Circuit Breakers**
+- Lightweight async breaker utility with states: **closed → open → half-open → closed**
+- Open after N failures within a window; half-open after `open_sec`; close on M successes
+- Middleware returns **503** with `X-Circuit: open` when upstream is unavailable
+
+**K8s Probes (example)**
+```yaml
+livenessProbe:
+  httpGet: { path: /health/live, port: 8000 }
+  initialDelaySeconds: 5
+  periodSeconds: 10
+readinessProbe:
+  httpGet: { path: /health/ready, port: 8000 }
+  initialDelaySeconds: 10
+  periodSeconds: 10
+```
+
 ---
 
 **Copyright © 2025 NavraLabs, Inc. All rights reserved.**

@@ -8,13 +8,28 @@ from backend.api.main import app
 client = TestClient(app)
 
 
-def test_health_endpoint():
-    """Test health endpoint using TestClient (no server required)"""
-    response = client.get("/health")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "ok"
-    assert data["service"] == "core"
+def test_liveness_ok():
+    """Test liveness endpoint - should always be OK"""
+    r = client.get("/health/live")
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+    assert "checks" in r.json()
+
+
+def test_readiness_works():
+    """Test readiness endpoint - may fail depending on dependencies"""
+    r = client.get("/health/ready")
+    # In dev with no DB/Redis, this might be 503; either way payload exists
+    assert r.status_code in (200, 503)
+    assert "checks" in r.json()
+
+
+def test_startup_endpoint():
+    """Test startup endpoint - mirrors readiness"""
+    r = client.get("/health/startup")
+    # mirrors readiness
+    assert r.status_code in (200, 503)
+    assert "checks" in r.json()
 
 
 def test_version_endpoint():

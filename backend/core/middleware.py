@@ -10,7 +10,6 @@ import redis
 from loguru import logger
 from prometheus_client import Counter
 from prometheus_client import Gauge
-from prometheus_client import Histogram
 from prometheus_client import Summary
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -22,7 +21,6 @@ from .db import SessionLocal
 
 # Import metrics from observability module to avoid conflicts
 from .obs.metrics import REQ_LATENCY, REQ_COUNTER as REQ_STATUS
-from prometheus_client import Gauge, Counter
 
 # Additional metrics for this module
 REQ_INFLIGHT = Gauge("http_inflight_requests", "In-flight HTTP requests", ["service"])

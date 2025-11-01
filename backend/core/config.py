@@ -110,7 +110,9 @@ class Settings(BaseSettings):
     enable_github_integration: bool = True
     enable_analytics: bool = True
     enable_ai_assistance: bool = True
-    enable_audit_logging: bool = True  # Disable in test environments to prevent DB errors
+    enable_audit_logging: bool = (
+        True  # Disable in test environments to prevent DB errors
+    )
 
     # Common file extensions to validate against for code analysis
     valid_extensions: List[str] = [

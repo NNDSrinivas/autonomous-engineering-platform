@@ -7,11 +7,19 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+# --- Observability imports (PR-28)
+from ..core.obs.logging import configure_json_logging
+from ..core.obs.tracing import init_tracing, instrument_fastapi_app
+from ..core.obs.metrics import metrics_app, PROM_ENABLED
+from ..core.obs.middleware import ObservabilityMiddleware
+
 from ..core.settings import settings
-from ..core.logging import setup_logging
-from ..core.metrics import router as metrics_router
+
+# removed unused: setup_logging (using obs logging instead)
+# removed unused: metrics_router (using new /metrics mount)
 from ..core.middleware import AuditMiddleware
-from ..core.middleware import RequestIDMiddleware
+
+# removed unused: RequestIDMiddleware (ObservabilityMiddleware provides this)
 from ..core.rate_limit.middleware import RateLimitMiddleware
 from ..core.audit.middleware import EnhancedAuditMiddleware
 from ..core.cache.middleware import CacheMiddleware
@@ -36,8 +44,11 @@ from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
 from .routers.rate_limit_admin import router as rate_limit_admin_router
 from ..core.realtime import presence as presence_lifecycle
+from ..core.obs.logging import logger
 
-logger = setup_logging()
+# Initialize observability after imports
+configure_json_logging()
+init_tracing()
 
 
 @asynccontextmanager
@@ -52,6 +63,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=f"{settings.APP_NAME} - Core API", lifespan=lifespan)
 
+# Instrument app with OpenTelemetry after creation (PR-28)
+instrument_fastapi_app(app)
+
+# Middlewares (place ObservabilityMiddleware high so all routes are observed)
+app.add_middleware(
+    ObservabilityMiddleware
+)  # PR-28: Request IDs, metrics, structured logs
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -59,11 +77,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(RequestIDMiddleware, service_name="core")
+# RequestIDMiddleware removed - ObservabilityMiddleware provides this functionality
 app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
 app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 app.add_middleware(AuditMiddleware, service_name="core")
 app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
+
+# Mount /metrics when enabled (PR-28)
+if PROM_ENABLED:
+    app.mount("/metrics", metrics_app())
 
 
 @app.get("/health")
@@ -80,8 +102,8 @@ def version():
     return {"name": settings.APP_NAME, "env": settings.APP_ENV, "version": "0.1.0"}
 
 
-# Prometheus
-app.include_router(metrics_router)
+# Routers
+# Old metrics_router removed - using new /metrics mount (PR-28)
 app.include_router(tasks_router)
 app.include_router(deliver_router)
 app.include_router(policy_router)

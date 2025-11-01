@@ -1691,5 +1691,28 @@ See [ENFORCEMENT_PLAYBOOK.md](ENFORCEMENT_PLAYBOOK.md) for details.
 
 ---
 
+### Observability & Tracing (PR-28)
+
+**Structured Logs**
+- JSON logs with `ts, level, msg, request_id, org_id, user_sub, route, method, status`
+- Config: `LOG_LEVEL=INFO|DEBUG`, `APP_NAME=aep`
+
+**Metrics (Prometheus)**
+- `/metrics` endpoint (when `PROMETHEUS_ENABLED=true`)
+- `http_requests_total{service,method,path,status}`
+- `http_request_latency_seconds{service,method,path,status}`
+- `sse_stream_drops_total{plan_id}`
+- `plan_publish_e2e_seconds{plan_id}`
+
+**Tracing (OpenTelemetry OTLP)**
+- Env: `OTEL_ENABLED=true`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`
+- Auto-instrumented FastAPI spans with service name from `APP_NAME`
+
+**Headers**
+- `X-Request-Id` is attached to every response for correlation
+- `Server-Timing` includes a basic app timing segment
+
+---
+
 **Copyright © 2025 NavraLabs, Inc. All rights reserved.**
 

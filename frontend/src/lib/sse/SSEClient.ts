@@ -32,14 +32,21 @@ export class SSEClient {
 
     const token = this.tokenGetter();
     const since = this.computeSinceQuery();
-    // NOTE: Token in query parameter is a security risk (exposed in logs/history)
-    // TODO: Implement short-lived stream-specific tokens or use SSE polyfill with headers
+    // SECURITY WARNING: Token in query parameter is a significant security risk
+    // - Exposed in browser history, server logs, proxy logs, and referrer headers
+    // - Visible in network monitoring tools and browser developer tools
+    // - Can be inadvertently shared when URLs are copied/logged
+    // TODO: Critical - Implement one of these solutions before production:
+    //   1. Cookie-based authentication with HttpOnly secure cookies
+    //   2. Short-lived stream-specific tokens (5-15 min lifetime)
+    //   3. SSE polyfill that supports Authorization headers
+    //   4. Server-side session validation with secure session tokens
     const url = `${CORE_API}/api/plan/${this.primaryPlanForURL()}/stream?token=${encodeURIComponent(token ?? "")}${since}`;
 
-    const headers: any = {};
-    const last = this.computeLastEventId();
-    if (last) headers["Last-Event-ID"] = String(last);
-
+    // Native EventSource doesn't support custom headers (including Last-Event-ID)
+    // The last event ID is handled via URL parameter 'since' instead
+    // For future polyfill support that enables headers, implement here
+    
     // Native EventSource can't set headers; we pass token via query.
     // In production, consider implementing token exchange for short-lived stream tokens.
     this.source = new EventSource(url);
@@ -111,7 +118,7 @@ export class SSEClient {
     this.connecting = false;
     const delay = Math.min(
       SSEClient.MAX_RECONNECT_DELAY, 
-      Math.pow(2, this.reconnectAttempt) * SSEClient.BASE_DELAY + Math.random() * SSEClient.JITTER_MS
+      Math.min(Math.pow(2, this.reconnectAttempt), 30) * SSEClient.BASE_DELAY + Math.random() * SSEClient.JITTER_MS
     );
     this.reconnectAttempt++;
     setTimeout(() => this.ensureConnected(), delay);

@@ -5,22 +5,34 @@ export type OutboxItem = {
   method: string; 
   headers?: Record<string, string>; 
   body: any; 
-  ts: number 
+  ts: number;
+  retryCount: number;
 };
 
 export class Outbox {
   private key = "aep.outbox.v1";
+  private readonly MAX_RETRIES = 3;
+  private readonly MAX_AGE_HOURS = 24;
 
-  push(item: Omit<OutboxItem, "ts">) {
+  push(item: Omit<OutboxItem, "ts" | "retryCount">) {
     const list = this.read();
-    list.push({ ...item, ts: Date.now() });
+    list.push({ ...item, ts: Date.now(), retryCount: 0 });
     this.write(list);
   }
 
   async flush(fetcher: (url: string, init: RequestInit) => Promise<Response>) {
     const list = this.read();
     const keep: OutboxItem[] = [];
+    const now = Date.now();
+    const maxAge = this.MAX_AGE_HOURS * 60 * 60 * 1000; // Convert hours to milliseconds
+    
     for (const it of list) {
+      // Remove items that are too old or have exceeded retry limit
+      if ((now - it.ts) > maxAge || it.retryCount >= this.MAX_RETRIES) {
+        console.warn(`Outbox: Dropping item after ${it.retryCount} retries or age limit`, { id: it.id, url: it.url });
+        continue; // Don't keep this item
+      }
+      
       try {
         const r = await fetcher(it.url, { 
           method: it.method, 
@@ -30,9 +42,14 @@ export class Outbox {
           }, 
           body: JSON.stringify(it.body) 
         });
-        if (!r.ok) keep.push(it); // keep for retry
+        if (!r.ok) {
+          // Increment retry count and keep for retry
+          keep.push({ ...it, retryCount: it.retryCount + 1 });
+        }
+        // If r.ok, don't add to keep (successfully processed)
       } catch {
-        keep.push(it);
+        // Increment retry count and keep for retry
+        keep.push({ ...it, retryCount: it.retryCount + 1 });
       }
     }
     this.write(keep);
@@ -51,7 +68,12 @@ export class Outbox {
 
   private read(): OutboxItem[] {
     try {
-      return JSON.parse(localStorage.getItem(this.key) || "[]");
+      const items = JSON.parse(localStorage.getItem(this.key) || "[]");
+      // Handle backwards compatibility: add retryCount to existing items
+      return items.map((item: any) => ({
+        ...item,
+        retryCount: item.retryCount ?? 0
+      }));
     } catch {
       return [];
     }

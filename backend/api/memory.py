@@ -73,8 +73,8 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
         # Handle missing table gracefully in test environments
         if "no such table: session_event" in str(e):
             raise HTTPException(
-                status_code=503, 
-                detail="Memory service unavailable - database not fully initialized"
+                status_code=503,
+                detail="Memory service unavailable - database not fully initialized",
             )
         raise
 
@@ -115,7 +115,7 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
         if "no such table: session_event" in str(e):
             raise HTTPException(
                 status_code=503,
-                detail="Memory service unavailable - database not fully initialized"
+                detail="Memory service unavailable - database not fully initialized",
             )
         raise
 

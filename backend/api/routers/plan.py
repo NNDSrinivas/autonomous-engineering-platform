@@ -39,9 +39,7 @@ def sanitize_for_logging(value: str) -> str:
 
     # Replace control characters with safe representations
     # Only escape C0 and DEL characters, preserve printable Unicode
-    value = re.sub(
-        r"[\x00-\x1f\x7f]", lambda m: f"\\x{ord(m.group(0)):02x}", value
-    )
+    value = re.sub(r"[\x00-\x1f\x7f]", lambda m: f"\\x{ord(m.group(0)):02x}", value)
 
     # Limit length to prevent log flooding
     if len(value) > 200:
@@ -370,7 +368,11 @@ async def stream_plan_updates(
                     yield f"data: {json.dumps(payload)}\n\n"
                 except Exception:
                     # Fallback for malformed messages
-                    logger.warning("Malformed SSE message: %s", sanitize_for_logging(str(msg)), exc_info=True)
+                    logger.warning(
+                        "Malformed SSE message: %s",
+                        sanitize_for_logging(str(msg)),
+                        exc_info=True,
+                    )
                     yield "event: error\n"
                     yield f"data: {json.dumps({'error': 'Malformed SSE message'})}\n\n"
 

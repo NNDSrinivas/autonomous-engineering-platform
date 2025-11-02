@@ -1,7 +1,6 @@
 import asyncio
 import functools
 import json
-import logging
 import redis
 import time
 from contextlib import contextmanager
@@ -296,15 +295,21 @@ def _redis_result_to_int(result: Any) -> int:
         try:
             return int(result)
         except (ValueError, TypeError):
-            logger.warning("Failed to convert Redis result to int: %s (type: %s)", 
-                         str(result)[:100], type(result).__name__)
+            logger.warning(
+                "Failed to convert Redis result to int: %s (type: %s)",
+                str(result)[:100],
+                type(result).__name__,
+            )
             return 0
     # For other types, attempt conversion or default to 0
     try:
         return int(result)
     except (ValueError, TypeError):
-        logger.warning("Failed to convert Redis result to int: %s (type: %s)", 
-                     str(result)[:100], type(result).__name__)
+        logger.warning(
+            "Failed to convert Redis result to int: %s (type: %s)",
+            str(result)[:100],
+            type(result).__name__,
+        )
         return 0
 
 

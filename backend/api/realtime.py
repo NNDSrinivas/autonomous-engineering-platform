@@ -274,6 +274,28 @@ class CaptionReq(BaseModel):
     ts_end_ms: int | None = None
 
 
+def _redis_result_to_int(result: Any) -> int:
+    """Safely convert Redis result to integer.
+    
+    Redis operations can return various types depending on configuration.
+    This helper ensures we get a consistent integer result.
+    """
+    if result is None:
+        return 0
+    if isinstance(result, int):
+        return result
+    if isinstance(result, (str, bytes)):
+        try:
+            return int(result)
+        except (ValueError, TypeError):
+            return 0
+    # For other types, attempt conversion or default to 0
+    try:
+        return int(result)
+    except (ValueError, TypeError):
+        return 0
+
+
 def _should_generate_answer(text: str, caption_count: int) -> bool:
     """Determine if answer generation should be triggered.
 
@@ -315,7 +337,7 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
                     pipe.expire(key, REDIS_KEY_EXPIRY_SECONDS)
                     results = pipe.execute()
                     result = results[0] if results else 0
-                    n = int(result) if result is not None else 0  # type: ignore[arg-type] # Redis type issue
+                    n = _redis_result_to_int(result)
                     break
                 except redis.WatchError:
                     # Key was modified during transaction, retry with exponential backoff
@@ -326,7 +348,7 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
                     else:
                         # Max retries reached, fall back to non-atomic increment
                         result = r.incr(key)
-                        n = int(result) if result is not None else 0  # type: ignore[arg-type] # Redis type issue
+                        n = _redis_result_to_int(result)
                         r.expire(key, REDIS_KEY_EXPIRY_SECONDS)
                         break
 

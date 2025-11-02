@@ -23,6 +23,7 @@ export const PlanView: React.FC = () => {
   const archiveMutation = useArchivePlan();
   
   const [liveSteps, setLiveSteps] = useState<PlanStep[]>([]);
+  const [pendingOptimisticSteps, setPendingOptimisticSteps] = useState<Map<string, PlanStep>>(new Map());
   const [stepText, setStepText] = useState('');
   const [ownerName, setOwnerName] = useState('user');
   const [archiveError, setArchiveError] = useState<string | null>(null);
@@ -88,8 +89,35 @@ export const PlanView: React.FC = () => {
       if (type === 'connected') {
         console.log('Connected to plan stream:', payload.plan_id);
       } else if (isPlanStep(payload)) {
-        // New step received - validated structure
-        setLiveSteps((prev) => [...prev, payload]);
+        // New step received - check for optimistic reconciliation
+        setLiveSteps((prev) => {
+          // Check if this step matches any pending optimistic updates
+          const matchingOptimistic = Array.from(pendingOptimisticSteps.values()).find(
+            optimistic => 
+              optimistic.text === payload.text && 
+              optimistic.owner === payload.owner &&
+              Math.abs(new Date(optimistic.ts).getTime() - new Date(payload.ts).getTime()) < 5000 // Within 5 seconds
+          );
+          
+          if (matchingOptimistic) {
+            // Remove the optimistic update since we got the real one
+            setPendingOptimisticSteps(pending => {
+              const updated = new Map(pending);
+              if (matchingOptimistic.id) {
+                updated.delete(matchingOptimistic.id);
+              }
+              return updated;
+            });
+            
+            // Replace optimistic step with real step
+            return prev.map(step => 
+              step.id === matchingOptimistic.id ? payload : step
+            );
+          } else {
+            // Regular new step
+            return [...prev, payload];
+          }
+        });
       }
     });
 
@@ -113,6 +141,28 @@ export const PlanView: React.FC = () => {
         }
         return fetch(url, init);
       }, (_item, reason) => {
+        // Handle dropped items - cleanup optimistic updates
+        if (_item && typeof _item === 'object' && 'body' in _item && _item.body && typeof _item.body === 'object') {
+          const body = _item.body as any;
+          if (body.text && body.plan_id) {
+            // Find and remove matching optimistic update
+            setPendingOptimisticSteps(prev => {
+              const updated = new Map(prev);
+              const optimisticStep = Array.from(prev.values()).find(step => 
+                step.text === body.text && step.owner === body.owner
+              );
+              if (optimisticStep) {
+                if (optimisticStep.id) {
+                  updated.delete(optimisticStep.id);
+                  // Also remove from UI
+                  setLiveSteps(steps => steps.filter(step => step.id !== optimisticStep.id));
+                }
+              }
+              return updated;
+            });
+          }
+        }
+        
         // Notify user about dropped items
         const reasonText = reason === 'age' ? 'too old' : 
                           reason === 'retries' ? 'too many failed attempts' : 
@@ -158,6 +208,11 @@ export const PlanView: React.FC = () => {
           owner: stepData.owner,
           ts: new Date().toISOString(),
         };
+        
+        // Track optimistic update for later reconciliation
+        if (optimisticStep.id) {
+          setPendingOptimisticSteps(prev => new Map(prev).set(optimisticStep.id!, optimisticStep));
+        }
         setLiveSteps((prev) => [...prev, optimisticStep]);
         showToast("You're offline. We queued your change and will resend when back online.", "warning");
       } else {

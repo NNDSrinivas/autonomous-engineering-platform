@@ -121,7 +121,56 @@ export class SSEClient {
    */
   private createFetchBasedEventSource(url: string, token: string | null): EventSource {
     const controller = new AbortController();
-    let eventSource: any;
+    
+    // Create EventSource-compatible object with proper listener support first
+    const listeners = new Map<string, Set<EventListener>>();
+    
+    const eventSource: any = {
+      readyState: 0, // CONNECTING
+      onopen: null as ((this: EventSource, ev: Event) => any) | null,
+      onmessage: null as ((this: EventSource, ev: MessageEvent) => any) | null,
+      onerror: null as ((this: EventSource, ev: Event) => any) | null,
+      listeners,
+      addEventListener: function(type: string, listener: EventListener) {
+        if (!this.listeners.has(type)) {
+          this.listeners.set(type, new Set());
+        }
+        this.listeners.get(type)!.add(listener);
+      },
+      removeEventListener: function(type: string, listener: EventListener) {
+        const typeListeners = this.listeners.get(type);
+        if (typeListeners) {
+          typeListeners.delete(listener);
+          if (typeListeners.size === 0) {
+            this.listeners.delete(type);
+          }
+        }
+      },
+      dispatchEvent: function(event: Event) {
+        const typeListeners = this.listeners.get(event.type);
+        if (typeListeners) {
+          typeListeners.forEach(listener => {
+            listener.call(this, event);
+          });
+        }
+
+        // Also call the specific handler properties
+        if (event.type === 'open' && this.onopen) {
+          this.onopen.call(this, event);
+        } else if (event.type === 'message' && this.onmessage) {
+          this.onmessage.call(this, event as MessageEvent);
+        } else if (event.type === 'error' && this.onerror) {
+          this.onerror.call(this, event);
+        }
+
+        return true;
+      },
+      close: function() {
+        controller.abort();
+        this.readyState = 2; // CLOSED
+      },
+      url
+    };
 
     // Create a fetch-based EventSource polyfill
     const headers: Record<string, string> = {
@@ -154,7 +203,7 @@ export class SSEClient {
       const processChunk = () => {
         reader.read().then(({ done, value }) => {
           if (done) {
-            eventSource?.dispatchEvent(new Event('error'));
+            eventSource.dispatchEvent(new Event('error'));
             return;
           }
 
@@ -180,7 +229,7 @@ export class SSEClient {
                   data: eventData.slice(0, -1), // Remove trailing newline
                   lastEventId: eventId,
                 });
-                eventSource?.dispatchEvent(messageEvent);
+                eventSource.dispatchEvent(messageEvent);
                 eventData = '';
                 eventType = 'message';
                 eventId = '';
@@ -191,7 +240,7 @@ export class SSEClient {
           processChunk();
         }).catch(error => {
           if (error.name !== 'AbortError') {
-            eventSource?.dispatchEvent(new Event('error'));
+            eventSource.dispatchEvent(new Event('error'));
           }
         });
       };
@@ -199,15 +248,9 @@ export class SSEClient {
       processChunk();
     }).catch(error => {
       if (error.name !== 'AbortError') {
-        eventSource?.dispatchEvent(new Event('error'));
+        eventSource.dispatchEvent(new Event('error'));
       }
     });
-
-    // Create EventSource-compatible object with proper listener support
-    const listeners = new Map<string, Set<EventListener>>();
-    
-    eventSource = {
-      readyState: 1, // OPEN
       onopen: null as ((this: EventSource, ev: Event) => any) | null,
       onmessage: null as ((this: EventSource, ev: MessageEvent) => any) | null,
       onerror: null as ((this: EventSource, ev: Event) => any) | null,
@@ -218,56 +261,6 @@ export class SSEClient {
         }
         this.listeners.get(type)!.add(listener);
       },
-      removeEventListener: function(type: string, listener: EventListener) {
-        const set = this.listeners.get(type);
-        if (set) {
-          set.delete(listener);
-          if (set.size === 0) {
-            this.listeners.delete(type);
-          }
-        }
-      },
-      dispatchEvent: function(event: Event) {
-        // Call the on<type> property if present
-        if (event.type === 'open' && this.onopen) {
-          this.onopen.call(this, event);
-        } else if (event.type === 'message' && this.onmessage) {
-          this.onmessage.call(this, event as MessageEvent);
-        } else if (event.type === 'error' && this.onerror) {
-          this.onerror.call(this, event);
-        }
-        
-        // Handle custom event types via on<type> property
-        const handler = (this as any)[`on${event.type}`];
-        if (
-          handler &&
-          event.type !== 'open' &&
-          event.type !== 'message' &&
-          event.type !== 'error'
-        ) {
-          handler.call(this, event);
-        }
-        
-        // Call all listeners registered via addEventListener
-        const listeners = this.listeners.get(event.type);
-        if (listeners) {
-          for (const l of Array.from(listeners)) {
-            try {
-              (l as EventListener).call(this, event);
-            } catch (e) {
-              // Ignore listener errors to match EventTarget semantics
-            }
-          }
-        }
-        
-        return true;
-      },
-      close: function() {
-        controller.abort();
-        this.readyState = 2; // CLOSED
-      }
-    };
-
     // Simulate connection opening
     setTimeout(() => {
       eventSource.readyState = 1; // OPEN

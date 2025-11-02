@@ -88,7 +88,7 @@ export class Outbox {
   private read(): OutboxItem[] {
     // Return cached data if available
     if (this.cache !== null) {
-      return this.cache;
+      return [...this.cache]; // Return shallow copy to prevent external mutations
     }
     
     try {
@@ -99,11 +99,11 @@ export class Outbox {
         retryCount: item.retryCount ?? 0
       }));
       this.cache = processedItems;
-      return processedItems;
+      return [...processedItems]; // Return shallow copy to prevent external mutations
     } catch {
       const emptyList: OutboxItem[] = [];
       this.cache = emptyList;
-      return emptyList;
+      return [...emptyList]; // Return shallow copy to prevent external mutations
     }
   }
 

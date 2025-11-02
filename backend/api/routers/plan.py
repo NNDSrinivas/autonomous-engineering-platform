@@ -350,7 +350,8 @@ async def stream_plan_updates(
                 except Exception:
                     # Fallback for malformed messages
                     logger.warning("Malformed SSE message: %s", msg, exc_info=True)
-                    yield f"data: {msg}\n\n"
+                    yield f"event: error\n"
+                    yield f"data: {json.dumps({'error': 'Malformed SSE message', 'raw': str(msg)})}\n\n"
 
         except asyncio.CancelledError:
             # Client disconnected

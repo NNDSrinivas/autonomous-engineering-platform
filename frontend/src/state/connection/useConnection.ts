@@ -8,22 +8,30 @@ export function useConnection() {
   const mountedRef = useRef(true);
 
   useEffect(() => {
-    const handleOnline = () => setOnline(true);
-    const handleOffline = () => setOnline(false);
+    const handleOnline = () => {
+      if (mountedRef.current) setOnline(true);
+    };
+    const handleOffline = () => {
+      if (mountedRef.current) setOnline(false);
+    };
     
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     
     return () => { 
-      mountedRef.current = false; // Ensure proper unmount detection
+      mountedRef.current = false;
       window.removeEventListener("online", handleOnline); 
       window.removeEventListener("offline", handleOffline); 
     };
   }, []);
 
   useEffect(() => {
-    const handleStreamOpen = () => setStatus("connected");
-    const handleStreamError = () => setStatus("disconnected");
+    const handleStreamOpen = () => {
+      if (mountedRef.current) setStatus("connected");
+    };
+    const handleStreamError = () => {
+      if (mountedRef.current) setStatus("disconnected");
+    };
     
     window.addEventListener("aep-stream-open", handleStreamOpen);
     window.addEventListener("aep-stream-error", handleStreamError);

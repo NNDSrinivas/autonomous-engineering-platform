@@ -251,16 +251,7 @@ export class SSEClient {
         eventSource.dispatchEvent(new Event('error'));
       }
     });
-      onopen: null as ((this: EventSource, ev: Event) => any) | null,
-      onmessage: null as ((this: EventSource, ev: MessageEvent) => any) | null,
-      onerror: null as ((this: EventSource, ev: Event) => any) | null,
-      listeners,
-      addEventListener: function(type: string, listener: EventListener) {
-        if (!this.listeners.has(type)) {
-          this.listeners.set(type, new Set());
-        }
-        this.listeners.get(type)!.add(listener);
-      },
+
     // Simulate connection opening
     setTimeout(() => {
       eventSource.readyState = 1; // OPEN

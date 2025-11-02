@@ -39,9 +39,15 @@ export const PlanView: React.FC = () => {
   
   const [liveSteps, setLiveSteps] = useState<PlanStep[]>([]);
   const [pendingOptimisticSteps, setPendingOptimisticSteps] = useState<Map<string, PlanStep>>(new Map());
+  const pendingOptimisticStepsRef = useRef<Map<string, PlanStep>>(new Map());
   const [stepText, setStepText] = useState('');
   const [ownerName, setOwnerName] = useState('user');
   const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    pendingOptimisticStepsRef.current = pendingOptimisticSteps;
+  }, [pendingOptimisticSteps]);
 
   // Resilience features (PR-30)
   const { online, status, setStatus } = useConnection();
@@ -107,7 +113,7 @@ export const PlanView: React.FC = () => {
         // New step received - check for optimistic reconciliation
         setLiveSteps((prev) => {
           // Check if this step matches any pending optimistic updates
-          const matchingOptimistic = Array.from(pendingOptimisticSteps.values()).find(
+          const matchingOptimistic = Array.from(pendingOptimisticStepsRef.current.values()).find(
             optimistic => 
               optimistic.text === payload.text && 
               optimistic.owner === payload.owner &&

@@ -117,7 +117,7 @@ class Settings(BaseSettings):
     enable_audit_logging: bool = Field(
         default=True,
         alias="ENABLE_AUDIT_LOGGING",
-        description="Disable in test environments to prevent DB errors",
+        description="Disable in test environments to prevent DB errors from missing audit tables or incomplete schema initialization",
     )
 
     # Common file extensions to validate against for code analysis

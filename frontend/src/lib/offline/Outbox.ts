@@ -91,7 +91,8 @@ export class Outbox {
   private read(): OutboxItem[] {
     // Return cached data if available
     if (this.cache !== null) {
-      return structuredClone(this.cache); // Deep copy to prevent any mutations
+      // Use spread operator for shallow copy - more efficient than structuredClone for simple objects
+      return this.cache.map(item => ({ ...item }));
     }
     
     try {
@@ -102,7 +103,8 @@ export class Outbox {
         retryCount: item.retryCount ?? 0
       }));
       this.cache = processedItems;
-      return structuredClone(processedItems); // Deep copy to prevent any mutations
+      // Use spread operator for shallow copy - more efficient than structuredClone
+      return processedItems.map((item: OutboxItem) => ({ ...item }));
     } catch {
       const emptyList: OutboxItem[] = [];
       this.cache = emptyList;

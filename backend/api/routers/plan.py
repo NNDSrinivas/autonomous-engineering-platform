@@ -12,9 +12,10 @@ from datetime import datetime
 import json
 import asyncio
 import logging
-import re
 
-from backend.core.db import get_db
+from backend.core.db import engine, SessionLocal, safe_commit_with_rollback
+from backend.database.session import get_db
+from backend.core.security import sanitize_for_logging
 from backend.core.settings import settings
 from backend.database.models.live_plan import LivePlan
 from backend.database.models.memory_graph import MemoryNode
@@ -27,29 +28,6 @@ from backend.core.policy.engine import PolicyEngine, get_policy_engine
 from backend.core.db_utils import get_short_lived_session
 from backend.core.audit.publisher import append_and_broadcast
 from backend.core.eventstore.service import replay
-
-
-def sanitize_for_logging(value: str) -> str:
-    """
-    Comprehensive sanitization to prevent log injection attacks.
-    Removes or escapes control characters and potential injection patterns.
-    """
-    if not isinstance(value, str):
-        value = str(value)
-
-    # Remove or replace all line-breaking characters (CR, LF, Unicode line/paragraph separators)
-    # to prevent CRLF injection attacks that could break log file structure
-    value = re.sub(r"[\r\n\u2028\u2029]+", r" ", value)
-
-    # Replace control characters with safe representations
-    # Only escape C0 and DEL characters, preserve printable Unicode
-    value = re.sub(r"[\x00-\x1f\x7f]", lambda m: f"\\x{ord(m.group(0)):02x}", value)
-
-    # Limit length to prevent log flooding
-    if len(value) > 200:
-        value = value[:197] + "..."
-
-    return value
 
 
 logger = logging.getLogger(__name__)
@@ -303,6 +281,7 @@ async def stream_plan_updates(
         elif since is not None:
             since_seq = int(since)
     except ValueError:
+        # Only compute resume_value in error path for better performance
         resume_value = last_id_header or since
         # Sanitize user input to prevent log injection
         sanitized_resume_value = sanitize_for_logging(str(resume_value))

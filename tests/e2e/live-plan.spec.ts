@@ -13,7 +13,7 @@ const BACKEND_URL = process.env.E2E_BACKEND_URL || 'http://localhost:8000';
 const PLAN_ID = 'e2e-test-plan-' + Date.now();
 
 // Reusable selectors
-// Using data-testid for robust test automation - prefer this over fragile placeholder/text selectors
+// Using data-testid for robust test automation—prefer this over fragile placeholder/text selectors
 const STEP_INPUT_SELECTOR = '[data-testid="step-input"], input[placeholder*="step" i], textarea[placeholder*="step" i], form input[type="text"]';
 const ADD_BUTTON_SELECTOR = '[data-testid="add-step"], button:has-text("Add Step"), button:has-text("Add"), button[type="submit"]';
 

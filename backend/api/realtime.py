@@ -279,10 +279,10 @@ def _redis_result_to_int(result: Any) -> int:
 
     Redis operations can return various types depending on configuration.
     This helper ensures we get a consistent integer result.
-    
+
     Args:
         result: The value returned from a Redis operation.
-        
+
     Returns:
         The integer value of the result if conversion succeeds.
         Returns 0 if the result is None or cannot be converted to an integer.

@@ -113,12 +113,19 @@ export const PlanView: React.FC = () => {
         // New step received - check for optimistic reconciliation
         setLiveSteps((prev) => {
           // Check if this step matches any pending optimistic updates
-          const matchingOptimistic = Array.from(pendingOptimisticStepsRef.current.values()).find(
-            optimistic => 
-              optimistic.text === payload.text && 
-              optimistic.owner === payload.owner &&
-              Math.abs(new Date(optimistic.ts).getTime() - new Date(payload.ts).getTime()) < 5000 // Within 5 seconds
-          );
+          // Use efficient key-based lookup instead of linear search
+          const optimisticKey = `${payload.text}|${payload.owner}`;
+          let matchingOptimistic: PlanStep | undefined;
+          
+          // Find matching optimistic update by text+owner key with timestamp tolerance
+          for (const [id, optimistic] of pendingOptimisticStepsRef.current) {
+            const candidateKey = `${optimistic.text}|${optimistic.owner}`;
+            if (candidateKey === optimisticKey &&
+                Math.abs(new Date(optimistic.ts).getTime() - new Date(payload.ts).getTime()) < 5000) {
+              matchingOptimistic = optimistic;
+              break;
+            }
+          }
           
           if (matchingOptimistic) {
             // Remove the optimistic update since we got the real one

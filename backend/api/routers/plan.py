@@ -365,7 +365,7 @@ async def stream_plan_updates(
                     if seq:
                         yield f"id: {seq}\n"
                     yield f"event: {event_type}\n"
-                    yield f"data: {json.dumps(payload)}\n\n"
+                    yield f"data: {json.dumps({'seq': seq, 'type': event_type, 'payload': payload})}\n\n"
                 except Exception:
                     # Fallback for malformed messages
                     logger.warning(

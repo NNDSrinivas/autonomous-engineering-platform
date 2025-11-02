@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     APP_NAME: str = "Autonomous Engineering Platform"
+    app_name: str = "autonomous-engineering-platform"  # Lowercase alias for consistency
 
     # Redis configuration
     REDIS_URL: str | None = None
@@ -57,6 +58,7 @@ class Settings(BaseSettings):
 
     # Application environment
     APP_ENV: str = "development"
+    app_env: str = "dev"  # Lowercase alias for consistency
 
     @property
     def cors_origins_list(self) -> list[str]:

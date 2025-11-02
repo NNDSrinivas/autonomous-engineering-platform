@@ -14,6 +14,9 @@ import { Outbox } from '../lib/offline/Outbox';
 import { useConnection } from '../state/connection/useConnection';
 import { CORE_API, ORG } from '../api/client';
 
+// Constants
+const OPTIMISTIC_TIMESTAMP_TOLERANCE_MS = 5000; // 5 seconds
+
 // Type for outbox item body to ensure type safety
 interface PlanStepBody {
   text: string;
@@ -118,10 +121,10 @@ export const PlanView: React.FC = () => {
           let matchingOptimistic: PlanStep | undefined;
           
           // Find matching optimistic update by text+owner key with timestamp tolerance
-          for (const [id, optimistic] of pendingOptimisticStepsRef.current) {
+          for (const [, optimistic] of pendingOptimisticStepsRef.current) {
             const candidateKey = `${optimistic.text}|${optimistic.owner}`;
             if (candidateKey === optimisticKey &&
-                Math.abs(new Date(optimistic.ts).getTime() - new Date(payload.ts).getTime()) < 5000) {
+                Math.abs(new Date(optimistic.ts).getTime() - new Date(payload.ts).getTime()) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS) {
               matchingOptimistic = optimistic;
               break;
             }

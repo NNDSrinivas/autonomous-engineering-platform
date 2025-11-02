@@ -200,6 +200,11 @@ export class SSEClient {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      // Event variables persist across chunks to handle partial events
+      let eventType = 'message';
+      let eventData = '';
+      let eventId = '';
+
       const processChunk = () => {
         reader.read().then(({ done, value }) => {
           if (done) {
@@ -211,15 +216,11 @@ export class SSEClient {
           const lines = buffer.split('\n');
           buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-          let eventType = 'message';
-          let eventData = '';
-          let eventId = '';
-
           for (const line of lines) {
             if (line.startsWith('event:')) {
               eventType = line.substring(6).trim();
             } else if (line.startsWith('data:')) {
-              eventData += line.substring(5) + '\n';
+              eventData += line.substring(line.startsWith('data: ') ? 6 : 5) + '\n';
             } else if (line.startsWith('id:')) {
               eventId = line.substring(3).trim();
             } else if (line === '') {
@@ -236,14 +237,6 @@ export class SSEClient {
                 eventId = '';
               }
             }
-          }
-
-          // Reset variables if we have partial data at end of chunk to prevent
-          // state pollution between chunks
-          if (buffer && (eventData || eventType !== 'message' || eventId)) {
-            eventData = '';
-            eventType = 'message';
-            eventId = '';
           }
 
           processChunk();

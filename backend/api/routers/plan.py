@@ -37,6 +37,10 @@ def sanitize_for_logging(value: str) -> str:
     if not isinstance(value, str):
         value = str(value)
 
+    # Remove or replace all line-breaking characters (CR, LF, Unicode line/paragraph separators)
+    # to prevent CRLF injection attacks that could break log file structure
+    value = re.sub(r"[\r\n\u2028\u2029]+", r" ", value)
+
     # Replace control characters with safe representations
     # Only escape C0 and DEL characters, preserve printable Unicode
     value = re.sub(r"[\x00-\x1f\x7f]", lambda m: f"\\x{ord(m.group(0)):02x}", value)
@@ -373,8 +377,25 @@ async def stream_plan_updates(
                         sanitize_for_logging(str(msg)),
                         exc_info=True,
                     )
+                    
+                    # Try to extract partial info for better client debugging
+                    error_payload = {"error": "Failed to parse SSE event data"}
+                    try:
+                        if isinstance(msg, str):
+                            partial = json.loads(msg)
+                        else:
+                            partial = msg
+                        if isinstance(partial, dict):
+                            if "seq" in partial:
+                                error_payload["seq"] = partial["seq"]
+                            if "type" in partial:
+                                error_payload["type"] = partial["type"]
+                    except Exception:
+                        # Ignore parsing errors for partial info
+                        pass
+                    
                     yield "event: error\n"
-                    yield f"data: {json.dumps({'error': 'Malformed SSE message'})}\n\n"
+                    yield f"data: {json.dumps(error_payload)}\n\n"
 
         except asyncio.CancelledError:
             # Client disconnected

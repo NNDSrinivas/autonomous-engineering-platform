@@ -230,11 +230,20 @@ export class SSEClient {
                   lastEventId: eventId,
                 });
                 eventSource.dispatchEvent(messageEvent);
+                // Reset event variables after dispatching
                 eventData = '';
                 eventType = 'message';
                 eventId = '';
               }
             }
+          }
+
+          // Reset variables if we have partial data at end of chunk to prevent
+          // state pollution between chunks
+          if (buffer && (eventData || eventType !== 'message' || eventId)) {
+            eventData = '';
+            eventType = 'message';
+            eventId = '';
           }
 
           processChunk();

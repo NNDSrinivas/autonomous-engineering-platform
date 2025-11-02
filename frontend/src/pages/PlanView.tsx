@@ -140,7 +140,7 @@ export const PlanView: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, [id, tokenGetter, setStatus, pendingOptimisticSteps, setPendingOptimisticSteps]);
+  }, [id, tokenGetter, setStatus]);
 
   // Handle offline/online transitions and outbox flushing
   useEffect(() => {
@@ -225,9 +225,7 @@ export const PlanView: React.FC = () => {
         };
         
         // Track optimistic update for later reconciliation
-        if (optimisticStep.id) {
-          setPendingOptimisticSteps(prev => new Map(prev).set(optimisticStep.id!, optimisticStep));
-        }
+        setPendingOptimisticSteps(prev => new Map(prev).set(optimisticStep.id!, optimisticStep));
         setLiveSteps((prev) => [...prev, optimisticStep]);
         showToast("You're offline. We queued your change and will resend when back online.", "warning");
       } else {

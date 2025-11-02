@@ -15,6 +15,7 @@ export function useConnection() {
     window.addEventListener("offline", handleOffline);
     
     return () => { 
+      mountedRef.current = false; // Ensure proper unmount detection
       window.removeEventListener("online", handleOnline); 
       window.removeEventListener("offline", handleOffline); 
     };

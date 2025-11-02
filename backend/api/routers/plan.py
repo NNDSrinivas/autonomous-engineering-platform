@@ -327,7 +327,7 @@ async def stream_plan_updates(
                         # Emit with sequence ID for Last-Event-ID compatibility
                         yield f"id: {event.seq}\n"
                         yield f"event: {event.type}\n"
-                        yield f"data: {json.dumps(event.payload)}\n\n"
+                        yield f"data: {json.dumps({'seq': event.seq, 'type': event.type, 'payload': event.payload})}\n\n"
 
             # Always send initial connection message after any backfill
             yield f"data: {json.dumps({'type': 'connected', 'plan_id': plan_id})}\n\n"

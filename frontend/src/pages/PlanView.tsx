@@ -14,6 +14,21 @@ import { Outbox } from '../lib/offline/Outbox';
 import { useConnection } from '../state/connection/useConnection';
 import { CORE_API, ORG } from '../api/client';
 
+// Type for outbox item body to ensure type safety
+interface PlanStepBody {
+  text: string;
+  owner: string;
+  plan_id: string;
+}
+
+// Type guard to check if an object is a valid PlanStepBody
+function isPlanStepBody(obj: any): obj is PlanStepBody {
+  return obj && typeof obj === 'object' && 
+         typeof obj.text === 'string' && 
+         typeof obj.owner === 'string' && 
+         typeof obj.plan_id === 'string';
+}
+
 export const PlanView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -125,7 +140,7 @@ export const PlanView: React.FC = () => {
     return () => {
       unsubscribe();
     };
-  }, [id, tokenGetter, setStatus]);
+  }, [id, tokenGetter, setStatus, pendingOptimisticSteps, setPendingOptimisticSteps]);
 
   // Handle offline/online transitions and outbox flushing
   useEffect(() => {
@@ -142,9 +157,9 @@ export const PlanView: React.FC = () => {
         return fetch(url, init);
       }, (_item, reason) => {
         // Handle dropped items - cleanup optimistic updates
-        if (_item && typeof _item === 'object' && 'body' in _item && _item.body && typeof _item.body === 'object') {
-          const body = _item.body as any;
-          if (body.text && body.plan_id) {
+        if (_item && typeof _item === 'object' && 'body' in _item && _item.body) {
+          if (isPlanStepBody(_item.body)) {
+            const body = _item.body;
             // Find and remove matching optimistic update
             setPendingOptimisticSteps(prev => {
               const updated = new Map(prev);

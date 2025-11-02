@@ -158,10 +158,15 @@ export class SSEClient {
         }
       },
       dispatchEvent: function(event: Event) {
-        // DOM events (open, error, message) don't get dispatched to EventHandlers
-        // EventHandlers only receive custom events via the dispatch() method
+        // Call registered event listeners first
+        const typeListeners = this.listeners.get(event.type);
+        if (typeListeners) {
+          typeListeners.forEach((listener: EventListener) => {
+            listener.call(this, event);
+          });
+        }
         
-        // Call the specific handler properties for DOM events
+        // Also call the specific handler properties for DOM events
         if (event.type === 'open' && this.onopen) {
           this.onopen.call(this, event);
         } else if (event.type === 'message' && this.onmessage) {

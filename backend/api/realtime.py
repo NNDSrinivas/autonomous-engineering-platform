@@ -513,7 +513,9 @@ def _emit_new_answers(
     Args:
         db: Database session
         session_id: Session identifier
-        last_ts: Last timestamp processed
+        last_ts: Last timestamp processed (datetime object or ISO string)
+                 - datetime objects are automatically converted to ISO strings
+                 - string timestamps are passed through as-is
 
     Returns:
         Tuple of (new_rows, updated_last_ts as ISO string)

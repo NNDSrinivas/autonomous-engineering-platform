@@ -331,7 +331,7 @@ async def stream_plan_updates(
                         yield f"data: {json.dumps({'seq': event.seq, 'type': event.type, 'payload': event.payload})}\n\n"
 
             # Always send initial connection message after any backfill
-            yield f"data: {json.dumps({'type': 'connected', 'plan_id': plan_id})}\n\n"
+            yield f"data: {json.dumps({'seq': None, 'type': 'connected', 'payload': {'plan_id': plan_id}})}\n\n"
 
             # Stream live updates from broadcaster
             subscription = await bc.subscribe(channel)

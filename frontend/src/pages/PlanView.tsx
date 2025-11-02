@@ -105,6 +105,7 @@ export const PlanView: React.FC = () => {
     // Initialize SSE client if not already done
     if (!sseClientRef.current) {
       sseClientRef.current = new SSEClient(tokenGetter);
+      setStatus("connecting"); // Only set connecting when creating new client
     }
 
     const unsubscribe = sseClientRef.current.subscribe(id, ({ type, payload }) => {
@@ -142,9 +143,24 @@ export const PlanView: React.FC = () => {
             });
             
             // Replace optimistic step with real step
-            return prev.map(step => 
-              step.id === matchingOptimistic.id ? payload : step
-            );
+            return prev.map(step => {
+              // If matchingOptimistic.id is defined, match by id; otherwise, match by text, owner, and timestamp tolerance
+              if (matchingOptimistic.id) {
+                return step.id === matchingOptimistic.id ? payload : step;
+              } else {
+                const stepKey = `${step.text}|${step.owner}`;
+                const optimisticKey = `${matchingOptimistic.text}|${matchingOptimistic.owner}`;
+                const stepTime = new Date(step.ts).getTime();
+                const optimisticTime = new Date(matchingOptimistic.ts).getTime();
+                if (
+                  stepKey === optimisticKey &&
+                  Math.abs(stepTime - optimisticTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS
+                ) {
+                  return payload;
+                }
+                return step;
+              }
+            });
           } else {
             // Regular new step
             return [...prev, payload];
@@ -153,7 +169,6 @@ export const PlanView: React.FC = () => {
       }
     });
 
-    setStatus("connecting");
     return () => {
       unsubscribe();
     };
@@ -212,7 +227,7 @@ export const PlanView: React.FC = () => {
         }
       });
     }
-  }, [online, tokenGetter, showToast]);
+  }, [online, tokenGetter, showToast, isPlanStepBody]);
 
   const handleAddStep = useCallback(async () => {
     if (!id || !stepText.trim()) return;

@@ -64,7 +64,9 @@ export class Outbox {
           }
         }
         // If r.ok, don't add to keep (successfully processed)
-      } catch {
+      } catch (err) {
+        // Log the error for debugging purposes before retrying
+        console.warn(`Outbox: Network error while processing item`, { id: it.id, url: it.url, error: err });
         // Increment retry count and keep for retry
         keep.push({ ...it, retryCount: it.retryCount + 1 });
       }

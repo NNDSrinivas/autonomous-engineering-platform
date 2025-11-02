@@ -52,11 +52,11 @@ export class SSEClient {
     this.connecting = true;
 
     const token = this.tokenGetter();
-    const since = this.computeSinceQuery();
     
     // Secure SSE connection using fetch polyfill to support Authorization headers
     // This avoids exposing tokens in URL parameters, browser history, or logs
-    const url = `${CORE_API}/api/plan/${this.primaryPlanForURL()}/stream${since}`;
+    const baseUrl = `${CORE_API}/api/plan/${this.primaryPlanForURL()}/stream`;
+    const url = this.buildSSEUrl(baseUrl);
     
     // Use fetch-based EventSource polyfill for secure authentication
     this.source = this.createSecureEventSource(url, token);
@@ -87,15 +87,27 @@ export class SSEClient {
 
   /**
    * Creates a secure EventSource using fetch polyfill with Authorization header.
-   * Falls back to native EventSource with token in URL only if fetch fails.
+   * Falls back to native EventSource with token in URL only in non-production environments.
    */
   private createSecureEventSource(url: string, token: string | null): EventSource {
     // Try to use fetch-based polyfill for secure authentication
     try {
       return this.createFetchBasedEventSource(url, token);
     } catch (error) {
-      console.warn('Fetch-based EventSource failed, falling back to native EventSource with token in URL:', error);
-      // Fallback to original method with security warning
+      // Only allow fallback in non-production environments
+      const env = (typeof process !== "undefined" && process.env && process.env.NODE_ENV)
+        ? process.env.NODE_ENV
+        : (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.MODE)
+          ? import.meta.env.MODE
+          : "production";
+      
+      if (env === "production") {
+        console.error('Fetch-based EventSource failed and fallback to insecure token-in-URL is disabled in production:', error);
+        throw new Error('Secure SSE connection failed and fallback is not allowed in production.');
+      }
+      
+      console.warn('Fetch-based EventSource failed, falling back to native EventSource with token in URL (non-production only):', error);
+      // Fallback to original method with security warning in non-production only
       const urlWithToken = `${url}?token=${encodeURIComponent(token ?? "")}`;
       return new EventSource(urlWithToken);
     }
@@ -254,9 +266,15 @@ export class SSEClient {
     return Math.min(...Array.from(this.lastSeq.values()));
   }
 
-  private computeSinceQuery(): string {
-    const last = this.computeLastEventId();
-    return last ? `&since=${last}` : "";
+  private buildSSEUrl(baseUrl: string): string {
+    const urlObj = new URL(baseUrl, window.location.origin);
+    const lastEventId = this.computeLastEventId();
+    
+    if (lastEventId !== null) {
+      urlObj.searchParams.set("since", lastEventId.toString());
+    }
+    
+    return urlObj.toString();
   }
 
   private primaryPlanForURL(): string {

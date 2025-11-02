@@ -58,7 +58,9 @@ class Settings(BaseSettings):
 
     # Application environment
     APP_ENV: str = "development"
-    app_env: str = "dev"  # Lowercase alias for consistency
+    
+    # Audit logging configuration
+    enable_audit_logging: bool = True
 
     @property
     def cors_origins_list(self) -> list[str]:

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 
 interface ToastProps {
   message: string;
@@ -135,10 +135,14 @@ export function useToasts() {
     return unsubscribe;
   }, []);
 
+  const showToast = useCallback((message: string, type?: ToastProps["type"], duration?: number) => 
+    ToastManager.getInstance().show(message, type, duration), []);
+  
+  const removeToast = useCallback((id: string) => ToastManager.getInstance().remove(id), []);
+
   return {
     toasts,
-    showToast: (message: string, type?: ToastProps["type"], duration?: number) => 
-      ToastManager.getInstance().show(message, type, duration),
-    removeToast: (id: string) => ToastManager.getInstance().remove(id),
+    showToast,
+    removeToast,
   };
 }

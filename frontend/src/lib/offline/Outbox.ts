@@ -49,11 +49,14 @@ export class Outbox {
           body: JSON.stringify(it.body) 
         });
         if (!r.ok) {
-          // Only retry server errors (5xx) - client errors (4xx) will never succeed
+          // Retry server errors (5xx) and transient client errors
           if (r.status >= 500 && r.status < 600) {
             keep.push({ ...it, retryCount: it.retryCount + 1 });
+          } else if (r.status === 408 || r.status === 429) {
+            // Retry 408 (Request Timeout) and 429 (Too Many Requests) as they are typically transient
+            keep.push({ ...it, retryCount: it.retryCount + 1 });
           } else if (r.status >= 400 && r.status < 500) {
-            // Log dropped 4xx errors for user visibility
+            // Log dropped 4xx errors for user visibility (permanent client errors)
             console.warn(`Outbox: Dropping item due to client error ${r.status}:`, {
               url: it.url,
               method: it.method,

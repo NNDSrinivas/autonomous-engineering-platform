@@ -377,7 +377,7 @@ async def stream_plan_updates(
                         sanitize_for_logging(str(msg)),
                         exc_info=True,
                     )
-                    
+
                     # Try to extract partial info for better client debugging
                     error_payload = {"error": "Failed to parse SSE event data"}
                     try:
@@ -393,7 +393,7 @@ async def stream_plan_updates(
                     except Exception:
                         # Ignore parsing errors for partial info
                         pass
-                    
+
                     yield "event: error\n"
                     yield f"data: {json.dumps(error_payload)}\n\n"
 

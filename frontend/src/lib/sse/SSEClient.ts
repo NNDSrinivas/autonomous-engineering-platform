@@ -284,8 +284,9 @@ export class SSEClient {
       const planId = this.extractPlanId(payload) || this.primaryPlanForURL();
       if (seq && planId) this.lastSeq.set(planId, seq);
       this.handlers.get(planId)?.forEach((fn) => fn({ planId, type, seq, payload }));
-    } catch {
-      // ignore malformed lines
+    } catch (err) {
+      // Log malformed lines for debugging
+      console.warn("Malformed SSE message received in SSEClient.dispatch:", { data: e.data, error: err });
     }
   }
 

@@ -112,6 +112,12 @@ export const PlanView: React.FC = () => {
           return fetch(url, { ...init, headers });
         }
         return fetch(url, init);
+      }, (item, reason) => {
+        // Notify user about dropped items
+        const reasonText = reason === 'age' ? 'too old' : 
+                          reason === 'retries' ? 'too many failed attempts' : 
+                          'permanent error';
+        showToast(`Offline change dropped: ${reasonText}. You may need to redo this action.`, "warning");
       }).then(processed => {
         if (processed > 0) {
           showToast(`Synced ${processed} queued changes`, "success");
@@ -129,54 +135,52 @@ export const PlanView: React.FC = () => {
       owner: ownerName || 'user',
     };
 
+    // Helper function to queue request in outbox
+    const queueInOutbox = (reason: 'offline' | 'failed') => {
+      const url = `${CORE_API}/api/plan/step`;
+      const outboxId = crypto.randomUUID();
+      outboxRef.current.push({
+        id: outboxId,
+        url,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Org-Id': ORG,
+        },
+        body: stepData,
+      });
+      
+      if (reason === 'offline') {
+        // Optimistic update for better UX
+        const optimisticStep: PlanStep = {
+          id: `offline-${outboxId}`,
+          text: stepData.text,
+          owner: stepData.owner,
+          ts: new Date().toISOString(),
+        };
+        setLiveSteps((prev) => [...prev, optimisticStep]);
+        showToast("You're offline. We queued your change and will resend when back online.", "warning");
+      } else {
+        showToast("Request failed. We'll retry when the connection is stable.", "error");
+      }
+    };
+
     try {
       if (online) {
         // Online: send immediately
         await addStepMutation.mutateAsync(stepData);
         setStepText('');
       } else {
-        // Offline: queue in outbox using the same API structure as online requests
-        const url = `${CORE_API}/api/plan/step`;
-        outboxRef.current.push({
-          id: crypto.randomUUID(),
-          url,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Org-Id': ORG,
-          },
-          body: stepData,
-        });
-        
-        // Optimistic update for better UX
-        const optimisticStep: PlanStep = {
-          id: `offline-${crypto.randomUUID()}`,
-          text: stepData.text,
-          owner: stepData.owner,
-          ts: new Date().toISOString(),
-        };
-        setLiveSteps((prev) => [...prev, optimisticStep]);
+        // Offline: queue in outbox
+        queueInOutbox('offline');
         setStepText('');
-        
-        showToast("You're offline. We queued your change and will resend when back online.", "warning");
       }
     } catch (err) {
       console.error('Failed to add step:', err);
       
       // If online request failed, queue it for retry
       if (online) {
-        const url = `${CORE_API}/api/plan/step`;
-        outboxRef.current.push({
-          id: crypto.randomUUID(),
-          url,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Org-Id': ORG,
-          },
-          body: stepData,
-        });
-        showToast("Request failed. We'll retry when the connection is stable.", "error");
+        queueInOutbox('failed');
       }
     }
   }, [id, stepText, ownerName, addStepMutation, online, showToast]);

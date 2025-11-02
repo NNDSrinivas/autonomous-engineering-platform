@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     APP_NAME: str = "Autonomous Engineering Platform"  # Human-readable application name
-    APP_SLUG: str = "autonomous-engineering-platform"  # Machine-friendly identifier (e.g., for URLs, config)
+    APP_SLUG: str = (
+        "autonomous-engineering-platform"  # Machine-friendly identifier (e.g., for URLs, config)
+    )
 
     # Redis configuration
     REDIS_URL: str | None = None
@@ -58,7 +60,7 @@ class Settings(BaseSettings):
 
     # Application environment
     APP_ENV: str = "development"
-    
+
     # Audit logging configuration
     enable_audit_logging: bool = True
 

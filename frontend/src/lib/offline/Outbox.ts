@@ -22,7 +22,10 @@ export class Outbox {
     this.write(list);
   }
 
-  async flush(fetcher: (url: string, init: RequestInit) => Promise<Response>) {
+  async flush(
+    fetcher: (url: string, init: RequestInit) => Promise<Response>,
+    onDropped?: (item: OutboxItem, reason: 'age' | 'retries' | 'client-error') => void
+  ) {
     const list = this.read();
     const keep: OutboxItem[] = [];
     const now = Date.now();
@@ -32,6 +35,7 @@ export class Outbox {
       // Remove items that are too old or have exceeded retry limit
       if ((now - it.ts) > maxAge || it.retryCount >= this.MAX_RETRIES) {
         console.warn(`Outbox: Dropping item after ${it.retryCount} retries or age limit`, { id: it.id, url: it.url });
+        onDropped?.(it, (now - it.ts) > maxAge ? 'age' : 'retries');
         continue; // Don't keep this item
       }
       
@@ -56,6 +60,7 @@ export class Outbox {
               status: r.status,
               timestamp: new Date(it.ts).toISOString()
             });
+            onDropped?.(it, 'client-error');
           }
         }
         // If r.ok, don't add to keep (successfully processed)

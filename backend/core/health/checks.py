@@ -6,13 +6,13 @@ import logging
 # Optional deps (best-effort)
 try:
     from sqlalchemy import text
-    from backend.core.db import get_engine
+    from core.db import get_engine
 except Exception:
     text = None  # type: ignore
     get_engine = None  # type: ignore
 
 try:
-    from backend.infra.cache.redis_cache import cache
+    from infra.cache.redis_cache import cache
 except Exception:
     cache = None  # type: ignore
 

@@ -48,6 +48,7 @@ def sanitize_for_logging(value: str) -> str:
 
     return value
 
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 

@@ -33,7 +33,7 @@ export class Outbox {
     
     for (const it of list) {
       // Remove items that are too old or have exceeded retry limit
-      if ((now - it.ts) > maxAge || it.retryCount >= this.MAX_RETRIES) {
+      if ((now - it.ts) > maxAge || it.retryCount > this.MAX_RETRIES) {
         console.warn(`Outbox: Dropping item after ${it.retryCount} retries or age limit`, { id: it.id, url: it.url });
         onDropped?.(it, (now - it.ts) > maxAge ? 'age' : 'retries');
         continue; // Don't keep this item

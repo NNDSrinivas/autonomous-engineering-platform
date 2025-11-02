@@ -92,7 +92,7 @@ app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 
 # Conditional audit logging (disabled in test/CI environments to prevent DB errors)
 # Check for explicit test environment using app_env
-is_test_env = settings.app_env in ["test", "ci"]
+is_test_env = settings.APP_ENV in ["test", "ci"]
 if not is_test_env and settings.enable_audit_logging:
     app.add_middleware(AuditMiddleware, service_name="core")
     app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
@@ -113,7 +113,7 @@ def health():
 
 @app.get("/version")
 def version():
-    return {"name": settings.app_name, "env": settings.app_env, "version": "0.1.0"}
+    return {"name": settings.APP_SLUG, "env": settings.APP_ENV, "version": "0.1.0"}
 
 
 # Routers

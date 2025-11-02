@@ -278,9 +278,10 @@ async def stream_plan_updates(
         elif since is not None:
             since_seq = int(since)
     except ValueError:
+        resume_value = last_id_header or since
         logger.warning(
             "Invalid sequence number in resume request: %s",
-            last_id_header if last_id_header is not None else since,
+            resume_value,
         )
         since_seq = None
 

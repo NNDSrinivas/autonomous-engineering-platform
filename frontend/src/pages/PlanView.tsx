@@ -112,7 +112,7 @@ export const PlanView: React.FC = () => {
           return fetch(url, { ...init, headers });
         }
         return fetch(url, init);
-      }, (item, reason) => {
+      }, (_item, reason) => {
         // Notify user about dropped items
         const reasonText = reason === 'age' ? 'too old' : 
                           reason === 'retries' ? 'too many failed attempts' : 

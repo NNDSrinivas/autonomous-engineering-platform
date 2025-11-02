@@ -88,8 +88,10 @@ export class ToastManager {
     this.notifyListeners();
     
     if (duration > 0) {
-      const timeoutId = setTimeout(() => this.remove(id), duration);
-      this.timeouts.set(id, timeoutId as number);
+      const timeoutId = setTimeout(() => {
+        this.remove(id);
+      }, duration);
+      this.timeouts.set(id, timeoutId as unknown as number);
     }
     
     return id;

@@ -276,7 +276,7 @@ class CaptionReq(BaseModel):
 
 def _redis_result_to_int(result: Any) -> int:
     """Safely convert Redis result to integer.
-    
+
     Redis operations can return various types depending on configuration.
     This helper ensures we get a consistent integer result.
     """

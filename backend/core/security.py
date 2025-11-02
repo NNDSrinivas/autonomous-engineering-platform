@@ -10,10 +10,10 @@ def sanitize_for_logging(value: str) -> str:
     """
     Comprehensive sanitization to prevent log injection attacks.
     Removes or escapes control characters and potential injection patterns.
-    
+
     Args:
         value: The string value to sanitize for safe logging
-        
+
     Returns:
         str: Sanitized string safe for logging without injection risks
     """

@@ -280,7 +280,9 @@ async def stream_plan_updates(
     except ValueError:
         resume_value = last_id_header or since
         # Sanitize user input to prevent log injection
-        sanitized_resume_value = str(resume_value).replace('\n', '\\n').replace('\r', '\\r')
+        sanitized_resume_value = (
+            str(resume_value).replace("\n", "\\n").replace("\r", "\\r")
+        )
         logger.warning(
             "Invalid sequence number in resume request: %s",
             sanitized_resume_value,
@@ -316,7 +318,10 @@ async def stream_plan_updates(
             if since_seq is not None:
                 with get_short_lived_session() as db:
                     events = replay(
-                        session=db, plan_id=plan_id, since_seq=since_seq, org_key=x_org_id
+                        session=db,
+                        plan_id=plan_id,
+                        since_seq=since_seq,
+                        org_key=x_org_id,
                     )
                     for event in events:
                         # Emit with sequence ID for Last-Event-ID compatibility

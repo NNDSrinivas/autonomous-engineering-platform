@@ -348,11 +348,12 @@ async def stream_plan_updates(
                         yield f"id: {seq}\n"
                     yield f"event: {event_type}\n"
                     yield f"data: {json.dumps({'seq': seq, 'type': event_type, 'payload': payload})}\n\n"
-                except Exception:
-                    # Fallback for malformed messages
+                except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
+                    # Fallback for malformed messages - catch specific parsing errors
                     logger.warning(
-                        "Malformed SSE message: %s",
+                        "Malformed SSE message: %s (Error: %s)",
                         sanitize_for_logging(str(msg)),
+                        str(e),
                         exc_info=True,
                     )
 

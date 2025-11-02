@@ -105,7 +105,9 @@ export class Outbox {
       this.cache = processedItems;
       // Use spread operator for shallow copy - more efficient than structuredClone
       return processedItems.map((item: OutboxItem) => ({ ...item }));
-    } catch {
+    } catch (err) {
+      // Log localStorage failures for debugging (parse errors, quota exceeded, etc.)
+      console.warn("Failed to read from localStorage outbox:", { key: this.key, error: err });
       const emptyList: OutboxItem[] = [];
       this.cache = emptyList;
       return [...emptyList]; // Return shallow copy to prevent external mutations

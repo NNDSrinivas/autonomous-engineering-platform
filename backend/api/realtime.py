@@ -321,7 +321,6 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
     try:
         r = get_redis_client()
         key = f"ans:count:{session_id}"
-        n = 0  # Initialize to prevent unbound variable
 
         # Use Redis transactions to prevent race conditions in concurrent requests
         retry_count = 0

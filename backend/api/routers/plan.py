@@ -12,12 +12,31 @@ from datetime import datetime
 import json
 import asyncio
 import logging
+import re
 
 from backend.core.db import get_db
 from backend.core.settings import settings
 from backend.database.models.live_plan import LivePlan
 from backend.database.models.memory_graph import MemoryNode
 from backend.api.deps import get_broadcaster
+
+
+def sanitize_for_logging(value: str) -> str:
+    """
+    Comprehensive sanitization to prevent log injection attacks.
+    Removes or escapes control characters and potential injection patterns.
+    """
+    if not isinstance(value, str):
+        value = str(value)
+    
+    # Replace control characters with safe representations
+    value = re.sub(r'[\x00-\x1f\x7f-\x9f]', lambda m: f'\\x{ord(m.group(0)):02x}', value)
+    
+    # Limit length to prevent log flooding
+    if len(value) > 200:
+        value = value[:197] + "..."
+    
+    return value
 from backend.infra.broadcast.base import Broadcast
 from backend.core.auth.deps import require_role
 from backend.core.auth.models import Role, User
@@ -280,9 +299,7 @@ async def stream_plan_updates(
     except ValueError:
         resume_value = last_id_header or since
         # Sanitize user input to prevent log injection
-        sanitized_resume_value = (
-            str(resume_value).replace("\n", "\\n").replace("\r", "\\r")
-        )
+        sanitized_resume_value = sanitize_for_logging(str(resume_value))
         logger.warning(
             "Invalid sequence number in resume request: %s",
             sanitized_resume_value,

@@ -19,7 +19,6 @@ export function useConnection() {
     window.addEventListener("offline", handleOffline);
     
     return () => { 
-      mountedRef.current = false;
       window.removeEventListener("online", handleOnline); 
       window.removeEventListener("offline", handleOffline); 
     };
@@ -37,9 +36,15 @@ export function useConnection() {
     window.addEventListener("aep-stream-error", handleStreamError);
     
     return () => {
-      mountedRef.current = false;
       window.removeEventListener("aep-stream-open", handleStreamOpen);
       window.removeEventListener("aep-stream-error", handleStreamError);
+    };
+  }, []);
+
+  // Handle component unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
     };
   }, []);
 

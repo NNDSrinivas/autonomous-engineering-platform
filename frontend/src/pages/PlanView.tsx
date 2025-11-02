@@ -82,7 +82,7 @@ export const PlanView: React.FC = () => {
       }
     }
     
-    return Array.from(stepMap.values());
+    return [...stepMap.values()];
   }, [plan?.steps, liveSteps]);
 
   // Type guard for validating PlanStep structure from SSE
@@ -121,10 +121,11 @@ export const PlanView: React.FC = () => {
           let matchingOptimistic: PlanStep | undefined;
           
           // Find matching optimistic update by text+owner key with timestamp tolerance
+          const payloadTime = new Date(payload.ts).getTime(); // Compute once outside loop
           for (const [, optimistic] of pendingOptimisticStepsRef.current) {
             const candidateKey = `${optimistic.text}|${optimistic.owner}`;
             if (candidateKey === optimisticKey &&
-                Math.abs(new Date(optimistic.ts).getTime() - new Date(payload.ts).getTime()) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS) {
+                Math.abs(new Date(optimistic.ts).getTime() - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS) {
               matchingOptimistic = optimistic;
               break;
             }
@@ -179,9 +180,15 @@ export const PlanView: React.FC = () => {
             // Find and remove matching optimistic update
             setPendingOptimisticSteps(prev => {
               const updated = new Map(prev);
-              const optimisticStep = Array.from(prev.values()).find(step => 
-                step.text === body.text && step.owner === body.owner
-              );
+              let optimisticStep: PlanStep | undefined;
+              
+              // Use direct Map iteration instead of Array.from for better performance
+              for (const step of prev.values()) {
+                if (step.text === body.text && step.owner === body.owner) {
+                  optimisticStep = step;
+                  break;
+                }
+              }
               if (optimisticStep) {
                 if (optimisticStep.id) {
                   updated.delete(optimisticStep.id);

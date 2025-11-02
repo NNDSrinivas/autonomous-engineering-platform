@@ -12,11 +12,26 @@ export class SSEClient {
   private static readonly JITTER_MS = 250; // 250ms jitter
   private static readonly MAX_BACKOFF_MULTIPLIER = 30; // Cap exponential backoff to prevent overflow
   
+  // SSE protocol field prefix lengths (for efficient parsing)
+  private static readonly SSE_EVENT_PREFIX_LENGTH = 6; // length of "event:"
+  private static readonly SSE_DATA_PREFIX_LENGTH = 5; // length of "data:"
+  private static readonly SSE_DATA_SPACE_PREFIX_LENGTH = 6; // length of "data: "
+  
   private source: EventSource | null = null;
   private handlers = new Map<string, Set<EventHandler>>(); // planId -> handlers
   private lastSeq = new Map<string, number>();
   private reconnectAttempt = 0;
   private connecting = false;
+
+  private static getEnvironment(): string {
+    if (typeof process !== "undefined" && process.env && process.env.NODE_ENV) {
+      return process.env.NODE_ENV;
+    } else if (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.MODE) {
+      return import.meta.env.MODE;
+    } else {
+      return "production";
+    }
+  }
 
   constructor(private tokenGetter: TokenGetter) {}
 
@@ -95,11 +110,7 @@ export class SSEClient {
       return this.createFetchBasedEventSource(url, token);
     } catch (error) {
       // Only allow fallback in non-production environments
-      const env = (typeof process !== "undefined" && process.env && process.env.NODE_ENV)
-        ? process.env.NODE_ENV
-        : (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.MODE)
-          ? import.meta.env.MODE
-          : "production";
+      const env = SSEClient.getEnvironment();
       
       if (env === "production") {
         console.error('Fetch-based EventSource failed and fallback to insecure token-in-URL is disabled in production:', error);
@@ -147,14 +158,10 @@ export class SSEClient {
         }
       },
       dispatchEvent: function(event: Event) {
-        const typeListeners = this.listeners.get(event.type);
-        if (typeListeners) {
-          typeListeners.forEach(listener => {
-            listener.call(this, event);
-          });
-        }
-
-        // Also call the specific handler properties
+        // DOM events (open, error, message) don't get dispatched to EventHandlers
+        // EventHandlers only receive custom events via the dispatch() method
+        
+        // Call the specific handler properties for DOM events
         if (event.type === 'open' && this.onopen) {
           this.onopen.call(this, event);
         } else if (event.type === 'message' && this.onmessage) {
@@ -218,9 +225,11 @@ export class SSEClient {
 
           for (const line of lines) {
             if (line.startsWith('event:')) {
-              eventType = line.substring(6).trim();
+              eventType = line.substring(SSEClient.SSE_EVENT_PREFIX_LENGTH).trim();
             } else if (line.startsWith('data:')) {
-              eventData += line.substring(line.startsWith('data: ') ? 6 : 5) + '\n';
+              eventData += line.substring(line.startsWith('data: ') ? 
+                SSEClient.SSE_DATA_SPACE_PREFIX_LENGTH : 
+                SSEClient.SSE_DATA_PREFIX_LENGTH) + '\n';
             } else if (line.startsWith('id:')) {
               eventId = line.substring(3).trim();
             } else if (line === '') {

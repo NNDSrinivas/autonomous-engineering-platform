@@ -8,8 +8,8 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    APP_NAME: str = "Autonomous Engineering Platform"
-    app_name: str = "autonomous-engineering-platform"  # Lowercase alias for consistency
+    APP_NAME: str = "Autonomous Engineering Platform"  # Human-readable application name
+    APP_SLUG: str = "autonomous-engineering-platform"  # Machine-friendly identifier (e.g., for URLs, config)
 
     # Redis configuration
     REDIS_URL: str | None = None

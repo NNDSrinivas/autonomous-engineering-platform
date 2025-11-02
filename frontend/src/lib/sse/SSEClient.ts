@@ -35,7 +35,16 @@ export class SSEClient {
     if (!this.handlers.has(planId)) this.handlers.set(planId, new Set());
     this.handlers.get(planId)!.add(handler);
     this.ensureConnected();
-    return () => this.handlers.get(planId)?.delete(handler);
+    return () => {
+      this.handlers.get(planId)?.delete(handler);
+      // Clean up empty handler sets and close connection if no active subscriptions
+      if (this.handlers.get(planId)?.size === 0) {
+        this.handlers.delete(planId);
+      }
+      if (this.handlers.size === 0) {
+        this.disconnect();
+      }
+    };
   }
 
   private ensureConnected() {
@@ -44,26 +53,13 @@ export class SSEClient {
 
     const token = this.tokenGetter();
     const since = this.computeSinceQuery();
-    // CRITICAL SECURITY VULNERABILITY: Token in query parameter
-    // ⚠️  MUST BE FIXED BEFORE PRODUCTION DEPLOYMENT ⚠️
-    // - Exposed in browser history, server logs, proxy logs, and referrer headers
-    // - Visible in network monitoring tools and browser developer tools
-    // - Can be inadvertently shared when URLs are copied/logged
-    // - Creates audit trail of credentials in multiple system logs
-    // TODO: URGENT - Implement one of these solutions immediately:
-    //   1. Cookie-based authentication with HttpOnly secure cookies
-    //   2. Short-lived stream-specific tokens (5-15 min lifetime)
-    //   3. SSE polyfill that supports Authorization headers
-    //   4. Server-side session validation with secure session tokens
-    const url = `${CORE_API}/api/plan/${this.primaryPlanForURL()}/stream?token=${encodeURIComponent(token ?? "")}${since}`;
-
-    // Native EventSource doesn't support custom headers (including Last-Event-ID)
-    // The last event ID is handled via URL parameter 'since' instead
-    // For future polyfill support that enables headers, implement here
     
-    // Native EventSource can't set headers; we pass token via query.
-    // In production, consider implementing token exchange for short-lived stream tokens.
-    this.source = new EventSource(url);
+    // Secure SSE connection using fetch polyfill to support Authorization headers
+    // This avoids exposing tokens in URL parameters, browser history, or logs
+    const url = `${CORE_API}/api/plan/${this.primaryPlanForURL()}/stream${since}`;
+    
+    // Use fetch-based EventSource polyfill for secure authentication
+    this.source = this.createSecureEventSource(url, token);
 
     this.source.onopen = () => {
       this.reconnectAttempt = 0;
@@ -87,6 +83,152 @@ export class SSEClient {
     knownTypes.forEach((t) => {
       this.source!.addEventListener(t, (e) => this.dispatch(t, e as MessageEvent));
     });
+  }
+
+  /**
+   * Creates a secure EventSource using fetch polyfill with Authorization header.
+   * Falls back to native EventSource with token in URL only if fetch fails.
+   */
+  private createSecureEventSource(url: string, token: string | null): EventSource {
+    // Try to use fetch-based polyfill for secure authentication
+    try {
+      return this.createFetchBasedEventSource(url, token);
+    } catch (error) {
+      console.warn('Fetch-based EventSource failed, falling back to native EventSource with token in URL:', error);
+      // Fallback to original method with security warning
+      const urlWithToken = `${url}?token=${encodeURIComponent(token ?? "")}`;
+      return new EventSource(urlWithToken);
+    }
+  }
+
+  /**
+   * Creates EventSource using fetch API for secure header support.
+   * This implementation manually handles SSE protocol over fetch.
+   */
+  private createFetchBasedEventSource(url: string, token: string | null): EventSource {
+    const controller = new AbortController();
+    let eventSource: any;
+
+    // Create a fetch-based EventSource polyfill
+    const headers: Record<string, string> = {
+      'Accept': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    // Start the fetch request
+    fetch(url, {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    }).then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      if (!response.body) {
+        throw new Error('No response body for SSE stream');
+      }
+
+      // Process the stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const processChunk = () => {
+        reader.read().then(({ done, value }) => {
+          if (done) {
+            eventSource?.dispatchEvent(new Event('error'));
+            return;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+          let eventType = 'message';
+          let eventData = '';
+          let eventId = '';
+
+          for (const line of lines) {
+            if (line.startsWith('event:')) {
+              eventType = line.substring(6).trim();
+            } else if (line.startsWith('data:')) {
+              eventData += line.substring(5) + '\n';
+            } else if (line.startsWith('id:')) {
+              eventId = line.substring(3).trim();
+            } else if (line === '') {
+              // Empty line signals end of event
+              if (eventData) {
+                const messageEvent = new MessageEvent(eventType, {
+                  data: eventData.slice(0, -1), // Remove trailing newline
+                  lastEventId: eventId,
+                });
+                eventSource?.dispatchEvent(messageEvent);
+                eventData = '';
+                eventType = 'message';
+                eventId = '';
+              }
+            }
+          }
+
+          processChunk();
+        }).catch(error => {
+          if (error.name !== 'AbortError') {
+            eventSource?.dispatchEvent(new Event('error'));
+          }
+        });
+      };
+
+      processChunk();
+    }).catch(error => {
+      if (error.name !== 'AbortError') {
+        eventSource?.dispatchEvent(new Event('error'));
+      }
+    });
+
+    // Create EventSource-compatible object
+    eventSource = {
+      readyState: 1, // OPEN
+      onopen: null as ((this: EventSource, ev: Event) => any) | null,
+      onmessage: null as ((this: EventSource, ev: MessageEvent) => any) | null,
+      onerror: null as ((this: EventSource, ev: Event) => any) | null,
+      addEventListener: (type: string, listener: EventListener) => {
+        eventSource[`on${type}`] = listener;
+      },
+      removeEventListener: () => {}, // Not implemented
+      dispatchEvent: (event: Event) => {
+        if (event.type === 'open' && eventSource.onopen) {
+          eventSource.onopen.call(eventSource, event);
+        } else if (event.type === 'message' && eventSource.onmessage) {
+          eventSource.onmessage.call(eventSource, event as MessageEvent);
+        } else if (event.type === 'error' && eventSource.onerror) {
+          eventSource.onerror.call(eventSource, event);
+        }
+        
+        // Handle custom event types
+        const handler = eventSource[`on${event.type}`];
+        if (handler && event.type !== 'open' && event.type !== 'message' && event.type !== 'error') {
+          handler.call(eventSource, event);
+        }
+        
+        return true;
+      },
+      close: () => {
+        controller.abort();
+        eventSource.readyState = 2; // CLOSED
+      }
+    };
+
+    // Simulate connection opening
+    setTimeout(() => {
+      eventSource.readyState = 1; // OPEN
+      eventSource.dispatchEvent(new Event('open'));
+    }, 0);
+
+    return eventSource as EventSource;
   }
 
   private dispatch(type: string, e: MessageEvent) {

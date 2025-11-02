@@ -299,6 +299,7 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
     try:
         r = get_redis_client()
         key = f"ans:count:{session_id}"
+        n = 0  # Initialize to prevent unbound variable
 
         # Use Redis transactions to prevent race conditions in concurrent requests
         retry_count = 0
@@ -313,7 +314,8 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
                     pipe.incr(key)
                     pipe.expire(key, REDIS_KEY_EXPIRY_SECONDS)
                     results = pipe.execute()
-                    n = results[0]  # Get count from first result
+                    result = results[0] if results else 0
+                    n = int(result) if result is not None else 0  # type: ignore[arg-type] # Redis type issue
                     break
                 except redis.WatchError:
                     # Key was modified during transaction, retry with exponential backoff
@@ -323,7 +325,8 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
                         continue
                     else:
                         # Max retries reached, fall back to non-atomic increment
-                        n = r.incr(key)
+                        result = r.incr(key)
+                        n = int(result) if result is not None else 0  # type: ignore[arg-type] # Redis type issue
                         r.expire(key, REDIS_KEY_EXPIRY_SECONDS)
                         break
 
@@ -465,7 +468,7 @@ def _check_stream_timeout(start_time: datetime) -> bool:
 
 
 def _emit_new_answers(
-    db: Session, session_id: str, last_ts: datetime | None
+    db: Session, session_id: str, last_ts: datetime | str | None
 ) -> tuple[list[Dict[str, Any]], str | None]:
     """Emit new answers and return updated timestamp.
 

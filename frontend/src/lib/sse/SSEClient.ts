@@ -107,7 +107,9 @@ export class SSEClient {
       }
       
       console.warn('Fetch-based EventSource failed, falling back to native EventSource with token in URL (non-production only):', error);
-      // Fallback to original method with security warning in non-production only
+      // WARNING: This fallback is strictly for local development and must NEVER be used in production.
+      // Passing authentication tokens in URL parameters is a security risk, as URLs may be logged in browser history, server logs, and proxy logs.
+      // This code path is only enabled in non-production environments to facilitate local testing.
       const urlWithToken = `${url}?token=${encodeURIComponent(token ?? "")}`;
       return new EventSource(urlWithToken);
     }
@@ -201,36 +203,68 @@ export class SSEClient {
       }
     });
 
-    // Create EventSource-compatible object
+    // Create EventSource-compatible object with proper listener support
+    const listeners = new Map<string, Set<EventListener>>();
+    
     eventSource = {
       readyState: 1, // OPEN
       onopen: null as ((this: EventSource, ev: Event) => any) | null,
       onmessage: null as ((this: EventSource, ev: MessageEvent) => any) | null,
       onerror: null as ((this: EventSource, ev: Event) => any) | null,
-      addEventListener: (type: string, listener: EventListener) => {
-        eventSource[`on${type}`] = listener;
+      listeners,
+      addEventListener: function(type: string, listener: EventListener) {
+        if (!this.listeners.has(type)) {
+          this.listeners.set(type, new Set());
+        }
+        this.listeners.get(type)!.add(listener);
       },
-      removeEventListener: () => {}, // Not implemented
-      dispatchEvent: (event: Event) => {
-        if (event.type === 'open' && eventSource.onopen) {
-          eventSource.onopen.call(eventSource, event);
-        } else if (event.type === 'message' && eventSource.onmessage) {
-          eventSource.onmessage.call(eventSource, event as MessageEvent);
-        } else if (event.type === 'error' && eventSource.onerror) {
-          eventSource.onerror.call(eventSource, event);
+      removeEventListener: function(type: string, listener: EventListener) {
+        const set = this.listeners.get(type);
+        if (set) {
+          set.delete(listener);
+          if (set.size === 0) {
+            this.listeners.delete(type);
+          }
+        }
+      },
+      dispatchEvent: function(event: Event) {
+        // Call the on<type> property if present
+        if (event.type === 'open' && this.onopen) {
+          this.onopen.call(this, event);
+        } else if (event.type === 'message' && this.onmessage) {
+          this.onmessage.call(this, event as MessageEvent);
+        } else if (event.type === 'error' && this.onerror) {
+          this.onerror.call(this, event);
         }
         
-        // Handle custom event types
-        const handler = eventSource[`on${event.type}`];
-        if (handler && event.type !== 'open' && event.type !== 'message' && event.type !== 'error') {
-          handler.call(eventSource, event);
+        // Handle custom event types via on<type> property
+        const handler = (this as any)[`on${event.type}`];
+        if (
+          handler &&
+          event.type !== 'open' &&
+          event.type !== 'message' &&
+          event.type !== 'error'
+        ) {
+          handler.call(this, event);
+        }
+        
+        // Call all listeners registered via addEventListener
+        const listeners = this.listeners.get(event.type);
+        if (listeners) {
+          for (const l of Array.from(listeners)) {
+            try {
+              (l as EventListener).call(this, event);
+            } catch (e) {
+              // Ignore listener errors to match EventTarget semantics
+            }
+          }
         }
         
         return true;
       },
-      close: () => {
+      close: function() {
         controller.abort();
-        eventSource.readyState = 2; // CLOSED
+        this.readyState = 2; // CLOSED
       }
     };
 

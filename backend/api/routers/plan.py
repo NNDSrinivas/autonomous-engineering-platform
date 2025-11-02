@@ -13,7 +13,6 @@ import json
 import asyncio
 import logging
 
-from backend.core.db import engine, SessionLocal, safe_commit_with_rollback
 from backend.database.session import get_db
 from backend.core.security import sanitize_for_logging
 from backend.core.settings import settings

@@ -34,6 +34,9 @@ def _timed(fn, name: str) -> CheckResult:
             "latency_ms": int((time.time() - start) * 1000),
             "detail": "ok",
         }
+    # Intentionally catch all exceptions to ensure health checks always return a result.
+    # This prevents a single failing check from crashing the health endpoint, which is
+    # critical for monitoring and load balancer health checks.
     except Exception:
         logging.exception("Health check '%s' failed", name)
         return {

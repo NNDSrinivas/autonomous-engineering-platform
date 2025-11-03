@@ -335,6 +335,7 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         session_id: Session identifier
         text: Caption text for analysis
     """
+    n = 0  # Initialize to ensure variable is always defined
     try:
         r = get_redis_client()
         key = f"ans:count:{session_id}"

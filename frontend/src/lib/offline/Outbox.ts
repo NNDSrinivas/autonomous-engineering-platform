@@ -111,7 +111,7 @@ export class Outbox {
       console.warn("Failed to read from localStorage outbox:", { key: this.key, error: err });
       const emptyList: OutboxItem[] = [];
       this.cache = emptyList;
-      return [...emptyList]; // Return shallow copy to prevent external mutations
+      return structuredClone(emptyList); // Use deep copy for consistency with other return paths
     }
   }
 

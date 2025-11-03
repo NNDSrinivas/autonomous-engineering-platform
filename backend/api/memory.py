@@ -88,7 +88,7 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
         # Use 503 (Service Unavailable) consistently across all environments
         raise HTTPException(
             status_code=503,
-            detail="Memory service unavailable - database not fully initialized",
+            detail="Memory service temporarily unavailable",
         ) from e
 
     return {"status": "recorded", "session_id": req.session_id}
@@ -128,7 +128,7 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
         # These exceptions cover table/schema issues across different databases
         raise HTTPException(
             status_code=503,
-            detail="Memory service unavailable - database not fully initialized",
+            detail="Memory service temporarily unavailable",
         )
 
     if not events:

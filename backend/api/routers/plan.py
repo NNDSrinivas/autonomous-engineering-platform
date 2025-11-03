@@ -61,7 +61,7 @@ def parse_broadcaster_message(msg: str | dict) -> dict:
     Note:
         This helper consolidates the parsing logic to avoid redundant checks.
         TODO: Standardize broadcaster output format to always return dicts
-        and eliminate the need for this parsing step (Tech Debt Ticket: PLAN-XXX)
+        and eliminate the need for this parsing step
     """
     return json.loads(msg) if isinstance(msg, str) else msg
 

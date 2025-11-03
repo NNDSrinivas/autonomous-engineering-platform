@@ -123,9 +123,15 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
             .mappings()
             .all()
         )
-    except (OperationalError, ProgrammingError):
+    except (OperationalError, ProgrammingError) as e:
         # Handle missing table gracefully in test environments
         # These exceptions cover table/schema issues across different databases
+        logger.error(
+            "Database error while fetching session events: %s: %s",
+            type(e).__name__,
+            str(e),
+            extra={"session_id": req.session_id},
+        )
         raise HTTPException(
             status_code=503,
             detail="Memory service temporarily unavailable",

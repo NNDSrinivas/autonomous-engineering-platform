@@ -243,6 +243,7 @@ export class SSEClient {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let hasOpenedConnection = false;
 
       // Event variables persist across chunks to handle partial events
       let eventType = 'message';
@@ -254,6 +255,13 @@ export class SSEClient {
           if (done) {
             eventSource.dispatchEvent(new Event('error'));
             return;
+          }
+
+          // Dispatch 'open' event only once after receiving the first successful chunk
+          if (!hasOpenedConnection) {
+            hasOpenedConnection = true;
+            eventSource.readyState = 1; // OPEN
+            eventSource.dispatchEvent(new Event('open'));
           }
 
           buffer += decoder.decode(value, { stream: true });
@@ -297,12 +305,6 @@ export class SSEClient {
         eventSource.dispatchEvent(new Event('error'));
       }
     });
-
-    // Simulate connection opening
-    setTimeout(() => {
-      eventSource.readyState = 1; // OPEN
-      eventSource.dispatchEvent(new Event('open'));
-    }, 0);
 
     return eventSource as unknown as EventSource;
   }

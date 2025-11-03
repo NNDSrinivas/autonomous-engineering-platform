@@ -144,13 +144,14 @@ export class SSEClient {
         throw new Error('Secure SSE connection failed and fallback is not allowed in production.');
       }
       
-      console.warn('Fetch-based EventSource failed, falling back to native EventSource with token in URL (non-production only):', error);
-      // WARNING: This fallback is strictly for local development and must NEVER be used in production.
-      // Passing authentication tokens in URL parameters is a security risk, as URLs may be logged in browser history, server logs, and proxy logs.
-      // This code path is only enabled in non-production environments to facilitate local testing.
-      const urlObj = new URL(url, window.location.origin);
-      urlObj.searchParams.set('token', token ?? '');
-      return new EventSource(urlObj.toString());
+      console.warn('Fetch-based EventSource failed, cannot establish SSE connection:', error);
+      // Fallback to token-in-URL is disabled for security reasons, even in non-production environments.
+      // Please configure proper authentication headers or use a secure local transport for local development.
+      throw new Error(
+        'Fetch-based EventSource failed. Fallback to token-in-URL is disabled for security reasons. ' +
+        'Please configure proper authentication headers or use a secure local transport for local development. ' +
+        'Original error: ' + error
+      );
     }
   }
 

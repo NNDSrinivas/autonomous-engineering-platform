@@ -48,7 +48,7 @@ def normalize_event_payload(data: dict) -> dict:
     return payload
 
 
-def parse_broadcaster_message(msg) -> dict:
+def parse_broadcaster_message(msg: str | dict) -> dict:
     """
     Parse message from broadcaster, handling both JSON strings and parsed dicts.
 
@@ -391,8 +391,6 @@ async def stream_plan_updates(
                     #   - KeyError: expected field missing from message dict
                     #   - TypeError: message is not a dict or has wrong type
                     #   - ValueError: unexpected value in message
-                    # Note: AttributeError is excluded, as it typically indicates a programming error (e.g., accessing a missing attribute),
-                    # rather than a malformed message from the broadcaster.
                     logger.warning(
                         "Malformed SSE message: %s (Error: %s)",
                         sanitize_for_logging(str(msg)),
@@ -408,16 +406,24 @@ async def stream_plan_updates(
                         else:
                             partial = msg
                         if isinstance(partial, dict):
-                            if "seq" in partial:
-                                error_payload["seq"] = partial["seq"]
-                            if "type" in partial:
-                                error_payload["type"] = partial["type"]
+                            error_payload.update(partial)
                     except Exception:
-                        # Ignore parsing errors for partial info
-                        pass
+                        pass  # Keep default error payload
 
-                    yield "event: error\n"
+                    yield f"event: error\n"
                     yield f"data: {json.dumps(error_payload)}\n\n"
+                except AttributeError as e:
+                    # Handle potential message structure changes separately for easier debugging
+                    logger.error(
+                        "SSE message structure error (possible broadcaster format change): %s (Error: %s)",
+                        sanitize_for_logging(str(msg)),
+                        str(e),
+                        exc_info=True,
+                    )
+
+                    # Send error event to client (same format as above for consistency)
+                    yield f"event: error\n"
+                    yield f"data: {json.dumps({'error': 'SSE message structure error'})}\n\n"
 
         except asyncio.CancelledError:
             # Client disconnected

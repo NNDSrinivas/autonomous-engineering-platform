@@ -335,15 +335,13 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         session_id: Session identifier
         text: Caption text for analysis
     """
-    # Initialize n to handle the edge case where Redis operations fail in the try block
-    # and n is referenced later in exception handling, preventing UnboundLocalError
-    n = 0
     try:
         r = get_redis_client()
         key = f"ans:count:{session_id}"
 
         # Use Redis transactions to prevent race conditions in concurrent requests
         retry_count = 0
+        n = 0  # Initialize within try block, will be updated by Redis operations
         with r.pipeline(transaction=True) as pipe:
             while retry_count < REDIS_TRANSACTION_MAX_RETRIES:
                 try:

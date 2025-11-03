@@ -32,6 +32,31 @@ function isPlanStepBody(obj: any): obj is PlanStepBody {
          typeof obj.plan_id === 'string';
 }
 
+// Helper function to find and remove matching optimistic step
+function findAndRemoveOptimisticStep(
+  steps: Map<string, PlanStep>, 
+  text: string, 
+  owner: string
+): { updatedSteps: Map<string, PlanStep>; removedId: string | undefined } {
+  let foundId: string | undefined;
+  for (const step of steps.values()) {
+    if (step.text === text && step.owner === owner) {
+      if (step.id) {
+        foundId = step.id;
+      }
+      break;
+    }
+  }
+  
+  if (foundId) {
+    const updated = new Map(steps);
+    updated.delete(foundId);
+    return { updatedSteps: updated, removedId: foundId };
+  }
+  
+  return { updatedSteps: steps, removedId: undefined };
+}
+
 export const PlanView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -122,12 +147,16 @@ export const PlanView: React.FC = () => {
           
           // Find matching optimistic update by text+owner key with timestamp tolerance
           const payloadTime = new Date(payload.ts).getTime(); // Compute once outside loop
+          const payloadKey = `${payload.text}|${payload.owner}`;
           for (const [, optimistic] of pendingOptimisticStepsRef.current) {
             const candidateKey = `${optimistic.text}|${optimistic.owner}`;
-            if (candidateKey === `${payload.text}|${payload.owner}` &&
-                Math.abs(new Date(optimistic.ts).getTime() - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS) {
-              matchingOptimistic = optimistic;
-              break;
+            if (candidateKey === payloadKey) {
+              // Only compute timestamp if key matches to avoid unnecessary Date parsing
+              const optimisticTime = new Date(optimistic.ts).getTime();
+              if (Math.abs(optimisticTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS) {
+                matchingOptimistic = optimistic;
+                break;
+              }
             }
           }
           
@@ -195,22 +224,9 @@ export const PlanView: React.FC = () => {
             // Find matching optimistic step to remove
             let optimisticStepIdToRemove: string | undefined;
             setPendingOptimisticSteps(prev => {
-              let foundId: string | undefined;
-              for (const step of prev.values()) {
-                if (step.text === body.text && step.owner === body.owner) {
-                  if (step.id) {
-                    foundId = step.id;
-                  }
-                  break;
-                }
-              }
-              if (foundId) {
-                optimisticStepIdToRemove = foundId;
-                const updated = new Map(prev);
-                updated.delete(foundId);
-                return updated;
-              }
-              return prev;
+              const { updatedSteps, removedId } = findAndRemoveOptimisticStep(prev, body.text, body.owner);
+              optimisticStepIdToRemove = removedId;
+              return updatedSteps;
             });
             // Remove from liveSteps outside the setPendingOptimisticSteps callback
             if (optimisticStepIdToRemove) {

@@ -39,7 +39,7 @@ class Settings(BaseSettings):
                 extra_fields = input_fields - allowed_fields
                 if extra_fields:
                     raise ValueError(
-                        f"Extra fields not permitted in app_env '{app_env}': {extra_fields}"
+                        f"Extra fields not permitted in app_env '{app_env}'. {len(extra_fields)} extra field(s) found."
                     )
         return values
 

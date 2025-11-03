@@ -93,7 +93,7 @@ export class Outbox {
     if (this.cache !== null) {
       // Defensive copy required: calling code modifies returned array (push/forEach operations)
       // Use deep copy to protect against mutations to nested properties (body, headers)
-      // Use JSON methods for broad browser compatibility (structuredClone not available in all environments)
+      // Use JSON methods for compatibility with Node.js environments and older browsers (pre-2022)
       return JSON.parse(JSON.stringify(this.cache));
     }
     
@@ -106,7 +106,7 @@ export class Outbox {
       }));
       this.cache = processedItems;
       // Use deep copy to protect against mutations to nested properties (body, headers)
-      // Use JSON methods for broad browser compatibility (structuredClone not available in all environments)
+      // Use JSON methods for compatibility with Node.js environments and older browsers (pre-2022)
       return JSON.parse(JSON.stringify(processedItems));
     } catch (err) {
       // Log localStorage failures for debugging (parse errors, quota exceeded, etc.)

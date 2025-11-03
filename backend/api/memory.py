@@ -3,16 +3,21 @@
 Provides episodic memory recording and agent note consolidation
 """
 
+import json
+import logging
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError, ProgrammingError
-from pydantic import BaseModel, Field
-from typing import List, Optional
-import json
-from ..core.db import get_db
-from ..core.config import settings
+from sqlalchemy.orm import Session
+
 from ..context.schemas import AgentNoteOut
+from ..core.config import settings
+from ..core.db import get_db
+
+logger = logging.getLogger(__name__)
 from ..context.service import parse_tags_field
 
 router = APIRouter(prefix="/memory", tags=["memory"])
@@ -71,7 +76,15 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
             },
         )
         db.commit()
-    except (OperationalError, ProgrammingError):
+    except (OperationalError, ProgrammingError) as e:
+        # Log the original exception for debugging while preserving exception context
+        logger.error(
+            "Database error in record_memory: %s: %s",
+            type(e).__name__,
+            str(e),
+            extra={"session_id": req.session_id},
+        )
+
         # Handle missing table gracefully based on environment
         # In test environments, return 503 (service unavailable)
         # In production, return 500 (internal server error) for proper error tracking
@@ -79,12 +92,12 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
             raise HTTPException(
                 status_code=503,
                 detail="Memory service unavailable - database not fully initialized",
-            )
+            ) from e
         else:
             raise HTTPException(
                 status_code=500,
                 detail="Memory service error - database operation failed",
-            )
+            ) from e
 
     return {"status": "recorded", "session_id": req.session_id}
 

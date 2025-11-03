@@ -91,7 +91,8 @@ export class Outbox {
   private read(): OutboxItem[] {
     // Return cached data if available
     if (this.cache !== null) {
-      // Use spread operator for shallow copy - more efficient than structuredClone for simple objects
+      // Defensive copy required: calling code modifies returned array (push/forEach operations)
+      // Shallow copy with spread operator is sufficient since OutboxItem properties are primitives
       return this.cache.map(item => ({ ...item }));
     }
     

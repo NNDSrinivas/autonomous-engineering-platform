@@ -4,17 +4,19 @@ from typing import TypedDict
 import logging
 
 # Optional deps (best-effort)
+text = None
+get_engine = None
 try:
     from sqlalchemy import text
     from core.db import get_engine
 except Exception:
-    text = None  # type: ignore
-    get_engine = None  # type: ignore
+    pass  # text and get_engine remain None
 
+cache = None
 try:
     from infra.cache.redis_cache import cache
 except Exception:
-    cache = None  # type: ignore
+    pass  # cache remains None
 
 
 class CheckResult(TypedDict):

@@ -7,7 +7,7 @@ import string
 from typing import List
 from typing import Optional
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Module-level constants for performance
@@ -15,14 +15,32 @@ PUNCTUATION_SET = set(string.punctuation)
 
 
 class Settings(BaseSettings):
-    # Use extra='forbid' in non-production to catch config errors, 'ignore' in production for flexibility
+    # Always use 'ignore' in model_config; enforce strict validation via validator in dev/test
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,
-        extra="forbid" if os.getenv("APP_ENV", "dev") in ["dev", "test"] else "ignore",
+        extra="ignore",
     )
     app_env: str = "dev"
     app_name: str = "autonomous-engineering-platform"
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_extra_fields(cls, values):
+        """Enforce 'forbid' behavior in dev/test environments."""
+        if isinstance(values, dict):
+            # Get app_env from values, defaulting to 'dev'
+            app_env = values.get("app_env", os.getenv("APP_ENV", "dev"))
+            if app_env in ["dev", "test"]:
+                # Check for any fields in the input data that aren't defined in the model
+                allowed_fields = set(cls.__fields__.keys())
+                input_fields = set(values.keys())
+                extra_fields = input_fields - allowed_fields
+                if extra_fields:
+                    raise ValueError(
+                        f"Extra fields not permitted in app_env '{app_env}': {extra_fields}"
+                    )
+        return values
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000

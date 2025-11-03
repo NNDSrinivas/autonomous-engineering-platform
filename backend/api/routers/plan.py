@@ -423,7 +423,11 @@ async def stream_plan_updates(
                         else:
                             partial = msg
                         if isinstance(partial, dict):
-                            error_payload.update(partial)
+                            # Only include specific, safe fields to avoid leaking sensitive info
+                            allowed_keys = {"type", "plan_id"}
+                            for key in allowed_keys:
+                                if key in partial:
+                                    error_payload[key] = partial[key]
                     except Exception as ex:
                         logger.warning(
                             "Partial extraction of SSE event data failed: %s (Error: %s)",

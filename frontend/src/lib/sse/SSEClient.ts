@@ -34,6 +34,7 @@ export class SSEClient {
   private static readonly SSE_EVENT_PREFIX_LENGTH = 6; // length of "event:"
   private static readonly SSE_DATA_PREFIX_LENGTH = 5; // length of "data:"
   private static readonly SSE_DATA_SPACE_PREFIX_LENGTH = 6; // length of "data: "
+  private static readonly SSE_ID_PREFIX_LENGTH = 3; // length of "id:"
   
   /**
    * Extract data content from SSE data line, handling both "data:" and "data: " prefixes
@@ -275,7 +276,7 @@ export class SSEClient {
             } else if (line.startsWith('data:')) {
               eventData += SSEClient.extractDataContent(line) + '\n';
             } else if (line.startsWith('id:')) {
-              eventId = line.substring(3).trim();
+              eventId = line.substring(SSEClient.SSE_ID_PREFIX_LENGTH).trim();
             } else if (line === '') {
               // Empty line signals end of event
               if (eventData) {

@@ -341,7 +341,13 @@ async def stream_plan_updates(
                     data = json.loads(msg) if isinstance(msg, str) else msg
                     seq = data.get("seq")
                     event_type = data.get("type", "message")
-                    payload = data.get("payload", data)
+                    # Use consistent payload extraction - prioritize nested payload structure to match backfilled events
+                    payload = data.get("payload")
+                    if payload is None:
+                        # Fallback: if no nested payload, exclude metadata fields to avoid duplication
+                        payload = {
+                            k: v for k, v in data.items() if k not in ("seq", "type")
+                        }
 
                     # Emit with sequence ID for Last-Event-ID compatibility
                     if seq:

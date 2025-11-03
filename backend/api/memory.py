@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from ..context.schemas import AgentNoteOut
 from ..context.service import parse_tags_field
-from ..core.config import settings
 from ..core.db import get_db
 
 logger = logging.getLogger(__name__)
@@ -85,19 +84,12 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
             extra={"session_id": req.session_id},
         )
 
-        # Handle missing table gracefully based on environment
-        # In test environments, return 503 (service unavailable)
-        # In production, return 500 (internal server error) for proper error tracking
-        if settings.app_env == "test":
-            raise HTTPException(
-                status_code=503,
-                detail="Memory service unavailable - database not fully initialized",
-            ) from e
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail="Memory service error - database operation failed",
-            ) from e
+        # Handle missing table gracefully - database not fully initialized
+        # Use 503 (Service Unavailable) consistently across all environments
+        raise HTTPException(
+            status_code=503,
+            detail="Memory service unavailable - database not fully initialized",
+        ) from e
 
     return {"status": "recorded", "session_id": req.session_id}
 

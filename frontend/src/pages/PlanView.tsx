@@ -287,6 +287,7 @@ export const PlanView: React.FC = () => {
       // If online request failed, queue it for retry
       if (online) {
         queueInOutbox('failed');
+        setStepText(''); // Clear input for consistent UX with offline behavior
       }
     }
   }, [id, stepText, ownerName, addStepMutation, online, showToast]);

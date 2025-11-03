@@ -14,11 +14,11 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from ..context.schemas import AgentNoteOut
+from ..context.service import parse_tags_field
 from ..core.config import settings
 from ..core.db import get_db
 
 logger = logging.getLogger(__name__)
-from ..context.service import parse_tags_field
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 

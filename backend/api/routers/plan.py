@@ -13,7 +13,7 @@ import json
 import asyncio
 import logging
 
-from backend.database.session import get_db
+from backend.core.db import get_db
 from backend.core.security import sanitize_for_logging
 from backend.core.settings import settings
 from backend.database.models.live_plan import LivePlan

@@ -18,27 +18,6 @@ from backend.core.security import sanitize_for_logging
 from backend.core.settings import settings
 from backend.database.models.live_plan import LivePlan
 from backend.database.models.memory_graph import MemoryNode
-
-
-def normalize_event_payload(data: dict) -> dict:
-    """
-    Extract and normalize event payload from SSE message data.
-    Prioritizes nested payload structure to match backfilled events.
-    
-    Args:
-        data: Raw event data dictionary
-        
-    Returns:
-        Normalized payload dictionary
-    """
-    # Use consistent payload extraction - prioritize nested payload structure to match backfilled events
-    payload = data.get("payload")
-    if payload is None:
-        # Fallback: if no nested payload, exclude metadata fields to avoid duplication
-        payload = {
-            k: v for k, v in data.items() if k not in ("seq", "type")
-        }
-    return payload
 from backend.api.deps import get_broadcaster
 from backend.infra.broadcast.base import Broadcast
 from backend.core.auth.deps import require_role
@@ -48,6 +27,25 @@ from backend.core.policy.engine import PolicyEngine, get_policy_engine
 from backend.core.db_utils import get_short_lived_session
 from backend.core.audit.publisher import append_and_broadcast
 from backend.core.eventstore.service import replay
+
+
+def normalize_event_payload(data: dict) -> dict:
+    """
+    Extract and normalize event payload from SSE message data.
+    Prioritizes nested payload structure to match backfilled events.
+
+    Args:
+        data: Raw event data dictionary
+
+    Returns:
+        Normalized payload dictionary
+    """
+    # Use consistent payload extraction - prioritize nested payload structure to match backfilled events
+    payload = data.get("payload")
+    if payload is None:
+        # Fallback: if no nested payload, exclude metadata fields to avoid duplication
+        payload = {k: v for k, v in data.items() if k not in ("seq", "type")}
+    return payload
 
 
 logger = logging.getLogger(__name__)

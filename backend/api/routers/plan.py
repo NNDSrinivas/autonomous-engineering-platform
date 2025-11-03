@@ -357,6 +357,8 @@ async def stream_plan_updates(
             async for msg in subscription:
                 try:
                     # Parse message to extract sequence and type information
+                    # Note: Broadcaster may return either JSON strings or parsed dicts
+                    # TODO: Consider standardizing broadcaster output format to avoid redundant parsing
                     data = json.loads(msg) if isinstance(msg, str) else msg
                     seq = data.get("seq")
                     event_type = data.get("type", "message")

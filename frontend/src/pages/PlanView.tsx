@@ -118,14 +118,13 @@ export const PlanView: React.FC = () => {
         setLiveSteps((prev) => {
           // Check if this step matches any pending optimistic updates
           // Use efficient key-based lookup instead of linear search
-          const optimisticKey = `${payload.text}|${payload.owner}`;
           let matchingOptimistic: PlanStep | undefined;
           
           // Find matching optimistic update by text+owner key with timestamp tolerance
           const payloadTime = new Date(payload.ts).getTime(); // Compute once outside loop
           for (const [, optimistic] of pendingOptimisticStepsRef.current) {
             const candidateKey = `${optimistic.text}|${optimistic.owner}`;
-            if (candidateKey === optimisticKey &&
+            if (candidateKey === `${payload.text}|${payload.owner}` &&
                 Math.abs(new Date(optimistic.ts).getTime() - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS) {
               matchingOptimistic = optimistic;
               break;
@@ -193,27 +192,30 @@ export const PlanView: React.FC = () => {
         if (_item && typeof _item === 'object' && 'body' in _item && _item.body) {
           if (isPlanStepBody(_item.body)) {
             const body = _item.body;
-            // Find and remove matching optimistic update
+            // Find matching optimistic step to remove
+            let optimisticStepIdToRemove: string | undefined;
             setPendingOptimisticSteps(prev => {
-              const updated = new Map(prev);
-              let optimisticStep: PlanStep | undefined;
-              
-              // Use direct Map iteration instead of Array.from for better performance
+              let foundId: string | undefined;
               for (const step of prev.values()) {
                 if (step.text === body.text && step.owner === body.owner) {
-                  optimisticStep = step;
+                  if (step.id) {
+                    foundId = step.id;
+                  }
                   break;
                 }
               }
-              if (optimisticStep) {
-                if (optimisticStep.id) {
-                  updated.delete(optimisticStep.id);
-                  // Also remove from UI
-                  setLiveSteps(steps => steps.filter(step => step.id !== optimisticStep.id));
-                }
+              if (foundId) {
+                optimisticStepIdToRemove = foundId;
+                const updated = new Map(prev);
+                updated.delete(foundId);
+                return updated;
               }
-              return updated;
+              return prev;
             });
+            // Remove from liveSteps outside the setPendingOptimisticSteps callback
+            if (optimisticStepIdToRemove) {
+              setLiveSteps(steps => steps.filter(step => step.id !== optimisticStepIdToRemove));
+            }
           }
         }
         

@@ -48,6 +48,24 @@ def normalize_event_payload(data: dict) -> dict:
     return payload
 
 
+def parse_broadcaster_message(msg) -> dict:
+    """
+    Parse message from broadcaster, handling both JSON strings and parsed dicts.
+    
+    Args:
+        msg: Message from broadcaster (str or dict)
+        
+    Returns:
+        Parsed message as dictionary
+        
+    Note:
+        This helper consolidates the parsing logic to avoid redundant checks.
+        TODO: Standardize broadcaster output format to always return dicts
+        and eliminate the need for this parsing step (Tech Debt Ticket: PLAN-XXX)
+    """
+    return json.loads(msg) if isinstance(msg, str) else msg
+
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
@@ -356,10 +374,8 @@ async def stream_plan_updates(
             subscription = await bc.subscribe(channel)
             async for msg in subscription:
                 try:
-                    # Parse message to extract sequence and type information
-                    # Note: Broadcaster may return either JSON strings or parsed dicts
-                    # TODO: Consider standardizing broadcaster output format to avoid redundant parsing
-                    data = json.loads(msg) if isinstance(msg, str) else msg
+                    # Parse message using helper function to consolidate parsing logic
+                    data = parse_broadcaster_message(msg)
                     seq = data.get("seq")
                     event_type = data.get("type", "message")
                     payload = normalize_event_payload(data)

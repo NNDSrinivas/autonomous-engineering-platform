@@ -92,7 +92,8 @@ export class Outbox {
     // Return cached data if available
     if (this.cache !== null) {
       // Defensive copy required: calling code modifies returned array (push/forEach operations)
-      // Shallow copy with spread operator is sufficient since OutboxItem properties are primitives
+      // Shallow copy with spread operator is used here. Note: OutboxItem properties like `body` (any) and `headers` (object) can be non-primitives,
+      // so mutations to their nested properties may affect the cached data. For current use, shallow copy is considered sufficient.
       return this.cache.map(item => ({ ...item }));
     }
     

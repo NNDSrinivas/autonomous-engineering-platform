@@ -165,18 +165,18 @@ export class SSEClient {
       onmessage: null as ((this: EventSource, ev: MessageEvent) => any) | null,
       onerror: null as ((this: EventSource, ev: Event) => any) | null,
       listeners,
-      addEventListener: function(type: string, listener: EventListener) {
-        if (!this.listeners.has(type)) {
-          this.listeners.set(type, new Set());
+      addEventListener: (type: string, listener: EventListener) => {
+        if (!eventSource.listeners.has(type)) {
+          eventSource.listeners.set(type, new Set());
         }
-        this.listeners.get(type)!.add(listener);
+        eventSource.listeners.get(type)!.add(listener);
       },
-      removeEventListener: function(type: string, listener: EventListener) {
-        const typeListeners = this.listeners.get(type);
+      removeEventListener: (type: string, listener: EventListener) => {
+        const typeListeners = eventSource.listeners.get(type);
         if (typeListeners) {
           typeListeners.delete(listener);
           if (typeListeners.size === 0) {
-            this.listeners.delete(type);
+            eventSource.listeners.delete(type);
           }
         }
       },

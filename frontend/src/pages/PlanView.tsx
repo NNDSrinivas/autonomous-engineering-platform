@@ -143,15 +143,16 @@ export const PlanView: React.FC = () => {
             });
             
             // Replace optimistic step with real step
+            // Compute optimisticKey and optimisticTime once outside the map for efficiency
+            const optimisticKey = `${matchingOptimistic.text}|${matchingOptimistic.owner}`;
+            const optimisticTime = new Date(matchingOptimistic.ts).getTime();
             return prev.map(step => {
               // If matchingOptimistic.id is defined, match by id; otherwise, match by text, owner, and timestamp tolerance
               if (matchingOptimistic.id) {
                 return step.id === matchingOptimistic.id ? payload : step;
               } else {
                 const stepKey = `${step.text}|${step.owner}`;
-                const optimisticKey = `${matchingOptimistic.text}|${matchingOptimistic.owner}`;
                 const stepTime = new Date(step.ts).getTime();
-                const optimisticTime = new Date(matchingOptimistic.ts).getTime();
                 if (
                   stepKey === optimisticKey &&
                   Math.abs(stepTime - optimisticTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS

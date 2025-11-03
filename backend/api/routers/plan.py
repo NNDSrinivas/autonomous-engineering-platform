@@ -354,7 +354,7 @@ async def stream_plan_updates(
                         yield f"id: {seq}\n"
                     yield f"event: {event_type}\n"
                     yield f"data: {json.dumps({'seq': seq, 'type': event_type, 'payload': payload})}\n\n"
-                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
                     # Fallback for malformed messages - catch specific parsing errors
                     # Note: AttributeError excluded as it typically indicates programming errors
                     logger.warning(

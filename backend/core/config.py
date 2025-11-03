@@ -17,9 +17,9 @@ PUNCTUATION_SET = set(string.punctuation)
 class Settings(BaseSettings):
     # Use extra='forbid' in non-production to catch config errors, 'ignore' in production for flexibility
     model_config = SettingsConfigDict(
-        env_file=".env", 
-        case_sensitive=False, 
-        extra="forbid" if os.getenv("APP_ENV", "dev") in ["dev", "test"] else "ignore"
+        env_file=".env",
+        case_sensitive=False,
+        extra="forbid" if os.getenv("APP_ENV", "dev") in ["dev", "test"] else "ignore",
     )
     app_env: str = "dev"
     app_name: str = "autonomous-engineering-platform"

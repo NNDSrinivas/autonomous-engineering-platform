@@ -60,7 +60,7 @@ def parse_broadcaster_message(msg: str | dict) -> dict:
 
     Note:
         This helper consolidates the parsing logic to avoid redundant checks.
-        TODO: Standardize broadcaster output format to always return dicts
+        TODO: (Tech Debt) Standardize broadcaster output format to always return dicts
         and eliminate the need for this parsing step
     """
     return json.loads(msg) if isinstance(msg, str) else msg
@@ -407,8 +407,12 @@ async def stream_plan_updates(
                             partial = msg
                         if isinstance(partial, dict):
                             error_payload.update(partial)
-                    except Exception:
-                        pass  # Keep default error payload
+                    except Exception as ex:
+                        logger.warning(
+                            "Partial extraction of SSE event data failed: %s (Error: %s)",
+                            sanitize_for_logging(str(msg)),
+                            str(ex),
+                        )
 
                     yield "event: error\n"
                     yield f"data: {json.dumps(error_payload)}\n\n"

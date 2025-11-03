@@ -35,6 +35,15 @@ export class SSEClient {
   private static readonly SSE_DATA_PREFIX_LENGTH = 5; // length of "data:"
   private static readonly SSE_DATA_SPACE_PREFIX_LENGTH = 6; // length of "data: "
   
+  /**
+   * Extract data content from SSE data line, handling both "data:" and "data: " prefixes
+   */
+  private static extractDataContent(line: string): string {
+    return line.substring(line.startsWith('data: ') ? 
+      SSEClient.SSE_DATA_SPACE_PREFIX_LENGTH : 
+      SSEClient.SSE_DATA_PREFIX_LENGTH);
+  }
+  
   private source: EventSource | null = null;
   private handlers = new Map<string, Set<EventHandler>>(); // planId -> handlers
   private lastSeq = new Map<string, number>();
@@ -255,9 +264,7 @@ export class SSEClient {
             if (line.startsWith('event:')) {
               eventType = line.substring(SSEClient.SSE_EVENT_PREFIX_LENGTH).trim();
             } else if (line.startsWith('data:')) {
-              eventData += line.substring(line.startsWith('data: ') ? 
-                SSEClient.SSE_DATA_SPACE_PREFIX_LENGTH : 
-                SSEClient.SSE_DATA_PREFIX_LENGTH) + '\n';
+              eventData += SSEClient.extractDataContent(line) + '\n';
             } else if (line.startsWith('id:')) {
               eventId = line.substring(3).trim();
             } else if (line === '') {

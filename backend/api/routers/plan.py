@@ -18,6 +18,27 @@ from backend.core.security import sanitize_for_logging
 from backend.core.settings import settings
 from backend.database.models.live_plan import LivePlan
 from backend.database.models.memory_graph import MemoryNode
+
+
+def normalize_event_payload(data: dict) -> dict:
+    """
+    Extract and normalize event payload from SSE message data.
+    Prioritizes nested payload structure to match backfilled events.
+    
+    Args:
+        data: Raw event data dictionary
+        
+    Returns:
+        Normalized payload dictionary
+    """
+    # Use consistent payload extraction - prioritize nested payload structure to match backfilled events
+    payload = data.get("payload")
+    if payload is None:
+        # Fallback: if no nested payload, exclude metadata fields to avoid duplication
+        payload = {
+            k: v for k, v in data.items() if k not in ("seq", "type")
+        }
+    return payload
 from backend.api.deps import get_broadcaster
 from backend.infra.broadcast.base import Broadcast
 from backend.core.auth.deps import require_role
@@ -341,13 +362,7 @@ async def stream_plan_updates(
                     data = json.loads(msg) if isinstance(msg, str) else msg
                     seq = data.get("seq")
                     event_type = data.get("type", "message")
-                    # Use consistent payload extraction - prioritize nested payload structure to match backfilled events
-                    payload = data.get("payload")
-                    if payload is None:
-                        # Fallback: if no nested payload, exclude metadata fields to avoid duplication
-                        payload = {
-                            k: v for k, v in data.items() if k not in ("seq", "type")
-                        }
+                    payload = normalize_event_payload(data)
 
                     # Emit with sequence ID for Last-Event-ID compatibility
                     if seq:
@@ -355,8 +370,13 @@ async def stream_plan_updates(
                     yield f"event: {event_type}\n"
                     yield f"data: {json.dumps({'seq': seq, 'type': event_type, 'payload': payload})}\n\n"
                 except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
-                    # Fallback for malformed messages - catch specific parsing errors
-                    # Note: AttributeError excluded as it typically indicates programming errors
+                    # Fallback for malformed messages - catch specific parsing errors:
+                    #   - json.JSONDecodeError: message is not valid JSON
+                    #   - KeyError: expected field missing from message dict
+                    #   - TypeError: message is not a dict or has wrong type
+                    #   - ValueError: unexpected value in message
+                    # Note: AttributeError is excluded, as it typically indicates a programming error (e.g., accessing a missing attribute),
+                    # rather than a malformed message from the broadcaster.
                     logger.warning(
                         "Malformed SSE message: %s (Error: %s)",
                         sanitize_for_logging(str(msg)),

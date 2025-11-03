@@ -93,7 +93,8 @@ export class Outbox {
     if (this.cache !== null) {
       // Defensive copy required: calling code modifies returned array (push/forEach operations)
       // Use deep copy to protect against mutations to nested properties (body, headers)
-      return structuredClone(this.cache);
+      // Use JSON methods for broad browser compatibility (structuredClone not available in all environments)
+      return JSON.parse(JSON.stringify(this.cache));
     }
     
     try {
@@ -105,13 +106,14 @@ export class Outbox {
       }));
       this.cache = processedItems;
       // Use deep copy to protect against mutations to nested properties (body, headers)
-      return structuredClone(processedItems);
+      // Use JSON methods for broad browser compatibility (structuredClone not available in all environments)
+      return JSON.parse(JSON.stringify(processedItems));
     } catch (err) {
       // Log localStorage failures for debugging (parse errors, quota exceeded, etc.)
       console.warn("Failed to read from localStorage outbox:", { key: this.key, error: err });
       const emptyList: OutboxItem[] = [];
       this.cache = emptyList;
-      return structuredClone(emptyList); // Use deep copy for consistency with other return paths
+      return JSON.parse(JSON.stringify(emptyList)); // Use deep copy for consistency with other return paths
     }
   }
 

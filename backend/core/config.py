@@ -14,7 +14,8 @@ PUNCTUATION_SET = set(string.punctuation)
 
 
 class Settings(BaseSettings):
-    # Always use 'ignore' in model_config; enforce strict validation via validator in dev/test
+    # Use 'ignore' to prevent pydantic validation errors in production
+    # while still catching config issues via validator in dev/test environments
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

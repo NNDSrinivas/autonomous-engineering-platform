@@ -341,7 +341,7 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
 
         # Use Redis transactions to prevent race conditions in concurrent requests
         retry_count = 0
-        n = 0  # Initialize within try block, will be updated by Redis operations
+        n = 0  # Initialize to safe default value
         with r.pipeline(transaction=True) as pipe:
             while retry_count < REDIS_TRANSACTION_MAX_RETRIES:
                 try:

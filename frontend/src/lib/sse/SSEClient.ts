@@ -290,12 +290,13 @@ export class SSEClient {
                 // Reset event variables after dispatching
                 eventData = '';
                 eventType = 'message';
-                eventId = '';
+                // eventId is intentionally NOT reset here to preserve Last-Event-ID tracking
               }
             }
           }
 
-          processChunk();
+          // Use setTimeout to avoid stack overflow for high-frequency events
+          setTimeout(() => processChunk(), 0);
         }).catch(error => {
           if (error.name !== 'AbortError') {
             eventSource.dispatchEvent(new Event('error'));

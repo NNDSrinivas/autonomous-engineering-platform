@@ -59,6 +59,8 @@ def check_db() -> CheckResult:
     def _q():
         if get_engine is None or text is None:
             raise RuntimeError("db not configured")
+        if not callable(get_engine):
+            raise RuntimeError("get_engine is not callable")
         with get_engine().connect() as conn:
             conn.execute(text("SELECT 1"))
 

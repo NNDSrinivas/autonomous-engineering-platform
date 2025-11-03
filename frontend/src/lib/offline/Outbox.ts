@@ -93,8 +93,12 @@ export class Outbox {
     if (this.cache !== null) {
       // Defensive copy required: calling code modifies returned array (push/forEach operations)
       // Use deep copy to protect against mutations to nested properties (body, headers)
-      // Use JSON methods for compatibility with Node.js environments and older browsers (pre-2022)
-      return JSON.parse(JSON.stringify(this.cache));
+      // Use structuredClone if available (modern browsers), otherwise fallback to JSON methods for compatibility
+      if (typeof structuredClone === "function") {
+        return structuredClone(this.cache);
+      } else {
+        return JSON.parse(JSON.stringify(this.cache));
+      }
     }
     
     try {

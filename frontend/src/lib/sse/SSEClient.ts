@@ -69,7 +69,9 @@ export class SSEClient {
    * multiplied by BASE_DELAY, with random jitter to prevent thundering herd.
    */
   private calculateBackoffDelay(): number {
-    const exponentialDelay = Math.min(Math.pow(2, this.reconnectAttempt), SSEClient.MAX_BACKOFF_MULTIPLIER) * SSEClient.BASE_DELAY;
+    // Cap reconnect attempts to prevent overflow in bit shifting
+    const cappedAttempt = Math.min(this.reconnectAttempt, SSEClient.MAX_BACKOFF_MULTIPLIER);
+    const exponentialDelay = (1 << cappedAttempt) * SSEClient.BASE_DELAY;
     const jitteredDelay = exponentialDelay + Math.random() * SSEClient.JITTER_MS;
     return Math.min(SSEClient.MAX_RECONNECT_DELAY, jitteredDelay);
   }

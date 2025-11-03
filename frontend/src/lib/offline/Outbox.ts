@@ -105,15 +105,14 @@ export class Outbox {
         retryCount: item.retryCount ?? 0
       }));
       this.cache = processedItems;
-      // Use deep copy to protect against mutations to nested properties (body, headers)
-      // Use JSON methods for compatibility with Node.js environments and older browsers (pre-2022)
-      return JSON.parse(JSON.stringify(processedItems));
+      // Return newly created array directly - no need for deep copy since processedItems is freshly created
+      return processedItems;
     } catch (err) {
       // Log localStorage failures for debugging (parse errors, quota exceeded, etc.)
       console.warn("Failed to read from localStorage outbox:", { key: this.key, error: err });
       const emptyList: OutboxItem[] = [];
       this.cache = emptyList;
-      return JSON.parse(JSON.stringify(emptyList)); // Use deep copy for consistency with other return paths
+      return []; // Return empty array directly - no need for deep copy
     }
   }
 

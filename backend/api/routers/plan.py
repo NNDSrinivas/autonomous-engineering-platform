@@ -66,6 +66,28 @@ def parse_broadcaster_message(msg: str | dict) -> dict:
     return json.loads(msg) if isinstance(msg, str) else msg
 
 
+def format_sse_event(seq: Optional[int], event_type: str, payload: dict) -> str:
+    """
+    Format SSE event with consistent structure.
+
+    Args:
+        seq: Sequence ID for Last-Event-ID compatibility (optional)
+        event_type: Event type
+        payload: Event payload data
+
+    Returns:
+        Formatted SSE event string
+    """
+    lines = []
+    if seq:
+        lines.append(f"id: {seq}\n")
+    lines.append(f"event: {event_type}\n")
+    lines.append(
+        f"data: {json.dumps({'seq': seq, 'type': event_type, 'payload': payload})}\n\n"
+    )
+    return "".join(lines)
+
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
@@ -363,9 +385,7 @@ async def stream_plan_updates(
                     )
                     for event in events:
                         # Emit with sequence ID for Last-Event-ID compatibility
-                        yield f"id: {event.seq}\n"
-                        yield f"event: {event.type}\n"
-                        yield f"data: {json.dumps({'seq': event.seq, 'type': event.type, 'payload': event.payload})}\n\n"
+                        yield format_sse_event(event.seq, event.type, event.payload)
 
             # Always send initial connection message after any backfill
             yield f"data: {json.dumps({'seq': None, 'type': 'connected', 'payload': {'plan_id': plan_id}})}\n\n"
@@ -381,10 +401,7 @@ async def stream_plan_updates(
                     payload = normalize_event_payload(data)
 
                     # Emit with sequence ID for Last-Event-ID compatibility
-                    if seq:
-                        yield f"id: {seq}\n"
-                    yield f"event: {event_type}\n"
-                    yield f"data: {json.dumps({'seq': seq, 'type': event_type, 'payload': payload})}\n\n"
+                    yield format_sse_event(seq, event_type, payload)
                 except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
                     # Fallback for malformed messages - catch specific parsing errors:
                     #   - json.JSONDecodeError: message is not valid JSON

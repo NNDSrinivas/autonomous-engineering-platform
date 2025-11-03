@@ -139,8 +139,9 @@ export class SSEClient {
       // WARNING: This fallback is strictly for local development and must NEVER be used in production.
       // Passing authentication tokens in URL parameters is a security risk, as URLs may be logged in browser history, server logs, and proxy logs.
       // This code path is only enabled in non-production environments to facilitate local testing.
-      const urlWithToken = `${url}?token=${encodeURIComponent(token ?? "")}`;
-      return new EventSource(urlWithToken);
+      const urlObj = new URL(url, window.location.origin);
+      urlObj.searchParams.set('token', token ?? '');
+      return new EventSource(urlObj.toString());
     }
   }
 

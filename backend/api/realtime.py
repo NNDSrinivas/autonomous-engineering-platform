@@ -335,8 +335,8 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         session_id: Session identifier
         text: Caption text for analysis
     """
-    # Initialize n to handle edge case where Redis operations fail before setting n
-    # and the fallback exception handler on line 375+ might reference undefined variable
+    # Initialize n to handle the edge case where Redis operations fail in the try block
+    # and n is referenced later in exception handling, preventing UnboundLocalError
     n = 0
     try:
         r = get_redis_client()

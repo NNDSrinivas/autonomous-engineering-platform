@@ -335,7 +335,9 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
         session_id: Session identifier
         text: Caption text for analysis
     """
-    n = 0  # Initialize to ensure variable is always defined
+    # Initialize n to handle edge case where Redis operations fail before setting n
+    # and the fallback exception handler on line 375+ might reference undefined variable
+    n = 0
     try:
         r = get_redis_client()
         key = f"ans:count:{session_id}"

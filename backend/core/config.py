@@ -33,7 +33,7 @@ class Settings(BaseSettings):
             app_env = values.get("app_env", os.getenv("APP_ENV", "dev"))
             if app_env in ["dev", "test"]:
                 # Check for any fields in the input data that aren't defined in the model
-                allowed_fields = set(cls.__fields__.keys())
+                allowed_fields = set(cls.model_fields.keys())
                 input_fields = set(values.keys())
                 extra_fields = input_fields - allowed_fields
                 if extra_fields:

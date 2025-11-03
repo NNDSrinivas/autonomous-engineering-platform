@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import json
 from ..core.db import get_db
+from ..core.config import settings
 from ..context.schemas import AgentNoteOut
 from ..context.service import parse_tags_field
 
@@ -71,12 +72,19 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
         )
         db.commit()
     except (OperationalError, ProgrammingError):
-        # Handle missing table gracefully in test environments
-        # These exceptions cover table/schema issues across different databases
-        raise HTTPException(
-            status_code=503,
-            detail="Memory service unavailable - database not fully initialized",
-        )
+        # Handle missing table gracefully based on environment
+        # In test environments, return 503 (service unavailable)
+        # In production, return 500 (internal server error) for proper error tracking
+        if settings.app_env == 'test':
+            raise HTTPException(
+                status_code=503,
+                detail="Memory service unavailable - database not fully initialized",
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Memory service error - database operation failed",
+            )
 
     return {"status": "recorded", "session_id": req.session_id}
 

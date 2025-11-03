@@ -37,8 +37,10 @@ def _timed(fn, name: str) -> CheckResult:
     # Intentionally catch all exceptions to ensure health checks always return a result.
     # This prevents a single failing check from crashing the health endpoint, which is
     # critical for monitoring and load balancer health checks.
-    except Exception:
-        logging.exception("Health check '%s' failed", name)
+    except Exception as e:
+        # Use logging.error instead of logging.exception to avoid exposing sensitive details
+        # in health check logs, especially for external monitoring endpoints
+        logging.error("Health check '%s' failed: %s: %s", name, type(e).__name__, e)
         return {
             "name": name,
             "ok": False,

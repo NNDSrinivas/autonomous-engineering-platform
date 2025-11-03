@@ -6,6 +6,24 @@ import { CORE_API } from '../../api/client';
 export type EventHandler = (evt: { planId: string; type: string; seq?: number; payload: any }) => void;
 export type TokenGetter = () => string | null;
 
+// Interface for our EventSource polyfill - includes all EventSource properties for compatibility
+interface EventSourcePolyfill {
+  readonly CONNECTING: 0;
+  readonly OPEN: 1;
+  readonly CLOSED: 2;
+  readyState: number;
+  withCredentials: boolean;
+  onopen: ((this: EventSource, ev: Event) => any) | null;
+  onmessage: ((this: EventSource, ev: MessageEvent) => any) | null;
+  onerror: ((this: EventSource, ev: Event) => any) | null;
+  listeners: Map<string, Set<EventListener>>;
+  url: string;
+  addEventListener(type: string, listener: EventListener): void;
+  removeEventListener(type: string, listener: EventListener): void;
+  dispatchEvent(event: Event): boolean;
+  close(): void;
+}
+
 export class SSEClient {
   private static readonly MAX_RECONNECT_DELAY = 30000; // 30 seconds
   private static readonly BASE_DELAY = 1000; // 1 second  
@@ -136,8 +154,12 @@ export class SSEClient {
     // Create EventSource-compatible object with proper listener support first
     const listeners = new Map<string, Set<EventListener>>();
     
-    const eventSource: any = {
+    const eventSource: EventSourcePolyfill = {
+      CONNECTING: 0 as const,
+      OPEN: 1 as const,
+      CLOSED: 2 as const,
       readyState: 0, // CONNECTING
+      withCredentials: false,
       onopen: null as ((this: EventSource, ev: Event) => any) | null,
       onmessage: null as ((this: EventSource, ev: MessageEvent) => any) | null,
       onerror: null as ((this: EventSource, ev: Event) => any) | null,
@@ -168,11 +190,11 @@ export class SSEClient {
         
         // Also call the specific handler properties for DOM events
         if (event.type === 'open' && this.onopen) {
-          this.onopen.call(this, event);
+          this.onopen.call(this as unknown as EventSource, event);
         } else if (event.type === 'message' && this.onmessage) {
-          this.onmessage.call(this, event as MessageEvent);
+          this.onmessage.call(this as unknown as EventSource, event as MessageEvent);
         } else if (event.type === 'error' && this.onerror) {
-          this.onerror.call(this, event);
+          this.onerror.call(this as unknown as EventSource, event);
         }
 
         return true;
@@ -274,7 +296,7 @@ export class SSEClient {
       eventSource.dispatchEvent(new Event('open'));
     }, 0);
 
-    return eventSource as EventSource;
+    return eventSource as unknown as EventSource;
   }
 
   private dispatch(type: string, e: MessageEvent) {

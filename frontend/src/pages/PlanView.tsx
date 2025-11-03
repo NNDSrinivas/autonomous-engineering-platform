@@ -228,7 +228,7 @@ export const PlanView: React.FC = () => {
         }
       });
     }
-  }, [online, tokenGetter, showToast, isPlanStepBody]);
+  }, [online, tokenGetter, showToast]);
 
   const handleAddStep = useCallback(async () => {
     if (!id || !stepText.trim()) return;

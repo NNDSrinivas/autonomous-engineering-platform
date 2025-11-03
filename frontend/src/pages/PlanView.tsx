@@ -148,6 +148,7 @@ export const PlanView: React.FC = () => {
           // Find matching optimistic update by text+owner key with timestamp tolerance
           const payloadTime = new Date(payload.ts).getTime(); // Compute once outside loop
           const payloadKey = `${payload.text}|${payload.owner}`;
+          let matchingOptimisticTime: number | undefined;
           for (const [, optimistic] of pendingOptimisticStepsRef.current) {
             const candidateKey = `${optimistic.text}|${optimistic.owner}`;
             if (candidateKey === payloadKey) {
@@ -155,6 +156,7 @@ export const PlanView: React.FC = () => {
               const optimisticTime = new Date(optimistic.ts).getTime();
               if (Math.abs(optimisticTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS) {
                 matchingOptimistic = optimistic;
+                matchingOptimisticTime = optimisticTime;
                 break;
               }
             }
@@ -171,21 +173,17 @@ export const PlanView: React.FC = () => {
             });
             
             // Replace optimistic step with real step
-            // Compute optimisticKey and optimisticTime once outside the map for efficiency
-            const optimisticKey = `${matchingOptimistic.text}|${matchingOptimistic.owner}`;
-            const optimisticTime = new Date(matchingOptimistic.ts).getTime();
+            // Use the already computed payloadKey and stored optimisticTime to avoid recomputation
             return prev.map(step => {
               // If matchingOptimistic.id is defined, match by id; otherwise, match by text, owner, and timestamp tolerance
               if (matchingOptimistic.id) {
                 return step.id === matchingOptimistic.id ? payload : step;
               } else {
+                // Fallback: match by text, owner, and timestamp (use stored optimisticTime if available)
                 const stepKey = `${step.text}|${step.owner}`;
-                const stepTime = new Date(step.ts).getTime();
-                if (
-                  stepKey === optimisticKey &&
-                  Math.abs(stepTime - optimisticTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS
-                ) {
-                  return payload;
+                if (stepKey === payloadKey) {
+                  const stepTime = matchingOptimisticTime || new Date(step.ts).getTime();
+                  return Math.abs(stepTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS ? payload : step;
                 }
                 return step;
               }

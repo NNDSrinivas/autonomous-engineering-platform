@@ -410,7 +410,7 @@ async def stream_plan_updates(
                     except Exception:
                         pass  # Keep default error payload
 
-                    yield f"event: error\n"
+                    yield "event: error\n"
                     yield f"data: {json.dumps(error_payload)}\n\n"
                 except AttributeError as e:
                     # Handle potential message structure changes separately for easier debugging
@@ -422,7 +422,7 @@ async def stream_plan_updates(
                     )
 
                     # Send error event to client (same format as above for consistency)
-                    yield f"event: error\n"
+                    yield "event: error\n"
                     yield f"data: {json.dumps({'error': 'SSE message structure error'})}\n\n"
 
         except asyncio.CancelledError:

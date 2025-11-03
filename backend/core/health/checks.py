@@ -9,13 +9,13 @@ get_engine = None
 try:
     from sqlalchemy import text
     from core.db import get_engine
-except Exception:
+except ImportError:
     pass  # text and get_engine remain None
 
 cache = None
 try:
     from infra.cache.redis_cache import cache
-except Exception:
+except ImportError:
     pass  # cache remains None
 
 

@@ -2,6 +2,7 @@
 Configuration management for Autonomous Engineering Intelligence Platform
 """
 
+import os
 import string
 from typing import List
 from typing import Optional
@@ -29,8 +30,8 @@ class Settings(BaseSettings):
     def validate_extra_fields(cls, values):
         """Enforce 'forbid' behavior in dev/test environments."""
         if isinstance(values, dict):
-            # Get app_env from values, defaulting to 'dev' for consistent validation behavior
-            app_env = values.get("app_env", "dev")
+            # Check environment independently to prevent bypass via app_env manipulation
+            app_env = os.environ.get("APP_ENV", "dev")
             if app_env in ["dev", "test"]:
                 # Check for any fields in the input data that aren't defined in the model
                 allowed_fields = set(cls.model_fields.keys())

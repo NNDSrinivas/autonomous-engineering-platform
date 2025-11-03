@@ -514,14 +514,15 @@ def _emit_new_answers(
     Args:
         db: Database session
         session_id: Session identifier
-        last_ts: Last timestamp processed (datetime object or ISO string)
-                 - datetime objects are automatically converted to ISO strings
-                 - string timestamps are passed through as-is
+        last_ts: Last timestamp processed. Can be:
+                 - datetime object (will be converted to ISO string)
+                 - ISO string (passed through as-is)
+                 - None (no filtering applied)
 
     Returns:
         Tuple of (new_rows, updated_last_ts as ISO string)
     """
-    # Convert datetime to string for the API call
+    # Convert datetime to string for the API call (handles both datetime and str inputs)
     since_ts = _convert_timestamp_to_iso(last_ts)
     rows = asvc.recent_answers(db, session_id, since_ts=since_ts)
 

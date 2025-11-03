@@ -51,13 +51,13 @@ def normalize_event_payload(data: dict) -> dict:
 def parse_broadcaster_message(msg) -> dict:
     """
     Parse message from broadcaster, handling both JSON strings and parsed dicts.
-    
+
     Args:
         msg: Message from broadcaster (str or dict)
-        
+
     Returns:
         Parsed message as dictionary
-        
+
     Note:
         This helper consolidates the parsing logic to avoid redundant checks.
         TODO: Standardize broadcaster output format to always return dicts

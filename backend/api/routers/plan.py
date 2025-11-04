@@ -282,8 +282,9 @@ async def add_step(
     warning_thresholds = {50, 100, 200, 400, 800, 1600, 3200}
     if step_count in warning_thresholds:
         logger.warning(
-            f"Plan {req.plan_id} has {step_count} steps. "
-            "Consider migrating to a separate steps table for better performance."
+            "Plan %s has %d steps. Consider migrating to a separate steps table for better performance.",
+            sanitize_for_logging(req.plan_id),
+            step_count,
         )
 
     db.commit()
@@ -302,7 +303,9 @@ async def add_step(
     except Exception as e:
         # Log but don't fail - backward compatibility
         logger.error(
-            f"Failed to append/broadcast step for plan {req.plan_id}: {e}",
+            "Failed to append/broadcast step for plan %s: %s",
+            sanitize_for_logging(req.plan_id),
+            str(e),
             exc_info=True,
         )
         # Fallback to old broadcast method
@@ -311,7 +314,9 @@ async def add_step(
             await bc.publish(channel, json.dumps(step))
         except Exception as fallback_error:
             logger.error(
-                f"Fallback broadcast also failed for plan {req.plan_id}: {fallback_error}"
+                "Fallback broadcast also failed for plan %s: %s",
+                sanitize_for_logging(req.plan_id),
+                str(fallback_error),
             )
 
     # Metrics
@@ -402,7 +407,9 @@ async def stream_plan_updates(
                             yield format_sse_event(event.seq, event.type, event.payload)
                 except Exception as e:
                     logger.error(
-                        f"Error during backfill replay for plan {plan_id}: {e}",
+                        "Error during backfill replay for plan %s: %s",
+                        sanitize_for_logging(plan_id),
+                        str(e),
                         exc_info=True,
                     )
                     # Continue with SSE stream even if backfill fails
@@ -452,7 +459,9 @@ async def stream_plan_updates(
 
         except asyncio.CancelledError:
             # Client disconnected
-            logger.debug(f"SSE connection cancelled for plan {plan_id}")
+            logger.debug(
+                "SSE connection cancelled for plan %s", sanitize_for_logging(plan_id)
+            )
             raise
 
     return StreamingResponse(
@@ -507,7 +516,8 @@ def archive_plan(
         # Edge case: Plan marked archived but memory node missing (previous failure)
         # Attempt to create the missing node to restore consistency
         logger.warning(
-            f"Plan {plan_id} is archived but memory node missing - creating it now"
+            "Plan %s is archived but memory node missing - creating it now",
+            sanitize_for_logging(plan_id),
         )
         # Fall through to create the memory node below
 

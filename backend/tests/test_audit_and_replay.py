@@ -11,6 +11,7 @@ from sqlalchemy import text
 from backend.api.main import app
 from backend.core.eventstore.service import append_event, replay, get_plan_event_count
 
+# Note: test_db fixture is auto-discovered from tests/conftest.py by pytest
 client = TestClient(app)
 
 # Enable dev auth for testing

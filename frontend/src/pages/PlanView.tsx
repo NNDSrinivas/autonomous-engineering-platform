@@ -306,11 +306,12 @@ export const PlanView: React.FC = () => {
       
       if (reason === 'offline') {
         // Optimistic update for better UX
+        // NOTE: Timestamp is client-generated and will be replaced by server timestamp upon reconciliation
         const optimisticStep: PlanStep = {
           id: `offline-${outboxId}`,
           text: stepData.text,
           owner: stepData.owner,
-          ts: new Date().toISOString(),
+          ts: new Date().toISOString(), // Client-generated; replaced by server on sync
         };
         
         // Track optimistic update for later reconciliation

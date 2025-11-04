@@ -96,9 +96,9 @@ class ArmPerformance(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    successes: float = Field(..., description="Success count")
-    failures: float = Field(..., description="Failure count")
-    total_trials: float = Field(..., description="Total trials")
+    successes: int = Field(..., description="Success count")
+    failures: int = Field(..., description="Failure count")
+    total_trials: int = Field(..., description="Total trials")
     success_rate: float = Field(..., ge=0.0, le=1.0, description="Success rate")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence level")
 

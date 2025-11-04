@@ -104,13 +104,8 @@ async def generate_diff(
             session=session,
         )
 
-        # Unpack the result
-        if isinstance(result, tuple):
-            diff, generation_log_id = result
-        else:
-            # Backwards compatibility
-            diff = result
-            generation_log_id = None
+        # Unpack the result - generate_unified_diff always returns a tuple
+        diff, generation_log_id = result
 
         # Validate the generated diff
         try:

@@ -66,7 +66,7 @@ class FeedbackService:
 
         if gen_log is None:
             return False
-        if str(gen_log.org_key) != org_key:
+        if str(gen_log.org_key) != str(org_key):
             return False
 
         # Check if feedback already exists for this user/generation

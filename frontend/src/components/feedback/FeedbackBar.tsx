@@ -25,6 +25,7 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackData>({ rating: 0 });
+  const [error, setError] = useState<string | null>(null);
 
   const handleRatingClick = (rating: number) => {
     if (hasSubmitted) return;
@@ -62,13 +63,16 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
       if (response.ok) {
         setHasSubmitted(true);
         setShowDetails(false);
+        setError(null);
         onFeedbackSubmitted?.();
       } else {
         const errorText = await response.text();
         console.error('Failed to submit feedback:', response.status, errorText);
+        setError('Failed to submit feedback. Please try again.');
       }
     } catch (error) {
       console.error('Error submitting feedback:', error);
+      setError('Network error. Please check your connection and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -190,6 +194,12 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
               Submit
             </button>
           </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+          <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
     </div>

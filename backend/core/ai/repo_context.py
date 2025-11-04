@@ -87,14 +87,14 @@ def read_text_safe(path_str: str, max_bytes: int = 200_000) -> str:
         # Use os.path operations instead of Path operations
         if not os.path.exists(path_str) or not os.path.isfile(path_str):
             return ""
-        
+
         # Read file using built-in open() function
-        with open(path_str, 'rb') as f:
+        with open(path_str, "rb") as f:
             data = f.read(max_bytes)
-        
+
         if os.path.getsize(path_str) > max_bytes:
             logger.warning(f"File {path_str} exceeds {max_bytes} bytes, truncating")
-        
+
         return data.decode("utf-8", errors="replace")
     except Exception as e:
         logger.warning(f"Failed to read {path_str}: {e}")
@@ -140,12 +140,12 @@ def list_neighbors(file_path: str) -> List[str]:
                     try:
                         # Calculate relative path using string operations
                         if item_path.startswith(repo_root_str + os.sep):
-                            rel_path = item_path[len(repo_root_str + os.sep):]
+                            rel_path = item_path[len(repo_root_str + os.sep) :]
                         elif item_path == repo_root_str:
                             rel_path = "."
                         else:
                             continue  # Skip files outside repo root
-                        
+
                         files.append(rel_path)
                     except Exception:
                         # Skip files that can't be processed

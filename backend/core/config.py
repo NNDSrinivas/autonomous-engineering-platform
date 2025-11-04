@@ -46,7 +46,12 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def validate_extra_fields(cls, values):
-        """Enforce 'forbid' behavior in dev/test environments and ensure app_env consistency."""
+        """Enforce 'forbid' behavior in dev/test environments and ensure app_env consistency.
+
+        Note: This validator uses module-level cached environment variables that are set at import time.
+        If you need to change the environment during tests, call _reset_env_cache() manually after
+        updating os.environ to refresh the cached values.
+        """
         if isinstance(values, dict):
             # Check environment independently to prevent bypass via app_env manipulation
             # Use cached values for consistent behavior

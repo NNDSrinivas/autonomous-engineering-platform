@@ -263,9 +263,10 @@ export class SSEClient {
       let hasOpenedConnection = false;
 
       // Event variables persist across chunks to handle partial events
+      // Note: eventId is initialized empty here and reset on each new connection (reconnection)
       let eventType = 'message';
       let eventData = '';
-      let eventId = '';
+      let eventId = ''; // Reset to empty on new connection; persists across events within connection
       let shouldDropEvent = false; // Track if current event should be dropped due to invalid type
 
       // Batch processing variables to reduce event loop overhead

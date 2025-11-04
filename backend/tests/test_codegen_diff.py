@@ -113,12 +113,18 @@ def test_validate_too_many_additions():
 def test_validate_too_large():
     """Diff exceeding size limit should fail validation."""
     # Generate a diff > 256KB with proper format
-    huge_diff = "diff --git a/huge.txt b/huge.txt\n"
-    huge_diff += "index e69de29..123 100644\n"
-    huge_diff += "--- a/huge.txt\n"
-    huge_diff += "+++ b/huge.txt\n"
-    huge_diff += "@@ -0,0 +1,1 @@\n"
-    huge_diff += "+" + ("x" * 300000)  # > 256KB
+    header = (
+        "diff --git a/huge.txt b/huge.txt\n"
+        "index e69de29..123 100644\n"
+        "--- a/huge.txt\n"
+        "+++ b/huge.txt\n"
+        "@@ -0,0 +1,1 @@\n"
+    )
+    # Calculate required number of characters to exceed 256KB (262,144 bytes)
+    # Add 1000 extra bytes for safety margin
+    min_size = 262144 + 1000
+    num_chars = min_size - len(header) - 1  # -1 for the '+' sign
+    huge_diff = header + "+" + ("x" * num_chars)
 
     with pytest.raises(DiffValidationError, match="exceeds 256KB"):
         validate_unified_diff(huge_diff)

@@ -60,7 +60,8 @@ def check_self() -> CheckResult:
 
 def check_db() -> CheckResult:
     def _q():
-        if get_engine is None or text is None:
+        # Verify that imports succeeded and functions are callable
+        if not callable(get_engine) or not callable(text):
             raise RuntimeError("db not configured")
         # Uses engine's connection pool efficiently - connections are reused and auto-closed
         with get_engine().connect() as conn:

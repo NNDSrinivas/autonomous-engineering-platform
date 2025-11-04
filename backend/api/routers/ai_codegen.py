@@ -7,10 +7,12 @@ from __future__ import annotations
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, ConfigDict
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from backend.core.auth.deps import require_role
 from backend.core.auth.models import User, Role
+from backend.core.database import get_db_session
 from backend.core.ai.codegen_service import generate_unified_diff
 from backend.core.ai.diff_utils import (
     validate_unified_diff,
@@ -69,7 +71,9 @@ class GenerateDiffOut(BaseModel):
 
 @router.post("/generate-diff", response_model=GenerateDiffOut)
 async def generate_diff(
-    body: GenerateDiffIn, user: User = Depends(require_role(Role.PLANNER))
+    body: GenerateDiffIn, 
+    user: User = Depends(require_role(Role.PLANNER)),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """
     Generate a context-aware unified diff for the given intent.
@@ -96,6 +100,8 @@ async def generate_diff(
             body.files,
             org_key=getattr(user, "org_key", None),
             user_role=user.role.value if user.role else None,
+            user_sub=user.user_id,
+            session=session,
         )
 
         # Unpack the result

@@ -135,34 +135,49 @@ def list_neighbors(file_path: str) -> List[str]:
         repo_root_str = os.path.realpath(str(REPO_ROOT.resolve()))
         parent_rel = os.path.relpath(parent_dir, repo_root_str)
         safe_parent = safe_repo_path(parent_rel)
+        # Extra hardening: check resolved path is inside repo, is not root, and is directory
+        try:
+            safe_parent_real = (
+                os.path.realpath(safe_parent) if safe_parent is not None else None
+            )
+        except Exception:
+            safe_parent_real = None
         if (
             safe_parent is None
             or os.path.commonpath([safe_parent, repo_root_str]) != repo_root_str
+            or safe_parent_real is None
+            or not os.path.commonpath([safe_parent_real, repo_root_str])
+            == repo_root_str
+            or not os.path.isdir(safe_parent_real)
         ):
-            logger.warning(f"Parent directory {parent_dir} is outside repo root")
+            logger.warning(
+                f"Parent directory {parent_dir} is outside repo root or not a directory"
+            )
             return []
 
         # Forbid listing repo root directly to avoid disclosure of special files
-        if safe_parent == repo_root_str:
-            logger.warning(f"Refusing to list repo root directory: {safe_parent}")
+        if safe_parent_real == repo_root_str:
+            logger.warning(f"Refusing to list repo root directory: {safe_parent_real}")
             return []
 
         # Safely list files in parent directory using os.listdir
         try:
             files = []
-            for item_name in os.listdir(safe_parent):
+            for item_name in os.listdir(safe_parent_real):
                 # Skip hidden files (dotfiles) for neighbor lists
                 if item_name.startswith("."):
                     continue
 
                 # Compute a relative path from repo root to the item
                 rel_item_path = os.path.relpath(
-                    os.path.join(safe_parent, item_name), repo_root_str
+                    os.path.join(safe_parent_real, item_name), repo_root_str
                 )
                 validated_item_path = safe_repo_path(rel_item_path)
                 # Extra hardening: Ensure validated_item_path is strictly within repo_root_str
+                # Forbid following symlinks as an extra hardening step
                 if (
                     validated_item_path is not None
+                    and not os.path.islink(validated_item_path)
                     and os.path.isfile(validated_item_path)
                     and validated_item_path != path_str
                     and os.path.commonpath([validated_item_path, repo_root_str])
@@ -179,7 +194,7 @@ def list_neighbors(file_path: str) -> List[str]:
                         continue
             return files[:40]  # Limit to prevent token overflow
         except (OSError, PermissionError):
-            logger.warning(f"Could not list directory: {safe_parent}")
+            logger.warning(f"Could not list directory: {safe_parent_real}")
             return []
 
     except Exception as e:

@@ -320,7 +320,8 @@ export class SSEClient {
                 eventData = '';
                 eventType = 'message';
                 shouldDropEvent = false;
-                // eventId is intentionally NOT reset here to preserve Last-Event-ID tracking
+                // eventId is intentionally NOT reset here to preserve Last-Event-ID tracking.
+                // eventId persists across events within the same connection and is only reset on reconnection.
               }
             }
 
@@ -328,8 +329,14 @@ export class SSEClient {
             processedChunks++;
             if (processedChunks >= MAX_CHUNKS_PER_BATCH) {
               processedChunks = 0;
-              // Use setTimeout for consistent behavior without cleanup complexity
-              await new Promise<void>(resolve => setTimeout(() => resolve(), 0));
+              // Yield using the most efficient available method
+              if ('scheduler' in globalThis && typeof (globalThis as any).scheduler?.yield === 'function') {
+                await (globalThis as any).scheduler.yield();
+              } else if (typeof queueMicrotask === 'function') {
+                await new Promise<void>(resolve => queueMicrotask(resolve));
+              } else {
+                await new Promise<void>(resolve => setTimeout(resolve, 0));
+              }
             }
           }
         } catch (error: any) {

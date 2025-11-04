@@ -36,6 +36,9 @@ export class SSEClient {
   private static readonly SSE_DATA_SPACE_PREFIX_LENGTH = 6; // length of "data: "
   private static readonly SSE_ID_PREFIX_LENGTH = 3; // length of "id:"
   
+  // Allowed SSE event types for security validation
+  private static readonly ALLOWED_EVENT_TYPES = new Set(["note", "step", "cursor", "presence", "message"]);
+  
   /**
    * Extract data content from SSE data line, handling both "data:" and "data: " prefixes
    */
@@ -280,7 +283,14 @@ export class SSEClient {
 
             for (const line of lines) {
               if (line.startsWith('event:')) {
-                eventType = line.substring(SSEClient.SSE_EVENT_PREFIX_LENGTH).trim();
+                const extractedEventType = line.substring(SSEClient.SSE_EVENT_PREFIX_LENGTH).trim();
+                // Validate event type against whitelist to prevent injection attacks
+                if (SSEClient.ALLOWED_EVENT_TYPES.has(extractedEventType)) {
+                  eventType = extractedEventType;
+                } else {
+                  console.warn('SSE: Ignoring unknown event type:', extractedEventType);
+                  // Keep the default 'message' event type for unknown events
+                }
               } else if (line.startsWith('data:')) {
                 eventData += SSEClient.extractDataContent(line) + '\n';
               } else if (line.startsWith('id:')) {

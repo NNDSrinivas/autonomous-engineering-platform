@@ -257,17 +257,14 @@ export const PlanView: React.FC = () => {
             const body = _item.body;
             // Use React.startTransition to batch these updates properly
             React.startTransition(() => {
-              // First get the removed ID synchronously
-              let removedStepId: string | undefined;
-              setPendingOptimisticSteps(prev => {
-                const { updatedSteps, removedId } = findAndRemoveOptimisticStep(prev, body.text, body.owner);
-                removedStepId = removedId;
-                return updatedSteps;
-              });
+              // Get current state to compute updates outside of setters to avoid race conditions
+              const currentPending = pendingOptimisticStepsRef.current;
+              const { updatedSteps, removedId } = findAndRemoveOptimisticStep(currentPending, body.text, body.owner);
               
-              // Then update liveSteps if needed - React will batch these automatically
-              if (removedStepId) {
-                setLiveSteps(steps => steps.filter(step => step.id !== removedStepId));
+              // Apply both updates using the computed values - React will batch automatically
+              setPendingOptimisticSteps(updatedSteps);
+              if (removedId) {
+                setLiveSteps(steps => steps.filter(step => step.id !== removedId));
               }
             });
           }

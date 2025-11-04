@@ -437,7 +437,7 @@ async def stream_plan_updates(
                         allowed_keys = {"type", "plan_id"}
                         for key in allowed_keys:
                             if key in partial:
-                                error_payload[key] = sanitize_for_logging(partial[key])
+                                error_payload[key] = sanitize_for_logging(str(partial[key]))
                     except Exception as ex:
                         logger.warning(
                             "Partial extraction of SSE event data failed: %s (Error: %s)",

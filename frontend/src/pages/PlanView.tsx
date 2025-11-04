@@ -24,7 +24,7 @@ function replaceOptimisticStep(
   matchingOptimistic: { id?: string }, 
   payloadKey: string, 
   payloadTime: number, 
-  matchingOptimisticTime: number // Make required since it should always be set when matchingOptimistic is found
+  matchingOptimisticTime: number // Always provided when matchingOptimistic is found
 ): PlanStep[] {
   return steps.map(step => {
     // If matchingOptimistic.id is defined, match by id; otherwise, match by text, owner, and timestamp tolerance
@@ -255,14 +255,14 @@ export const PlanView: React.FC = () => {
         if (isOutboxItem(_item)) {
           if (isPlanStepBody(_item.body)) {
             const body = _item.body;
-            // Find the step to remove first, then update both states
-            const currentPending = pendingOptimisticSteps;
-            const { updatedSteps, removedId } = findAndRemoveOptimisticStep(currentPending, body.text, body.owner);
-            
-            setPendingOptimisticSteps(updatedSteps);
-            if (removedId) {
-              setLiveSteps(steps => steps.filter(step => step.id !== removedId));
-            }
+            // Use functional state update to ensure we operate on latest state
+            setPendingOptimisticSteps(prev => {
+              const { updatedSteps, removedId } = findAndRemoveOptimisticStep(prev, body.text, body.owner);
+              if (removedId) {
+                setLiveSteps(steps => steps.filter(step => step.id !== removedId));
+              }
+              return updatedSteps;
+            });
           }
         }
         

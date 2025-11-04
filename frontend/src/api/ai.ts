@@ -67,11 +67,10 @@ export async function applyPatch(diff: string, dryRun = false): Promise<ApplyPat
     body: JSON.stringify({ diff, dry_run: dryRun }),
   });
   
-  const json = await response.json();
-  
   if (!response.ok) {
-    throw new Error(json.detail || JSON.stringify(json));
+    const errorText = await response.text();
+    throw new Error(`Failed to apply patch: ${errorText}`);
   }
   
-  return json;
+  return await response.json();
 }

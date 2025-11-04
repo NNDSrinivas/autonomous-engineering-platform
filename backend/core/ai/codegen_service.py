@@ -168,7 +168,9 @@ async def call_model(prompt: str, max_retries: int = 2) -> str:
                             )
 
                     # Strategy 2: Reduce context and ask for focused diff
-                    if attempt == 1 or (attempt == 0 and current_max_tokens >= MAX_RETRY_TOKEN_LIMIT):
+                    if attempt == 1 or (
+                        attempt == 0 and current_max_tokens >= MAX_RETRY_TOKEN_LIMIT
+                    ):
                         current_prompt = _create_focused_prompt(prompt)
                         current_max_tokens = MAX_TOKENS
                         logger.info(

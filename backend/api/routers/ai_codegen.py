@@ -6,7 +6,7 @@ Provides context-aware diff generation and safe patch application.
 from __future__ import annotations
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 import logging
 
 from backend.core.auth.deps import require_role
@@ -33,8 +33,7 @@ class GenerateDiffIn(BaseModel):
         default_factory=list, description="Target file paths (max 5)"
     )
 
-    @validator("files")
-    @classmethod
+    @field_validator("files")
     def validate_files_not_empty(cls, v):
         if not v:
             raise ValueError("At least one file path is required")
@@ -42,8 +41,8 @@ class GenerateDiffIn(BaseModel):
             raise ValueError("Maximum 5 files allowed")
         return v
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "intent": "Add rate limiting middleware to reject requests with payloads > 1MB",
                 "files": [
@@ -52,6 +51,7 @@ class GenerateDiffIn(BaseModel):
                 ],
             }
         }
+    )
 
 
 class GenerateDiffOut(BaseModel):
@@ -129,10 +129,11 @@ class ApplyPatchIn(BaseModel):
     diff: str = Field(..., min_length=1, description="Unified diff to apply")
     dry_run: bool = Field(default=False, description="Validate only, don't apply")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {"diff": "diff --git a/file.py b/file.py\n...", "dry_run": False}
         }
+    )
 
 
 class ApplyPatchOut(BaseModel):

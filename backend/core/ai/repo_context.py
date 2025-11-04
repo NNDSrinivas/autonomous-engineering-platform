@@ -49,8 +49,10 @@ def _create_secure_path_allowlist() -> Set[str]:
                             allowlist.add(rel_path)
                     except (OSError, ValueError):
                         continue
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception(
+            "Exception occurred during allowlist creation in _create_secure_path_allowlist"
+        )
     return allowlist
 
 

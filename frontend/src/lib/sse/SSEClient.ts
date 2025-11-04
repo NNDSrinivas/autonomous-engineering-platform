@@ -39,7 +39,8 @@ export class SSEClient {
   private static readonly MAX_RECONNECT_DELAY = 30000; // 30 seconds
   private static readonly BASE_DELAY = 1000; // 1 second  
   private static readonly JITTER_MS = 250; // 250ms jitter
-  private static readonly MAX_BACKOFF_MULTIPLIER = 30; // Cap exponential backoff to prevent overflow
+  // Cap at 10 to avoid numeric overflow (2^10 * 1000ms = 1024s ≈ 17min, but MAX_RECONNECT_DELAY caps at 30s)
+  private static readonly MAX_BACKOFF_MULTIPLIER = 10;
   
   // SSE protocol field prefix lengths (for efficient parsing)
   private static readonly SSE_EVENT_PREFIX_LENGTH = 6; // length of "event:"

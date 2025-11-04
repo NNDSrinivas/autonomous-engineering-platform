@@ -86,6 +86,8 @@ export const PlanView: React.FC = () => {
   // The hook implementation exists at frontend/src/hooks/useOptimisticSteps.ts but requires
   // significant refactoring of this component to integrate (all setState calls need updating).
   // Track as technical debt for future incremental migration.
+  // RISK: Dual-map pattern appears in multiple locations (lines ~196-206, ~256-266, ~320-321)
+  // with complex synchronization logic. Desynchronization bugs possible. Consider prioritizing.
   const [pendingOptimisticSteps, setPendingOptimisticSteps] = useState<Map<string, PlanStep>>(new Map());
   // Secondary map for efficient lookup by text+owner key
   const [optimisticLookup, setOptimisticLookup] = useState<Map<string, PlanStep>>(new Map());

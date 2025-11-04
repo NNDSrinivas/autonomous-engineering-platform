@@ -19,14 +19,6 @@ HUNK_HEADER = re.compile(r"^@@ -\d+(,\d+)? \+\d+(,\d+)? @@", re.M)
 ALLOWED_PREFIX = ("diff ", "index ", "--- ", "+++ ", "@@ ", "+", "-", " ")
 NO_NEWLINE_MARKER = "\\ No newline at end of file"
 
-logger = logging.getLogger(__name__)
-
-# Regex patterns for unified diff validation
-DIFF_HEADER = re.compile(r"^diff --git a/.+ b/.+", re.M)
-HUNK_HEADER = re.compile(r"^@@ -\d+(,\d+)? \+\d+(,\d+)? @@", re.M)
-ALLOWED_PREFIX = ("diff ", "index ", "--- ", "+++ ", "@@ ", "+", "-", " ")
-NO_NEWLINE_MARKER = "\\ No newline at end of file"
-
 
 class DiffValidationError(Exception):
     """Raised when diff validation fails."""

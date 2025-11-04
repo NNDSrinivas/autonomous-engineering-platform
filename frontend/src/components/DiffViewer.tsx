@@ -51,24 +51,29 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ diff, className = "" }) 
     );
   }
 
-  const lines = diff.split(/\r?\n/);
-
-  // Generate stable keys that combine position and content hash
-  const generateKey = (line: string, index: number): string => {
-    // Use a simple hash of the line content for better uniqueness
-    const hash = line.split('').reduce((a, b) => {
-      a = ((a << 5) - a) + b.charCodeAt(0);
-      return a | 0; // Convert to 32-bit integer
-    }, 0);
-    return `${index}-${Math.abs(hash)}`;
-  };
+  const lines = React.useMemo(() => diff.split(/\r?\n/), [diff]);
+  
+  // Precompute keys for each line only when diff changes
+  const linesWithKeys = React.useMemo(() => {
+    return lines.map((line, index) => {
+      // Use a simple hash of the line content for better uniqueness
+      const hash = line.split('').reduce((a, b) => {
+        a = ((a << 5) - a) + b.charCodeAt(0);
+        return a | 0; // Convert to 32-bit integer
+      }, 0);
+      return {
+        line,
+        key: `${index}-${Math.abs(hash)}`
+      };
+    });
+  }, [lines]);
 
   return (
     <pre
       className={`bg-slate-50 dark:bg-slate-900 rounded-lg p-4 overflow-auto text-sm leading-6 font-mono border border-slate-200 dark:border-slate-800 ${className}`}
     >
-      {lines.map((line, i) => (
-        <div key={generateKey(line, i)} className={`${getLineColor(line)} whitespace-pre`}>
+      {linesWithKeys.map(({ line, key }) => (
+        <div key={key} className={`${getLineColor(line)} whitespace-pre`}>
           {line || " "}
         </div>
       ))}

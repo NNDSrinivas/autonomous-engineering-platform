@@ -6,7 +6,7 @@ Provides context-aware diff generation and safe patch application.
 from __future__ import annotations
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 import logging
 
 from backend.core.auth.deps import require_role
@@ -32,6 +32,14 @@ class GenerateDiffIn(BaseModel):
     files: List[str] = Field(
         default_factory=list, description="Target file paths (max 5)"
     )
+
+    @validator("files")
+    def validate_files_not_empty(cls, v):
+        if not v:
+            raise ValueError("At least one file path is required")
+        if len(v) > 5:
+            raise ValueError("Maximum 5 files allowed")
+        return v
 
     class Config:
         json_schema_extra = {

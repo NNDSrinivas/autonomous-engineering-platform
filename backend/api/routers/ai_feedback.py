@@ -10,7 +10,7 @@ from backend.core.auth.models import Role
 from backend.core.database import get_db_session
 from backend.schemas.ai_feedback import (
     FeedbackSubmission,
-    FeedbackResponse, 
+    FeedbackResponse,
     FeedbackStats,
     FeedbackEntry,
     RecentFeedbackResponse,
@@ -31,7 +31,7 @@ async def submit_feedback(
 ) -> FeedbackResponse:
     """Submit feedback for an AI generation."""
     service = FeedbackService(session)
-    
+
     success = await service.submit_feedback(
         gen_id=feedback.gen_id,
         org_key=current_user["org_key"],
@@ -40,28 +40,25 @@ async def submit_feedback(
         reason=feedback.reason,
         comment=feedback.comment,
     )
-    
+
     if not success:
         return FeedbackResponse(
             success=False,
-            message="Feedback could not be submitted. Generation not found or feedback already exists."
+            message="Feedback could not be submitted. Generation not found or feedback already exists.",
         )
-    
+
     # Update bandit learning if we have bandit metadata
-    if feedback.rating != 0:  # Only learn from explicit feedback
-        learning_service = LearningService()
-        # For future enhancement: update bandit with generation context
-        # bandit = learning_service.get_bandit(current_user["org_key"])
-        
-        # Try to get bandit context from a related generation (would need to be stored)
-        # For now, we'll record feedback without full context
-        
+    # if feedback.rating != 0:  # Only learn from explicit feedback
+    #     learning_service = LearningService()
+    #     # For future enhancement: update bandit with generation context
+    #     # bandit = learning_service.get_bandit(current_user["org_key"])
+    #
+    #     # Try to get bandit context from a related generation (would need to be stored)
+    #     # For now, we'll record feedback without full context
+
     await session.commit()
-    
-    return FeedbackResponse(
-        success=True,
-        message="Feedback submitted successfully"
-    )
+
+    return FeedbackResponse(success=True, message="Feedback submitted successfully")
 
 
 @router.get("/stats", response_model=FeedbackStats)
@@ -74,15 +71,15 @@ async def get_feedback_stats(
     if days < 1 or days > 365:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Days must be between 1 and 365"
+            detail="Days must be between 1 and 365",
         )
-    
+
     service = FeedbackService(session)
     stats = await service.get_feedback_stats(
         org_key=current_user["org_key"],
         days=days,
     )
-    
+
     return FeedbackStats(**stats)
 
 
@@ -96,18 +93,18 @@ async def get_recent_feedback(
     if limit < 1 or limit > 200:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Limit must be between 1 and 200"
+            detail="Limit must be between 1 and 200",
         )
-    
+
     service = FeedbackService(session)
     feedback_list = await service.get_recent_feedback(
         org_key=current_user["org_key"],
         limit=limit,
     )
-    
+
     return RecentFeedbackResponse(
         feedback=[FeedbackEntry(**entry) for entry in feedback_list],
-        total_count=len(feedback_list)
+        total_count=len(feedback_list),
     )
 
 
@@ -118,5 +115,5 @@ async def get_learning_stats(
     """Get contextual bandit learning statistics (admin only)."""
     learning_service = LearningService()
     stats = await learning_service.get_learning_stats(current_user["org_key"])
-    
+
     return LearningStats(**stats)

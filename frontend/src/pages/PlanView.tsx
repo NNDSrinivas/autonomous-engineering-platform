@@ -18,6 +18,16 @@ import { CORE_API, ORG } from '../api/client';
 const OPTIMISTIC_TIMESTAMP_TOLERANCE_MS = 5000; // 5 seconds
 const MAX_OPTIMISTIC_STEPS_WARNING_THRESHOLD = 50; // Warn when this many optimistic steps are pending
 
+// Helper to create consistent composite key for step lookup
+function makeStepKey(text: string, owner: string): string {
+  return `${text}|${owner}`;
+}
+
+// Helper to determine if optimistic step should be replaced based on timestamp tolerance
+function shouldReplaceOptimisticStep(matchingOptimisticTime: number, payloadTime: number): boolean {
+  return Math.abs(matchingOptimisticTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS;
+}
+
 // Helper function to replace optimistic step with real step
 function replaceOptimisticStep(
   steps: PlanStep[], 
@@ -33,9 +43,9 @@ function replaceOptimisticStep(
       return step.id === matchingOptimistic.id ? payload : step;
     } else {
       // Fallback: match by text, owner, and timestamp (use pre-computed optimisticTime)
-      const stepKey = `${step.text}|${step.owner}`;
+      const stepKey = makeStepKey(step.text, step.owner);
       if (stepKey === payloadKey) {
-        return Math.abs(matchingOptimisticTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS ? payload : step;
+        return shouldReplaceOptimisticStep(matchingOptimisticTime, payloadTime) ? payload : step;
       }
       return step;
     }
@@ -157,7 +167,7 @@ export const PlanView: React.FC = () => {
           
           // Efficient lookup by text+owner key with timestamp tolerance
           const payloadTime = new Date(payload.ts).getTime(); // Compute once outside loop
-          const payloadKey = `${payload.text}|${payload.owner}`;
+          const payloadKey = makeStepKey(payload.text, payload.owner);
           
           // Check for performance bottleneck warning
           if (pendingOptimisticStepsRef.current.size > MAX_OPTIMISTIC_STEPS_WARNING_THRESHOLD) {
@@ -234,7 +244,7 @@ export const PlanView: React.FC = () => {
             // Use React.startTransition to batch these updates properly
             React.startTransition(() => {
               // Use O(1) lookup instead of linear search
-              const key = body.text + '|' + body.owner;
+              const key = makeStepKey(body.text, body.owner);
               const optimisticStep = optimisticLookupRef.current.get(key);
               if (optimisticStep && optimisticStep.id) {
                 const stepId = optimisticStep.id; // Capture to ensure type safety in closures

@@ -58,7 +58,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ diff, className = "" }) 
     // Use a simple hash of the line content for better uniqueness
     const hash = line.split('').reduce((a, b) => {
       a = ((a << 5) - a) + b.charCodeAt(0);
-      return a & a; // Convert to 32-bit integer
+      return a | 0; // Convert to 32-bit integer
     }, 0);
     return `${index}-${Math.abs(hash)}`;
   };

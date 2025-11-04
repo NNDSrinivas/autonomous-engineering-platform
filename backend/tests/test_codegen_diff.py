@@ -23,13 +23,13 @@ MULTI_FILE_DIFF = """diff --git a/a.txt b/a.txt
 index e69de29..5626abf 100644
 --- a/a.txt
 +++ b/a.txt
-@@ -0,0 +1 @@
+@@ -0,0 +1,1 @@
 +one
 diff --git a/b.txt b/b.txt
 index e69de29..f719efd 100644
 --- a/b.txt
 +++ b/b.txt
-@@ -0,0 +1 @@
+@@ -0,0 +1,1 @@
 +two
 """
 

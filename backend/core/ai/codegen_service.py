@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 
 # Configuration from environment
 MODEL = os.getenv("CODEGEN_MODEL", "gpt-4o-mini")
-MAX_TOKENS = int(os.getenv("CODEGEN_MAX_TOKENS", "1200"))
+# Increased token limit for comprehensive diff generation
+# After max_tokens, the model stops generating - diffs may be incomplete
+# For complex changes involving multiple files, consider increasing further
+MAX_TOKENS = int(os.getenv("CODEGEN_MAX_TOKENS", "4096"))
 TEMPERATURE = float(os.getenv("CODEGEN_TEMPERATURE", "0.2"))
 
 SYSTEM_PROMPT = """You are a senior software engineer generating code changes for a production repository.

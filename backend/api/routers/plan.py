@@ -71,12 +71,14 @@ def parse_broadcaster_message(msg: str | dict) -> dict:
         result = json.loads(msg)
         if not isinstance(result, dict):
             raise ValueError(
-                f"Parsed broadcaster message must be a dict, got {type(result).__name__}"
+                f"Parsed broadcaster message must be a dict, got {sanitize_for_logging(type(result).__name__)}"
             )
         return result
     # Validate that non-string input is actually a dict
     if not isinstance(msg, dict):
-        raise TypeError(f"Expected str or dict, got {type(msg).__name__}")
+        raise TypeError(
+            f"Expected str or dict, got {sanitize_for_logging(type(msg).__name__)}"
+        )
     return msg
 
 

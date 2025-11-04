@@ -95,6 +95,14 @@ class Settings(BaseSettings):
                     raise ValueError(
                         f"Extra fields not permitted in app_env '{sanitize_for_logging(str(env_app_env))}': {sanitized_fields}"
                     )
+        else:
+            # Log warning if values is not a dict (unexpected validation context)
+            import logging
+
+            logging.warning(
+                "Settings validator received non-dict values (type: %s). Skipping validation.",
+                type(values).__name__,
+            )
         return values
 
     api_host: str = "0.0.0.0"

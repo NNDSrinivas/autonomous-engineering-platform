@@ -39,6 +39,7 @@ def _timed(fn, name: str) -> CheckResult:
     # Intentionally catch all exceptions to ensure health checks always return a result.
     # This prevents a single failing check from crashing the health endpoint, which is
     # critical for monitoring and load balancer health checks.
+    # Note: Using Exception (not BaseException) to allow SystemExit/KeyboardInterrupt to propagate
     except Exception as e:
         # Log both exception type and message for better debugging
         # Avoid exposing sensitive details in the external response

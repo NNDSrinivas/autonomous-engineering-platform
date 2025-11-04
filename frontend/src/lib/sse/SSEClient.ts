@@ -11,10 +11,20 @@ interface SchedulerAPI {
   yield: () => Promise<void>;
 }
 
-function hasSchedulerYield(obj: any): obj is { scheduler: SchedulerAPI } {
-  return 'scheduler' in obj && 
-         obj.scheduler && 
-         typeof obj.scheduler.yield === 'function';
+// Type-safe interface for globalThis with optional scheduler property
+interface GlobalWithScheduler {
+  scheduler?: SchedulerAPI;
+}
+
+function hasSchedulerYield(obj: unknown): obj is GlobalWithScheduler & { scheduler: SchedulerAPI } {
+  if (typeof obj !== 'object' || obj === null) return false;
+  if (!('scheduler' in obj)) return false;
+  
+  const candidate = obj as { scheduler: unknown };
+  return typeof candidate.scheduler === 'object' &&
+         candidate.scheduler !== null &&
+         'yield' in candidate.scheduler &&
+         typeof (candidate.scheduler as { yield: unknown }).yield === 'function';
 }
 
 // Interface for our EventSource polyfill - includes all EventSource properties for compatibility
@@ -311,6 +321,9 @@ export class SSEClient {
               if (line.startsWith('event:')) {
                 const extractedEventType = line.substring(SSEClient.SSE_EVENT_PREFIX_LENGTH).trim();
                 // Validate event type against whitelist to prevent injection attacks
+                // Note: Data payload validation happens downstream in event handlers
+                // (e.g., PlanView validates step structure, sanitization applied in logging)
+                // This layered approach ensures both early filtering and context-specific validation
                 if (SSEClient.ALLOWED_EVENT_TYPES.has(extractedEventType)) {
                   eventType = extractedEventType;
                   shouldDropEvent = false;
@@ -349,8 +362,9 @@ export class SSEClient {
               // Falls back to setTimeout which properly yields to the browser event loop
               // Note: queueMicrotask is NOT used as it only yields to other microtasks,
               // not to the browser's main event loop for rendering updates
-              if (hasSchedulerYield(globalThis as any)) {
-                await (globalThis as any).scheduler.yield();
+              const globalWithScheduler = globalThis as GlobalWithScheduler;
+              if (hasSchedulerYield(globalWithScheduler)) {
+                await globalWithScheduler.scheduler.yield();
               } else {
                 await new Promise<void>(resolve => setTimeout(resolve, 0));
               }

@@ -37,19 +37,25 @@ function replaceOptimisticStep(
   payloadTime: number, 
   matchingOptimisticTime: number // Always provided when matchingOptimistic is found
 ): PlanStep[] {
-  return steps.map(step => {
-    // If matchingOptimistic.id is defined, match by id; otherwise, match by text, owner, and timestamp tolerance
-    if (matchingOptimistic.id) {
-      return step.id === matchingOptimistic.id ? payload : step;
-    } else {
-      // Fallback: match by text, owner, and timestamp (use pre-computed optimisticTime)
+  // Optimization: When matching by ID, use findIndex + slice to avoid iterating all elements
+  if (matchingOptimistic.id) {
+    const idx = steps.findIndex(step => step.id === matchingOptimistic.id);
+    if (idx === -1) return steps; // No match found, return original array
+    return [
+      ...steps.slice(0, idx),
+      payload,
+      ...steps.slice(idx + 1)
+    ];
+  } else {
+    // Fallback: match by text, owner, and timestamp (requires full iteration)
+    return steps.map(step => {
       const stepKey = makeStepKey(step.text, step.owner);
       if (stepKey === payloadKey) {
         return shouldReplaceOptimisticStep(matchingOptimisticTime, payloadTime) ? payload : step;
       }
       return step;
-    }
-  });
+    });
+  }
 }
 
 // Type for outbox item body to ensure type safety

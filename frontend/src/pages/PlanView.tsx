@@ -17,6 +17,30 @@ import { CORE_API, ORG } from '../api/client';
 // Constants
 const OPTIMISTIC_TIMESTAMP_TOLERANCE_MS = 5000; // 5 seconds
 
+// Helper function to replace optimistic step with real step
+function replaceOptimisticStep(
+  steps: PlanStep[], 
+  payload: PlanStep, 
+  matchingOptimistic: { id?: string }, 
+  payloadKey: string, 
+  payloadTime: number, 
+  matchingOptimisticTime: number // Make required since it should always be set when matchingOptimistic is found
+): PlanStep[] {
+  return steps.map(step => {
+    // If matchingOptimistic.id is defined, match by id; otherwise, match by text, owner, and timestamp tolerance
+    if (matchingOptimistic.id) {
+      return step.id === matchingOptimistic.id ? payload : step;
+    } else {
+      // Fallback: match by text, owner, and timestamp (use pre-computed optimisticTime)
+      const stepKey = `${step.text}|${step.owner}`;
+      if (stepKey === payloadKey) {
+        return Math.abs(matchingOptimisticTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS ? payload : step;
+      }
+      return step;
+    }
+  });
+}
+
 // Type for outbox item body to ensure type safety
 interface PlanStepBody {
   text: string;
@@ -30,6 +54,11 @@ function isPlanStepBody(obj: any): obj is PlanStepBody {
          typeof obj.text === 'string' && 
          typeof obj.owner === 'string' && 
          typeof obj.plan_id === 'string';
+}
+
+// Type guard to check if an object is a valid outbox item
+function isOutboxItem(obj: any): obj is { body: any } {
+  return obj && typeof obj === 'object' && 'body' in obj && obj.body;
 }
 
 // Helper function to find and remove matching optimistic step
@@ -67,7 +96,10 @@ export const PlanView: React.FC = () => {
   
   const [liveSteps, setLiveSteps] = useState<PlanStep[]>([]);
   const [pendingOptimisticSteps, setPendingOptimisticSteps] = useState<Map<string, PlanStep>>(new Map());
+  // Secondary map for efficient lookup by text+owner key
+  const [optimisticLookup, setOptimisticLookup] = useState<Map<string, PlanStep>>(new Map());
   const pendingOptimisticStepsRef = useRef<Map<string, PlanStep>>(new Map());
+  const optimisticLookupRef = useRef<Map<string, PlanStep>>(new Map());
   const [stepText, setStepText] = useState('');
   const [ownerName, setOwnerName] = useState('user');
   const [archiveError, setArchiveError] = useState<string | null>(null);
@@ -75,7 +107,8 @@ export const PlanView: React.FC = () => {
   // Keep ref in sync with state
   useEffect(() => {
     pendingOptimisticStepsRef.current = pendingOptimisticSteps;
-  }, [pendingOptimisticSteps]);
+    optimisticLookupRef.current = optimisticLookup;
+  }, [pendingOptimisticSteps, optimisticLookup]);
 
   // Resilience features (PR-30)
   const { online, status, setStatus } = useConnection();
@@ -144,25 +177,29 @@ export const PlanView: React.FC = () => {
           // Check if this step matches any pending optimistic updates
           // Use efficient key-based lookup instead of linear search
           let matchingOptimistic: PlanStep | undefined;
+          let matchingOptimisticTime: number | undefined;
           
-          // Find matching optimistic update by text+owner key with timestamp tolerance
+          // Efficient lookup by text+owner key with timestamp tolerance
           const payloadTime = new Date(payload.ts).getTime(); // Compute once outside loop
           const payloadKey = `${payload.text}|${payload.owner}`;
-          let matchingOptimisticTime: number | undefined;
-          for (const [, optimistic] of pendingOptimisticStepsRef.current) {
-            const candidateKey = `${optimistic.text}|${optimistic.owner}`;
-            if (candidateKey === payloadKey) {
-              // Only compute timestamp if key matches to avoid unnecessary Date parsing
-              const optimisticTime = new Date(optimistic.ts).getTime();
-              if (Math.abs(optimisticTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS) {
-                matchingOptimistic = optimistic;
-                matchingOptimisticTime = optimisticTime;
-                break;
-              }
+          
+          // Check for performance bottleneck warning
+          if (pendingOptimisticStepsRef.current.size > 50) {
+            console.warn(`Large number of pending optimistic steps: ${pendingOptimisticStepsRef.current.size}`);
+          }
+          
+          // Use efficient Map lookup instead of linear search
+          const candidate = optimisticLookupRef.current.get(payloadKey);
+          if (candidate) {
+            // Only compute timestamp if key matches to avoid unnecessary Date parsing
+            const optimisticTime = new Date(candidate.ts).getTime();
+            if (Math.abs(optimisticTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS) {
+              matchingOptimistic = candidate;
+              matchingOptimisticTime = optimisticTime; // Always set when matchingOptimistic is found
             }
           }
           
-          if (matchingOptimistic) {
+          if (matchingOptimistic && matchingOptimisticTime !== undefined) {
             // Remove the optimistic update since we got the real one
             setPendingOptimisticSteps(pending => {
               const updated = new Map(pending);
@@ -171,23 +208,22 @@ export const PlanView: React.FC = () => {
               }
               return updated;
             });
+            setOptimisticLookup(lookup => {
+              const updated = new Map(lookup);
+              updated.delete(payloadKey);
+              return updated;
+            });
             
             // Replace optimistic step with real step
             // Use the already computed payloadKey and stored optimisticTime to avoid recomputation
-            return prev.map(step => {
-              // If matchingOptimistic.id is defined, match by id; otherwise, match by text, owner, and timestamp tolerance
-              if (matchingOptimistic.id) {
-                return step.id === matchingOptimistic.id ? payload : step;
-              } else {
-                // Fallback: match by text, owner, and timestamp (use stored optimisticTime if available)
-                const stepKey = `${step.text}|${step.owner}`;
-                if (stepKey === payloadKey) {
-                  const stepTime = matchingOptimisticTime || new Date(step.ts).getTime();
-                  return Math.abs(stepTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS ? payload : step;
-                }
-                return step;
-              }
-            });
+            return replaceOptimisticStep(
+              prev, 
+              payload, 
+              matchingOptimistic, 
+              payloadKey, 
+              payloadTime, 
+              matchingOptimisticTime
+            );
           } else {
             // Regular new step
             return [...prev, payload];
@@ -216,19 +252,16 @@ export const PlanView: React.FC = () => {
         return fetch(url, init);
       }, (_item, reason) => {
         // Handle dropped items - cleanup optimistic updates
-        if (_item && typeof _item === 'object' && 'body' in _item && _item.body) {
+        if (isOutboxItem(_item)) {
           if (isPlanStepBody(_item.body)) {
             const body = _item.body;
-            // Find matching optimistic step to remove
-            let optimisticStepIdToRemove: string | undefined;
-            setPendingOptimisticSteps(prev => {
-              const { updatedSteps, removedId } = findAndRemoveOptimisticStep(prev, body.text, body.owner);
-              optimisticStepIdToRemove = removedId;
-              return updatedSteps;
-            });
-            // Remove from liveSteps outside the setPendingOptimisticSteps callback
-            if (optimisticStepIdToRemove) {
-              setLiveSteps(steps => steps.filter(step => step.id !== optimisticStepIdToRemove));
+            // Find the step to remove first, then update both states
+            const currentPending = pendingOptimisticSteps;
+            const { updatedSteps, removedId } = findAndRemoveOptimisticStep(currentPending, body.text, body.owner);
+            
+            setPendingOptimisticSteps(updatedSteps);
+            if (removedId) {
+              setLiveSteps(steps => steps.filter(step => step.id !== removedId));
             }
           }
         }
@@ -281,6 +314,7 @@ export const PlanView: React.FC = () => {
         
         // Track optimistic update for later reconciliation
         setPendingOptimisticSteps(prev => new Map(prev).set(optimisticStep.id!, optimisticStep));
+        setOptimisticLookup(prev => new Map(prev).set(`${optimisticStep.text}|${optimisticStep.owner}`, optimisticStep));
         setLiveSteps((prev) => [...prev, optimisticStep]);
         showToast("You're offline. We queued your change and will resend when back online.", "warning");
       } else {

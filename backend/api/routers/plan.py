@@ -415,14 +415,13 @@ async def stream_plan_updates(
                     KeyError,
                     TypeError,
                     ValueError,
-                    AttributeError,
                 ) as e:
                     # Fallback for malformed messages - catch specific parsing errors:
                     #   - json.JSONDecodeError: message is not valid JSON
                     #   - KeyError: expected field missing from message dict
                     #   - TypeError: message is not a dict or has wrong type
                     #   - ValueError: unexpected value in message
-                    #   - AttributeError: message structure changes (e.g., broadcaster format change)
+                    # Note: AttributeError removed as it indicates programming bugs, not malformed data
                     logger.warning(
                         "Malformed SSE message: %s (Error: %s)",
                         sanitize_for_logging(str(msg)),

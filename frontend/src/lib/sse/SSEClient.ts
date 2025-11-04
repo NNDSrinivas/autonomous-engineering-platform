@@ -254,57 +254,73 @@ export class SSEClient {
       let eventData = '';
       let eventId = '';
 
-      const processChunk = () => {
-        reader.read().then(({ done, value }) => {
-          if (done) {
-            eventSource.dispatchEvent(new Event('error'));
-            return;
-          }
+      // Batch processing variables to reduce event loop overhead
+      let processedChunks = 0;
+      const MAX_CHUNKS_PER_BATCH = 10;
 
-          // Dispatch 'open' event only once after receiving the first successful chunk
-          if (!hasOpenedConnection) {
-            hasOpenedConnection = true;
-            eventSource.readyState = 1; // OPEN
-            eventSource.dispatchEvent(new Event('open'));
-          }
+      const processStream = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              eventSource.dispatchEvent(new Event('error'));
+              break;
+            }
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+            // Dispatch 'open' event only once after receiving the first successful chunk
+            if (!hasOpenedConnection) {
+              hasOpenedConnection = true;
+              eventSource.readyState = 1; // OPEN
+              eventSource.dispatchEvent(new Event('open'));
+            }
 
-          for (const line of lines) {
-            if (line.startsWith('event:')) {
-              eventType = line.substring(SSEClient.SSE_EVENT_PREFIX_LENGTH).trim();
-            } else if (line.startsWith('data:')) {
-              eventData += SSEClient.extractDataContent(line) + '\n';
-            } else if (line.startsWith('id:')) {
-              eventId = line.substring(SSEClient.SSE_ID_PREFIX_LENGTH).trim();
-            } else if (line === '') {
-              // Empty line signals end of event
-              if (eventData) {
-                const messageEvent = new MessageEvent(eventType, {
-                  data: eventData.slice(0, -1), // Remove trailing newline
-                  lastEventId: eventId,
-                });
-                eventSource.dispatchEvent(messageEvent);
-                // Reset event variables after dispatching
-                eventData = '';
-                eventType = 'message';
-                // eventId is intentionally NOT reset here to preserve Last-Event-ID tracking
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+            for (const line of lines) {
+              if (line.startsWith('event:')) {
+                eventType = line.substring(SSEClient.SSE_EVENT_PREFIX_LENGTH).trim();
+              } else if (line.startsWith('data:')) {
+                eventData += SSEClient.extractDataContent(line) + '\n';
+              } else if (line.startsWith('id:')) {
+                eventId = line.substring(SSEClient.SSE_ID_PREFIX_LENGTH).trim();
+              } else if (line === '') {
+                // Empty line signals end of event
+                if (eventData) {
+                  const messageEvent = new MessageEvent(eventType, {
+                    data: eventData.slice(0, -1), // Remove trailing newline
+                    lastEventId: eventId,
+                  });
+                  eventSource.dispatchEvent(messageEvent);
+                  // Reset event variables after dispatching
+                  eventData = '';
+                  eventType = 'message';
+                  // eventId is intentionally NOT reset here to preserve Last-Event-ID tracking
+                }
               }
             }
-          }
 
-          // Use setTimeout to avoid stack overflow for high-frequency events
-          setTimeout(() => processChunk(), 0);
-        }).catch(error => {
+            // Yield control periodically to prevent blocking the main thread
+            processedChunks++;
+            if (processedChunks >= MAX_CHUNKS_PER_BATCH) {
+              processedChunks = 0;
+              // Use requestIdleCallback if available for better performance
+              await new Promise<void>(resolve => {
+                (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function'
+                  ? window.requestIdleCallback
+                  : setTimeout)(() => resolve(), 0);
+              });
+            }
+          }
+        } catch (error: any) {
           if (error.name !== 'AbortError') {
             eventSource.dispatchEvent(new Event('error'));
           }
-        });
+        }
       };
 
-      processChunk();
+      processStream();
     }).catch(error => {
       if (error.name !== 'AbortError') {
         eventSource.dispatchEvent(new Event('error'));

@@ -12,6 +12,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Module-level constants for performance
 PUNCTUATION_SET = set(string.punctuation)
+# Cache APP_ENV at module load time for consistent behavior
+_CACHED_APP_ENV = os.environ.get("APP_ENV", "dev")
+_CACHED_APP_ENV_SET = "APP_ENV" in os.environ
 
 
 class Settings(BaseSettings):
@@ -31,8 +34,9 @@ class Settings(BaseSettings):
         """Enforce 'forbid' behavior in dev/test environments and ensure app_env consistency."""
         if isinstance(values, dict):
             # Check environment independently to prevent bypass via app_env manipulation
-            env_app_env_set = "APP_ENV" in os.environ
-            env_app_env = os.environ.get("APP_ENV", "dev")
+            # Use cached values for consistent behavior
+            env_app_env_set = _CACHED_APP_ENV_SET
+            env_app_env = _CACHED_APP_ENV
             input_app_env = values.get("app_env")
             if (
                 input_app_env is not None

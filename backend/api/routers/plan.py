@@ -63,7 +63,14 @@ def parse_broadcaster_message(msg: str | dict) -> dict:
         TODO: (Tech Debt) Standardize broadcaster output format to always return dicts
         and eliminate the need for this parsing step
     """
-    return json.loads(msg) if isinstance(msg, str) else msg
+    if isinstance(msg, str):
+        result = json.loads(msg)
+        if not isinstance(result, dict):
+            raise ValueError("Parsed broadcaster message is not a dictionary")
+        return result
+    if not isinstance(msg, dict):
+        raise ValueError("Broadcaster message is not a dictionary")
+    return msg
 
 
 def format_sse_event(seq: Optional[int], event_type: str, payload: dict) -> str:

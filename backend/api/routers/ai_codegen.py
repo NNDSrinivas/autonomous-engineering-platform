@@ -62,6 +62,9 @@ class GenerateDiffOut(BaseModel):
     stats: dict = Field(
         ..., description="Diff statistics (files, additions, deletions)"
     )
+    generation_log_id: int | None = Field(
+        None, description="ID of the generation log entry for feedback"
+    )
 
 
 @router.post("/generate-diff", response_model=GenerateDiffOut)
@@ -87,8 +90,21 @@ async def generate_diff(
     logger.info(f"User {user.user_id} generating diff for {len(body.files)} files")
 
     try:
-        # Generate diff using AI service
-        diff = await generate_unified_diff(body.intent, body.files)
+        # Generate diff using AI service - now returns tuple
+        result = await generate_unified_diff(
+            body.intent, 
+            body.files,
+            org_key=getattr(user, 'org_key', None),
+            user_role=user.role.value if user.role else None,
+        )
+        
+        # Unpack the result
+        if isinstance(result, tuple):
+            diff, generation_log_id = result
+        else:
+            # Backwards compatibility
+            diff = result
+            generation_log_id = None
 
         # Validate the generated diff
         try:
@@ -103,7 +119,11 @@ async def generate_diff(
             }
 
             logger.info(f"Generated valid diff: {stats}")
-            return {"diff": diff, "stats": stats}
+            return {
+                "diff": diff, 
+                "stats": stats,
+                "generation_log_id": generation_log_id,
+            }
 
         except DiffValidationError as e:
             logger.error(f"Model output failed validation: {e}")

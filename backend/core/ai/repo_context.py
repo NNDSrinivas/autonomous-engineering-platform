@@ -101,33 +101,45 @@ def safe_repo_path(rel_path: str) -> str | None:
         return None
 
 
-def read_text_safe(path_str: str, max_bytes: int = 200_000) -> str:
+def read_text_safe(path_str: str, max_bytes: int = 50000) -> str:
     """
-    Safely read text file using allowlist-based validation.
-    Only reads files that are in the pre-computed allowlist.
-
-    Args:
-        path_str: Relative path to file within repo root
-        max_bytes: Maximum bytes to read (default 200KB)
-
-    Returns:
-        File content as string, or empty string on error
+    Safely read text from a file using allowlist validation.
+    Returns empty string if path is not in allowlist or on any error.
     """
     try:
-        # Use allowlist-based validation
-        validated_path = safe_repo_path(path_str)
-        if validated_path is None:
-            logger.warning(f"read_text_safe: Path failed validation: {path_str}")
+        # Normalize the input path
+        normalized_path = os.path.normpath(path_str)
+        
+        # Direct allowlist lookup - only proceed if path is explicitly allowed
+        if normalized_path not in _PATH_ALLOWLIST:
+            logger.warning(f"read_text_safe: Path not in allowlist: {path_str}")
+            return ""
+        
+        # Instead of constructing the path from user input, we iterate through 
+        # the allowlist to find the exact match and use the pre-validated path
+        target_absolute_path = None
+        for allowlisted_path in _PATH_ALLOWLIST:
+            if allowlisted_path == normalized_path:
+                # Construct path using only the allowlisted value, not user input
+                target_absolute_path = os.path.join(SECURE_REPO_ROOT, allowlisted_path)
+                break
+        
+        if target_absolute_path is None:
+            logger.warning(f"read_text_safe: Path validation failed: {path_str}")
+            return ""
+        
+        # Additional safety check: ensure the constructed path is within repo bounds
+        if not target_absolute_path.startswith(SECURE_REPO_ROOT):
+            logger.warning(f"read_text_safe: Path outside repo bounds: {path_str}")
             return ""
 
-        # Use only the allowlist-validated path for filesystem operations
-        # Since the path came from allowlist, it's already verified as safe
-        with open(validated_path, "rb") as f:
+        # File operations using the securely constructed path from allowlist
+        with open(target_absolute_path, "rb") as f:
             data = f.read(max_bytes)
 
-        # Check file size using the same validated path
+        # Check file size using the same securely constructed path
         try:
-            file_size = os.path.getsize(validated_path)
+            file_size = os.path.getsize(target_absolute_path)
             if file_size > max_bytes:
                 logger.warning(f"File {path_str} exceeds {max_bytes} bytes, truncating")
         except OSError:

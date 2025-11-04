@@ -1,6 +1,17 @@
 """Database models for AI feedback and generation logging."""
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, SmallInteger, String, Text, JSON, func
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    JSON,
+    func,
+)
 from sqlalchemy.orm import relationship
 
 from backend.core.db import Base
@@ -24,7 +35,9 @@ class AiGenerationLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     # Relationship to feedback
-    feedback = relationship("AiFeedback", back_populates="generation", cascade="all, delete-orphan")
+    feedback = relationship(
+        "AiFeedback", back_populates="generation", cascade="all, delete-orphan"
+    )
 
 
 class AiFeedback(Base):
@@ -33,11 +46,17 @@ class AiFeedback(Base):
     __tablename__ = "ai_feedback"
 
     id = Column(Integer, primary_key=True)
-    gen_id = Column(Integer, ForeignKey("ai_generation_log.id", ondelete="CASCADE"), index=True)
+    gen_id = Column(
+        Integer, ForeignKey("ai_generation_log.id", ondelete="CASCADE"), index=True
+    )
     org_key = Column(String(64), index=True)
     user_sub = Column(String(128), index=True)
-    rating = Column(SmallInteger, nullable=False)  # +1 thumbs-up, 0 neutral, -1 thumbs-down
-    reason = Column(String(64), nullable=True)     # correctness, style, performance, security, other
+    rating = Column(
+        SmallInteger, nullable=False
+    )  # +1 thumbs-up, 0 neutral, -1 thumbs-down
+    reason = Column(
+        String(64), nullable=True
+    )  # correctness, style, performance, security, other
     comment = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 

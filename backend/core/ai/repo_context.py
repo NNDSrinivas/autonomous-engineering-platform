@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Repo root resolution - handles both dev and container environments
 try:
     REPO_ROOT = Path(".").resolve()
-except Exception:
+except (OSError, RuntimeError):
     REPO_ROOT = Path("/app").resolve()  # Fallback for containerized environments
 
 # Pre-computed secure repository root for allowlist checking
@@ -58,6 +58,9 @@ def _create_secure_path_allowlist() -> Set[str]:
 
 # Pre-computed allowlist of valid repository paths
 _PATH_ALLOWLIST = _create_secure_path_allowlist()
+
+# Configuration constants
+MAX_NEIGHBORS = 40  # Limit to prevent token overflow in context generation
 
 
 def is_path_in_allowlist(rel_path: str) -> bool:
@@ -175,7 +178,7 @@ def list_neighbors(file_path: str) -> List[str]:
             except Exception:
                 continue
 
-        return neighbors[:40]  # Limit to prevent token overflow
+        return neighbors[:MAX_NEIGHBORS]  # Limit to prevent token overflow
     except Exception as e:
         logger.warning(f"Failed to list neighbors for {file_path}: {e}")
         return []

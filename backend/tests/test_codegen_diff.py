@@ -9,6 +9,10 @@ from backend.core.ai.diff_utils import (
     DiffValidationError,
 )
 
+# Test constants
+SIZE_LIMIT_BYTES = 256 * 1024  # 256KB limit
+SAFETY_MARGIN_BYTES = 1000     # Extra bytes for reliable test failure
+
 # Minimal valid unified diff
 MINIMAL_DIFF = (
     "diff --git a/file.txt b/file.txt\n"
@@ -122,9 +126,9 @@ def test_validate_too_large():
         "+++ b/huge.txt\n"
         "@@ -0,0 +1,1 @@\n"
     )
-    # Calculate required number of characters to exceed 256KB (262,144 bytes)
-    # Add 1000 extra bytes for safety margin
-    min_size = 262144 + 1000
+    # Calculate required number of characters to exceed the size limit
+    # Add safety margin for reliable test failure
+    min_size = SIZE_LIMIT_BYTES + SAFETY_MARGIN_BYTES
     num_chars = min_size - len(header) - 1  # -1 for the '+' sign
     huge_diff = header + "+" + ("x" * num_chars)
 

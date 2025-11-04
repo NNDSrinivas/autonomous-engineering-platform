@@ -117,18 +117,9 @@ def read_text_safe(path_str: str, max_bytes: int = 50000) -> str:
             logger.warning(f"read_text_safe: Path not in allowlist: {path_str}")
             return ""
 
-        # Instead of constructing the path from user input, we iterate through
-        # the allowlist to find the exact match and use the pre-validated path
-        target_absolute_path = None
-        for allowlisted_path in _PATH_ALLOWLIST:
-            if allowlisted_path == normalized_path:
-                # Construct path using only the allowlisted value, not user input
-                target_absolute_path = os.path.join(SECURE_REPO_ROOT, allowlisted_path)
-                break
-
-        if target_absolute_path is None:
-            logger.warning(f"read_text_safe: Path validation failed: {path_str}")
-            return ""
+        # Construct path using only the allowlisted value, not user input
+        # Since we confirmed the path is in the allowlist, we can use it directly
+        target_absolute_path = os.path.join(SECURE_REPO_ROOT, normalized_path)
 
         # Additional safety check: ensure the constructed path is within repo bounds
         if not target_absolute_path.startswith(SECURE_REPO_ROOT):

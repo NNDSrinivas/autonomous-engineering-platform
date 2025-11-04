@@ -68,8 +68,8 @@ class ThompsonSamplingBandit:
         for arm in arms:
             successes, failures = await self._get_arm_stats(context_key, arm["name"])
 
-            # Thompson Sampling: sample from Beta(successes, failures)
-            # Prior starts at (1.0, 1.0) so sum is always >= 2
+            # Thompson Sampling: sample from Beta(successes, failures), where
+            # successes and failures include the prior (initially 1.0 each).
             score = np.random.beta(successes, failures)
 
             arm_scores.append((score, arm))

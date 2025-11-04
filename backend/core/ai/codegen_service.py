@@ -376,7 +376,7 @@ async def generate_unified_diff(
         except ImportError:
             logger.warning("Learning services not available, using default parameters")
         except Exception as e:
-            logger.warning(f"Failed to use bandit learning: {e}, using defaults")
+            logger.exception(f"Failed to use bandit learning: {e}, using defaults")
 
     # Call model to generate diff
     diff = await call_model(prompt, model=model, temperature=temperature)

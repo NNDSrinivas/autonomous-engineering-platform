@@ -68,6 +68,8 @@ class FeedbackService:
             return False
         if str(gen_log.org_key) != str(org_key):
             return False
+        if str(gen_log.user_sub) != str(user_sub):
+            return False  # Only the original requester can provide feedback
 
         # Check if feedback already exists for this user/generation
         existing_result = await self.session.execute(

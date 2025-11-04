@@ -61,9 +61,13 @@ async def submit_feedback(
             )
             gen_log = gen_result.scalar_one_or_none()
 
-            if gen_log and gen_log.params is not None:
-                bandit_context = gen_log.params.get("_bandit_context")
-                bandit_arm = gen_log.params.get("_bandit_arm")
+            if (
+                gen_log
+                and gen_log.params is not None
+                and isinstance(gen_log.params, dict)
+            ):
+                bandit_context = gen_log.params.get("bandit_context")
+                bandit_arm = gen_log.params.get("bandit_arm")
 
                 if bandit_context and bandit_arm:
                     learning_service = LearningService()

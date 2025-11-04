@@ -4,6 +4,7 @@ Generates unified diffs based on plan intent and file context.
 """
 
 from __future__ import annotations
+import asyncio
 import os
 import logging
 from typing import List, Dict
@@ -22,6 +23,8 @@ MAX_TOKENS = int(os.getenv("CODEGEN_MAX_TOKENS", "4096"))
 # Maximum token limit for retry attempts - set to double MAX_TOKENS by default
 # This ensures retries have a higher token budget for more comprehensive outputs
 MAX_RETRY_TOKEN_LIMIT = 2 * MAX_TOKENS
+# Minimum character count to consider a diff salvageable after truncation
+MIN_SALVAGEABLE_DIFF_LENGTH = 50
 TEMPERATURE = float(os.getenv("CODEGEN_TEMPERATURE", "0.2"))
 
 SYSTEM_PROMPT = """You are a senior software engineer generating code changes for a production repository.
@@ -195,8 +198,6 @@ async def call_model(prompt: str, max_retries: int = 2) -> str:
             if "API" in str(e) or "rate" in str(e).lower():
                 logger.error(f"API error on attempt {attempt + 1}: {e}")
                 if attempt < max_retries:
-                    import asyncio
-
                     await asyncio.sleep(2**attempt)  # Exponential backoff
                     continue
             logger.error(f"Failed to call AI model: {e}")
@@ -241,7 +242,7 @@ def _is_diff_salvageable(diff: str) -> bool:
     """
     Check if a truncated diff might still be valid/useful.
     """
-    if not diff or len(diff.strip()) < 50:
+    if not diff or len(diff.strip()) < MIN_SALVAGEABLE_DIFF_LENGTH:
         return False
 
     # Check for basic diff structure

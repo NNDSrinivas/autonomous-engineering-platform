@@ -86,8 +86,11 @@ class ThompsonSamplingBandit:
 
     async def record_feedback(self, context_key: str, arm: str, rating: int) -> None:
         """Record feedback for bandit learning."""
-        # Convert rating to success/failure
-        # +1 (thumbs up) = success, 0 or -1 = failure
+        # Only learn from explicit positive (+1) or negative (-1) feedback; ignore neutral (0)
+        if rating == 0:
+            return
+
+        # Convert rating to success/failure: +1 = success, -1 = failure
         success = rating > 0
         await self._update_arm_stats(context_key, arm, success)
 

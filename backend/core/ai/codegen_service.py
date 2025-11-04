@@ -370,7 +370,9 @@ async def generate_unified_diff(
                         "bandit_arm": params.get("_bandit_arm"),
                     },
                     prompt=prompt,
-                    input_fingerprint=hashlib.sha256(intent.encode()).hexdigest()[:64],
+                    input_fingerprint=hashlib.sha256(
+                        intent.encode()
+                    ).hexdigest(),  # SHA-256 produces 64 hex chars
                 )
 
         except ImportError:

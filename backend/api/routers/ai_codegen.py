@@ -4,7 +4,7 @@ Provides context-aware diff generation and safe patch application.
 """
 
 from __future__ import annotations
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,7 +64,7 @@ class GenerateDiffOut(BaseModel):
     stats: dict = Field(
         ..., description="Diff statistics (files, additions, deletions)"
     )
-    generation_log_id: int | None = Field(
+    generation_log_id: Optional[int] = Field(
         None, description="ID of the generation log entry for feedback"
     )
 

@@ -4,9 +4,8 @@ Configuration management for Autonomous Engineering Intelligence Platform
 
 import os
 import string
-from typing import List
-from typing import Optional
-
+import threading
+from typing import Optional, List
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -19,6 +18,8 @@ PUNCTUATION_SET = set(string.punctuation)
 # NOTE: These are cached for performance and consistency, but this means
 # that changes to the environment variable after import will not be reflected.
 # For testing or hot-reload scenarios, use `_reset_env_cache()` to refresh.
+# Thread-safety: Protected by _ENV_CACHE_LOCK for multi-threaded environments.
+_ENV_CACHE_LOCK = threading.Lock()
 _CACHED_APP_ENV = os.environ.get("APP_ENV", "dev")
 _CACHED_APP_ENV_SET = "APP_ENV" in os.environ
 
@@ -28,10 +29,13 @@ def _reset_env_cache():
     Reset the cached APP_ENV values from the current environment.
     This is useful for testing or hot-reload scenarios where the environment
     may change after module import.
+
+    Thread-safe: Uses lock to prevent race conditions in multi-threaded environments.
     """
     global _CACHED_APP_ENV, _CACHED_APP_ENV_SET
-    _CACHED_APP_ENV = os.environ.get("APP_ENV", "dev")
-    _CACHED_APP_ENV_SET = "APP_ENV" in os.environ
+    with _ENV_CACHE_LOCK:
+        _CACHED_APP_ENV = os.environ.get("APP_ENV", "dev")
+        _CACHED_APP_ENV_SET = "APP_ENV" in os.environ
 
 
 class Settings(BaseSettings):
@@ -69,9 +73,10 @@ class Settings(BaseSettings):
         """
         if isinstance(values, dict):
             # Check environment independently to prevent bypass via app_env manipulation
-            # Use cached values for consistent behavior
-            env_app_env_set = _CACHED_APP_ENV_SET
-            env_app_env = _CACHED_APP_ENV
+            # Use cached values for consistent behavior (thread-safe read)
+            with _ENV_CACHE_LOCK:
+                env_app_env_set = _CACHED_APP_ENV_SET
+                env_app_env = _CACHED_APP_ENV
             input_app_env = values.get("app_env")
             if (
                 input_app_env is not None

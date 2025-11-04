@@ -66,7 +66,9 @@ def parse_broadcaster_message(msg: str | dict) -> dict:
     if isinstance(msg, str):
         result = json.loads(msg)
         if not isinstance(result, dict):
-            raise ValueError("Parsed broadcaster message is not a dictionary")
+            raise ValueError(
+                f"Parsed broadcaster message must be a dict, got {type(result).__name__}"
+            )
         return result
     # msg must be dict based on type annotation (str | dict -> dict)
     return msg
@@ -408,12 +410,19 @@ async def stream_plan_updates(
 
                     # Emit with sequence ID for Last-Event-ID compatibility
                     yield format_sse_event(seq, event_type, payload)
-                except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+                except (
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                    AttributeError,
+                ) as e:
                     # Fallback for malformed messages - catch specific parsing errors:
                     #   - json.JSONDecodeError: message is not valid JSON
                     #   - KeyError: expected field missing from message dict
                     #   - TypeError: message is not a dict or has wrong type
                     #   - ValueError: unexpected value in message
+                    #   - AttributeError: message structure changes (e.g., broadcaster format change)
                     logger.warning(
                         "Malformed SSE message: %s (Error: %s)",
                         sanitize_for_logging(str(msg)),
@@ -429,7 +438,7 @@ async def stream_plan_updates(
                         allowed_keys = {"type", "plan_id"}
                         for key in allowed_keys:
                             if key in partial:
-                                error_payload[key] = partial[key]
+                                error_payload[key] = sanitize_for_logging(partial[key])
                     except Exception as ex:
                         logger.warning(
                             "Partial extraction of SSE event data failed: %s (Error: %s)",
@@ -439,18 +448,6 @@ async def stream_plan_updates(
 
                     yield "event: error\n"
                     yield f"data: {json.dumps(error_payload)}\n\n"
-                except AttributeError as e:
-                    # Handle potential message structure changes separately for easier debugging
-                    logger.error(
-                        "SSE message structure error (possible broadcaster format change): %s (Error: %s)",
-                        sanitize_for_logging(str(msg)),
-                        str(e),
-                        exc_info=True,
-                    )
-
-                    # Send error event to client (same format as above for consistency)
-                    yield "event: error\n"
-                    yield f"data: {json.dumps({'error': 'SSE message structure error'})}\n\n"
 
         except asyncio.CancelledError:
             # Client disconnected

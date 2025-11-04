@@ -75,20 +75,29 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
             },
         )
         db.commit()
-    except (OperationalError, ProgrammingError) as e:
+    except OperationalError as e:
         # Log the original exception for debugging while preserving exception context
         logger.error(
-            "Database error in record_memory: %s: %s",
-            type(e).__name__,
+            "OperationalError in record_memory: %s",
             str(e),
             extra={"session_id": req.session_id},
         )
-
-        # Handle database errors: missing tables (ProgrammingError) and connection issues (OperationalError)
-        # Use 503 (Service Unavailable) consistently across all environments
+        # Transient database error (e.g., connection issue)
         raise HTTPException(
             status_code=503,
-            detail="Memory service temporarily unavailable",
+            detail="Memory service temporarily unavailable (database connection issue)",
+        ) from e
+    except ProgrammingError as e:
+        # Log the original exception for debugging while preserving exception context
+        logger.error(
+            "ProgrammingError in record_memory: %s",
+            str(e),
+            extra={"session_id": req.session_id},
+        )
+        # Persistent database error (e.g., missing table/column)
+        raise HTTPException(
+            status_code=500,
+            detail="Memory service misconfigured (database schema error)",
         ) from e
 
     return {"status": "recorded", "session_id": req.session_id}

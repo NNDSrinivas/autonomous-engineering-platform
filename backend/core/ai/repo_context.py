@@ -144,14 +144,17 @@ def list_neighbors(file_path: str) -> List[str]:
             safe_parent_real = None
         # Harden containment: parent must be a true subdirectory of repo root, not root or ancestor or outside
         repo_root_norm = os.path.normpath(repo_root_str)
-        safe_parent_real_norm = os.path.normpath(safe_parent_real) if safe_parent_real is not None else None
+        safe_parent_real_norm = (
+            os.path.normpath(safe_parent_real) if safe_parent_real is not None else None
+        )
 
         if (
             safe_parent is None
             or os.path.commonpath([safe_parent, repo_root_str]) != repo_root_str
             or safe_parent_real is None
             or safe_parent_real_norm is None
-            or os.path.commonpath([safe_parent_real_norm, repo_root_norm]) != repo_root_norm
+            or os.path.commonpath([safe_parent_real_norm, repo_root_norm])
+            != repo_root_norm
             or safe_parent_real_norm == repo_root_norm
             or os.path.relpath(safe_parent_real_norm, repo_root_norm).startswith("..")
         ):
@@ -172,9 +175,12 @@ def list_neighbors(file_path: str) -> List[str]:
             or not os.path.isdir(safe_parent_real)
             or os.path.islink(safe_parent_real)
             or os.path.realpath(safe_parent_real) != safe_parent_real
-            or not os.path.commonpath([safe_parent_real, repo_root_str]) == repo_root_str
+            or not os.path.commonpath([safe_parent_real, repo_root_str])
+            == repo_root_str
         ):
-            logger.warning(f"Refusing to list: {safe_parent_real} failed final hardening checks")
+            logger.warning(
+                f"Refusing to list: {safe_parent_real} failed final hardening checks"
+            )
             return []
 
         # Safely list files in parent directory using os.listdir
@@ -197,13 +203,16 @@ def list_neighbors(file_path: str) -> List[str]:
                     item_realpath = os.path.realpath(validated_item_path)
                     # Ensure the real path is inside the repo root
                     if (
-                        os.path.commonpath([item_realpath, repo_root_str]) == repo_root_str
+                        os.path.commonpath([item_realpath, repo_root_str])
+                        == repo_root_str
                         and not os.path.islink(item_realpath)
                         and os.path.isfile(item_realpath)
                         and item_realpath != path_str
                     ):
                         try:
-                            rel_path = os.path.relpath(validated_item_path, repo_root_str)
+                            rel_path = os.path.relpath(
+                                validated_item_path, repo_root_str
+                            )
                             # Only accept relative paths (not containing "..")
                             if rel_path.startswith("..") or os.path.isabs(rel_path):
                                 continue

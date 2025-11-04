@@ -6,6 +6,17 @@ import { CORE_API } from '../../api/client';
 export type EventHandler = (evt: { planId: string; type: string; seq?: number; payload: any }) => void;
 export type TokenGetter = () => string | null;
 
+// Type guard for experimental Scheduler API (Chrome 94+, not widely supported)
+interface SchedulerAPI {
+  yield: () => Promise<void>;
+}
+
+function hasSchedulerYield(obj: any): obj is { scheduler: SchedulerAPI } {
+  return 'scheduler' in obj && 
+         obj.scheduler && 
+         typeof obj.scheduler.yield === 'function';
+}
+
 // Interface for our EventSource polyfill - includes all EventSource properties for compatibility
 interface EventSourcePolyfill {
   readonly CONNECTING: 0;
@@ -263,10 +274,12 @@ export class SSEClient {
       let hasOpenedConnection = false;
 
       // Event variables persist across chunks to handle partial events
-      // Note: eventId is initialized empty here and reset on each new connection (reconnection)
+      // Note: These variables are declared within the fetch().then() scope, so they are
+      // implicitly reset to their initial values on each new connection (reconnection).
+      // eventId persists across events within a single connection for Last-Event-ID tracking.
       let eventType = 'message';
       let eventData = '';
-      let eventId = ''; // Reset to empty on new connection; persists across events within connection
+      let eventId = '';
       let shouldDropEvent = false; // Track if current event should be dropped due to invalid type
 
       // Batch processing variables to reduce event loop overhead
@@ -330,8 +343,9 @@ export class SSEClient {
             processedChunks++;
             if (processedChunks >= MAX_CHUNKS_PER_BATCH) {
               processedChunks = 0;
-              // Yield using the most efficient available method
-              if ('scheduler' in globalThis && typeof (globalThis as any).scheduler?.yield === 'function') {
+              // Yield using the most efficient available method with fallbacks
+              // Feature detection for experimental scheduler.yield() API (Chrome 94+ only)
+              if (hasSchedulerYield(globalThis as any)) {
                 await (globalThis as any).scheduler.yield();
               } else if (typeof queueMicrotask === 'function') {
                 await new Promise<void>(resolve => queueMicrotask(resolve));

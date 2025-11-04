@@ -40,14 +40,16 @@ def _timed(fn, name: str) -> CheckResult:
     # This prevents a single failing check from crashing the health endpoint, which is
     # critical for monitoring and load balancer health checks.
     except Exception as e:
-        # Use logging.error with only exception type to avoid exposing sensitive details
-        # in health check logs, especially for external monitoring endpoints
-        logging.error("Health check '%s' failed: %s", name, type(e).__name__)
+        # Log both exception type and message for better debugging
+        # Avoid exposing sensitive details in the external response
+        logging.error(
+            "Health check '%s' failed: %s: %s", name, type(e).__name__, str(e)
+        )
         return {
             "name": name,
             "ok": False,
             "latency_ms": int((time.time() - start) * 1000),
-            "detail": "check failed - see logs",
+            "detail": f"check failed: {type(e).__name__}",
         }
 
 

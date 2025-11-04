@@ -63,8 +63,9 @@ def parse_broadcaster_message(msg: str | dict) -> dict:
 
     Note:
         This helper consolidates the parsing logic to avoid redundant checks.
-        TODO: (Tech Debt) Standardize broadcaster output format to always return dicts
-        and eliminate the need for this parsing step
+        TODO(tech-debt): Standardize broadcaster output format to always return dicts
+        and eliminate the need for this parsing step. Track this in future refactoring work
+        to simplify SSE message handling and remove the dual-type (str | dict) workaround.
     """
     if isinstance(msg, str):
         result = json.loads(msg)

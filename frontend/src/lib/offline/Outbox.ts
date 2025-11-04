@@ -17,7 +17,7 @@ export class Outbox {
   private cache: OutboxItem[] | null = null; // Write-through cache
 
   push(item: Omit<OutboxItem, "ts" | "retryCount">) {
-    const list = this.read();
+    const list = this.read(true); // Need defensive copy for mutation
     list.push({ ...item, ts: Date.now(), retryCount: 0 });
     this.write(list);
   }
@@ -26,7 +26,7 @@ export class Outbox {
     fetcher: (url: string, init: RequestInit) => Promise<Response>,
     onDropped?: (item: OutboxItem, reason: 'age' | 'retries' | 'client-error') => void
   ) {
-    const list = this.read();
+    const list = this.read(true); // Need defensive copy for mutation
     const keep: OutboxItem[] = [];
     const now = Date.now();
     const maxAge = this.MAX_AGE_HOURS * this.MS_PER_HOUR;
@@ -88,19 +88,28 @@ export class Outbox {
     this.write([]);
   }
 
-  private read(): OutboxItem[] {
+  /**
+   * Returns the outbox items.
+   * By default, returns the cached array directly for performance.
+   * If you need to mutate the returned array or its items, pass `defensiveCopy = true` to get a deep copy.
+   * Do NOT mutate the returned array or its items unless you requested a copy.
+   */
+  private read(defensiveCopy: boolean = false): OutboxItem[] {
     // Return cached data if available
     if (this.cache !== null) {
-      // Defensive copy required: calling code modifies returned array (push/forEach operations)
-      // Use deep copy to protect against mutations to nested properties (body, headers)
-      // Note: OutboxItem contains only JSON-serializable data (strings, numbers, objects, arrays)
-      // The JSON fallback will fail for functions, undefined, symbols - but these are not expected in OutboxItem
-      // Use structuredClone if available (modern browsers), otherwise fallback to JSON methods for compatibility
-      if (typeof structuredClone === "function") {
-        return structuredClone(this.cache);
-      } else {
-        return JSON.parse(JSON.stringify(this.cache));
+      if (defensiveCopy) {
+        // Use deep copy to protect against mutations to nested properties (body, headers)
+        // Note: OutboxItem contains only JSON-serializable data (strings, numbers, objects, arrays)
+        // The JSON fallback will fail for functions, undefined, symbols - but these are not expected in OutboxItem
+        // Use structuredClone if available (modern browsers), otherwise fallback to JSON methods for compatibility
+        if (typeof structuredClone === "function") {
+          return structuredClone(this.cache);
+        } else {
+          return JSON.parse(JSON.stringify(this.cache));
+        }
       }
+      // Return cache directly (do not mutate!)
+      return this.cache;
     }
     
     try {

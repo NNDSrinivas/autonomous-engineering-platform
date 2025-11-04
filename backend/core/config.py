@@ -28,18 +28,23 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def validate_extra_fields(cls, values):
-        """Enforce 'forbid' behavior in dev/test environments."""
+        """Enforce 'forbid' behavior in dev/test environments and ensure app_env consistency."""
         if isinstance(values, dict):
             # Check environment independently to prevent bypass via app_env manipulation
-            app_env = os.environ.get("APP_ENV", "dev")
-            if app_env in ["dev", "test"]:
+            env_app_env = os.environ.get("APP_ENV", "dev")
+            input_app_env = values.get("app_env")
+            if input_app_env is not None and "APP_ENV" in os.environ and input_app_env != env_app_env:
+                raise ValueError(
+                    f"Inconsistent app_env: input 'app_env' is '{input_app_env}', but environment variable 'APP_ENV' is '{env_app_env}'. Please ensure they match."
+                )
+            if env_app_env in ["dev", "test"]:
                 # Check for any fields in the input data that aren't defined in the model
                 allowed_fields = set(cls.model_fields.keys())
                 input_fields = set(values.keys())
                 extra_fields = input_fields - allowed_fields
                 if extra_fields:
                     raise ValueError(
-                        f"Extra fields not permitted in app_env '{app_env}'. {len(extra_fields)} extra field(s) found."
+                        f"Extra fields not permitted in app_env '{env_app_env}'. {len(extra_fields)} extra field(s) found."
                     )
         return values
 

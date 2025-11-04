@@ -9,24 +9,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from backend.api.main import app
-from backend.core.db import get_db
 from backend.core.eventstore.service import append_event, replay, get_plan_event_count
 
 client = TestClient(app)
 
 # Enable dev auth for testing
 os.environ["ALLOW_DEV_AUTH"] = "true"
-
-
-@pytest.fixture
-def test_db():
-    """Get test database session"""
-    db_gen = get_db()
-    db = next(db_gen)
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def test_append_and_replay_plan_events(test_db: Session):
@@ -82,7 +70,7 @@ def test_append_and_replay_plan_events(test_db: Session):
     assert count == 2
 
 
-def test_replay_api_endpoint():
+def test_replay_api_endpoint(test_db: Session):
     """Test the replay API endpoint"""
     # Set up auth
     os.environ["DEV_USER_ROLE"] = "viewer"
@@ -92,28 +80,23 @@ def test_replay_api_endpoint():
     plan_id = "test-plan-api"
 
     # First add some events via the database (simulating plan activity)
-    db_gen = get_db()
-    db = next(db_gen)
-    try:
-        append_event(
-            db,
-            plan_id=plan_id,
-            type="note",
-            payload={"text": "API test event 1"},
-            user_sub="u-tester",
-            org_key="org-demo",
-        )
-        append_event(
-            db,
-            plan_id=plan_id,
-            type="step",
-            payload={"text": "API test event 2"},
-            user_sub="u-tester",
-            org_key="org-demo",
-        )
-        db.commit()
-    finally:
-        db.close()
+    append_event(
+        test_db,
+        plan_id=plan_id,
+        type="note",
+        payload={"text": "API test event 1"},
+        user_sub="u-tester",
+        org_key="org-demo",
+    )
+    append_event(
+        test_db,
+        plan_id=plan_id,
+        type="step",
+        payload={"text": "API test event 2"},
+        user_sub="u-tester",
+        org_key="org-demo",
+    )
+    test_db.commit()
 
     # Test replay all events
     response = client.get(f"/api/plan/{plan_id}/replay")
@@ -192,45 +175,40 @@ def test_audit_middleware_captures_requests():
     assert log["event_type"] == "http.request"
 
 
-def test_event_sequence_monotonic():
+def test_event_sequence_monotonic(test_db: Session):
     """Test that event sequences are monotonic per plan"""
     plan_id = "test-monotonic"
 
-    db_gen = get_db()
-    db = next(db_gen)
-    try:
-        # Add events in multiple transactions
-        evt1 = append_event(
-            db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
-        )
-        db.commit()
+    # Add events in multiple transactions
+    evt1 = append_event(
+        test_db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
+    )
+    test_db.commit()
 
-        evt2 = append_event(
-            db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
-        )
-        db.commit()
+    evt2 = append_event(
+        test_db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
+    )
+    test_db.commit()
 
-        evt3 = append_event(
-            db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
-        )
-        db.commit()
+    evt3 = append_event(
+        test_db, plan_id=plan_id, type="event", payload={}, user_sub=None, org_key=None
+    )
+    test_db.commit()
 
-        assert evt1.seq == 1
-        assert evt2.seq == 2
-        assert evt3.seq == 3
+    assert evt1.seq == 1
+    assert evt2.seq == 2
+    assert evt3.seq == 3
 
-        # Events for different plans should have independent sequences
-        other_plan_evt = append_event(
-            db,
-            plan_id="other-plan",
-            type="event",
-            payload={},
-            user_sub=None,
-            org_key=None,
-        )
-        assert other_plan_evt.seq == 1  # Starts at 1 for new plan
-    finally:
-        db.close()
+    # Events for different plans should have independent sequences
+    other_plan_evt = append_event(
+        test_db,
+        plan_id="other-plan",
+        type="event",
+        payload={},
+        user_sub=None,
+        org_key=None,
+    )
+    assert other_plan_evt.seq == 1  # Starts at 1 for new plan
 
 
 if __name__ == "__main__":

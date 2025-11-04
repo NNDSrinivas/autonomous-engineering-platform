@@ -36,7 +36,8 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
     if (rating !== 0) {
       setShowDetails(true);
     } else {
-      // Neutral rating can be submitted immediately
+      // Neutral rating - show brief confirmation before submitting
+      setError(null);
       submitFeedback({ rating });
     }
   };

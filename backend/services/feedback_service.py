@@ -29,7 +29,9 @@ class FeedbackService:
         result_ref: Optional[str] = None,
     ) -> int:
         """Log an AI generation request and return the log ID."""
-        prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:64]
+        prompt_hash = hashlib.sha256(
+            prompt.encode()
+        ).hexdigest()  # SHA-256 produces 64 hex chars
 
         log_entry = AiGenerationLog(
             org_key=org_key,

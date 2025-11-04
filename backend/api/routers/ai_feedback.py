@@ -48,8 +48,8 @@ async def submit_feedback(
             message="Feedback could not be submitted. Generation not found or feedback already exists.",
         )
 
-    # Update bandit learning from feedback
-    if feedback.rating != 0:  # Only learn from explicit feedback
+    # Update bandit learning from feedback (skip neutral ratings)
+    if feedback.rating != 0:  # Learning service also filters neutral ratings
         try:
             # Get the generation log to retrieve bandit context
             from sqlalchemy import select

@@ -68,8 +68,7 @@ def parse_broadcaster_message(msg: str | dict) -> dict:
         if not isinstance(result, dict):
             raise ValueError("Parsed broadcaster message is not a dictionary")
         return result
-    if not isinstance(msg, dict):
-        raise ValueError("Broadcaster message is not a dictionary")
+    # msg must be dict based on type annotation (str | dict -> dict)
     return msg
 
 
@@ -425,16 +424,12 @@ async def stream_plan_updates(
                     # Try to extract partial info for better client debugging
                     error_payload = {"error": "Failed to parse SSE event data"}
                     try:
-                        if isinstance(msg, str):
-                            partial = json.loads(msg)
-                        else:
-                            partial = msg
-                        if isinstance(partial, dict):
-                            # Only include specific, safe fields to avoid leaking sensitive info
-                            allowed_keys = {"type", "plan_id"}
-                            for key in allowed_keys:
-                                if key in partial:
-                                    error_payload[key] = partial[key]
+                        partial = parse_broadcaster_message(msg)
+                        # Only include specific, safe fields to avoid leaking sensitive info
+                        allowed_keys = {"type", "plan_id"}
+                        for key in allowed_keys:
+                            if key in partial:
+                                error_payload[key] = partial[key]
                     except Exception as ex:
                         logger.warning(
                             "Partial extraction of SSE event data failed: %s (Error: %s)",

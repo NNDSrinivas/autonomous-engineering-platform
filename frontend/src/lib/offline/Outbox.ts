@@ -93,6 +93,8 @@ export class Outbox {
     if (this.cache !== null) {
       // Defensive copy required: calling code modifies returned array (push/forEach operations)
       // Use deep copy to protect against mutations to nested properties (body, headers)
+      // Note: OutboxItem contains only JSON-serializable data (strings, numbers, objects, arrays)
+      // The JSON fallback will fail for functions, undefined, symbols - but these are not expected in OutboxItem
       // Use structuredClone if available (modern browsers), otherwise fallback to JSON methods for compatibility
       if (typeof structuredClone === "function") {
         return structuredClone(this.cache);

@@ -96,13 +96,12 @@ def read_text_safe(p: Path, max_bytes: int = 200_000) -> str:
         return ""
 
 
-def list_neighbors(file_path: str, radius: int = 1) -> List[str]:
+def list_neighbors(file_path: str) -> List[str]:
     """
     List neighboring files in the same directory.
 
     Args:
         file_path: Relative path from repo root
-        radius: Not used currently, reserved for future expansion
 
     Returns:
         List of relative file paths (up to 40 neighbors)

@@ -85,7 +85,7 @@ def format_sse_event(seq: Optional[int], event_type: str, payload: dict) -> str:
     Format SSE event with consistent structure.
 
     Args:
-        seq: Sequence ID for Last-Event-ID compatibility (optional)
+        seq: Sequence ID for Last-Event-ID compatibility (omitted from payload if None)
         event_type: Event type
         payload: Event payload data
 
@@ -95,10 +95,14 @@ def format_sse_event(seq: Optional[int], event_type: str, payload: dict) -> str:
     lines = []
     if seq is not None:
         lines.append(f"id: {seq}\n")
+
+    # Build data payload - only include seq if it's not None
+    data_payload = {"type": event_type, "payload": payload}
+    if seq is not None:
+        data_payload["seq"] = seq
+
     lines.append(f"event: {event_type}\n")
-    lines.append(
-        f"data: {json.dumps({'seq': seq, 'type': event_type, 'payload': payload})}\n\n"
-    )
+    lines.append(f"data: {json.dumps(data_payload)}\n\n")
     return "".join(lines)
 
 

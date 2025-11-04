@@ -158,9 +158,8 @@ export class SSEClient {
       this.dispatch("message", e);
     };
 
-    // Demux by event type
-    const knownTypes = ["note", "step", "cursor", "presence", "message"] as const;
-    knownTypes.forEach((t) => {
+    // Demux by event type - use ALLOWED_EVENT_TYPES to keep in sync with validation
+    Array.from(SSEClient.ALLOWED_EVENT_TYPES).forEach((t) => {
       this.source!.addEventListener(t, (e) => this.dispatch(t, e as MessageEvent));
     });
   }

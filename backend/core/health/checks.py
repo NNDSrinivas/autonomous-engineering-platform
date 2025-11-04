@@ -63,6 +63,8 @@ def check_db() -> CheckResult:
         # Verify that imports succeeded and functions are callable
         if not callable(get_engine) or not callable(text):
             raise RuntimeError("db not configured")
+        # get_engine() implements lazy initialization with caching (see core/db.py)
+        # so repeated health checks don't create overhead - engine is reused
         # Uses engine's connection pool efficiently - connections are reused and auto-closed
         with get_engine().connect() as conn:
             conn.execute(text("SELECT 1"))

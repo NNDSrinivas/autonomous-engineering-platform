@@ -15,12 +15,13 @@ logger = logging.getLogger(__name__)
 
 # Configuration from environment
 MODEL = os.getenv("CODEGEN_MODEL", "gpt-4o-mini")
-# Maximum token limit for retry attempts - balances comprehensiveness with API limits
-MAX_RETRY_TOKEN_LIMIT = 8192
-# Increased token limit for comprehensive diff generation
+# Maximum token limit for code generation (from environment)
 # After max_tokens, the model stops generating - diffs may be incomplete
 # For complex changes involving multiple files, consider increasing further
 MAX_TOKENS = int(os.getenv("CODEGEN_MAX_TOKENS", "4096"))
+# Maximum token limit for retry attempts - set to double MAX_TOKENS by default
+# This ensures retries have a higher token budget for more comprehensive outputs
+MAX_RETRY_TOKEN_LIMIT = 2 * MAX_TOKENS
 TEMPERATURE = float(os.getenv("CODEGEN_TEMPERATURE", "0.2"))
 
 SYSTEM_PROMPT = """You are a senior software engineer generating code changes for a production repository.
@@ -152,16 +153,22 @@ async def call_model(prompt: str, max_retries: int = 2) -> str:
                 if attempt < max_retries:
                     # Strategy 1: Increase token limit for retry
                     if attempt == 0:
-                        current_max_tokens = min(
+                        new_token_limit = min(
                             current_max_tokens * 2, MAX_RETRY_TOKEN_LIMIT
                         )
-                        logger.info(
-                            f"Retrying with increased token limit: {current_max_tokens}"
-                        )
-                        continue
+                        if new_token_limit > current_max_tokens:
+                            current_max_tokens = new_token_limit
+                            logger.info(
+                                f"Retrying with increased token limit: {current_max_tokens}"
+                            )
+                            continue
+                        else:
+                            logger.info(
+                                f"Already at max token limit ({MAX_RETRY_TOKEN_LIMIT}), moving to next strategy"
+                            )
 
                     # Strategy 2: Reduce context and ask for focused diff
-                    elif attempt == 1:
+                    if attempt == 1 or (attempt == 0 and current_max_tokens >= MAX_RETRY_TOKEN_LIMIT):
                         current_prompt = _create_focused_prompt(prompt)
                         current_max_tokens = MAX_TOKENS
                         logger.info(

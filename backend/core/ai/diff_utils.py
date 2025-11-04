@@ -138,15 +138,17 @@ def apply_diff(
     # Validate first
     validate_unified_diff(diff_text)
 
-    # Create temporary file for diff with secure permissions
-    with tempfile.NamedTemporaryFile(
-        mode="w", delete=False, suffix=".patch", dir=tempfile.gettempdir()
-    ) as tf:
-        tf.write(diff_text)
-        tf.flush()
-        patch_file = tf.name
-        # Restrict access to owner only for security
-        os.chmod(patch_file, 0o600)
+    # Create temporary file for diff with secure permissions (atomic)
+    fd, patch_file = tempfile.mkstemp(
+        suffix=".patch", dir=tempfile.gettempdir(), text=True
+    )
+    try:
+        with os.fdopen(fd, "w") as tf:
+            tf.write(diff_text)
+    except Exception:
+        # Clean up if writing fails
+        Path(patch_file).unlink(missing_ok=True)
+        raise
 
     try:
         # Build git apply command

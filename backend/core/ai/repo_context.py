@@ -18,9 +18,9 @@ except Exception:
     REPO_ROOT = Path("/app").resolve()  # Fallback for containerized environments
 
 
-def safe_repo_path(rel_path: str) -> Path | None:
+def safe_repo_path(rel_path: str) -> str | None:
     """
-    Return resolved path if and only if rel_path is safely inside the REPO_ROOT.
+    Return resolved path string if and only if rel_path is safely inside the REPO_ROOT.
     Returns None if the path is absolute, escapes, or invalid.
     """
     try:
@@ -40,7 +40,7 @@ def safe_repo_path(rel_path: str) -> Path | None:
             logger.warning(f"Path {rel_path} is not a valid repository-relative file")
             return None
 
-        # Build absolute path using string operations first
+        # Build absolute path using string operations only
         repo_root_str = str(REPO_ROOT.resolve())
         full_str = os.path.join(repo_root_str, norm_rel)
         full_normalized = os.path.normpath(full_str)
@@ -55,20 +55,20 @@ def safe_repo_path(rel_path: str) -> Path | None:
             )
             return None
 
-        # Only now create Path object after validation
-        return Path(full_normalized)
+        # Return the validated string path instead of Path object
+        return full_normalized
     except Exception as e:
         logger.warning(f"Exception while resolving path {rel_path}: {e}")
         return None
 
 
-def read_text_safe(p: Path, max_bytes: int = 200_000) -> str:
+def read_text_safe(path_str: str, max_bytes: int = 200_000) -> str:
     """
     Safely read text file with size limit and error handling.
     Path must already be validated by safe_repo_path.
 
     Args:
-        p: Pre-validated Path to file within repo root
+        path_str: Pre-validated string path to file within repo root
         max_bytes: Maximum bytes to read (default 200KB)
 
     Returns:
@@ -77,22 +77,27 @@ def read_text_safe(p: Path, max_bytes: int = 200_000) -> str:
     try:
         # Path should already be validated, but double-check
         repo_root_str = str(REPO_ROOT.resolve())
-        path_str = str(p)
         if (
             not path_str.startswith(repo_root_str + os.sep)
             and path_str != repo_root_str
         ):
-            logger.warning(f"Attempted to read file outside repo root: {p}")
+            logger.warning(f"Attempted to read file outside repo root: {path_str}")
             return ""
 
-        if not p.exists() or not p.is_file():
+        # Use os.path operations instead of Path operations
+        if not os.path.exists(path_str) or not os.path.isfile(path_str):
             return ""
-        data = p.read_bytes()
-        if len(data) > max_bytes:
-            logger.warning(f"File {p} exceeds {max_bytes} bytes, truncating")
-        return data[:max_bytes].decode("utf-8", errors="replace")
+        
+        # Read file using built-in open() function
+        with open(path_str, 'rb') as f:
+            data = f.read(max_bytes)
+        
+        if os.path.getsize(path_str) > max_bytes:
+            logger.warning(f"File {path_str} exceeds {max_bytes} bytes, truncating")
+        
+        return data.decode("utf-8", errors="replace")
     except Exception as e:
-        logger.warning(f"Failed to read {p}: {e}")
+        logger.warning(f"Failed to read {path_str}: {e}")
         return ""
 
 
@@ -107,39 +112,47 @@ def list_neighbors(file_path: str) -> List[str]:
         List of relative file paths (up to 40 neighbors)
     """
     try:
-        p = safe_repo_path(file_path)
-        if p is None:
+        path_str = safe_repo_path(file_path)
+        if path_str is None:
             return []
 
-        if not p.exists():
+        # Use os.path operations instead of Path operations
+        if not os.path.exists(path_str):
             return []
 
-        parent = p.parent
+        parent_dir = os.path.dirname(path_str)
 
         # Validate parent directory is safe
         repo_root_str = str(REPO_ROOT.resolve())
-        parent_str = str(parent)
         if (
-            not parent_str.startswith(repo_root_str + os.sep)
-            and parent_str != repo_root_str
+            not parent_dir.startswith(repo_root_str + os.sep)
+            and parent_dir != repo_root_str
         ):
-            logger.warning(f"Parent directory {parent} is outside repo root")
+            logger.warning(f"Parent directory {parent_dir} is outside repo root")
             return []
 
-        # Safely list files in parent directory
+        # Safely list files in parent directory using os.listdir
         try:
             files = []
-            for item in parent.iterdir():
-                if item.is_file() and item != p:
+            for item_name in os.listdir(parent_dir):
+                item_path = os.path.join(parent_dir, item_name)
+                if os.path.isfile(item_path) and item_path != path_str:
                     try:
-                        rel_path = item.relative_to(REPO_ROOT)
-                        files.append(str(rel_path))
-                    except ValueError:
-                        # Skip files that can't be made relative to repo root
+                        # Calculate relative path using string operations
+                        if item_path.startswith(repo_root_str + os.sep):
+                            rel_path = item_path[len(repo_root_str + os.sep):]
+                        elif item_path == repo_root_str:
+                            rel_path = "."
+                        else:
+                            continue  # Skip files outside repo root
+                        
+                        files.append(rel_path)
+                    except Exception:
+                        # Skip files that can't be processed
                         continue
             return files[:40]  # Limit to prevent token overflow
         except (OSError, PermissionError):
-            logger.warning(f"Could not list directory: {parent}")
+            logger.warning(f"Could not list directory: {parent_dir}")
             return []
 
     except Exception as e:
@@ -161,13 +174,14 @@ def repo_snapshot(target_files: List[str]) -> Dict[str, str]:
     for rel in target_files:
         try:
             # Security: Normalize and validate path
-            p = safe_repo_path(rel)
-            if p is None:
+            path_str = safe_repo_path(rel)
+            if path_str is None:
                 logger.warning(f"Skipping {rel} - outside repo root or invalid path")
                 continue
 
-            if p.exists() and p.is_file():
-                snap[rel] = read_text_safe(p)
+            # Use os.path operations instead of Path operations
+            if os.path.exists(path_str) and os.path.isfile(path_str):
+                snap[rel] = read_text_safe(path_str)
         except Exception as e:
             logger.warning(f"Failed to snapshot {rel}: {e}")
             snap[rel] = f"# Error reading file: {e}"

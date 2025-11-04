@@ -48,36 +48,31 @@ async def submit_feedback(
             message="Feedback could not be submitted. Generation not found or feedback already exists.",
         )
 
-    # Update bandit learning from feedback (skip neutral ratings)
-    if feedback.rating != 0:  # Learning service also filters neutral ratings
-        try:
-            # Get the generation log to retrieve bandit context
-            from sqlalchemy import select
-            from backend.models.ai_feedback import AiGenerationLog
-            from backend.services.learning_service import LearningService
+    # Update bandit learning from feedback (service layer filters neutral ratings)
+    try:
+        # Get the generation log to retrieve bandit context
+        from sqlalchemy import select
+        from backend.models.ai_feedback import AiGenerationLog
+        from backend.services.learning_service import LearningService
 
-            gen_result = await session.execute(
-                select(AiGenerationLog).where(AiGenerationLog.id == feedback.gen_id)
-            )
-            gen_log = gen_result.scalar_one_or_none()
+        gen_result = await session.execute(
+            select(AiGenerationLog).where(AiGenerationLog.id == feedback.gen_id)
+        )
+        gen_log = gen_result.scalar_one_or_none()
 
-            if (
-                gen_log
-                and gen_log.params is not None
-                and isinstance(gen_log.params, dict)
-            ):
-                bandit_context = gen_log.params.get("bandit_context")
-                bandit_arm = gen_log.params.get("bandit_arm")
+        if gen_log and gen_log.params is not None and isinstance(gen_log.params, dict):
+            bandit_context = gen_log.params.get("bandit_context")
+            bandit_arm = gen_log.params.get("bandit_arm")
 
-                if bandit_context and bandit_arm:
-                    learning_service = LearningService()
-                    bandit = learning_service.get_bandit(current_user["org_key"])
-                    await bandit.record_feedback(
-                        bandit_context, bandit_arm, feedback.rating
-                    )
-        except Exception as e:
-            # Log error but don't fail the feedback submission
-            logger.warning(f"Failed to update bandit learning: {e}")
+            if bandit_context and bandit_arm:
+                learning_service = LearningService()
+                bandit = learning_service.get_bandit(current_user["org_key"])
+                await bandit.record_feedback(
+                    bandit_context, bandit_arm, feedback.rating
+                )
+    except Exception as e:
+        # Log error but don't fail the feedback submission
+        logger.warning(f"Failed to update bandit learning: {e}")
 
     return FeedbackResponse(success=True, message="Feedback submitted successfully")
 

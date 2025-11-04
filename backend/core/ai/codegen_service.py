@@ -6,7 +6,6 @@ Includes contextual bandit learning for parameter optimization.
 
 from __future__ import annotations
 import asyncio
-import hashlib
 import os
 import logging
 from typing import List, Dict, Optional, Tuple
@@ -376,7 +375,7 @@ async def generate_unified_diff(
 
         except ImportError:
             logger.warning("Learning services not available, using default parameters")
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to use bandit learning, using defaults")
 
     # Call model to generate diff

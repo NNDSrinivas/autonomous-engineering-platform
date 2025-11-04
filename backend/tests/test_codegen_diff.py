@@ -10,28 +10,30 @@ from backend.core.ai.diff_utils import (
 )
 
 # Minimal valid unified diff
-MINIMAL_DIFF = """diff --git a/file.txt b/file.txt
-index e69de29..4b825dc 100644
---- a/file.txt
-+++ b/file.txt
-@@ -0,0 +1,1 @@
-+hello
-"""
+MINIMAL_DIFF = (
+    "diff --git a/file.txt b/file.txt\n"
+    "index e69de29..4b825dc 100644\n"
+    "--- a/file.txt\n"
+    "+++ b/file.txt\n"
+    "@@ -1,0 +1,1 @@\n"
+    "+hello\n"
+)
 
 # Multi-file diff
-MULTI_FILE_DIFF = """diff --git a/a.txt b/a.txt
-index e69de29..5626abf 100644
---- a/a.txt
-+++ b/a.txt
-@@ -0,0 +1,1 @@
-+one
-diff --git a/b.txt b/b.txt
-index e69de29..f719efd 100644
---- a/b.txt
-+++ b/b.txt
-@@ -0,0 +1,1 @@
-+two
-"""
+MULTI_FILE_DIFF = (
+    "diff --git a/a.txt b/a.txt\n"
+    "index e69de29..5626abf 100644\n"
+    "--- a/a.txt\n"
+    "+++ b/a.txt\n"
+    "@@ -1,0 +1,1 @@\n"
+    "+one\n"
+    "diff --git a/b.txt b/b.txt\n"
+    "index e69de29..f719efd 100644\n"
+    "--- a/b.txt\n"
+    "+++ b/b.txt\n"
+    "@@ -1,0 +1,1 @@\n"
+    "+two\n"
+)
 
 
 def test_validate_minimal_diff():
@@ -103,7 +105,7 @@ def test_validate_too_many_additions():
     many_lines += "index e69de29..123 100644\n"
     many_lines += "--- a/big.txt\n"
     many_lines += "+++ b/big.txt\n"
-    many_lines += "@@ -0,0 +1,2001 @@\n"
+    many_lines += "@@ -1,0 +1,2001 @@\n"
     many_lines += "\n".join([f"+line {i}" for i in range(2001)])
 
     with pytest.raises(DiffValidationError, match="exceeds limit"):

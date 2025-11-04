@@ -176,7 +176,9 @@ async def apply_patch_endpoint(
             return {
                 "applied": success,
                 "output": (
-                    output if success else "Dry run failed: patch cannot be applied"
+                    output
+                    if success and not output.lower().startswith("error:")
+                    else "Dry run failed: patch cannot be applied. See server logs for details."
                 ),
                 "dry_run": True,
             }

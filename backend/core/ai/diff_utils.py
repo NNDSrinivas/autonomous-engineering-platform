@@ -183,7 +183,10 @@ def apply_diff(
         return 1, "Error: git apply timed out"
     except Exception as e:
         logger.error(f"Failed to apply diff: {e}")
-        return 1, f"Error: {str(e)}"
+        return (
+            1,
+            "Error: Patch application failed due to internal error. See server logs for details.",
+        )
     finally:
         # Clean up temp file
         try:

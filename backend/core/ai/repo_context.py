@@ -48,13 +48,17 @@ def safe_repo_path(rel_path: str) -> str | None:
         full_str = os.path.join(repo_root_str, norm_rel)
         full_realpath = os.path.realpath(full_str)
 
-        # Use os.path.commonpath to ensure path is within repo root directory
+        # Use commonpath to ensure path is inside repo root (handles symlinks and all edge cases robustly)
         try:
-            common = os.path.commonpath([full_realpath, repo_root_str])
+            # commonpath returns the deepest common path shared; must equal repo_root_str.
+            # Use normpath to support Windows (where trailing separators can cause mismatches).
+            repo_root_str_norm = os.path.normpath(repo_root_str)
+            full_realpath_norm = os.path.normpath(full_realpath)
+            common = os.path.commonpath([full_realpath_norm, repo_root_str_norm])
         except Exception as e:
             logger.warning(f"Error in commonpath for {rel_path}: {e}")
             return None
-        if common != repo_root_str:
+        if common != repo_root_str_norm:
             logger.warning(
                 f"Rejected path outside repo: {rel_path} resolved to {full_realpath}"
             )
@@ -73,27 +77,18 @@ def read_text_safe(path_str: str, max_bytes: int = 200_000) -> str:
     Always validates path using safe_repo_path to ensure access is strictly controlled.
 
     Args:
-        path_str: Relative or absolute path to file within repo root (will be validated internally)
+        path_str: Relative path to file within repo root (will be validated internally)
         max_bytes: Maximum bytes to read (default 200KB)
 
     Returns:
         File content as string, or empty string on error
     """
     try:
-        # Always validate path using safe_repo_path for defense-in-depth
-        validated_path = safe_repo_path(
-            os.path.relpath(path_str, str(REPO_ROOT.resolve()))
-        )
+        # Validate that path_str is a repo-relative path
+        validated_path = safe_repo_path(path_str)
+        # safe_repo_path fully enforces containment and normalization
         if validated_path is None:
             logger.warning(f"read_text_safe: Path failed validation: {path_str}")
-            return ""
-
-        # Robustly validate that validated_path is inside repo_root_str using commonpath
-        repo_root_str = os.path.realpath(str(REPO_ROOT.resolve()))
-        if os.path.commonpath([validated_path, repo_root_str]) != repo_root_str:
-            logger.warning(
-                f"Attempted to read file outside repo root: {validated_path}"
-            )
             return ""
 
         # Use os.path operations instead of Path operations
@@ -148,46 +143,43 @@ def list_neighbors(file_path: str) -> List[str]:
             return []
 
         # Forbid listing repo root directly to avoid disclosure of special files
-        if parent_dir == repo_root_str:
-            logger.warning(f"Refusing to list repo root directory: {parent_dir}")
+        if safe_parent == repo_root_str:
+            logger.warning(f"Refusing to list repo root directory: {safe_parent}")
             return []
 
         # Safely list files in parent directory using os.listdir
         try:
             files = []
-            for item_name in os.listdir(parent_dir):
+            for item_name in os.listdir(safe_parent):
                 # Skip hidden files (dotfiles) for neighbor lists
                 if item_name.startswith("."):
                     continue
 
                 # Compute a relative path from repo root to the item
                 rel_item_path = os.path.relpath(
-                    os.path.join(parent_dir, item_name), repo_root_str
+                    os.path.join(safe_parent, item_name), repo_root_str
                 )
                 validated_item_path = safe_repo_path(rel_item_path)
+                # Extra hardening: Ensure validated_item_path is strictly within repo_root_str
                 if (
                     validated_item_path is not None
                     and os.path.isfile(validated_item_path)
                     and validated_item_path != path_str
+                    and os.path.commonpath([validated_item_path, repo_root_str])
+                    == repo_root_str
                 ):
                     try:
-                        # Calculate relative path using string operations
-                        if validated_item_path.startswith(repo_root_str + os.sep):
-                            rel_path = validated_item_path[
-                                len(repo_root_str + os.sep) :
-                            ]
-                        elif validated_item_path == repo_root_str:
-                            rel_path = "."
-                        else:
-                            continue  # Skip files outside repo root
-
+                        rel_path = os.path.relpath(validated_item_path, repo_root_str)
+                        # Only accept relative paths (not containing "..")
+                        if rel_path.startswith("..") or os.path.isabs(rel_path):
+                            continue
                         files.append(rel_path)
                     except Exception:
                         # Skip files that can't be processed
                         continue
             return files[:40]  # Limit to prevent token overflow
         except (OSError, PermissionError):
-            logger.warning(f"Could not list directory: {parent_dir}")
+            logger.warning(f"Could not list directory: {safe_parent}")
             return []
 
     except Exception as e:
@@ -214,11 +206,12 @@ def repo_snapshot(target_files: List[str]) -> Dict[str, str]:
                 logger.warning(f"Skipping {rel} - outside repo root or invalid path")
                 continue
 
-            # Use os.path operations and delegate to read_text_safe for validation
-            if os.path.exists(path_str) and os.path.isfile(path_str):
-                snap[rel] = read_text_safe(
-                    rel
-                )  # Pass original relative path for re-validation
+            # All file access should go through read_text_safe, which re-validates the path
+            content = read_text_safe(rel)
+            if content != "":
+                snap[rel] = content
+            else:
+                logger.warning(f"Could not read {rel} or file is empty.")
         except Exception as e:
             logger.warning(f"Failed to snapshot {rel}: {e}")
             snap[rel] = f"# Error reading file: {e}"

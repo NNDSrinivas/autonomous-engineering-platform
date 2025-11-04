@@ -1,16 +1,18 @@
 """API router for AI feedback and learning endpoints."""
 
-from typing import Dict, List
+from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.auth.deps import get_current_user, require_role
+from backend.core.auth.models import Role
 from backend.core.database import get_db_session
 from backend.schemas.ai_feedback import (
     FeedbackSubmission,
     FeedbackResponse, 
     FeedbackStats,
+    FeedbackEntry,
     RecentFeedbackResponse,
     LearningStats,
 )
@@ -48,7 +50,8 @@ async def submit_feedback(
     # Update bandit learning if we have bandit metadata
     if feedback.rating != 0:  # Only learn from explicit feedback
         learning_service = LearningService()
-        bandit = learning_service.get_bandit(current_user["org_key"])
+        # For future enhancement: update bandit with generation context
+        # bandit = learning_service.get_bandit(current_user["org_key"])
         
         # Try to get bandit context from a related generation (would need to be stored)
         # For now, we'll record feedback without full context
@@ -86,7 +89,7 @@ async def get_feedback_stats(
 @router.get("/recent", response_model=RecentFeedbackResponse)
 async def get_recent_feedback(
     limit: int = 50,
-    current_user: Dict = Depends(require_role("admin")),
+    current_user: Dict = Depends(require_role(Role.ADMIN)),
     session: AsyncSession = Depends(get_db_session),
 ) -> RecentFeedbackResponse:
     """Get recent feedback entries (admin only)."""
@@ -103,14 +106,14 @@ async def get_recent_feedback(
     )
     
     return RecentFeedbackResponse(
-        feedback=feedback_list,
+        feedback=[FeedbackEntry(**entry) for entry in feedback_list],
         total_count=len(feedback_list)
     )
 
 
 @router.get("/learning", response_model=LearningStats)
 async def get_learning_stats(
-    current_user: Dict = Depends(require_role("admin")),
+    current_user: Dict = Depends(require_role(Role.ADMIN)),
 ) -> LearningStats:
     """Get contextual bandit learning statistics (admin only)."""
     learning_service = LearningService()

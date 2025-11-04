@@ -1,8 +1,5 @@
 """Database models for AI feedback and generation logging."""
 
-from datetime import datetime
-from typing import Optional
-
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, SmallInteger, String, Text, JSON, func
 from sqlalchemy.orm import relationship
 

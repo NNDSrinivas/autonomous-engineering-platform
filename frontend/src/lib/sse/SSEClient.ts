@@ -305,11 +305,16 @@ export class SSEClient {
             processedChunks++;
             if (processedChunks >= MAX_CHUNKS_PER_BATCH) {
               processedChunks = 0;
-              // Use requestIdleCallback if available for better performance
+              // Use requestIdleCallback if available for better performance, with proper type safety
               await new Promise<void>(resolve => {
-                (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function'
-                  ? window.requestIdleCallback
-                  : setTimeout)(() => resolve(), 0);
+                const scheduleCallback = (callback: () => void) => {
+                  if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+                    window.requestIdleCallback(() => callback());
+                  } else {
+                    setTimeout(() => callback(), 0);
+                  }
+                };
+                scheduleCallback(() => resolve());
               });
             }
           }

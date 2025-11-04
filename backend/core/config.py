@@ -31,11 +31,12 @@ class Settings(BaseSettings):
         """Enforce 'forbid' behavior in dev/test environments and ensure app_env consistency."""
         if isinstance(values, dict):
             # Check environment independently to prevent bypass via app_env manipulation
+            env_app_env_set = "APP_ENV" in os.environ
             env_app_env = os.environ.get("APP_ENV", "dev")
             input_app_env = values.get("app_env")
             if (
                 input_app_env is not None
-                and "APP_ENV" in os.environ
+                and env_app_env_set
                 and input_app_env != env_app_env
             ):
                 raise ValueError(

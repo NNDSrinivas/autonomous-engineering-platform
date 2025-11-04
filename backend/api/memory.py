@@ -133,7 +133,7 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
             .all()
         )
     except (OperationalError, ProgrammingError) as e:
-        # Handle missing table gracefully in test environments
+        # Handle missing table gracefully in all environments
         # These exceptions cover table/schema issues across different databases
         logger.error(
             "Database error while fetching session events: %s: %s",

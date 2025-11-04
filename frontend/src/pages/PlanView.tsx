@@ -255,13 +255,20 @@ export const PlanView: React.FC = () => {
         if (isOutboxItem(_item)) {
           if (isPlanStepBody(_item.body)) {
             const body = _item.body;
-            // Use functional state update to ensure we operate on latest state
-            setPendingOptimisticSteps(prev => {
-              const { updatedSteps, removedId } = findAndRemoveOptimisticStep(prev, body.text, body.owner);
-              if (removedId) {
-                setLiveSteps(steps => steps.filter(step => step.id !== removedId));
+            // Use React.startTransition to batch these updates properly
+            React.startTransition(() => {
+              // First get the removed ID synchronously
+              let removedStepId: string | undefined;
+              setPendingOptimisticSteps(prev => {
+                const { updatedSteps, removedId } = findAndRemoveOptimisticStep(prev, body.text, body.owner);
+                removedStepId = removedId;
+                return updatedSteps;
+              });
+              
+              // Then update liveSteps if needed - React will batch these automatically
+              if (removedStepId) {
+                setLiveSteps(steps => steps.filter(step => step.id !== removedStepId));
               }
-              return updatedSteps;
             });
           }
         }

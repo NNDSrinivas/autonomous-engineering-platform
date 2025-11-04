@@ -282,6 +282,7 @@ async def generate_unified_diff(
     files: List[str],
     org_key: Optional[str] = None,
     user_role: Optional[str] = None,
+    user_sub: Optional[str] = None,
     session=None,
 ) -> tuple[str, Optional[int]]:
     """
@@ -293,6 +294,7 @@ async def generate_unified_diff(
         files: List of relative file paths to modify
         org_key: Organization key for bandit learning (optional)
         user_role: User role for contextual features (optional)
+        user_sub: User subject ID for logging (optional)
         session: Database session for logging (optional)
 
     Returns:
@@ -358,7 +360,7 @@ async def generate_unified_diff(
                 feedback_service = FeedbackService(session)
                 generation_log_id = await feedback_service.log_generation(
                     org_key=org_key,
-                    user_sub="system",  # Would need actual user_sub in real implementation
+                    user_sub=user_sub or "system",
                     task_type="codegen",
                     model=model,
                     temperature=temperature,

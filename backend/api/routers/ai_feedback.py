@@ -20,7 +20,7 @@ from backend.services.feedback_service import FeedbackService
 from backend.services.learning_service import LearningService
 
 
-router = APIRouter(prefix="/feedback", tags=["AI Feedback"])
+router = APIRouter(prefix="/api/feedback", tags=["AI Feedback"])
 
 
 @router.post("/submit", response_model=FeedbackResponse)
@@ -55,8 +55,6 @@ async def submit_feedback(
     #
     #     # Try to get bandit context from a related generation (would need to be stored)
     #     # For now, we'll record feedback without full context
-
-    await session.commit()
 
     return FeedbackResponse(success=True, message="Feedback submitted successfully")
 

@@ -91,6 +91,7 @@ class FeedbackService:
         )
 
         self.session.add(feedback)
+        await self.session.commit()
         return True
 
     async def get_feedback_stats(

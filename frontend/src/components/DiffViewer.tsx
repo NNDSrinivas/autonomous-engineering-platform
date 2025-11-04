@@ -58,7 +58,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ diff, className = "" }) 
       className={`bg-slate-50 dark:bg-slate-900 rounded-lg p-4 overflow-auto text-sm leading-6 font-mono border border-slate-200 dark:border-slate-800 ${className}`}
     >
       {lines.map((line, i) => (
-        <div key={i} className={`${getLineColor(line)} whitespace-pre`}>
+        <div key={`${i}-${line.slice(0, 20)}`} className={`${getLineColor(line)} whitespace-pre`}>
           {line || " "}
         </div>
       ))}

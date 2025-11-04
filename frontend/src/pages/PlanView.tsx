@@ -81,9 +81,11 @@ export const PlanView: React.FC = () => {
   const archiveMutation = useArchivePlan();
   
   const [liveSteps, setLiveSteps] = useState<PlanStep[]>([]);
-  // TODO: Refactor to use useOptimisticSteps() custom hook to encapsulate dual-map logic
-  // and guarantee consistency between pendingOptimisticSteps and optimisticLookup.
-  // See frontend/src/hooks/useOptimisticSteps.ts for the consolidated implementation.
+  // TODO(tech-debt): Refactor to use useOptimisticSteps() custom hook to reduce duplication
+  // and guarantee consistency between pendingOptimisticSteps and optimisticLookup maps.
+  // The hook implementation exists at frontend/src/hooks/useOptimisticSteps.ts but requires
+  // significant refactoring of this component to integrate (all setState calls need updating).
+  // Track as technical debt for future incremental migration.
   const [pendingOptimisticSteps, setPendingOptimisticSteps] = useState<Map<string, PlanStep>>(new Map());
   // Secondary map for efficient lookup by text+owner key
   const [optimisticLookup, setOptimisticLookup] = useState<Map<string, PlanStep>>(new Map());

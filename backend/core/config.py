@@ -46,7 +46,20 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def validate_extra_fields(cls, values):
-        """Enforce 'forbid' behavior in dev/test environments and ensure app_env consistency.
+        """Enforce 'forbid' behavior for extra fields in dev/test environments and ensure app_env consistency.
+
+        Security Rationale:
+        - In development and test environments, this validator raises an error if any extra (undefined)
+          fields are present in the configuration. This helps catch configuration mistakes and typos early,
+          ensuring that only explicitly defined settings are used.
+        - In production, extra fields are allowed (via the 'ignore' setting in model_config) to prevent
+          configuration errors from breaking deployed systems. This is a deliberate trade-off favoring
+          availability and robustness in production, at the cost of potentially ignoring unexpected fields.
+
+        Important: This behavior is a significant deviation from standard Pydantic models where the 'extra'
+        config option is static. Here, stricter validation is enforced only in non-production environments.
+        Future maintainers should be aware of this trade-off: while it helps catch errors early in dev/test,
+        it may allow unnoticed configuration issues in production.
 
         Note: This validator uses module-level cached environment variables that are set at import time.
         If you need to change the environment during tests, call _reset_env_cache() manually after

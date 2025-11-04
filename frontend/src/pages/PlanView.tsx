@@ -62,31 +62,6 @@ function isOutboxItem(obj: any): obj is { body: any } {
   return obj && typeof obj === 'object' && 'body' in obj && obj.body;
 }
 
-// Helper function to find and remove matching optimistic step
-function findAndRemoveOptimisticStep(
-  steps: Map<string, PlanStep>, 
-  text: string, 
-  owner: string
-): { updatedSteps: Map<string, PlanStep>; removedId: string | undefined } {
-  let foundId: string | undefined;
-  for (const step of steps.values()) {
-    if (step.text === text && step.owner === owner) {
-      if (step.id) {
-        foundId = step.id;
-      }
-      break;
-    }
-  }
-  
-  if (foundId) {
-    const updated = new Map(steps);
-    updated.delete(foundId);
-    return { updatedSteps: updated, removedId: foundId };
-  }
-  
-  return { updatedSteps: steps, removedId: undefined };
-}
-
 export const PlanView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -258,14 +233,22 @@ export const PlanView: React.FC = () => {
             const body = _item.body;
             // Use React.startTransition to batch these updates properly
             React.startTransition(() => {
-              // Get current state to compute updates outside of setters to avoid race conditions
-              const currentPending = pendingOptimisticStepsRef.current;
-              const { updatedSteps, removedId } = findAndRemoveOptimisticStep(currentPending, body.text, body.owner);
-              
-              // Apply both updates using the computed values - React will batch automatically
-              setPendingOptimisticSteps(updatedSteps);
-              if (removedId) {
-                setLiveSteps(steps => steps.filter(step => step.id !== removedId));
+              // Use O(1) lookup instead of linear search
+              const key = body.text + '|' + body.owner;
+              const optimisticStep = optimisticLookupRef.current.get(key);
+              if (optimisticStep && optimisticStep.id) {
+                const stepId = optimisticStep.id; // Capture to ensure type safety in closures
+                setPendingOptimisticSteps(prev => {
+                  const updated = new Map(prev);
+                  updated.delete(stepId);
+                  return updated;
+                });
+                setOptimisticLookup(lookup => {
+                  const updated = new Map(lookup);
+                  updated.delete(key);
+                  return updated;
+                });
+                setLiveSteps(steps => steps.filter(step => step.id !== stepId));
               }
             });
           }

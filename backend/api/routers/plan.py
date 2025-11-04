@@ -2,7 +2,7 @@
 Live Plan API - Real-time collaborative planning
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -14,6 +14,7 @@ import asyncio
 import logging
 
 from backend.core.db import get_db
+from backend.core.security import sanitize_for_logging
 from backend.core.settings import settings
 from backend.database.models.live_plan import LivePlan
 from backend.database.models.memory_graph import MemoryNode
@@ -25,6 +26,85 @@ from backend.api.security import check_policy_inline
 from backend.core.policy.engine import PolicyEngine, get_policy_engine
 from backend.core.db_utils import get_short_lived_session
 from backend.core.audit.publisher import append_and_broadcast
+from backend.core.eventstore.service import replay
+
+
+def normalize_event_payload(data: dict) -> dict:
+    """
+    Extract and normalize event payload from SSE message data.
+    Prioritizes nested payload structure to match backfilled events.
+
+    Args:
+        data: Raw event data dictionary
+
+    Returns:
+        Normalized payload dictionary
+    """
+    # Use consistent payload extraction - prioritize nested payload structure to match backfilled events
+    payload = data.get("payload")
+    if payload is None:
+        # Fallback: if no nested payload, exclude metadata fields to avoid duplication
+        payload = {k: v for k, v in data.items() if k not in ("seq", "type")}
+    return payload
+
+
+def parse_broadcaster_message(msg: str | dict) -> dict:
+    """
+    Parse message from broadcaster, handling both JSON strings and parsed dicts.
+
+    Args:
+        msg: Message from broadcaster (str or dict)
+
+    Returns:
+        Parsed message as dictionary
+
+    Note:
+        This helper consolidates the parsing logic to avoid redundant checks.
+        TODO(tech-debt, P2): Standardize broadcaster output format to always return dicts
+        and eliminate the need for this parsing step. This affects SSE message handling
+        across the codebase. Priority: P2 (not blocking, but improves maintainability).
+        Related: Dual-type (str | dict) workaround should be removed in future refactoring.
+    """
+    if isinstance(msg, str):
+        result = json.loads(msg)
+        if not isinstance(result, dict):
+            raise ValueError(
+                f"Parsed broadcaster message must be a dict, got {sanitize_for_logging(type(result).__name__)}"
+            )
+        return result
+    # Validate that non-string input is actually a dict
+    if not isinstance(msg, dict):
+        raise TypeError(
+            f"Expected str or dict, got {sanitize_for_logging(type(msg).__name__)}"
+        )
+    return msg
+
+
+def format_sse_event(seq: Optional[int], event_type: str, payload: dict) -> str:
+    """
+    Format SSE event with consistent structure.
+
+    Args:
+        seq: Sequence ID for Last-Event-ID compatibility (omitted from payload if None)
+        event_type: Event type
+        payload: Event payload data
+
+    Returns:
+        Formatted SSE event string
+    """
+    lines = []
+    if seq is not None:
+        lines.append(f"id: {seq}\n")
+
+    # Build data payload - only include seq if it's not None
+    data_payload = {"type": event_type, "payload": payload}
+    if seq is not None:
+        data_payload["seq"] = seq
+
+    lines.append(f"event: {event_type}\n")
+    lines.append(f"data: {json.dumps(data_payload)}\n\n")
+    return "".join(lines)
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/plan", tags=["plan"])
@@ -207,8 +287,9 @@ async def add_step(
     warning_thresholds = {50, 100, 200, 400, 800, 1600, 3200}
     if step_count in warning_thresholds:
         logger.warning(
-            f"Plan {req.plan_id} has {step_count} steps. "
-            "Consider migrating to a separate steps table for better performance."
+            "Plan %s has %d steps. Consider migrating to a separate steps table for better performance.",
+            sanitize_for_logging(req.plan_id),
+            step_count,
         )
 
     db.commit()
@@ -227,7 +308,9 @@ async def add_step(
     except Exception as e:
         # Log but don't fail - backward compatibility
         logger.error(
-            f"Failed to append/broadcast step for plan {req.plan_id}: {e}",
+            "Failed to append/broadcast step for plan %s: %s",
+            sanitize_for_logging(req.plan_id),
+            str(e),
             exc_info=True,
         )
         # Fallback to old broadcast method
@@ -236,7 +319,9 @@ async def add_step(
             await bc.publish(channel, json.dumps(step))
         except Exception as fallback_error:
             logger.error(
-                f"Fallback broadcast also failed for plan {req.plan_id}: {fallback_error}"
+                "Fallback broadcast also failed for plan %s: %s",
+                sanitize_for_logging(req.plan_id),
+                str(fallback_error),
             )
 
     # Metrics
@@ -253,11 +338,39 @@ async def add_step(
 @router.get("/{plan_id}/stream")
 async def stream_plan_updates(
     plan_id: str,
+    request: Request,
     x_org_id: str = Header(..., alias="X-Org-Id"),
     user: User = Depends(require_role(Role.VIEWER)),
     bc: Broadcast = Depends(get_broadcaster),
+    since: Optional[int] = Query(
+        None, description="Backfill events since this sequence number"
+    ),
 ):
-    """Server-Sent Events stream for real-time plan updates (requires viewer role)"""
+    """
+    Server-Sent Events stream for real-time plan updates with auto-resume support.
+
+    Supports Last-Event-ID header and ?since= query parameter for backfilling missed events.
+    Emits id: <seq> lines for browser auto-resume capability.
+    """
+
+    # Discover resume point (header has precedence over query param)
+    last_id_header = request.headers.get("Last-Event-ID")
+    since_seq = None
+    try:
+        if last_id_header:
+            since_seq = int(last_id_header)
+        elif since is not None:
+            since_seq = int(since)
+    except ValueError:
+        # Only compute resume_value in error path for better performance
+        resume_value = last_id_header or since
+        # Sanitize user input to prevent log injection
+        sanitized_resume_value = sanitize_for_logging(str(resume_value))
+        logger.warning(
+            "Invalid sequence number in resume request: %s",
+            sanitized_resume_value,
+        )
+        since_seq = None
 
     # Verify plan exists with a short-lived session that closes before streaming
     # IMPORTANT: SSE streams are long-lived connections that must not hold
@@ -284,17 +397,79 @@ async def stream_plan_updates(
 
     async def event_generator():
         try:
-            # Send initial connection message
-            yield f"data: {json.dumps({'type': 'connected', 'plan_id': plan_id})}\n\n"
+            # Optional backfill from event store
+            if since_seq is not None:
+                try:
+                    with get_short_lived_session() as db:
+                        events = replay(
+                            session=db,
+                            plan_id=plan_id,
+                            since_seq=since_seq,
+                            org_key=x_org_id,
+                        )
+                        for event in events:
+                            # Emit with sequence ID for Last-Event-ID compatibility
+                            yield format_sse_event(event.seq, event.type, event.payload)
+                except Exception as e:
+                    logger.error(
+                        "Error during backfill replay for plan %s: %s",
+                        sanitize_for_logging(plan_id),
+                        str(e),
+                        exc_info=True,
+                    )
+                    # Continue with SSE stream even if backfill fails
 
-            # Stream updates from broadcaster
+            # Always send initial connection message after any backfill
+            yield f"data: {json.dumps({'seq': None, 'type': 'connected', 'payload': {'plan_id': plan_id}})}\n\n"
+
+            # Stream live updates from broadcaster
             subscription = await bc.subscribe(channel)
             async for msg in subscription:
-                yield f"data: {msg}\n\n"
+                try:
+                    # Parse message using helper function to consolidate parsing logic
+                    data = parse_broadcaster_message(msg)
+                    seq = data.get("seq")
+                    event_type = data.get("type", "message")
+                    payload = normalize_event_payload(data)
+
+                    # Emit with sequence ID for Last-Event-ID compatibility
+                    yield format_sse_event(seq, event_type, payload)
+                except (
+                    json.JSONDecodeError,
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ) as e:
+                    # Fallback for malformed messages - catch specific parsing errors:
+                    #   - json.JSONDecodeError: message is not valid JSON
+                    #   - KeyError: expected field missing from message dict
+                    #   - TypeError: message is not a dict or has wrong type (e.g., runtime type validation)
+                    #   - ValueError: unexpected value in message (e.g., invalid format)
+                    # Note: AttributeError removed as it indicates programming bugs, not malformed data
+                    # Trade-off: TypeError/ValueError could mask programming bugs, but catching them here
+                    # prevents SSE stream breaks from broadcaster format issues. Alternative would be
+                    # more granular try-except blocks around each parsing step (future improvement).
+                    logger.warning(
+                        "Malformed SSE message: %s (Error: %s)",
+                        sanitize_for_logging(str(msg)),
+                        str(e),
+                        exc_info=True,
+                    )
+
+                    # Provide error info for client debugging without retrying parse
+                    error_payload = {
+                        "error": "Failed to parse SSE event data",
+                        "raw": sanitize_for_logging(str(msg)),
+                    }
+
+                    yield "event: error\n"
+                    yield f"data: {json.dumps(error_payload)}\n\n"
 
         except asyncio.CancelledError:
             # Client disconnected
-            logger.debug(f"SSE connection cancelled for plan {plan_id}")
+            logger.debug(
+                "SSE connection cancelled for plan %s", sanitize_for_logging(plan_id)
+            )
             raise
 
     return StreamingResponse(
@@ -349,7 +524,8 @@ def archive_plan(
         # Edge case: Plan marked archived but memory node missing (previous failure)
         # Attempt to create the missing node to restore consistency
         logger.warning(
-            f"Plan {plan_id} is archived but memory node missing - creating it now"
+            "Plan %s is archived but memory node missing - creating it now",
+            sanitize_for_logging(plan_id),
         )
         # Fall through to create the memory node below
 

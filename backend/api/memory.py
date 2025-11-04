@@ -3,15 +3,21 @@
 Provides episodic memory recording and agent note consolidation
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from pydantic import BaseModel, Field
-from typing import List, Optional
 import json
-from ..core.db import get_db
+import logging
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.orm import Session
+
 from ..context.schemas import AgentNoteOut
 from ..context.service import parse_tags_field
+from ..core.db import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -51,23 +57,48 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
     # to prevent unauthorized access/modification of other organizations' data
     org_id = "default_org"
 
-    db.execute(
-        text(
-            """
-      INSERT INTO session_event (org_id, session_id, event_type, task_key, context, metadata)
-      VALUES (:o, :sid, :et, :tk, :ctx, :meta)
-    """
-        ),
-        {
-            "o": org_id,
-            "sid": req.session_id,
-            "et": req.event_type,
-            "tk": req.task_key,
-            "ctx": req.context,
-            "meta": json.dumps(req.metadata),
-        },
-    )
-    db.commit()
+    try:
+        db.execute(
+            text(
+                """
+          INSERT INTO session_event (org_id, session_id, event_type, task_key, context, metadata)
+          VALUES (:o, :sid, :et, :tk, :ctx, :meta)
+        """
+            ),
+            {
+                "o": org_id,
+                "sid": req.session_id,
+                "et": req.event_type,
+                "tk": req.task_key,
+                "ctx": req.context,
+                "meta": json.dumps(req.metadata),
+            },
+        )
+        db.commit()
+    except OperationalError as e:
+        # Log the original exception for debugging while preserving exception context
+        logger.error(
+            "OperationalError in record_memory: %s",
+            str(e),
+            extra={"session_id": req.session_id},
+        )
+        # Transient database error (e.g., connection issue)
+        raise HTTPException(
+            status_code=503,
+            detail="Memory service temporarily unavailable (database connection issue)",
+        ) from e
+    except ProgrammingError as e:
+        # Log the original exception for debugging while preserving exception context
+        logger.error(
+            "ProgrammingError in record_memory: %s",
+            str(e),
+            extra={"session_id": req.session_id},
+        )
+        # Persistent database error (e.g., missing table/column)
+        raise HTTPException(
+            status_code=500,
+            detail="Memory service misconfigured (database schema error)",
+        ) from e
 
     return {"status": "recorded", "session_id": req.session_id}
 
@@ -85,21 +116,35 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
     org_id = "default_org"
 
     # Fetch session events for context
-    events = (
-        db.execute(
-            text(
-                """
-      SELECT event_type, context, created_at
-      FROM session_event
-      WHERE org_id = :o AND session_id = :sid
-      ORDER BY created_at ASC
-    """
-            ),
-            {"o": org_id, "sid": req.session_id},
+    try:
+        events = (
+            db.execute(
+                text(
+                    """
+          SELECT event_type, context, created_at
+          FROM session_event
+          WHERE org_id = :o AND session_id = :sid
+          ORDER BY created_at ASC
+        """
+                ),
+                {"o": org_id, "sid": req.session_id},
+            )
+            .mappings()
+            .all()
         )
-        .mappings()
-        .all()
-    )
+    except (OperationalError, ProgrammingError) as e:
+        # Handle missing table gracefully in all environments
+        # These exceptions cover table/schema issues across different databases
+        logger.error(
+            "Database error while fetching session events: %s: %s",
+            type(e).__name__,
+            str(e),
+            extra={"session_id": req.session_id},
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Memory service temporarily unavailable",
+        )
 
     if not events:
         raise HTTPException(status_code=404, detail="No events found for session")

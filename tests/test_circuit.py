@@ -1,12 +1,20 @@
-import pytest, asyncio
+import pytest
+import asyncio
 from backend.core.resilience.circuit import CircuitBreaker
+
+
+# Reusable test helper functions
+async def ok():
+    return "ok"
+
+
+async def fail():
+    raise RuntimeError("boom")
+
 
 @pytest.mark.asyncio
 async def test_circuit_opens_then_half_open_then_closes():
     c = CircuitBreaker("test", fail_threshold=2, open_sec=1, success_to_close=1)
-
-    async def fail():
-        raise RuntimeError("boom")
 
     # trigger opens
     with pytest.raises(RuntimeError):
@@ -23,10 +31,10 @@ async def test_circuit_opens_then_half_open_then_closes():
     await asyncio.sleep(1.05)
 
     # first success closes (success_to_close=1)
-    async def ok(): return "ok"
     out = await c.call(ok)
     assert out == "ok"
     assert c.is_open() is False
+
 
 @pytest.mark.asyncio
 async def test_circuit_fallback():
@@ -46,6 +54,7 @@ async def test_circuit_fallback():
     # while open, fallback should be called
     result = await c.call(fail, fallback)
     assert result == "fallback-result"
+
 
 @pytest.mark.asyncio
 async def test_circuit_success_path():

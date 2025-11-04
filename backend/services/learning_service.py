@@ -18,7 +18,7 @@ class ThompsonSamplingBandit:
         self.org_key = org_key
         self.cache = cache
 
-    async def _get_context_key(self, context: Dict) -> str:
+    def _get_context_key(self, context: Dict) -> str:
         """Generate a consistent cache key for a context."""
         # Create a simplified context fingerprint
         fingerprint_parts = [
@@ -55,7 +55,7 @@ class ThompsonSamplingBandit:
 
     async def select_parameters(self, context: Dict) -> Dict:
         """Select AI parameters using Thompson Sampling."""
-        context_key = await self._get_context_key(context)
+        context_key = self._get_context_key(context)
 
         # Define arms (parameter combinations)
         arms = [
@@ -70,7 +70,7 @@ class ThompsonSamplingBandit:
             successes, failures = await self._get_arm_stats(context_key, arm["name"])
 
             # Thompson Sampling: sample from Beta(successes, failures)
-            if successes + failures > 2:  # Have some data
+            if successes + failures >= 2:  # Have some data (including prior)
                 score = np.random.beta(successes, failures)
             else:
                 score = random.random()  # Fallback for very sparse data
@@ -96,7 +96,7 @@ class ThompsonSamplingBandit:
 
     async def get_arm_performance(self, context: Dict) -> Dict[str, Dict]:
         """Get performance statistics for all arms in a context."""
-        context_key = await self._get_context_key(context)
+        context_key = self._get_context_key(context)
 
         arms = ["precise", "balanced", "creative"]
         performance = {}

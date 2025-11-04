@@ -47,14 +47,9 @@ async def submit_feedback(
             message="Feedback could not be submitted. Generation not found or feedback already exists.",
         )
 
-    # Update bandit learning if we have bandit metadata
-    # if feedback.rating != 0:  # Only learn from explicit feedback
-    #     learning_service = LearningService()
-    #     # For future enhancement: update bandit with generation context
-    #     # bandit = learning_service.get_bandit(current_user["org_key"])
-    #
-    #     # Try to get bandit context from a related generation (would need to be stored)
-    #     # For now, we'll record feedback without full context
+    # TODO: Implement bandit feedback loop for learning from user feedback
+    # This would involve retrieving bandit context from generation metadata
+    # and updating bandit statistics based on user ratings
 
     return FeedbackResponse(success=True, message="Feedback submitted successfully")
 

@@ -64,7 +64,8 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
         setShowDetails(false);
         onFeedbackSubmitted?.();
       } else {
-        console.error('Failed to submit feedback');
+        const errorText = await response.text();
+        console.error('Failed to submit feedback:', response.status, errorText);
       }
     } catch (error) {
       console.error('Error submitting feedback:', error);

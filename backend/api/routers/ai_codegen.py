@@ -177,8 +177,8 @@ async def apply_patch_endpoint(
                 "applied": success,
                 "output": (
                     output
-                    if success and not output.lower().startswith("error:")
-                    else "Dry run failed: patch cannot be applied. See server logs for details."
+                    if success
+                    else f"Dry run failed: patch cannot be applied.\n\nGit output:\n{output}"
                 ),
                 "dry_run": True,
             }
@@ -193,7 +193,13 @@ async def apply_patch_endpoint(
             response_output = output
         else:
             logger.warning(f"Patch application failed: {output[:200]}")
-            response_output = "Patch application failed. See server logs for details."
+            # Show git output to user unless it's an internal error
+            if output.startswith(
+                "Error: Patch application failed due to internal error"
+            ):
+                response_output = "Patch application failed due to internal error. See server logs for details."
+            else:
+                response_output = f"Patch application failed.\n\nGit output:\n{output}"
 
         return {"applied": success, "output": response_output, "dry_run": False}
 

@@ -135,8 +135,9 @@ export class Outbox {
     this.cache = list; // Update cache first
     try {
       localStorage.setItem(this.key, JSON.stringify(list));
-    } catch {
+    } catch (err) {
       // localStorage might be full or unavailable
+      console.warn("Failed to write to localStorage outbox:", { key: this.key, error: err });
     }
   }
 }

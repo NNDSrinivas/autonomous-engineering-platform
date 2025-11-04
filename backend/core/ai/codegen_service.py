@@ -4,10 +4,9 @@ Generates unified diffs based on plan intent and file context.
 """
 
 from __future__ import annotations
-import json
 import os
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict
 
 from .repo_context import repo_snapshot, list_neighbors
 from backend.core.ai_service import AIService
@@ -77,7 +76,7 @@ def build_prompt(intent: str, files: List[str], snapshot: Dict[str, str]) -> str
         # Add neighbor files for context
         neighbors = list_neighbors(file_path)
         if neighbors:
-            ctx_parts.append(f"NEIGHBORING FILES IN SAME DIRECTORY:")
+            ctx_parts.append("NEIGHBORING FILES IN SAME DIRECTORY:")
             ctx_parts.append(", ".join(neighbors[:10]))  # Limit to 10 for brevity
             ctx_parts.append("")
 

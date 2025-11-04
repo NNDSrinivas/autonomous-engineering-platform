@@ -4,7 +4,6 @@ Validates git-format diffs and applies them using git apply.
 """
 
 from __future__ import annotations
-import io
 import re
 import subprocess
 import tempfile
@@ -17,7 +16,16 @@ logger = logging.getLogger(__name__)
 # Regex patterns for unified diff validation
 DIFF_HEADER = re.compile(r"^diff --git a/.+ b/.+", re.M)
 HUNK_HEADER = re.compile(r"^@@ -\d+(,\d+)? \+\d+(,\d+)? @@", re.M)
-ALLOWED_PREFIX = ("diff ", "index ", "--- ", "+++ ", "@@ ", "+", "-", " ", "\\")
+ALLOWED_PREFIX = ("diff ", "index ", "--- ", "+++ ", "@@ ", "+", "-", " ")
+NO_NEWLINE_MARKER = "\\ No newline at end of file"
+
+logger = logging.getLogger(__name__)
+
+# Regex patterns for unified diff validation
+DIFF_HEADER = re.compile(r"^diff --git a/.+ b/.+", re.M)
+HUNK_HEADER = re.compile(r"^@@ -\d+(,\d+)? \+\d+(,\d+)? @@", re.M)
+ALLOWED_PREFIX = ("diff ", "index ", "--- ", "+++ ", "@@ ", "+", "-", " ")
+NO_NEWLINE_MARKER = "\\ No newline at end of file"
 
 
 class DiffValidationError(Exception):
@@ -80,7 +88,13 @@ def validate_unified_diff(
 
     # Validate line prefixes
     for i, line in enumerate(diff_text.splitlines(), 1):
-        if line and not line.startswith(ALLOWED_PREFIX):
+        # In unified diffs, empty lines are valid context lines
+        if line == "":
+            continue
+        # Check for the specific backslash marker
+        if line == NO_NEWLINE_MARKER:
+            continue
+        if not line.startswith(ALLOWED_PREFIX):
             raise DiffValidationError(
                 f"Invalid diff line prefix at line {i}: {line[:30]}..."
             )

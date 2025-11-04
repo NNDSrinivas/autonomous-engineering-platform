@@ -34,6 +34,7 @@ class GenerateDiffIn(BaseModel):
     )
 
     @validator("files")
+    @classmethod
     def validate_files_not_empty(cls, v):
         if not v:
             raise ValueError("At least one file path is required")

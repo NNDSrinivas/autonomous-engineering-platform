@@ -74,7 +74,12 @@ def is_safe_subpath(path: str, root: str) -> bool:
         path_resolved = os.path.realpath(os.path.normpath(path))
         root_resolved = os.path.realpath(os.path.normpath(root))
 
-        if not os.path.commonpath([path_resolved, root_resolved]) == root_resolved:
+        # Check commonpath with proper exception handling
+        try:
+            if not os.path.commonpath([path_resolved, root_resolved]) == root_resolved:
+                return False
+        except ValueError:
+            # Paths on different drives on Windows
             return False
 
         # If same directory, it's safe
@@ -242,13 +247,35 @@ def list_neighbors(file_path: str) -> List[str]:
             os.path.normpath(safe_parent_real) if safe_parent_real is not None else None
         )
 
+        # Check containment with proper exception handling for Windows cross-drive paths
+        containment_error = False
+        try:
+            if (
+                safe_parent is None
+                or os.path.commonpath([safe_parent, repo_root_str]) != repo_root_str
+            ):
+                containment_error = True
+        except ValueError:
+            # Paths on different drives on Windows
+            containment_error = True
+
+        try:
+            if (
+                not containment_error
+                and safe_parent_real is not None
+                and safe_parent_real_norm is not None
+                and os.path.commonpath([safe_parent_real_norm, repo_root_norm])
+                != repo_root_norm
+            ):
+                containment_error = True
+        except ValueError:
+            # Paths on different drives on Windows
+            containment_error = True
+
         if (
-            safe_parent is None
-            or os.path.commonpath([safe_parent, repo_root_str]) != repo_root_str
+            containment_error
             or safe_parent_real is None
             or safe_parent_real_norm is None
-            or os.path.commonpath([safe_parent_real_norm, repo_root_norm])
-            != repo_root_norm
             or safe_parent_real_norm == repo_root_norm
             or os.path.relpath(safe_parent_real_norm, repo_root_norm).startswith("..")
         ):
@@ -264,14 +291,27 @@ def list_neighbors(file_path: str) -> List[str]:
 
         # Extra hardening: avoid symlinks and TOCTOU
         # Ensure safe_parent_real is not a symlink (and not a path with symlinked dirs leading outside)
+        final_check_failed = False
+
+        # Check commonpath with exception handling
+        try:
+            if (
+                safe_parent_real is not None
+                and not os.path.commonpath([safe_parent_real, repo_root_str])
+                == repo_root_str
+            ):
+                final_check_failed = True
+        except ValueError:
+            # Paths on different drives on Windows
+            final_check_failed = True
+
         if (
             safe_parent_real is None
             or not os.path.isdir(safe_parent_real)
             or os.path.islink(safe_parent_real)
             or os.path.realpath(safe_parent_real) != safe_parent_real
             or path_has_symlink_in_hierarchy(safe_parent_real, repo_root_str)
-            or not os.path.commonpath([safe_parent_real, repo_root_str])
-            == repo_root_str
+            or final_check_failed
             or not is_safe_subpath(safe_parent_real, repo_root_str)
         ):
             logger.warning(
@@ -297,10 +337,22 @@ def list_neighbors(file_path: str) -> List[str]:
                 # Re-validate by resolving to realpath and checking containment again
                 if validated_item_path is not None:
                     item_realpath = os.path.realpath(validated_item_path)
+
+                    # Check commonpath with exception handling for Windows cross-drive paths
+                    item_within_repo = False
+                    try:
+                        if (
+                            os.path.commonpath([item_realpath, repo_root_str])
+                            == repo_root_str
+                        ):
+                            item_within_repo = True
+                    except ValueError:
+                        # Paths on different drives, treat as not within repo
+                        item_within_repo = False
+
                     # Ensure the real path is inside the repo root
                     if (
-                        os.path.commonpath([item_realpath, repo_root_str])
-                        == repo_root_str
+                        item_within_repo
                         # Never allow symlinks, even if they resolve inside repo root
                         and not os.path.islink(item_realpath)
                         and os.path.isfile(item_realpath)

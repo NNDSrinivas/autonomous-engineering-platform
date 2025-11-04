@@ -343,12 +343,13 @@ export class SSEClient {
             processedChunks++;
             if (processedChunks >= MAX_CHUNKS_PER_BATCH) {
               processedChunks = 0;
-              // Yield using the most efficient available method with fallbacks
+              // Yield to browser event loop to allow rendering and user interaction
               // Feature detection for experimental scheduler.yield() API (Chrome 94+ only)
+              // Falls back to setTimeout which properly yields to the browser event loop
+              // Note: queueMicrotask is NOT used as it only yields to other microtasks,
+              // not to the browser's main event loop for rendering updates
               if (hasSchedulerYield(globalThis as any)) {
                 await (globalThis as any).scheduler.yield();
-              } else if (typeof queueMicrotask === 'function') {
-                await new Promise<void>(resolve => queueMicrotask(resolve));
               } else {
                 await new Promise<void>(resolve => setTimeout(resolve, 0));
               }

@@ -10,6 +10,8 @@ from typing import Optional
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from backend.core.security import sanitize_for_logging
+
 # Module-level constants for performance
 PUNCTUATION_SET = set(string.punctuation)
 
@@ -77,7 +79,9 @@ class Settings(BaseSettings):
                 and input_app_env != env_app_env
             ):
                 raise ValueError(
-                    f"Inconsistent app_env: input 'app_env' is '{input_app_env}', but environment variable 'APP_ENV' is '{env_app_env}'. Please ensure they match."
+                    f"Inconsistent app_env: input 'app_env' is '{sanitize_for_logging(str(input_app_env))}', "
+                    f"but environment variable 'APP_ENV' is '{sanitize_for_logging(str(env_app_env))}'. "
+                    f"Please ensure they match."
                 )
             if env_app_env in ["dev", "test"]:
                 # Check for any fields in the input data that aren't defined in the model
@@ -85,8 +89,11 @@ class Settings(BaseSettings):
                 input_fields = set(values.keys())
                 extra_fields = input_fields - allowed_fields
                 if extra_fields:
+                    sanitized_fields = ", ".join(
+                        sorted(sanitize_for_logging(str(f)) for f in extra_fields)
+                    )
                     raise ValueError(
-                        f"Extra fields not permitted in app_env '{env_app_env}': {', '.join(sorted(extra_fields))}"
+                        f"Extra fields not permitted in app_env '{sanitize_for_logging(str(env_app_env))}': {sanitized_fields}"
                     )
         return values
 

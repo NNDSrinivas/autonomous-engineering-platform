@@ -28,9 +28,6 @@ from backend.core.db_utils import get_short_lived_session
 from backend.core.audit.publisher import append_and_broadcast
 from backend.core.eventstore.service import replay
 
-# Module constants
-ALLOWED_ERROR_KEYS = frozenset({"type", "plan_id"})
-
 
 def normalize_event_payload(data: dict) -> dict:
     """
@@ -63,9 +60,10 @@ def parse_broadcaster_message(msg: str | dict) -> dict:
 
     Note:
         This helper consolidates the parsing logic to avoid redundant checks.
-        TODO(tech-debt): Standardize broadcaster output format to always return dicts
-        and eliminate the need for this parsing step. Track this in future refactoring work
-        to simplify SSE message handling and remove the dual-type (str | dict) workaround.
+        TODO(tech-debt, P2): Standardize broadcaster output format to always return dicts
+        and eliminate the need for this parsing step. This affects SSE message handling
+        across the codebase. Priority: P2 (not blocking, but improves maintainability).
+        Related: Dual-type (str | dict) workaround should be removed in future refactoring.
     """
     if isinstance(msg, str):
         result = json.loads(msg)

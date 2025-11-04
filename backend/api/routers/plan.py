@@ -28,6 +28,9 @@ from backend.core.db_utils import get_short_lived_session
 from backend.core.audit.publisher import append_and_broadcast
 from backend.core.eventstore.service import replay
 
+# Module constants
+ALLOWED_ERROR_KEYS = frozenset({"type", "plan_id"})
+
 
 def normalize_event_payload(data: dict) -> dict:
     """
@@ -70,7 +73,9 @@ def parse_broadcaster_message(msg: str | dict) -> dict:
                 f"Parsed broadcaster message must be a dict, got {type(result).__name__}"
             )
         return result
-    # msg must be dict based on type annotation (str | dict -> dict)
+    # Validate that non-string input is actually a dict
+    if not isinstance(msg, dict):
+        raise TypeError(f"Expected str or dict, got {type(msg).__name__}")
     return msg
 
 
@@ -434,8 +439,7 @@ async def stream_plan_updates(
                     try:
                         partial = parse_broadcaster_message(msg)
                         # Only include specific, safe fields to avoid leaking sensitive info
-                        allowed_keys = {"type", "plan_id"}
-                        for key in allowed_keys:
+                        for key in ALLOWED_ERROR_KEYS:
                             if key in partial:
                                 error_payload[key] = sanitize_for_logging(
                                     str(partial[key])

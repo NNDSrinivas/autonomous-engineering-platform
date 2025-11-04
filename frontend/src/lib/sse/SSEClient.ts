@@ -48,6 +48,16 @@ export class SSEClient {
       SSEClient.SSE_DATA_PREFIX_LENGTH);
   }
   
+  /**
+   * Sanitize value for safe logging to prevent log injection attacks
+   */
+  private static sanitizeForLogging(value: string): string {
+    // Remove or replace line-breaking characters to prevent log injection
+    const sanitized = value.replace(/[\r\n\u2028\u2029]+/g, ' ');
+    // Limit length to prevent log flooding
+    return sanitized.length > 100 ? sanitized.substring(0, 97) + '...' : sanitized;
+  }
+  
   private source: EventSource | null = null;
   private handlers = new Map<string, Set<EventHandler>>(); // planId -> handlers
   private lastSeq = new Map<string, number>();
@@ -257,6 +267,11 @@ export class SSEClient {
       let eventData = '';
       let eventId = '';
 
+      // Optimize scheduling by caching the availability check
+      const scheduleCallback = (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function')
+        ? (cb: () => void) => window.requestIdleCallback(cb)
+        : (cb: () => void) => setTimeout(cb, 0);
+
       // Batch processing variables to reduce event loop overhead
       let processedChunks = 0;
       const MAX_CHUNKS_PER_BATCH = 10;
@@ -288,7 +303,7 @@ export class SSEClient {
                 if (SSEClient.ALLOWED_EVENT_TYPES.has(extractedEventType)) {
                   eventType = extractedEventType;
                 } else {
-                  console.warn('SSE: Ignoring unknown event type:', extractedEventType);
+                  console.warn('SSE: Ignoring unknown event type:', SSEClient.sanitizeForLogging(extractedEventType));
                   // Keep the default 'message' event type for unknown events
                 }
               } else if (line.startsWith('data:')) {
@@ -315,15 +330,8 @@ export class SSEClient {
             processedChunks++;
             if (processedChunks >= MAX_CHUNKS_PER_BATCH) {
               processedChunks = 0;
-              // Use requestIdleCallback if available for better performance, with proper type safety
+              // Use optimized scheduling with pre-cached availability check
               await new Promise<void>(resolve => {
-                const scheduleCallback = (callback: () => void) => {
-                  if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-                    window.requestIdleCallback(() => callback());
-                  } else {
-                    setTimeout(() => callback(), 0);
-                  }
-                };
                 scheduleCallback(() => resolve());
               });
             }

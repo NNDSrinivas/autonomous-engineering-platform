@@ -16,6 +16,7 @@ import { CORE_API, ORG } from '../api/client';
 
 // Constants
 const OPTIMISTIC_TIMESTAMP_TOLERANCE_MS = 5000; // 5 seconds
+const MAX_OPTIMISTIC_STEPS_WARNING_THRESHOLD = 50; // Warn when this many optimistic steps are pending
 
 // Helper function to replace optimistic step with real step
 function replaceOptimisticStep(
@@ -184,7 +185,7 @@ export const PlanView: React.FC = () => {
           const payloadKey = `${payload.text}|${payload.owner}`;
           
           // Check for performance bottleneck warning
-          if (pendingOptimisticStepsRef.current.size > 50) {
+          if (pendingOptimisticStepsRef.current.size > MAX_OPTIMISTIC_STEPS_WARNING_THRESHOLD) {
             console.warn(`Large number of pending optimistic steps: ${pendingOptimisticStepsRef.current.size}`);
           }
           

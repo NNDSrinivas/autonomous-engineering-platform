@@ -60,8 +60,8 @@ def check_self() -> CheckResult:
 
 def check_db() -> CheckResult:
     def _q():
-        # Verify that imports succeeded and functions are callable
-        if not callable(get_engine) or not callable(text):
+        # Verify that imports succeeded (get_engine and text are None if ImportError occurred)
+        if get_engine is None or text is None:
             raise RuntimeError("db not configured")
         # get_engine() implements lazy initialization with caching (see core/db.py)
         # so repeated health checks don't create overhead - engine is reused

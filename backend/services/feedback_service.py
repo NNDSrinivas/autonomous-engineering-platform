@@ -1,10 +1,7 @@
 """Service layer for AI feedback operations."""
 
-import asyncio
-import hashlib
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
+from typing import Dict, List, Optional
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession

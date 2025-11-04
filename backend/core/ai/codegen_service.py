@@ -1,13 +1,15 @@
 """
 AI-powered code generation service with repo-aware prompting.
 Generates unified diffs based on plan intent and file context.
+Includes contextual bandit learning for parameter optimization.
 """
 
 from __future__ import annotations
 import asyncio
+import hashlib
 import os
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from .repo_context import repo_snapshot, list_neighbors
 from backend.core.ai_service import AIService
@@ -98,13 +100,20 @@ def build_prompt(intent: str, files: List[str], snapshot: Dict[str, str]) -> str
     return "\n".join(ctx_parts)
 
 
-async def call_model(prompt: str, max_retries: int = 2) -> str:
+async def call_model(
+    prompt: str, 
+    max_retries: int = 2,
+    model: str = MODEL,
+    temperature: float = TEMPERATURE
+) -> str:
     """
     Call AI model to generate diff with intelligent fallback strategies.
 
     Args:
         prompt: The formatted prompt with intent and context
         max_retries: Number of fallback attempts if truncation occurs
+        model: AI model to use (from bandit or default)
+        temperature: Temperature parameter (from bandit or default)
 
     Returns:
         Generated diff text
@@ -125,17 +134,18 @@ async def call_model(prompt: str, max_retries: int = 2) -> str:
     for attempt in range(max_retries + 1):
         try:
             logger.info(
-                f"Generation attempt {attempt + 1}/{max_retries + 1}, max_tokens: {current_max_tokens}"
+                f"Generation attempt {attempt + 1}/{max_retries + 1}, "
+                f"model: {model}, temperature: {temperature}, max_tokens: {current_max_tokens}"
             )
 
             # Use OpenAI API directly for better control
             response = ai_service.client.chat.completions.create(
-                model=MODEL,
+                model=model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": current_prompt},
                 ],
-                temperature=TEMPERATURE,
+                temperature=temperature,
                 max_tokens=current_max_tokens,
                 timeout=60,  # 60 second timeout
             )
@@ -267,16 +277,26 @@ def _is_diff_salvageable(diff: str) -> bool:
     return False
 
 
-async def generate_unified_diff(intent: str, files: List[str]) -> str:
+async def generate_unified_diff(
+    intent: str, 
+    files: List[str],
+    org_key: Optional[str] = None,
+    user_role: Optional[str] = None,
+    session = None,
+) -> tuple[str, Optional[int]]:
     """
     Generate a unified diff for the given intent and target files.
+    Integrates with contextual bandit learning for parameter optimization.
 
     Args:
         intent: Description of what to implement
         files: List of relative file paths to modify
+        org_key: Organization key for bandit learning (optional)
+        user_role: User role for contextual features (optional)
+        session: Database session for logging (optional)
 
     Returns:
-        Unified diff text in git format
+        Tuple of (diff text, generation_log_id or None)
 
     Raises:
         Exception: If generation fails
@@ -305,7 +325,60 @@ async def generate_unified_diff(intent: str, files: List[str]) -> str:
     prompt_size = len(prompt.encode("utf-8"))
     logger.info(f"Prompt size: {prompt_size / 1024:.1f}KB")
 
-    # Call model to generate diff
-    diff = await call_model(prompt)
+    # Use contextual bandit for parameter selection if available
+    model = MODEL
+    temperature = TEMPERATURE
+    generation_log_id = None
+    bandit_context = None
+    
+    if org_key:
+        try:
+            from backend.services.learning_service import LearningService
+            from backend.services.feedback_service import FeedbackService
+            
+            learning_service = LearningService()
+            
+            # Extract context for bandit
+            context = learning_service.extract_context(
+                task_type="codegen",
+                input_text=intent,
+                user_role=user_role
+            )
+            
+            # Get parameters from bandit
+            bandit = learning_service.get_bandit(org_key)
+            params = await bandit.select_parameters(context)
+            
+            model = params.get("model", MODEL)
+            temperature = params.get("temperature", TEMPERATURE)
+            bandit_context = params.get("_bandit_context")
+            
+            logger.info(f"Bandit selected: model={model}, temperature={temperature}")
+            
+            # Log generation if session provided
+            if session:
+                feedback_service = FeedbackService(session)
+                generation_log_id = await feedback_service.log_generation(
+                    org_key=org_key,
+                    user_sub="system",  # Would need actual user_sub in real implementation
+                    task_type="codegen",
+                    model=model,
+                    temperature=temperature,
+                    params={
+                        "files": files,
+                        "bandit_context": bandit_context,
+                        "bandit_arm": params.get("_bandit_arm"),
+                    },
+                    prompt=prompt,
+                    input_fingerprint=hashlib.sha256(intent.encode()).hexdigest()[:64],
+                )
+                
+        except ImportError:
+            logger.warning("Learning services not available, using default parameters")
+        except Exception as e:
+            logger.warning(f"Failed to use bandit learning: {e}, using defaults")
 
-    return diff.strip()
+    # Call model to generate diff
+    diff = await call_model(prompt, model=model, temperature=temperature)
+
+    return diff.strip(), generation_log_id

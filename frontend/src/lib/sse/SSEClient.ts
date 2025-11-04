@@ -266,11 +266,7 @@ export class SSEClient {
       let eventType = 'message';
       let eventData = '';
       let eventId = '';
-
-      // Optimize scheduling by caching the availability check
-      const scheduleCallback = (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function')
-        ? (cb: () => void) => window.requestIdleCallback(cb)
-        : (cb: () => void) => setTimeout(cb, 0);
+      let shouldDropEvent = false; // Track if current event should be dropped due to invalid type
 
       // Batch processing variables to reduce event loop overhead
       let processedChunks = 0;
@@ -302,9 +298,10 @@ export class SSEClient {
                 // Validate event type against whitelist to prevent injection attacks
                 if (SSEClient.ALLOWED_EVENT_TYPES.has(extractedEventType)) {
                   eventType = extractedEventType;
+                  shouldDropEvent = false;
                 } else {
-                  console.warn('SSE: Ignoring unknown event type:', SSEClient.sanitizeForLogging(extractedEventType));
-                  // Keep the default 'message' event type for unknown events
+                  console.warn('SSE: Dropping event with unknown type:', SSEClient.sanitizeForLogging(extractedEventType));
+                  shouldDropEvent = true;
                 }
               } else if (line.startsWith('data:')) {
                 eventData += SSEClient.extractDataContent(line) + '\n';
@@ -312,17 +309,18 @@ export class SSEClient {
                 eventId = line.substring(SSEClient.SSE_ID_PREFIX_LENGTH).trim();
               } else if (line === '') {
                 // Empty line signals end of event
-                if (eventData) {
+                if (eventData && !shouldDropEvent) {
                   const messageEvent = new MessageEvent(eventType, {
                     data: eventData.slice(0, -1), // Remove trailing newline
                     lastEventId: eventId,
                   });
                   eventSource.dispatchEvent(messageEvent);
-                  // Reset event variables after dispatching
-                  eventData = '';
-                  eventType = 'message';
-                  // eventId is intentionally NOT reset here to preserve Last-Event-ID tracking
                 }
+                // Reset event variables after processing (whether dispatched or dropped)
+                eventData = '';
+                eventType = 'message';
+                shouldDropEvent = false;
+                // eventId is intentionally NOT reset here to preserve Last-Event-ID tracking
               }
             }
 
@@ -330,10 +328,8 @@ export class SSEClient {
             processedChunks++;
             if (processedChunks >= MAX_CHUNKS_PER_BATCH) {
               processedChunks = 0;
-              // Use optimized scheduling with pre-cached availability check
-              await new Promise<void>(resolve => {
-                scheduleCallback(() => resolve());
-              });
+              // Use setTimeout for consistent behavior without cleanup complexity
+              await new Promise<void>(resolve => setTimeout(() => resolve(), 0));
             }
           }
         } catch (error: any) {

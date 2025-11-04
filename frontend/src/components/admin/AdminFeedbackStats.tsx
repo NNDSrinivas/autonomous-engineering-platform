@@ -43,6 +43,7 @@ export function AdminFeedbackStats() {
   const [learningStats, setLearningStats] = useState<LearningStats | null>(null);
   const [recentFeedback, setRecentFeedback] = useState<FeedbackEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(30);
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export function AdminFeedbackStats() {
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
     try {
       // Load all data in parallel
       const [feedbackResponse, learningResponse, recentResponse] = await Promise.all([
@@ -59,22 +61,35 @@ export function AdminFeedbackStats() {
         fetch('/api/feedback/recent?limit=10'),
       ]);
 
+      const errors = [];
+
       if (feedbackResponse.ok) {
         const feedbackData = await feedbackResponse.json();
         setFeedbackStats(feedbackData);
+      } else {
+        errors.push('feedback statistics');
       }
 
       if (learningResponse.ok) {
         const learningData = await learningResponse.json();
         setLearningStats(learningData);
+      } else {
+        errors.push('learning data');
       }
 
       if (recentResponse.ok) {
         const recentData = await recentResponse.json();
         setRecentFeedback(recentData.feedback);
+      } else {
+        errors.push('recent feedback');
+      }
+
+      if (errors.length > 0) {
+        setError(`Failed to load: ${errors.join(', ')}. Some data may be incomplete.`);
       }
     } catch (error) {
       console.error('Error loading feedback data:', error);
+      setError('Failed to load feedback data. Please try refreshing the page.');
     } finally {
       setLoading(false);
     }
@@ -136,6 +151,15 @@ export function AdminFeedbackStats() {
           <option value={90}>Last 90 days</option>
         </select>
       </div>
+
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+          <div className="flex items-center">
+            <span className="text-red-600 text-lg mr-2">⚠️</span>
+            <p className="text-sm text-red-600">{error}</p>
+          </div>
+        </div>
+      )}
 
       {feedbackStats && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

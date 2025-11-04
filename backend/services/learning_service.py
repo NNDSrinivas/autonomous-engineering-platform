@@ -1,6 +1,5 @@
 """Contextual bandit learning system for AI parameter optimization."""
 
-import random
 from datetime import datetime
 from typing import Dict, Optional, Tuple
 import numpy as np
@@ -70,10 +69,8 @@ class ThompsonSamplingBandit:
             successes, failures = await self._get_arm_stats(context_key, arm["name"])
 
             # Thompson Sampling: sample from Beta(successes, failures)
-            if successes + failures >= 2:  # Have some data (including prior)
-                score = np.random.beta(successes, failures)
-            else:
-                score = random.random()  # Fallback for very sparse data
+            # Prior starts at (1.0, 1.0) so sum is always >= 2
+            score = np.random.beta(successes, failures)
 
             arm_scores.append((score, arm))
 
@@ -106,9 +103,9 @@ class ThompsonSamplingBandit:
             total = successes + failures
 
             performance[arm] = {
-                "successes": successes,
-                "failures": failures,
-                "total_trials": total,
+                "successes": int(successes),
+                "failures": int(failures),
+                "total_trials": int(total),
                 "success_rate": successes / total if total > 0 else 0.0,
                 "confidence": min(total / 20.0, 1.0),  # Confidence in estimate
             }

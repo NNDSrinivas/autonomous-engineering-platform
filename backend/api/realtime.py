@@ -369,6 +369,14 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
                         r.expire(key, REDIS_KEY_EXPIRY_SECONDS)
                         break
 
+            # Explicit check: if we exit the loop without setting n, use fallback
+            if retry_count >= REDIS_TRANSACTION_MAX_RETRIES and n == 0:
+                logger.warning(
+                    "Redis transaction failed after %d retries, using fallback count",
+                    retry_count,
+                )
+                n = 1  # Default to triggering answer generation as failsafe
+
         if _should_generate_answer(text, n):
             generate_answer.send(session_id)
     except (redis.RedisError, ConnectionError) as e:

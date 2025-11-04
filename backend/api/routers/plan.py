@@ -86,7 +86,7 @@ def format_sse_event(seq: Optional[int], event_type: str, payload: dict) -> str:
         Formatted SSE event string
     """
     lines = []
-    if seq:
+    if seq is not None:
         lines.append(f"id: {seq}\n")
     lines.append(f"event: {event_type}\n")
     lines.append(

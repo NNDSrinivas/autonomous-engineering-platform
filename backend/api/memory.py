@@ -84,7 +84,7 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
             extra={"session_id": req.session_id},
         )
 
-        # Handle missing table gracefully - database not fully initialized
+        # Handle database errors: missing tables (ProgrammingError) and connection issues (OperationalError)
         # Use 503 (Service Unavailable) consistently across all environments
         raise HTTPException(
             status_code=503,

@@ -1,11 +1,15 @@
 """Service layer for AI feedback operations."""
 
+import asyncio
 import hashlib
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
-from sqlalchemy import func, and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.core.utils.hashing import sha256_hash
 
 from backend.models.ai_feedback import AiFeedback, AiGenerationLog
 
@@ -29,9 +33,7 @@ class FeedbackService:
         result_ref: Optional[str] = None,
     ) -> int:
         """Log an AI generation request and return the log ID."""
-        prompt_hash = hashlib.sha256(
-            prompt.encode()
-        ).hexdigest()  # SHA-256 produces 64 hex chars
+        prompt_hash = sha256_hash(prompt)
 
         log_entry = AiGenerationLog(
             org_key=org_key,

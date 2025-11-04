@@ -9,10 +9,11 @@ import asyncio
 import hashlib
 import os
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 from .repo_context import repo_snapshot, list_neighbors
 from backend.core.ai_service import AIService
+from backend.core.utils.hashing import sha256_hash
 
 logger = logging.getLogger(__name__)
 
@@ -284,7 +285,7 @@ async def generate_unified_diff(
     user_role: Optional[str] = None,
     user_sub: Optional[str] = None,
     session=None,
-) -> tuple[str, Optional[int]]:
+) -> Tuple[str, Optional[int]]:
     """
     Generate a unified diff for the given intent and target files.
     Integrates with contextual bandit learning for parameter optimization.
@@ -370,15 +371,13 @@ async def generate_unified_diff(
                         "bandit_arm": params.get("_bandit_arm"),
                     },
                     prompt=prompt,
-                    input_fingerprint=hashlib.sha256(
-                        intent.encode()
-                    ).hexdigest(),  # SHA-256 produces 64 hex chars
+                    input_fingerprint=sha256_hash(intent),
                 )
 
         except ImportError:
             logger.warning("Learning services not available, using default parameters")
         except Exception as e:
-            logger.exception(f"Failed to use bandit learning: {e}, using defaults")
+            logger.exception("Failed to use bandit learning, using defaults")
 
     # Call model to generate diff
     diff = await call_model(prompt, model=model, temperature=temperature)

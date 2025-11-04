@@ -1,8 +1,8 @@
 """Contextual bandit learning system for AI parameter optimization."""
 
 import random
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, Optional, Tuple
 import numpy as np
 
 from backend.infra.cache.redis_cache import cache

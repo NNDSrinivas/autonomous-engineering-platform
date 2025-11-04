@@ -71,7 +71,7 @@ class GenerateDiffOut(BaseModel):
 
 @router.post("/generate-diff", response_model=GenerateDiffOut)
 async def generate_diff(
-    body: GenerateDiffIn, 
+    body: GenerateDiffIn,
     user: User = Depends(require_role(Role.PLANNER)),
     session: AsyncSession = Depends(get_db_session),
 ):

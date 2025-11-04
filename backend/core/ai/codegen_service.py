@@ -152,7 +152,9 @@ async def call_model(prompt: str, max_retries: int = 2) -> str:
                 if attempt < max_retries:
                     # Strategy 1: Increase token limit for retry
                     if attempt == 0:
-                        current_max_tokens = min(current_max_tokens * 2, MAX_RETRY_TOKEN_LIMIT)
+                        current_max_tokens = min(
+                            current_max_tokens * 2, MAX_RETRY_TOKEN_LIMIT
+                        )
                         logger.info(
                             f"Retrying with increased token limit: {current_max_tokens}"
                         )

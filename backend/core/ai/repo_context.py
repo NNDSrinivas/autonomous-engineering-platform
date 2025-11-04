@@ -142,13 +142,18 @@ def list_neighbors(file_path: str) -> List[str]:
             )
         except Exception:
             safe_parent_real = None
+        # Harden containment: parent must be a true subdirectory of repo root, not root or ancestor or outside
+        repo_root_norm = os.path.normpath(repo_root_str)
+        safe_parent_real_norm = os.path.normpath(safe_parent_real) if safe_parent_real is not None else None
+
         if (
             safe_parent is None
             or os.path.commonpath([safe_parent, repo_root_str]) != repo_root_str
             or safe_parent_real is None
-            or not os.path.commonpath([safe_parent_real, repo_root_str])
-            == repo_root_str
-            or not os.path.isdir(safe_parent_real)
+            or safe_parent_real_norm is None
+            or os.path.commonpath([safe_parent_real_norm, repo_root_norm]) != repo_root_norm
+            or safe_parent_real_norm == repo_root_norm
+            or os.path.relpath(safe_parent_real_norm, repo_root_norm).startswith("..")
         ):
             logger.warning(
                 f"Parent directory {parent_dir} is outside repo root or not a directory"
@@ -158,6 +163,18 @@ def list_neighbors(file_path: str) -> List[str]:
         # Forbid listing repo root directly to avoid disclosure of special files
         if safe_parent_real == repo_root_str:
             logger.warning(f"Refusing to list repo root directory: {safe_parent_real}")
+            return []
+
+        # Extra hardening: avoid symlinks and TOCTOU
+        # Ensure safe_parent_real is not a symlink (and not a path with symlinked dirs leading outside)
+        if (
+            safe_parent_real is None
+            or not os.path.isdir(safe_parent_real)
+            or os.path.islink(safe_parent_real)
+            or os.path.realpath(safe_parent_real) != safe_parent_real
+            or not os.path.commonpath([safe_parent_real, repo_root_str]) == repo_root_str
+        ):
+            logger.warning(f"Refusing to list: {safe_parent_real} failed final hardening checks")
             return []
 
         # Safely list files in parent directory using os.listdir
@@ -175,23 +192,25 @@ def list_neighbors(file_path: str) -> List[str]:
                 validated_item_path = safe_repo_path(rel_item_path)
                 # Extra hardening: Ensure validated_item_path is strictly within repo_root_str
                 # Forbid following symlinks as an extra hardening step
-                if (
-                    validated_item_path is not None
-                    and not os.path.islink(validated_item_path)
-                    and os.path.isfile(validated_item_path)
-                    and validated_item_path != path_str
-                    and os.path.commonpath([validated_item_path, repo_root_str])
-                    == repo_root_str
-                ):
-                    try:
-                        rel_path = os.path.relpath(validated_item_path, repo_root_str)
-                        # Only accept relative paths (not containing "..")
-                        if rel_path.startswith("..") or os.path.isabs(rel_path):
+                # Re-validate by resolving to realpath and checking containment again
+                if validated_item_path is not None:
+                    item_realpath = os.path.realpath(validated_item_path)
+                    # Ensure the real path is inside the repo root
+                    if (
+                        os.path.commonpath([item_realpath, repo_root_str]) == repo_root_str
+                        and not os.path.islink(item_realpath)
+                        and os.path.isfile(item_realpath)
+                        and item_realpath != path_str
+                    ):
+                        try:
+                            rel_path = os.path.relpath(validated_item_path, repo_root_str)
+                            # Only accept relative paths (not containing "..")
+                            if rel_path.startswith("..") or os.path.isabs(rel_path):
+                                continue
+                            files.append(rel_path)
+                        except Exception:
+                            # Skip files that can't be processed
                             continue
-                        files.append(rel_path)
-                    except Exception:
-                        # Skip files that can't be processed
-                        continue
             return files[:40]  # Limit to prevent token overflow
         except (OSError, PermissionError):
             logger.warning(f"Could not list directory: {safe_parent_real}")

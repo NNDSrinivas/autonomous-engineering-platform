@@ -2,19 +2,113 @@
 Configuration management for Autonomous Engineering Intelligence Platform
 """
 
+import os
 import string
-from typing import List
-from typing import Optional
+import threading
+from typing import Optional, List
+from pydantic import Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from pydantic_settings import BaseSettings
+from backend.core.security import sanitize_for_logging
 
 # Module-level constants for performance
 PUNCTUATION_SET = set(string.punctuation)
 
+# Cache APP_ENV at module load time for consistent behavior.
+# NOTE: These are cached for performance and consistency, but this means
+# that changes to the environment variable after import will not be reflected.
+# For testing or hot-reload scenarios, use `_reset_env_cache()` to refresh.
+# Thread-safety: Protected by _ENV_CACHE_LOCK for multi-threaded environments.
+_ENV_CACHE_LOCK = threading.Lock()
+_CACHED_APP_ENV = os.environ.get("APP_ENV", "dev")
+_CACHED_APP_ENV_SET = "APP_ENV" in os.environ
+
+
+def _reset_env_cache():
+    """
+    Reset the cached APP_ENV values from the current environment.
+    This is useful for testing or hot-reload scenarios where the environment
+    may change after module import.
+
+    Thread-safe: Uses lock to prevent race conditions in multi-threaded environments.
+    """
+    global _CACHED_APP_ENV, _CACHED_APP_ENV_SET
+    with _ENV_CACHE_LOCK:
+        _CACHED_APP_ENV = os.environ.get("APP_ENV", "dev")
+        _CACHED_APP_ENV_SET = "APP_ENV" in os.environ
+
 
 class Settings(BaseSettings):
+    # Use 'ignore' to prevent pydantic validation errors in production
+    # while still catching config issues via validator in dev/test environments
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore",
+    )
     app_env: str = "dev"
     app_name: str = "autonomous-engineering-platform"
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_extra_fields(cls, values):
+        """Enforce 'forbid' behavior for extra fields in dev/test environments and ensure app_env consistency.
+
+        Security Rationale:
+        - In development and test environments, this validator raises an error if any extra (undefined)
+          fields are present in the configuration. This helps catch configuration mistakes and typos early,
+          ensuring that only explicitly defined settings are used.
+        - In production, extra fields are allowed (via the 'ignore' setting in model_config) to prevent
+          configuration errors from breaking deployed systems. This is a deliberate trade-off favoring
+          availability and robustness in production, at the cost of potentially ignoring unexpected fields.
+
+        Important: This behavior is a significant deviation from standard Pydantic models where the 'extra'
+        config option is static. Here, stricter validation is enforced only in non-production environments.
+        Future maintainers should be aware of this trade-off: while it helps catch errors early in dev/test,
+        it may allow unnoticed configuration issues in production.
+
+        Note: This validator uses module-level cached environment variables that are set at import time.
+        If you need to change the environment during tests, call _reset_env_cache() manually after
+        updating os.environ to refresh the cached values.
+        """
+        if isinstance(values, dict):
+            # Check environment independently to prevent bypass via app_env manipulation
+            # Use cached values for consistent behavior (thread-safe read)
+            with _ENV_CACHE_LOCK:
+                env_app_env_set = _CACHED_APP_ENV_SET
+                env_app_env = _CACHED_APP_ENV
+            input_app_env = values.get("app_env")
+            if (
+                input_app_env is not None
+                and env_app_env_set
+                and input_app_env != env_app_env
+            ):
+                raise ValueError(
+                    f"Inconsistent app_env: input 'app_env' is '{sanitize_for_logging(str(input_app_env))}', "
+                    f"but environment variable 'APP_ENV' is '{sanitize_for_logging(str(env_app_env))}'. "
+                    f"Please ensure they match."
+                )
+            if env_app_env in ["dev", "test"]:
+                # Check for any fields in the input data that aren't defined in the model
+                allowed_fields = set(cls.model_fields.keys())
+                input_fields = set(values.keys())
+                extra_fields = input_fields - allowed_fields
+                if extra_fields:
+                    sanitized_fields = ", ".join(
+                        sorted(sanitize_for_logging(str(f)) for f in extra_fields)
+                    )
+                    raise ValueError(
+                        f"Extra fields not permitted in app_env '{sanitize_for_logging(str(env_app_env))}': {sanitized_fields}"
+                    )
+        else:
+            # Log warning if values is not a dict (unexpected validation context)
+            import logging
+
+            logging.warning(
+                "Settings validator received non-dict values (type: %s). Skipping validation.",
+                type(values).__name__,
+            )
+        return values
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -110,6 +204,11 @@ class Settings(BaseSettings):
     enable_github_integration: bool = True
     enable_analytics: bool = True
     enable_ai_assistance: bool = True
+    enable_audit_logging: bool = Field(
+        default=True,
+        alias="ENABLE_AUDIT_LOGGING",
+        description="Disable in test environments to prevent DB errors from missing audit tables or incomplete schema initialization",
+    )
 
     # Common file extensions to validate against for code analysis
     valid_extensions: List[str] = [
@@ -151,10 +250,6 @@ class Settings(BaseSettings):
         ".dockerfile",
         ".tf",
     ]
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
 
     @property
     def sqlalchemy_url(self) -> str:

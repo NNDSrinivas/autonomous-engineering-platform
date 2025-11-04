@@ -274,6 +274,45 @@ class CaptionReq(BaseModel):
     ts_end_ms: int | None = None
 
 
+def _redis_result_to_int(result: Any) -> int:
+    """Safely convert Redis result to integer.
+
+    Redis operations can return various types depending on configuration.
+    This helper ensures we get a consistent integer result.
+
+    Args:
+        result: The value returned from a Redis operation.
+
+    Returns:
+        The integer value of the result if conversion succeeds.
+        Returns 0 if the result is None or cannot be converted to an integer.
+    """
+    if result is None:
+        return 0
+    if isinstance(result, int):
+        return result
+    if isinstance(result, (str, bytes)):
+        try:
+            return int(result)
+        except (ValueError, TypeError):
+            logger.warning(
+                "Failed to convert Redis result to int: %s (type: %s)",
+                str(result)[:100],
+                type(result).__name__,
+            )
+            return 0
+    # For other types, attempt conversion or default to 0
+    try:
+        return int(result)
+    except (ValueError, TypeError):
+        logger.warning(
+            "Failed to convert Redis result to int: %s (type: %s)",
+            str(result)[:100],
+            type(result).__name__,
+        )
+        return 0
+
+
 def _should_generate_answer(text: str, caption_count: int) -> bool:
     """Determine if answer generation should be triggered.
 
@@ -302,6 +341,7 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
 
         # Use Redis transactions to prevent race conditions in concurrent requests
         retry_count = 0
+        n = 0  # Initialize n for the case where all retries fail
         with r.pipeline(transaction=True) as pipe:
             while retry_count < REDIS_TRANSACTION_MAX_RETRIES:
                 try:
@@ -313,7 +353,8 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
                     pipe.incr(key)
                     pipe.expire(key, REDIS_KEY_EXPIRY_SECONDS)
                     results = pipe.execute()
-                    n = results[0]  # Get count from first result
+                    result = results[0] if results else 0
+                    n = _redis_result_to_int(result)
                     break
                 except redis.WatchError:
                     # Key was modified during transaction, retry with exponential backoff
@@ -323,9 +364,18 @@ def _enqueue_answer_generation(session_id: str, text: str) -> None:
                         continue
                     else:
                         # Max retries reached, fall back to non-atomic increment
-                        n = r.incr(key)
+                        result = r.incr(key)
+                        n = _redis_result_to_int(result)
                         r.expire(key, REDIS_KEY_EXPIRY_SECONDS)
                         break
+
+            # Explicit check: if we exit the loop without setting n, use fallback
+            if retry_count >= REDIS_TRANSACTION_MAX_RETRIES and n == 0:
+                logger.warning(
+                    "Redis transaction failed after %d retries, using fallback count",
+                    retry_count,
+                )
+                n = 1  # Default to triggering answer generation as failsafe
 
         if _should_generate_answer(text, n):
             generate_answer.send(session_id)
@@ -465,19 +515,22 @@ def _check_stream_timeout(start_time: datetime) -> bool:
 
 
 def _emit_new_answers(
-    db: Session, session_id: str, last_ts: datetime | None
+    db: Session, session_id: str, last_ts: datetime | str | None
 ) -> tuple[list[Dict[str, Any]], str | None]:
     """Emit new answers and return updated timestamp.
 
     Args:
         db: Database session
         session_id: Session identifier
-        last_ts: Last timestamp processed
+        last_ts: Last timestamp processed. Can be:
+                 - datetime object (will be converted to ISO string)
+                 - ISO string (passed through as-is)
+                 - None (no filtering applied)
 
     Returns:
         Tuple of (new_rows, updated_last_ts as ISO string)
     """
-    # Convert datetime to string for the API call
+    # Convert datetime to string for the API call (handles both datetime and str inputs)
     since_ts = _convert_timestamp_to_iso(last_ts)
     rows = asvc.recent_answers(db, session_id, since_ts=since_ts)
 

@@ -9,23 +9,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from backend.api.main import app
-from backend.core.db import get_db
 from backend.core.eventstore.service import append_event, replay, get_plan_event_count
 
+# Note: test_db fixture is auto-discovered from tests/conftest.py by pytest
 client = TestClient(app)
 
 # Enable dev auth for testing
 os.environ["ALLOW_DEV_AUTH"] = "true"
-
-
-@pytest.fixture
-def test_db():
-    """Get test database session"""
-    db = next(get_db())
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def test_append_and_replay_plan_events(test_db: Session):
@@ -81,9 +71,11 @@ def test_append_and_replay_plan_events(test_db: Session):
     assert count == 2
 
 
-def test_replay_api_endpoint(test_db):
-    """Test the replay API endpoint with plan-specific events"""
-    # Set dev org for testing
+def test_replay_api_endpoint(test_db: Session):
+    """Test the replay API endpoint"""
+    # Set up auth
+    os.environ["DEV_USER_ROLE"] = "viewer"
+    os.environ["DEV_USER_ID"] = "u-tester"
     os.environ["DEV_ORG_ID"] = "org-demo"
 
     plan_id = "test-plan-api"
@@ -184,7 +176,7 @@ def test_audit_middleware_captures_requests():
     assert log["event_type"] == "http.request"
 
 
-def test_event_sequence_monotonic(test_db):
+def test_event_sequence_monotonic(test_db: Session):
     """Test that event sequences are monotonic per plan"""
     plan_id = "test-monotonic"
 

@@ -13,10 +13,9 @@ const BACKEND_URL = process.env.E2E_BACKEND_URL || 'http://localhost:8000';
 const PLAN_ID = 'e2e-test-plan-' + Date.now();
 
 // Reusable selectors
-// NOTE: Prefer data-testid attributes in app code for robustness. The input[type="text"]
-// fallback is scoped to form elements to reduce false matches with other text inputs.
-const STEP_INPUT_SELECTOR = 'input[placeholder*="step" i], textarea[placeholder*="step" i], form input[type="text"]';
-const ADD_BUTTON_SELECTOR = 'button:has-text("Add Step"), button:has-text("Add"), button[type="submit"]';
+// Using data-testid for robust test automation—prefer this over fragile placeholder/text selectors
+const STEP_INPUT_SELECTOR = '[data-testid="step-input"], input[placeholder*="step" i], textarea[placeholder*="step" i], form input[type="text"]';
+const ADD_BUTTON_SELECTOR = '[data-testid="add-step"], button:has-text("Add Step"), button:has-text("Add"), button[type="submit"]';
 
 // Timing constants
 const NETWORK_OFFLINE_DELAY = 1000; // Time to wait after going offline/online

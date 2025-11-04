@@ -1,13 +1,82 @@
 /**
- * PlanView - Live collaborative planning page
+ * PlanView - Live collaborative planning page with resilience features
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { StepList } from '../components/StepList';
 import { ParticipantList } from '../components/ParticipantList';
+import { ConnectionChip } from '../components/ConnectionChip';
+import { Toast, useToasts } from '../components/Toast';
 import { usePlan, useAddStep, useArchivePlan, type PlanStep } from '../hooks/useLivePlan';
+import { SSEClient } from '../lib/sse/SSEClient';
+import { Outbox } from '../lib/offline/Outbox';
+import { useConnection } from '../state/connection/useConnection';
 import { CORE_API, ORG } from '../api/client';
+
+// Constants
+const OPTIMISTIC_TIMESTAMP_TOLERANCE_MS = 5000; // 5 seconds
+const MAX_OPTIMISTIC_STEPS_WARNING_THRESHOLD = 50; // Warn when this many optimistic steps are pending
+
+// Helper to create consistent composite key for step lookup
+function makeStepKey(text: string, owner: string): string {
+  return `${text}|${owner}`;
+}
+
+// Helper to determine if optimistic step should be replaced based on timestamp tolerance
+function shouldReplaceOptimisticStep(matchingOptimisticTime: number, payloadTime: number): boolean {
+  return Math.abs(matchingOptimisticTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS;
+}
+
+// Helper function to replace optimistic step with real step
+function replaceOptimisticStep(
+  steps: PlanStep[], 
+  payload: PlanStep, 
+  matchingOptimistic: { id?: string }, 
+  payloadKey: string, 
+  payloadTime: number, 
+  matchingOptimisticTime: number // Always provided when matchingOptimistic is found
+): PlanStep[] {
+  // Optimization: When matching by ID, use findIndex + slice to avoid iterating all elements
+  if (matchingOptimistic.id) {
+    const idx = steps.findIndex(step => step.id === matchingOptimistic.id);
+    if (idx === -1) return steps; // No match found, return original array
+    return [
+      ...steps.slice(0, idx),
+      payload,
+      ...steps.slice(idx + 1)
+    ];
+  } else {
+    // Fallback: match by text, owner, and timestamp (requires full iteration)
+    return steps.map(step => {
+      const stepKey = makeStepKey(step.text, step.owner);
+      if (stepKey === payloadKey) {
+        return shouldReplaceOptimisticStep(matchingOptimisticTime, payloadTime) ? payload : step;
+      }
+      return step;
+    });
+  }
+}
+
+// Type for outbox item body to ensure type safety
+interface PlanStepBody {
+  text: string;
+  owner: string;
+  plan_id: string;
+}
+
+// Type guard to check if an object is a valid PlanStepBody
+function isPlanStepBody(obj: any): obj is PlanStepBody {
+  return obj && typeof obj === 'object' && 
+         typeof obj.text === 'string' && 
+         typeof obj.owner === 'string' && 
+         typeof obj.plan_id === 'string';
+}
+
+// Type guard to check if an object is a valid outbox item
+function isOutboxItem(obj: any): obj is { body: any } {
+  return obj && typeof obj === 'object' && 'body' in obj && obj.body;
+}
 
 export const PlanView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -18,9 +87,39 @@ export const PlanView: React.FC = () => {
   const archiveMutation = useArchivePlan();
   
   const [liveSteps, setLiveSteps] = useState<PlanStep[]>([]);
+  // TODO(tech-debt): Refactor to use useOptimisticSteps() custom hook to reduce duplication
+  // and guarantee consistency between pendingOptimisticSteps and optimisticLookup maps.
+  // The hook implementation exists at frontend/src/hooks/useOptimisticSteps.ts but requires
+  // significant refactoring of this component to integrate (all setState calls need updating).
+  // Track as technical debt for future incremental migration.
+  // RISK: Dual-map pattern appears in multiple locations (lines ~196-206, ~256-266, ~320-321)
+  // with complex synchronization logic. Desynchronization bugs possible. Consider prioritizing.
+  const [pendingOptimisticSteps, setPendingOptimisticSteps] = useState<Map<string, PlanStep>>(new Map());
+  // Secondary map for efficient lookup by text+owner key
+  const [optimisticLookup, setOptimisticLookup] = useState<Map<string, PlanStep>>(new Map());
+  const pendingOptimisticStepsRef = useRef<Map<string, PlanStep>>(new Map());
+  const optimisticLookupRef = useRef<Map<string, PlanStep>>(new Map());
   const [stepText, setStepText] = useState('');
   const [ownerName, setOwnerName] = useState('user');
   const [archiveError, setArchiveError] = useState<string | null>(null);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    pendingOptimisticStepsRef.current = pendingOptimisticSteps;
+    optimisticLookupRef.current = optimisticLookup;
+  }, [pendingOptimisticSteps, optimisticLookup]);
+
+  // Resilience features (PR-30)
+  const { online, status, setStatus } = useConnection();
+  const { toasts, showToast, removeToast } = useToasts();
+  const sseClientRef = useRef<SSEClient | null>(null);
+  const outboxRef = useRef<Outbox>(new Outbox());
+
+  // Token getter for SSE authentication
+  const tokenGetter = useCallback(() => {
+    // Get token from localStorage or your auth system
+    return localStorage.getItem('access_token') || null;
+  }, []);
 
   // Merge backend steps with live streamed steps, deduplicating by unique ID
   const allSteps = React.useMemo(() => {
@@ -40,7 +139,7 @@ export const PlanView: React.FC = () => {
       }
     }
     
-    return Array.from(stepMap.values());
+    return [...stepMap.values()];
   }, [plan?.steps, liveSteps]);
 
   // Type guard for validating PlanStep structure from SSE
@@ -56,54 +155,205 @@ export const PlanView: React.FC = () => {
     );
   };
 
-  // Real-time event stream
+  // Real-time event stream with resilience (PR-30)
   useEffect(() => {
     if (!id) return;
 
-    const eventSource = new EventSource(
-      `${CORE_API}/api/plan/${id}/stream?org=${ORG}`,
-      { withCredentials: false }
-    );
+    // Initialize SSE client if not already done
+    if (!sseClientRef.current) {
+      sseClientRef.current = new SSEClient(tokenGetter);
+      setStatus("connecting"); // Only set connecting when creating new client
+    }
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'connected') {
-          console.log('Connected to plan stream:', data.plan_id);
-        } else if (isPlanStep(data)) {
-          // New step received - validated structure
-          setLiveSteps((prev) => [...prev, data]);
-        }
-      } catch (err) {
-        console.error('Error parsing SSE message:', err);
+    const unsubscribe = sseClientRef.current.subscribe(id, ({ type, payload }) => {
+      setStatus("connected");
+      
+      if (type === 'connected') {
+        console.log('Connected to plan stream:', payload.plan_id);
+      } else if (isPlanStep(payload)) {
+        // New step received - check for optimistic reconciliation
+        setLiveSteps((prev) => {
+          // Check if this step matches any pending optimistic updates
+          // Use efficient key-based lookup instead of linear search
+          let matchingOptimistic: PlanStep | undefined;
+          let matchingOptimisticTime: number | undefined;
+          
+          // Efficient lookup by text+owner key with timestamp tolerance
+          const payloadTime = new Date(payload.ts).getTime(); // Compute once outside loop
+          const payloadKey = makeStepKey(payload.text, payload.owner);
+          
+          // Check for performance bottleneck warning
+          if (pendingOptimisticStepsRef.current.size > MAX_OPTIMISTIC_STEPS_WARNING_THRESHOLD) {
+            console.warn(`Large number of pending optimistic steps: ${pendingOptimisticStepsRef.current.size}`);
+          }
+          
+          // Use efficient Map lookup instead of linear search
+          const candidate = optimisticLookupRef.current.get(payloadKey);
+          if (candidate) {
+            // Only compute timestamp if key matches to avoid unnecessary Date parsing
+            const optimisticTime = new Date(candidate.ts).getTime();
+            if (Math.abs(optimisticTime - payloadTime) < OPTIMISTIC_TIMESTAMP_TOLERANCE_MS) {
+              matchingOptimistic = candidate;
+              matchingOptimisticTime = optimisticTime; // Always set when matchingOptimistic is found
+            }
+          }
+          
+          if (matchingOptimistic && matchingOptimisticTime !== undefined) {
+            // Remove the optimistic update since we got the real one
+            setPendingOptimisticSteps(pending => {
+              const updated = new Map(pending);
+              if (matchingOptimistic.id) {
+                updated.delete(matchingOptimistic.id);
+              }
+              return updated;
+            });
+            setOptimisticLookup(lookup => {
+              const updated = new Map(lookup);
+              updated.delete(payloadKey);
+              return updated;
+            });
+            
+            // Replace optimistic step with real step
+            // Use the already computed payloadKey and stored optimisticTime to avoid recomputation
+            return replaceOptimisticStep(
+              prev, 
+              payload, 
+              matchingOptimistic, 
+              payloadKey, 
+              payloadTime, 
+              matchingOptimisticTime
+            );
+          } else {
+            // Regular new step
+            return [...prev, payload];
+          }
+        });
       }
-    };
-
-    eventSource.onerror = (err) => {
-      console.error('EventSource error:', err);
-      eventSource.close();
-    };
+    });
 
     return () => {
-      eventSource.close();
+      unsubscribe();
     };
-  }, [id]);
+  }, [id, tokenGetter, setStatus]);
+
+  // Handle offline/online transitions and outbox flushing
+  useEffect(() => {
+    if (online) {
+      // Flush outbox when coming back online
+      outboxRef.current.flush((url, init) => {
+        // Add auth header if available
+        const token = tokenGetter();
+        if (token) {
+          const headers = new Headers(init.headers);
+          headers.set('Authorization', `Bearer ${token}`);
+          return fetch(url, { ...init, headers });
+        }
+        return fetch(url, init);
+      }, (_item, reason) => {
+        // Handle dropped items - cleanup optimistic updates
+        if (isOutboxItem(_item)) {
+          if (isPlanStepBody(_item.body)) {
+            const body = _item.body;
+            // Use React.startTransition to batch these updates properly
+            React.startTransition(() => {
+              // Use O(1) lookup instead of linear search
+              const key = makeStepKey(body.text, body.owner);
+              const optimisticStep = optimisticLookupRef.current.get(key);
+              if (optimisticStep && optimisticStep.id) {
+                const stepId = optimisticStep.id; // Capture to ensure type safety in closures
+                setPendingOptimisticSteps(prev => {
+                  const updated = new Map(prev);
+                  updated.delete(stepId);
+                  return updated;
+                });
+                setOptimisticLookup(lookup => {
+                  const updated = new Map(lookup);
+                  updated.delete(key);
+                  return updated;
+                });
+                setLiveSteps(steps => steps.filter(step => step.id !== stepId));
+              }
+            });
+          }
+        }
+        
+        // Notify user about dropped items
+        const reasonText = reason === 'age' ? 'too old' : 
+                          reason === 'retries' ? 'too many failed attempts' : 
+                          'permanent error';
+        showToast(`Offline change dropped: ${reasonText}. You may need to redo this action.`, "warning");
+      }).then(processed => {
+        if (processed > 0) {
+          showToast(`Synced ${processed} queued changes`, "success");
+        }
+      });
+    }
+  }, [online, tokenGetter, showToast]);
 
   const handleAddStep = useCallback(async () => {
     if (!id || !stepText.trim()) return;
 
-    try {
-      await addStepMutation.mutateAsync({
-        plan_id: id,
-        text: stepText.trim(),
-        owner: ownerName || 'user',
+    const stepData = {
+      plan_id: id,
+      text: stepText.trim(),
+      owner: ownerName || 'user',
+    };
+
+    // Helper function to queue request in outbox
+    const queueInOutbox = (reason: 'offline' | 'failed') => {
+      const url = `${CORE_API}/api/plan/step`;
+      const outboxId = crypto.randomUUID();
+      outboxRef.current.push({
+        id: outboxId,
+        url,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Org-Id': ORG,
+        },
+        body: stepData,
       });
-      setStepText('');
+      
+      if (reason === 'offline') {
+        // Optimistic update for better UX
+        // NOTE: Timestamp is client-generated and will be replaced by server timestamp upon reconciliation
+        const optimisticStep: PlanStep = {
+          id: `offline-${outboxId}`,
+          text: stepData.text,
+          owner: stepData.owner,
+          ts: new Date().toISOString(), // Client-generated; replaced by server on sync
+        };
+        
+        // Track optimistic update for later reconciliation
+        setPendingOptimisticSteps(prev => new Map(prev).set(optimisticStep.id!, optimisticStep));
+        setOptimisticLookup(prev => new Map(prev).set(`${optimisticStep.text}|${optimisticStep.owner}`, optimisticStep));
+        setLiveSteps((prev) => [...prev, optimisticStep]);
+        showToast("You're offline. We queued your change and will resend when back online.", "warning");
+      } else {
+        showToast("Request failed. We'll retry when the connection is stable.", "error");
+      }
+    };
+
+    try {
+      if (online) {
+        // Online: send immediately
+        await addStepMutation.mutateAsync(stepData);
+        setStepText('');
+      } else {
+        // Offline: queue in outbox
+        queueInOutbox('offline');
+        setStepText('');
+      }
     } catch (err) {
       console.error('Failed to add step:', err);
-      alert('Failed to add step. Please try again.');
+      
+      // If online request failed, queue it for retry
+      if (online) {
+        queueInOutbox('failed');
+        setStepText(''); // Clear input for consistent UX with offline behavior
+      }
     }
-  }, [id, stepText, ownerName, addStepMutation]);
+  }, [id, stepText, ownerName, addStepMutation, online, showToast]);
 
   const handleArchive = useCallback(async () => {
     if (!id) return;
@@ -270,6 +520,18 @@ export const PlanView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Connection status and toast notifications (PR-30) */}
+      <ConnectionChip online={online} status={status} />
+      {toasts.map((toast) => (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          duration={toast.duration}
+          onClose={() => removeToast(toast.id)}
+        />
+      ))}
     </div>
   );
 };

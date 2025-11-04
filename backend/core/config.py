@@ -12,9 +12,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Module-level constants for performance
 PUNCTUATION_SET = set(string.punctuation)
-# Cache APP_ENV at module load time for consistent behavior
+
+# Cache APP_ENV at module load time for consistent behavior.
+# NOTE: These are cached for performance and consistency, but this means
+# that changes to the environment variable after import will not be reflected.
+# For testing or hot-reload scenarios, use `_reset_env_cache()` to refresh.
 _CACHED_APP_ENV = os.environ.get("APP_ENV", "dev")
 _CACHED_APP_ENV_SET = "APP_ENV" in os.environ
+
+
+def _reset_env_cache():
+    """
+    Reset the cached APP_ENV values from the current environment.
+    This is useful for testing or hot-reload scenarios where the environment
+    may change after module import.
+    """
+    global _CACHED_APP_ENV, _CACHED_APP_ENV_SET
+    _CACHED_APP_ENV = os.environ.get("APP_ENV", "dev")
+    _CACHED_APP_ENV_SET = "APP_ENV" in os.environ
 
 
 class Settings(BaseSettings):

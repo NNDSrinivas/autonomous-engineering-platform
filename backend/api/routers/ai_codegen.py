@@ -166,10 +166,18 @@ async def apply_patch_endpoint(
         validate_unified_diff(body.diff)
 
         if body.dry_run:
-            logger.info("Dry run - diff validated successfully")
+            # In dry run, check if the diff can be applied using git apply --check
+            exit_code, output = apply_diff(body.diff, dry_run=True)
+            success = exit_code == 0
+            if success:
+                logger.info("Dry run - diff can be applied successfully")
+            else:
+                logger.warning(f"Dry run - diff cannot be applied: {output[:200]}")
             return {
-                "applied": False,
-                "output": "Dry run: diff validated successfully",
+                "applied": success,
+                "output": (
+                    output if success else "Dry run failed: patch cannot be applied"
+                ),
                 "dry_run": True,
             }
 
@@ -180,10 +188,12 @@ async def apply_patch_endpoint(
 
         if success:
             logger.info("Patch applied successfully")
+            response_output = output
         else:
             logger.warning(f"Patch application failed: {output[:200]}")
+            response_output = "Patch application failed. See server logs for details."
 
-        return {"applied": success, "output": output, "dry_run": False}
+        return {"applied": success, "output": response_output, "dry_run": False}
 
     except DiffValidationError as e:
         logger.error(f"Diff validation failed: {e}")

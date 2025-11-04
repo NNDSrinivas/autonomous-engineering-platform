@@ -99,9 +99,14 @@ export default function CodegenPage() {
             rows={4}
             disabled={busy}
           />
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Describe what you want to implement (10-5000 characters)
-          </p>
+          <div className="mt-1 flex justify-between text-xs">
+            <span className="text-slate-500 dark:text-slate-400">
+              Describe what you want to implement (10-5000 characters)
+            </span>
+            <span className={`${intent.length < 10 || intent.length > 5000 ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
+              {intent.length}/5000
+            </span>
+          </div>
         </div>
 
         {/* Target Files */}
@@ -124,7 +129,7 @@ export default function CodegenPage() {
         {/* Action Buttons */}
         <div className="flex gap-3 pt-2">
           <button
-            disabled={busy || !intent.trim() || !files.trim()}
+            disabled={busy || !intent.trim() || intent.length < 10 || intent.length > 5000 || !files.trim()}
             className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={handleGenerate}
           >

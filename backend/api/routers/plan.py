@@ -439,9 +439,12 @@ async def stream_plan_updates(
                     # Fallback for malformed messages - catch specific parsing errors:
                     #   - json.JSONDecodeError: message is not valid JSON
                     #   - KeyError: expected field missing from message dict
-                    #   - TypeError: message is not a dict or has wrong type
-                    #   - ValueError: unexpected value in message
+                    #   - TypeError: message is not a dict or has wrong type (e.g., runtime type validation)
+                    #   - ValueError: unexpected value in message (e.g., invalid format)
                     # Note: AttributeError removed as it indicates programming bugs, not malformed data
+                    # Trade-off: TypeError/ValueError could mask programming bugs, but catching them here
+                    # prevents SSE stream breaks from broadcaster format issues. Alternative would be
+                    # more granular try-except blocks around each parsing step (future improvement).
                     logger.warning(
                         "Malformed SSE message: %s (Error: %s)",
                         sanitize_for_logging(str(msg)),

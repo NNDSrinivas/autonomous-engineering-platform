@@ -33,7 +33,11 @@ class Settings(BaseSettings):
             # Check environment independently to prevent bypass via app_env manipulation
             env_app_env = os.environ.get("APP_ENV", "dev")
             input_app_env = values.get("app_env")
-            if input_app_env is not None and "APP_ENV" in os.environ and input_app_env != env_app_env:
+            if (
+                input_app_env is not None
+                and "APP_ENV" in os.environ
+                and input_app_env != env_app_env
+            ):
                 raise ValueError(
                     f"Inconsistent app_env: input 'app_env' is '{input_app_env}', but environment variable 'APP_ENV' is '{env_app_env}'. Please ensure they match."
                 )

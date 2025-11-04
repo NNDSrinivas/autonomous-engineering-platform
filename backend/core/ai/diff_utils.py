@@ -4,6 +4,7 @@ Validates git-format diffs and applies them using git apply.
 """
 
 from __future__ import annotations
+import os
 import re
 import subprocess
 import tempfile
@@ -12,6 +13,9 @@ from pathlib import Path
 from typing import Tuple
 
 logger = logging.getLogger(__name__)
+
+# Error message constants
+INTERNAL_ERROR_PREFIX = "Error: Patch application failed due to internal error"
 
 # Regex patterns for unified diff validation
 DIFF_HEADER = re.compile(r"^diff --git a/.+ b/.+", re.M)
@@ -134,11 +138,15 @@ def apply_diff(
     # Validate first
     validate_unified_diff(diff_text)
 
-    # Create temporary file for diff
-    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".patch") as tf:
+    # Create temporary file for diff with secure permissions
+    with tempfile.NamedTemporaryFile(
+        mode="w", delete=False, suffix=".patch", dir=tempfile.gettempdir()
+    ) as tf:
         tf.write(diff_text)
         tf.flush()
         patch_file = tf.name
+        # Restrict access to owner only for security
+        os.chmod(patch_file, 0o600)
 
     try:
         # Build git apply command
@@ -177,7 +185,7 @@ def apply_diff(
         logger.error(f"Failed to apply diff: {e}")
         return (
             1,
-            "Error: Patch application failed due to internal error. See server logs for details.",
+            f"{INTERNAL_ERROR_PREFIX}. See server logs for details.",
         )
     finally:
         # Clean up temp file

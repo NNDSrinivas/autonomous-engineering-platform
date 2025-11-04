@@ -17,6 +17,7 @@ from backend.core.ai.diff_utils import (
     apply_diff,
     DiffValidationError,
     count_diff_stats,
+    INTERNAL_ERROR_PREFIX,
 )
 
 logger = logging.getLogger(__name__)
@@ -204,9 +205,7 @@ async def apply_patch_endpoint(
         else:
             logger.warning(f"Patch application failed: {output[:200]}")
             # Show git output to user unless it's an internal error
-            if output.startswith(
-                "Error: Patch application failed due to internal error"
-            ):
+            if output.startswith(INTERNAL_ERROR_PREFIX):
                 response_output = "Patch application failed due to internal error. See server logs for details."
             else:
                 response_output = f"Patch application failed.\n\nGit output:\n{output}"

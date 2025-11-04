@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 # Configuration from environment
 MODEL = os.getenv("CODEGEN_MODEL", "gpt-4o-mini")
+# Maximum token limit for retry attempts - balances comprehensiveness with API limits
+MAX_RETRY_TOKEN_LIMIT = 8192
 # Increased token limit for comprehensive diff generation
 # After max_tokens, the model stops generating - diffs may be incomplete
 # For complex changes involving multiple files, consider increasing further
@@ -150,7 +152,7 @@ async def call_model(prompt: str, max_retries: int = 2) -> str:
                 if attempt < max_retries:
                     # Strategy 1: Increase token limit for retry
                     if attempt == 0:
-                        current_max_tokens = min(current_max_tokens * 2, 8192)
+                        current_max_tokens = min(current_max_tokens * 2, MAX_RETRY_TOKEN_LIMIT)
                         logger.info(
                             f"Retrying with increased token limit: {current_max_tokens}"
                         )
@@ -232,7 +234,7 @@ def _is_diff_salvageable(diff: str) -> bool:
         return False
 
     # Check for basic diff structure
-    if not diff.startswith("diff --git"):
+    if not diff.strip().startswith("diff --git"):
         return False
 
     # Check if it ends abruptly in the middle of a line

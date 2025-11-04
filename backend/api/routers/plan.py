@@ -441,22 +441,11 @@ async def stream_plan_updates(
                         exc_info=True,
                     )
 
-                    # Try to extract partial info for better client debugging
-                    error_payload = {"error": "Failed to parse SSE event data"}
-                    try:
-                        partial = parse_broadcaster_message(msg)
-                        # Only include specific, safe fields to avoid leaking sensitive info
-                        for key in ALLOWED_ERROR_KEYS:
-                            if key in partial:
-                                error_payload[key] = sanitize_for_logging(
-                                    str(partial[key])
-                                )
-                    except Exception as ex:
-                        logger.warning(
-                            "Partial extraction of SSE event data failed: %s (Error: %s)",
-                            sanitize_for_logging(str(msg)),
-                            str(ex),
-                        )
+                    # Provide error info for client debugging without retrying parse
+                    error_payload = {
+                        "error": "Failed to parse SSE event data",
+                        "raw": sanitize_for_logging(str(msg)),
+                    }
 
                     yield "event: error\n"
                     yield f"data: {json.dumps(error_payload)}\n\n"

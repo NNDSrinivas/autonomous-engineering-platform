@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import List, Dict
 import logging
 import os
-import stat
 
 logger = logging.getLogger(__name__)
 

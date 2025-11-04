@@ -8,8 +8,60 @@ from pathlib import Path
 from typing import List, Dict
 import logging
 import os
+import stat
 
 logger = logging.getLogger(__name__)
+
+
+def path_has_symlink_in_hierarchy(path: str, root: str) -> bool:
+    """
+    Returns True if any ancestor (including path itself) between root and path is a symlink.
+    """
+    # Both paths must be absolute
+    path = os.path.realpath(os.path.normpath(path))
+    root = os.path.realpath(os.path.normpath(root))
+    if not path.startswith(root):
+        # Outside repo, bail out
+        return True
+    cur = path
+    while True:
+        if os.path.islink(cur):
+            return True
+        if cur == root:
+            break
+        prev = os.path.dirname(cur)
+        if prev == cur:
+            break
+        cur = prev
+    return False
+
+
+def is_safe_subpath(path: str, root: str) -> bool:
+    """
+    Returns True if path is a sub-path of root, and all components between root and path are not symlinks.
+    """
+    try:
+        # Both absolute, normalized, real paths
+        path = os.path.realpath(os.path.normpath(path))
+        root = os.path.realpath(os.path.normpath(root))
+        if not os.path.commonpath([path, root]) == root:
+            return False
+        # Walk up from path to root, check no component (except root) is symlink
+        cur = path
+        while True:
+            if os.path.islink(cur):
+                return False
+            if os.path.normpath(cur) == os.path.normpath(root):
+                break
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                # Reached filesystem root without hitting repo root
+                return False
+            cur = parent
+        return True
+    except Exception:
+        return False
+
 
 # Repo root resolution - handles both dev and container environments
 try:
@@ -175,8 +227,10 @@ def list_neighbors(file_path: str) -> List[str]:
             or not os.path.isdir(safe_parent_real)
             or os.path.islink(safe_parent_real)
             or os.path.realpath(safe_parent_real) != safe_parent_real
+            or path_has_symlink_in_hierarchy(safe_parent_real, repo_root_str)
             or not os.path.commonpath([safe_parent_real, repo_root_str])
             == repo_root_str
+            or not is_safe_subpath(safe_parent_real, repo_root_str)
         ):
             logger.warning(
                 f"Refusing to list: {safe_parent_real} failed final hardening checks"
@@ -205,6 +259,7 @@ def list_neighbors(file_path: str) -> List[str]:
                     if (
                         os.path.commonpath([item_realpath, repo_root_str])
                         == repo_root_str
+                        # Never allow symlinks, even if they resolve inside repo root
                         and not os.path.islink(item_realpath)
                         and os.path.isfile(item_realpath)
                         and item_realpath != path_str

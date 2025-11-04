@@ -16,8 +16,10 @@ class FeedbackSubmission(BaseModel):
 
     gen_id: int = Field(..., description="Generation log ID")
     rating: int = Field(
-        ..., ge=-1, le=1,
-        description="Feedback rating: -1 (negative/thumbs down), 0 (neutral), 1 (positive/thumbs up)"
+        ...,
+        ge=-1,
+        le=1,
+        description="Feedback rating: -1 (negative/thumbs down), 0 (neutral), 1 (positive/thumbs up)",
     )
     reason: Optional[str] = Field(
         None, max_length=64, description="Feedback reason category"

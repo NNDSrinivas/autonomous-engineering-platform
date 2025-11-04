@@ -56,14 +56,11 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ diff, className = "" }) 
   // Precompute keys for each line only when diff changes
   const linesWithKeys = React.useMemo(() => {
     return lines.map((line, index) => {
-      // Use a simple hash of the line content for better uniqueness
-      const hash = line.split('').reduce((a, b) => {
-        a = ((a << 5) - a) + b.charCodeAt(0);
-        return a | 0; // Convert to 32-bit integer
-      }, 0);
+      // Use line index and a sample of the line content for uniqueness
+      const sample = line.slice(0, 16); // First 16 chars of the line
       return {
         line,
-        key: `${index}-${Math.abs(hash)}`
+        key: `${index}-${sample}`
       };
     });
   }, [lines]);

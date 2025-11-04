@@ -11,7 +11,7 @@ from backend.core.ai.diff_utils import (
 
 # Test constants
 SIZE_LIMIT_BYTES = 256 * 1024  # 256KB limit
-SAFETY_MARGIN_BYTES = 1000     # Extra bytes for reliable test failure
+SAFETY_MARGIN_BYTES = 1000  # Extra bytes for reliable test failure
 
 # Minimal valid unified diff
 MINIMAL_DIFF = (

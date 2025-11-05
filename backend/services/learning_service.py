@@ -92,9 +92,7 @@ class ThompsonSamplingBandit:
 
             # Thompson Sampling: sample from Beta(successes, failures), where
             # successes and failures include the prior (initially 1.0 each).
-            # Ensure minimum values to avoid ValueError with zero parameters
-            epsilon = 1e-3  # Small value to avoid zero parameters
-            score = np.random.beta(max(successes, epsilon), max(failures, epsilon))
+            score = np.random.beta(successes, failures)
 
             arm_scores.append((score, arm))
 

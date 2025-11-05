@@ -246,7 +246,9 @@ export function AdminFeedbackStats() {
                     <div key={arm} className="text-center">
                       <div className="text-sm font-medium text-gray-700 capitalize mb-1">{arm}</div>
                       <div className="text-lg font-bold text-gray-900">
-                        {performance.success_rate !== null ? Math.round(performance.success_rate * 100) : 'N/A'}%
+                        {performance.success_rate !== null
+                          ? `${Math.round(performance.success_rate * 100)}%`
+                          : 'N/A'}
                       </div>
                       <div className="text-xs text-gray-500">
                         {performance.total_trials} trials

@@ -16,11 +16,16 @@ import structlog
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
+import httpx
+from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 # Git operations - GitPython is now a required dependency
 import git
 
 from backend.core.ai.llm_service import LLMService
+from backend.models.integrations import JiraIssue, JiraConnection
+from backend.core.crypto import decrypt_token
 
 
 # Security exception class
@@ -127,12 +132,14 @@ class EnhancedAutonomousCodingEngine:
         llm_service: LLMService,
         vector_store: VectorStore,
         workspace_path: str,
+        db_session: Optional[Session] = None,
         github_service: Optional[GitHubService] = None,
         progress_callback: Optional[Callable] = None,
     ):
         self.llm_service = llm_service
         self.vector_store = vector_store
         self.workspace_path = Path(workspace_path)
+        self.db_session = db_session
         self.github_service = github_service
         self.progress_callback = progress_callback
 
@@ -314,17 +321,371 @@ class EnhancedAutonomousCodingEngine:
             }
 
     async def _fetch_jira_context(self, jira_key: str) -> Dict[str, Any]:
-        """Fetch comprehensive JIRA context"""
-        # This would use your existing JIRA service
-        # Mock implementation for now
-        return {
-            "summary": f"Sample task for {jira_key}",
-            "description": "Task description from JIRA",
-            "acceptance_criteria": "Acceptance criteria",
-            "comments": [],
-            "priority": "High",
-            "assignee": "user@company.com",
-        }
+        """Fetch comprehensive JIRA context from database and API"""
+        try:
+            # Check if database session is available
+            if not self.db_session:
+                logger.warning("No database session available for JIRA context")
+                return {
+                    "summary": f"JIRA task {jira_key} - database not available",
+                    "description": "Database session not configured",
+                    "acceptance_criteria": "",
+                    "comments": [],
+                    "priority": "Unknown",
+                    "assignee": "",
+                    "status": "Unknown",
+                    "labels": [],
+                    "subtasks": [],
+                    "issue_links": [],
+                    "project_key": "",
+                    "issue_type": "",
+                }
+
+            # First try to get from local database
+            jira_issue = self.db_session.scalar(
+                select(JiraIssue).where(JiraIssue.issue_key == jira_key)
+            )
+
+            if jira_issue:
+                # Get the JIRA connection for this issue
+                connection = self.db_session.get(
+                    JiraConnection, jira_issue.connection_id
+                )
+
+                if connection and connection.access_token:
+                    # Fetch fresh data from JIRA API
+                    try:
+                        decrypted_token = decrypt_token(connection.access_token)
+
+                        async with httpx.AsyncClient(
+                            auth=(connection.user_id or "unknown", decrypted_token),
+                            timeout=30,
+                        ) as client:
+                            # Get detailed issue data
+                            response = await client.get(
+                                f"{connection.cloud_base_url}/rest/api/3/issue/{jira_key}",
+                                headers={"Accept": "application/json"},
+                            )
+
+                            if response.status_code == 200:
+                                issue_data = response.json()
+                                fields = issue_data.get("fields", {})
+
+                                # Extract comprehensive context
+                                context = {
+                                    "summary": fields.get("summary", ""),
+                                    "description": self._extract_description_text(
+                                        fields.get("description")
+                                    ),
+                                    "priority": fields.get("priority", {}).get(
+                                        "name", ""
+                                    ),
+                                    "status": fields.get("status", {}).get("name", ""),
+                                    "assignee": (
+                                        fields.get("assignee", {}).get(
+                                            "displayName", ""
+                                        )
+                                        if fields.get("assignee")
+                                        else ""
+                                    ),
+                                    "reporter": (
+                                        fields.get("reporter", {}).get(
+                                            "displayName", ""
+                                        )
+                                        if fields.get("reporter")
+                                        else ""
+                                    ),
+                                    "labels": fields.get("labels", []),
+                                    "components": [
+                                        comp.get("name", "")
+                                        for comp in fields.get("components", [])
+                                    ],
+                                    "sprint": self._extract_sprint_info(fields),
+                                    "epic_link": fields.get(
+                                        "customfield_10014", ""
+                                    ),  # Common epic link field
+                                    "story_points": fields.get(
+                                        "customfield_10016", ""
+                                    ),  # Common story points field
+                                    "acceptance_criteria": self._extract_acceptance_criteria(
+                                        fields
+                                    ),
+                                    "comments": await self._fetch_jira_comments(
+                                        client, connection.cloud_base_url, jira_key
+                                    ),
+                                    "subtasks": [
+                                        {
+                                            "key": subtask.get("key", ""),
+                                            "summary": subtask.get("fields", {}).get(
+                                                "summary", ""
+                                            ),
+                                            "status": subtask.get("fields", {})
+                                            .get("status", {})
+                                            .get("name", ""),
+                                        }
+                                        for subtask in fields.get("subtasks", [])
+                                    ],
+                                    "issue_links": await self._extract_issue_links(
+                                        fields
+                                    ),
+                                    "last_updated": fields.get("updated", ""),
+                                    "created": fields.get("created", ""),
+                                    "project_key": fields.get("project", {}).get(
+                                        "key", ""
+                                    ),
+                                    "issue_type": fields.get("issuetype", {}).get(
+                                        "name", ""
+                                    ),
+                                }
+
+                                logger.info(
+                                    f"Fetched comprehensive JIRA context for {jira_key}"
+                                )
+                                return context
+
+                    except Exception as api_error:
+                        logger.warning(
+                            f"Failed to fetch fresh JIRA data for {jira_key}: {api_error}"
+                        )
+                        # Fall back to cached database data
+
+                # Return data from local database
+                return {
+                    "summary": jira_issue.summary or "",
+                    "description": jira_issue.description or "",
+                    "priority": jira_issue.priority or "",
+                    "status": jira_issue.status or "",
+                    "assignee": jira_issue.assignee or "",
+                    "reporter": jira_issue.reporter or "",
+                    "labels": jira_issue.labels or [],
+                    "epic_link": jira_issue.epic_key or "",
+                    "sprint": jira_issue.sprint or "",
+                    "acceptance_criteria": "",
+                    "comments": [],
+                    "subtasks": [],
+                    "issue_links": [],
+                    "last_updated": (
+                        str(jira_issue.updated) if jira_issue.updated else ""
+                    ),
+                    "created": (
+                        str(jira_issue.indexed_at) if jira_issue.indexed_at else ""
+                    ),
+                    "project_key": jira_issue.project_key or "",
+                    "issue_type": "Task",  # Default since not stored in model
+                }
+
+            # If no local data found, return minimal context
+            logger.warning(f"No JIRA data found for {jira_key}")
+            return {
+                "summary": f"JIRA task {jira_key} - details not available",
+                "description": "Task details could not be retrieved from JIRA",
+                "acceptance_criteria": "",
+                "comments": [],
+                "priority": "Unknown",
+                "assignee": "",
+                "status": "Unknown",
+                "labels": [],
+                "subtasks": [],
+                "issue_links": [],
+                "project_key": "",
+                "issue_type": "",
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching JIRA context for {jira_key}: {e}")
+            return {
+                "summary": f"Error fetching JIRA task {jira_key}",
+                "description": "Failed to retrieve task details",
+                "error": str(e),
+                "acceptance_criteria": "",
+                "comments": [],
+                "priority": "Unknown",
+                "assignee": "",
+                "status": "Unknown",
+            }
+
+    def _extract_description_text(self, desc_field) -> str:
+        """Extract plain text from JIRA description field (handles both string and ADF format)"""
+        if not desc_field:
+            return ""
+
+        if isinstance(desc_field, str):
+            return desc_field
+
+        if isinstance(desc_field, dict):
+            # Handle Atlassian Document Format (ADF)
+            content = desc_field.get("content", [])
+            text_parts = []
+
+            def extract_text_from_content(content_items):
+                for item in content_items:
+                    if item.get("type") == "text":
+                        text_parts.append(item.get("text", ""))
+                    elif item.get("type") == "paragraph":
+                        if "content" in item:
+                            extract_text_from_content(item["content"])
+                        text_parts.append("\n")
+                    elif "content" in item:
+                        extract_text_from_content(item["content"])
+
+            extract_text_from_content(content)
+            return "".join(text_parts).strip()
+
+        return str(desc_field)
+
+    def _extract_sprint_info(self, fields: Dict[str, Any]) -> str:
+        """Extract sprint information from JIRA fields"""
+        # Check common sprint custom fields
+        sprint_fields = ["customfield_10020", "customfield_10016", "customfield_10010"]
+
+        for field_name in sprint_fields:
+            sprint_data = fields.get(field_name)
+            if sprint_data:
+                if isinstance(sprint_data, list) and sprint_data:
+                    # Sprint is usually an array, take the latest
+                    sprint = sprint_data[-1]
+                    if isinstance(sprint, dict):
+                        return sprint.get("name", "")
+                    elif isinstance(sprint, str):
+                        # Extract sprint name from string format
+                        if "name=" in sprint:
+                            parts = sprint.split("name=")
+                            if len(parts) > 1:
+                                name_part = parts[1].split(",")[0]
+                                return name_part.strip()
+                        return sprint
+                elif isinstance(sprint_data, dict):
+                    return sprint_data.get("name", "")
+                elif isinstance(sprint_data, str):
+                    return sprint_data
+
+        return ""
+
+    def _extract_acceptance_criteria(self, fields: Dict[str, Any]) -> str:
+        """Extract acceptance criteria from JIRA fields"""
+        # Check common acceptance criteria fields
+        ac_fields = [
+            "customfield_10021",  # Common AC field
+            "customfield_10022",
+            "customfield_10031",
+            "customfield_10032",
+        ]
+
+        for field_name in ac_fields:
+            ac_data = fields.get(field_name)
+            if ac_data:
+                if isinstance(ac_data, str):
+                    return ac_data
+                elif isinstance(ac_data, dict):
+                    return self._extract_description_text(ac_data)
+
+        # Check if acceptance criteria is in description
+        description = fields.get("description", "")
+        if (
+            isinstance(description, str)
+            and "acceptance criteria" in description.lower()
+        ):
+            # Try to extract AC section
+            lines = description.split("\n")
+            ac_lines = []
+            in_ac_section = False
+
+            for line in lines:
+                if "acceptance criteria" in line.lower():
+                    in_ac_section = True
+                    continue
+                elif in_ac_section and line.strip():
+                    if (
+                        line.startswith("*")
+                        or line.startswith("-")
+                        or line.startswith("•")
+                    ):
+                        ac_lines.append(line.strip())
+                    elif not line.strip():
+                        continue
+                    else:
+                        break  # End of AC section
+
+            if ac_lines:
+                return "\n".join(ac_lines)
+
+        return ""
+
+    async def _fetch_jira_comments(
+        self, client: httpx.AsyncClient, base_url: str, issue_key: str
+    ) -> List[Dict[str, Any]]:
+        """Fetch comments for a JIRA issue"""
+        try:
+            response = await client.get(
+                f"{base_url}/rest/api/3/issue/{issue_key}/comment",
+                headers={"Accept": "application/json"},
+            )
+
+            if response.status_code == 200:
+                comments_data = response.json()
+                comments = []
+
+                for comment in comments_data.get("comments", []):
+                    comment_text = self._extract_description_text(comment.get("body"))
+                    if comment_text:
+                        comments.append(
+                            {
+                                "author": comment.get("author", {}).get(
+                                    "displayName", ""
+                                ),
+                                "created": comment.get("created", ""),
+                                "body": comment_text,
+                                "id": comment.get("id", ""),
+                            }
+                        )
+
+                return comments[:10]  # Limit to recent 10 comments
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch comments for {issue_key}: {e}")
+
+        return []
+
+    async def _extract_issue_links(
+        self, fields: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Extract linked issues from JIRA fields"""
+        links = []
+        issue_links = fields.get("issuelinks", [])
+
+        for link in issue_links:
+            link_type = link.get("type", {})
+            link_info = {"relationship": link_type.get("name", ""), "direction": ""}
+
+            if "outwardIssue" in link:
+                linked_issue = link["outwardIssue"]
+                link_info.update(
+                    {
+                        "key": linked_issue.get("key", ""),
+                        "summary": linked_issue.get("fields", {}).get("summary", ""),
+                        "status": linked_issue.get("fields", {})
+                        .get("status", {})
+                        .get("name", ""),
+                        "direction": "outward",
+                    }
+                )
+            elif "inwardIssue" in link:
+                linked_issue = link["inwardIssue"]
+                link_info.update(
+                    {
+                        "key": linked_issue.get("key", ""),
+                        "summary": linked_issue.get("fields", {}).get("summary", ""),
+                        "status": linked_issue.get("fields", {})
+                        .get("status", {})
+                        .get("name", ""),
+                        "direction": "inward",
+                    }
+                )
+
+            if link_info.get("key"):
+                links.append(link_info)
+
+        return links
 
     async def _fetch_related_confluence(self, jira_key: str) -> List[str]:
         """Fetch related Confluence documentation"""

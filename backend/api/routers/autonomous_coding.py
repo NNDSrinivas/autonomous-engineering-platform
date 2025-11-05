@@ -63,8 +63,10 @@ _engine_lock = threading.Lock()
 _coding_engines: Dict[str, EnhancedAutonomousCodingEngine] = {}
 
 
-def get_coding_engine(workspace_id: str = "default") -> EnhancedAutonomousCodingEngine:
-    """Get or create the autonomous coding engine with thread safety"""
+def get_coding_engine(
+    workspace_id: str = "default", db: Optional[Session] = None
+) -> EnhancedAutonomousCodingEngine:
+    """Get or create a thread-safe coding engine instance for a workspace"""
     with _engine_lock:
         if workspace_id not in _coding_engines:
             # Initialize with proper dependencies
@@ -72,11 +74,17 @@ def get_coding_engine(workspace_id: str = "default") -> EnhancedAutonomousCoding
             vector_store = VectorStore()  # Placeholder
             workspace_path = f"/workspace/{workspace_id}"  # Workspace isolation
 
+            # For thread-safe initialization, we'll set the db_session later
             _coding_engines[workspace_id] = EnhancedAutonomousCodingEngine(
                 llm_service=llm_service,
                 vector_store=vector_store,
                 workspace_path=workspace_path,
+                db_session=db,
             )
+
+        # Update db_session if provided (for request-scoped sessions)
+        if db is not None:
+            _coding_engines[workspace_id].db_session = db
 
         return _coding_engines[workspace_id]
 
@@ -96,7 +104,7 @@ async def create_task_from_jira(
     - Team member context and preferences
     """
     try:
-        engine = get_coding_engine()
+        engine = get_coding_engine(db=db)
 
         # Create task with full enterprise context
         task = await engine.create_task_from_jira(
@@ -117,20 +125,20 @@ async def create_task_from_jira(
         )
 
 
-@router.post("/execute-step", response_model=StepExecutionResponse)
+@router.post("/execute-step")
 async def execute_step(request: ExecuteStepRequest, db: Session = Depends(get_db)):
     """
-    Execute individual coding step with user approval
+    Execute a single step with user approval
 
-    Core workflow that matches Cline's step-by-step approach:
-    1. User sees exactly what will be changed
-    2. User explicitly approves or rejects
-    3. If approved, execute with safety measures
+    Enhanced over Cline approach:
+    1. User explicitly approves each file modification
+    2. Real-time diff preview before changes
+    3. Git safety with automatic backups
     4. Show results and next step preview
     5. Handle errors gracefully with rollback options
     """
     try:
-        engine = get_coding_engine()
+        engine = get_coding_engine(db=db)
 
         # Execute step with user approval
         result = await engine.execute_step(
@@ -139,25 +147,18 @@ async def execute_step(request: ExecuteStepRequest, db: Session = Depends(get_db
             user_approved=request.user_approved,
         )
 
-        logger.info(
-            f"Executed step {request.step_id} for task {request.task_id}: {result['status']}"
-        )
+        return result
 
-        return StepExecutionResponse(**result)
-
-    except ValueError as e:
-        logger.warning(f"Invalid request for step execution: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to execute step {request.step_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to execute step: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/tasks/{task_id}")
 async def get_task_status(task_id: str, db: Session = Depends(get_db)):
     """Get current status of autonomous coding task"""
     try:
-        engine = get_coding_engine()
+        engine = get_coding_engine(db=db)
 
         task = engine.active_tasks.get(task_id)
         if not task:
@@ -184,7 +185,7 @@ async def get_task_status(task_id: str, db: Session = Depends(get_db)):
 async def get_task_steps(task_id: str, db: Session = Depends(get_db)):
     """Get all steps for a task with their current status"""
     try:
-        engine = get_coding_engine()
+        engine = get_coding_engine(db=db)
 
         task = engine.active_tasks.get(task_id)
         if not task:
@@ -226,7 +227,7 @@ async def preview_step_changes(
     Critical for user trust - show exactly what will happen
     """
     try:
-        engine = get_coding_engine()
+        engine = get_coding_engine(db=db)
 
         task = engine.active_tasks.get(task_id)
         if not task:
@@ -265,7 +266,7 @@ async def preview_step_changes(
 async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
     """Create pull request for completed autonomous coding task"""
     try:
-        engine = get_coding_engine()
+        engine = get_coding_engine(db=db)
 
         result = await engine.create_pull_request(
             task_id=task_id,
@@ -292,10 +293,10 @@ async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/health")
-async def health_check():
+async def health_check(db: Session = Depends(get_db)):
     """Health check endpoint for autonomous coding service"""
     try:
-        engine = get_coding_engine()
+        engine = get_coding_engine(db=db)
 
         return {
             "status": "healthy",

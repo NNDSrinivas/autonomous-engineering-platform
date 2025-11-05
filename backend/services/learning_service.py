@@ -20,8 +20,8 @@ MIN_TRIALS_FOR_FULL_CONFIDENCE = (
 )
 
 # Input size thresholds for contextual bucketing
-SMALL_INPUT_THRESHOLD = 50  # Characters for small input classification
-MEDIUM_INPUT_THRESHOLD = 200  # Characters for medium input classification
+SMALL_INPUT_THRESHOLD = 50  # Words for small input classification
+MEDIUM_INPUT_THRESHOLD = 200  # Words for medium input classification
 
 
 class ThompsonSamplingBandit:

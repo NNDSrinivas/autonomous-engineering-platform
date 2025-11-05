@@ -112,7 +112,7 @@ async def generate_diff(
         )
 
         # Unpack the result - generate_unified_diff always returns Tuple[str, Optional[int]]
-        # as defined in its function signature (line 329 in codegen_service.py)
+        # as defined in its function signature in generate_unified_diff in codegen_service.py
         diff, generation_log_id = result
 
         # Validate the generated diff

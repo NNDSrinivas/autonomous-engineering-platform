@@ -196,7 +196,7 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
               placeholder="Any specific feedback to help improve future generations..."
               className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
               rows={3}
-              maxLength={1000}
+              maxLength={1000} // Keep in sync with MAX_COMMENT_LENGTH in backend/schemas/ai_feedback.py
             />
           </div>
 

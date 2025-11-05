@@ -54,7 +54,7 @@ def test_feedback_endpoints_rate_limited():
     """Test that feedback endpoints are rate limited."""
     # Test feedback submission
     feedback_data = {
-        "gen_id": "test-123",
+        "gen_id": 123,  # Integer as required by FeedbackSubmission schema
         "rating": 1,
         "org_key": "org-ae",
         "user_sub": "u-ae",
@@ -101,7 +101,7 @@ def test_different_endpoints_separate_limits():
 
     # Feedback should still work (separate limit)
     feedback_data = {
-        "gen_id": "test-456",
+        "gen_id": 456,  # Integer as required by FeedbackSubmission schema
         "rating": 1,
         "org_key": "org-ae",
         "user_sub": "u-ae",

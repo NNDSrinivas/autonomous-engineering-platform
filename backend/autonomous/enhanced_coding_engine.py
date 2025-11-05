@@ -136,7 +136,7 @@ class EnhancedAutonomousCodingEngine:
     # Configurable sensitive file patterns - can be overridden per deployment
     # SECURITY: These patterns prevent accidental commits of credentials and sensitive data
     # Environment files: *.env*, .env* - contain API keys, database passwords, secrets
-    # Cryptographic files: *.key, *.pem, *.p12, *.pfx - private keys and certificates  
+    # Cryptographic files: *.key, *.pem, *.p12, *.pfx - private keys and certificates
     # Credential files: *secret*, *password*, *.credentials - explicit credential storage
     # Platform-specific: .aws/credentials, .htpasswd, wp-config.php - known sensitive configs
     # Build artifacts: __pycache__/*, *.pyc - may contain sensitive data or bloat repository
@@ -279,21 +279,28 @@ class EnhancedAutonomousCodingEngine:
         # Prevent Windows UNC path attacks (\\server\share)
         if platform.system() == "Windows":
             if path.startswith("\\\\"):
-                raise ValueError(f"UNC paths are not allowed for security reasons: {path}")
-            
+                raise ValueError(
+                    f"UNC paths are not allowed for security reasons: {path}"
+                )
+
             # Check for reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
             # These can be used in directory traversal attacks on Windows
             reserved_names = {
-                "CON", "PRN", "AUX", "NUL",
+                "CON",
+                "PRN",
+                "AUX",
+                "NUL",
                 *(f"COM{i}" for i in range(1, 10)),
                 *(f"LPT{i}" for i in range(1, 10)),
             }
-            
+
             # Get the basename without extension and check case-insensitively
             base = os.path.basename(path)
             name, _ = os.path.splitext(base)
             if name.upper() in reserved_names:
-                raise ValueError(f"Reserved device name paths are not allowed for security reasons: {path}")
+                raise ValueError(
+                    f"Reserved device name paths are not allowed for security reasons: {path}"
+                )
 
         return path
 

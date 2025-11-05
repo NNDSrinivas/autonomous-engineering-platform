@@ -13,6 +13,7 @@ async def on_shutdown():
 
         await close_http_client()
     except Exception:
+        # Ignore httpx client cleanup errors during shutdown - non-critical
         pass
 
     # graceful close of redis if used
@@ -23,4 +24,5 @@ async def on_shutdown():
         if r:
             await r.close()
     except Exception:
+        # Ignore Redis cleanup errors during shutdown - non-critical
         pass

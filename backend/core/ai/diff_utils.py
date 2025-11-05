@@ -176,15 +176,16 @@ def apply_diff(
             try:
                 os.close(temp_fd)
             except OSError:
+                # Ignore errors during cleanup; failure to close fd is not critical here
                 pass
         if patch_file and os.path.exists(patch_file):
             try:
                 os.unlink(patch_file)
             except OSError:
+                # Ignore errors during cleanup; file may not exist or be already removed
                 pass
         # Re-raise unexpected exceptions to avoid hiding errors
         raise e
-        raise
 
     try:
         # Build git apply command

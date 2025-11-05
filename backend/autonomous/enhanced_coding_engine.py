@@ -75,7 +75,6 @@ class TaskType(Enum):
 
 
 @dataclass
-@dataclass
 class CodingStep:
     """Individual step in autonomous coding workflow"""
 

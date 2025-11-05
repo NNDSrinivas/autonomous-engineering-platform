@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+# Shared async client configuration to prevent connection leaks
+def _get_async_client() -> httpx.AsyncClient:
+    """Get configured httpx AsyncClient with consistent timeout settings"""
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(10.0),
+        limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+    )
+
 
 # Configuration helper for API base URL with validation
 def get_api_base_url() -> str:
@@ -211,9 +219,9 @@ async def _build_enhanced_context(
         try:
             # Make async request to existing context API
             api_base = get_api_base_url()
-            async with httpx.AsyncClient() as client:
+            async with _get_async_client() as client:
                 response = await client.get(
-                    f"{api_base}/api/context/task/{request.currentTask}", timeout=10
+                    f"{api_base}/api/context/task/{request.currentTask}"
                 )
                 if response.status_code == 200:
                     enhanced_context["task_context"] = response.json()
@@ -231,8 +239,8 @@ async def _handle_task_query(
         # Try to get tasks from JIRA API
         try:
             api_base = get_api_base_url()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{api_base}/api/jira/tasks", timeout=10)
+            async with _get_async_client() as client:
+                response = await client.get(f"{api_base}/api/jira/tasks")
                 if response.status_code == 200:
                     data = response.json()
                     tasks = data.get("items", [])
@@ -306,9 +314,9 @@ async def _handle_team_query(
         team_activity = []
         try:
             api_base = get_api_base_url()
-            async with httpx.AsyncClient() as client:
+            async with _get_async_client() as client:
                 response = await client.get(
-                    f"{api_base}/api/activity/recent", timeout=10
+                    f"{api_base}/api/activity/recent"
                 )
                 if response.status_code == 200:
                     data = response.json()

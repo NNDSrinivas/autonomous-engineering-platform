@@ -1105,9 +1105,10 @@ class EnhancedAutonomousCodingEngine:
                     f"Cannot write to potentially dangerous file type: {file_path.suffix}"
                 )
             elif file_path.suffix.lower() in development_extensions:
-                # Log warning but allow with extra validation
-                logger.warning(f"Writing to development script file: {step.file_path}")
-                # Could add user confirmation mechanism here in the future
+                # Shell scripts require explicit user confirmation
+                await self._require_shell_script_confirmation(
+                    step.file_path, code_result["generated_code"]
+                )
 
             # Basic code validation before writing
             generated_code = code_result["generated_code"]
@@ -1445,6 +1446,57 @@ class EnhancedAutonomousCodingEngine:
         """Estimate task duration"""
         return f"{len(task.steps) * 5} minutes"
 
+    async def _require_shell_script_confirmation(
+        self, file_path: str, script_content: str
+    ) -> None:
+        """
+        Require explicit user confirmation for shell script writes.
+
+        Shell scripts can cause serious system damage if they contain malicious or buggy commands.
+        This method throws a SecurityError requiring explicit user approval.
+        """
+        # Analyze script content for particularly dangerous patterns
+        dangerous_shell_patterns = [
+            "rm -rf",
+            "sudo",
+            "chmod +x",
+            "curl | sh",
+            "wget | sh",
+            "/etc/",
+            "/usr/",
+            "/var/",
+            "passwd",
+            "crontab",
+            "systemctl",
+            "service ",
+            "mount",
+            "umount",
+        ]
+
+        content_lower = script_content.lower()
+        found_dangerous = [
+            pattern for pattern in dangerous_shell_patterns if pattern in content_lower
+        ]
+
+        error_msg = (
+            f"Shell script write requires explicit user confirmation: {file_path}"
+        )
+        if found_dangerous:
+            error_msg += f"\nDetected potentially dangerous commands: {', '.join(found_dangerous)}"
+
+        error_msg += (
+            "\n\nShell scripts can cause system damage. "
+            "This operation requires manual user approval via the UI."
+        )
+
+        # Log the security requirement
+        logger.warning(f"Shell script confirmation required for: {file_path}")
+        if found_dangerous:
+            logger.warning(f"Dangerous patterns detected: {found_dangerous}")
+
+        # Raise security error that requires user intervention
+        raise SecurityError(error_msg)
+
     def _contains_dangerous_patterns(self, code: str) -> bool:
         """Check for potentially dangerous code patterns using enhanced AST analysis and string matching"""
 
@@ -1534,6 +1586,7 @@ class EnhancedAutonomousCodingEngine:
                                     }:
                                         return True
                             except (AttributeError, TypeError):
+                                # Skip nodes that do not have the expected string attributes; not all AST nodes will match
                                 pass
 
                 # Check for dangerous string operations that could construct dangerous calls

@@ -23,12 +23,17 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 # Shared async client instance with proper lifecycle management
 _async_client: Optional[httpx.AsyncClient] = None
-_client_lock = asyncio.Lock()
+_client_lock: Optional[asyncio.Lock] = None
 
 
 async def get_http_client() -> httpx.AsyncClient:
     """Get shared httpx client instance (async-safe initialization)"""
-    global _async_client
+    global _async_client, _client_lock
+
+    # Initialize lock lazily to ensure event loop is running
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
+
     if _async_client is None:
         async with _client_lock:
             # Double-check locking pattern with async lock

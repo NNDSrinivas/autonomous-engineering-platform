@@ -15,6 +15,7 @@ from enum import Enum
 import structlog
 import os
 import shutil
+import tempfile
 import fnmatch
 import ast
 from pathlib import Path
@@ -1346,8 +1347,6 @@ class EnhancedAutonomousCodingEngine:
                 # Modify existing file with atomic operation
                 if file_path.exists():
                     # Atomic file modification: write to temp file, then rename
-                    import tempfile
-
                     temp_file_path = None
                     try:
                         # Create temporary file in secure system temp directory with restrictive permissions

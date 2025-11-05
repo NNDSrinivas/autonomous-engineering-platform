@@ -48,6 +48,7 @@ from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
 from .routers.rate_limit_admin import router as rate_limit_admin_router
 from .routers import ai_codegen
+from .routers import ai_feedback
 from ..core.realtime import presence as presence_lifecycle
 from ..core.obs.logging import logger
 
@@ -224,6 +225,7 @@ app.include_router(live_plan_router)  # PR-19: Live Plan Mode
 app.include_router(presence_router.router)  # PR-22: Presence & Cursor Sync
 app.include_router(plan_router)
 app.include_router(ai_codegen.router)  # PR-31: AI Code Generation
+app.include_router(ai_feedback.router)  # PR-32: AI Feedback & Learning
 
 # ---- Feature 1 endpoints (Finalize + Query) ----
 

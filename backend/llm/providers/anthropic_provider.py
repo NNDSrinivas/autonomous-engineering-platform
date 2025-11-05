@@ -1,7 +1,7 @@
 import os
 import logging
 import anthropic
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +33,22 @@ class AnthropicProvider:
             "claude-3-opus-20240229": {"input": 0.015, "output": 0.075},
         }
 
-    def complete(self, prompt: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    def complete(
+        self,
+        prompt: str,
+        context: Dict[str, Any],
+        temperature: float = 0.1,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Generate completion using Anthropic API."""
+        # Use provided max_tokens or fall back to default
+        tokens = max_tokens if max_tokens is not None else self.MAX_TOKENS
+
         try:
             message = self.client.messages.create(
                 model=self.model,
-                max_tokens=self.MAX_TOKENS,
-                temperature=0.1,
+                max_tokens=tokens,
+                temperature=temperature,
                 system=prompt,
                 messages=[{"role": "user", "content": str(context)}],
             )
@@ -56,8 +65,16 @@ class AnthropicProvider:
             if not message.content or len(message.content) == 0:
                 raise RuntimeError("Anthropic API returned empty content")
 
+            # Get first text content block
+            first_content = message.content[0]
+            try:
+                # Try to access text attribute for TextBlock
+                text_content = getattr(first_content, "text", str(first_content))
+            except Exception:
+                text_content = str(first_content)
+
             return {
-                "text": message.content[0].text,
+                "text": text_content,
                 "tokens": usage.input_tokens + usage.output_tokens,
                 "input_tokens": usage.input_tokens,
                 "output_tokens": usage.output_tokens,

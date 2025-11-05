@@ -835,7 +835,7 @@ class EnhancedAutonomousCodingEngine:
                 if safe_files:
                     for file_path in safe_files:
                         self.repo.git.add(file_path)
-                    
+
                     commit_message = f"AEP backup before task {task.id}: {task.title}"
                     commit = self.repo.index.commit(commit_message)
                     task.backup_commit = commit.hexsha
@@ -851,26 +851,43 @@ class EnhancedAutonomousCodingEngine:
         """Get list of safe files for git staging, excluding sensitive content"""
         import os
         import fnmatch
-        
+
         if not self.repo:
             return []
-        
+
         # Patterns for sensitive files to exclude
         sensitive_patterns = [
-            "*.env", "*.env.*", ".env*",
-            "*.key", "*.pem", "*.p12", "*.pfx",
-            "*secret*", "*password*", "*credential*",
-            "*.conf", "config/*", ".aws/*", ".ssh/*",
-            "*.log", "logs/*", "temp/*", "tmp/*",
-            "__pycache__/*", "*.pyc", ".git/*",
-            "node_modules/*", ".venv/*", "venv/*"
+            "*.env",
+            "*.env.*",
+            ".env*",
+            "*.key",
+            "*.pem",
+            "*.p12",
+            "*.pfx",
+            "*secret*",
+            "*password*",
+            "*credential*",
+            "*.conf",
+            "config/*",
+            ".aws/*",
+            ".ssh/*",
+            "*.log",
+            "logs/*",
+            "temp/*",
+            "tmp/*",
+            "__pycache__/*",
+            "*.pyc",
+            ".git/*",
+            "node_modules/*",
+            ".venv/*",
+            "venv/*",
         ]
-        
+
         safe_files = []
         repo_root = self.repo.working_dir
         if not repo_root:
             return []
-        
+
         # Get all modified/new files
         try:
             untracked_files = self.repo.untracked_files
@@ -878,43 +895,52 @@ class EnhancedAutonomousCodingEngine:
             staged_files = [item.a_path for item in self.repo.index.diff("HEAD")]
         except Exception:
             return []
-        
+
         all_files = set(untracked_files + modified_files + staged_files)
-        
+
         for file_path in all_files:
             if not file_path:  # Skip None/empty paths
                 continue
-                
+
             # Check if file matches any sensitive pattern
             is_sensitive = any(
-                fnmatch.fnmatch(file_path.lower(), pattern.lower()) 
+                fnmatch.fnmatch(file_path.lower(), pattern.lower())
                 for pattern in sensitive_patterns
             )
-            
+
             if not is_sensitive:
                 # Additional check: don't stage files with sensitive content
                 full_path = os.path.join(repo_root, file_path)
                 try:
-                    if os.path.isfile(full_path) and self._file_content_is_safe(full_path):
+                    if os.path.isfile(full_path) and self._file_content_is_safe(
+                        full_path
+                    ):
                         safe_files.append(file_path)
                 except Exception:
                     # If we can't read the file, skip it for safety
                     continue
-                    
+
         return safe_files
-    
+
     def _file_content_is_safe(self, file_path: str) -> bool:
         """Check if file content appears safe (no obvious secrets)"""
         sensitive_keywords = [
-            "password", "secret", "token", "key", "credential",
-            "api_key", "auth_token", "private_key", "access_token"
+            "password",
+            "secret",
+            "token",
+            "key",
+            "credential",
+            "api_key",
+            "auth_token",
+            "private_key",
+            "access_token",
         ]
-        
+
         try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 # Only read first 1KB to check for obvious secrets
                 content = f.read(1024).lower()
-                
+
             # Check for obvious secret patterns
             return not any(keyword in content for keyword in sensitive_keywords)
         except Exception:
@@ -1028,23 +1054,24 @@ class EnhancedAutonomousCodingEngine:
                 if file_path.exists():
                     # Atomic file modification: write to temp file, then rename
                     import tempfile
+
                     temp_file = None
                     try:
                         # Create temporary file in same directory for atomic rename
                         with tempfile.NamedTemporaryFile(
-                            mode="w", 
-                            encoding="utf-8", 
+                            mode="w",
+                            encoding="utf-8",
                             dir=file_path.parent,
                             suffix=".tmp",
-                            delete=False
+                            delete=False,
                         ) as temp_file:
                             temp_file.write(generated_code)
                             temp_file_path = temp_file.name
-                        
+
                         # Atomic rename operation
                         os.rename(temp_file_path, file_path)
                         logger.info(f"Modified file atomically: {step.file_path}")
-                        
+
                     except Exception as e:
                         # Clean up temp file if operation failed
                         if temp_file and os.path.exists(temp_file.name):
@@ -1200,12 +1227,12 @@ class EnhancedAutonomousCodingEngine:
                         if safe_files:
                             for file_path in safe_files:
                                 self.repo.git.add(file_path)
-                            
+
                             if self.repo.is_dirty():
                                 self.repo.index.commit(
                                     f"AEP: Auto-commit before creating branch {branch}"
                                 )
-                        
+
                         new_branch = self.repo.create_head(branch)
                         new_branch.checkout()
 
@@ -1214,7 +1241,7 @@ class EnhancedAutonomousCodingEngine:
                         if safe_files:
                             for file_path in safe_files:
                                 self.repo.git.add(file_path)
-                            
+
                             commit_message = f"{task.jira_key}: {task.title}\n\nImplemented by AEP Autonomous Coding Engine"
                             self.repo.index.commit(commit_message)
 

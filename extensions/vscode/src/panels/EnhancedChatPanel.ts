@@ -414,8 +414,15 @@ ${taskData.next_action}
 
   private async _showDiffPreview(filePath: string, changes: string) {
     try {
-      // Create temporary diff file
-      const tempUri = vscode.Uri.file(path.join(__dirname, 'temp-diff.diff'));
+      // Use workspace storage for temp files to avoid permission issues
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        vscode.window.showErrorMessage('No workspace folder found for diff preview');
+        return;
+      }
+      
+      // Create temp file in workspace's .vscode directory
+      const tempUri = vscode.Uri.joinPath(workspaceFolder.uri, '.vscode', 'temp-diff.diff');
       const edit = new vscode.WorkspaceEdit();
       edit.createFile(tempUri, { overwrite: true });
       edit.insert(tempUri, new vscode.Position(0, 0), changes);
@@ -423,7 +430,7 @@ ${taskData.next_action}
       await vscode.workspace.applyEdit(edit);
       await vscode.window.showTextDocument(tempUri, { viewColumn: vscode.ViewColumn.Beside });
     } catch (error) {
-      vscode.window.showErrorMessage(`Could not show diff preview`);
+      vscode.window.showErrorMessage(`Could not show diff preview: ${error}`);
     }
   }
 

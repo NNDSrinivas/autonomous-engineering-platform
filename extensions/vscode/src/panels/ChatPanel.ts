@@ -344,7 +344,9 @@ export class ChatPanel {
       
       // Flatten the arrays and deduplicate
       const files = Array.from(new Set(fileArrays.flat().map(file => file.fsPath)));
-      return files;
+      
+      // Apply final limit to ensure predictable behavior (max 20 files total)
+      return files.slice(0, 20);
     } catch {
       return [];
     }

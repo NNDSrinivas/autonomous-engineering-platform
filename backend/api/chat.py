@@ -8,8 +8,9 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import logging
-import requests
+import httpx  # Use async httpx instead of sync requests
 from sqlalchemy.orm import Session
+from urllib.parse import urlparse
 
 from backend.core.db import get_db
 from backend.core.settings import settings
@@ -19,10 +20,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
-# Configuration helper for API base URL
+# Configuration helper for API base URL with validation
 def get_api_base_url() -> str:
-    """Get the API base URL from settings or environment"""
-    return getattr(settings, "API_BASE_URL", "http://localhost:8002")
+    """Get the API base URL from settings or environment with validation"""
+    url = getattr(settings, "API_BASE_URL", "http://localhost:8002")
+
+    # Basic URL validation
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            logger.warning(f"Invalid API_BASE_URL: {url}, using default")
+            return "http://localhost:8002"
+        return url
+    except Exception as e:
+        logger.error(f"Error parsing API_BASE_URL {url}: {e}")
+        return "http://localhost:8002"
 
 
 class ChatMessage(BaseModel):
@@ -197,13 +209,14 @@ async def _build_enhanced_context(
     # Try to add task context if current task is set
     if request.currentTask:
         try:
-            # Make request to existing context API
+            # Make async request to existing context API
             api_base = get_api_base_url()
-            response = requests.get(
-                f"{api_base}/api/context/task/{request.currentTask}", timeout=10
-            )
-            if response.status_code == 200:
-                enhanced_context["task_context"] = response.json()
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{api_base}/api/context/task/{request.currentTask}", timeout=10
+                )
+                if response.status_code == 200:
+                    enhanced_context["task_context"] = response.json()
         except Exception as e:
             logger.warning(f"Could not fetch task context: {e}")
 
@@ -218,12 +231,13 @@ async def _handle_task_query(
         # Try to get tasks from JIRA API
         try:
             api_base = get_api_base_url()
-            response = requests.get(f"{api_base}/api/jira/tasks", timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                tasks = data.get("items", [])
-            else:
-                tasks = []
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{api_base}/api/jira/tasks", timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    tasks = data.get("items", [])
+                else:
+                    tasks = []
         except Exception:
             tasks = []
 
@@ -292,10 +306,13 @@ async def _handle_team_query(
         team_activity = []
         try:
             api_base = get_api_base_url()
-            response = requests.get(f"{api_base}/api/activity/recent", timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                team_activity = data.get("items", [])
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{api_base}/api/activity/recent", timeout=10
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    team_activity = data.get("items", [])
         except Exception as e:
             logger.warning(f"Failed to fetch team activity: {e}")
 

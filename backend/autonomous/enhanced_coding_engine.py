@@ -1229,38 +1229,36 @@ class EnhancedAutonomousCodingEngine:
         """
         Validate file path string before any path operations to prevent attacks.
 
-        Uses os.path.normpath() first to handle edge cases like redundant separators
-        and to resolve . and .. components where possible (e.g., 'a/b/../c' -> 'a/c').
+        Uses pathlib.Path.resolve() to get the absolute, canonical path and ensures
+        the resolved path is within the workspace root directory. This prevents
+        path traversal attacks by disallowing any file access outside the workspace.
 
-        SECURITY: normpath() only resolves .. components within valid paths but preserves
-        .. that would escape the root directory (e.g., '../../etc/passwd' remains unchanged).
-        This behavior is intentional - the subsequent .. check effectively catches path
-        traversal attempts because dangerous .. components are preserved by normpath().
+        SECURITY: This method ensures that no matter what input is provided, the
+        resulting path cannot escape the workspace directory.
         """
-        # Normalize the path first to handle edge cases and resolve . and .. components
-        # within valid relative paths, but preserve .. that would escape workspace
-        normalized_path = os.path.normpath(path_str)
-
-        # Disallow absolute paths (check after normalization for edge cases)
-        if os.path.isabs(normalized_path):
-            raise DangerousCodeError(
-                "Invalid file path: absolute paths are not allowed"
-            )
-
-        # Disallow path traversal - this catches .. components that would escape workspace
-        # normpath() preserves .. that escape the current directory, making this check effective
-        parts = Path(normalized_path).parts
-        if any(part == ".." for part in parts):
-            raise DangerousCodeError("Invalid file path: path traversal detected")
-
         # Disallow empty or null paths
-        if not normalized_path or normalized_path.strip() == "":
+        if not path_str or path_str.strip() == "":
             raise DangerousCodeError("Invalid file path: empty path")
 
         # Disallow dangerous characters and sequences
         dangerous_chars = ["\x00", "\r", "\n", "\t"]
-        if any(char in normalized_path for char in dangerous_chars):
+        if any(char in path_str for char in dangerous_chars):
             raise DangerousCodeError("Invalid file path: contains dangerous characters")
+
+        # Resolve the path and check workspace boundary
+        workspace_root_path = self.workspace_path.resolve()
+        target_path = (workspace_root_path / path_str).resolve()
+
+        # Python 3.9+: use is_relative_to; fallback for older versions
+        try:
+            if not target_path.is_relative_to(workspace_root_path):
+                raise DangerousCodeError("Invalid file path: path traversal detected")
+        except AttributeError:
+            # Fallback for Python <3.9: use relative_to and catch ValueError
+            try:
+                target_path.relative_to(workspace_root_path)
+            except ValueError:
+                raise DangerousCodeError("Invalid file path: path traversal detected")
 
     async def _apply_code_changes(self, step: CodingStep, code_result: Dict[str, Any]):
         """Apply code changes to files with security validation"""
@@ -1356,10 +1354,10 @@ class EnhancedAutonomousCodingEngine:
                             suffix=".tmp",
                             dir=None,  # Use secure system temp directory
                         )
-                        try:
-                            # Set restrictive permissions before writing any data
-                            os.chmod(temp_file_path, 0o600)
+                        # Set restrictive permissions immediately after creation to eliminate permission window
+                        os.chmod(temp_file_path, 0o600)
 
+                        try:
                             # Write content to the secure temp file
                             with os.fdopen(temp_fd, "w", encoding="utf-8") as temp_file:
                                 temp_file.write(generated_code)
@@ -1369,11 +1367,23 @@ class EnhancedAutonomousCodingEngine:
                             if temp_fd is not None:
                                 os.close(temp_fd)
 
-                        # Atomic replace operation; do not fallback to non-atomic move
+                        # Verify same filesystem to ensure atomic replace operation
+                        temp_stat = os.stat(temp_file_path)
+                        try:
+                            target_stat = os.stat(str(file_path.parent))
+                            if temp_stat.st_dev != target_stat.st_dev:
+                                raise RuntimeError(
+                                    "Cannot perform atomic replace: source and target are on different filesystems"
+                                )
+                        except FileNotFoundError:
+                            # Parent directory doesn't exist - this should be caught earlier but handle gracefully
+                            pass
+
+                        # Atomic replace operation; verified to be on same filesystem
                         try:
                             os.replace(temp_file_path, str(file_path))
                         except OSError as e:
-                            # If atomic replace fails (e.g., cross-filesystem), raise error
+                            # If atomic replace fails, raise error with detailed context
                             raise RuntimeError(f"Atomic file replace failed: {e}")
                         logger.info(f"Modified file atomically: {step.file_path}")
 

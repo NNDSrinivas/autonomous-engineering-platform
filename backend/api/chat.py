@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import logging
+import threading
 import httpx  # Use async httpx instead of sync requests
 from sqlalchemy.orm import Session
 from urllib.parse import urlparse
@@ -22,16 +23,20 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 # Shared async client instance with proper lifecycle management
 _async_client: Optional[httpx.AsyncClient] = None
+_client_lock = threading.Lock()
 
 
 def get_http_client() -> httpx.AsyncClient:
-    """Get shared httpx client instance (for use within request context)"""
+    """Get shared httpx client instance (thread-safe initialization)"""
     global _async_client
     if _async_client is None:
-        _async_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(10.0),
-            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
-        )
+        with _client_lock:
+            # Double-check locking pattern
+            if _async_client is None:
+                _async_client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(10.0),
+                    limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+                )
     return _async_client
 
 

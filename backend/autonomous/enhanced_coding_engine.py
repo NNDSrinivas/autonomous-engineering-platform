@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Any, Callable
 from enum import Enum
 import structlog
 import os
+import ast
 from pathlib import Path
 from typing import TYPE_CHECKING
 import httpx
@@ -897,23 +898,21 @@ class EnhancedAutonomousCodingEngine:
             if any(part == ".." for part in file_path.parts):
                 raise SecurityError("Invalid file path: path traversal detected")
 
-            # 2. Resolve path strictly (raises if file does not exist for modify/delete)
+            # 2. Symlink checks BEFORE resolving (resolve() follows symlinks)
+            if step.operation in {"modify", "delete"} and file_path.is_symlink():
+                raise SecurityError("Refusing to operate on symlinked file")
+            if step.operation == "create" and file_path.parent.is_symlink():
+                raise SecurityError("Refusing to create file in symlinked directory")
+
+            # 3. Resolve path strictly (raises if file does not exist for modify/delete)
             try:
                 resolved_path = file_path.resolve(strict=(step.operation != "create"))
-                # 3. Ensure resolved path is within workspace
+                # 4. Ensure resolved path is within workspace
                 resolved_path.relative_to(self.workspace_path.resolve())
             except (ValueError, FileNotFoundError):
                 raise SecurityError(
                     "Invalid file path: outside workspace or does not exist"
                 )
-
-            # 4. For modify/delete, ensure file is not a symlink (prevents symlink escape)
-            if step.operation in {"modify", "delete"} and resolved_path.is_symlink():
-                raise SecurityError("Refusing to operate on symlinked file")
-
-            # For create, ensure parent is not a symlink
-            if step.operation == "create" and resolved_path.parent.is_symlink():
-                raise SecurityError("Refusing to create file in symlinked directory")
 
             # Security validation: check for dangerous file extensions with whitelist
             dangerous_extensions = {".exe", ".bat", ".cmd", ".ps1", ".bin"}
@@ -1142,11 +1141,11 @@ class EnhancedAutonomousCodingEngine:
 
                 except Exception as e:
                     logger.error(f"Git operations failed: {e}")
-                    # Sanitize error message for external exposure
-                    sanitized_error = str(e).replace("\n", " ").strip()
+                    # Log detailed error for debugging but return generic message
+                    logger.error(f"Git operations failed: {e}")
                     return {
                         "status": "error",
-                        "error": f"Git operations failed: {sanitized_error}",
+                        "error": "Git operations failed due to an internal error.",
                     }
             else:
                 return {
@@ -1223,7 +1222,6 @@ class EnhancedAutonomousCodingEngine:
 
     def _contains_dangerous_patterns(self, code: str) -> bool:
         """Check for potentially dangerous code patterns using AST analysis and string matching"""
-        import ast
 
         # Try AST parsing for Python code (more robust detection)
         try:

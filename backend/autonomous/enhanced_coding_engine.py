@@ -830,16 +830,96 @@ class EnhancedAutonomousCodingEngine:
         """Create git backup before starting modifications"""
         if self.repo:
             try:
-                # Create a backup commit with current state
-                self.repo.git.add(A=True)
-                commit_message = f"AEP backup before task {task.id}: {task.title}"
-                commit = self.repo.index.commit(commit_message)
-                task.backup_commit = commit.hexsha
-                logger.info(f"Created backup commit: {commit.hexsha}")
+                # Selectively stage files, avoiding sensitive content
+                safe_files = self._get_safe_files_for_staging()
+                if safe_files:
+                    for file_path in safe_files:
+                        self.repo.git.add(file_path)
+                    
+                    commit_message = f"AEP backup before task {task.id}: {task.title}"
+                    commit = self.repo.index.commit(commit_message)
+                    task.backup_commit = commit.hexsha
+                    logger.info(f"Created backup commit: {commit.hexsha}")
+                else:
+                    logger.info("No safe files to backup")
             except Exception as e:
                 logger.warning(f"Failed to create backup commit: {e}")
         else:
             logger.warning("Git not available - no backup created")
+
+    def _get_safe_files_for_staging(self) -> List[str]:
+        """Get list of safe files for git staging, excluding sensitive content"""
+        import os
+        import fnmatch
+        
+        if not self.repo:
+            return []
+        
+        # Patterns for sensitive files to exclude
+        sensitive_patterns = [
+            "*.env", "*.env.*", ".env*",
+            "*.key", "*.pem", "*.p12", "*.pfx",
+            "*secret*", "*password*", "*credential*",
+            "*.conf", "config/*", ".aws/*", ".ssh/*",
+            "*.log", "logs/*", "temp/*", "tmp/*",
+            "__pycache__/*", "*.pyc", ".git/*",
+            "node_modules/*", ".venv/*", "venv/*"
+        ]
+        
+        safe_files = []
+        repo_root = self.repo.working_dir
+        if not repo_root:
+            return []
+        
+        # Get all modified/new files
+        try:
+            untracked_files = self.repo.untracked_files
+            modified_files = [item.a_path for item in self.repo.index.diff(None)]
+            staged_files = [item.a_path for item in self.repo.index.diff("HEAD")]
+        except Exception:
+            return []
+        
+        all_files = set(untracked_files + modified_files + staged_files)
+        
+        for file_path in all_files:
+            if not file_path:  # Skip None/empty paths
+                continue
+                
+            # Check if file matches any sensitive pattern
+            is_sensitive = any(
+                fnmatch.fnmatch(file_path.lower(), pattern.lower()) 
+                for pattern in sensitive_patterns
+            )
+            
+            if not is_sensitive:
+                # Additional check: don't stage files with sensitive content
+                full_path = os.path.join(repo_root, file_path)
+                try:
+                    if os.path.isfile(full_path) and self._file_content_is_safe(full_path):
+                        safe_files.append(file_path)
+                except Exception:
+                    # If we can't read the file, skip it for safety
+                    continue
+                    
+        return safe_files
+    
+    def _file_content_is_safe(self, file_path: str) -> bool:
+        """Check if file content appears safe (no obvious secrets)"""
+        sensitive_keywords = [
+            "password", "secret", "token", "key", "credential",
+            "api_key", "auth_token", "private_key", "access_token"
+        ]
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                # Only read first 1KB to check for obvious secrets
+                content = f.read(1024).lower()
+                
+            # Check for obvious secret patterns
+            return not any(keyword in content for keyword in sensitive_keywords)
+        except Exception:
+            # If we can't read it safely, don't stage it
+            return False
 
     async def _generate_code_for_step(
         self, task: CodingTask, step: CodingStep
@@ -944,12 +1024,35 @@ class EnhancedAutonomousCodingEngine:
                 logger.info(f"Created file: {step.file_path}")
 
             elif step.operation == "modify":
-                # Modify existing file
+                # Modify existing file with atomic operation
                 if file_path.exists():
-                    # Write new content
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(generated_code)
-                    logger.info(f"Modified file: {step.file_path}")
+                    # Atomic file modification: write to temp file, then rename
+                    import tempfile
+                    temp_file = None
+                    try:
+                        # Create temporary file in same directory for atomic rename
+                        with tempfile.NamedTemporaryFile(
+                            mode="w", 
+                            encoding="utf-8", 
+                            dir=file_path.parent,
+                            suffix=".tmp",
+                            delete=False
+                        ) as temp_file:
+                            temp_file.write(generated_code)
+                            temp_file_path = temp_file.name
+                        
+                        # Atomic rename operation
+                        os.rename(temp_file_path, file_path)
+                        logger.info(f"Modified file atomically: {step.file_path}")
+                        
+                    except Exception as e:
+                        # Clean up temp file if operation failed
+                        if temp_file and os.path.exists(temp_file.name):
+                            try:
+                                os.unlink(temp_file.name)
+                            except OSError:
+                                pass
+                        raise e
                 else:
                     raise FileNotFoundError(f"File not found: {step.file_path}")
 
@@ -1093,18 +1196,27 @@ class EnhancedAutonomousCodingEngine:
 
                     if not branch_exists:
                         # Commit current changes first, then create and checkout new branch
-                        self.repo.git.add(A=True)
-                        if self.repo.is_dirty():
-                            self.repo.index.commit(
-                                f"AEP: Auto-commit before creating branch {branch}"
-                            )
+                        safe_files = self._get_safe_files_for_staging()
+                        if safe_files:
+                            for file_path in safe_files:
+                                self.repo.git.add(file_path)
+                            
+                            if self.repo.is_dirty():
+                                self.repo.index.commit(
+                                    f"AEP: Auto-commit before creating branch {branch}"
+                                )
+                        
                         new_branch = self.repo.create_head(branch)
                         new_branch.checkout()
 
-                        # Commit all changes
-                        self.repo.git.add(A=True)
-                        commit_message = f"{task.jira_key}: {task.title}\n\nImplemented by AEP Autonomous Coding Engine"
-                        self.repo.index.commit(commit_message)
+                        # Commit all safe changes
+                        safe_files = self._get_safe_files_for_staging()
+                        if safe_files:
+                            for file_path in safe_files:
+                                self.repo.git.add(file_path)
+                            
+                            commit_message = f"{task.jira_key}: {task.title}\n\nImplemented by AEP Autonomous Coding Engine"
+                            self.repo.index.commit(commit_message)
 
                         # Push branch if GitHub service is available
                         if self.github_service:

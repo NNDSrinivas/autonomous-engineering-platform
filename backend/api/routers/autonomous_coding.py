@@ -77,7 +77,6 @@ class ConciergeGreetingResponse(BaseModel):
     quick_actions: List[Dict[str, Any]]
 
 
-
 def get_coding_engine(
     workspace_id: str = "default", db: Optional[Session] = None
 ) -> EnhancedAutonomousCodingEngine:

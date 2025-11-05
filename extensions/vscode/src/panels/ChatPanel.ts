@@ -35,6 +35,10 @@ export class ChatPanel {
   private _disposables: vscode.Disposable[] = [];
   private _chatState: ChatState = { messages: [] };
   private _apiBase: string;
+  private _messageCounter = 0;
+
+  // Counter wrapping constant for 32-bit unsigned integer overflow protection
+  private static readonly MAX_COUNTER_VALUE = 0xFFFFFFFF;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -96,6 +100,29 @@ export class ChatPanel {
     ChatPanel.currentPanel = new ChatPanel(panel, extensionUri);
   }
 
+  private _generateMessageId(prefix: string): string {
+    try {
+      // Single crypto require with nested fallback methods
+      const crypto = require('crypto');
+      try {
+        // Use crypto.randomUUID() as primary method (available in Node.js 14.17+)
+        return `${prefix}-${crypto.randomUUID()}`;
+      } catch {
+        // Fallback: use timestamp and cryptographically secure random bytes
+        const timestamp = Date.now();
+        const randomHex = crypto.randomBytes(8).toString('hex'); // 8 random bytes (64 bits) as 16 hex characters
+        this._messageCounter = (this._messageCounter + 1) % (ChatPanel.MAX_COUNTER_VALUE + 1);
+        return `${prefix}-${timestamp}-${randomHex}-${this._messageCounter}`;
+      }
+    } catch {
+      // If crypto module fails entirely, fallback to Math.random (last resort)
+      const timestamp = Date.now();
+      const randomHex = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
+      this._messageCounter = (this._messageCounter + 1) % (ChatPanel.MAX_COUNTER_VALUE + 1);
+      return `${prefix}-${timestamp}-${randomHex}-${this._messageCounter}`;
+    }
+  }
+
   private async _initializeChat() {
     // Load previous chat history if exists
     await this._loadChatHistory();
@@ -103,7 +130,7 @@ export class ChatPanel {
     // Add welcome message with team context
     const welcomeMessage = await this._generateWelcomeMessage();
     this._addMessage({
-      id: `msg-${Date.now()}`,
+      id: this._generateMessageId('msg'),
       type: 'assistant',
       content: welcomeMessage.text,
       timestamp: new Date(),
@@ -170,7 +197,7 @@ export class ChatPanel {
   private async _handleUserMessage(text: string) {
     // Add user message to chat
     const userMessage: ChatMessage = {
-      id: `msg-${Date.now()}`,
+      id: this._generateMessageId('msg'),
       type: 'user',
       content: text,
       timestamp: new Date()
@@ -186,7 +213,7 @@ export class ChatPanel {
       
       // Add assistant response
       const assistantMessage: ChatMessage = {
-        id: `msg-${Date.now() + 1}`,
+        id: this._generateMessageId('msg'),
         type: 'assistant',
         content: response.content,
         timestamp: new Date(),
@@ -197,7 +224,7 @@ export class ChatPanel {
       // Add proactive suggestions if any
       if (response.suggestions && response.suggestions.length > 0) {
         const suggestionMessage: ChatMessage = {
-          id: `msg-${Date.now() + 2}`,
+          id: this._generateMessageId('msg'),
           type: 'suggestion',
           content: 'Here are some things I can help with next:',
           timestamp: new Date(),
@@ -208,7 +235,7 @@ export class ChatPanel {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this._addMessage({
-        id: `msg-${Date.now() + 1}`,
+        id: this._generateMessageId('msg'),
         type: 'assistant',
         content: `I encountered an error: ${errorMessage}. Let me try a different approach.`,
         timestamp: new Date()
@@ -302,8 +329,8 @@ export class ChatPanel {
 
   private async _loadProactiveSuggestions() {
     try {
-      // Use memory graph to generate proactive suggestions
-      const response = await fetch(`${this._apiBase}/api/suggestions/proactive`, {
+      // Use memory graph to generate proactive suggestions via chat endpoint
+      const response = await fetch(`${this._apiBase}/api/chat/proactive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -319,7 +346,7 @@ export class ChatPanel {
         const suggestions = await response.json();
         if (suggestions.items && suggestions.items.length > 0) {
           this._addMessage({
-            id: `proactive-${Date.now()}`,
+            id: this._generateMessageId('proactive'),
             type: 'suggestion',
             content: '💡 Based on your recent work, I noticed:',
             timestamp: new Date(),
@@ -334,8 +361,30 @@ export class ChatPanel {
 
   private async _getCurrentWorkspaceFiles(): Promise<string[]> {
     try {
-      const files = await vscode.workspace.findFiles('**/*.{py,js,ts,jsx,tsx}', '**/node_modules/**', 10);
-      return files.map(file => file.fsPath);
+      // Read file patterns and maxFiles from VS Code settings, with defaults
+      const config = vscode.workspace.getConfiguration('aepAgent');
+      const patterns: string[] = config.get<string[]>('fileDiscovery.patterns', [
+        '**/*.py', '**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx'
+      ]);
+      const maxFiles: number = config.get<number>('fileDiscovery.maxFiles', 20);
+      const allFiles: vscode.Uri[] = [];
+      
+      // Search patterns until we reach the limit
+      for (const pattern of patterns) {
+        if (allFiles.length >= maxFiles) break;
+        
+        const remainingSlots = maxFiles - allFiles.length;
+        const files = await vscode.workspace.findFiles(
+          pattern, 
+          '**/node_modules/**', 
+          remainingSlots
+        );
+        allFiles.push(...files);
+      }
+      
+      // Deduplicate and return
+      const uniquePaths = Array.from(new Set(allFiles.map(file => file.fsPath)));
+      return uniquePaths.slice(0, maxFiles);
     } catch {
       return [];
     }
@@ -343,7 +392,11 @@ export class ChatPanel {
 
   private async _getRecentChanges(): Promise<any[]> {
     try {
-      // This would integrate with git to get recent changes
+      // TODO: Implement git integration to get recent changes
+      // This would use vscode.extensions.getExtension('vscode.git') API
+      // or execute git commands via vscode.workspace.workspaceFolders
+      // NOTE: Accessing the git extension or executing git commands may require user consent or workspace trust.
+      // Ensure appropriate security and permission checks are implemented before accessing these resources.
       return [];
     } catch {
       return [];
@@ -353,7 +406,10 @@ export class ChatPanel {
   private _addMessage(message: ChatMessage) {
     this._chatState.messages.push(message);
     this._updateWebview();
-    this._saveChatHistory();
+    // TODO: Implement chat history persistence.
+    //       Persist chat history using VS Code workspace storage (vscode.workspaceState or vscode.globalState).
+    //       Serialize messages as JSON for storage and retrieval.
+    // this._saveChatHistory();
   }
 
   private _updateWebview() {
@@ -393,9 +449,9 @@ export class ChatPanel {
     try {
       const response = await fetch(`${this._apiBase}/api/context/task/${encodeURIComponent(taskKey)}`);
       const contextPack = await response.json();
-      
+
       this._addMessage({
-        id: `task-selected-${Date.now()}`,
+        id: this._generateMessageId('task-selected'),
         type: 'assistant',
         content: `Great! I've loaded context for **${taskKey}**. Here's what I understand:\n\n${contextPack.explain?.what || 'Task details loading...'}\n\nHow would you like to proceed?`,
         timestamp: new Date(),
@@ -411,7 +467,7 @@ export class ChatPanel {
       });
     } catch (error) {
       this._addMessage({
-        id: `task-error-${Date.now()}`,
+        id: this._generateMessageId('task-error'),
         type: 'assistant',
         content: `I've selected task ${taskKey}, but couldn't load all details. How would you like to proceed?`,
         timestamp: new Date(),
@@ -645,6 +701,24 @@ export class ChatPanel {
                     break;
             }
         });
+
+        function escapeHtml(value) {
+            return (value ?? '')
+                .toString()
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderMarkdown(text) {
+            const escaped = escapeHtml(text);
+            return escaped
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\`(.*?)\`/g, '<code>$1</code>')
+                .replace(/\\n/g, '<br>');
+        }
         
         function renderChat() {
             const container = document.getElementById('chatContainer');
@@ -663,13 +737,9 @@ export class ChatPanel {
             const messageEl = document.createElement('div');
             messageEl.className = \`message \${message.type}\`;
             
-            // Format content with basic markdown support
-            let content = message.content
-                .replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>')
-                .replace(/\`(.*?)\`/g, '<code>$1</code>')
-                .replace(/\\n/g, '<br>');
-            
-            messageEl.innerHTML = content;
+            // Format content with escaped markdown rendering
+            const contentHtml = renderMarkdown(message.content);
+            messageEl.innerHTML = contentHtml;
             
             // Add timestamp
             const timestamp = document.createElement('div');
@@ -682,7 +752,12 @@ export class ChatPanel {
                 if (message.context.taskKey) {
                     const contextEl = document.createElement('div');
                     contextEl.className = 'context-info';
-                    contextEl.innerHTML = \`<strong>Task:</strong> \${message.context.taskKey}\`;
+                    const labelEl = document.createElement('strong');
+                    labelEl.textContent = 'Task:';
+                    const valueEl = document.createElement('span');
+                    valueEl.textContent = \` \${message.context.taskKey}\`;
+                    contextEl.appendChild(labelEl);
+                    contextEl.appendChild(valueEl);
                     messageEl.appendChild(contextEl);
                 }
                 

@@ -3,6 +3,7 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { MemoryGraphPage } from './pages/MemoryGraphPage'
 import { PlansListPage } from './pages/PlansListPage'
 import { PlanView } from './pages/PlanView'
+import ConciergePage from './pages/ConciergePage'
 
 function HomePage() {
   return (
@@ -15,6 +16,14 @@ function HomePage() {
           <div className="bg-white/5 rounded-lg p-6">
             <h2 className="text-xl font-semibold mb-3 text-white">Available Features</h2>
             <ul className="space-y-3">
+              <li>
+                <Link 
+                  to="/concierge" 
+                  className="block bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                >
+                  🌟 Task Concierge
+                </Link>
+              </li>
               <li>
                 <Link 
                   to="/memory/graph" 
@@ -82,6 +91,7 @@ function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/concierge" element={<ConciergePage />} />
         <Route path="/memory/graph" element={<MemoryGraphPage />} />
         <Route path="/plans" element={<PlansListPage />} />
         <Route path="/plan/:id" element={<PlanView />} />

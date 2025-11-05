@@ -139,16 +139,53 @@ def apply_diff(
     validate_unified_diff(diff_text)
 
     # Create temporary file for diff with secure permissions (atomic)
-    fd, patch_file = tempfile.mkstemp(
-        suffix=".patch", dir=tempfile.gettempdir(), text=True
-    )
+    # Use mkstemp to create file with proper permissions to prevent race conditions
+    temp_fd = None
+    patch_file = None
+
     try:
-        with os.fdopen(fd, "w") as tf:
+        # Create temporary file with restricted permissions to prevent race condition
+        temp_fd, patch_file = tempfile.mkstemp(
+            suffix=".patch", dir=tempfile.gettempdir(), text=True
+        )
+        # Set restrictive permissions immediately after creation
+        os.chmod(patch_file, 0o600)
+
+        # Write diff content using file descriptor
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as tf:
             tf.write(diff_text)
-    except Exception:
-        # Clean up if writing fails
-        Path(patch_file).unlink(missing_ok=True)
-        raise
+    except (IOError, OSError) as e:
+        # Clean up on file operation failure
+        if temp_fd is not None:
+            try:
+                os.close(temp_fd)
+            except OSError:
+                # Ignore errors during cleanup; failure to close fd is not critical here
+                pass
+        if patch_file and os.path.exists(patch_file):
+            try:
+                os.unlink(patch_file)
+            except OSError:
+                # Ignore errors during cleanup; file may not exist or be already removed
+                pass
+        # Re-raise the original file operation error
+        raise e
+    except Exception as e:
+        # Handle unexpected exceptions - clean up and re-raise
+        if temp_fd is not None:
+            try:
+                os.close(temp_fd)
+            except OSError:
+                # Ignore errors during cleanup; failure to close fd is not critical here
+                pass
+        if patch_file and os.path.exists(patch_file):
+            try:
+                os.unlink(patch_file)
+            except OSError:
+                # Ignore errors during cleanup; file may not exist or be already removed
+                pass
+        # Re-raise unexpected exceptions to avoid hiding errors
+        raise e
 
     try:
         # Build git apply command

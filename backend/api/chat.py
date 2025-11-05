@@ -6,16 +6,92 @@ Provides context-aware responses with team intelligence
 from fastapi import APIRouter, Depends
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+import asyncio
 import logging
-import requests
+import httpx  # Use async httpx instead of sync requests
 from sqlalchemy.orm import Session
+from urllib.parse import urlparse
 
 from backend.core.db import get_db
+from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+# Time constants for timestamp formatting - using timedelta for better maintainability
+SECONDS_PER_MINUTE = int(timedelta(minutes=1).total_seconds())  # 60
+SECONDS_PER_HOUR = int(timedelta(hours=1).total_seconds())  # 3600
+SECONDS_PER_DAY = int(timedelta(days=1).total_seconds())  # 86400
+SECONDS_PER_WEEK = int(timedelta(weeks=1).total_seconds())  # 604800
+# NOTE: Month approximation using average month length (30.44 days)
+# This is an approximation and may have edge cases for specific months:
+# - February: 28/29 days (difference of ~2.4/1.4 days)
+# - Months with 31 days: difference of ~0.56 days
+# For precise month calculations, use dateutil.relativedelta
+SECONDS_PER_MONTH = int(
+    timedelta(days=30.44).total_seconds()
+)  # 2628000 (~30.44 days average)
+SECONDS_PER_YEAR = int(timedelta(days=365).total_seconds())  # 31536000
+
+# HTTP client management - thread-safe singleton pattern
+_async_client: Optional[httpx.AsyncClient] = None
+_client_lock: Optional[asyncio.Lock] = None
+
+
+async def get_http_client() -> httpx.AsyncClient:
+    """Get or create httpx.AsyncClient instance with thread-safe initialization"""
+    global _async_client, _client_lock
+
+    # Lazy lock initialization to avoid import-time event loop issues
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
+
+    async with _client_lock:
+        if _async_client is None:
+            try:
+                _async_client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(10.0),
+                    limits=httpx.Limits(
+                        max_keepalive_connections=5, max_connections=10
+                    ),
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize httpx.AsyncClient: {e}")
+                raise
+        return _async_client
+
+
+async def close_http_client():
+    """Close shared httpx client (for use in app lifespan)"""
+    global _async_client, _client_lock
+
+    # Lazy lock initialization if needed
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
+
+    async with _client_lock:
+        if _async_client is not None:
+            await _async_client.aclose()
+            _async_client = None
+
+
+# Configuration helper for API base URL with validation
+def get_api_base_url() -> str:
+    """Get the API base URL from settings or environment with validation"""
+    url = getattr(settings, "API_BASE_URL", "http://localhost:8002")
+
+    # Basic URL validation
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            logger.warning(f"Invalid API_BASE_URL: {url}, using default")
+            return "http://localhost:8002"
+        return url
+    except Exception as e:
+        logger.error(f"Error parsing API_BASE_URL {url}: {e}")
+        return "http://localhost:8002"
 
 
 class ChatMessage(BaseModel):
@@ -79,7 +155,8 @@ async def generate_chat_response(
         )
 
 
-@router.post("/suggestions/proactive")
+@router.post("/proactive")
+@router.post("/suggestions/proactive")  # Backward compatibility
 async def generate_proactive_suggestions(
     request: ProactiveSuggestionsRequest, db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
@@ -190,9 +267,11 @@ async def _build_enhanced_context(
     # Try to add task context if current task is set
     if request.currentTask:
         try:
-            # Make request to existing context API
-            response = requests.get(
-                f"http://localhost:8002/api/context/task/{request.currentTask}"
+            # Make async request to existing context API
+            api_base = get_api_base_url()
+            client = await get_http_client()
+            response = await client.get(
+                f"{api_base}/api/context/task/{request.currentTask}"
             )
             if response.status_code == 200:
                 enhanced_context["task_context"] = response.json()
@@ -209,7 +288,9 @@ async def _handle_task_query(
     try:
         # Try to get tasks from JIRA API
         try:
-            response = requests.get("http://localhost:8002/api/jira/tasks")
+            api_base = get_api_base_url()
+            client = await get_http_client()
+            response = await client.get(f"{api_base}/api/jira/tasks")
             if response.status_code == 200:
                 data = response.json()
                 tasks = data.get("items", [])
@@ -282,12 +363,14 @@ async def _handle_team_query(
         # Try to get team activity
         team_activity = []
         try:
-            response = requests.get("http://localhost:8002/api/activity/recent")
+            api_base = get_api_base_url()
+            client = await get_http_client()
+            response = await client.get(f"{api_base}/api/activity/recent")
             if response.status_code == 200:
                 data = response.json()
                 team_activity = data.get("items", [])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to fetch team activity: {e}")
 
         if not team_activity:
             return ChatResponse(
@@ -474,9 +557,64 @@ async def _handle_general_query(
 
 
 def _format_time_ago(timestamp: str) -> str:
-    """Format timestamp as time ago"""
+    """Format timestamp as time ago
+
+    Note: Month calculations use an approximation of 30.44 days and may have edge cases:
+    - February: 28/29 days (difference of ~2.4/1.4 days)
+    - Months with 31 days: difference of ~0.56 days
+    For precise month calculations, consider using dateutil.relativedelta
+    """
+    if not timestamp:
+        return "unknown time"
+
     try:
-        # Simple implementation for now
-        return "2 hours ago"
-    except Exception:
+        now = datetime.now(timezone.utc)
+
+        # Handle different timestamp formats
+        if isinstance(timestamp, str):
+            try:
+                # Try ISO format first
+                ts_dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            except ValueError:
+                try:
+                    # Try UNIX timestamp (seconds)
+                    ts_dt = datetime.fromtimestamp(float(timestamp), tz=timezone.utc)
+                except (ValueError, TypeError):
+                    return "unknown time"
+        elif isinstance(timestamp, datetime):
+            ts_dt = timestamp
+            if ts_dt.tzinfo is None:
+                ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+        else:
+            return "unknown time"
+
+        # Calculate time difference
+        diff = now - ts_dt
+        seconds = int(diff.total_seconds())
+
+        if seconds < 0:
+            return "in the future"
+        elif seconds < SECONDS_PER_MINUTE:
+            return f"{seconds} second{'s' if seconds != 1 else ''} ago"
+        elif seconds < SECONDS_PER_HOUR:
+            minutes = seconds // SECONDS_PER_MINUTE
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        elif seconds < SECONDS_PER_DAY:
+            hours = seconds // SECONDS_PER_HOUR
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        elif seconds < SECONDS_PER_WEEK:
+            days = seconds // SECONDS_PER_DAY
+            return f"{days} day{'s' if days != 1 else ''} ago"
+        elif seconds < SECONDS_PER_MONTH:
+            weeks = seconds // SECONDS_PER_WEEK
+            return f"{weeks} week{'s' if weeks != 1 else ''} ago"
+        elif seconds < SECONDS_PER_YEAR:
+            months = seconds // SECONDS_PER_MONTH
+            return f"{months} month{'s' if months != 1 else ''} ago"
+        else:
+            years = seconds // SECONDS_PER_YEAR
+            return f"{years} year{'s' if years != 1 else ''} ago"
+
+    except Exception as e:
+        logger.warning(f"Error formatting timestamp {timestamp}: {e}")
         return "recently"

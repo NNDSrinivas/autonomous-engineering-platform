@@ -349,10 +349,13 @@ export class ChatPanel {
 
   private async _getCurrentWorkspaceFiles(): Promise<string[]> {
     try {
-      // Use shared limit across all patterns for better performance
-      const patterns = ['**/*.py', '**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx'];
+      // Read file patterns and maxFiles from VS Code settings, with defaults
+      const config = vscode.workspace.getConfiguration('aepAgent');
+      const patterns: string[] = config.get<string[]>('fileDiscovery.patterns', [
+        '**/*.py', '**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx'
+      ]);
+      const maxFiles: number = config.get<number>('fileDiscovery.maxFiles', 20);
       const allFiles: vscode.Uri[] = [];
-      const maxFiles = 20;
       
       // Search patterns until we reach the limit
       for (const pattern of patterns) {

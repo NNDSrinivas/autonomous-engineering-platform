@@ -1110,14 +1110,36 @@ class EnhancedAutonomousCodingEngine:
             if step.operation == "create" and file_path.parent.is_symlink():
                 raise SecurityError("Refusing to create file in symlinked directory")
 
-            # 3. Resolve path strictly (raises if file does not exist for modify/delete)
+            # 3. Resolve path with enhanced security for create operations
             try:
-                resolved_path = file_path.resolve(strict=(step.operation != "create"))
-                # 4. Ensure resolved path is within workspace
+                if step.operation == "create":
+                    # For create operations, verify parent directory strictly first
+                    parent_path = file_path.parent.resolve(strict=True)
+                    if parent_path.is_symlink():
+                        raise SecurityError(
+                            "Refusing to create file in symlinked directory"
+                        )
+                    parent_path.relative_to(self.workspace_path.resolve())
+                    # Then resolve the full path without strict requirement
+                    resolved_path = file_path.resolve(strict=False)
+                else:
+                    # For modify/delete, use strict resolution
+                    resolved_path = file_path.resolve(strict=True)
+
+                # 4. Ensure resolved path is within workspace boundaries
                 resolved_path.relative_to(self.workspace_path.resolve())
-            except (ValueError, FileNotFoundError):
+            except FileNotFoundError:
+                if step.operation != "create":
+                    raise SecurityError(
+                        "Invalid file path: file does not exist for modify/delete operation"
+                    )
+                else:
+                    raise SecurityError(
+                        "Invalid file path: parent directory does not exist"
+                    )
+            except ValueError:
                 raise SecurityError(
-                    "Invalid file path: outside workspace or does not exist"
+                    "Invalid file path: resolved path is outside workspace"
                 )
 
             # Security validation: check for dangerous file extensions with whitelist
@@ -1160,17 +1182,23 @@ class EnhancedAutonomousCodingEngine:
                     # Atomic file modification: write to temp file, then rename
                     import tempfile
 
+                    temp_fd = None
                     temp_file_path = None
                     try:
-                        # Create temporary file in secure system temp directory, not user-controlled directory
-                        with tempfile.NamedTemporaryFile(
-                            mode="w",
-                            encoding="utf-8",
+                        # Create temporary file in secure system temp directory with restrictive permissions
+                        temp_fd, temp_file_path = tempfile.mkstemp(
                             suffix=".tmp",
-                            delete=False,
-                        ) as temp_file:
+                            text=True,
+                            dir=None,  # Use secure system temp directory
+                        )
+                        # Set restrictive permissions: only owner can read/write
+                        os.chmod(temp_file_path, 0o600)
+
+                        with os.fdopen(temp_fd, "w", encoding="utf-8") as temp_file:
                             temp_file.write(generated_code)
-                            temp_file_path = temp_file.name
+                        temp_fd = (
+                            None  # File descriptor is closed by fdopen context manager
+                        )
 
                         # Atomic replace operation with cross-filesystem fallback
                         try:
@@ -1181,17 +1209,19 @@ class EnhancedAutonomousCodingEngine:
                         logger.info(f"Modified file atomically: {step.file_path}")
 
                     except Exception as e:
-                        # Clean up temp file if operation failed
+                        # Clean up temp file descriptor and file if operation failed
+                        if temp_fd is not None:
+                            try:
+                                os.close(temp_fd)
+                            except OSError:
+                                pass
                         if temp_file_path and os.path.exists(temp_file_path):
                             try:
                                 os.unlink(temp_file_path)
-                            except FileNotFoundError:
-                                # Ignore if temp file does not exist; cleanup is best-effort
-                                pass
-                            except PermissionError as perm_error:
-                                # Log permission errors as they may indicate a security issue
+                            except OSError as cleanup_error:
+                                # Log cleanup errors but don't fail the operation
                                 logger.warning(
-                                    f"Permission error cleaning temp file {temp_file_path}: {perm_error}"
+                                    f"Failed to cleanup temp file {temp_file_path}: {cleanup_error}"
                                 )
                         raise e
                 else:

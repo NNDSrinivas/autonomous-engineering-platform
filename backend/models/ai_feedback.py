@@ -43,8 +43,6 @@ class AiGenerationLog(Base):
     prompt_hash = Column(String(64), nullable=False)
     result_ref = Column(String(128), nullable=True)  # e.g., diff sha
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    result_ref = Column(String(128), nullable=True)  # e.g., diff sha
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     # Relationship to feedback
     feedback = relationship(

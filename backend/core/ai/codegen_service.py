@@ -421,8 +421,7 @@ async def generate_unified_diff(
             logger.warning(
                 "Learning services not available (missing dependencies), using default parameters"
             )
-        except (KeyError, ValueError, ConnectionError) as e:
-            # KeyError: Context dictionary missing required keys (task_type, input_size_bucket, user_experience)
+        except (ValueError, ConnectionError) as e:
             # ValueError: Invalid parameter values or configuration
             # ConnectionError: Redis/cache connectivity issues
             logger.warning(

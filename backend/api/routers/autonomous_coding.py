@@ -133,19 +133,20 @@ def get_engine_with_session(workspace_id: str, db: Session):
     # Create new engine instance for each request to ensure thread safety
     llm_service = LLMService()
     vector_store = VectorStore()  # Initialize vector store
-    
+
     # Use configurable workspace base path with validation
     workspace_base = getattr(settings, "WORKSPACE_BASE_PATH", "/tmp/workspaces")
     workspace_path = Path(workspace_base) / workspace_id
-    
+
     # Ensure workspace directory exists and is accessible
     try:
         workspace_path.mkdir(parents=True, exist_ok=True)
     except PermissionError:
         raise HTTPException(
-            status_code=403, detail=f"Cannot create workspace directory: {workspace_path}"
+            status_code=403,
+            detail=f"Cannot create workspace directory: {workspace_path}",
         )
-    
+
     # Create new engine instance with request-scoped session
     engine = EnhancedAutonomousCodingEngine(
         llm_service=llm_service,
@@ -153,7 +154,7 @@ def get_engine_with_session(workspace_id: str, db: Session):
         workspace_path=str(workspace_path),  # Convert Path to string
         db_session=db,  # Request-scoped session
     )
-    
+
     return engine
 
 

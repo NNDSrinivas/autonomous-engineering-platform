@@ -154,18 +154,20 @@ def apply_diff(
         # Write diff content using file descriptor
         with os.fdopen(temp_fd, "w", encoding="utf-8") as tf:
             tf.write(diff_text)
-        temp_fd = None  # File descriptor closed by fdopen context manager
+        # Note: temp_fd is closed by fdopen context manager, no longer needed
     except Exception:
         # Clean up on failure
         if temp_fd is not None:
             try:
                 os.close(temp_fd)
             except OSError:
+                # Ignore errors during cleanup; failure to close fd is not critical here
                 pass
         if patch_file and os.path.exists(patch_file):
             try:
                 os.unlink(patch_file)
             except OSError:
+                # Ignore errors during cleanup; file may not exist or be already removed
                 pass
         raise
 

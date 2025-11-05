@@ -142,17 +142,15 @@ def apply_diff(
     # Use mkstemp to create file with proper permissions to prevent race conditions
     temp_fd = None
     patch_file = None
-    
+
     try:
         # Create temporary file with restricted permissions to prevent race condition
         temp_fd, patch_file = tempfile.mkstemp(
-            suffix=".patch", 
-            dir=tempfile.gettempdir(), 
-            text=True
+            suffix=".patch", dir=tempfile.gettempdir(), text=True
         )
         # Set restrictive permissions immediately after creation
         os.chmod(patch_file, 0o600)
-        
+
         # Write diff content using file descriptor
         with os.fdopen(temp_fd, "w", encoding="utf-8") as tf:
             tf.write(diff_text)

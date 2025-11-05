@@ -357,6 +357,8 @@ export class ChatPanel {
       // TODO: Implement git integration to get recent changes
       // This would use vscode.extensions.getExtension('vscode.git') API
       // or execute git commands via vscode.workspace.workspaceFolders
+      // NOTE: Accessing the git extension or executing git commands may require user consent or workspace trust.
+      // Ensure appropriate security and permission checks are implemented before accessing these resources.
       return [];
     } catch {
       return [];
@@ -366,7 +368,9 @@ export class ChatPanel {
   private _addMessage(message: ChatMessage) {
     this._chatState.messages.push(message);
     this._updateWebview();
-    // TODO: Implement chat history persistence
+    // TODO: Implement chat history persistence.
+    //       Persist chat history using VS Code workspace storage (vscode.workspaceState or vscode.globalState).
+    //       Serialize messages as JSON for storage and retrieval.
     // this._saveChatHistory();
   }
 

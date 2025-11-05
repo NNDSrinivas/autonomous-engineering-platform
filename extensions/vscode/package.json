@@ -52,6 +52,23 @@
         "aep.policyFile": {
           "type": "string",
           "default": ".aepolicy.json"
+        },
+        "aepAgent.fileDiscovery.patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["**/*.py", "**/*.js", "**/*.ts", "**/*.jsx", "**/*.tsx"],
+          "description": "File patterns for workspace file discovery",
+          "markdownDescription": "Glob patterns used to discover files in the workspace. Supports standard glob syntax like `**/*.py` for all Python files."
+        },
+        "aepAgent.fileDiscovery.maxFiles": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of files to discover per workspace scan",
+          "markdownDescription": "Limits the number of files returned by workspace discovery to prevent performance issues."
         }
       }
     }

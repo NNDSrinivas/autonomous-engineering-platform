@@ -275,11 +275,20 @@ async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
 
         logger.info(f"Created PR for task {task_id}: {result.get('pr_url', 'unknown')}")
 
+        # If error, raise HTTPException with generic message, otherwise return result
+        if result.get("status") == "error":
+            logger.error(
+                f"Failed to create PR for task {task_id}: {result.get('error')}"
+            )
+            raise HTTPException(
+                status_code=500, detail="Failed to create pull request."
+            )
+
         return result
 
     except Exception as e:
         logger.error(f"Failed to create PR for task {task_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create pull request.")
 
 
 @router.get("/health")
@@ -298,7 +307,7 @@ async def health_check():
 
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return {"status": "unhealthy", "error": str(e)}
+        return {"status": "unhealthy", "error": "An internal error has occurred."}
 
 
 @router.get("/user-daily-context")

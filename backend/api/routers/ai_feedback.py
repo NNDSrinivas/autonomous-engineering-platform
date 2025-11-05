@@ -71,7 +71,7 @@ async def submit_feedback(
     except (ValueError, ConnectionError) as e:
         # Log error but don't fail the feedback submission
         logger.warning(f"Failed to update bandit learning: {e}")
-    except Exception as e:
+    except Exception:
         # Log unexpected errors
         logger.exception("Unexpected error in bandit learning")
 

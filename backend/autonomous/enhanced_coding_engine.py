@@ -981,11 +981,13 @@ class EnhancedAutonomousCodingEngine:
             # Generate code using LLM service with sanitized inputs
             sanitized_file_path = self._sanitize_prompt_input(step.file_path)
             sanitized_description = self._sanitize_prompt_input(step.description)
-            
+
             if step.operation == "create":
                 prompt = f"Create a new file '{sanitized_file_path}' for: {sanitized_description}"
             elif step.operation == "modify":
-                prompt = f"Modify file '{sanitized_file_path}' to: {sanitized_description}"
+                prompt = (
+                    f"Modify file '{sanitized_file_path}' to: {sanitized_description}"
+                )
             else:  # delete
                 prompt = f"Prepare to delete file '{sanitized_file_path}' because: {sanitized_description}"
 
@@ -1097,6 +1099,7 @@ class EnhancedAutonomousCodingEngine:
                         except OSError:
                             # Fallback for cross-filesystem moves
                             import shutil
+
                             shutil.move(temp_file_path, str(file_path))
                         logger.info(f"Modified file atomically: {step.file_path}")
 
@@ -1407,47 +1410,80 @@ class EnhancedAutonomousCodingEngine:
                         if (
                             isinstance(node.func.value, ast.Name)
                             and node.func.value.id == "os"
-                            and node.func.attr in {"system", "popen", "execv", "execl", "spawnl"}
+                            and node.func.attr
+                            in {"system", "popen", "execv", "execl", "spawnl"}
                         ):
                             return True
                         if (
                             isinstance(node.func.value, ast.Name)
                             and node.func.value.id == "subprocess"
-                            and node.func.attr in {"call", "run", "Popen", "check_call", "check_output"}
+                            and node.func.attr
+                            in {"call", "run", "Popen", "check_call", "check_output"}
                         ):
                             return True
                         # Check for getattr/setattr with dangerous names
-                        if (
-                            isinstance(node.func.value, ast.Name)
-                            and node.func.value.id in {"builtins", "globals", "locals"}
-                        ):
+                        if isinstance(
+                            node.func.value, ast.Name
+                        ) and node.func.value.id in {"builtins", "globals", "locals"}:
                             return True
 
                 # Check for dangerous imports
                 elif isinstance(node, (ast.Import, ast.ImportFrom)):
-                    dangerous_modules = {"os", "subprocess", "sys", "importlib", "ctypes", "marshal", "pickle"}
+                    dangerous_modules = {
+                        "os",
+                        "subprocess",
+                        "sys",
+                        "importlib",
+                        "ctypes",
+                        "marshal",
+                        "pickle",
+                    }
                     for alias in node.names:
                         if alias.name in dangerous_modules:
                             return True
 
                 # Check for attribute access that could be dangerous
                 elif isinstance(node, ast.Attribute):
-                    if node.attr in {"__builtins__", "__globals__", "__code__", "__class__"}:
+                    if node.attr in {
+                        "__builtins__",
+                        "__globals__",
+                        "__code__",
+                        "__class__",
+                    }:
                         return True
-                        
+
                 # Check for dangerous string operations that could construct dangerous calls
                 elif isinstance(node, ast.BinOp):
                     if isinstance(node.op, ast.Add):
                         # Check for string concatenation that might build dangerous calls
-                        if (isinstance(node.left, (ast.Str, ast.Constant)) and 
-                            isinstance(node.right, (ast.Str, ast.Constant))):
+                        if isinstance(
+                            node.left, (ast.Str, ast.Constant)
+                        ) and isinstance(node.right, (ast.Str, ast.Constant)):
                             try:
-                                left_val = node.left.s if hasattr(node.left, 's') else node.left.value
-                                right_val = node.right.s if hasattr(node.right, 's') else node.right.value
-                                
-                                if isinstance(left_val, str) and isinstance(right_val, str):
+                                left_val = (
+                                    node.left.s
+                                    if hasattr(node.left, "s")
+                                    else node.left.value
+                                )
+                                right_val = (
+                                    node.right.s
+                                    if hasattr(node.right, "s")
+                                    else node.right.value
+                                )
+
+                                if isinstance(left_val, str) and isinstance(
+                                    right_val, str
+                                ):
                                     combined = left_val + right_val
-                                    if any(danger in combined.lower() for danger in ["exec", "eval", "system", "popen"]):
+                                    if any(
+                                        danger in combined.lower()
+                                        for danger in [
+                                            "exec",
+                                            "eval",
+                                            "system",
+                                            "popen",
+                                        ]
+                                    ):
                                         return True
                             except (AttributeError, TypeError):
                                 # Skip if we can't safely extract string values
@@ -1502,34 +1538,34 @@ class EnhancedAutonomousCodingEngine:
     def _sanitize_prompt_input(self, input_text: str) -> str:
         """Sanitize user input to prevent prompt injection attacks"""
         import re
-        
+
         if not input_text:
             return ""
-            
+
         # Remove/escape potential prompt injection patterns
         sanitized = input_text
-        
+
         # Remove common prompt injection patterns
         injection_patterns = [
-            r'\\n\\s*(?:ignore|forget|disregard).*previous.*instructions',
-            r'\\n\\s*(?:system|assistant|human|user)\\s*:',
-            r'\\n\\s*(?:new|override|replace)\\s+(?:instructions|prompt|task)',
-            r'\\n\\s*(?:act|pretend|role)\\s+(?:as|like)',
-            r'\\n\\s*(?:tell|give|provide)\\s+me.*(?:secret|password|key)',
+            r"\\n\\s*(?:ignore|forget|disregard).*previous.*instructions",
+            r"\\n\\s*(?:system|assistant|human|user)\\s*:",
+            r"\\n\\s*(?:new|override|replace)\\s+(?:instructions|prompt|task)",
+            r"\\n\\s*(?:act|pretend|role)\\s+(?:as|like)",
+            r"\\n\\s*(?:tell|give|provide)\\s+me.*(?:secret|password|key)",
         ]
-        
+
         for pattern in injection_patterns:
-            sanitized = re.sub(pattern, '[REDACTED]', sanitized, flags=re.IGNORECASE)
-        
+            sanitized = re.sub(pattern, "[REDACTED]", sanitized, flags=re.IGNORECASE)
+
         # Limit length to prevent token exhaustion attacks
         max_length = 500
         if len(sanitized) > max_length:
             sanitized = sanitized[:max_length] + "... [TRUNCATED]"
-        
+
         # Escape special characters that could be interpreted as formatting
         sanitized = sanitized.replace('"', '\\"').replace("'", "\\'")
-        
+
         # Remove multiple consecutive newlines that could be used for prompt separation
-        sanitized = re.sub(r'\\n{3,}', '\\n\\n', sanitized)
-        
+        sanitized = re.sub(r"\\n{3,}", "\\n\\n", sanitized)
+
         return sanitized

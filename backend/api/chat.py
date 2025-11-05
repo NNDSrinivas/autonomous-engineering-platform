@@ -557,7 +557,13 @@ async def _handle_general_query(
 
 
 def _format_time_ago(timestamp: str) -> str:
-    """Format timestamp as time ago"""
+    """Format timestamp as time ago
+
+    Note: Month calculations use an approximation of 30.44 days and may have edge cases:
+    - February: 28/29 days (difference of ~2.4/1.4 days)
+    - Months with 31 days: difference of ~0.56 days
+    For precise month calculations, consider using dateutil.relativedelta
+    """
     if not timestamp:
         return "unknown time"
 

@@ -1381,8 +1381,10 @@ class EnhancedAutonomousCodingEngine:
                                     "Cannot perform atomic replace: source and target are on different filesystems"
                                 )
                         except FileNotFoundError:
-                            # Parent directory doesn't exist - this should be caught earlier but handle gracefully
-                            pass
+                            # Parent directory doesn't exist - log a warning; atomic replace will likely fail
+                            logger.warning(
+                                f"Parent directory does not exist for {file_path}. Atomic replace will likely fail."
+                            )
 
                         # Atomic replace operation; verified to be on same filesystem
                         try:
@@ -1603,8 +1605,7 @@ class EnhancedAutonomousCodingEngine:
 
                 except Exception as e:
                     logger.error(f"Git operations failed: {e}")
-                    # Log detailed error for debugging but return generic message
-                    logger.error(f"Git operations failed: {e}")
+                    # Return generic message for security (don't expose internal details)
                     return {
                         "status": "error",
                         "error": "Git operations failed due to an internal error.",

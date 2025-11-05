@@ -154,7 +154,6 @@ def apply_diff(
         # Write diff content using file descriptor
         with os.fdopen(temp_fd, "w", encoding="utf-8") as tf:
             tf.write(diff_text)
-        # Note: temp_fd is closed by fdopen context manager, no longer needed
     except Exception:
         # Clean up on failure
         if temp_fd is not None:

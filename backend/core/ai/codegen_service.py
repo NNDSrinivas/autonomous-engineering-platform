@@ -6,13 +6,18 @@ Includes contextual bandit learning for parameter optimization.
 
 from __future__ import annotations
 import asyncio
-import hashlib
 import os
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .repo_context import repo_snapshot, list_neighbors
 from backend.core.ai_service import AIService
+from backend.core.utils.hashing import sha256_hash
+from backend.llm.router import complete_chat
+from backend.services.learning_service import LearningService, BanditConfigurationError
+from backend.services.feedback_service import FeedbackService
 
 logger = logging.getLogger(__name__)
 
@@ -107,11 +112,23 @@ async def call_model(
     temperature: float = TEMPERATURE,
 ) -> str:
     """
-    Call AI model to generate diff with intelligent fallback strategies.
+    Call AI model to generate diff using the shared model router.
+    Enables bandit learning and parameter optimization.
+
+    The primary approach uses complete_chat() via the model router for centralized routing,
+    fallbacks, and telemetry. If the router fails, a fallback is performed via a private
+    function that handles direct AI service calls, including truncation and retry logic.
+
+    The fallback is triggered if any exception occurs during the router call. This may include:
+    - Router configuration errors (e.g., misconfigured endpoints, missing credentials)
+    - Provider unavailability (e.g., upstream LLM service downtime)
+    - Network errors or timeouts
+    - Unexpected exceptions or failures in the router logic
+    The fallback ensures code generation can proceed even if the centralized router is unavailable.
 
     Args:
         prompt: The formatted prompt with intent and context
-        max_retries: Number of fallback attempts if truncation occurs
+        max_retries: Number of fallback attempts if truncation occurs (only used in fallback path)
         model: AI model to use (from bandit or default)
         temperature: Temperature parameter (from bandit or default)
 
@@ -120,6 +137,42 @@ async def call_model(
 
     Raises:
         Exception: If AI service fails or all strategies exhausted
+    """
+    try:
+        logger.info(
+            f"Starting generation with model: {model}, temperature: {temperature}"
+        )
+
+        # Delegate to the shared model router so learned policy & retries apply
+        text = complete_chat(
+            system=SYSTEM_PROMPT,
+            user=prompt,
+            model=model,
+            temperature=temperature,
+            max_tokens=MAX_TOKENS,
+            timeout_sec=60,
+            task_type="codegen",
+            tags={"feature": "codegen", "route": "/api/ai/generate-diff"},
+        )
+
+        logger.info(f"Generation completed, length: {len(text)} chars")
+        return text.strip()
+
+    except Exception as e:
+        logger.error(f"Failed to call AI model via router: {e}")
+        # Fallback to direct AI service for compatibility
+        return await _fallback_direct_call(prompt, max_retries, model, temperature)
+
+
+async def _fallback_direct_call(
+    prompt: str,
+    max_retries: int = 2,
+    model: str = MODEL,
+    temperature: float = TEMPERATURE,
+) -> str:
+    """
+    Fallback to direct AI service call for compatibility.
+    This maintains existing behavior while transitioning to router.
     """
     ai_service = AIService()
 
@@ -134,7 +187,7 @@ async def call_model(
     for attempt in range(max_retries + 1):
         try:
             logger.info(
-                f"Generation attempt {attempt + 1}/{max_retries + 1}, "
+                f"Fallback attempt {attempt + 1}/{max_retries + 1}, "
                 f"model: {model}, temperature: {temperature}, max_tokens: {current_max_tokens}"
             )
 
@@ -282,8 +335,9 @@ async def generate_unified_diff(
     files: List[str],
     org_key: Optional[str] = None,
     user_role: Optional[str] = None,
-    session=None,
-) -> tuple[str, Optional[int]]:
+    user_sub: Optional[str] = None,
+    session: Optional[AsyncSession] = None,
+) -> Tuple[str, Optional[int]]:
     """
     Generate a unified diff for the given intent and target files.
     Integrates with contextual bandit learning for parameter optimization.
@@ -293,6 +347,7 @@ async def generate_unified_diff(
         files: List of relative file paths to modify
         org_key: Organization key for bandit learning (optional)
         user_role: User role for contextual features (optional)
+        user_sub: User subject ID for logging (optional)
         session: Database session for logging (optional)
 
     Returns:
@@ -333,9 +388,6 @@ async def generate_unified_diff(
 
     if org_key:
         try:
-            from backend.services.learning_service import LearningService
-            from backend.services.feedback_service import FeedbackService
-
             learning_service = LearningService()
 
             # Extract context for bandit
@@ -358,7 +410,7 @@ async def generate_unified_diff(
                 feedback_service = FeedbackService(session)
                 generation_log_id = await feedback_service.log_generation(
                     org_key=org_key,
-                    user_sub="system",  # Would need actual user_sub in real implementation
+                    user_sub=user_sub or "unknown",
                     task_type="codegen",
                     model=model,
                     temperature=temperature,
@@ -368,13 +420,27 @@ async def generate_unified_diff(
                         "bandit_arm": params.get("_bandit_arm"),
                     },
                     prompt=prompt,
-                    input_fingerprint=hashlib.sha256(intent.encode()).hexdigest()[:64],
+                    input_fingerprint=sha256_hash(intent),
                 )
 
         except ImportError:
-            logger.warning("Learning services not available, using default parameters")
-        except Exception as e:
-            logger.warning(f"Failed to use bandit learning: {e}, using defaults")
+            logger.warning(
+                "Learning services not available (missing dependencies), using default parameters"
+            )
+        except BanditConfigurationError as e:
+            # Specific configuration issues with the bandit system
+            logger.warning(
+                f"Bandit configuration error for org {org_key}, user {user_sub or 'unknown'}: {e}, using default parameters"
+            )
+        except ConnectionError:
+            # Redis/cache connectivity issues
+            logger.warning(
+                f"Bandit learning unavailable (Redis connection failed) for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to use bandit learning for org {org_key}, user {user_sub or 'unknown'} due to unexpected error, using defaults"
+            )
 
     # Call model to generate diff
     diff = await call_model(prompt, model=model, temperature=temperature)

@@ -5,7 +5,7 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass, replace
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Dict, List, Any, Tuple, Optional, Union
 from sqlalchemy.orm import Session
 from .providers.openai_provider import OpenAIProvider
 from .providers.anthropic_provider import AnthropicProvider
@@ -119,16 +119,19 @@ class ModelRouter:
         self.routes = {
             "plan": "claude-3-5",
             "code": "gpt-4-1106-preview",
+            "codegen": "gpt-4-1106-preview",  # Add codegen routing
             "review": "gpt-4o-mini",
         }
         self.budgets = {
             "plan": {"tokens": 40000, "seconds": 60},
             "code": {"tokens": 40000, "seconds": 60},
+            "codegen": {"tokens": 40000, "seconds": 60},  # Add codegen budget
             "review": {"tokens": 40000, "seconds": 60},
         }
         self.fallbacks = {
             "plan": ["gpt-4o", "claude-3-haiku"],
             "code": ["gpt-4o", "claude-3-5"],
+            "codegen": ["gpt-4o", "claude-3-5"],  # Add codegen fallbacks
             "review": ["gpt-4-1106-preview", "claude-3-haiku"],
         }
 
@@ -138,6 +141,8 @@ class ModelRouter:
         prompt: str,
         context: Dict[str, Any],
         audit_context: Optional[AuditContext] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Route LLM call to appropriate provider with fallback support.
@@ -152,6 +157,8 @@ class ModelRouter:
                 - prompt_hash: SHA256 hash of prompt+context for audit
                 - org_id: Organization ID for multi-tenant support
                 - user_id: User ID for audit tracking
+            temperature: Optional temperature override for the model
+            max_tokens: Optional max_tokens override for the model
 
         Returns:
             Tuple of (response_text, telemetry_data)
@@ -189,7 +196,15 @@ class ModelRouter:
             try:
                 logger.info(f"Calling model {candidate} for phase {phase}")
                 sanitized_context = self._sanitize_context(context)
-                result = provider.complete(prompt, sanitized_context)
+
+                # Prepare parameters for provider.complete call
+                complete_kwargs = {}
+                if temperature is not None:
+                    complete_kwargs["temperature"] = temperature
+                if max_tokens is not None:
+                    complete_kwargs["max_tokens"] = max_tokens
+
+                result = provider.complete(prompt, sanitized_context, **complete_kwargs)
 
                 # Safely convert telemetry values with validation using centralized helpers
                 tokens_raw = result.get("tokens", 0)
@@ -207,11 +222,17 @@ class ModelRouter:
 
                 # Record audit log (transaction managed by caller)
                 if audit_context.db is not None:
+                    # Log warning if prompt_hash is missing for debugging
+                    if audit_context.prompt_hash is None:
+                        logger.warning(
+                            f"Missing prompt_hash in audit context for phase {phase}, model {candidate}"
+                        )
+
                     audit_entry = AuditLogEntry(
                         phase=phase,
                         model=candidate,
                         status=status,
-                        prompt_hash=audit_context.prompt_hash or "unknown",
+                        prompt_hash=audit_context.prompt_hash or "<missing>",
                         tokens=tokens,
                         cost_usd=cost,
                         latency_ms=int(latency_ms),
@@ -257,11 +278,17 @@ class ModelRouter:
 
                 # Record error audit log
                 if audit_context.db is not None:
+                    # Log warning if prompt_hash is missing for debugging
+                    if audit_context.prompt_hash is None:
+                        logger.warning(
+                            f"Missing prompt_hash in audit context for error in phase {phase}, model {candidate}"
+                        )
+
                     audit_entry = AuditLogEntry(
                         phase=phase,
                         model=candidate,
                         status=status,
-                        prompt_hash=audit_context.prompt_hash or "unknown",
+                        prompt_hash=audit_context.prompt_hash or "<missing>",
                         tokens=0,
                         cost_usd=0.0,
                         latency_ms=int(latency_ms),
@@ -374,8 +401,16 @@ class ModelRouter:
             ),
         }
 
-    def check_budget(self, phase: str) -> Dict[str, Any]:
-        """Check if current usage is within budget limits for the specified phase."""
+    def check_budget(self, phase: str) -> Dict[str, Union[bool, int, float]]:
+        """Check if current usage is within budget limits for the specified phase.
+
+        Returns:
+            Dictionary containing:
+            - within_token_budget (bool): Whether token usage is within budget
+            - tokens_used (int): Current token usage for the phase
+            - token_budget (int|float): Token budget limit (may be inf)
+            - token_usage_percent (float): Percentage of budget used
+        """
         phase_stats = self.usage_stats.get(phase, {})
         phase_budget = self.budgets.get(
             phase, {"tokens": float("inf"), "seconds": float("inf")}
@@ -392,3 +427,64 @@ class ModelRouter:
                 (phase_tokens / token_budget * 100) if token_budget > 0 else 0
             ),
         }
+
+
+# Global instance for convenience
+_router_instance = None
+
+
+def get_model_router() -> ModelRouter:
+    """Get the singleton model router instance."""
+    global _router_instance
+    if _router_instance is None:
+        _router_instance = ModelRouter()
+    return _router_instance
+
+
+def complete_chat(
+    system: str,
+    user: str,
+    model: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    timeout_sec: Optional[int] = None,
+    task_type: str = "code",
+    tags: Optional[Dict[str, str]] = None,
+    audit_context: Optional[AuditContext] = None,
+) -> str:
+    """
+    Convenience wrapper for model router that provides a chat-completion interface.
+
+    Args:
+        system: System prompt content
+        user: User prompt content
+        model: Optional model override (otherwise uses task_type routing)
+        temperature: Optional temperature override
+        max_tokens: Optional max tokens override
+        timeout_sec: Optional timeout override (currently unused)
+        task_type: Task type for routing (codegen, plan, review, etc.)
+        tags: Optional metadata tags for telemetry
+        audit_context: Optional audit context for logging
+
+    Returns:
+        Generated text response
+    """
+    router = get_model_router()
+
+    # Build context from parameters for the provider
+    context = {"user_prompt": user}
+    if tags:
+        context.update(tags)
+
+    # Use the model router's call method with task_type as phase
+    # Pass through temperature and max_tokens parameters to enable bandit learning
+    response_text, telemetry = router.call(
+        phase=task_type,
+        prompt=system,
+        context=context,
+        audit_context=audit_context,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+    return response_text

@@ -4,6 +4,9 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Constants for validation limits (keep in sync with frontend)
+MAX_COMMENT_LENGTH = 1000
+
 
 class FeedbackSubmission(BaseModel):
     """Schema for submitting feedback on AI generations."""
@@ -15,12 +18,17 @@ class FeedbackSubmission(BaseModel):
     )
 
     gen_id: int = Field(..., description="Generation log ID")
-    rating: int = Field(..., ge=-1, le=1, description="Feedback rating (-1, 0, 1)")
+    rating: int = Field(
+        ...,
+        ge=-1,
+        le=1,
+        description="Feedback rating: -1 (negative/thumbs down), 0 (neutral), 1 (positive/thumbs up)",
+    )
     reason: Optional[str] = Field(
         None, max_length=64, description="Feedback reason category"
     )
     comment: Optional[str] = Field(
-        None, max_length=1000, description="Optional feedback comment"
+        None, max_length=MAX_COMMENT_LENGTH, description="Optional feedback comment"
     )
 
 
@@ -91,10 +99,12 @@ class ArmPerformance(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    successes: float = Field(..., description="Success count")
-    failures: float = Field(..., description="Failure count")
-    total_trials: float = Field(..., description="Total trials")
-    success_rate: float = Field(..., ge=0.0, le=1.0, description="Success rate")
+    successes: int = Field(..., description="Success count")
+    failures: int = Field(..., description="Failure count")
+    total_trials: int = Field(..., description="Total trials")
+    success_rate: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="Success rate (None if insufficient data)"
+    )
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence level")
 
 

@@ -1,13 +1,16 @@
 """Service layer for AI feedback operations."""
 
-import hashlib
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func, and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.models.ai_feedback import AiFeedback, AiGenerationLog
+from backend.core.utils.hashing import sha256_hash
+from backend.models.ai_feedback import AiFeedback, AiGenerationLog, TaskType
+
+# Cache valid task type values for performance
+VALID_TASK_TYPES = frozenset(t.value for t in TaskType)
 
 
 class FeedbackService:
@@ -29,7 +32,13 @@ class FeedbackService:
         result_ref: Optional[str] = None,
     ) -> int:
         """Log an AI generation request and return the log ID."""
-        prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:64]
+        # Validate task type
+        if task_type not in VALID_TASK_TYPES:
+            raise ValueError(
+                f"Invalid task_type: {task_type}. Must be one of: {list(VALID_TASK_TYPES)}"
+            )
+
+        prompt_hash = sha256_hash(prompt)
 
         log_entry = AiGenerationLog(
             org_key=org_key,
@@ -47,6 +56,10 @@ class FeedbackService:
         await self.session.commit()
         await self.session.refresh(log_entry)
         return log_entry.id  # type: ignore[return-value]
+
+    def _validate_user_match(self, field_value: Any, expected_value: str) -> bool:
+        """Helper method to validate user field matches with consistent string conversion."""
+        return field_value is not None and str(field_value) == str(expected_value)
 
     async def submit_feedback(
         self,
@@ -66,8 +79,10 @@ class FeedbackService:
 
         if gen_log is None:
             return False
-        if str(gen_log.org_key) != org_key:
+        if not self._validate_user_match(gen_log.org_key, org_key):
             return False
+        if not self._validate_user_match(gen_log.user_sub, user_sub):
+            return False  # Only the original requester can provide feedback
 
         # Check if feedback already exists for this user/generation
         existing_result = await self.session.execute(
@@ -75,6 +90,7 @@ class FeedbackService:
                 and_(
                     AiFeedback.gen_id == gen_id,
                     AiFeedback.user_sub == user_sub,
+                    AiFeedback.org_key == org_key,  # Add org_key filter for efficiency
                 )
             )
         )
@@ -91,6 +107,7 @@ class FeedbackService:
         )
 
         self.session.add(feedback)
+        await self.session.commit()
         return True
 
     async def get_feedback_stats(

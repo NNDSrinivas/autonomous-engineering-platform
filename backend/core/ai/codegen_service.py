@@ -424,7 +424,7 @@ async def generate_unified_diff(
             # ValueError: Invalid parameter values or configuration
             # ConnectionError: Redis/cache connectivity issues
             logger.warning(
-                f"Bandit learning unavailable for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
+                f"Bandit learning unavailable ({type(e).__name__}) for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
             )
             logger.debug(
                 f"Bandit learning error details for org {org_key}, user {user_sub or 'unknown'}: {type(e).__name__}: {e}"

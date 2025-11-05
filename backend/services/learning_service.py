@@ -1,10 +1,13 @@
 """Contextual bandit learning system for AI parameter optimization."""
 
+import logging
 from datetime import datetime
 from typing import Dict, Optional, Tuple
 import numpy as np
 
 from backend.infra.cache.redis_cache import cache
+
+logger = logging.getLogger(__name__)
 
 # Configuration constants
 # MIN_TRIALS_FOR_FULL_CONFIDENCE determines the number of trials required before the
@@ -70,7 +73,7 @@ class ThompsonSamplingBandit:
                 if data:
                     # Redis configured with decode_responses=True should return strings,
                     # but handle both string and bytes for robustness
-                    if isinstance(next(iter(data.keys()), ""), bytes):
+                    if data and isinstance(next(iter(data.keys())), bytes):
                         data = {k.decode(): v.decode() for k, v in data.items()}
 
                     successes = float(data.get("successes", PRIOR_SUCCESSES))
@@ -176,8 +179,21 @@ class ThompsonSamplingBandit:
             total = successes + failures
 
             # Adjust for Beta(1,1) prior - subtract the initial counts for reporting
-            actual_trials = max(0, int(total) - PRIOR_TOTAL)
-            actual_successes = max(0, int(successes) - PRIOR_SUCCESSES)
+            trials_before_max = int(total) - PRIOR_TOTAL
+            successes_before_max = int(successes) - PRIOR_SUCCESSES
+            
+            # Detect data inconsistencies where values are less than priors
+            if trials_before_max < 0:
+                logger.warning(
+                    f"Data inconsistency detected for arm {arm}: total trials ({total}) less than prior ({PRIOR_TOTAL})"
+                )
+            if successes_before_max < 0:
+                logger.warning(
+                    f"Data inconsistency detected for arm {arm}: successes ({successes}) less than prior ({PRIOR_SUCCESSES})"
+                )
+            
+            actual_trials = max(0, trials_before_max)
+            actual_successes = max(0, successes_before_max)
 
             performance[arm] = {
                 "successes": int(actual_successes),

@@ -93,7 +93,9 @@ def test_feedback_stats_rate_limited():
 def test_different_endpoints_separate_limits():
     """Test that different endpoint categories have separate rate limits."""
     # Reset any existing rate limit state by waiting
-    time.sleep(0.1)
+    # The rate limiter uses a token bucket that refills 1 token per second,
+    # so a 1.1 second sleep ensures tokens are replenished
+    time.sleep(1.1)
 
     # AI generate should be limited independently from feedback
     r1 = client.post("/api/ai/generate-diff", json={"intent": "test", "files": []})

@@ -57,8 +57,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if "/api/feedback/" in path:
             return RateLimitCategory.WRITE
 
-        # AI code generation endpoint (PR-31) - treat as upload due to computational cost
-        if path == "/api/ai/generate-diff":
+        # AI code generation endpoints (PR-31/32) - treat as upload due to computational cost
+        if path == "/api/ai/generate-diff" or path == "/api/ai/apply-patch":
             return RateLimitCategory.UPLOAD
 
         # Presence/heartbeat endpoints

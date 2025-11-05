@@ -211,7 +211,7 @@ class ModelRouter:
                         phase=phase,
                         model=candidate,
                         status=status,
-                        prompt_hash=audit_context.prompt_hash,
+                        prompt_hash=audit_context.prompt_hash or "unknown",
                         tokens=tokens,
                         cost_usd=cost,
                         latency_ms=int(latency_ms),
@@ -261,7 +261,7 @@ class ModelRouter:
                         phase=phase,
                         model=candidate,
                         status=status,
-                        prompt_hash=audit_context.prompt_hash,
+                        prompt_hash=audit_context.prompt_hash or "unknown",
                         tokens=0,
                         cost_usd=0.0,
                         latency_ms=int(latency_ms),
@@ -374,7 +374,7 @@ class ModelRouter:
             ),
         }
 
-    def check_budget(self, phase: str) -> Dict[str, bool]:
+    def check_budget(self, phase: str) -> Dict[str, Any]:
         """Check if current usage is within budget limits for the specified phase."""
         phase_stats = self.usage_stats.get(phase, {})
         phase_budget = self.budgets.get(
@@ -392,3 +392,61 @@ class ModelRouter:
                 (phase_tokens / token_budget * 100) if token_budget > 0 else 0
             ),
         }
+
+
+# Global instance for convenience
+_router_instance = None
+
+
+def get_model_router() -> ModelRouter:
+    """Get the singleton model router instance."""
+    global _router_instance
+    if _router_instance is None:
+        _router_instance = ModelRouter()
+    return _router_instance
+
+
+async def complete_chat(
+    system: str,
+    user: str,
+    model: Optional[str] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    timeout_sec: Optional[int] = None,
+    task_type: str = "code",
+    tags: Optional[Dict[str, str]] = None,
+    audit_context: Optional[AuditContext] = None,
+) -> str:
+    """
+    Convenience wrapper for model router that provides a chat-completion interface.
+    
+    Args:
+        system: System prompt content
+        user: User prompt content  
+        model: Optional model override (otherwise uses task_type routing)
+        temperature: Optional temperature override
+        max_tokens: Optional max tokens override
+        timeout_sec: Optional timeout override (currently unused)
+        task_type: Task type for routing (codegen, plan, review, etc.)
+        tags: Optional metadata tags for telemetry
+        audit_context: Optional audit context for logging
+        
+    Returns:
+        Generated text response
+    """
+    router = get_model_router()
+    
+    # Build context from parameters for the provider
+    context = {"user_prompt": user}
+    if tags:
+        context.update(tags)
+    
+    # Use the model router's call method with task_type as phase
+    response_text, telemetry = router.call(
+        phase=task_type,
+        prompt=system,
+        context=context,
+        audit_context=audit_context,
+    )
+    
+    return response_text

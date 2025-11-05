@@ -13,6 +13,7 @@ from typing import List, Dict, Optional, Tuple
 from .repo_context import repo_snapshot, list_neighbors
 from backend.core.ai_service import AIService
 from backend.core.utils.hashing import sha256_hash
+from backend.llm.router import complete_chat
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,8 @@ async def call_model(
     temperature: float = TEMPERATURE,
 ) -> str:
     """
-    Call AI model to generate diff with intelligent fallback strategies.
+    Call AI model to generate diff using the shared model router.
+    Enables bandit learning and parameter optimization.
 
     Args:
         prompt: The formatted prompt with intent and context
@@ -120,6 +122,42 @@ async def call_model(
 
     Raises:
         Exception: If AI service fails or all strategies exhausted
+    """
+    try:
+        logger.info(
+            f"Starting generation with model: {model}, temperature: {temperature}"
+        )
+
+        # Delegate to the shared model router so learned policy & retries apply
+        text = await complete_chat(
+            system=SYSTEM_PROMPT,
+            user=prompt,
+            model=model,
+            temperature=temperature,
+            max_tokens=MAX_TOKENS,
+            timeout_sec=60,
+            task_type="codegen",
+            tags={"feature": "codegen", "route": "/api/ai/generate-diff"},
+        )
+
+        logger.info(f"Generation completed, length: {len(text)} chars")
+        return text.strip()
+
+    except Exception as e:
+        logger.error(f"Failed to call AI model via router: {e}")
+        # Fallback to direct AI service for compatibility
+        return await _fallback_direct_call(prompt, max_retries, model, temperature)
+
+
+async def _fallback_direct_call(
+    prompt: str,
+    max_retries: int = 2,
+    model: str = MODEL,
+    temperature: float = TEMPERATURE,
+) -> str:
+    """
+    Fallback to direct AI service call for compatibility.
+    This maintains existing behavior while transitioning to router.
     """
     ai_service = AIService()
 
@@ -134,7 +172,7 @@ async def call_model(
     for attempt in range(max_retries + 1):
         try:
             logger.info(
-                f"Generation attempt {attempt + 1}/{max_retries + 1}, "
+                f"Fallback attempt {attempt + 1}/{max_retries + 1}, "
                 f"model: {model}, temperature: {temperature}, max_tokens: {current_max_tokens}"
             )
 
@@ -375,15 +413,15 @@ async def generate_unified_diff(
 
         except ImportError:
             logger.warning(
-                f"Learning services not available for org {org_key}, user {user_sub}, using default parameters"
+                f"Learning services not available for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
             )
         except (ValueError, ConnectionError, KeyError) as e:
             logger.warning(
-                f"Failed to use bandit learning for org {org_key}, user {user_sub} due to recoverable error: {e}, using defaults"
+                f"Failed to use bandit learning for org {org_key}, user {user_sub or 'unknown'} due to recoverable error: {e}, using defaults"
             )
         except Exception:
             logger.exception(
-                f"Failed to use bandit learning for org {org_key}, user {user_sub} due to unexpected error, using defaults"
+                f"Failed to use bandit learning for org {org_key}, user {user_sub or 'unknown'} due to unexpected error, using defaults"
             )
 
     # Call model to generate diff

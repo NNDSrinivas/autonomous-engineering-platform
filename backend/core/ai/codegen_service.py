@@ -133,7 +133,7 @@ async def call_model(
         )
 
         # Delegate to the shared model router so learned policy & retries apply
-        text = await complete_chat(
+        text = complete_chat(
             system=SYSTEM_PROMPT,
             user=prompt,
             model=model,

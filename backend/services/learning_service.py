@@ -27,6 +27,11 @@ MEDIUM_INPUT_THRESHOLD = 200  # Words for medium input classification
 PRIOR_SUCCESSES = 1.0  # Beta distribution alpha parameter (successes prior)
 PRIOR_FAILURES = 1.0  # Beta distribution beta parameter (failures prior)
 
+# Temperature constants for bandit arms
+TEMP_PRECISE = 0.1  # Low temperature for precise/conservative generations
+TEMP_BALANCED = 0.3  # Balanced temperature for standard use
+TEMP_CREATIVE = 0.7  # Higher temperature for creative/diverse outputs
+
 
 class ThompsonSamplingBandit:
     """Contextual bandit using Thompson Sampling for AI parameter selection."""
@@ -116,9 +121,9 @@ class ThompsonSamplingBandit:
 
         # Define arms (parameter combinations)
         arms = [
-            {"model": "gpt-4o-mini", "temperature": 0.1, "name": "precise"},
-            {"model": "gpt-4o-mini", "temperature": 0.3, "name": "balanced"},
-            {"model": "gpt-4o-mini", "temperature": 0.7, "name": "creative"},
+            {"model": "gpt-4o-mini", "temperature": TEMP_PRECISE, "name": "precise"},
+            {"model": "gpt-4o-mini", "temperature": TEMP_BALANCED, "name": "balanced"},
+            {"model": "gpt-4o-mini", "temperature": TEMP_CREATIVE, "name": "creative"},
         ]
 
         # Sample from beta distributions for each arm

@@ -406,7 +406,7 @@ def get_model_router() -> ModelRouter:
     return _router_instance
 
 
-async def complete_chat(
+def complete_chat(
     system: str,
     user: str,
     model: Optional[str] = None,

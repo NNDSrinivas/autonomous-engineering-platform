@@ -52,11 +52,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Admin endpoints
         if "/admin/" in path or "/rbac/" in path:
             return RateLimitCategory.ADMIN
-            
+
         # AI feedback endpoints (PR-32) - treat as write operations due to learning implications
         if "/api/feedback/" in path:
             return RateLimitCategory.WRITE
-            
+
         # AI code generation endpoint (PR-31) - treat as upload due to computational cost
         if path == "/api/ai/generate-diff":
             return RateLimitCategory.UPLOAD

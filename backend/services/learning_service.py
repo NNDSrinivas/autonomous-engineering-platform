@@ -115,13 +115,19 @@ class ThompsonSamplingBandit:
             successes, failures = await self._get_arm_stats(context_key, arm)
             total = successes + failures
 
+            # Adjust for Beta(1,1) prior - subtract the initial counts for reporting
+            actual_trials = max(0, int(total) - 2)
+            actual_successes = max(0, successes - 1)
+
             performance[arm] = {
-                "successes": int(successes),
-                "failures": int(failures),
-                "total_trials": int(total),
-                "success_rate": successes / total if total > 0 else 0.0,
+                "successes": int(actual_successes),
+                "failures": int(max(0, failures - 1)),
+                "total_trials": actual_trials,
+                "success_rate": (
+                    actual_successes / actual_trials if actual_trials > 0 else None
+                ),
                 "confidence": min(
-                    total / MIN_TRIALS_FOR_FULL_CONFIDENCE, 1.0
+                    actual_trials / MIN_TRIALS_FOR_FULL_CONFIDENCE, 1.0
                 ),  # Confidence in estimate
             }
 

@@ -360,7 +360,7 @@ async def generate_unified_diff(
                 feedback_service = FeedbackService(session)
                 generation_log_id = await feedback_service.log_generation(
                     org_key=org_key,
-                    user_sub=user_sub or "system",
+                    user_sub=user_sub or "unknown",
                     task_type="codegen",
                     model=model,
                     temperature=temperature,

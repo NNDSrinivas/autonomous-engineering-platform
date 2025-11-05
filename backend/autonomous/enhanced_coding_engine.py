@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Any, Callable
 from enum import Enum
 import structlog
 import os
+import shutil
 import fnmatch
 import ast
 from pathlib import Path
@@ -1128,13 +1129,19 @@ class EnhancedAutonomousCodingEngine:
                 return False
 
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read()
-
-            # Check for actual secret patterns using compiled regex
-            for compiled_pattern in compiled_patterns:
-                if compiled_pattern.search(content):
-                    logger.warning(f"Potential secret detected in {file_path}")
-                    return False
+                # Use chunked reading to prevent memory exhaustion on large files
+                chunk_size = 64 * 1024  # 64KB chunks for memory efficiency
+                
+                while True:
+                    content = f.read(chunk_size)
+                    if not content:
+                        break
+                    
+                    # Check for actual secret patterns using compiled regex
+                    for compiled_pattern in compiled_patterns:
+                        if compiled_pattern.search(content):
+                            logger.warning(f"Potential secret detected in {file_path}")
+                            return False
 
             return True
         except Exception as e:
@@ -1257,7 +1264,6 @@ class EnhancedAutonomousCodingEngine:
 
     async def _apply_code_changes(self, step: CodingStep, code_result: Dict[str, Any]):
         """Apply code changes to files with security validation"""
-        import shutil  # Import at function level to avoid repeated module lookups
 
         try:
             # Validate file path string before any path operations

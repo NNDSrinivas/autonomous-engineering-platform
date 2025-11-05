@@ -7,6 +7,13 @@ async def on_startup():
 
 
 async def on_shutdown():
+    # graceful close of httpx client
+    try:
+        from ...api.chat import close_http_client
+        await close_http_client()
+    except Exception:
+        pass
+        
     # graceful close of redis if used
     try:
         from infra.cache.redis_cache import cache

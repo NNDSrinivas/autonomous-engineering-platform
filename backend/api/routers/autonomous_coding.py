@@ -84,11 +84,12 @@ def get_coding_engine(
     workspace_id: str = "default", db: Optional[Session] = None
 ) -> EnhancedAutonomousCodingEngine:
     """Get or create a thread-safe coding engine instance for a workspace"""
-    # Validate workspace_id to prevent directory traversal
+    # Validate workspace_id to prevent directory traversal and bypass attacks
     import re
 
-    if not re.match(r"^[a-zA-Z0-9_-]+$", workspace_id):
-        raise ValueError("Invalid workspace_id format")
+    # Strengthen validation to prevent hyphen-based bypass attacks
+    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9]$", workspace_id) or len(workspace_id) < 3:
+        raise ValueError("Invalid workspace_id format: must be 3+ chars, start/end with alphanumeric, contain only letters, numbers, underscore, hyphen")
 
     with _engine_lock:
         if workspace_id not in _coding_engines:
@@ -119,16 +120,24 @@ def get_coding_engine(
                 db_session=None,  # No shared session
             )
 
-        # Return engine instance (db_session should be set per request, not shared)
-        engine = _coding_engines[workspace_id]
+        # Return engine instance without mutating shared state
+        return _coding_engines[workspace_id]
 
-        # Create a copy for this request to avoid session conflicts
-        # Note: This is a temporary solution. Better approach would be dependency injection.
-        if db is not None:
-            # Create a request-scoped wrapper or clone
-            engine.db_session = db
 
-        return engine
+def get_engine_with_session(workspace_id: str, db: Session):
+    """Get engine instance with request-scoped database session"""
+    base_engine = get_coding_engine(workspace_id)
+    
+    # Create a request-scoped wrapper that doesn't mutate shared instance
+    class EngineWithSession:
+        def __init__(self, base_engine, session):
+            self._base_engine = base_engine
+            self.db_session = session
+            
+        def __getattr__(self, name):
+            return getattr(self._base_engine, name)
+    
+    return EngineWithSession(base_engine, db)
 
 
 @router.post("/create-from-jira", response_model=TaskPresentationResponse)

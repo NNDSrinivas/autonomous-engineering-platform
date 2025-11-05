@@ -78,7 +78,19 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
       } else {
         const errorText = await response.text();
         console.error('Failed to submit feedback:', response.status, errorText);
-        setError('Failed to submit feedback. Please try again.');
+        
+        // Provide specific error messages based on status code
+        if (response.status === 403) {
+          setError('Permission denied. You may not have access to submit feedback for this generation.');
+        } else if (response.status === 404) {
+          setError('Generation not found. This feedback may have expired or been removed.');
+        } else if (response.status === 409) {
+          setError('Feedback already submitted for this generation.');
+        } else if (response.status >= 500) {
+          setError('Server error. Please try again later.');
+        } else {
+          setError('Failed to submit feedback. Please try again.');
+        }
       }
     } catch (error) {
       console.error('Error submitting feedback:', error);

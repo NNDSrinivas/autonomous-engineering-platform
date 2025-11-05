@@ -23,6 +23,10 @@ MIN_TRIALS_FOR_FULL_CONFIDENCE = (
 SMALL_INPUT_THRESHOLD = 50  # Words for small input classification
 MEDIUM_INPUT_THRESHOLD = 200  # Words for medium input classification
 
+# Beta distribution prior constants for Thompson Sampling
+PRIOR_SUCCESSES = 1.0  # Beta distribution alpha parameter (successes prior)
+PRIOR_FAILURES = 1.0   # Beta distribution beta parameter (failures prior)
+
 
 class ThompsonSamplingBandit:
     """Contextual bandit using Thompson Sampling for AI parameter selection."""
@@ -46,26 +50,56 @@ class ThompsonSamplingBandit:
         return f"{self.CACHE_PREFIX}:{self.org_key}:{fingerprint}"
 
     async def _get_arm_stats(self, context_key: str, arm: str) -> Tuple[float, float]:
-        """Get success/failure counts for an arm in a context."""
+        """Get success/failure counts for an arm in a context using Redis hash."""
         key = f"{context_key}:arm:{arm}"
+        
+        # Try Redis first for atomic operations
+        if hasattr(self.cache, '_r') and self.cache._r:
+            r = await self.cache._ensure()
+            if r:
+                # Use Redis hash for atomic counters
+                data = await r.hgetall(key)
+                if data:
+                    # Redis returns strings, convert to float
+                    successes = float(data.get("successes", PRIOR_SUCCESSES))
+                    failures = float(data.get("failures", PRIOR_FAILURES))
+                    return successes, failures
+                # Use Beta(1,1) as the starting values for the Beta distribution.
+                return PRIOR_SUCCESSES, PRIOR_FAILURES
+        
+        # Fallback to JSON cache (backwards compatibility)
         data = await self.cache.get_json(key)
-
         if data:
-            return data.get("successes", 0.0), data.get("failures", 0.0)
-
+            return data.get("successes", PRIOR_SUCCESSES), data.get("failures", PRIOR_FAILURES)
+        
         # Use Beta(1,1) as the starting values for the Beta distribution.
         # This represents a uniform prior, meaning we assume no initial preference
         # for success or failure. This is standard in Thompson Sampling to ensure
         # unbiased initial sampling and equal exploration of all arms.
-        return 1.0, 1.0
+        return PRIOR_SUCCESSES, PRIOR_FAILURES
 
     async def _update_arm_stats(
         self, context_key: str, arm: str, success: bool
     ) -> None:
-        """Update success/failure counts for an arm."""
+        """Atomically update success/failure counts for an arm using Redis hash."""
         key = f"{context_key}:arm:{arm}"
+        field = "successes" if success else "failures"
+        
+        # Try Redis atomic operations first
+        if hasattr(self.cache, '_r') and self.cache._r:
+            r = await self.cache._ensure()
+            if r:
+                # Atomically increment the appropriate field
+                await r.hincrby(key, field, 1)
+                # Set TTL if this is a new key (only if TTL not set)
+                ttl = await r.ttl(key)
+                if ttl == -1:
+                    await r.expire(key, self.CONTEXT_EXPIRY)
+                return
+        
+        # Fallback to non-atomic JSON operations (backwards compatibility)
         successes, failures = await self._get_arm_stats(context_key, arm)
-
+        
         if success:
             successes += 1
         else:
@@ -128,12 +162,12 @@ class ThompsonSamplingBandit:
             total = successes + failures
 
             # Adjust for Beta(1,1) prior - subtract the initial counts for reporting
-            actual_trials = max(0, int(total) - 2)
-            actual_successes = max(0, int(successes) - 1)
+            actual_trials = max(0, int(total) - (PRIOR_SUCCESSES + PRIOR_FAILURES))
+            actual_successes = max(0, int(successes) - PRIOR_SUCCESSES)
 
             performance[arm] = {
                 "successes": int(actual_successes),
-                "failures": int(max(0, failures - 1)),
+                "failures": int(max(0, failures - PRIOR_FAILURES)),
                 "total_trials": actual_trials,
                 "success_rate": (
                     actual_successes / actual_trials if actual_trials > 0 else None
@@ -193,9 +227,7 @@ class LearningService:
         contexts = []
         task_types = [t.value for t in TaskType]
         size_buckets = ["small", "medium", "large"]
-        experience_levels = [
-            "standard"
-        ]  # Can be expanded: ["novice", "standard", "expert"]
+        experience_levels = ["standard", "expert"]  # Support mapped experience levels
 
         # Generate contexts for all task types and sizes (starting with standard experience)
         for task_type in task_types:

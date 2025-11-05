@@ -110,6 +110,10 @@ async def call_model(
     """
     Call AI model to generate diff using the shared model router.
     Enables bandit learning and parameter optimization.
+    
+    Primary approach uses complete_chat() via model router for centralized routing,
+    fallbacks, and telemetry. If router fails, falls back to direct AI service call
+    with truncation handling and retry logic.
 
     Args:
         prompt: The formatted prompt with intent and context
@@ -417,7 +421,10 @@ async def generate_unified_diff(
             )
         except (ValueError, ConnectionError, KeyError) as e:
             logger.warning(
-                f"Bandit learning unavailable for org {org_key}, user {user_sub or 'unknown'} due to {type(e).__name__}: {e}, using default parameters"
+                f"Bandit learning unavailable for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
+            )
+            logger.debug(
+                f"Bandit learning error details for org {org_key}, user {user_sub or 'unknown'}: {type(e).__name__}: {e}"
             )
         except Exception:
             logger.exception(

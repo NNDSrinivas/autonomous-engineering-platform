@@ -921,19 +921,44 @@ class EnhancedAutonomousCodingEngine:
 
     async def _generate_implementation_plan(self, task: CodingTask):
         """Generate detailed implementation plan using AI"""
+        
+        # Sanitize all inputs to prevent prompt injection attacks
+        sanitized_task_description = self._sanitize_prompt_input(task.description)
+        sanitized_task_title = self._sanitize_prompt_input(task.title)
+        
+        # Sanitize related files list
+        sanitized_related_files = []
+        if task.related_files:
+            for file_path in task.related_files:
+                sanitized_related_files.append(self._sanitize_prompt_input(file_path))
+        
+        # Sanitize team context
+        sanitized_team_context = {}
+        if task.team_context:
+            for key, value in task.team_context.items():
+                sanitized_key = self._sanitize_prompt_input(str(key))
+                sanitized_value = self._sanitize_prompt_input(str(value)) if value is not None else ""
+                sanitized_team_context[sanitized_key] = sanitized_value
+        
+        # Sanitize documentation links if they exist
+        sanitized_documentation = []
+        if hasattr(task, 'documentation_links') and task.documentation_links:
+            for doc_link in task.documentation_links:
+                sanitized_documentation.append(self._sanitize_prompt_input(str(doc_link)))
+        
         context = {
-            "task_description": task.description,
-            "related_files": task.related_files,
-            "team_context": task.team_context,
-            "documentation": task.documentation_links,
+            "task_description": sanitized_task_description,
+            "related_files": sanitized_related_files,
+            "team_context": sanitized_team_context,
+            "documentation": sanitized_documentation,
         }
 
-        # Use LLM to generate step-by-step plan
+        # Use LLM to generate step-by-step plan with sanitized inputs
         plan_prompt = f"""
-        Create a detailed implementation plan for: {task.title}
+        Create a detailed implementation plan for: {sanitized_task_title}
         
-        Description: {task.description}
-        Related files: {', '.join(task.related_files)}
+        Description: {sanitized_task_description}
+        Related files: {', '.join(sanitized_related_files)}
         
         Generate a step-by-step plan with:
         1. File to modify
@@ -970,10 +995,13 @@ class EnhancedAutonomousCodingEngine:
         return steps
 
     def _notify_progress(self, message: str):
-        """Notify user of progress updates"""
+        """Notify user of progress updates with sanitized input"""
+        # Sanitize the progress message to prevent injection in logs or callbacks
+        sanitized_message = self._sanitize_prompt_input(message)
+        
         if self.progress_callback:
-            self.progress_callback(message)
-        logger.info(f"Progress: {message}")
+            self.progress_callback(sanitized_message)
+        logger.info(f"Progress: {sanitized_message}")
 
     async def _create_safety_backup(self, task: CodingTask):
         """Create git backup before starting modifications"""
@@ -1083,28 +1111,50 @@ class EnhancedAutonomousCodingEngine:
     ) -> Dict[str, Any]:
         """Generate actual code for the step"""
         try:
-            # Build context for code generation
+            # Sanitize all inputs to prevent prompt injection attacks
+            sanitized_task_description = self._sanitize_prompt_input(task.description)
+            sanitized_step_description = self._sanitize_prompt_input(step.description)
+            sanitized_file_path = self._sanitize_prompt_input(step.file_path)
+            
+            # Sanitize related files list (List[str])
+            sanitized_related_files = []
+            if task.related_files:
+                for file_path in task.related_files:
+                    if isinstance(file_path, str):
+                        sanitized_related_files.append(self._sanitize_prompt_input(file_path))
+                    else:
+                        # Convert to string and sanitize for safety
+                        sanitized_related_files.append(self._sanitize_prompt_input(str(file_path)))
+            
+            # Sanitize team context (Dict[str, Any])
+            sanitized_team_context = {}
+            if task.team_context:
+                for key, value in task.team_context.items():
+                    sanitized_key = self._sanitize_prompt_input(str(key))
+                    if value is not None:
+                        sanitized_value = self._sanitize_prompt_input(str(value))
+                    else:
+                        sanitized_value = ""
+                    sanitized_team_context[sanitized_key] = sanitized_value
+
+            # Build context for code generation with sanitized data
             context = {
-                "task_description": task.description,
-                "step_description": step.description,
-                "file_path": step.file_path,
-                "operation": step.operation,
-                "related_files": task.related_files,
-                "team_context": task.team_context,
+                "task_description": sanitized_task_description,
+                "step_description": sanitized_step_description,
+                "file_path": sanitized_file_path,
+                "operation": step.operation,  # This is enum/controlled value, safe
+                "related_files": sanitized_related_files,
+                "team_context": sanitized_team_context,
             }
 
-            # Generate code using LLM service with sanitized inputs
-            sanitized_file_path = self._sanitize_prompt_input(step.file_path)
-            sanitized_description = self._sanitize_prompt_input(step.description)
-
             if step.operation == "create":
-                prompt = f"Create a new file '{sanitized_file_path}' for: {sanitized_description}"
+                prompt = f"Create a new file '{sanitized_file_path}' for: {sanitized_step_description}"
             elif step.operation == "modify":
                 prompt = (
-                    f"Modify file '{sanitized_file_path}' to: {sanitized_description}"
+                    f"Modify file '{sanitized_file_path}' to: {sanitized_step_description}"
                 )
             else:  # delete
-                prompt = f"Prepare to delete file '{sanitized_file_path}' because: {sanitized_description}"
+                prompt = f"Prepare to delete file '{sanitized_file_path}' because: {sanitized_step_description}"
 
             # Use the LLM service to generate code
             response = await self.llm_service.generate_code_suggestion(

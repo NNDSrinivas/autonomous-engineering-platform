@@ -40,12 +40,17 @@ async def get_http_client() -> httpx.AsyncClient:
         async with _client_lock:
             # Double-check pattern to prevent race conditions
             if _async_client is None:
-                _async_client = httpx.AsyncClient(
-                    timeout=httpx.Timeout(10.0),
-                    limits=httpx.Limits(
-                        max_keepalive_connections=5, max_connections=10
-                    ),
-                )
+                try:
+                    _async_client = httpx.AsyncClient(
+                        timeout=httpx.Timeout(10.0),
+                        limits=httpx.Limits(
+                            max_keepalive_connections=5, max_connections=10
+                        ),
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to initialize httpx.AsyncClient: {e}")
+                    _async_client = None
+                    raise
     return _async_client
 
 

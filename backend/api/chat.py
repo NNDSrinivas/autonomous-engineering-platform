@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+
 # Shared async client configuration to prevent connection leaks
 def _get_async_client() -> httpx.AsyncClient:
     """Get configured httpx AsyncClient with consistent timeout settings"""
     return httpx.AsyncClient(
         timeout=httpx.Timeout(10.0),
-        limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+        limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
     )
 
 
@@ -315,9 +316,7 @@ async def _handle_team_query(
         try:
             api_base = get_api_base_url()
             async with _get_async_client() as client:
-                response = await client.get(
-                    f"{api_base}/api/activity/recent"
-                )
+                response = await client.get(f"{api_base}/api/activity/recent")
                 if response.status_code == 200:
                     data = response.json()
                     team_activity = data.get("items", [])

@@ -71,18 +71,96 @@ const ConciergeGreeting: React.FC<ConciergeGreetingProps> = ({
   const fetchGreetingData = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/autonomous/concierge/greeting', {
-        headers: {
-          'X-User-Id': 'current-user', // Would get from auth context
+      
+      // For now, use mock data since API might not be ready
+      const mockData: ConciergeGreetingData = {
+        greeting: {
+          primary_message: "Good Morning! Ready to tackle the day?",
+          time_context: "It's 11:42 AM on Tuesday, November 5th",
+          day_info: "You have 3 meetings scheduled and 5 tasks pending",
+          energy_level: "high",
+          motivational_quote: "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+          timestamp: new Date().toISOString()
         },
-      });
+        wallpaper: {
+          theme: "morning",
+          colors: {
+            primary: "#FFE4B5",
+            secondary: "#FFA500",
+            text: "#2C3E50"
+          },
+          animations: ["butterfly_flight", "sun_rays", "grass_sway"],
+          particles: {
+            count: 25,
+            types: ["butterfly", "pollen", "grass"]
+          }
+        },
+        tasks_summary: {
+          total: 8,
+          high_priority: 3,
+          in_progress: 2,
+          completion_rate: "75%"
+        },
+        recommendations: [
+          {
+            type: "urgent_task",
+            title: "Review PR #42",
+            description: "Critical security update needs your review",
+            reason: "High priority, blocking deployment",
+            estimated_time: "15 minutes",
+            action: "review_pr",
+            task_key: "PROJ-123"
+          },
+          {
+            type: "focus_session",
+            title: "Deep Focus: Algorithm Implementation",
+            description: "Complete the sorting algorithm optimization",
+            reason: "Peak productivity window",
+            estimated_time: "2 hours",
+            action: "start_focus",
+            task_key: "PROJ-124"
+          }
+        ],
+        quick_actions: [
+          {
+            id: "1",
+            title: "Create JIRA Ticket",
+            icon: "ticket",
+            description: "Quick issue creation",
+            action: "create_jira_ticket"
+          },
+          {
+            id: "2",
+            title: "Start Standup",
+            icon: "users", 
+            description: "Join team meeting",
+            action: "join_standup"
+          },
+          {
+            id: "3",
+            title: "View Documentation",
+            icon: "book",
+            description: "Browse project docs",
+            action: "view_docs"
+          }
+        ]
+      };
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch greeting data');
-      }
-
-      const data = await response.json();
-      setGreetingData(data);
+      setGreetingData(mockData);
+      setError(null);
+      
+      // Uncomment this when backend is ready:
+      // const response = await fetch('/api/autonomous/concierge/greeting', {
+      //   headers: {
+      //     'X-User-Id': 'current-user',
+      //   },
+      // });
+      // if (!response.ok) {
+      //   throw new Error('Failed to fetch greeting data');
+      // }
+      // const data = await response.json();
+      // setGreetingData(data);
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       console.error('Failed to fetch greeting data:', err);

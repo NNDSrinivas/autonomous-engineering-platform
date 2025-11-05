@@ -106,7 +106,7 @@ export class ChatPanel {
       // Simple fallback using timestamp and random values
       const timestamp = Date.now();
       const random = Math.floor(Math.random() * 1000000).toString(36);
-      this._messageCounter = (this._messageCounter + 1) % Number.MAX_SAFE_INTEGER;
+      this._messageCounter = (this._messageCounter + 1) & 0xFFFFFFFF;
       return `${prefix}-${timestamp}-${random}-${this._messageCounter}`;
     }
   }
@@ -317,7 +317,7 @@ export class ChatPanel {
 
   private async _loadProactiveSuggestions() {
     try {
-      // Use memory graph to generate proactive suggestions
+      // Use memory graph to generate proactive suggestions via chat endpoint
       const response = await fetch(`${this._apiBase}/api/chat/proactive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

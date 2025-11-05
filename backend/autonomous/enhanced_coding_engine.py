@@ -837,7 +837,11 @@ class EnhancedAutonomousCodingEngine:
                     for file_path in safe_files:
                         self.repo.git.add(file_path)
 
-                    commit_message = f"AEP backup before task {task.id}: {task.title}"
+                    # Sanitize task title to prevent command injection
+                    sanitized_title = self._sanitize_commit_message(task.title)
+                    commit_message = (
+                        f"AEP backup before task {task.id}: {sanitized_title}"
+                    )
                     commit = self.repo.index.commit(commit_message)
                     task.backup_commit = commit.hexsha
                     logger.info(f"Created backup commit: {commit.hexsha}")
@@ -1055,10 +1059,10 @@ class EnhancedAutonomousCodingEngine:
         """
         Validate file path string before any path operations to prevent attacks.
 
-        Uses os.path.normpath() first to handle edge cases like redundant separators,
-        but this does NOT resolve .. components that would escape the workspace.
-        For example: normpath('../../etc/passwd') -> '../../etc/passwd' (unchanged)
-        The .. check after normalization is intentional and effective.
+        Uses os.path.normpath() first to handle edge cases like redundant separators
+        and to resolve . and .. components where possible (e.g., 'a/b/../c' -> 'a/c').
+        However, normpath preserves leading .. if there is no parent directory to resolve
+        (e.g., '../../etc/passwd' remains unchanged). The .. check after normalization is intentional and effective.
         """
         # Normalize the path first to handle edge cases and resolve . and .. components
         # within valid relative paths, but preserve .. that would escape workspace
@@ -1087,6 +1091,8 @@ class EnhancedAutonomousCodingEngine:
 
     async def _apply_code_changes(self, step: CodingStep, code_result: Dict[str, Any]):
         """Apply code changes to files with security validation"""
+        import shutil  # Import at function level to avoid repeated module lookups
+
         try:
             # Validate file path string before any path operations
             self._validate_relative_path(step.file_path)
@@ -1171,8 +1177,6 @@ class EnhancedAutonomousCodingEngine:
                             os.replace(temp_file_path, str(file_path))
                         except OSError:
                             # Fallback for cross-filesystem moves
-                            import shutil
-
                             shutil.move(temp_file_path, str(file_path))
                         logger.info(f"Modified file atomically: {step.file_path}")
 
@@ -1685,7 +1689,18 @@ class EnhancedAutonomousCodingEngine:
 
         # Medium-risk patterns that need context checking
         medium_risk_patterns = [
-            ("open(", ["w", "a", "x"]),  # File writes, not reads
+            (
+                "open(",
+                ["mode='w'", 'mode="w"', ", 'w'", ', "w"', "'w')", '"w")'],
+            ),  # File write modes
+            (
+                "open(",
+                ["mode='a'", 'mode="a"', ", 'a'", ', "a"', "'a')", '"a")'],
+            ),  # File append modes
+            (
+                "open(",
+                ["mode='x'", 'mode="x"', ", 'x'", ', "x"', "'x')", '"x")'],
+            ),  # File exclusive create modes
             ("delete", ["drop", "rm ", "del "]),  # SQL/file deletion context
             ("compile(", ["exec", "eval"]),  # Code compilation patterns
         ]
@@ -1714,6 +1729,32 @@ class EnhancedAutonomousCodingEngine:
 
         return False
 
+    def _sanitize_commit_message(self, message: str) -> str:
+        """Sanitize git commit message to prevent command injection"""
+        import re
+
+        if not message:
+            return "Untitled task"
+
+        # Remove or replace potentially dangerous characters
+        # Remove newlines, null bytes, and control characters
+        sanitized = re.sub(r"[\n\r\t\x00-\x1f\x7f-\x9f]", " ", message)
+
+        # Remove shell special characters that could be dangerous in commit messages
+        sanitized = re.sub(r"[;&|`$<>(){}[\]]", "", sanitized)
+
+        # Limit length to prevent excessively long commit messages
+        max_length = 100
+        if len(sanitized) > max_length:
+            sanitized = sanitized[: max_length - 3] + "..."
+
+        # Ensure it's not empty after sanitization
+        sanitized = sanitized.strip()
+        if not sanitized:
+            return "Sanitized task"
+
+        return sanitized
+
     def _sanitize_prompt_input(self, input_text: str) -> str:
         """Sanitize user input to prevent prompt injection attacks"""
         import re
@@ -1723,11 +1764,11 @@ class EnhancedAutonomousCodingEngine:
 
         # Check for prompt injection patterns - reject if found
         injection_patterns = [
-            r"\\n\\s*(?:ignore|forget|disregard).*previous.*instructions",
-            r"\\n\\s*(?:system|assistant|human|user)\\s*:",
-            r"\\n\\s*(?:new|override|replace)\\s+(?:instructions|prompt|task)",
-            r"\\n\\s*(?:act|pretend|role)\\s+(?:as|like)",
-            r"\\n\\s*(?:tell|give|provide)\\s+me.*(?:secret|password|key)",
+            r"\n\s*(?:ignore|forget|disregard).*previous.*instructions",
+            r"\n\s*(?:system|assistant|human|user)\s*:",
+            r"\n\s*(?:new|override|replace)\s+(?:instructions|prompt|task)",
+            r"\n\s*(?:act|pretend|role)\s+(?:as|like)",
+            r"\n\s*(?:tell|give|provide)\s+me.*(?:secret|password|key)",
         ]
 
         for pattern in injection_patterns:
@@ -1746,7 +1787,7 @@ class EnhancedAutonomousCodingEngine:
             )
 
         # Check for excessive newlines that could be used for prompt separation
-        if input_text.count("\\n") > 10:
+        if input_text.count("\n") > 10:
             raise SecurityError(
                 "Input rejected: excessive line breaks detected. "
                 "Please format your input with normal spacing."

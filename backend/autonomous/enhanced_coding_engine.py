@@ -896,19 +896,21 @@ class EnhancedAutonomousCodingEngine:
             # 1. Check for path traversal before resolving
             if any(part == ".." for part in file_path.parts):
                 raise SecurityError("Invalid file path: path traversal detected")
-            
+
             # 2. Resolve path strictly (raises if file does not exist for modify/delete)
             try:
                 resolved_path = file_path.resolve(strict=(step.operation != "create"))
                 # 3. Ensure resolved path is within workspace
                 resolved_path.relative_to(self.workspace_path.resolve())
             except (ValueError, FileNotFoundError):
-                raise SecurityError("Invalid file path: outside workspace or does not exist")
-            
+                raise SecurityError(
+                    "Invalid file path: outside workspace or does not exist"
+                )
+
             # 4. For modify/delete, ensure file is not a symlink (prevents symlink escape)
             if step.operation in {"modify", "delete"} and resolved_path.is_symlink():
                 raise SecurityError("Refusing to operate on symlinked file")
-                
+
             # For create, ensure parent is not a symlink
             if step.operation == "create" and resolved_path.parent.is_symlink():
                 raise SecurityError("Refusing to create file in symlinked directory")
@@ -1222,45 +1224,49 @@ class EnhancedAutonomousCodingEngine:
     def _contains_dangerous_patterns(self, code: str) -> bool:
         """Check for potentially dangerous code patterns using AST analysis and string matching"""
         import ast
-        
+
         # Try AST parsing for Python code (more robust detection)
         try:
             tree = ast.parse(code)
-            
+
             # Check for dangerous function calls in AST
             for node in ast.walk(tree):
                 if isinstance(node, ast.Call):
                     # Check for dangerous function calls
                     if isinstance(node.func, ast.Name):
-                        if node.func.id in {'eval', 'exec', 'compile'}:
+                        if node.func.id in {"eval", "exec", "compile"}:
                             return True
                     elif isinstance(node.func, ast.Attribute):
                         # Check for os.system, subprocess.call, etc.
-                        if (isinstance(node.func.value, ast.Name) and 
-                            node.func.value.id == 'os' and 
-                            node.func.attr == 'system'):
+                        if (
+                            isinstance(node.func.value, ast.Name)
+                            and node.func.value.id == "os"
+                            and node.func.attr == "system"
+                        ):
                             return True
-                        if (isinstance(node.func.value, ast.Name) and 
-                            node.func.value.id == 'subprocess' and 
-                            node.func.attr in {'call', 'run', 'Popen'}):
+                        if (
+                            isinstance(node.func.value, ast.Name)
+                            and node.func.value.id == "subprocess"
+                            and node.func.attr in {"call", "run", "Popen"}
+                        ):
                             return True
-                            
+
                 # Check for dangerous imports
                 elif isinstance(node, (ast.Import, ast.ImportFrom)):
                     for alias in node.names:
-                        if alias.name in {'os', 'subprocess'}:
+                        if alias.name in {"os", "subprocess"}:
                             # Could add more sophisticated context checking here
                             return True
-                            
+
         except SyntaxError:
             # If AST parsing fails, fall back to string matching
             pass
-        
+
         # Fallback to string matching for non-Python or invalid syntax
         # High-risk patterns that are rarely legitimate in automated coding
         high_risk_patterns = [
             "subprocess.call",
-            "subprocess.run", 
+            "subprocess.run",
             "subprocess.Popen",
             "os.system",
             "eval(",

@@ -95,16 +95,18 @@ def get_coding_engine(
             # Initialize with proper dependencies (without db_session)
             llm_service = LLMService()
             vector_store = VectorStore()  # Placeholder
-            
+
             # Use configurable workspace base path with validation
-            workspace_base = getattr(settings, 'WORKSPACE_BASE_PATH', '/tmp/workspaces')
+            workspace_base = getattr(settings, "WORKSPACE_BASE_PATH", "/tmp/workspaces")
             workspace_path = Path(workspace_base) / workspace_id
-            
+
             # Ensure workspace directory exists and is accessible
             try:
                 workspace_path.mkdir(parents=True, exist_ok=True)
                 if not os.access(workspace_path, os.R_OK | os.W_OK):
-                    raise PermissionError(f"Workspace directory not accessible: {workspace_path}")
+                    raise PermissionError(
+                        f"Workspace directory not accessible: {workspace_path}"
+                    )
             except (OSError, PermissionError) as e:
                 logger.error(f"Failed to create/access workspace {workspace_id}: {e}")
                 raise ValueError("Workspace initialization failed")

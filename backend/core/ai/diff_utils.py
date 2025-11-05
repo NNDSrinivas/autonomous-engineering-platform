@@ -154,8 +154,8 @@ def apply_diff(
         # Write diff content using file descriptor
         with os.fdopen(temp_fd, "w", encoding="utf-8") as tf:
             tf.write(diff_text)
-    except Exception:
-        # Clean up on failure
+    except (IOError, OSError) as e:
+        # Clean up on file operation failure
         if temp_fd is not None:
             try:
                 os.close(temp_fd)
@@ -168,6 +168,22 @@ def apply_diff(
             except OSError:
                 # Ignore errors during cleanup; file may not exist or be already removed
                 pass
+        # Re-raise the original file operation error
+        raise e
+    except Exception as e:
+        # Handle unexpected exceptions - clean up and re-raise
+        if temp_fd is not None:
+            try:
+                os.close(temp_fd)
+            except OSError:
+                pass
+        if patch_file and os.path.exists(patch_file):
+            try:
+                os.unlink(patch_file)
+            except OSError:
+                pass
+        # Re-raise unexpected exceptions to avoid hiding errors
+        raise e
         raise
 
     try:

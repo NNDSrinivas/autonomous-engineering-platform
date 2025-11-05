@@ -111,14 +111,14 @@ export class ChatPanel {
         // Fallback: use timestamp and cryptographically secure random bytes
         const timestamp = Date.now();
         const randomHex = crypto.randomBytes(8).toString('hex'); // 8 random bytes (64 bits) as 16 hex characters
-        this._messageCounter = (this._messageCounter + 1) & ChatPanel.MAX_COUNTER_VALUE;
+        this._messageCounter = (this._messageCounter + 1) % (ChatPanel.MAX_COUNTER_VALUE + 1);
         return `${prefix}-${timestamp}-${randomHex}-${this._messageCounter}`;
       }
     } catch {
       // If crypto module fails entirely, fallback to Math.random (last resort)
       const timestamp = Date.now();
       const randomHex = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
-      this._messageCounter = (this._messageCounter + 1) & ChatPanel.MAX_COUNTER_VALUE;
+      this._messageCounter = (this._messageCounter + 1) % (ChatPanel.MAX_COUNTER_VALUE + 1);
       return `${prefix}-${timestamp}-${randomHex}-${this._messageCounter}`;
     }
   }

@@ -16,11 +16,20 @@ const SimpleConcierge: React.FC = () => {
     return 'Good Night';
   };
 
+  const getTimeBasedIcon = () => {
+    const hour = currentTime.getHours();
+    if (hour < 6) return '🌙'; // Night
+    if (hour < 12) return '☀️'; // Morning
+    if (hour < 17) return '🌤️'; // Afternoon
+    if (hour < 21) return '🌇'; // Evening
+    return '🌙'; // Late night
+  };
+
   return (
     <div className="w-96 min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 p-6 text-white">
       {/* Header */}
       <div className="text-center mb-8">
-        <div className="text-6xl mb-4">☀️</div>
+        <div className="text-6xl mb-4">{getTimeBasedIcon()}</div>
         <h1 className="text-2xl font-light mb-2">{getGreeting()}</h1>
         <div className="text-4xl font-thin mb-2">
           {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

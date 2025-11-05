@@ -75,6 +75,7 @@ class TaskType(Enum):
 
 
 @dataclass
+@dataclass
 class CodingStep:
     """Individual step in autonomous coding workflow"""
 
@@ -88,6 +89,23 @@ class CodingStep:
     user_feedback: Optional[str] = None
     reasoning: Optional[str] = None
     dependencies: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        """Validate file path early at creation time to fail fast on invalid input"""
+        # Basic validation - more comprehensive validation done at execution time
+        if not self.file_path or not self.file_path.strip():
+            raise DangerousCodeError("Invalid file path: empty path")
+
+        # Check for dangerous characters early
+        dangerous_chars = ["\x00", "\r", "\n", "\t"]
+        if any(char in self.file_path for char in dangerous_chars):
+            raise DangerousCodeError("Invalid file path: contains dangerous characters")
+
+        # Basic absolute path check
+        if os.path.isabs(self.file_path):
+            raise DangerousCodeError(
+                "Invalid file path: absolute paths are not allowed"
+            )
 
 
 @dataclass
@@ -1352,9 +1370,7 @@ class EnhancedAutonomousCodingEngine:
                     # Atomic file modification: write to temp file, then rename
                     temp_file_path = None
                     try:
-                        # Create temporary file in secure system temp directory with restrictive permissions
-                        # Using NamedTemporaryFile for secure temporary file creation
-                        # Create secure temp file with atomic permissions
+                        # Create secure temp file with mkstemp() for atomic permissions
                         temp_fd, temp_file_path = tempfile.mkstemp(
                             suffix=".tmp",
                             dir=None,  # Use secure system temp directory

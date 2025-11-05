@@ -6,16 +6,23 @@ Provides context-aware responses with team intelligence
 from fastapi import APIRouter, Depends
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import requests
 from sqlalchemy.orm import Session
 
 from backend.core.db import get_db
+from backend.core.settings import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+# Configuration helper for API base URL
+def get_api_base_url() -> str:
+    """Get the API base URL from settings or environment"""
+    return getattr(settings, "API_BASE_URL", "http://localhost:8002")
 
 
 class ChatMessage(BaseModel):
@@ -191,8 +198,9 @@ async def _build_enhanced_context(
     if request.currentTask:
         try:
             # Make request to existing context API
+            api_base = get_api_base_url()
             response = requests.get(
-                f"http://localhost:8002/api/context/task/{request.currentTask}"
+                f"{api_base}/api/context/task/{request.currentTask}"
             )
             if response.status_code == 200:
                 enhanced_context["task_context"] = response.json()
@@ -209,7 +217,8 @@ async def _handle_task_query(
     try:
         # Try to get tasks from JIRA API
         try:
-            response = requests.get("http://localhost:8002/api/jira/tasks")
+            api_base = get_api_base_url()
+            response = requests.get(f"{api_base}/api/jira/tasks")
             if response.status_code == 200:
                 data = response.json()
                 tasks = data.get("items", [])
@@ -282,12 +291,13 @@ async def _handle_team_query(
         # Try to get team activity
         team_activity = []
         try:
-            response = requests.get("http://localhost:8002/api/activity/recent")
+            api_base = get_api_base_url()
+            response = requests.get(f"{api_base}/api/activity/recent")
             if response.status_code == 200:
                 data = response.json()
                 team_activity = data.get("items", [])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to fetch team activity: {e}")
 
         if not team_activity:
             return ChatResponse(
@@ -475,8 +485,57 @@ async def _handle_general_query(
 
 def _format_time_ago(timestamp: str) -> str:
     """Format timestamp as time ago"""
+    if not timestamp:
+        return "unknown time"
+
     try:
-        # Simple implementation for now
-        return "2 hours ago"
-    except Exception:
+        now = datetime.now(timezone.utc)
+
+        # Handle different timestamp formats
+        if isinstance(timestamp, str):
+            try:
+                # Try ISO format first
+                ts_dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            except ValueError:
+                try:
+                    # Try UNIX timestamp (seconds)
+                    ts_dt = datetime.fromtimestamp(float(timestamp), tz=timezone.utc)
+                except (ValueError, TypeError):
+                    return "unknown time"
+        elif isinstance(timestamp, datetime):
+            ts_dt = timestamp
+            if ts_dt.tzinfo is None:
+                ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+        else:
+            return "unknown time"
+
+        # Calculate time difference
+        diff = now - ts_dt
+        seconds = int(diff.total_seconds())
+
+        if seconds < 0:
+            return "in the future"
+        elif seconds < 60:
+            return f"{seconds} second{'s' if seconds != 1 else ''} ago"
+        elif seconds < 3600:
+            minutes = seconds // 60
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        elif seconds < 86400:
+            hours = seconds // 3600
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        elif seconds < 604800:  # 7 days
+            days = seconds // 86400
+            return f"{days} day{'s' if days != 1 else ''} ago"
+        elif seconds < 2419200:  # 28 days
+            weeks = seconds // 604800
+            return f"{weeks} week{'s' if weeks != 1 else ''} ago"
+        elif seconds < 31536000:  # 365 days
+            months = seconds // 2419200
+            return f"{months} month{'s' if months != 1 else ''} ago"
+        else:
+            years = seconds // 31536000
+            return f"{years} year{'s' if years != 1 else ''} ago"
+
+    except Exception as e:
+        logger.warning(f"Error formatting timestamp {timestamp}: {e}")
         return "recently"

@@ -190,7 +190,11 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
 
           <div className="flex justify-end gap-2">
             <button
-              onClick={() => setShowDetails(false)}
+              onClick={() => {
+                setShowDetails(false);
+                setSelectedRating(null);
+                setFeedback({ rating: null });
+              }}
               className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
             >
               Cancel

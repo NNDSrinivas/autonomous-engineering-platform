@@ -23,7 +23,7 @@ interface ArmPerformance {
   successes: number;
   failures: number;
   total_trials: number;
-  success_rate: number;
+  success_rate: number | null;
   confidence: number;
 }
 
@@ -85,7 +85,8 @@ export function AdminFeedbackStats() {
       }
 
       if (errors.length > 0) {
-        setError(`${errors.join('\n')}\n\nSome data may be incomplete.`);
+        const errorMessage = errors.join('. ') + '. Some data may be incomplete.';
+        setError(errorMessage);
       }
     } catch (error) {
       console.error('Error loading feedback data:', error);
@@ -245,7 +246,7 @@ export function AdminFeedbackStats() {
                     <div key={arm} className="text-center">
                       <div className="text-sm font-medium text-gray-700 capitalize mb-1">{arm}</div>
                       <div className="text-lg font-bold text-gray-900">
-                        {Math.round(performance.success_rate * 100)}%
+                        {performance.success_rate !== null ? Math.round(performance.success_rate * 100) : 'N/A'}%
                       </div>
                       <div className="text-xs text-gray-500">
                         {performance.total_trials} trials

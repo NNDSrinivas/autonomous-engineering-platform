@@ -17,6 +17,9 @@ from pydantic import BaseModel
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Import the autonomous coding router
+from backend.api.routers.autonomous_coding import router as autonomous_coding_router
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -40,6 +43,9 @@ app = FastAPI(
     description="AI-powered digital coworker for engineering teams",
     version="2.0.0",
 )
+
+# Include the autonomous coding router with concierge endpoints
+app.include_router(autonomous_coding_router, prefix="/api")
 
 # CORS middleware
 app.add_middleware(

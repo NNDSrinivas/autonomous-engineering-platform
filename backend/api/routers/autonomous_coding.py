@@ -87,13 +87,13 @@ def get_coding_engine(
     # Validate workspace_id to prevent directory traversal and bypass attacks
     import re
 
-    # Strengthen validation to prevent hyphen-based bypass attacks
+    # Strengthen validation to prevent consecutive special chars and bypass attacks
     if (
-        not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9]$", workspace_id)
+        not re.match(r"^[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*$", workspace_id)
         or len(workspace_id) < 3
     ):
         raise ValueError(
-            "Invalid workspace_id format: must be 3+ chars, start/end with alphanumeric, contain only letters, numbers, underscore, hyphen"
+            "Invalid workspace_id format: must be 3+ chars, only letters, numbers, underscores, hyphens allowed, and hyphens/underscores must be between alphanumeric segments (no consecutive special characters)"
         )
 
     with _engine_lock:

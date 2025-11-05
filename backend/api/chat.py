@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import logging
-import threading
+import asyncio
 import httpx  # Use async httpx instead of sync requests
 from sqlalchemy.orm import Session
 from urllib.parse import urlparse
@@ -23,15 +23,15 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 # Shared async client instance with proper lifecycle management
 _async_client: Optional[httpx.AsyncClient] = None
-_client_lock = threading.Lock()
+_client_lock = asyncio.Lock()
 
 
-def get_http_client() -> httpx.AsyncClient:
-    """Get shared httpx client instance (thread-safe initialization)"""
+async def get_http_client() -> httpx.AsyncClient:
+    """Get shared httpx client instance (async-safe initialization)"""
     global _async_client
     if _async_client is None:
-        with _client_lock:
-            # Double-check locking pattern
+        async with _client_lock:
+            # Double-check locking pattern with async lock
             if _async_client is None:
                 _async_client = httpx.AsyncClient(
                     timeout=httpx.Timeout(10.0),
@@ -128,7 +128,7 @@ async def generate_chat_response(
         )
 
 
-@router.post("/suggestions/proactive")
+@router.post("/proactive")
 async def generate_proactive_suggestions(
     request: ProactiveSuggestionsRequest, db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
@@ -241,7 +241,7 @@ async def _build_enhanced_context(
         try:
             # Make async request to existing context API
             api_base = get_api_base_url()
-            client = get_http_client()
+            client = await get_http_client()
             response = await client.get(
                 f"{api_base}/api/context/task/{request.currentTask}"
             )
@@ -261,7 +261,7 @@ async def _handle_task_query(
         # Try to get tasks from JIRA API
         try:
             api_base = get_api_base_url()
-            client = get_http_client()
+            client = await get_http_client()
             response = await client.get(f"{api_base}/api/jira/tasks")
             if response.status_code == 200:
                 data = response.json()
@@ -336,7 +336,7 @@ async def _handle_team_query(
         team_activity = []
         try:
             api_base = get_api_base_url()
-            client = get_http_client()
+            client = await get_http_client()
             response = await client.get(f"{api_base}/api/activity/recent")
             if response.status_code == 200:
                 data = response.json()
@@ -576,8 +576,8 @@ def _format_time_ago(timestamp: str) -> str:
             return f"{weeks} week{'s' if weeks != 1 else ''} ago"
         elif seconds < 31536000:  # 365 days
             months = (
-                seconds // 2592000
-            )  # 30 days for more accurate monthly calculations
+                seconds // 2628000
+            )  # Approximate month length (~30.44 days) for better accuracy
             return f"{months} month{'s' if months != 1 else ''} ago"
         else:
             years = seconds // 31536000

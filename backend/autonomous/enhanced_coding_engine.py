@@ -18,6 +18,11 @@ import ast
 from pathlib import Path
 from typing import TYPE_CHECKING
 import httpx
+
+
+class DangerousCodeError(Exception):
+    """Raised when potentially dangerous code patterns are detected"""
+    pass
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -148,16 +153,13 @@ class EnhancedAutonomousCodingEngine:
         self.active_tasks: Dict[str, CodingTask] = {}
         self.task_queue: List[str] = []
 
-        # Git repository (optional)
+        # Git repository
         self.repo = None
-        if git is not None:
-            try:
-                self.repo = git.Repo(workspace_path)
-            except Exception:  # Catch any git-related error
-                logger.warning(f"No git repository found at {workspace_path}")
-                self.repo = None
-        else:
-            logger.warning("GitPython not available - git features disabled")
+        try:
+            self.repo = git.Repo(workspace_path)
+        except Exception:  # Catch any git-related error
+            logger.warning(f"No git repository found at {workspace_path}")
+            self.repo = None
 
         logger.info("Enhanced Autonomous Coding Engine initialized")
 
@@ -923,26 +925,41 @@ class EnhancedAutonomousCodingEngine:
         return safe_files
 
     def _file_content_is_safe(self, file_path: str) -> bool:
-        """Check if file content appears safe (no obvious secrets)"""
-        sensitive_keywords = [
-            "password",
-            "secret",
-            "token",
-            "key",
-            "credential",
-            "api_key",
-            "auth_token",
-            "private_key",
-            "access_token",
+        """Check if file content appears safe (no actual secrets using regex patterns)"""
+        import re
+        
+        # Regex patterns for common secret formats
+        secret_patterns = [
+            # API Keys (various formats)
+            r'["\'](?:api_?key|apikey)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
+            r'["\'](?:secret_?key|secretkey)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
+            r'["\'](?:access_?token|accesstoken)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
+            # AWS Keys
+            r'AKIA[0-9A-Z]{16}',
+            r'["\'](?:aws_access_key_id)["\']?\s*[:=]\s*["\']([A-Z0-9]{20})["\']',
+            r'["\'](?:aws_secret_access_key)["\']?\s*[:=]\s*["\']([A-Za-z0-9/+=]{40})["\']',
+            # GitHub tokens
+            r'ghp_[A-Za-z0-9]{36}',
+            r'github_pat_[A-Za-z0-9_]{82}',
+            # Generic high-entropy strings that look like secrets
+            r'["\'](?:password|pwd|pass)["\']?\s*[:=]\s*["\']([A-Za-z0-9!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]{12,})["\']',
+            # JWT tokens
+            r'eyJ[A-Za-z0-9_\-]*\.eyJ[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]*',
+            # Private keys
+            r'-----BEGIN (?:RSA )?PRIVATE KEY-----',
         ]
 
         try:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                # Only read first 1KB to check for obvious secrets
-                content = f.read(1024).lower()
+                # Only read first 2KB to check for secrets
+                content = f.read(2048)
 
-            # Check for obvious secret patterns
-            return not any(keyword in content for keyword in sensitive_keywords)
+            # Check for actual secret patterns using regex
+            for pattern in secret_patterns:
+                if re.search(pattern, content, re.IGNORECASE):
+                    return False
+                    
+            return True
         except Exception:
             # If we can't read it safely, don't stage it
             return False
@@ -1036,11 +1053,15 @@ class EnhancedAutonomousCodingEngine:
             # Basic code validation before writing
             generated_code = code_result["generated_code"]
             if self._contains_dangerous_patterns(generated_code):
-                logger.warning(
-                    f"Potentially dangerous code detected in {step.file_path}"
+                logger.error(
+                    f"Potentially dangerous code detected in {step.file_path}. Operation blocked for security."
                 )
-                # Add warning comment but allow the write
-                generated_code = f"# WARNING: AEP detected potentially dangerous patterns in this code\n{generated_code}"
+                # Block the write and raise a security error
+                raise DangerousCodeError(
+                    f"Potentially dangerous code detected in {step.file_path}. "
+                    f"Operation blocked to prevent security risks. "
+                    f"Please review the generated code and ensure it's safe before proceeding."
+                )
 
             if step.operation == "create":
                 # Create new file
@@ -1055,7 +1076,7 @@ class EnhancedAutonomousCodingEngine:
                     # Atomic file modification: write to temp file, then rename
                     import tempfile
 
-                    temp_file = None
+                    temp_file_path = None
                     try:
                         # Create temporary file in same directory for atomic rename
                         with tempfile.NamedTemporaryFile(
@@ -1069,15 +1090,16 @@ class EnhancedAutonomousCodingEngine:
                             temp_file_path = temp_file.name
 
                         # Atomic rename operation
-                        os.rename(temp_file_path, file_path)
+                        os.rename(temp_file_path, str(file_path))
                         logger.info(f"Modified file atomically: {step.file_path}")
 
                     except Exception as e:
                         # Clean up temp file if operation failed
-                        if temp_file and os.path.exists(temp_file.name):
+                        if temp_file_path and os.path.exists(temp_file_path):
                             try:
-                                os.unlink(temp_file.name)
+                                os.unlink(temp_file_path)
                             except OSError:
+                                # Ignore if temp file does not exist; cleanup is best-effort
                                 pass
                         raise e
                 else:

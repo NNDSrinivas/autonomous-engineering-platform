@@ -6,7 +6,7 @@ interface FeedbackBarProps {
 }
 
 interface FeedbackData {
-  rating: number;
+  rating: number | null;
   reason?: string;
   comment?: string;
 }
@@ -24,7 +24,7 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState(false);
-  const [feedback, setFeedback] = useState<FeedbackData>({ rating: 0 });
+  const [feedback, setFeedback] = useState<FeedbackData>({ rating: null });
   const [error, setError] = useState<string | null>(null);
 
   const handleRatingClick = (rating: number) => {
@@ -45,8 +45,8 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
         submitFeedback({ rating });
       } else {
         // Reset if user cancels
-        setSelectedRating(-1);
-        setFeedback({ rating: -1 });
+        setSelectedRating(null);
+        setFeedback({ rating: null });
       }
     }
   };

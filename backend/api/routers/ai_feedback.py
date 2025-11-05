@@ -68,7 +68,7 @@ async def submit_feedback(
                 await bandit.record_feedback(
                     bandit_context, bandit_arm, feedback.rating
                 )
-    except (ValueError, ConnectionError, KeyError) as e:
+    except (ValueError, ConnectionError) as e:
         # Log error but don't fail the feedback submission
         logger.warning(f"Failed to update bandit learning: {e}")
     except Exception as e:

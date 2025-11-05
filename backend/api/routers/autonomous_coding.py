@@ -77,10 +77,6 @@ class ConciergeGreetingResponse(BaseModel):
     quick_actions: List[Dict[str, Any]]
 
 
-# Thread-safe engine instances per user/workspace
-_engine_lock = threading.Lock()
-_coding_engines: Dict[str, EnhancedAutonomousCodingEngine] = {}
-
 
 def get_coding_engine(
     workspace_id: str = "default", db: Optional[Session] = None

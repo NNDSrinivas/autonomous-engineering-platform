@@ -76,7 +76,7 @@ class TeamMember(BaseModel):
     skills: List[str]
 
 
-async def get_ai_response(prompt: str, system_prompt: Optional[str] = None) -> str:
+def get_ai_response(prompt: str, system_prompt: Optional[str] = None) -> str:
     """Get response from GPT-4"""
     if not OPENAI_AVAILABLE:
         return "AI service is not available. Please check your OpenAI API key configuration."
@@ -188,7 +188,7 @@ async def ask_question(request: QuestionRequest):
         """
 
         # Get AI response
-        ai_answer = await get_ai_response(enhanced_prompt, system_prompt)
+        ai_answer = get_ai_response(enhanced_prompt, system_prompt)
 
         return {
             "question": question,
@@ -244,7 +244,7 @@ async def analyze_code(request: CodeAnalysisRequest):
         """
 
         # Get AI analysis
-        ai_response = await get_ai_response(analysis_prompt, system_prompt)
+        ai_response = get_ai_response(analysis_prompt, system_prompt)
 
         # Try to parse JSON response
         try:
@@ -311,7 +311,7 @@ async def get_team_analytics():
             - recommendations (array)
             """
 
-            ai_insights_response = await get_ai_response(insights_prompt)
+            ai_insights_response = get_ai_response(insights_prompt)
 
             try:
                 if "```json" in ai_insights_response:

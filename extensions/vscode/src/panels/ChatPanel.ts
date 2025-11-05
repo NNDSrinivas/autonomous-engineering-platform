@@ -99,24 +99,15 @@ export class ChatPanel {
 
   private _generateMessageId(prefix: string): string {
     try {
-      // VS Code API provides UUID through different methods
-      return `${prefix}-${vscode.env.sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      // Use crypto.randomUUID() as primary method (available in Node.js 14.17+)
+      const crypto = require('crypto');
+      return `${prefix}-${crypto.randomUUID()}`;
     } catch {
-      // Use crypto.randomUUID() if available (Node.js 15+), otherwise robust fallback
-      try {
-        const crypto = require('crypto');
-        if (crypto.randomUUID) {
-          return `${prefix}-${crypto.randomUUID()}`;
-        }
-      } catch {}
-      
-      // Robust fallback with high entropy to prevent collisions
-      this._messageCounter = (this._messageCounter + 1) % Number.MAX_SAFE_INTEGER;
+      // Simple fallback using timestamp and random values
       const timestamp = Date.now();
-      const random = Math.floor(Math.random() * 1000000);
-      const processId = process.pid || Math.floor(Math.random() * 10000);
-      
-      return `${prefix}-${timestamp}-${this._messageCounter}-${random}-${processId}`;
+      const random = Math.floor(Math.random() * 1000000).toString(36);
+      this._messageCounter = (this._messageCounter + 1) % Number.MAX_SAFE_INTEGER;
+      return `${prefix}-${timestamp}-${random}-${this._messageCounter}`;
     }
   }
 

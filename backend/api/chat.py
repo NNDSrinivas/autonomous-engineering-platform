@@ -38,31 +38,28 @@ _client_lock = asyncio.Lock()
 async def get_http_client() -> httpx.AsyncClient:
     """Get or create httpx.AsyncClient instance with thread-safe initialization"""
     global _async_client
-    if _async_client is None:
-        async with _client_lock:
-            # Double-check pattern to prevent race conditions
-            if _async_client is None:
-                try:
-                    _async_client = httpx.AsyncClient(
-                        timeout=httpx.Timeout(10.0),
-                        limits=httpx.Limits(
-                            max_keepalive_connections=5, max_connections=10
-                        ),
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to initialize httpx.AsyncClient: {e}")
-                    raise
-    return _async_client
+    async with _client_lock:
+        if _async_client is None:
+            try:
+                _async_client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(10.0),
+                    limits=httpx.Limits(
+                        max_keepalive_connections=5, max_connections=10
+                    ),
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize httpx.AsyncClient: {e}")
+                raise
+        return _async_client
 
 
 async def close_http_client():
     """Close shared httpx client (for use in app lifespan)"""
     global _async_client
-    if _async_client is not None:
-        async with _client_lock:
-            if _async_client is not None:
-                await _async_client.aclose()
-                _async_client = None
+    async with _client_lock:
+        if _async_client is not None:
+            await _async_client.aclose()
+            _async_client = None
 
 
 # Configuration helper for API base URL with validation

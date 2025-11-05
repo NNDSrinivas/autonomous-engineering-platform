@@ -22,6 +22,9 @@ from backend.core.db import get_db
 from backend.autonomous.enhanced_coding_engine import EnhancedAutonomousCodingEngine
 from backend.core.ai.llm_service import LLMService
 from backend.core.memory.vector_store import VectorStore
+from backend.core.settings import settings
+import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/autonomous", tags=["autonomous-coding"])
@@ -85,20 +88,32 @@ def get_coding_engine(
     import re
 
     if not re.match(r"^[a-zA-Z0-9_-]+$", workspace_id):
-        raise ValueError(f"Invalid workspace_id: {workspace_id}")
+        raise ValueError("Invalid workspace_id format")
 
     with _engine_lock:
         if workspace_id not in _coding_engines:
             # Initialize with proper dependencies (without db_session)
             llm_service = LLMService()
             vector_store = VectorStore()  # Placeholder
-            workspace_path = f"/workspace/{workspace_id}"  # Workspace isolation
+            
+            # Use configurable workspace base path with validation
+            workspace_base = getattr(settings, 'WORKSPACE_BASE_PATH', '/tmp/workspaces')
+            workspace_path = Path(workspace_base) / workspace_id
+            
+            # Ensure workspace directory exists and is accessible
+            try:
+                workspace_path.mkdir(parents=True, exist_ok=True)
+                if not os.access(workspace_path, os.R_OK | os.W_OK):
+                    raise PermissionError(f"Workspace directory not accessible: {workspace_path}")
+            except (OSError, PermissionError) as e:
+                logger.error(f"Failed to create/access workspace {workspace_id}: {e}")
+                raise ValueError("Workspace initialization failed")
 
             # Create engine without database session (session will be injected per request)
             _coding_engines[workspace_id] = EnhancedAutonomousCodingEngine(
                 llm_service=llm_service,
                 vector_store=vector_store,
-                workspace_path=workspace_path,
+                workspace_path=str(workspace_path),  # Convert Path to string
                 db_session=None,  # No shared session
             )
 

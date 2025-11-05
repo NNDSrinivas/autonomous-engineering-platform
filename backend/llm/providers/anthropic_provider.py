@@ -65,7 +65,7 @@ class AnthropicProvider:
             if not message.content or len(message.content) == 0:
                 raise RuntimeError("Anthropic API returned empty content")
 
-            # Handle different content block types safely - simplified per Copilot feedback
+            # Extract text content from the first content block, handling different block types safely
             content_block = message.content[0]
             if hasattr(content_block, "text"):
                 # This is likely a TextBlock - access text safely

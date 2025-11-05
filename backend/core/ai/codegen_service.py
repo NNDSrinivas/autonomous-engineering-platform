@@ -420,6 +420,9 @@ async def generate_unified_diff(
                 "Learning services not available (missing dependencies), using default parameters"
             )
         except (ValueError, ConnectionError, KeyError) as e:
+            # KeyError: Context dictionary missing required keys (task_type, input_size_bucket, user_experience)
+            # ValueError: Invalid parameter values or configuration
+            # ConnectionError: Redis/cache connectivity issues
             logger.warning(
                 f"Bandit learning unavailable for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
             )

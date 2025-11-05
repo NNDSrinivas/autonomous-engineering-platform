@@ -35,6 +35,7 @@ export class ChatPanel {
   private _disposables: vscode.Disposable[] = [];
   private _chatState: ChatState = { messages: [] };
   private _apiBase: string;
+  private _messageCounter = 0;
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this._panel = panel;
@@ -96,6 +97,15 @@ export class ChatPanel {
     ChatPanel.currentPanel = new ChatPanel(panel, extensionUri);
   }
 
+  private _generateMessageId(prefix: string): string {
+    try {
+      return `${prefix}-${vscode.env.createUuid()}`;
+    } catch {
+      this._messageCounter = (this._messageCounter + 1) % Number.MAX_SAFE_INTEGER;
+      return `${prefix}-${Date.now()}-${this._messageCounter}`;
+    }
+  }
+
   private async _initializeChat() {
     // Load previous chat history if exists
     await this._loadChatHistory();
@@ -103,7 +113,7 @@ export class ChatPanel {
     // Add welcome message with team context
     const welcomeMessage = await this._generateWelcomeMessage();
     this._addMessage({
-      id: `msg-${Date.now()}`,
+      id: this._generateMessageId('msg'),
       type: 'assistant',
       content: welcomeMessage.text,
       timestamp: new Date(),
@@ -170,7 +180,7 @@ export class ChatPanel {
   private async _handleUserMessage(text: string) {
     // Add user message to chat
     const userMessage: ChatMessage = {
-      id: `msg-${Date.now()}`,
+      id: this._generateMessageId('msg'),
       type: 'user',
       content: text,
       timestamp: new Date()
@@ -186,7 +196,7 @@ export class ChatPanel {
       
       // Add assistant response
       const assistantMessage: ChatMessage = {
-        id: `msg-${Date.now() + 1}`,
+        id: this._generateMessageId('msg'),
         type: 'assistant',
         content: response.content,
         timestamp: new Date(),
@@ -197,7 +207,7 @@ export class ChatPanel {
       // Add proactive suggestions if any
       if (response.suggestions && response.suggestions.length > 0) {
         const suggestionMessage: ChatMessage = {
-          id: `msg-${Date.now() + 2}`,
+          id: this._generateMessageId('msg'),
           type: 'suggestion',
           content: 'Here are some things I can help with next:',
           timestamp: new Date(),
@@ -208,7 +218,7 @@ export class ChatPanel {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this._addMessage({
-        id: `msg-${Date.now() + 1}`,
+        id: this._generateMessageId('msg'),
         type: 'assistant',
         content: `I encountered an error: ${errorMessage}. Let me try a different approach.`,
         timestamp: new Date()
@@ -303,7 +313,7 @@ export class ChatPanel {
   private async _loadProactiveSuggestions() {
     try {
       // Use memory graph to generate proactive suggestions
-      const response = await fetch(`${this._apiBase}/api/suggestions/proactive`, {
+      const response = await fetch(`${this._apiBase}/api/chat/proactive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -319,7 +329,7 @@ export class ChatPanel {
         const suggestions = await response.json();
         if (suggestions.items && suggestions.items.length > 0) {
           this._addMessage({
-            id: `proactive-${Date.now()}`,
+            id: this._generateMessageId('proactive'),
             type: 'suggestion',
             content: '💡 Based on your recent work, I noticed:',
             timestamp: new Date(),
@@ -411,9 +421,9 @@ export class ChatPanel {
     try {
       const response = await fetch(`${this._apiBase}/api/context/task/${encodeURIComponent(taskKey)}`);
       const contextPack = await response.json();
-      
+
       this._addMessage({
-        id: `task-selected-${Date.now()}`,
+        id: this._generateMessageId('task-selected'),
         type: 'assistant',
         content: `Great! I've loaded context for **${taskKey}**. Here's what I understand:\n\n${contextPack.explain?.what || 'Task details loading...'}\n\nHow would you like to proceed?`,
         timestamp: new Date(),
@@ -429,7 +439,7 @@ export class ChatPanel {
       });
     } catch (error) {
       this._addMessage({
-        id: `task-error-${Date.now()}`,
+        id: this._generateMessageId('task-error'),
         type: 'assistant',
         content: `I've selected task ${taskKey}, but couldn't load all details. How would you like to proceed?`,
         timestamp: new Date(),
@@ -663,6 +673,24 @@ export class ChatPanel {
                     break;
             }
         });
+
+        function escapeHtml(value) {
+            return (value ?? '')
+                .toString()
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderMarkdown(text) {
+            const escaped = escapeHtml(text);
+            return escaped
+                .replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>')
+                .replace(/`(.*?)`/g, '<code>$1</code>')
+                .replace(/\\n/g, '<br>');
+        }
         
         function renderChat() {
             const container = document.getElementById('chatContainer');
@@ -681,13 +709,9 @@ export class ChatPanel {
             const messageEl = document.createElement('div');
             messageEl.className = \`message \${message.type}\`;
             
-            // Format content with basic markdown support
-            let content = message.content
-                .replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>')
-                .replace(/\`(.*?)\`/g, '<code>$1</code>')
-                .replace(/\\n/g, '<br>');
-            
-            messageEl.innerHTML = content;
+            // Format content with escaped markdown rendering
+            const contentHtml = renderMarkdown(message.content);
+            messageEl.innerHTML = contentHtml;
             
             // Add timestamp
             const timestamp = document.createElement('div');
@@ -700,7 +724,12 @@ export class ChatPanel {
                 if (message.context.taskKey) {
                     const contextEl = document.createElement('div');
                     contextEl.className = 'context-info';
-                    contextEl.innerHTML = \`<strong>Task:</strong> \${message.context.taskKey}\`;
+                    const labelEl = document.createElement('strong');
+                    labelEl.textContent = 'Task:';
+                    const valueEl = document.createElement('span');
+                    valueEl.textContent = \` \${message.context.taskKey}\`;
+                    contextEl.appendChild(labelEl);
+                    contextEl.appendChild(valueEl);
                     messageEl.appendChild(contextEl);
                 }
                 

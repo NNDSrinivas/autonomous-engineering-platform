@@ -1131,12 +1131,12 @@ class EnhancedAutonomousCodingEngine:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 # Use chunked reading to prevent memory exhaustion on large files
                 chunk_size = 64 * 1024  # 64KB chunks for memory efficiency
-                
+
                 while True:
                     content = f.read(chunk_size)
                     if not content:
                         break
-                    
+
                     # Check for actual secret patterns using compiled regex
                     for compiled_pattern in compiled_patterns:
                         if compiled_pattern.search(content):

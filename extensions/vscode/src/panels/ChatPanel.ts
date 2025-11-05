@@ -334,8 +334,17 @@ export class ChatPanel {
 
   private async _getCurrentWorkspaceFiles(): Promise<string[]> {
     try {
-      const files = await vscode.workspace.findFiles('**/*.{py,js,ts,jsx,tsx}', '**/node_modules/**', 10);
-      return files.map(file => file.fsPath);
+      // Use separate patterns for better compatibility
+      const patterns = ['**/*.py', '**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx'];
+      const fileArrays = await Promise.all(
+        patterns.map(pattern =>
+          vscode.workspace.findFiles(pattern, '**/node_modules/**', 10)
+        )
+      );
+      
+      // Flatten the arrays and deduplicate
+      const files = Array.from(new Set(fileArrays.flat().map(file => file.fsPath)));
+      return files;
     } catch {
       return [];
     }
@@ -343,7 +352,9 @@ export class ChatPanel {
 
   private async _getRecentChanges(): Promise<any[]> {
     try {
-      // This would integrate with git to get recent changes
+      // TODO: Implement git integration to get recent changes
+      // This would use vscode.extensions.getExtension('vscode.git') API
+      // or execute git commands via vscode.workspace.workspaceFolders
       return [];
     } catch {
       return [];
@@ -353,7 +364,8 @@ export class ChatPanel {
   private _addMessage(message: ChatMessage) {
     this._chatState.messages.push(message);
     this._updateWebview();
-    this._saveChatHistory();
+    // TODO: Implement chat history persistence
+    // this._saveChatHistory();
   }
 
   private _updateWebview() {

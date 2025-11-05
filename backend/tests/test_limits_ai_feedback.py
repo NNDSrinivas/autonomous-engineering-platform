@@ -10,6 +10,11 @@ import time
 from fastapi.testclient import TestClient
 from backend.api.main import app
 
+# Rate limiter configuration constants
+# Token bucket refills at 1 token per second, so we need to wait slightly longer
+# than 1 second to ensure tokens are replenished between test runs
+TOKEN_REFILL_WAIT_SEC = 1.1  # Slightly longer than token refill interval
+
 client = TestClient(app)
 
 
@@ -91,10 +96,8 @@ def test_feedback_stats_rate_limited():
 
 def test_different_endpoints_separate_limits():
     """Test that different endpoint categories have separate rate limits."""
-    # Reset any existing rate limit state by waiting
-    # The rate limiter uses a token bucket that refills 1 token per second,
-    # so a 1.1 second sleep ensures tokens are replenished
-    time.sleep(1.1)
+    # Reset any existing rate limit state by waiting for token refill
+    time.sleep(TOKEN_REFILL_WAIT_SEC)
 
     # AI generate should be limited independently from feedback
     r1 = client.post("/api/ai/generate-diff", json={"intent": "test", "files": []})

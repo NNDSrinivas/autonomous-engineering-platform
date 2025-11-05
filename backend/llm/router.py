@@ -5,7 +5,7 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass, replace
-from typing import Dict, List, Any, Tuple, Optional
+from typing import Dict, List, Any, Tuple, Optional, Union
 from sqlalchemy.orm import Session
 from .providers.openai_provider import OpenAIProvider
 from .providers.anthropic_provider import AnthropicProvider
@@ -232,7 +232,7 @@ class ModelRouter:
                         phase=phase,
                         model=candidate,
                         status=status,
-                        prompt_hash=audit_context.prompt_hash or "unknown",
+                        prompt_hash=audit_context.prompt_hash or "<missing>",
                         tokens=tokens,
                         cost_usd=cost,
                         latency_ms=int(latency_ms),
@@ -288,7 +288,7 @@ class ModelRouter:
                         phase=phase,
                         model=candidate,
                         status=status,
-                        prompt_hash=audit_context.prompt_hash or "unknown",
+                        prompt_hash=audit_context.prompt_hash or "<missing>",
                         tokens=0,
                         cost_usd=0.0,
                         latency_ms=int(latency_ms),
@@ -401,8 +401,16 @@ class ModelRouter:
             ),
         }
 
-    def check_budget(self, phase: str) -> Dict[str, Any]:
-        """Check if current usage is within budget limits for the specified phase."""
+    def check_budget(self, phase: str) -> Dict[str, Union[bool, int, float]]:
+        """Check if current usage is within budget limits for the specified phase.
+
+        Returns:
+            Dictionary containing:
+            - within_token_budget (bool): Whether token usage is within budget
+            - tokens_used (int): Current token usage for the phase
+            - token_budget (int|float): Token budget limit (may be inf)
+            - token_usage_percent (float): Percentage of budget used
+        """
         phase_stats = self.usage_stats.get(phase, {})
         phase_budget = self.budgets.get(
             phase, {"tokens": float("inf"), "seconds": float("inf")}

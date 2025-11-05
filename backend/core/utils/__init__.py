@@ -58,29 +58,29 @@ def validate_header_value(
 ) -> str:
     """
     Validate and sanitize header values for HTTP responses.
-    
+
     Args:
         value: The header value to validate
         field_name: Name of the field being validated (for error messages)
         max_length: Maximum allowed length
-        
+
     Returns:
         Validated header value
-        
+
     Raises:
         ValueError: If validation fails
     """
     if not isinstance(value, str):
         raise ValueError(f"{field_name} must be a string")
-    
+
     if len(value) > max_length:
         raise ValueError(f"{field_name} exceeds maximum length of {max_length}")
-    
+
     # Check for invalid characters
     for char in value:
         if not _is_valid_header_char(char):
             raise ValueError(f"{field_name} contains invalid character: '{char}'")
-    
+
     return value
 
 

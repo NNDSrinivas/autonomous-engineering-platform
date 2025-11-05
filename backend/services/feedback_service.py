@@ -30,7 +30,7 @@ class FeedbackService:
     ) -> int:
         """Log an AI generation request and return the log ID."""
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:64]
-        
+
         log_entry = AiGenerationLog(
             org_key=org_key,
             user_sub=user_sub,
@@ -42,7 +42,7 @@ class FeedbackService:
             prompt_hash=prompt_hash,
             result_ref=result_ref,
         )
-        
+
         self.session.add(log_entry)
         await self.session.commit()
         await self.session.refresh(log_entry)
@@ -63,7 +63,7 @@ class FeedbackService:
             select(AiGenerationLog).where(AiGenerationLog.id == gen_id)
         )
         gen_log = gen_result.scalar_one_or_none()
-        
+
         if gen_log is None:
             return False
         if str(gen_log.org_key) != org_key:
@@ -89,7 +89,7 @@ class FeedbackService:
             reason=reason,
             comment=comment,
         )
-        
+
         self.session.add(feedback)
         return True
 
@@ -100,7 +100,7 @@ class FeedbackService:
     ) -> Dict:
         """Get aggregated feedback statistics for an organization."""
         cutoff_date = datetime.utcnow() - timedelta(days=days)
-        
+
         # Get basic stats
         total_gen_result = await self.session.execute(
             select(func.count(AiGenerationLog.id)).where(
@@ -111,7 +111,7 @@ class FeedbackService:
             )
         )
         total_generations = total_gen_result.scalar() or 0
-        
+
         total_feedback_result = await self.session.execute(
             select(func.count(AiFeedback.id)).where(
                 and_(
@@ -121,7 +121,7 @@ class FeedbackService:
             )
         )
         total_feedback = total_feedback_result.scalar() or 0
-        
+
         # Get rating distribution
         rating_result = await self.session.execute(
             select(AiFeedback.rating, func.count(AiFeedback.id))
@@ -133,9 +133,9 @@ class FeedbackService:
             )
             .group_by(AiFeedback.rating)
         )
-        
+
         ratings = {rating: count for rating, count in rating_result}
-        
+
         # Get reason distribution
         reason_result = await self.session.execute(
             select(AiFeedback.reason, func.count(AiFeedback.id))
@@ -148,9 +148,9 @@ class FeedbackService:
             )
             .group_by(AiFeedback.reason)
         )
-        
+
         reasons = {reason: count for reason, count in reason_result}
-        
+
         return {
             "total_generations": total_generations,
             "total_feedback": total_feedback,
@@ -186,7 +186,7 @@ class FeedbackService:
             .order_by(AiFeedback.created_at.desc())
             .limit(limit)
         )
-        
+
         return [
             {
                 "id": row[0],

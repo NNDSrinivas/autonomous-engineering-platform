@@ -92,12 +92,12 @@ async def generate_diff(
     try:
         # Generate diff using AI service - now returns tuple
         result = await generate_unified_diff(
-            body.intent, 
+            body.intent,
             body.files,
-            org_key=getattr(user, 'org_key', None),
+            org_key=getattr(user, "org_key", None),
             user_role=user.role.value if user.role else None,
         )
-        
+
         # Unpack the result
         if isinstance(result, tuple):
             diff, generation_log_id = result
@@ -120,7 +120,7 @@ async def generate_diff(
 
             logger.info(f"Generated valid diff: {stats}")
             return {
-                "diff": diff, 
+                "diff": diff,
                 "stats": stats,
                 "generation_log_id": generation_log_id,
             }

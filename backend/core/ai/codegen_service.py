@@ -101,10 +101,10 @@ def build_prompt(intent: str, files: List[str], snapshot: Dict[str, str]) -> str
 
 
 async def call_model(
-    prompt: str, 
+    prompt: str,
     max_retries: int = 2,
     model: str = MODEL,
-    temperature: float = TEMPERATURE
+    temperature: float = TEMPERATURE,
 ) -> str:
     """
     Call AI model to generate diff with intelligent fallback strategies.
@@ -278,11 +278,11 @@ def _is_diff_salvageable(diff: str) -> bool:
 
 
 async def generate_unified_diff(
-    intent: str, 
+    intent: str,
     files: List[str],
     org_key: Optional[str] = None,
     user_role: Optional[str] = None,
-    session = None,
+    session=None,
 ) -> tuple[str, Optional[int]]:
     """
     Generate a unified diff for the given intent and target files.
@@ -330,31 +330,29 @@ async def generate_unified_diff(
     temperature = TEMPERATURE
     generation_log_id = None
     bandit_context = None
-    
+
     if org_key:
         try:
             from backend.services.learning_service import LearningService
             from backend.services.feedback_service import FeedbackService
-            
+
             learning_service = LearningService()
-            
+
             # Extract context for bandit
             context = learning_service.extract_context(
-                task_type="codegen",
-                input_text=intent,
-                user_role=user_role
+                task_type="codegen", input_text=intent, user_role=user_role
             )
-            
+
             # Get parameters from bandit
             bandit = learning_service.get_bandit(org_key)
             params = await bandit.select_parameters(context)
-            
+
             model = params.get("model", MODEL)
             temperature = params.get("temperature", TEMPERATURE)
             bandit_context = params.get("_bandit_context")
-            
+
             logger.info(f"Bandit selected: model={model}, temperature={temperature}")
-            
+
             # Log generation if session provided
             if session:
                 feedback_service = FeedbackService(session)
@@ -372,7 +370,7 @@ async def generate_unified_diff(
                     prompt=prompt,
                     input_fingerprint=hashlib.sha256(intent.encode()).hexdigest()[:64],
                 )
-                
+
         except ImportError:
             logger.warning("Learning services not available, using default parameters")
         except Exception as e:

@@ -58,7 +58,7 @@ class AnthropicProvider:
 
             # Handle different content block types safely
             content_block = message.content[0]
-            if hasattr(content_block, 'text') and hasattr(content_block, '__class__'):
+            if hasattr(content_block, "text") and hasattr(content_block, "__class__"):
                 # This is likely a TextBlock - access text safely
                 text_content = content_block.text  # type: ignore
             else:

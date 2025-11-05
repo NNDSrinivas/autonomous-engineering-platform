@@ -1052,17 +1052,26 @@ class EnhancedAutonomousCodingEngine:
             }
 
     def _validate_relative_path(self, path_str: str):
-        """Validate file path string before any path operations to prevent attacks"""
+        """
+        Validate file path string before any path operations to prevent attacks.
+
+        Uses os.path.normpath() first to handle edge cases like redundant separators,
+        but this does NOT resolve .. components that would escape the workspace.
+        For example: normpath('../../etc/passwd') -> '../../etc/passwd' (unchanged)
+        The .. check after normalization is intentional and effective.
+        """
         # Normalize the path first to handle edge cases and resolve . and .. components
+        # within valid relative paths, but preserve .. that would escape workspace
         normalized_path = os.path.normpath(path_str)
 
-        # Disallow absolute paths (check after normalization)
+        # Disallow absolute paths (check after normalization for edge cases)
         if os.path.isabs(normalized_path):
             raise DangerousCodeError(
                 "Invalid file path: absolute paths are not allowed"
             )
 
-        # Disallow path traversal (check after normalization)
+        # Disallow path traversal - this catches .. components that would escape workspace
+        # normpath() preserves .. that escape the current directory, so this check is effective
         parts = Path(normalized_path).parts
         if any(part == ".." for part in parts):
             raise DangerousCodeError("Invalid file path: path traversal detected")

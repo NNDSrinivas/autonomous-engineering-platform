@@ -8,8 +8,6 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import logging
-import asyncio
-import threading
 import httpx  # Use async httpx instead of sync requests
 from sqlalchemy.orm import Session
 from urllib.parse import urlparse
@@ -29,32 +27,18 @@ SECONDS_PER_WEEK = 604800
 SECONDS_PER_MONTH = 2628000  # ~30.44 days for better accuracy
 SECONDS_PER_YEAR = 31536000
 
-# Shared async client instance with proper lifecycle management
+# HTTP client management - use simpler FastAPI dependency injection pattern
 _async_client: Optional[httpx.AsyncClient] = None
-_client_lock: Optional[asyncio.Lock] = None
-_lock_creation_lock = threading.Lock()  # Thread-safe lock creation
 
 
-async def get_http_client() -> httpx.AsyncClient:
-    """Get shared httpx client instance (async-safe initialization)"""
-    global _async_client, _client_lock
-
-    # Thread-safe lazy initialization of async lock
-    if _client_lock is None:
-        with _lock_creation_lock:
-            if _client_lock is None:
-                _client_lock = asyncio.Lock()
-
+def get_http_client() -> httpx.AsyncClient:
+    """Get or create httpx.AsyncClient instance"""
+    global _async_client
     if _async_client is None:
-        async with _client_lock:
-            # Double-check locking pattern with async lock
-            if _async_client is None:
-                _async_client = httpx.AsyncClient(
-                    timeout=httpx.Timeout(10.0),
-                    limits=httpx.Limits(
-                        max_keepalive_connections=5, max_connections=10
-                    ),
-                )
+        _async_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0),
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
     return _async_client
 
 
@@ -257,7 +241,7 @@ async def _build_enhanced_context(
         try:
             # Make async request to existing context API
             api_base = get_api_base_url()
-            client = await get_http_client()
+            client = get_http_client()
             response = await client.get(
                 f"{api_base}/api/context/task/{request.currentTask}"
             )
@@ -277,7 +261,7 @@ async def _handle_task_query(
         # Try to get tasks from JIRA API
         try:
             api_base = get_api_base_url()
-            client = await get_http_client()
+            client = get_http_client()
             response = await client.get(f"{api_base}/api/jira/tasks")
             if response.status_code == 200:
                 data = response.json()
@@ -352,7 +336,7 @@ async def _handle_team_query(
         team_activity = []
         try:
             api_base = get_api_base_url()
-            client = await get_http_client()
+            client = get_http_client()
             response = await client.get(f"{api_base}/api/activity/recent")
             if response.status_code == 200:
                 data = response.json()

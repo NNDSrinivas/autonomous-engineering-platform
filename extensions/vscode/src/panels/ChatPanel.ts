@@ -107,7 +107,7 @@ export class ChatPanel {
       } catch {
         // Fallback: use timestamp and cryptographically secure random bytes
         const timestamp = Date.now();
-        const randomHex = crypto.randomBytes(8).toString('hex'); // 64 bits of entropy
+        const randomHex = crypto.randomBytes(8).toString('hex'); // 8 random bytes (64 bits) as 16 hex characters
         this._messageCounter = (this._messageCounter + 1) & 0xFFFFFFFF;
         return `${prefix}-${timestamp}-${randomHex}-${this._messageCounter}`;
       }

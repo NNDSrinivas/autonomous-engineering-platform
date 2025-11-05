@@ -134,6 +134,15 @@ class EnhancedAutonomousCodingEngine:
     """
 
     # Configurable sensitive file patterns - can be overridden per deployment
+    # SECURITY: These patterns prevent accidental commits of credentials and sensitive data
+    # Environment files: *.env*, .env* - contain API keys, database passwords, secrets
+    # Cryptographic files: *.key, *.pem, *.p12, *.pfx - private keys and certificates  
+    # Credential files: *secret*, *password*, *.credentials - explicit credential storage
+    # Platform-specific: .aws/credentials, .htpasswd, wp-config.php - known sensitive configs
+    # Build artifacts: __pycache__/*, *.pyc - may contain sensitive data or bloat repository
+    # IDE configs: .vscode/settings.json, .idea/* - may expose local development secrets
+    # VCS data: .git/* - repository metadata that shouldn't be modified by automation
+    # Dependencies: node_modules/* - third-party code that shouldn't be auto-modified
     DEFAULT_SENSITIVE_PATTERNS = [
         "*.env",
         "*.env.*",
@@ -263,12 +272,28 @@ class EnhancedAutonomousCodingEngine:
 
     @staticmethod
     def _validate_workspace_path(path: str) -> str:
-        """Validate workspace path and prevent UNC path attacks on Windows"""
+        """Validate workspace path and prevent UNC path and device name attacks on Windows"""
         import platform
+        import os
 
         # Prevent Windows UNC path attacks (\\server\share)
-        if platform.system() == "Windows" and path.startswith("\\\\"):
-            raise ValueError(f"UNC paths are not allowed for security reasons: {path}")
+        if platform.system() == "Windows":
+            if path.startswith("\\\\"):
+                raise ValueError(f"UNC paths are not allowed for security reasons: {path}")
+            
+            # Check for reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+            # These can be used in directory traversal attacks on Windows
+            reserved_names = {
+                "CON", "PRN", "AUX", "NUL",
+                *(f"COM{i}" for i in range(1, 10)),
+                *(f"LPT{i}" for i in range(1, 10)),
+            }
+            
+            # Get the basename without extension and check case-insensitively
+            base = os.path.basename(path)
+            name, _ = os.path.splitext(base)
+            if name.upper() in reserved_names:
+                raise ValueError(f"Reserved device name paths are not allowed for security reasons: {path}")
 
         return path
 

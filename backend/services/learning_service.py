@@ -6,6 +6,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 
 from backend.infra.cache.redis_cache import cache
+from backend.models.ai_feedback import TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -263,8 +264,6 @@ class LearningService:
         bandit = self.get_bandit(org_key)
 
         # Generate common contexts dynamically to cover key usage patterns
-        from backend.models.ai_feedback import TaskType
-
         contexts = []
         task_types = [t.value for t in TaskType]
         size_buckets = ["small", "medium", "large"]

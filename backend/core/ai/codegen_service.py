@@ -16,6 +16,8 @@ from .repo_context import repo_snapshot, list_neighbors
 from backend.core.ai_service import AIService
 from backend.core.utils.hashing import sha256_hash
 from backend.llm.router import complete_chat
+from backend.services.learning_service import LearningService, BanditConfigurationError
+from backend.services.feedback_service import FeedbackService
 
 logger = logging.getLogger(__name__)
 
@@ -386,9 +388,6 @@ async def generate_unified_diff(
 
     if org_key:
         try:
-            from backend.services.learning_service import LearningService
-            from backend.services.feedback_service import FeedbackService
-
             learning_service = LearningService()
 
             # Extract context for bandit
@@ -428,25 +427,20 @@ async def generate_unified_diff(
             logger.warning(
                 "Learning services not available (missing dependencies), using default parameters"
             )
-        except Exception as e:
-            # Handle specific known configuration errors by checking the module and name
-            exception_type = type(e)
-            if (
-                hasattr(exception_type, "__module__")
-                and "learning_service" in exception_type.__module__
-                and exception_type.__name__ == "BanditConfigurationError"
-            ):
-                logger.warning(
-                    f"Bandit configuration error for org {org_key}, user {user_sub or 'unknown'}: {e}, using default parameters"
-                )
-            elif isinstance(e, ConnectionError):
-                logger.warning(
-                    f"Bandit learning unavailable (Redis connection failed) for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
-                )
-            else:
-                logger.exception(
-                    f"Failed to use bandit learning for org {org_key}, user {user_sub or 'unknown'} due to unexpected error, using defaults"
-                )
+        except BanditConfigurationError as e:
+            # Specific configuration issues with the bandit system
+            logger.warning(
+                f"Bandit configuration error for org {org_key}, user {user_sub or 'unknown'}: {e}, using default parameters"
+            )
+        except ConnectionError:
+            # Redis/cache connectivity issues
+            logger.warning(
+                f"Bandit learning unavailable (Redis connection failed) for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
+            )
+        except Exception:
+            logger.exception(
+                f"Failed to use bandit learning for org {org_key}, user {user_sub or 'unknown'} due to unexpected error, using defaults"
+            )
 
     # Call model to generate diff
     diff = await call_model(prompt, model=model, temperature=temperature)

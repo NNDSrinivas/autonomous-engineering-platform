@@ -56,6 +56,9 @@ class OpenAIProvider:
             )
 
             usage = response.usage
+            if usage is None:
+                raise RuntimeError("OpenAI API returned no usage information")
+
             pricing = self.pricing.get(self.model, {"input": 0.01, "output": 0.01})
 
             # Safely extract response content

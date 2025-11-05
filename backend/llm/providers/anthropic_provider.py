@@ -65,13 +65,14 @@ class AnthropicProvider:
             if not message.content or len(message.content) == 0:
                 raise RuntimeError("Anthropic API returned empty content")
 
-            # Get first text content block
-            first_content = message.content[0]
-            try:
-                # Try to access text attribute for TextBlock
-                text_content = getattr(first_content, "text", str(first_content))
-            except Exception:
-                text_content = str(first_content)
+            # Extract text content from the first content block, handling different block types safely
+            content_block = message.content[0]
+            if hasattr(content_block, "text"):
+                # This is likely a TextBlock - access text safely
+                text_content = content_block.text  # type: ignore
+            else:
+                # For other block types, convert to string
+                text_content = str(content_block)
 
             return {
                 "text": text_content,

@@ -1,6 +1,5 @@
 """Database models for AI feedback and generation logging."""
 
-
 from sqlalchemy import (
     Column,
     DateTime,

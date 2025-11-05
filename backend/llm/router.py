@@ -119,16 +119,19 @@ class ModelRouter:
         self.routes = {
             "plan": "claude-3-5",
             "code": "gpt-4-1106-preview",
+            "codegen": "gpt-4-1106-preview",  # Add codegen routing
             "review": "gpt-4o-mini",
         }
         self.budgets = {
             "plan": {"tokens": 40000, "seconds": 60},
             "code": {"tokens": 40000, "seconds": 60},
+            "codegen": {"tokens": 40000, "seconds": 60},  # Add codegen budget
             "review": {"tokens": 40000, "seconds": 60},
         }
         self.fallbacks = {
             "plan": ["gpt-4o", "claude-3-haiku"],
             "code": ["gpt-4o", "claude-3-5"],
+            "codegen": ["gpt-4o", "claude-3-5"],  # Add codegen fallbacks
             "review": ["gpt-4-1106-preview", "claude-3-haiku"],
         }
 
@@ -138,6 +141,8 @@ class ModelRouter:
         prompt: str,
         context: Dict[str, Any],
         audit_context: Optional[AuditContext] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Route LLM call to appropriate provider with fallback support.
@@ -152,6 +157,8 @@ class ModelRouter:
                 - prompt_hash: SHA256 hash of prompt+context for audit
                 - org_id: Organization ID for multi-tenant support
                 - user_id: User ID for audit tracking
+            temperature: Optional temperature override for the model
+            max_tokens: Optional max_tokens override for the model
 
         Returns:
             Tuple of (response_text, telemetry_data)
@@ -189,7 +196,15 @@ class ModelRouter:
             try:
                 logger.info(f"Calling model {candidate} for phase {phase}")
                 sanitized_context = self._sanitize_context(context)
-                result = provider.complete(prompt, sanitized_context)
+                
+                # Prepare parameters for provider.complete call
+                complete_kwargs = {}
+                if temperature is not None:
+                    complete_kwargs['temperature'] = temperature
+                if max_tokens is not None:
+                    complete_kwargs['max_tokens'] = max_tokens
+                
+                result = provider.complete(prompt, sanitized_context, **complete_kwargs)
 
                 # Safely convert telemetry values with validation using centralized helpers
                 tokens_raw = result.get("tokens", 0)
@@ -442,11 +457,14 @@ def complete_chat(
         context.update(tags)
 
     # Use the model router's call method with task_type as phase
+    # Pass through temperature and max_tokens parameters to enable bandit learning
     response_text, telemetry = router.call(
         phase=task_type,
         prompt=system,
         context=context,
         audit_context=audit_context,
+        temperature=temperature,
+        max_tokens=max_tokens,
     )
 
     return response_text

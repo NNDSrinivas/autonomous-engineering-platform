@@ -52,12 +52,11 @@ def test_ai_apply_patch_rate_limited():
 
 def test_feedback_endpoints_rate_limited():
     """Test that feedback endpoints are rate limited."""
-    # Test feedback submission
+    # Test feedback submission - only include fields from FeedbackSubmission schema
     feedback_data = {
         "gen_id": 123,  # Integer as required by FeedbackSubmission schema
         "rating": 1,
-        "org_key": "org-ae",
-        "user_sub": "u-ae",
+        # Note: org_key and user_sub are extracted from current_user by the API
     }
 
     # First request should succeed

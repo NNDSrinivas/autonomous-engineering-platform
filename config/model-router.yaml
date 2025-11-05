@@ -1,6 +1,7 @@
 routes:
   plan: claude-3-5
   code: gpt-4-1106-preview
+  codegen: gpt-4-1106-preview  # Add codegen routing for AI code generation
   review: gpt-4o-mini
 
 budgets:
@@ -10,6 +11,9 @@ budgets:
   code:
     tokens: 40000
     seconds: 60
+  codegen:  # Add budget for codegen phase
+    tokens: 40000
+    seconds: 60
   review:
     tokens: 40000
     seconds: 60
@@ -17,4 +21,5 @@ budgets:
 fallbacks:
   plan: [gpt-4o, claude-3-haiku]
   code: [gpt-4o, claude-3-5]
+  codegen: [gpt-4o, claude-3-5]  # Add fallbacks for codegen phase
   review: [gpt-4-1106-preview, claude-3-haiku]

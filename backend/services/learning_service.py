@@ -9,6 +9,12 @@ from backend.infra.cache.redis_cache import cache
 
 logger = logging.getLogger(__name__)
 
+
+class BanditConfigurationError(Exception):
+    """Raised when there are configuration issues with the bandit learning system."""
+    pass
+
+
 # Configuration constants
 # MIN_TRIALS_FOR_FULL_CONFIDENCE determines the number of trials required before the
 # system considers its success rate estimates to be fully reliable for a given arm/context.

@@ -379,7 +379,7 @@ async def generate_unified_diff(
 
     if org_key:
         try:
-            from backend.services.learning_service import LearningService
+            from backend.services.learning_service import LearningService, BanditConfigurationError
             from backend.services.feedback_service import FeedbackService
 
             learning_service = LearningService()
@@ -421,19 +421,20 @@ async def generate_unified_diff(
             logger.warning(
                 "Learning services not available (missing dependencies), using default parameters"
             )
-        except (ValueError, ConnectionError) as e:
-            # ValueError: Invalid parameter values or configuration
-            # ConnectionError: Redis/cache connectivity issues
-            logger.warning(
-                f"Bandit learning unavailable ({type(e).__name__}) for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
-            )
-            logger.debug(
-                f"Bandit learning error details for org {org_key}, user {user_sub or 'unknown'}: {type(e).__name__}: {e}"
-            )
-        except Exception:
-            logger.exception(
-                f"Failed to use bandit learning for org {org_key}, user {user_sub or 'unknown'} due to unexpected error, using defaults"
-            )
+        except Exception as e:
+            # Handle specific known configuration errors
+            if type(e).__name__ == 'BanditConfigurationError':
+                logger.warning(
+                    f"Bandit configuration error for org {org_key}, user {user_sub or 'unknown'}: {e}, using default parameters"
+                )
+            elif isinstance(e, ConnectionError):
+                logger.warning(
+                    f"Bandit learning unavailable (Redis connection failed) for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
+                )
+            else:
+                logger.exception(
+                    f"Failed to use bandit learning for org {org_key}, user {user_sub or 'unknown'} due to unexpected error, using defaults"
+                )
 
     # Call model to generate diff
     diff = await call_model(prompt, model=model, temperature=temperature)

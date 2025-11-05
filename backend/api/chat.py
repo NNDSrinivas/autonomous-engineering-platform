@@ -20,11 +20,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
-# Shared async client instance to prevent connection leaks and pool exhaustion
-async_client = httpx.AsyncClient(
-    timeout=httpx.Timeout(10.0),
-    limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
-)
+# Shared async client instance with proper lifecycle management
+_async_client: Optional[httpx.AsyncClient] = None
+
+
+def get_http_client() -> httpx.AsyncClient:
+    """Get shared httpx client instance (for use within request context)"""
+    global _async_client
+    if _async_client is None:
+        _async_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0),
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
+    return _async_client
+
+
+async def close_http_client():
+    """Close shared httpx client (for use in app lifespan)"""
+    global _async_client
+    if _async_client is not None:
+        await _async_client.aclose()
+        _async_client = None
 
 
 # Configuration helper for API base URL with validation
@@ -218,7 +234,8 @@ async def _build_enhanced_context(
         try:
             # Make async request to existing context API
             api_base = get_api_base_url()
-            response = await async_client.get(
+            client = get_http_client()
+            response = await client.get(
                 f"{api_base}/api/context/task/{request.currentTask}"
             )
             if response.status_code == 200:
@@ -237,7 +254,8 @@ async def _handle_task_query(
         # Try to get tasks from JIRA API
         try:
             api_base = get_api_base_url()
-            response = await async_client.get(f"{api_base}/api/jira/tasks")
+            client = get_http_client()
+            response = await client.get(f"{api_base}/api/jira/tasks")
             if response.status_code == 200:
                 data = response.json()
                 tasks = data.get("items", [])
@@ -311,7 +329,8 @@ async def _handle_team_query(
         team_activity = []
         try:
             api_base = get_api_base_url()
-            response = await async_client.get(f"{api_base}/api/activity/recent")
+            client = get_http_client()
+            response = await client.get(f"{api_base}/api/activity/recent")
             if response.status_code == 200:
                 data = response.json()
                 team_activity = data.get("items", [])

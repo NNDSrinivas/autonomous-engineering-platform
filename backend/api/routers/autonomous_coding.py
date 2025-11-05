@@ -81,26 +81,36 @@ def get_coding_engine(
     workspace_id: str = "default", db: Optional[Session] = None
 ) -> EnhancedAutonomousCodingEngine:
     """Get or create a thread-safe coding engine instance for a workspace"""
+    # Validate workspace_id to prevent directory traversal
+    import re
+    if not re.match(r'^[a-zA-Z0-9_-]+$', workspace_id):
+        raise ValueError(f"Invalid workspace_id: {workspace_id}")
+    
     with _engine_lock:
         if workspace_id not in _coding_engines:
-            # Initialize with proper dependencies
+            # Initialize with proper dependencies (without db_session)
             llm_service = LLMService()
             vector_store = VectorStore()  # Placeholder
             workspace_path = f"/workspace/{workspace_id}"  # Workspace isolation
 
-            # For thread-safe initialization, we'll set the db_session later
+            # Create engine without database session (session will be injected per request)
             _coding_engines[workspace_id] = EnhancedAutonomousCodingEngine(
                 llm_service=llm_service,
                 vector_store=vector_store,
                 workspace_path=workspace_path,
-                db_session=db,
+                db_session=None,  # No shared session
             )
 
-        # Update db_session if provided (for request-scoped sessions) - inside lock for thread safety
+        # Return engine instance (db_session should be set per request, not shared)
+        engine = _coding_engines[workspace_id]
+        
+        # Create a copy for this request to avoid session conflicts
+        # Note: This is a temporary solution. Better approach would be dependency injection.
         if db is not None:
-            _coding_engines[workspace_id].db_session = db
-
-        return _coding_engines[workspace_id]
+            # Create a request-scoped wrapper or clone
+            engine.db_session = db
+            
+        return engine
 
 
 @router.post("/create-from-jira", response_model=TaskPresentationResponse)

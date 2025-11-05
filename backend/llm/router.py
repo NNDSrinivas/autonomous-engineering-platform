@@ -208,16 +208,16 @@ class ModelRouter:
                 # Record audit log (transaction managed by caller)
                 if audit_context.db is not None:
                     audit_entry = AuditLogEntry(
-                    phase=phase,
-                    model=candidate,
-                    status=status,
-                    prompt_hash=audit_context.prompt_hash or "unknown",
-                    tokens=tokens,
-                    cost_usd=cost,
-                    latency_ms=int(latency_ms),
-                    org_id=audit_context.org_id,
-                    user_id=audit_context.user_id,
-                )
+                        phase=phase,
+                        model=candidate,
+                        status=status,
+                        prompt_hash=audit_context.prompt_hash or "unknown",
+                        tokens=tokens,
+                        cost_usd=cost,
+                        latency_ms=int(latency_ms),
+                        org_id=audit_context.org_id,
+                        user_id=audit_context.user_id,
+                    )
                     get_audit_service().log_success(audit_context.db, audit_entry)
 
                 # Build telemetry data

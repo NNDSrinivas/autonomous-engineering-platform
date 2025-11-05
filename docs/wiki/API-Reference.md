@@ -112,14 +112,14 @@ Content-Type: application/json
 }
 ```
 
-### POST /suggestions/proactive
+### POST /chat/proactive
 
 Generate proactive suggestions based on current context.
 
 #### Request
 
 ```http
-POST /api/chat/suggestions/proactive
+POST /api/chat/proactive
 Content-Type: application/json
 ```
 
@@ -452,7 +452,7 @@ class AEPChatClient {
   }
 
   async getProactiveSuggestions(context: any): Promise<string[]> {
-    const response = await fetch(`${this.baseUrl}/api/chat/suggestions/proactive`, {
+    const response = await fetch(`${this.baseUrl}/api/chat/proactive`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ context })
@@ -491,7 +491,7 @@ class AEPChatClient:
         return response.json()
 
     def get_proactive_suggestions(self, context: Dict[str, Any]) -> List[str]:
-        url = f"{self.base_url}/api/chat/suggestions/proactive"
+        url = f"{self.base_url}/api/chat/proactive"
         data = {"context": context}
         response = requests.post(url, json=data)
         response.raise_for_status()

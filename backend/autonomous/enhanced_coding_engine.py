@@ -22,7 +22,10 @@ import httpx
 
 class DangerousCodeError(Exception):
     """Raised when potentially dangerous code patterns are detected"""
+
     pass
+
+
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -927,7 +930,7 @@ class EnhancedAutonomousCodingEngine:
     def _file_content_is_safe(self, file_path: str) -> bool:
         """Check if file content appears safe (no actual secrets using regex patterns)"""
         import re
-        
+
         # Regex patterns for common secret formats
         secret_patterns = [
             # API Keys (various formats)
@@ -935,18 +938,18 @@ class EnhancedAutonomousCodingEngine:
             r'["\'](?:secret_?key|secretkey)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
             r'["\'](?:access_?token|accesstoken)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
             # AWS Keys
-            r'AKIA[0-9A-Z]{16}',
+            r"AKIA[0-9A-Z]{16}",
             r'["\'](?:aws_access_key_id)["\']?\s*[:=]\s*["\']([A-Z0-9]{20})["\']',
             r'["\'](?:aws_secret_access_key)["\']?\s*[:=]\s*["\']([A-Za-z0-9/+=]{40})["\']',
             # GitHub tokens
-            r'ghp_[A-Za-z0-9]{36}',
-            r'github_pat_[A-Za-z0-9_]{82}',
+            r"ghp_[A-Za-z0-9]{36}",
+            r"github_pat_[A-Za-z0-9_]{82}",
             # Generic high-entropy strings that look like secrets
             r'["\'](?:password|pwd|pass)["\']?\s*[:=]\s*["\']([A-Za-z0-9!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]{12,})["\']',
             # JWT tokens
-            r'eyJ[A-Za-z0-9_\-]*\.eyJ[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]*',
+            r"eyJ[A-Za-z0-9_\-]*\.eyJ[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]*",
             # Private keys
-            r'-----BEGIN (?:RSA )?PRIVATE KEY-----',
+            r"-----BEGIN (?:RSA )?PRIVATE KEY-----",
         ]
 
         try:
@@ -958,7 +961,7 @@ class EnhancedAutonomousCodingEngine:
             for pattern in secret_patterns:
                 if re.search(pattern, content, re.IGNORECASE):
                     return False
-                    
+
             return True
         except Exception:
             # If we can't read it safely, don't stage it

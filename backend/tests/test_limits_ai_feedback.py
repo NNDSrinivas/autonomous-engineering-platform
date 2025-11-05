@@ -104,8 +104,7 @@ def test_different_endpoints_separate_limits():
     feedback_data = {
         "gen_id": 456,  # Integer as required by FeedbackSubmission schema
         "rating": 1,
-        "org_key": "org-ae",
-        "user_sub": "u-ae",
+        # Note: org_key and user_sub are extracted from current_user by the API
     }
     r2 = client.post("/api/feedback/submit", json=feedback_data)
     assert r2.status_code in (200, 422, 404)  # Should not be rate limited

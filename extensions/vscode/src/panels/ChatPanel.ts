@@ -99,7 +99,8 @@ export class ChatPanel {
 
   private _generateMessageId(prefix: string): string {
     try {
-      return `${prefix}-${vscode.env.createUuid()}`;
+      // VS Code API provides UUID through different methods
+      return `${prefix}-${vscode.env.sessionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     } catch {
       // Use crypto.randomUUID() if available (Node.js 15+), otherwise robust fallback
       try {
@@ -357,19 +358,27 @@ export class ChatPanel {
 
   private async _getCurrentWorkspaceFiles(): Promise<string[]> {
     try {
-      // Use separate patterns for better compatibility
+      // Use shared limit across all patterns for better performance
       const patterns = ['**/*.py', '**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx'];
-      const fileArrays = await Promise.all(
-        patterns.map(pattern =>
-          vscode.workspace.findFiles(pattern, '**/node_modules/**', 10)
-        )
-      );
+      const allFiles: vscode.Uri[] = [];
+      const maxFiles = 20;
       
-      // Flatten the arrays and deduplicate
-      const files = Array.from(new Set(fileArrays.flat().map(file => file.fsPath)));
+      // Search patterns until we reach the limit
+      for (const pattern of patterns) {
+        if (allFiles.length >= maxFiles) break;
+        
+        const remainingSlots = maxFiles - allFiles.length;
+        const files = await vscode.workspace.findFiles(
+          pattern, 
+          '**/node_modules/**', 
+          remainingSlots
+        );
+        allFiles.push(...files);
+      }
       
-      // Apply final limit to ensure predictable behavior (max 20 files total)
-      return files.slice(0, 20);
+      // Deduplicate and return
+      const uniquePaths = Array.from(new Set(allFiles.map(file => file.fsPath)));
+      return uniquePaths.slice(0, maxFiles);
     } catch {
       return [];
     }

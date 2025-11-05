@@ -927,7 +927,7 @@ class EnhancedAutonomousCodingEngine:
         """Check if file content appears safe (no actual secrets using regex patterns)"""
         import re
 
-        # Regex patterns for common secret formats
+        # Enhanced regex patterns for comprehensive secret detection
         secret_patterns = [
             # API Keys (various formats)
             r'["\'](?:api_?key|apikey)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
@@ -940,12 +940,36 @@ class EnhancedAutonomousCodingEngine:
             # GitHub tokens
             r"ghp_[A-Za-z0-9]{36}",
             r"github_pat_[A-Za-z0-9_]{82}",
+            r"gho_[A-Za-z0-9]{36}",  # GitHub OAuth
+            r"ghu_[A-Za-z0-9]{36}",  # GitHub User
+            r"ghs_[A-Za-z0-9]{36}",  # GitHub Server
+            r"ghr_[A-Za-z0-9]{36}",  # GitHub Refresh
+            # Slack tokens
+            r"xox[baprs]-([0-9a-zA-Z]{10,48})",
+            r"xoxe\.xox[bp]-\d-[A-Za-z0-9]{163}",
+            # Google API keys
+            r"AIza[0-9A-Za-z_\-]{35}",
+            # Azure keys
+            r'["\'](?:azure_?key|subscription_?key)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{32,})["\']',
+            # Generic bearer tokens
+            r"Bearer\s+[A-Za-z0-9_\-\.=]{20,}",
+            # Database connection strings
+            r"(?:mysql|postgres|mongodb)://[^@]+:[^@]+@",
             # Generic high-entropy strings that look like secrets
-            r'["\'](?:password|pwd|pass)["\']?\s*[:=]\s*["\']([A-Za-z0-9!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]{12,})["\']',
+            r'["\'](?:password|pwd|pass|token|key|secret)["\']?\s*[:=]\s*["\']([A-Za-z0-9!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]{12,})["\']',
             # JWT tokens
             r"eyJ[A-Za-z0-9_\-]*\.eyJ[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]*",
             # Private keys
-            r"-----BEGIN (?:RSA )?PRIVATE KEY-----",
+            r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+            r"-----BEGIN PGP PRIVATE KEY BLOCK-----",
+            # Discord tokens
+            r"[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}",
+            # Twilio tokens
+            r"SK[0-9a-fA-F]{32}",
+            # SendGrid keys
+            r"SG\.[0-9A-Za-z\-_]{22}\.[0-9A-Za-z\-_]{43}",
+            # Stripe keys
+            r"(?:sk|pk)_(?:test|live)_[0-9a-zA-Z]{24}",
         ]
 
         try:
@@ -1015,9 +1039,40 @@ class EnhancedAutonomousCodingEngine:
                 "error": str(e),
             }
 
+    def _validate_relative_path(self, path_str: str):
+        """Validate file path string before any path operations to prevent attacks"""
+        # Disallow absolute paths
+        if os.path.isabs(path_str):
+            raise DangerousCodeError(
+                "Invalid file path: absolute paths are not allowed"
+            )
+
+        # Disallow path traversal
+        parts = Path(path_str).parts
+        if any(part == ".." for part in parts):
+            raise DangerousCodeError("Invalid file path: path traversal detected")
+
+        # Disallow leading slashes
+        if path_str.startswith(("/", "\\")):
+            raise DangerousCodeError(
+                "Invalid file path: leading slashes are not allowed"
+            )
+
+        # Disallow empty or null paths
+        if not path_str or path_str.strip() == "":
+            raise DangerousCodeError("Invalid file path: empty path")
+
+        # Disallow dangerous characters and sequences
+        dangerous_chars = ["\x00", "\r", "\n", "\t"]
+        if any(char in path_str for char in dangerous_chars):
+            raise DangerousCodeError("Invalid file path: contains dangerous characters")
+
     async def _apply_code_changes(self, step: CodingStep, code_result: Dict[str, Any]):
         """Apply code changes to files with security validation"""
         try:
+            # Validate file path string before any path operations
+            self._validate_relative_path(step.file_path)
+
             file_path = self.workspace_path / step.file_path
 
             # Security validation: ensure file is within workspace and not a symlink
@@ -1082,20 +1137,19 @@ class EnhancedAutonomousCodingEngine:
 
                     temp_file_path = None
                     try:
-                        # Create temporary file in same directory for atomic rename
+                        # Create temporary file in secure system temp directory, not user-controlled directory
                         with tempfile.NamedTemporaryFile(
                             mode="w",
                             encoding="utf-8",
-                            dir=file_path.parent,
                             suffix=".tmp",
                             delete=False,
                         ) as temp_file:
                             temp_file.write(generated_code)
                             temp_file_path = temp_file.name
 
-                        # Atomic rename operation with cross-filesystem fallback
+                        # Atomic replace operation with cross-filesystem fallback
                         try:
-                            os.rename(temp_file_path, str(file_path))
+                            os.replace(temp_file_path, str(file_path))
                         except OSError:
                             # Fallback for cross-filesystem moves
                             import shutil
@@ -1452,6 +1506,36 @@ class EnhancedAutonomousCodingEngine:
                     }:
                         return True
 
+                # Enhanced detection for obfuscated function calls
+                elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                    if node.func.id == "getattr":
+                        # Check for getattr(__builtins__, 'eval') patterns
+                        if len(node.args) >= 2:
+                            try:
+                                if isinstance(
+                                    node.args[1], (ast.Str, ast.Constant)
+                                ) and hasattr(
+                                    node.args[1],
+                                    "value" if hasattr(node.args[1], "value") else "s",
+                                ):
+                                    attr_name = getattr(
+                                        node.args[1],
+                                        (
+                                            "value"
+                                            if hasattr(node.args[1], "value")
+                                            else "s"
+                                        ),
+                                    )
+                                    if attr_name in {
+                                        "eval",
+                                        "exec",
+                                        "compile",
+                                        "__import__",
+                                    }:
+                                        return True
+                            except (AttributeError, TypeError):
+                                pass
+
                 # Check for dangerous string operations that could construct dangerous calls
                 elif isinstance(node, ast.BinOp):
                     if isinstance(node.op, ast.Add):
@@ -1493,7 +1577,7 @@ class EnhancedAutonomousCodingEngine:
             # If AST parsing fails, fall back to string matching
             pass
 
-        # Fallback to string matching for non-Python or invalid syntax
+        # Enhanced fallback to string matching for non-Python or invalid syntax
         # High-risk patterns that are rarely legitimate in automated coding
         high_risk_patterns = [
             "subprocess.call",
@@ -1510,27 +1594,46 @@ class EnhancedAutonomousCodingEngine:
             "getattr(__builtins__",
             "__builtins__['eval']",
             "__builtins__['exec']",
+            "getattr(globals()",
+            "getattr(locals()",
+            # Base64/hex encoding attempts
+            "exec(base64",
+            "eval(base64",
+            "exec(bytes.fromhex",
+            "eval(bytes.fromhex",
+            # String reversal/obfuscation
+            "[::-1]",  # Common string reversal
+            "chr(",  # Character building
+            "ord(",  # Character codes
         ]
 
         # Medium-risk patterns that need context checking
         medium_risk_patterns = [
             ("open(", ["w", "a", "x"]),  # File writes, not reads
             ("delete", ["drop", "rm ", "del "]),  # SQL/file deletion context
+            ("compile(", ["exec", "eval"]),  # Code compilation patterns
         ]
 
-        code_lower = code.lower()
+        # Normalize code for better pattern matching
+        code_normalized = code.lower()
+        # Remove common whitespace obfuscation
+        code_normalized = " ".join(code_normalized.split())
+        # Remove common separator obfuscation
+        code_normalized = (
+            code_normalized.replace("+", "").replace('"', "").replace("'", "")
+        )
 
         # Check high-risk patterns
         for pattern in high_risk_patterns:
-            if pattern.lower() in code_lower:
+            if pattern.lower() in code_normalized:
                 return True
 
         # Check medium-risk patterns with context
         for pattern, contexts in medium_risk_patterns:
-            if pattern.lower() in code_lower:
+            if pattern.lower() in code_normalized:
                 # Check if it appears with dangerous context
                 for context in contexts:
-                    if context.lower() in code_lower:
+                    if context.lower() in code_normalized:
                         return True
 
         return False

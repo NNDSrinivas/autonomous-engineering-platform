@@ -173,7 +173,8 @@ async def create_task_from_jira(
     - Team member context and preferences
     """
     try:
-        engine = get_coding_engine(db=db)
+        # Use request-scoped engine with default workspace
+        engine = get_engine_with_session("default", db)
 
         # Create task with full enterprise context
         task = await engine.create_task_from_jira(
@@ -207,7 +208,8 @@ async def execute_step(request: ExecuteStepRequest, db: Session = Depends(get_db
     5. Handle errors gracefully with rollback options
     """
     try:
-        engine = get_coding_engine(db=db)
+        # Use request-scoped engine with default workspace
+        engine = get_engine_with_session("default", db)
 
         # Execute step with user approval
         result = await engine.execute_step(
@@ -227,7 +229,8 @@ async def execute_step(request: ExecuteStepRequest, db: Session = Depends(get_db
 async def get_task_status(task_id: str, db: Session = Depends(get_db)):
     """Get current status of autonomous coding task"""
     try:
-        engine = get_coding_engine(db=db)
+        # Use request-scoped engine with default workspace
+        engine = get_engine_with_session("default", db)
 
         task = engine.active_tasks.get(task_id)
         if not task:
@@ -254,7 +257,8 @@ async def get_task_status(task_id: str, db: Session = Depends(get_db)):
 async def get_task_steps(task_id: str, db: Session = Depends(get_db)):
     """Get all steps for a task with their current status"""
     try:
-        engine = get_coding_engine(db=db)
+        # Use request-scoped engine with default workspace
+        engine = get_engine_with_session("default", db)
 
         task = engine.active_tasks.get(task_id)
         if not task:

@@ -99,20 +99,22 @@ export class ChatPanel {
 
   private _generateMessageId(prefix: string): string {
     try {
-      // Use crypto.randomUUID() as primary method (available in Node.js 14.17+)
+      // Single crypto require with nested fallback methods
       const crypto = require('crypto');
-      return `${prefix}-${crypto.randomUUID()}`;
-    } catch {
-      // Fallback: use timestamp and cryptographically secure random bytes
-      const timestamp = Date.now();
-      let randomHex: string;
       try {
-        const crypto = require('crypto');
-        randomHex = crypto.randomBytes(8).toString('hex'); // 64 bits of entropy
+        // Use crypto.randomUUID() as primary method (available in Node.js 14.17+)
+        return `${prefix}-${crypto.randomUUID()}`;
       } catch {
-        // If crypto.randomBytes fails, fallback to Math.random (last resort)
-        randomHex = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
+        // Fallback: use timestamp and cryptographically secure random bytes
+        const timestamp = Date.now();
+        const randomHex = crypto.randomBytes(8).toString('hex'); // 64 bits of entropy
+        this._messageCounter = (this._messageCounter + 1) & 0xFFFFFFFF;
+        return `${prefix}-${timestamp}-${randomHex}-${this._messageCounter}`;
       }
+    } catch {
+      // If crypto module fails entirely, fallback to Math.random (last resort)
+      const timestamp = Date.now();
+      const randomHex = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
       this._messageCounter = (this._messageCounter + 1) & 0xFFFFFFFF;
       return `${prefix}-${timestamp}-${randomHex}-${this._messageCounter}`;
     }

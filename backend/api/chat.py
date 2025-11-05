@@ -6,7 +6,7 @@ Provides context-aware responses with team intelligence
 from fastapi import APIRouter, Depends
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import asyncio
 import logging
 import httpx  # Use async httpx instead of sync requests
@@ -20,13 +20,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
-# Time constants for timestamp formatting
-SECONDS_PER_MINUTE = 60
-SECONDS_PER_HOUR = 3600
-SECONDS_PER_DAY = 86400
-SECONDS_PER_WEEK = 604800
-SECONDS_PER_MONTH = 2628000  # ~30.44 days for better accuracy
-SECONDS_PER_YEAR = 31536000
+# Time constants for timestamp formatting - using timedelta for better maintainability
+SECONDS_PER_MINUTE = int(timedelta(minutes=1).total_seconds())  # 60
+SECONDS_PER_HOUR = int(timedelta(hours=1).total_seconds())  # 3600
+SECONDS_PER_DAY = int(timedelta(days=1).total_seconds())  # 86400
+SECONDS_PER_WEEK = int(timedelta(weeks=1).total_seconds())  # 604800
+SECONDS_PER_MONTH = int(timedelta(days=30.44).total_seconds())  # 2628000 (~30.44 days for better accuracy)
+SECONDS_PER_YEAR = int(timedelta(days=365).total_seconds())  # 31536000
 
 # HTTP client management - thread-safe singleton pattern
 _async_client: Optional[httpx.AsyncClient] = None

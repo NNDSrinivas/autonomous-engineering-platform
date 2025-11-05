@@ -100,7 +100,7 @@ export class ChatPanel {
   private _generateMessageId(prefix: string): string {
     try {
       // VS Code API provides UUID through different methods
-      return `${prefix}-${vscode.env.sessionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      return `${prefix}-${vscode.env.sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     } catch {
       // Use crypto.randomUUID() if available (Node.js 15+), otherwise robust fallback
       try {

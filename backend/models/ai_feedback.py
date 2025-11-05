@@ -1,5 +1,6 @@
 """Database models for AI feedback and generation logging."""
 
+from enum import Enum
 from sqlalchemy import (
     Column,
     DateTime,
@@ -11,10 +12,20 @@ from sqlalchemy import (
     Text,
     JSON,
     func,
+    CheckConstraint,
 )
 from sqlalchemy.orm import relationship
 
 from backend.core.db import Base
+
+
+class TaskType(str, Enum):
+    """Valid task types for AI generation."""
+
+    CODEGEN = "codegen"
+    SUMMARIZE = "summarize"
+    CHAT = "chat"
+    ANALYSIS = "analysis"
 
 
 class AiGenerationLog(Base):
@@ -25,7 +36,13 @@ class AiGenerationLog(Base):
     id = Column(Integer, primary_key=True)
     org_key = Column(String(64), index=True)
     user_sub = Column(String(128), index=True)
-    task_type = Column(String(48), nullable=False)  # e.g., codegen, summarize
+    task_type = Column(String(48), nullable=False)  # Validated by check constraint
+
+    __table_args__ = (
+        CheckConstraint(
+            task_type.in_([task.value for task in TaskType]), name="valid_task_type"
+        ),
+    )
     input_fingerprint = Column(String(64), nullable=True)
     model = Column(String(64), nullable=False)
     temperature = Column(Float, nullable=False)

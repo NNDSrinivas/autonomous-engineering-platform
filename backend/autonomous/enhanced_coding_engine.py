@@ -921,31 +921,35 @@ class EnhancedAutonomousCodingEngine:
 
     async def _generate_implementation_plan(self, task: CodingTask):
         """Generate detailed implementation plan using AI"""
-        
+
         # Sanitize all inputs to prevent prompt injection attacks
         sanitized_task_description = self._sanitize_prompt_input(task.description)
         sanitized_task_title = self._sanitize_prompt_input(task.title)
-        
+
         # Sanitize related files list
         sanitized_related_files = []
         if task.related_files:
             for file_path in task.related_files:
                 sanitized_related_files.append(self._sanitize_prompt_input(file_path))
-        
+
         # Sanitize team context
         sanitized_team_context = {}
         if task.team_context:
             for key, value in task.team_context.items():
                 sanitized_key = self._sanitize_prompt_input(str(key))
-                sanitized_value = self._sanitize_prompt_input(str(value)) if value is not None else ""
+                sanitized_value = (
+                    self._sanitize_prompt_input(str(value)) if value is not None else ""
+                )
                 sanitized_team_context[sanitized_key] = sanitized_value
-        
+
         # Sanitize documentation links if they exist
         sanitized_documentation = []
-        if hasattr(task, 'documentation_links') and task.documentation_links:
+        if hasattr(task, "documentation_links") and task.documentation_links:
             for doc_link in task.documentation_links:
-                sanitized_documentation.append(self._sanitize_prompt_input(str(doc_link)))
-        
+                sanitized_documentation.append(
+                    self._sanitize_prompt_input(str(doc_link))
+                )
+
         context = {
             "task_description": sanitized_task_description,
             "related_files": sanitized_related_files,
@@ -998,7 +1002,7 @@ class EnhancedAutonomousCodingEngine:
         """Notify user of progress updates with sanitized input"""
         # Sanitize the progress message to prevent injection in logs or callbacks
         sanitized_message = self._sanitize_prompt_input(message)
-        
+
         if self.progress_callback:
             self.progress_callback(sanitized_message)
         logger.info(f"Progress: {sanitized_message}")
@@ -1115,17 +1119,21 @@ class EnhancedAutonomousCodingEngine:
             sanitized_task_description = self._sanitize_prompt_input(task.description)
             sanitized_step_description = self._sanitize_prompt_input(step.description)
             sanitized_file_path = self._sanitize_prompt_input(step.file_path)
-            
+
             # Sanitize related files list (List[str])
             sanitized_related_files = []
             if task.related_files:
                 for file_path in task.related_files:
                     if isinstance(file_path, str):
-                        sanitized_related_files.append(self._sanitize_prompt_input(file_path))
+                        sanitized_related_files.append(
+                            self._sanitize_prompt_input(file_path)
+                        )
                     else:
                         # Convert to string and sanitize for safety
-                        sanitized_related_files.append(self._sanitize_prompt_input(str(file_path)))
-            
+                        sanitized_related_files.append(
+                            self._sanitize_prompt_input(str(file_path))
+                        )
+
             # Sanitize team context (Dict[str, Any])
             sanitized_team_context = {}
             if task.team_context:
@@ -1150,9 +1158,7 @@ class EnhancedAutonomousCodingEngine:
             if step.operation == "create":
                 prompt = f"Create a new file '{sanitized_file_path}' for: {sanitized_step_description}"
             elif step.operation == "modify":
-                prompt = (
-                    f"Modify file '{sanitized_file_path}' to: {sanitized_step_description}"
-                )
+                prompt = f"Modify file '{sanitized_file_path}' to: {sanitized_step_description}"
             else:  # delete
                 prompt = f"Prepare to delete file '{sanitized_file_path}' because: {sanitized_step_description}"
 

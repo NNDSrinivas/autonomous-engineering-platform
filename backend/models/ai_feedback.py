@@ -12,7 +12,6 @@ from sqlalchemy import (
     Text,
     JSON,
     func,
-    CheckConstraint,
 )
 from sqlalchemy.orm import relationship
 

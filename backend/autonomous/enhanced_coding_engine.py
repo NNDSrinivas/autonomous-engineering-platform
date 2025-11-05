@@ -758,9 +758,10 @@ class EnhancedAutonomousCodingEngine:
 
                 except Exception as e:
                     logger.error(f"Git operations failed: {e}")
+                    # Sanitize error message for external exposure
                     return {
                         "status": "error",
-                        "error": f"Git operations failed: {str(e)}",
+                        "error": "Git operations failed.",
                     }
             else:
                 return {
@@ -770,7 +771,7 @@ class EnhancedAutonomousCodingEngine:
 
         except Exception as e:
             logger.error(f"Failed to create PR for task {task_id}: {e}")
-            return {"status": "error", "error": str(e)}
+            return {"status": "error", "error": "Failed to create pull request."}
 
     def _generate_pr_description(self, task: CodingTask) -> str:
         """Generate comprehensive PR description"""

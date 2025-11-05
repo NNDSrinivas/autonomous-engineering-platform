@@ -1,7 +1,7 @@
 import os
 import logging
 import anthropic
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +33,22 @@ class AnthropicProvider:
             "claude-3-opus-20240229": {"input": 0.015, "output": 0.075},
         }
 
-    def complete(self, prompt: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    def complete(
+        self,
+        prompt: str,
+        context: Dict[str, Any],
+        temperature: float = 0.1,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Generate completion using Anthropic API."""
+        # Use provided max_tokens or fall back to default
+        tokens = max_tokens if max_tokens is not None else self.MAX_TOKENS
+
         try:
             message = self.client.messages.create(
                 model=self.model,
-                max_tokens=self.MAX_TOKENS,
-                temperature=0.1,
+                max_tokens=tokens,
+                temperature=temperature,
                 system=prompt,
                 messages=[{"role": "user", "content": str(context)}],
             )
@@ -56,9 +65,9 @@ class AnthropicProvider:
             if not message.content or len(message.content) == 0:
                 raise RuntimeError("Anthropic API returned empty content")
 
-            # Handle different content block types safely
+            # Handle different content block types safely - simplified per Copilot feedback
             content_block = message.content[0]
-            if hasattr(content_block, "text") and hasattr(content_block, "__class__"):
+            if hasattr(content_block, "text"):
                 # This is likely a TextBlock - access text safely
                 text_content = content_block.text  # type: ignore
             else:

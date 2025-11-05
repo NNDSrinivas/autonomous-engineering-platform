@@ -4,13 +4,15 @@ Provides context-aware diff generation and safe patch application.
 """
 
 from __future__ import annotations
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, ConfigDict
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from backend.core.auth.deps import require_role
 from backend.core.auth.models import User, Role
+from backend.core.database import get_db_session
 from backend.core.ai.codegen_service import generate_unified_diff
 from backend.core.ai.diff_utils import (
     validate_unified_diff,
@@ -62,14 +64,16 @@ class GenerateDiffOut(BaseModel):
     stats: dict = Field(
         ..., description="Diff statistics (files, additions, deletions)"
     )
-    generation_log_id: int | None = Field(
+    generation_log_id: Optional[int] = Field(
         None, description="ID of the generation log entry for feedback"
     )
 
 
 @router.post("/generate-diff", response_model=GenerateDiffOut)
 async def generate_diff(
-    body: GenerateDiffIn, user: User = Depends(require_role(Role.PLANNER))
+    body: GenerateDiffIn,
+    user: User = Depends(require_role(Role.PLANNER)),
+    session: AsyncSession = Depends(get_db_session),
 ):
     """
     Generate a context-aware unified diff for the given intent.
@@ -90,21 +94,26 @@ async def generate_diff(
     logger.info(f"User {user.user_id} generating diff for {len(body.files)} files")
 
     try:
+        # Validate org_id for bandit learning
+        org_key = getattr(user, "org_id", None)
+        if not org_key:
+            logger.warning(
+                f"User {user.user_id} missing org_id - bandit learning disabled"
+            )
+
         # Generate diff using AI service - now returns tuple
         result = await generate_unified_diff(
             body.intent,
             body.files,
-            org_key=getattr(user, "org_key", None),
+            org_key=org_key,
             user_role=user.role.value if user.role else None,
+            user_sub=user.user_id,
+            session=session,
         )
 
-        # Unpack the result
-        if isinstance(result, tuple):
-            diff, generation_log_id = result
-        else:
-            # Backwards compatibility
-            diff = result
-            generation_log_id = None
+        # Unpack the result - generate_unified_diff always returns Tuple[str, Optional[int]]
+        # as defined in its function signature in generate_unified_diff in codegen_service.py
+        diff, generation_log_id = result
 
         # Validate the generated diff
         try:

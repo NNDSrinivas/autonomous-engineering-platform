@@ -1,24 +1,29 @@
 """API router for AI feedback and learning endpoints."""
 
+import logging
 from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.auth.deps import get_current_user, require_role
+from backend.core.auth.models import Role
 from backend.core.database import get_db_session
+from backend.models.ai_feedback import AiGenerationLog
 from backend.schemas.ai_feedback import (
     FeedbackSubmission,
     FeedbackResponse,
     FeedbackStats,
+    FeedbackEntry,
     RecentFeedbackResponse,
     LearningStats,
 )
 from backend.services.feedback_service import FeedbackService
 from backend.services.learning_service import LearningService
 
-
-router = APIRouter(prefix="/feedback", tags=["AI Feedback"])
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/feedback", tags=["AI Feedback"])
 
 
 @router.post("/submit", response_model=FeedbackResponse)
@@ -45,15 +50,35 @@ async def submit_feedback(
             message="Feedback could not be submitted. Generation not found or feedback already exists.",
         )
 
-    # Update bandit learning if we have bandit metadata
-    if feedback.rating != 0:  # Only learn from explicit feedback
-        learning_service = LearningService()
-        learning_service.get_bandit(current_user["org_key"])
+    # Update bandit learning from feedback (service layer filters neutral ratings)
+    try:
+        # Get the generation log to retrieve bandit context
+        gen_result = await session.execute(
+            select(AiGenerationLog).where(AiGenerationLog.id == feedback.gen_id)
+        )
+        gen_log = gen_result.scalar_one_or_none()
 
-        # Try to get bandit context from a related generation (would need to be stored)
-        # For now, we'll record feedback without full context
+        if gen_log and isinstance(gen_log.params, dict):
+            bandit_context = gen_log.params.get("bandit_context")
+            bandit_arm = gen_log.params.get("bandit_arm")
 
-    await session.commit()
+            if bandit_context and bandit_arm:
+                learning_service = LearningService()
+                bandit = learning_service.get_bandit(current_user["org_key"])
+                await bandit.record_feedback(
+                    bandit_context, bandit_arm, feedback.rating
+                )
+    except (ValueError, ConnectionError) as e:
+        # Log error but don't fail the feedback submission
+        # ConnectionError indicates Redis/cache connectivity issues - critical for monitoring
+        logger.error(
+            f"Failed to update bandit learning for org {current_user['org_key']}, gen_id {feedback.gen_id}: {e}"
+        )
+    except Exception:
+        # Log unexpected errors
+        logger.exception(
+            f"Unexpected error in bandit learning for org {current_user['org_key']}, gen_id {feedback.gen_id}"
+        )
 
     return FeedbackResponse(success=True, message="Feedback submitted successfully")
 
@@ -83,7 +108,7 @@ async def get_feedback_stats(
 @router.get("/recent", response_model=RecentFeedbackResponse)
 async def get_recent_feedback(
     limit: int = 50,
-    current_user: Dict = Depends(require_role("admin")),
+    current_user: Dict = Depends(require_role(Role.ADMIN)),
     session: AsyncSession = Depends(get_db_session),
 ) -> RecentFeedbackResponse:
     """Get recent feedback entries (admin only)."""
@@ -100,13 +125,14 @@ async def get_recent_feedback(
     )
 
     return RecentFeedbackResponse(
-        feedback=feedback_list, total_count=len(feedback_list)
+        feedback=[FeedbackEntry(**entry) for entry in feedback_list],
+        total_count=len(feedback_list),
     )
 
 
 @router.get("/learning", response_model=LearningStats)
 async def get_learning_stats(
-    current_user: Dict = Depends(require_role("admin")),
+    current_user: Dict = Depends(require_role(Role.ADMIN)),
 ) -> LearningStats:
     """Get contextual bandit learning statistics (admin only)."""
     learning_service = LearningService()

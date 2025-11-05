@@ -6,7 +6,7 @@ interface FeedbackBarProps {
 }
 
 interface FeedbackData {
-  rating: number;
+  rating: number | null;
   reason?: string;
   comment?: string;
 }
@@ -24,7 +24,8 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState(false);
-  const [feedback, setFeedback] = useState<FeedbackData>({ rating: 0 });
+  const [feedback, setFeedback] = useState<FeedbackData>({ rating: null });
+  const [error, setError] = useState<string | null>(null);
 
   const handleRatingClick = (rating: number) => {
     if (hasSubmitted) return;
@@ -35,8 +36,18 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
     if (rating !== 0) {
       setShowDetails(true);
     } else {
-      // Neutral rating can be submitted immediately
-      submitFeedback({ rating });
+      // Neutral rating - confirm before submitting
+      const confirmed = window.confirm(
+        'You selected "neutral" feedback. This will be submitted immediately. Continue?'
+      );
+      if (confirmed) {
+        setError(null);
+        submitFeedback({ rating });
+      } else {
+        // Reset if user cancels
+        setSelectedRating(null);
+        setFeedback({ rating: null });
+      }
     }
   };
 
@@ -62,12 +73,28 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
       if (response.ok) {
         setHasSubmitted(true);
         setShowDetails(false);
+        setError(null);
         onFeedbackSubmitted?.();
       } else {
-        console.error('Failed to submit feedback');
+        const errorText = await response.text();
+        console.error('Failed to submit feedback:', response.status, errorText);
+        
+        // Provide specific error messages based on status code
+        if (response.status === 403) {
+          setError('Permission denied. You may not have access to submit feedback for this generation.');
+        } else if (response.status === 404) {
+          setError('Generation not found. This feedback may have expired or been removed.');
+        } else if (response.status === 409) {
+          setError('Feedback already submitted for this generation.');
+        } else if (response.status >= 500) {
+          setError('Server error. Please try again later.');
+        } else {
+          setError('Failed to submit feedback. Please try again.');
+        }
       }
     } catch (error) {
       console.error('Error submitting feedback:', error);
+      setError('Network error. Please check your connection and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -169,13 +196,17 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
               placeholder="Any specific feedback to help improve future generations..."
               className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
               rows={3}
-              maxLength={1000}
+              maxLength={1000} // Keep in sync with MAX_COMMENT_LENGTH in backend/schemas/ai_feedback.py
             />
           </div>
 
           <div className="flex justify-end gap-2">
             <button
-              onClick={() => setShowDetails(false)}
+              onClick={() => {
+                setShowDetails(false);
+                setSelectedRating(null);
+                setFeedback({ rating: null });
+              }}
               className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
             >
               Cancel
@@ -189,6 +220,12 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
               Submit
             </button>
           </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+          <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
     </div>

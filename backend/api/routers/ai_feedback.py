@@ -70,7 +70,8 @@ async def submit_feedback(
                 )
     except (ValueError, ConnectionError) as e:
         # Log error but don't fail the feedback submission
-        logger.warning(
+        # ConnectionError indicates Redis/cache connectivity issues - critical for monitoring
+        logger.error(
             f"Failed to update bandit learning for org {current_user['org_key']}, gen_id {feedback.gen_id}: {e}"
         )
     except Exception:

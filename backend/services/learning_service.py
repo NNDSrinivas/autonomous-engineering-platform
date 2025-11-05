@@ -250,7 +250,7 @@ class LearningService:
 
         context_stats = {}
         for context in contexts:
-            context_name = f"{context['task_type']}_{context['input_size_bucket']}"
+            context_name = f"{context['task_type']}_{context['input_size_bucket']}_{context['user_experience']}"
             context_stats[context_name] = await bandit.get_arm_performance(context)
 
         return {

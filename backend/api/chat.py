@@ -32,12 +32,17 @@ SECONDS_PER_YEAR = int(timedelta(days=365).total_seconds())  # 31536000
 
 # HTTP client management - thread-safe singleton pattern
 _async_client: Optional[httpx.AsyncClient] = None
-_client_lock = asyncio.Lock()
+_client_lock: Optional[asyncio.Lock] = None
 
 
 async def get_http_client() -> httpx.AsyncClient:
     """Get or create httpx.AsyncClient instance with thread-safe initialization"""
-    global _async_client
+    global _async_client, _client_lock
+
+    # Lazy lock initialization to avoid import-time event loop issues
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
+
     async with _client_lock:
         if _async_client is None:
             try:
@@ -55,7 +60,12 @@ async def get_http_client() -> httpx.AsyncClient:
 
 async def close_http_client():
     """Close shared httpx client (for use in app lifespan)"""
-    global _async_client
+    global _async_client, _client_lock
+
+    # Lazy lock initialization if needed
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
+
     async with _client_lock:
         if _async_client is not None:
             await _async_client.aclose()

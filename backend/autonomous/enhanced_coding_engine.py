@@ -14,7 +14,6 @@ from typing import Dict, List, Optional, Any, Callable
 from enum import Enum
 import structlog
 import os
-import shutil
 import tempfile
 import fnmatch
 import ast
@@ -1289,12 +1288,13 @@ class EnhancedAutonomousCodingEngine:
                     parent_path.relative_to(self.workspace_path.resolve())
                     # Then resolve the full path without strict requirement
                     resolved_path = file_path.resolve(strict=False)
+                    # Ensure resolved path is within workspace boundaries for create
+                    resolved_path.relative_to(self.workspace_path.resolve())
                 else:
                     # For modify/delete, use strict resolution
                     resolved_path = file_path.resolve(strict=True)
-
-                # 4. Ensure resolved path is within workspace boundaries
-                resolved_path.relative_to(self.workspace_path.resolve())
+                    # Ensure resolved path is within workspace boundaries
+                    resolved_path.relative_to(self.workspace_path.resolve())
             except FileNotFoundError:
                 if step.operation != "create":
                     raise SecurityError(
@@ -1351,25 +1351,30 @@ class EnhancedAutonomousCodingEngine:
                     try:
                         # Create temporary file in secure system temp directory with restrictive permissions
                         # Using NamedTemporaryFile for secure temporary file creation
-                        with tempfile.NamedTemporaryFile(
-                            mode="w",
+                        # Create secure temp file with atomic permissions
+                        temp_fd, temp_file_path = tempfile.mkstemp(
                             suffix=".tmp",
-                            delete=False,
-                            encoding="utf-8",
                             dir=None,  # Use secure system temp directory
-                        ) as temp_file:
-                            temp_file.write(generated_code)
-                            temp_file_path = temp_file.name
+                        )
+                        try:
+                            # Set restrictive permissions before writing any data
+                            os.chmod(temp_file_path, 0o600)
 
-                        # Set restrictive permissions for additional security
-                        os.chmod(temp_file_path, 0o600)
+                            # Write content to the secure temp file
+                            with os.fdopen(temp_fd, "w", encoding="utf-8") as temp_file:
+                                temp_file.write(generated_code)
+                                temp_fd = None  # Prevent double-close in finally
+                        finally:
+                            # Close file descriptor if not already closed
+                            if temp_fd is not None:
+                                os.close(temp_fd)
 
-                        # Atomic replace operation with cross-filesystem fallback
+                        # Atomic replace operation; do not fallback to non-atomic move
                         try:
                             os.replace(temp_file_path, str(file_path))
-                        except OSError:
-                            # Fallback for cross-filesystem moves
-                            shutil.move(temp_file_path, str(file_path))
+                        except OSError as e:
+                            # If atomic replace fails (e.g., cross-filesystem), raise error
+                            raise RuntimeError(f"Atomic file replace failed: {e}")
                         logger.info(f"Modified file atomically: {step.file_path}")
 
                     except Exception as e:

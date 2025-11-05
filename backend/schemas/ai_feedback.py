@@ -4,6 +4,9 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Constants for validation limits (keep in sync with frontend)
+MAX_COMMENT_LENGTH = 1000
+
 
 class FeedbackSubmission(BaseModel):
     """Schema for submitting feedback on AI generations."""
@@ -25,7 +28,7 @@ class FeedbackSubmission(BaseModel):
         None, max_length=64, description="Feedback reason category"
     )
     comment: Optional[str] = Field(
-        None, max_length=1000, description="Optional feedback comment"
+        None, max_length=MAX_COMMENT_LENGTH, description="Optional feedback comment"
     )
 
 

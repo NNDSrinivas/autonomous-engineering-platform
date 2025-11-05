@@ -32,6 +32,9 @@ TEMP_PRECISE = 0.1  # Low temperature for precise/conservative generations
 TEMP_BALANCED = 0.3  # Balanced temperature for standard use
 TEMP_CREATIVE = 0.7  # Higher temperature for creative/diverse outputs
 
+# Beta distribution total prior for calculations
+PRIOR_TOTAL = PRIOR_SUCCESSES + PRIOR_FAILURES  # Total prior trials (2.0)
+
 
 class ThompsonSamplingBandit:
     """Contextual bandit using Thompson Sampling for AI parameter selection."""
@@ -65,7 +68,11 @@ class ThompsonSamplingBandit:
                 # Use Redis hash for atomic counters
                 data = await r.hgetall(key)  # type: ignore
                 if data:
-                    # Redis returns strings, convert to float
+                    # Redis configured with decode_responses=True should return strings,
+                    # but handle both string and bytes for robustness
+                    if isinstance(next(iter(data.keys()), ""), bytes):
+                        data = {k.decode(): v.decode() for k, v in data.items()}
+                    
                     successes = float(data.get("successes", PRIOR_SUCCESSES))
                     failures = float(data.get("failures", PRIOR_FAILURES))
                     return successes, failures
@@ -169,7 +176,7 @@ class ThompsonSamplingBandit:
             total = successes + failures
 
             # Adjust for Beta(1,1) prior - subtract the initial counts for reporting
-            actual_trials = max(0, int(total) - (PRIOR_SUCCESSES + PRIOR_FAILURES))
+            actual_trials = max(0, int(total) - PRIOR_TOTAL)
             actual_successes = max(0, int(successes) - PRIOR_SUCCESSES)
 
             performance[arm] = {
@@ -210,9 +217,12 @@ class LearningService:
         else:
             size_bucket = "large"
 
-        # Map user role to experience level
+        # Map user role to experience level (based on RoleName: viewer/planner/admin)
         experience_map = {
             "admin": "expert",
+            "planner": "expert", 
+            "viewer": "standard",
+            # Legacy values for backwards compatibility
             "developer": "expert",
             "user": "standard",
             None: "standard",

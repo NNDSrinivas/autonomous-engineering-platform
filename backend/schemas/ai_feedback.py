@@ -99,7 +99,9 @@ class ArmPerformance(BaseModel):
     successes: int = Field(..., description="Success count")
     failures: int = Field(..., description="Failure count")
     total_trials: int = Field(..., description="Total trials")
-    success_rate: float = Field(..., ge=0.0, le=1.0, description="Success rate")
+    success_rate: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="Success rate (None if insufficient data)"
+    )
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence level")
 
 

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import threading
 import random
+import re
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel
 import logging
@@ -85,8 +86,6 @@ def get_coding_engine(
 ) -> EnhancedAutonomousCodingEngine:
     """Get or create a thread-safe coding engine instance for a workspace"""
     # Validate workspace_id to prevent directory traversal and bypass attacks
-    import re
-
     # Strengthen validation to prevent consecutive special chars and bypass attacks
     if (
         not re.match(r"^[a-zA-Z0-9]+([_-][a-zA-Z0-9]+)*$", workspace_id)
@@ -130,19 +129,32 @@ def get_coding_engine(
 
 
 def get_engine_with_session(workspace_id: str, db: Session):
-    """Get engine instance with request-scoped database session"""
-    base_engine = get_coding_engine(workspace_id)
-
-    # Create a request-scoped wrapper that doesn't mutate shared instance
-    class EngineWithSession:
-        def __init__(self, base_engine, session):
-            self._base_engine = base_engine
-            self.db_session = session
-
-        def __getattr__(self, name):
-            return getattr(self._base_engine, name)
-
-    return EngineWithSession(base_engine, db)
+    """Get a new engine instance with request-scoped database session for thread safety"""
+    # Create new engine instance for each request to ensure thread safety
+    llm_service = LLMService()
+    vector_store = VectorStore()  # Initialize vector store
+    
+    # Use configurable workspace base path with validation
+    workspace_base = getattr(settings, "WORKSPACE_BASE_PATH", "/tmp/workspaces")
+    workspace_path = Path(workspace_base) / workspace_id
+    
+    # Ensure workspace directory exists and is accessible
+    try:
+        workspace_path.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        raise HTTPException(
+            status_code=403, detail=f"Cannot create workspace directory: {workspace_path}"
+        )
+    
+    # Create new engine instance with request-scoped session
+    engine = EnhancedAutonomousCodingEngine(
+        llm_service=llm_service,
+        vector_store=vector_store,
+        workspace_path=str(workspace_path),  # Convert Path to string
+        db_session=db,  # Request-scoped session
+    )
+    
+    return engine
 
 
 @router.post("/create-from-jira", response_model=TaskPresentationResponse)

@@ -101,8 +101,21 @@ export class ChatPanel {
     try {
       return `${prefix}-${vscode.env.createUuid()}`;
     } catch {
+      // Use crypto.randomUUID() if available (Node.js 15+), otherwise robust fallback
+      try {
+        const crypto = require('crypto');
+        if (crypto.randomUUID) {
+          return `${prefix}-${crypto.randomUUID()}`;
+        }
+      } catch {}
+      
+      // Robust fallback with high entropy to prevent collisions
       this._messageCounter = (this._messageCounter + 1) % Number.MAX_SAFE_INTEGER;
-      return `${prefix}-${Date.now()}-${this._messageCounter}`;
+      const timestamp = Date.now();
+      const random = Math.floor(Math.random() * 1000000);
+      const processId = process.pid || Math.floor(Math.random() * 10000);
+      
+      return `${prefix}-${timestamp}-${this._messageCounter}-${random}-${processId}`;
     }
   }
 
@@ -687,8 +700,8 @@ export class ChatPanel {
         function renderMarkdown(text) {
             const escaped = escapeHtml(text);
             return escaped
-                .replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>')
-                .replace(/`(.*?)`/g, '<code>$1</code>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\`(.*?)\`/g, '<code>$1</code>')
                 .replace(/\\n/g, '<br>');
         }
         

@@ -3,7 +3,7 @@ Enhanced Chat API for conversational interface
 Provides context-aware responses with team intelligence
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from datetime import datetime
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+
 class ChatMessage(BaseModel):
     id: str
     type: str  # 'user', 'assistant', 'system', 'suggestion'
@@ -24,24 +25,27 @@ class ChatMessage(BaseModel):
     timestamp: datetime
     context: Optional[Dict[str, Any]] = None
 
+
 class ChatRequest(BaseModel):
     message: str
     conversationHistory: List[ChatMessage] = []
     currentTask: Optional[str] = None
     teamContext: Optional[Dict[str, Any]] = None
 
+
 class ChatResponse(BaseModel):
     content: str
     context: Optional[Dict[str, Any]] = None
     suggestions: Optional[List[str]] = None
 
+
 class ProactiveSuggestionsRequest(BaseModel):
     context: Dict[str, Any]
 
+
 @router.post("/respond", response_model=ChatResponse)
 async def generate_chat_response(
-    request: ChatRequest,
-    db: Session = Depends(get_db)
+    request: ChatRequest, db: Session = Depends(get_db)
 ) -> ChatResponse:
     """
     Generate context-aware chat response using team intelligence
@@ -49,10 +53,10 @@ async def generate_chat_response(
     try:
         # Analyze user intent
         intent = await _analyze_user_intent(request.message)
-        
+
         # Build enhanced context
         enhanced_context = await _build_enhanced_context(request, intent)
-        
+
         # Generate response based on intent
         if intent["type"] == "task_query":
             response = await _handle_task_query(intent, enhanced_context)
@@ -64,20 +68,20 @@ async def generate_chat_response(
             response = await _handle_code_help(intent, enhanced_context)
         else:
             response = await _handle_general_query(intent, enhanced_context)
-        
+
         return response
-        
+
     except Exception as e:
         logger.error(f"Chat response error: {e}")
         return ChatResponse(
             content=f"I encountered an error: {str(e)}. Let me try a different approach.",
-            suggestions=["Show my tasks", "Help with current work", "Generate a plan"]
+            suggestions=["Show my tasks", "Help with current work", "Generate a plan"],
         )
+
 
 @router.post("/suggestions/proactive")
 async def generate_proactive_suggestions(
-    request: ProactiveSuggestionsRequest,
-    db: Session = Depends(get_db)
+    request: ProactiveSuggestionsRequest, db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """
     Generate proactive suggestions based on current context
@@ -85,102 +89,122 @@ async def generate_proactive_suggestions(
     try:
         # Analyze current context for suggestions
         suggestions = []
-        
+
         # Check for potential blockers
         if request.context.get("recentChanges"):
-            suggestions.extend([
-                "I notice recent changes in multiple files. Would you like me to check for conflicts?",
-                "There might be merge conflicts brewing. Should I check dependencies?"
-            ])
-        
+            suggestions.extend(
+                [
+                    "I notice recent changes in multiple files. Would you like me to check for conflicts?",
+                    "There might be merge conflicts brewing. Should I check dependencies?",
+                ]
+            )
+
         # Check for incomplete work patterns
         if request.context.get("currentFiles"):
-            suggestions.extend([
-                "The current files look like they might need testing. Want me to help with that?",
-                "I see some work in progress. Need help finishing up?"
-            ])
-        
+            suggestions.extend(
+                [
+                    "The current files look like they might need testing. Want me to help with that?",
+                    "I see some work in progress. Need help finishing up?",
+                ]
+            )
+
         # Check team coordination opportunities
         if request.context.get("activeTask"):
-            suggestions.extend([
-                "Your current task might overlap with team work. Want to check?",
-                "There could be related work happening. Want to see team activity?"
-            ])
-        
+            suggestions.extend(
+                [
+                    "Your current task might overlap with team work. Want to check?",
+                    "There could be related work happening. Want to see team activity?",
+                ]
+            )
+
         return {"items": suggestions[:3]}  # Limit to top 3 suggestions
-        
+
     except Exception as e:
         logger.error(f"Proactive suggestions error: {e}")
         return {"items": []}
 
+
 async def _analyze_user_intent(message: str) -> Dict[str, Any]:
     """Analyze user message to determine intent"""
     message_lower = message.lower()
-    
+
     # Task-related queries
-    if any(keyword in message_lower for keyword in ["task", "jira", "ticket", "assigned", "priority"]):
+    if any(
+        keyword in message_lower
+        for keyword in ["task", "jira", "ticket", "assigned", "priority"]
+    ):
         return {
             "type": "task_query",
             "keywords": ["task", "jira", "priority"],
-            "confidence": 0.9
+            "confidence": 0.9,
         }
-    
+
     # Team-related queries
-    if any(keyword in message_lower for keyword in ["team", "colleague", "teammate", "working on", "activity"]):
+    if any(
+        keyword in message_lower
+        for keyword in ["team", "colleague", "teammate", "working on", "activity"]
+    ):
         return {
             "type": "team_query",
             "keywords": ["team", "activity", "collaboration"],
-            "confidence": 0.8
+            "confidence": 0.8,
         }
-    
+
     # Plan generation requests
-    if any(keyword in message_lower for keyword in ["plan", "how", "implement", "steps", "approach"]):
+    if any(
+        keyword in message_lower
+        for keyword in ["plan", "how", "implement", "steps", "approach"]
+    ):
         return {
             "type": "plan_request",
             "keywords": ["plan", "implementation", "steps"],
-            "confidence": 0.85
+            "confidence": 0.85,
         }
-    
+
     # Code help requests
-    if any(keyword in message_lower for keyword in ["code", "bug", "error", "fix", "debug", "review"]):
+    if any(
+        keyword in message_lower
+        for keyword in ["code", "bug", "error", "fix", "debug", "review"]
+    ):
         return {
             "type": "code_help",
             "keywords": ["code", "debug", "review"],
-            "confidence": 0.8
+            "confidence": 0.8,
         }
-    
-    return {
-        "type": "general_query",
-        "keywords": [],
-        "confidence": 0.5
-    }
+
+    return {"type": "general_query", "keywords": [], "confidence": 0.5}
+
 
 async def _build_enhanced_context(
-    request: ChatRequest,
-    intent: Dict[str, Any]
+    request: ChatRequest, intent: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Build enhanced context for response generation"""
-    
+
     enhanced_context = {
         "intent": intent,
         "conversation_history": request.conversationHistory[-5:],  # Last 5 messages
         "current_task": request.currentTask,
-        "team_context": request.teamContext or {}
+        "team_context": request.teamContext or {},
     }
-    
+
     # Try to add task context if current task is set
     if request.currentTask:
         try:
             # Make request to existing context API
-            response = requests.get(f"http://localhost:8002/api/context/task/{request.currentTask}")
+            response = requests.get(
+                f"http://localhost:8002/api/context/task/{request.currentTask}"
+            )
             if response.status_code == 200:
                 enhanced_context["task_context"] = response.json()
         except Exception as e:
             logger.warning(f"Could not fetch task context: {e}")
-    
+
     return enhanced_context
 
-async def _handle_task_query(intent: Dict[str, Any], context: Dict[str, Any]) -> ChatResponse:
+
+async def _handle_task_query(
+    intent: Dict[str, Any], context: Dict[str, Any]
+) -> ChatResponse:
     """Handle task-related queries"""
     try:
         # Try to get tasks from JIRA API
@@ -191,51 +215,68 @@ async def _handle_task_query(intent: Dict[str, Any], context: Dict[str, Any]) ->
                 tasks = data.get("items", [])
             else:
                 tasks = []
-        except:
+        except Exception:
             tasks = []
-        
+
         if not tasks:
             return ChatResponse(
                 content="You don't have any assigned tasks right now. Would you like me to help you find work to do?",
                 suggestions=[
                     "Show available tasks",
                     "Check team priorities",
-                    "Find tasks I can help with"
-                ]
+                    "Find tasks I can help with",
+                ],
             )
-        
+
         # Sort by priority and format response
-        high_priority_tasks = [t for t in tasks if t.get("priority") in ["High", "Highest"]]
-        
+        high_priority_tasks = [
+            t for t in tasks if t.get("priority") in ["High", "Highest"]
+        ]
+
         content = f"You have {len(tasks)} assigned tasks.\n\n"
-        
+
         if high_priority_tasks:
             content += "🔴 **High Priority:**\n"
             for task in high_priority_tasks[:2]:
                 content += f"• **{task['key']}**: {task['summary']}\n"
             content += "\n"
-        
+
         content += "📋 **All Tasks:**\n"
         for task in tasks[:5]:
-            priority_emoji = "🔴" if task.get("priority") in ["High", "Highest"] else "🟡" if task.get("priority") == "Medium" else "🟢"
+            priority_emoji = (
+                "🔴"
+                if task.get("priority") in ["High", "Highest"]
+                else "🟡" if task.get("priority") == "Medium" else "🟢"
+            )
             content += f"{priority_emoji} **{task['key']}**: {task['summary']}\n"
-        
+
         suggestions = [
-            f"Work on {high_priority_tasks[0]['key']}" if high_priority_tasks else f"Work on {tasks[0]['key']}",
+            (
+                f"Work on {high_priority_tasks[0]['key']}"
+                if high_priority_tasks
+                else f"Work on {tasks[0]['key']}"
+            ),
             "Generate plan for highest priority task",
             "Show task dependencies",
-            "Check what teammates are working on"
+            "Check what teammates are working on",
         ]
-        
+
         return ChatResponse(content=content, suggestions=suggestions)
-        
-    except Exception as e:
+
+    except Exception:
         return ChatResponse(
             content="I had trouble fetching your tasks. Let me try a different approach.",
-            suggestions=["Refresh task list", "Check JIRA connection", "Show cached tasks"]
+            suggestions=[
+                "Refresh task list",
+                "Check JIRA connection",
+                "Show cached tasks",
+            ],
         )
 
-async def _handle_team_query(intent: Dict[str, Any], context: Dict[str, Any]) -> ChatResponse:
+
+async def _handle_team_query(
+    intent: Dict[str, Any], context: Dict[str, Any]
+) -> ChatResponse:
     """Handle team-related queries"""
     try:
         # Try to get team activity
@@ -245,90 +286,110 @@ async def _handle_team_query(intent: Dict[str, Any], context: Dict[str, Any]) ->
             if response.status_code == 200:
                 data = response.json()
                 team_activity = data.get("items", [])
-        except:
+        except Exception:
             pass
-        
+
         if not team_activity:
             return ChatResponse(
                 content="I don't have recent team activity data. Let me help you connect with your team.",
                 suggestions=[
                     "Check Slack for updates",
                     "Review recent commits",
-                    "Show team calendar"
-                ]
+                    "Show team calendar",
+                ],
             )
-        
+
         content = "🔄 **Recent Team Activity:**\n\n"
-        
+
         for activity in team_activity[:5]:
             time_ago = _format_time_ago(activity.get("timestamp"))
             content += f"• **{activity.get('author')}** {activity.get('action')} on **{activity.get('target')}** ({time_ago})\n"
-        
+
         # Add coordination insights
         if context.get("current_task"):
-            content += f"\n💡 **Tip:** I can help you coordinate with teammates working on related tasks."
-        
+            content += "\n💡 **Tip:** I can help you coordinate with teammates working on related tasks."
+
         suggestions = [
             "Show detailed team status",
             "Find teammates working on related tasks",
             "Check for coordination opportunities",
-            "View team dependencies"
+            "View team dependencies",
         ]
-        
+
         return ChatResponse(content=content, suggestions=suggestions)
-        
-    except Exception as e:
+
+    except Exception:
         return ChatResponse(
             content="I had trouble getting team information. Let me help you in other ways.",
-            suggestions=["Check team chat", "Review recent changes", "Show project status"]
+            suggestions=[
+                "Check team chat",
+                "Review recent changes",
+                "Show project status",
+            ],
         )
 
-async def _handle_plan_request(intent: Dict[str, Any], context: Dict[str, Any]) -> ChatResponse:
+
+async def _handle_plan_request(
+    intent: Dict[str, Any], context: Dict[str, Any]
+) -> ChatResponse:
     """Handle plan generation requests"""
     try:
-        current_task = context.get("current_task") or context.get("task_context", {}).get("key")
-        
+        current_task = context.get("current_task") or context.get(
+            "task_context", {}
+        ).get("key")
+
         if not current_task:
             return ChatResponse(
                 content="I'd love to help you create a plan! Which task would you like me to plan for?",
                 suggestions=[
                     "Plan for my highest priority task",
                     "Create a general work plan",
-                    "Help me break down a complex task"
-                ]
+                    "Help me break down a complex task",
+                ],
             )
-        
+
         # Get task context for plan generation
         task_context = context.get("task_context", {})
-        
+
         content = f"I'll create a detailed plan for **{current_task}**.\n\n"
-        content += f"**Task**: {task_context.get('summary', 'Task details loading...')}\n\n"
-        
+        content += (
+            f"**Task**: {task_context.get('summary', 'Task details loading...')}\n\n"
+        )
+
         if task_context.get("description"):
             content += f"**Description**: {task_context['description'][:200]}...\n\n"
-        
-        content += "Let me analyze the requirements and generate an implementation plan."
-        
+
+        content += (
+            "Let me analyze the requirements and generate an implementation plan."
+        )
+
         suggestions = [
             "Generate detailed implementation plan",
             "Show task dependencies first",
             "Break into smaller subtasks",
-            "Include testing strategy"
+            "Include testing strategy",
         ]
-        
+
         return ChatResponse(
             content=content,
             suggestions=suggestions,
-            context={"taskKey": current_task, "action": "plan_generation"}
-        )
-        
-    except Exception as e:
-        return ChatResponse(
-            content="I had trouble analyzing the task for planning. Let me help you get started anyway.",
-            suggestions=["Tell me about the task manually", "Show existing plans", "Create simple task breakdown"]
+            context={"taskKey": current_task, "action": "plan_generation"},
         )
 
-async def _handle_code_help(intent: Dict[str, Any], context: Dict[str, Any]) -> ChatResponse:
+    except Exception:
+        return ChatResponse(
+            content="I had trouble analyzing the task for planning. Let me help you get started anyway.",
+            suggestions=[
+                "Tell me about the task manually",
+                "Show existing plans",
+                "Create simple task breakdown",
+            ],
+        )
+
+
+async def _handle_code_help(
+    intent: Dict[str, Any], context: Dict[str, Any]
+) -> ChatResponse:
     """Handle code-related help requests"""
     try:
         content = "I'm here to help with your code! 👨‍💻\n\n"
@@ -337,68 +398,85 @@ async def _handle_code_help(intent: Dict[str, Any], context: Dict[str, Any]) -> 
         content += "• **Debugging** - Help identify and fix issues\n"
         content += "• **Implementation** - Guide you through coding tasks\n"
         content += "• **Testing** - Create tests and validate your code\n\n"
-        
+
         # Add context-specific suggestions
         suggestions = [
             "Review my current changes",
             "Help debug an issue",
             "Generate tests for my code",
             "Suggest code improvements",
-            "Check for potential bugs"
+            "Check for potential bugs",
         ]
-        
+
         # If there's a current task, offer task-specific help
         if context.get("current_task"):
             content += f"I can also provide specific help for your current task: **{context['current_task']}**"
             suggestions.insert(0, f"Help implement {context['current_task']}")
-        
+
         return ChatResponse(content=content, suggestions=suggestions)
-        
-    except Exception as e:
+
+    except Exception:
         return ChatResponse(
             content="I'm ready to help with your code! What specific challenge are you facing?",
-            suggestions=["Review code", "Debug issue", "Generate tests", "Code suggestions"]
+            suggestions=[
+                "Review code",
+                "Debug issue",
+                "Generate tests",
+                "Code suggestions",
+            ],
         )
 
-async def _handle_general_query(intent: Dict[str, Any], context: Dict[str, Any]) -> ChatResponse:
+
+async def _handle_general_query(
+    intent: Dict[str, Any], context: Dict[str, Any]
+) -> ChatResponse:
     """Handle general queries with contextual awareness"""
     try:
         content = "I'm your autonomous engineering assistant! 🤖\n\n"
         content += "I can help you with:\n"
         content += "• **Task Management** - Show your JIRA tasks and priorities\n"
         content += "• **Team Coordination** - Keep you updated on team activity\n"
-        content += "• **Implementation Planning** - Generate detailed plans for your work\n"
+        content += (
+            "• **Implementation Planning** - Generate detailed plans for your work\n"
+        )
         content += "• **Code Assistance** - Review, debug, and improve your code\n"
-        content += "• **Context Intelligence** - Connect related work across your team\n\n"
-        
+        content += (
+            "• **Context Intelligence** - Connect related work across your team\n\n"
+        )
+
         # Add personalized suggestions based on context
         suggestions = []
-        
+
         if context.get("current_task"):
-            suggestions.extend([
-                f"Continue work on {context['current_task']}",
-                "Generate plan for current task"
-            ])
-        
-        suggestions.extend([
-            "Show my tasks",
-            "What is my team working on?",
-            "Help me with current work",
-            "Review recent changes"
-        ])
-        
+            suggestions.extend(
+                [
+                    f"Continue work on {context['current_task']}",
+                    "Generate plan for current task",
+                ]
+            )
+
+        suggestions.extend(
+            [
+                "Show my tasks",
+                "What is my team working on?",
+                "Help me with current work",
+                "Review recent changes",
+            ]
+        )
+
         return ChatResponse(content=content, suggestions=suggestions)
-        
-    except Exception as e:
+
+    except Exception:
         return ChatResponse(
             content="I'm here to help with your engineering work! How can I assist you today?",
-            suggestions=["Show tasks", "Team status", "Generate plan", "Code help"]
+            suggestions=["Show tasks", "Team status", "Generate plan", "Code help"],
         )
+
 
 def _format_time_ago(timestamp: str) -> str:
     """Format timestamp as time ago"""
     try:
         # Simple implementation for now
         return "2 hours ago"
-    except:
+    except Exception:
         return "recently"

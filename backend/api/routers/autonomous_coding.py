@@ -10,6 +10,7 @@ This API provides endpoints for:
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+import threading
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel
 import logging
@@ -21,6 +22,10 @@ from backend.core.memory.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/autonomous", tags=["autonomous-coding"])
+
+# Thread-safe engine instances per user/workspace
+_engine_lock = threading.Lock()
+_coding_engines: Dict[str, EnhancedAutonomousCodingEngine] = {}
 
 
 class CreateTaskFromJiraRequest(BaseModel):
@@ -53,26 +58,27 @@ class StepExecutionResponse(BaseModel):
     error: Optional[str] = None
 
 
-# Global engine instance (would be properly initialized in production)
-_coding_engine: Optional[EnhancedAutonomousCodingEngine] = None
+# Thread-safe engine instances per user/workspace
+_engine_lock = threading.Lock()
+_coding_engines: Dict[str, EnhancedAutonomousCodingEngine] = {}
 
 
-def get_coding_engine() -> EnhancedAutonomousCodingEngine:
-    """Get or create the autonomous coding engine"""
-    global _coding_engine
-    if _coding_engine is None:
-        # Initialize with proper dependencies
-        llm_service = LLMService()
-        vector_store = VectorStore()  # Placeholder
-        workspace_path = "/workspace"  # Would be configurable
+def get_coding_engine(workspace_id: str = "default") -> EnhancedAutonomousCodingEngine:
+    """Get or create the autonomous coding engine with thread safety"""
+    with _engine_lock:
+        if workspace_id not in _coding_engines:
+            # Initialize with proper dependencies
+            llm_service = LLMService()
+            vector_store = VectorStore()  # Placeholder
+            workspace_path = f"/workspace/{workspace_id}"  # Workspace isolation
 
-        _coding_engine = EnhancedAutonomousCodingEngine(
-            llm_service=llm_service,
-            vector_store=vector_store,
-            workspace_path=workspace_path,
-        )
+            _coding_engines[workspace_id] = EnhancedAutonomousCodingEngine(
+                llm_service=llm_service,
+                vector_store=vector_store,
+                workspace_path=workspace_path,
+            )
 
-    return _coding_engine
+        return _coding_engines[workspace_id]
 
 
 @router.post("/create-from-jira", response_model=TaskPresentationResponse)

@@ -6,7 +6,6 @@
 
 import * as vscode from 'vscode';
 import { EnhancedChatPanel } from './panels/EnhancedChatPanel';
-import { ChatPanel } from './panels/ChatPanel'; // Existing panel
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('🚀 AEP Enhanced Extension Activating...');

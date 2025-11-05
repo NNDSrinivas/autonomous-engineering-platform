@@ -17,16 +17,18 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-# Optional git import - graceful fallback if not available
-try:
-    import git
-
-    GIT_AVAILABLE = True
-except ImportError:
-    git = None
-    GIT_AVAILABLE = False
+# Git operations - GitPython is now a required dependency
+import git
 
 from backend.core.ai.llm_service import LLMService
+
+
+# Security exception class
+class SecurityError(Exception):
+    """Raised when security validation fails"""
+
+    pass
+
 
 # Use TYPE_CHECKING to avoid circular imports
 if TYPE_CHECKING:
@@ -140,7 +142,7 @@ class EnhancedAutonomousCodingEngine:
 
         # Git repository (optional)
         self.repo = None
-        if GIT_AVAILABLE and git is not None:
+        if git is not None:
             try:
                 self.repo = git.Repo(workspace_path)
             except Exception:  # Catch any git-related error
@@ -464,7 +466,7 @@ class EnhancedAutonomousCodingEngine:
 
     async def _create_safety_backup(self, task: CodingTask):
         """Create git backup before starting modifications"""
-        if self.repo and GIT_AVAILABLE:
+        if self.repo:
             try:
                 # Create a backup commit with current state
                 self.repo.git.add(A=True)
@@ -525,15 +527,37 @@ class EnhancedAutonomousCodingEngine:
             }
 
     async def _apply_code_changes(self, step: CodingStep, code_result: Dict[str, Any]):
-        """Apply code changes to files"""
+        """Apply code changes to files with security validation"""
         try:
             file_path = self.workspace_path / step.file_path
+
+            # Security validation: ensure file is within workspace
+            try:
+                file_path.resolve().relative_to(self.workspace_path.resolve())
+            except ValueError:
+                raise SecurityError(f"File path {step.file_path} is outside workspace")
+
+            # Security validation: check for dangerous file extensions
+            dangerous_extensions = {".exe", ".bat", ".cmd", ".sh", ".ps1", ".bin"}
+            if file_path.suffix.lower() in dangerous_extensions:
+                raise SecurityError(
+                    f"Cannot write to potentially dangerous file type: {file_path.suffix}"
+                )
+
+            # Basic code validation before writing
+            generated_code = code_result["generated_code"]
+            if self._contains_dangerous_patterns(generated_code):
+                logger.warning(
+                    f"Potentially dangerous code detected in {step.file_path}"
+                )
+                # Add warning comment but allow the write
+                generated_code = f"# WARNING: AEP detected potentially dangerous patterns in this code\n{generated_code}"
 
             if step.operation == "create":
                 # Create new file
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(file_path, "w", encoding="utf-8") as f:
-                    f.write(code_result["generated_code"])
+                    f.write(generated_code)
                 logger.info(f"Created file: {step.file_path}")
 
             elif step.operation == "modify":
@@ -541,7 +565,7 @@ class EnhancedAutonomousCodingEngine:
                 if file_path.exists():
                     # Write new content
                     with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(code_result["generated_code"])
+                        f.write(generated_code)
                     logger.info(f"Modified file: {step.file_path}")
                 else:
                     raise FileNotFoundError(f"File not found: {step.file_path}")
@@ -673,11 +697,24 @@ class EnhancedAutonomousCodingEngine:
             )
 
             # Create branch if git is available
-            if self.repo and GIT_AVAILABLE:
+            if self.repo:
                 try:
                     # Create and checkout new branch
-                    # Create new branch if it doesn't exist
-                    if branch not in [b.name for b in self.repo.branches]:
+                    # Check if branch exists more efficiently
+                    branch_exists = False
+                    try:
+                        self.repo.heads[branch]
+                        branch_exists = True
+                    except IndexError:
+                        branch_exists = False
+
+                    if not branch_exists:
+                        # Commit current changes first, then create and checkout new branch
+                        self.repo.git.add(A=True)
+                        if self.repo.is_dirty():
+                            self.repo.index.commit(
+                                f"AEP: Auto-commit before creating branch {branch}"
+                            )
                         new_branch = self.repo.create_head(branch)
                         new_branch.checkout()
 
@@ -794,3 +831,24 @@ class EnhancedAutonomousCodingEngine:
     def _estimate_duration(self, task: CodingTask) -> str:
         """Estimate task duration"""
         return f"{len(task.steps) * 5} minutes"
+
+    def _contains_dangerous_patterns(self, code: str) -> bool:
+        """Check for potentially dangerous code patterns"""
+        dangerous_patterns = [
+            "subprocess.call",
+            "os.system",
+            "eval(",
+            "exec(",
+            "__import__",
+            "open(",  # Be more specific about file operations
+            "rm -rf",
+            "delete",
+            "DROP TABLE",
+            "DROP DATABASE",
+        ]
+
+        code_lower = code.lower()
+        for pattern in dangerous_patterns:
+            if pattern.lower() in code_lower:
+                return True
+        return False

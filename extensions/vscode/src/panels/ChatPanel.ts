@@ -103,11 +103,18 @@ export class ChatPanel {
       const crypto = require('crypto');
       return `${prefix}-${crypto.randomUUID()}`;
     } catch {
-      // Simple fallback using timestamp and random values
+      // Fallback: use timestamp and cryptographically secure random bytes
       const timestamp = Date.now();
-      const random = Math.floor(Math.random() * 1000000).toString(36);
+      let randomHex: string;
+      try {
+        const crypto = require('crypto');
+        randomHex = crypto.randomBytes(8).toString('hex'); // 64 bits of entropy
+      } catch {
+        // If crypto.randomBytes fails, fallback to Math.random (last resort)
+        randomHex = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(36);
+      }
       this._messageCounter = (this._messageCounter + 1) & 0xFFFFFFFF;
-      return `${prefix}-${timestamp}-${random}-${this._messageCounter}`;
+      return `${prefix}-${timestamp}-${randomHex}-${this._messageCounter}`;
     }
   }
 

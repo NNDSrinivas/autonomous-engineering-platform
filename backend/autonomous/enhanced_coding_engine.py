@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Any, Callable
 from enum import Enum
 import structlog
 import os
+import fnmatch
 import ast
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -854,9 +855,6 @@ class EnhancedAutonomousCodingEngine:
 
     def _get_safe_files_for_staging(self) -> List[str]:
         """Get list of safe files for git staging, excluding sensitive content"""
-        import os
-        import fnmatch
-
         if not self.repo:
             return []
 
@@ -1100,9 +1098,7 @@ class EnhancedAutonomousCodingEngine:
             file_path = self.workspace_path / step.file_path
 
             # Security validation: ensure file is within workspace and not a symlink
-            # 1. Check for path traversal before resolving
-            if any(part == ".." for part in file_path.parts):
-                raise SecurityError("Invalid file path: path traversal detected")
+            # 1. Path traversal is already checked in _validate_relative_path()
 
             # 2. Symlink checks BEFORE resolving (resolve() follows symlinks)
             if step.operation in {"modify", "delete"} and file_path.is_symlink():
@@ -1113,12 +1109,13 @@ class EnhancedAutonomousCodingEngine:
             # 3. Resolve path with enhanced security for create operations
             try:
                 if step.operation == "create":
-                    # For create operations, verify parent directory strictly first
-                    parent_path = file_path.parent.resolve(strict=True)
-                    if parent_path.is_symlink():
+                    # For create operations, check parent for symlinks BEFORE resolving
+                    if file_path.parent.is_symlink():
                         raise SecurityError(
                             "Refusing to create file in symlinked directory"
                         )
+                    # Verify parent directory strictly
+                    parent_path = file_path.parent.resolve(strict=True)
                     parent_path.relative_to(self.workspace_path.resolve())
                     # Then resolve the full path without strict requirement
                     resolved_path = file_path.resolve(strict=False)
@@ -1213,8 +1210,11 @@ class EnhancedAutonomousCodingEngine:
                         if temp_fd is not None:
                             try:
                                 os.close(temp_fd)
-                            except OSError:
-                                pass
+                            except OSError as close_error:
+                                # Log cleanup errors but don't fail the operation
+                                logger.warning(
+                                    f"Failed to close temp file descriptor {temp_fd}: {close_error}"
+                                )
                         if temp_file_path and os.path.exists(temp_file_path):
                             try:
                                 os.unlink(temp_file_path)
@@ -1590,30 +1590,63 @@ class EnhancedAutonomousCodingEngine:
                         ) and node.func.value.id in {"builtins", "globals", "locals"}:
                             return True
 
-                # Check for dangerous imports
+                # Check for dangerous imports with context awareness
                 elif isinstance(node, (ast.Import, ast.ImportFrom)):
-                    dangerous_modules = {
-                        "os",
-                        "subprocess",
-                        "sys",
-                        "importlib",
-                        "ctypes",
-                        "marshal",
-                        "pickle",
-                    }
-                    for alias in node.names:
-                        if alias.name in dangerous_modules:
-                            return True
+                    # Critical modules that are almost always dangerous
+                    critical_modules = {"marshal", "pickle", "ctypes"}
 
-                # Check for attribute access that could be dangerous
+                    for alias in node.names:
+                        # Always flag critical modules
+                        if alias.name in critical_modules:
+                            return True
+                        # For other modules (os, subprocess, sys, importlib), we check usage context
+                        # in the attribute access detection below                # Check for attribute access that could be dangerous
                 elif isinstance(node, ast.Attribute):
-                    if node.attr in {
+                    # Always dangerous attributes
+                    dangerous_attrs = {
                         "__builtins__",
                         "__globals__",
                         "__code__",
                         "__class__",
-                    }:
+                    }
+                    if node.attr in dangerous_attrs:
                         return True
+
+                    # Context-aware dangerous module usage detection
+                    if isinstance(node.value, ast.Name):
+                        module_name = node.value.id
+                        attr_name = node.attr
+
+                        # Check for dangerous os module usage
+                        if module_name == "os" and attr_name in [
+                            "system",
+                            "popen",
+                            "execl",
+                            "execle",
+                            "execlp",
+                            "execv",
+                            "execve",
+                            "execvp",
+                            "execvpe",
+                        ]:
+                            return True
+                        # Check for dangerous subprocess usage
+                        elif module_name == "subprocess" and attr_name in [
+                            "call",
+                            "run",
+                            "Popen",
+                            "check_call",
+                            "check_output",
+                        ]:
+                            return True
+                        # Check for dangerous sys usage
+                        elif module_name == "sys" and attr_name in ["exit", "modules"]:
+                            return True
+                        # Check for dangerous importlib usage
+                        elif module_name == "importlib" and attr_name in [
+                            "import_module"
+                        ]:
+                            return True
 
                 # Enhanced detection for obfuscated function calls
                 elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):

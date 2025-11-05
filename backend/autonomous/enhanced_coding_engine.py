@@ -973,18 +973,30 @@ class EnhancedAutonomousCodingEngine:
         ]
 
         try:
+            # Read entire file but limit to reasonable size (10MB max)
+            max_file_size = 10 * 1024 * 1024  # 10MB
+            file_size = os.path.getsize(file_path)
+
+            if file_size > max_file_size:
+                logger.warning(
+                    f"File {file_path} too large ({file_size} bytes) for secret scanning"
+                )
+                # For large files, fail-safe by rejecting
+                return False
+
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                # Only read first 2KB to check for secrets
-                content = f.read(2048)
+                content = f.read()
 
             # Check for actual secret patterns using regex
             for pattern in secret_patterns:
                 if re.search(pattern, content, re.IGNORECASE):
+                    logger.warning(f"Potential secret detected in {file_path}")
                     return False
 
             return True
-        except Exception:
-            # If we can't read it safely, don't stage it
+        except Exception as e:
+            # Fail-safe: if we can't read or verify the file, assume it's unsafe
+            logger.warning(f"Cannot verify file safety for {file_path}: {e}")
             return False
 
     async def _generate_code_for_step(
@@ -1041,30 +1053,27 @@ class EnhancedAutonomousCodingEngine:
 
     def _validate_relative_path(self, path_str: str):
         """Validate file path string before any path operations to prevent attacks"""
-        # Disallow absolute paths
-        if os.path.isabs(path_str):
+        # Normalize the path first to handle edge cases and resolve . and .. components
+        normalized_path = os.path.normpath(path_str)
+
+        # Disallow absolute paths (check after normalization)
+        if os.path.isabs(normalized_path):
             raise DangerousCodeError(
                 "Invalid file path: absolute paths are not allowed"
             )
 
-        # Disallow path traversal
-        parts = Path(path_str).parts
+        # Disallow path traversal (check after normalization)
+        parts = Path(normalized_path).parts
         if any(part == ".." for part in parts):
             raise DangerousCodeError("Invalid file path: path traversal detected")
 
-        # Disallow leading slashes
-        if path_str.startswith(("/", "\\")):
-            raise DangerousCodeError(
-                "Invalid file path: leading slashes are not allowed"
-            )
-
         # Disallow empty or null paths
-        if not path_str or path_str.strip() == "":
+        if not normalized_path or normalized_path.strip() == "":
             raise DangerousCodeError("Invalid file path: empty path")
 
         # Disallow dangerous characters and sequences
         dangerous_chars = ["\x00", "\r", "\n", "\t"]
-        if any(char in path_str for char in dangerous_chars):
+        if any(char in normalized_path for char in dangerous_chars):
             raise DangerousCodeError("Invalid file path: contains dangerous characters")
 
     async def _apply_code_changes(self, step: CodingStep, code_result: Dict[str, Any]):
@@ -1163,9 +1172,14 @@ class EnhancedAutonomousCodingEngine:
                         if temp_file_path and os.path.exists(temp_file_path):
                             try:
                                 os.unlink(temp_file_path)
-                            except OSError:
+                            except FileNotFoundError:
                                 # Ignore if temp file does not exist; cleanup is best-effort
                                 pass
+                            except PermissionError as perm_error:
+                                # Log permission errors as they may indicate a security issue
+                                logger.warning(
+                                    f"Permission error cleaning temp file {temp_file_path}: {perm_error}"
+                                )
                         raise e
                 else:
                     raise FileNotFoundError(f"File not found: {step.file_path}")
@@ -1698,10 +1712,7 @@ class EnhancedAutonomousCodingEngine:
         if not input_text:
             return ""
 
-        # Remove/escape potential prompt injection patterns
-        sanitized = input_text
-
-        # Remove common prompt injection patterns
+        # Check for prompt injection patterns - reject if found
         injection_patterns = [
             r"\\n\\s*(?:ignore|forget|disregard).*previous.*instructions",
             r"\\n\\s*(?:system|assistant|human|user)\\s*:",
@@ -1711,17 +1722,33 @@ class EnhancedAutonomousCodingEngine:
         ]
 
         for pattern in injection_patterns:
-            sanitized = re.sub(pattern, "[REDACTED]", sanitized, flags=re.IGNORECASE)
+            if re.search(pattern, input_text, flags=re.IGNORECASE):
+                raise SecurityError(
+                    "Input rejected: potential prompt injection detected. "
+                    "Please rephrase your request without attempting to override system instructions."
+                )
 
         # Limit length to prevent token exhaustion attacks
         max_length = 500
-        if len(sanitized) > max_length:
-            sanitized = sanitized[:max_length] + "... [TRUNCATED]"
+        if len(input_text) > max_length:
+            raise SecurityError(
+                f"Input rejected: text too long ({len(input_text)} chars, max {max_length}). "
+                f"Please provide a shorter description."
+            )
 
-        # Escape special characters that could be interpreted as formatting
-        sanitized = sanitized.replace('"', '\\"').replace("'", "\\'")
+        # Check for excessive newlines that could be used for prompt separation
+        if input_text.count("\\n") > 10:
+            raise SecurityError(
+                "Input rejected: excessive line breaks detected. "
+                "Please format your input with normal spacing."
+            )
 
-        # Remove multiple consecutive newlines that could be used for prompt separation
-        sanitized = re.sub(r"\\n{3,}", "\\n\\n", sanitized)
+        # Check for dangerous formatting characters
+        dangerous_chars = ["\x00", "\r", "\t"]
+        if any(char in input_text for char in dangerous_chars):
+            raise SecurityError(
+                "Input rejected: contains invalid control characters. "
+                "Please use only printable text."
+            )
 
-        return sanitized
+        return input_text.strip()

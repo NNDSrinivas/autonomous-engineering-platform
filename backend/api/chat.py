@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 import logging
 import asyncio
+import threading
 import httpx  # Use async httpx instead of sync requests
 from sqlalchemy.orm import Session
 from urllib.parse import urlparse
@@ -20,19 +21,29 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+# Time constants for timestamp formatting
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = 3600
+SECONDS_PER_DAY = 86400
+SECONDS_PER_WEEK = 604800
+SECONDS_PER_MONTH = 2628000  # ~30.44 days for better accuracy
+SECONDS_PER_YEAR = 31536000
 
 # Shared async client instance with proper lifecycle management
 _async_client: Optional[httpx.AsyncClient] = None
 _client_lock: Optional[asyncio.Lock] = None
+_lock_creation_lock = threading.Lock()  # Thread-safe lock creation
 
 
 async def get_http_client() -> httpx.AsyncClient:
     """Get shared httpx client instance (async-safe initialization)"""
     global _async_client, _client_lock
 
-    # Initialize lock lazily to ensure event loop is running
+    # Thread-safe lazy initialization of async lock
     if _client_lock is None:
-        _client_lock = asyncio.Lock()
+        with _lock_creation_lock:
+            if _client_lock is None:
+                _client_lock = asyncio.Lock()
 
     if _async_client is None:
         async with _client_lock:
@@ -565,27 +576,25 @@ def _format_time_ago(timestamp: str) -> str:
 
         if seconds < 0:
             return "in the future"
-        elif seconds < 60:
+        elif seconds < SECONDS_PER_MINUTE:
             return f"{seconds} second{'s' if seconds != 1 else ''} ago"
-        elif seconds < 3600:
-            minutes = seconds // 60
+        elif seconds < SECONDS_PER_HOUR:
+            minutes = seconds // SECONDS_PER_MINUTE
             return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
-        elif seconds < 86400:
-            hours = seconds // 3600
+        elif seconds < SECONDS_PER_DAY:
+            hours = seconds // SECONDS_PER_HOUR
             return f"{hours} hour{'s' if hours != 1 else ''} ago"
-        elif seconds < 604800:  # 7 days
-            days = seconds // 86400
+        elif seconds < SECONDS_PER_WEEK:
+            days = seconds // SECONDS_PER_DAY
             return f"{days} day{'s' if days != 1 else ''} ago"
-        elif seconds < 2592000:  # 30 days
-            weeks = seconds // 604800
+        elif seconds < SECONDS_PER_MONTH:
+            weeks = seconds // SECONDS_PER_WEEK
             return f"{weeks} week{'s' if weeks != 1 else ''} ago"
-        elif seconds < 31536000:  # 365 days
-            months = (
-                seconds // 2628000
-            )  # Approximate month length (~30.44 days) for better accuracy
+        elif seconds < SECONDS_PER_YEAR:
+            months = seconds // SECONDS_PER_MONTH
             return f"{months} month{'s' if months != 1 else ''} ago"
         else:
-            years = seconds // 31536000
+            years = seconds // SECONDS_PER_YEAR
             return f"{years} year{'s' if years != 1 else ''} ago"
 
     except Exception as e:

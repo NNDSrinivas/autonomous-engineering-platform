@@ -63,7 +63,7 @@ class ThompsonSamplingBandit:
             r = await self.cache._ensure()
             if r:
                 # Use Redis hash for atomic counters
-                data = await r.hgetall(key)
+                data = await r.hgetall(key)  # type: ignore
                 if data:
                     # Redis returns strings, convert to float
                     successes = float(data.get("successes", PRIOR_SUCCESSES))
@@ -97,11 +97,11 @@ class ThompsonSamplingBandit:
             r = await self.cache._ensure()
             if r:
                 # Atomically increment the appropriate field
-                await r.hincrby(key, field, 1)
+                await r.hincrby(key, field, 1)  # type: ignore
                 # Set TTL if this is a new key (only if TTL not set)
-                ttl = await r.ttl(key)
+                ttl = await r.ttl(key)  # type: ignore
                 if ttl == -1:
-                    await r.expire(key, self.CONTEXT_EXPIRY)
+                    await r.expire(key, self.CONTEXT_EXPIRY)  # type: ignore
                 return
 
         # Fallback to non-atomic JSON operations (backwards compatibility)

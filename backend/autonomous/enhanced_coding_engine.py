@@ -165,6 +165,98 @@ class EnhancedAutonomousCodingEngine:
         ".idea/*",
     ]
 
+    # Compile regex patterns once at class level for performance
+    _COMPILED_SECRET_PATTERNS = None
+    _COMPILED_DANGEROUS_PATTERNS = None
+
+    @classmethod
+    def _get_compiled_secret_patterns(cls):
+        """Get compiled regex patterns for secret detection (lazy initialization)"""
+        import re
+        
+        if cls._COMPILED_SECRET_PATTERNS is None:
+            secret_patterns = [
+                # API Keys (various formats)
+                r'["\'](?:api_?key|apikey)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
+                r'["\'](?:secret_?key|secretkey)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
+                r'["\'](?:access_?token|accesstoken)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
+                # AWS Keys
+                r"AKIA[0-9A-Z]{16}",
+                r'["\'](?:aws_access_key_id)["\']?\s*[:=]\s*["\']([A-Z0-9]{20})["\']',
+                r'["\'](?:aws_secret_access_key)["\']?\s*[:=]\s*["\']([A-Za-z0-9/+=]{40})["\']',
+                # GitHub tokens
+                r"ghp_[A-Za-z0-9]{36}",
+                r"github_pat_[A-Za-z0-9_]{82}",
+                r"gho_[A-Za-z0-9]{36}",  # GitHub OAuth
+                r"ghu_[A-Za-z0-9]{36}",  # GitHub User
+                r"ghs_[A-Za-z0-9]{36}",  # GitHub Server
+                r"ghr_[A-Za-z0-9]{36}",  # GitHub Refresh
+                # Slack tokens
+                r"xox[baprs]-([0-9a-zA-Z]{10,48})",
+                r"xoxe\.xox[bp]-\d-[A-Za-z0-9]{163}",
+                # Google API keys
+                r"AIza[0-9A-Za-z_\-]{35}",
+                # Azure keys
+                r'["\'](?:azure_?key|subscription_?key)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{32,})["\']',
+                # Generic bearer tokens
+                r"Bearer\s+[A-Za-z0-9_\-\.=]{20,}",
+                # Database connection strings
+                r"(?:mysql|postgres|mongodb)://[^@]+:[^@]+@",
+                # Generic high-entropy strings that look like secrets
+                r'["\'](?:password|pwd|pass|token|key|secret)["\']?\s*[:=]\s*["\']([A-Za-z0-9!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]{12,})["\']',
+                # JWT tokens
+                r"eyJ[A-Za-z0-9_\-]*\.eyJ[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]*",
+                # Private keys
+                r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+                r"-----BEGIN PGP PRIVATE KEY BLOCK-----",
+                # Discord tokens
+                r"[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}",
+                # Twilio tokens
+                r"SK[0-9a-fA-F]{32}",
+                # SendGrid keys
+                r"SG\.[0-9A-Za-z\-_]{22}\.[0-9A-Za-z\-_]{43}",
+                # Stripe keys
+                r"(?:sk|pk)_(?:test|live)_[0-9a-zA-Z]{24}",
+            ]
+            cls._COMPILED_SECRET_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in secret_patterns]
+        
+        return cls._COMPILED_SECRET_PATTERNS
+
+    @classmethod 
+    def _get_compiled_dangerous_patterns(cls):
+        """Get compiled regex patterns for dangerous code detection (lazy initialization)"""
+        import re
+        
+        if cls._COMPILED_DANGEROUS_PATTERNS is None:
+            dangerous_patterns = [
+                # Shell command execution patterns
+                r'\bos\.system\s*\(',
+                r'\bsubprocess\.call\s*\(',
+                r'\bsubprocess\.run\s*\(',
+                r'\bsubprocess\.Popen\s*\(',
+                r'\bexec\s*\(',
+                r'\beval\s*\(',
+                r'\b__import__\s*\(',
+                r'\bcompile\s*\(',
+                # File system manipulation
+                r'\bos\.remove\s*\(',
+                r'\bos\.unlink\s*\(',
+                r'\bshutil\.rmtree\s*\(',
+                # Network operations
+                r'\bsocket\.socket\s*\(',
+                r'\burllib\.request\s*\.',
+                r'\brequests\.get\s*\(',
+                r'\brequests\.post\s*\(',
+                # Dynamic code execution
+                r'\bexecfile\s*\(',
+                # Potentially dangerous modules
+                r'\bimport\s+(?:os|subprocess|socket|urllib|requests)\b',
+                r'\bfrom\s+(?:os|subprocess|socket|urllib|requests)\b',
+            ]
+            cls._COMPILED_DANGEROUS_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in dangerous_patterns]
+        
+        return cls._COMPILED_DANGEROUS_PATTERNS
+
     @staticmethod
     def _validate_workspace_path(path: str) -> str:
         """Validate workspace path and prevent UNC path attacks on Windows"""
@@ -950,53 +1042,10 @@ class EnhancedAutonomousCodingEngine:
         return safe_files
 
     def _file_content_is_safe(self, file_path: str) -> bool:
-        """Check if file content appears safe (no actual secrets using regex patterns)"""
-        import re
-
-        # Enhanced regex patterns for comprehensive secret detection
-        secret_patterns = [
-            # API Keys (various formats)
-            r'["\'](?:api_?key|apikey)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
-            r'["\'](?:secret_?key|secretkey)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
-            r'["\'](?:access_?token|accesstoken)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
-            # AWS Keys
-            r"AKIA[0-9A-Z]{16}",
-            r'["\'](?:aws_access_key_id)["\']?\s*[:=]\s*["\']([A-Z0-9]{20})["\']',
-            r'["\'](?:aws_secret_access_key)["\']?\s*[:=]\s*["\']([A-Za-z0-9/+=]{40})["\']',
-            # GitHub tokens
-            r"ghp_[A-Za-z0-9]{36}",
-            r"github_pat_[A-Za-z0-9_]{82}",
-            r"gho_[A-Za-z0-9]{36}",  # GitHub OAuth
-            r"ghu_[A-Za-z0-9]{36}",  # GitHub User
-            r"ghs_[A-Za-z0-9]{36}",  # GitHub Server
-            r"ghr_[A-Za-z0-9]{36}",  # GitHub Refresh
-            # Slack tokens
-            r"xox[baprs]-([0-9a-zA-Z]{10,48})",
-            r"xoxe\.xox[bp]-\d-[A-Za-z0-9]{163}",
-            # Google API keys
-            r"AIza[0-9A-Za-z_\-]{35}",
-            # Azure keys
-            r'["\'](?:azure_?key|subscription_?key)["\']?\s*[:=]\s*["\']([A-Za-z0-9_\-]{32,})["\']',
-            # Generic bearer tokens
-            r"Bearer\s+[A-Za-z0-9_\-\.=]{20,}",
-            # Database connection strings
-            r"(?:mysql|postgres|mongodb)://[^@]+:[^@]+@",
-            # Generic high-entropy strings that look like secrets
-            r'["\'](?:password|pwd|pass|token|key|secret)["\']?\s*[:=]\s*["\']([A-Za-z0-9!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]{12,})["\']',
-            # JWT tokens
-            r"eyJ[A-Za-z0-9_\-]*\.eyJ[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]*",
-            # Private keys
-            r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
-            r"-----BEGIN PGP PRIVATE KEY BLOCK-----",
-            # Discord tokens
-            r"[MN][A-Za-z\d]{23}\.[\w-]{6}\.[\w-]{27}",
-            # Twilio tokens
-            r"SK[0-9a-fA-F]{32}",
-            # SendGrid keys
-            r"SG\.[0-9A-Za-z\-_]{22}\.[0-9A-Za-z\-_]{43}",
-            # Stripe keys
-            r"(?:sk|pk)_(?:test|live)_[0-9a-zA-Z]{24}",
-        ]
+        """Check if file content appears safe (no actual secrets using compiled regex patterns)"""
+        
+        # Use pre-compiled patterns for better performance
+        compiled_patterns = self._get_compiled_secret_patterns()
 
         try:
             # Read entire file but limit to reasonable size (10MB max)
@@ -1013,9 +1062,9 @@ class EnhancedAutonomousCodingEngine:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
 
-            # Check for actual secret patterns using regex
-            for pattern in secret_patterns:
-                if re.search(pattern, content, re.IGNORECASE):
+            # Check for actual secret patterns using compiled regex
+            for compiled_pattern in compiled_patterns:
+                if compiled_pattern.search(content):
                     logger.warning(f"Potential secret detected in {file_path}")
                     return False
 
@@ -1737,16 +1786,12 @@ class EnhancedAutonomousCodingEngine:
             # If AST parsing fails, fall back to string matching
             pass
 
+        # Use compiled patterns for dangerous code detection (performance optimized)
+        compiled_dangerous_patterns = self._get_compiled_dangerous_patterns()
+        
         # Enhanced fallback to string matching for non-Python or invalid syntax
-        # High-risk patterns that are rarely legitimate in automated coding
-        high_risk_patterns = [
-            "subprocess.call",
-            "subprocess.run",
-            "subprocess.Popen",
-            "os.system",
-            "eval(",
-            "exec(",
-            "__import__",
+        # Additional high-risk patterns that are rarely legitimate in automated coding
+        additional_high_risk_patterns = [
             "rm -rf",
             "drop table",
             "drop database",
@@ -1794,8 +1839,13 @@ class EnhancedAutonomousCodingEngine:
             code_normalized.replace("+", "").replace('"', "").replace("'", "")
         )
 
-        # Check high-risk patterns
-        for pattern in high_risk_patterns:
+        # Check compiled dangerous patterns (performance optimized)
+        for compiled_pattern in compiled_dangerous_patterns:
+            if compiled_pattern.search(code):
+                return True
+        
+        # Check additional high-risk patterns
+        for pattern in additional_high_risk_patterns:
             if pattern.lower() in code_normalized:
                 return True
 

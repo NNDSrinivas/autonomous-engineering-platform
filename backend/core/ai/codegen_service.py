@@ -117,6 +117,13 @@ async def call_model(
     fallbacks, and telemetry. If the router fails, a fallback is performed via a private
     function that handles direct AI service calls, including truncation and retry logic.
 
+    The fallback is triggered if any exception occurs during the router call. This may include:
+    - Router configuration errors (e.g., misconfigured endpoints, missing credentials)
+    - Provider unavailability (e.g., upstream LLM service downtime)
+    - Network errors or timeouts
+    - Unexpected exceptions or failures in the router logic
+    The fallback ensures code generation can proceed even if the centralized router is unavailable.
+
     Args:
         prompt: The formatted prompt with intent and context
         max_retries: Number of fallback attempts if truncation occurs (only used in fallback path)
@@ -422,8 +429,13 @@ async def generate_unified_diff(
                 "Learning services not available (missing dependencies), using default parameters"
             )
         except Exception as e:
-            # Handle specific known configuration errors
-            if type(e).__name__ == "BanditConfigurationError":
+            # Handle specific known configuration errors by checking the module and name
+            exception_type = type(e)
+            if (
+                hasattr(exception_type, "__module__")
+                and "learning_service" in exception_type.__module__
+                and exception_type.__name__ == "BanditConfigurationError"
+            ):
                 logger.warning(
                     f"Bandit configuration error for org {org_key}, user {user_sub or 'unknown'}: {e}, using default parameters"
                 )

@@ -80,7 +80,8 @@ class ThompsonSamplingBandit:
                 if data:
                     # Redis configured with decode_responses=True should return strings,
                     # but handle both string and bytes for robustness
-                    if data and isinstance(next(iter(data.keys())), bytes):
+                    data_keys = list(data.keys())
+                    if data_keys and isinstance(data_keys[0], bytes):
                         data = {k.decode(): v.decode() for k, v in data.items()}
 
                     successes = float(data.get("successes", PRIOR_SUCCESSES))

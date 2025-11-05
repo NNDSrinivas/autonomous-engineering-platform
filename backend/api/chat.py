@@ -200,7 +200,8 @@ async def _build_enhanced_context(
             # Make request to existing context API
             api_base = get_api_base_url()
             response = requests.get(
-                f"{api_base}/api/context/task/{request.currentTask}"
+                f"{api_base}/api/context/task/{request.currentTask}",
+                timeout=10
             )
             if response.status_code == 200:
                 enhanced_context["task_context"] = response.json()
@@ -218,7 +219,7 @@ async def _handle_task_query(
         # Try to get tasks from JIRA API
         try:
             api_base = get_api_base_url()
-            response = requests.get(f"{api_base}/api/jira/tasks")
+            response = requests.get(f"{api_base}/api/jira/tasks", timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 tasks = data.get("items", [])
@@ -292,7 +293,7 @@ async def _handle_team_query(
         team_activity = []
         try:
             api_base = get_api_base_url()
-            response = requests.get(f"{api_base}/api/activity/recent")
+            response = requests.get(f"{api_base}/api/activity/recent", timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 team_activity = data.get("items", [])
@@ -526,11 +527,11 @@ def _format_time_ago(timestamp: str) -> str:
         elif seconds < 604800:  # 7 days
             days = seconds // 86400
             return f"{days} day{'s' if days != 1 else ''} ago"
-        elif seconds < 2419200:  # 28 days
+        elif seconds < 2592000:  # 30 days
             weeks = seconds // 604800
             return f"{weeks} week{'s' if weeks != 1 else ''} ago"
         elif seconds < 31536000:  # 365 days
-            months = seconds // 2419200
+            months = seconds // 2592000  # 30 days for more accurate monthly calculations
             return f"{months} month{'s' if months != 1 else ''} ago"
         else:
             years = seconds // 31536000

@@ -117,7 +117,7 @@ class ThompsonSamplingBandit:
 
             # Adjust for Beta(1,1) prior - subtract the initial counts for reporting
             actual_trials = max(0, int(total) - 2)
-            actual_successes = max(0, successes - 1)
+            actual_successes = max(0, int(successes) - 1)
 
             performance[arm] = {
                 "successes": int(actual_successes),

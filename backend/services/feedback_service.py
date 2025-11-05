@@ -90,6 +90,7 @@ class FeedbackService:
                 and_(
                     AiFeedback.gen_id == gen_id,
                     AiFeedback.user_sub == user_sub,
+                    AiFeedback.org_key == org_key,  # Add org_key filter for efficiency
                 )
             )
         )

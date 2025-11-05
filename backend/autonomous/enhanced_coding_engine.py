@@ -1224,8 +1224,11 @@ class EnhancedAutonomousCodingEngine:
 
         Uses os.path.normpath() first to handle edge cases like redundant separators
         and to resolve . and .. components where possible (e.g., 'a/b/../c' -> 'a/c').
-        However, normpath preserves leading .. if there is no parent directory to resolve
-        (e.g., '../../etc/passwd' remains unchanged). The .. check after normalization is intentional and effective.
+        
+        SECURITY: normpath() only resolves .. components within valid paths but preserves
+        .. that would escape the root directory (e.g., '../../etc/passwd' remains unchanged).
+        This behavior is intentional - the subsequent .. check effectively catches path 
+        traversal attempts because dangerous .. components are preserved by normpath().
         """
         # Normalize the path first to handle edge cases and resolve . and .. components
         # within valid relative paths, but preserve .. that would escape workspace
@@ -1238,7 +1241,7 @@ class EnhancedAutonomousCodingEngine:
             )
 
         # Disallow path traversal - this catches .. components that would escape workspace
-        # normpath() preserves .. that escape the current directory, so this check is effective
+        # normpath() preserves .. that escape the current directory, making this check effective
         parts = Path(normalized_path).parts
         if any(part == ".." for part in parts):
             raise DangerousCodeError("Invalid file path: path traversal detected")
@@ -1274,12 +1277,7 @@ class EnhancedAutonomousCodingEngine:
             # 3. Resolve path with enhanced security for create operations
             try:
                 if step.operation == "create":
-                    # For create operations, check parent for symlinks BEFORE resolving
-                    if file_path.parent.is_symlink():
-                        raise SecurityError(
-                            "Refusing to create file in symlinked directory"
-                        )
-                    # Verify parent directory strictly
+                    # Verify parent directory strictly (symlink check already done above)
                     parent_path = file_path.parent.resolve(strict=True)
                     parent_path.relative_to(self.workspace_path.resolve())
                     # Then resolve the full path without strict requirement

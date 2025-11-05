@@ -6,6 +6,11 @@ import numpy as np
 
 from backend.infra.cache.redis_cache import cache
 
+# Configuration constants
+MIN_TRIALS_FOR_FULL_CONFIDENCE = (
+    20  # Minimum trials to reach full confidence in estimates
+)
+
 
 class ThompsonSamplingBandit:
     """Contextual bandit using Thompson Sampling for AI parameter selection."""
@@ -35,7 +40,12 @@ class ThompsonSamplingBandit:
 
         if data:
             return data.get("successes", 0.0), data.get("failures", 0.0)
-        return 1.0, 1.0  # Start with uniform prior
+
+        # Use Beta(1,1) as the starting values for the Beta distribution.
+        # This represents a uniform prior, meaning we assume no initial preference
+        # for success or failure. This is standard in Thompson Sampling to ensure
+        # unbiased initial sampling and equal exploration of all arms.
+        return 1.0, 1.0
 
     async def _update_arm_stats(
         self, context_key: str, arm: str, success: bool
@@ -110,7 +120,9 @@ class ThompsonSamplingBandit:
                 "failures": int(failures),
                 "total_trials": int(total),
                 "success_rate": successes / total if total > 0 else 0.0,
-                "confidence": min(total / 20.0, 1.0),  # Confidence in estimate
+                "confidence": min(
+                    total / MIN_TRIALS_FOR_FULL_CONFIDENCE, 1.0
+                ),  # Confidence in estimate
             }
 
         return performance

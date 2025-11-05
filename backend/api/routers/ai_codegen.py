@@ -94,11 +94,18 @@ async def generate_diff(
     logger.info(f"User {user.user_id} generating diff for {len(body.files)} files")
 
     try:
+        # Validate org_key for bandit learning
+        org_key = getattr(user, "org_key", None)
+        if not org_key:
+            logger.warning(
+                f"User {user.user_id} missing org_key - bandit learning disabled"
+            )
+
         # Generate diff using AI service - now returns tuple
         result = await generate_unified_diff(
             body.intent,
             body.files,
-            org_key=getattr(user, "org_key", None),
+            org_key=org_key,
             user_role=user.role.value if user.role else None,
             user_sub=user.user_id,
             session=session,

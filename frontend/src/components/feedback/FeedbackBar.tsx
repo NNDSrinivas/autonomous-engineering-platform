@@ -36,9 +36,18 @@ export function FeedbackBar({ generationLogId, onFeedbackSubmitted }: FeedbackBa
     if (rating !== 0) {
       setShowDetails(true);
     } else {
-      // Neutral rating - show brief confirmation before submitting
-      setError(null);
-      submitFeedback({ rating });
+      // Neutral rating - confirm before submitting
+      const confirmed = window.confirm(
+        'You selected "neutral" feedback. This will be submitted immediately. Continue?'
+      );
+      if (confirmed) {
+        setError(null);
+        submitFeedback({ rating });
+      } else {
+        // Reset if user cancels
+        setSelectedRating(-1);
+        setFeedback({ rating: -1 });
+      }
     }
   };
 

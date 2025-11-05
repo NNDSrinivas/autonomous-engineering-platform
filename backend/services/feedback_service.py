@@ -1,7 +1,7 @@
 """Service layer for AI feedback operations."""
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +49,10 @@ class FeedbackService:
         await self.session.refresh(log_entry)
         return log_entry.id  # type: ignore[return-value]
 
+    def _validate_user_match(self, field_value: Any, expected_value: str) -> bool:
+        """Helper method to validate user field matches with consistent string conversion."""
+        return str(field_value) == str(expected_value)
+
     async def submit_feedback(
         self,
         gen_id: int,
@@ -67,9 +71,9 @@ class FeedbackService:
 
         if gen_log is None:
             return False
-        if str(gen_log.org_key) != str(org_key):
+        if not self._validate_user_match(gen_log.org_key, org_key):
             return False
-        if str(gen_log.user_sub) != str(user_sub):
+        if not self._validate_user_match(gen_log.user_sub, user_sub):
             return False  # Only the original requester can provide feedback
 
         # Check if feedback already exists for this user/generation

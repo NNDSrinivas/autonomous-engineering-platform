@@ -67,25 +67,25 @@ export function AdminFeedbackStats() {
         const feedbackData = await feedbackResponse.json();
         setFeedbackStats(feedbackData);
       } else {
-        errors.push('feedback statistics');
+        errors.push('Unable to load feedback statistics');
       }
 
       if (learningResponse.ok) {
         const learningData = await learningResponse.json();
         setLearningStats(learningData);
       } else {
-        errors.push('learning data');
+        errors.push('Unable to load learning performance data');
       }
 
       if (recentResponse.ok) {
         const recentData = await recentResponse.json();
         setRecentFeedback(recentData.feedback);
       } else {
-        errors.push('recent feedback');
+        errors.push('Unable to load recent feedback entries');
       }
 
       if (errors.length > 0) {
-        setError(`Failed to load: ${errors.join(', ')}. Some data may be incomplete.`);
+        setError(`${errors.join('\n')}\n\nSome data may be incomplete.`);
       }
     } catch (error) {
       console.error('Error loading feedback data:', error);

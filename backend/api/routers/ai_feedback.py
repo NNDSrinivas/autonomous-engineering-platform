@@ -4,11 +4,13 @@ import logging
 from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.auth.deps import get_current_user, require_role
 from backend.core.auth.models import Role
 from backend.core.database import get_db_session
+from backend.models.ai_feedback import AiGenerationLog
 from backend.schemas.ai_feedback import (
     FeedbackSubmission,
     FeedbackResponse,
@@ -51,10 +53,6 @@ async def submit_feedback(
     # Update bandit learning from feedback (service layer filters neutral ratings)
     try:
         # Get the generation log to retrieve bandit context
-        from sqlalchemy import select
-        from backend.models.ai_feedback import AiGenerationLog
-        from backend.services.learning_service import LearningService
-
         gen_result = await session.execute(
             select(AiGenerationLog).where(AiGenerationLog.id == feedback.gen_id)
         )
@@ -70,9 +68,12 @@ async def submit_feedback(
                 await bandit.record_feedback(
                     bandit_context, bandit_arm, feedback.rating
                 )
-    except Exception as e:
+    except (ValueError, ConnectionError, KeyError) as e:
         # Log error but don't fail the feedback submission
         logger.warning(f"Failed to update bandit learning: {e}")
+    except Exception as e:
+        # Log unexpected errors
+        logger.exception(f"Unexpected error in bandit learning: {e}")
 
     return FeedbackResponse(success=True, message="Feedback submitted successfully")
 

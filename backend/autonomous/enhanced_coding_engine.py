@@ -1224,10 +1224,10 @@ class EnhancedAutonomousCodingEngine:
 
         Uses os.path.normpath() first to handle edge cases like redundant separators
         and to resolve . and .. components where possible (e.g., 'a/b/../c' -> 'a/c').
-        
+
         SECURITY: normpath() only resolves .. components within valid paths but preserves
         .. that would escape the root directory (e.g., '../../etc/passwd' remains unchanged).
-        This behavior is intentional - the subsequent .. check effectively catches path 
+        This behavior is intentional - the subsequent .. check effectively catches path
         traversal attempts because dangerous .. components are preserved by normpath().
         """
         # Normalize the path first to handle edge cases and resolve . and .. components

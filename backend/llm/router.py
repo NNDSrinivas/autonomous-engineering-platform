@@ -222,6 +222,12 @@ class ModelRouter:
 
                 # Record audit log (transaction managed by caller)
                 if audit_context.db is not None:
+                    # Log warning if prompt_hash is missing for debugging
+                    if audit_context.prompt_hash is None:
+                        logger.warning(
+                            f"Missing prompt_hash in audit context for phase {phase}, model {candidate}"
+                        )
+
                     audit_entry = AuditLogEntry(
                         phase=phase,
                         model=candidate,
@@ -272,6 +278,12 @@ class ModelRouter:
 
                 # Record error audit log
                 if audit_context.db is not None:
+                    # Log warning if prompt_hash is missing for debugging
+                    if audit_context.prompt_hash is None:
+                        logger.warning(
+                            f"Missing prompt_hash in audit context for error in phase {phase}, model {candidate}"
+                        )
+
                     audit_entry = AuditLogEntry(
                         phase=phase,
                         model=candidate,

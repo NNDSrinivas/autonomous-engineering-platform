@@ -269,7 +269,7 @@ class LearningService:
         size_buckets = ["small", "medium", "large"]
         experience_levels = ["standard", "expert"]  # Support mapped experience levels
 
-        # Generate contexts for all task types and sizes (starting with standard experience)
+        # Generate contexts for all task types, input size buckets, and both experience levels
         for task_type in task_types:
             for size_bucket in size_buckets:
                 for experience in experience_levels:

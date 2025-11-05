@@ -271,6 +271,11 @@ class EnhancedAutonomousCodingEngine:
 
         return cls._COMPILED_DANGEROUS_PATTERNS
 
+    # Input validation limits - configurable for different deployment scenarios
+    MAX_PROMPT_INPUT_LENGTH = 500  # Maximum characters for user prompt inputs
+    MAX_PROMPT_NEWLINES = 10  # Maximum newlines allowed in prompt inputs
+    MAX_COMMIT_MESSAGE_LENGTH = 100  # Maximum length for commit message sanitization
+
     @staticmethod
     def _validate_workspace_path(path: str) -> str:
         """Validate workspace path and prevent UNC path and device name attacks on Windows"""
@@ -1984,9 +1989,8 @@ class EnhancedAutonomousCodingEngine:
         sanitized = re.sub(r"[;&|`$<>(){}[\]]", "", sanitized)
 
         # Limit length to prevent excessively long commit messages
-        max_length = 100
-        if len(sanitized) > max_length:
-            sanitized = sanitized[: max_length - 3] + "..."
+        if len(sanitized) > self.MAX_COMMIT_MESSAGE_LENGTH:
+            sanitized = sanitized[: self.MAX_COMMIT_MESSAGE_LENGTH - 3] + "..."
 
         # Ensure it's not empty after sanitization
         sanitized = sanitized.strip()
@@ -2019,15 +2023,14 @@ class EnhancedAutonomousCodingEngine:
                 )
 
         # Limit length to prevent token exhaustion attacks
-        max_length = 500
-        if len(input_text) > max_length:
+        if len(input_text) > self.MAX_PROMPT_INPUT_LENGTH:
             raise SecurityError(
-                f"Input rejected: text too long ({len(input_text)} chars, max {max_length}). "
+                f"Input rejected: text too long ({len(input_text)} chars, max {self.MAX_PROMPT_INPUT_LENGTH}). "
                 f"Please provide a shorter description."
             )
 
         # Check for excessive newlines that could be used for prompt separation
-        if input_text.count("\n") > 10:
+        if input_text.count("\n") > self.MAX_PROMPT_NEWLINES:
             raise SecurityError(
                 "Input rejected: excessive line breaks detected. "
                 "Please format your input with normal spacing."

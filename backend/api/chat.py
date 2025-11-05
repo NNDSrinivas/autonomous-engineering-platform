@@ -25,9 +25,14 @@ SECONDS_PER_MINUTE = int(timedelta(minutes=1).total_seconds())  # 60
 SECONDS_PER_HOUR = int(timedelta(hours=1).total_seconds())  # 3600
 SECONDS_PER_DAY = int(timedelta(days=1).total_seconds())  # 86400
 SECONDS_PER_WEEK = int(timedelta(weeks=1).total_seconds())  # 604800
+# NOTE: Month approximation using average month length (30.44 days)
+# This is an approximation and may have edge cases for specific months:
+# - February: 28/29 days (difference of ~2.4/1.4 days)
+# - Months with 31 days: difference of ~0.56 days
+# For precise month calculations, use dateutil.relativedelta
 SECONDS_PER_MONTH = int(
     timedelta(days=30.44).total_seconds()
-)  # 2628000 (~30.44 days for better accuracy)
+)  # 2628000 (~30.44 days average)
 SECONDS_PER_YEAR = int(timedelta(days=365).total_seconds())  # 31536000
 
 # HTTP client management - thread-safe singleton pattern

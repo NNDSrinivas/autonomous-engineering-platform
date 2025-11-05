@@ -36,18 +36,14 @@ class AiGenerationLog(Base):
     id = Column(Integer, primary_key=True)
     org_key = Column(String(64), index=True)
     user_sub = Column(String(128), index=True)
-    task_type = Column(String(48), nullable=False)  # Validated by check constraint
-
-    __table_args__ = (
-        CheckConstraint(
-            task_type.in_([task.value for task in TaskType]), name="valid_task_type"
-        ),
-    )
+    task_type = Column(String(48), nullable=False)  # Validated at application level
     input_fingerprint = Column(String(64), nullable=True)
     model = Column(String(64), nullable=False)
     temperature = Column(Float, nullable=False)
     params = Column(JSON, nullable=False)
     prompt_hash = Column(String(64), nullable=False)
+    result_ref = Column(String(128), nullable=True)  # e.g., diff sha
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     result_ref = Column(String(128), nullable=True)  # e.g., diff sha
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 

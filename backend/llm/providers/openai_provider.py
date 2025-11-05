@@ -32,11 +32,17 @@ class OpenAIProvider:
             "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
         }
 
-    def complete(self, prompt: str, context: Dict[str, Any], temperature: float = 0.1, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+    def complete(
+        self,
+        prompt: str,
+        context: Dict[str, Any],
+        temperature: float = 0.1,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Generate completion using OpenAI API."""
         # Use provided max_tokens or fall back to default
         tokens = max_tokens if max_tokens is not None else self.MAX_TOKENS
-        
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,

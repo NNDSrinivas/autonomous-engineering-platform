@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class BanditConfigurationError(Exception):
     """Raised when there are configuration issues with the bandit learning system."""
+
     pass
 
 

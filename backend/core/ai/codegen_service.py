@@ -379,7 +379,7 @@ async def generate_unified_diff(
 
     if org_key:
         try:
-            from backend.services.learning_service import LearningService, BanditConfigurationError
+            from backend.services.learning_service import LearningService
             from backend.services.feedback_service import FeedbackService
 
             learning_service = LearningService()
@@ -423,7 +423,7 @@ async def generate_unified_diff(
             )
         except Exception as e:
             # Handle specific known configuration errors
-            if type(e).__name__ == 'BanditConfigurationError':
+            if type(e).__name__ == "BanditConfigurationError":
                 logger.warning(
                     f"Bandit configuration error for org {org_key}, user {user_sub or 'unknown'}: {e}, using default parameters"
                 )

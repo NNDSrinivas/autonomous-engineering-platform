@@ -300,14 +300,17 @@ async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
                 f"Failed to create PR for task {task_id}: {result.get('error')}"
             )
             raise HTTPException(
-                status_code=500, detail=f"Failed to create pull request: {result.get('error', 'Unknown error')}"
+                status_code=500,
+                detail=f"Failed to create pull request: {result.get('error', 'Unknown error')}",
             )
 
         return result
 
     except Exception as e:
         logger.error(f"Failed to create PR for task {task_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create pull request: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create pull request: {str(e)}"
+        )
 
 
 @router.get("/health")
@@ -326,10 +329,7 @@ async def health_check(db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return {
-            "status": "unhealthy",
-            "error": f"{type(e).__name__}: {str(e)}"
-        }
+        return {"status": "unhealthy", "error": f"{type(e).__name__}: {str(e)}"}
 
 
 @router.get("/user-daily-context")
@@ -458,7 +458,7 @@ async def _suggest_daily_priorities(user_id: str) -> List[Dict[str, Any]]:
 async def get_concierge_greeting(request: Request, db: Session = Depends(get_db)):
     """
     Dynamic time-based greeting with animated wallpaper and task intelligence
-    
+
     Features:
     - Time-based animated wallpapers (morning/evening/night themes)
     - Personalized greeting messages
@@ -470,26 +470,26 @@ async def get_concierge_greeting(request: Request, db: Session = Depends(get_db)
         # Get user identity and preferences
         user_id = request.headers.get("X-User-Id", "default-user")
         current_time = datetime.now(timezone.utc)
-        
+
         # Generate time-based greeting and wallpaper
         greeting_data = await _generate_dynamic_greeting(user_id, current_time)
         wallpaper_config = await _get_wallpaper_config(user_id, current_time)
-        
+
         # Get daily context for task recommendations
         daily_context = await _get_user_daily_context_data(user_id, db)
-        
+
         # Generate smart recommendations
         recommendations = await _generate_smart_recommendations(daily_context)
         quick_actions = await _generate_quick_actions(daily_context)
-        
+
         return ConciergeGreetingResponse(
             greeting=greeting_data,
             wallpaper=wallpaper_config,
             tasks_summary=daily_context.get("tasks_summary", {}),
             recommendations=recommendations,
-            quick_actions=quick_actions
+            quick_actions=quick_actions,
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to generate concierge greeting: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate greeting")
@@ -497,23 +497,21 @@ async def get_concierge_greeting(request: Request, db: Session = Depends(get_db)
 
 @router.post("/concierge/wallpaper/preferences")
 async def update_wallpaper_preferences(
-    preferences: WallpaperPreferences,
-    request: Request,
-    db: Session = Depends(get_db)
+    preferences: WallpaperPreferences, request: Request, db: Session = Depends(get_db)
 ):
     """Update user's wallpaper and animation preferences"""
     try:
         user_id = request.headers.get("X-User-Id", "default-user")
-        
+
         # Store preferences (would use user preferences service)
         saved_preferences = await _save_wallpaper_preferences(user_id, preferences, db)
-        
+
         return {
             "status": "success",
             "preferences": saved_preferences,
-            "message": "Wallpaper preferences updated successfully"
+            "message": "Wallpaper preferences updated successfully",
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to update wallpaper preferences: {e}")
         raise HTTPException(status_code=500, detail="Failed to update preferences")
@@ -529,61 +527,63 @@ async def get_available_wallpaper_themes():
                 "description": "Bright sun with swaying grass and gentle breeze",
                 "primary_color": "#87CEEB",
                 "accent_color": "#FFD700",
-                "animations": ["grass_sway", "cloud_drift", "sun_rays"]
+                "animations": ["grass_sway", "cloud_drift", "sun_rays"],
             },
             "afternoon": {
                 "name": "Clear Skies",
                 "description": "Fluffy clouds drifting across clear blue sky",
                 "primary_color": "#4A90E2",
                 "accent_color": "#FFFFFF",
-                "animations": ["cloud_movement", "bird_flight"]
+                "animations": ["cloud_movement", "bird_flight"],
             },
             "evening": {
                 "name": "Beach Sunset",
                 "description": "Warm sunset over ocean with animated waves",
                 "primary_color": "#FF6B35",
                 "accent_color": "#4ECDC4",
-                "animations": ["wave_motion", "seagull_flight", "sunset_glow"]
+                "animations": ["wave_motion", "seagull_flight", "sunset_glow"],
             },
             "night": {
                 "name": "Starry Night",
                 "description": "Moon and stars with falling meteors",
                 "primary_color": "#1A1A2E",
                 "accent_color": "#FFD700",
-                "animations": ["star_twinkle", "meteor_shower", "moon_glow"]
-            }
+                "animations": ["star_twinkle", "meteor_shower", "moon_glow"],
+            },
         },
         "custom_themes": [
             {
                 "id": "matrix",
                 "name": "Matrix Code",
-                "description": "Green digital rain effect"
+                "description": "Green digital rain effect",
             },
             {
                 "id": "particles",
                 "name": "Particle System",
-                "description": "Floating geometric particles"
+                "description": "Floating geometric particles",
             },
             {
                 "id": "minimal",
                 "name": "Minimal",
-                "description": "Clean gradient background"
-            }
+                "description": "Clean gradient background",
+            },
         ],
         "animation_options": {
             "speed": ["slow", "normal", "fast"],
             "intensity": ["subtle", "normal", "vibrant"],
-            "particles": ["none", "minimal", "normal", "heavy"]
-        }
+            "particles": ["none", "minimal", "normal", "heavy"],
+        },
     }
 
 
 # Helper functions for concierge system
-async def _generate_dynamic_greeting(user_id: str, current_time: datetime) -> Dict[str, Any]:
+async def _generate_dynamic_greeting(
+    user_id: str, current_time: datetime
+) -> Dict[str, Any]:
     """Generate personalized, time-based greeting message"""
     hour = current_time.hour
     day_name = calendar.day_name[current_time.weekday()]
-    
+
     # Time-based greeting templates
     if 6 <= hour < 12:
         time_greeting = "Good morning"
@@ -601,70 +601,66 @@ async def _generate_dynamic_greeting(user_id: str, current_time: datetime) -> Di
         time_greeting = "Good evening"
         time_context = "Late night coding session"
         energy_level = "focused"
-    
+
     return {
         "primary_message": f"{time_greeting}! Ready to build something amazing?",
         "time_context": time_context,
         "day_info": f"Happy {day_name}",
         "energy_level": energy_level,
         "motivational_quote": await _get_daily_motivation(energy_level),
-        "timestamp": current_time.isoformat()
+        "timestamp": current_time.isoformat(),
     }
 
 
 async def _get_wallpaper_config(user_id: str, current_time: datetime) -> Dict[str, Any]:
     """Get dynamic wallpaper configuration based on time and user preferences"""
     hour = current_time.hour
-    
+
     # Determine time-based theme
     if 6 <= hour < 12:
         theme = "morning"
         animation_set = ["grass_sway", "sun_rays", "butterfly_flutter"]
         color_palette = {
-            "primary": "#87CEEB",      # Sky blue
-            "secondary": "#98FB98",    # Pale green
-            "accent": "#FFD700",       # Gold
-            "text": "#2F4F4F"          # Dark slate gray
+            "primary": "#87CEEB",  # Sky blue
+            "secondary": "#98FB98",  # Pale green
+            "accent": "#FFD700",  # Gold
+            "text": "#2F4F4F",  # Dark slate gray
         }
     elif 12 <= hour < 18:
         theme = "afternoon"
         animation_set = ["cloud_drift", "bird_flight"]
         color_palette = {
-            "primary": "#4A90E2",      # Bright blue
-            "secondary": "#FFFFFF",    # White
-            "accent": "#FFA500",       # Orange
-            "text": "#2C3E50"          # Dark blue gray
+            "primary": "#4A90E2",  # Bright blue
+            "secondary": "#FFFFFF",  # White
+            "accent": "#FFA500",  # Orange
+            "text": "#2C3E50",  # Dark blue gray
         }
     elif 18 <= hour < 22:
         theme = "evening"
         animation_set = ["wave_motion", "sunset_glow", "seagull_flight"]
         color_palette = {
-            "primary": "#FF6B35",      # Sunset orange
-            "secondary": "#4ECDC4",    # Teal
-            "accent": "#FFE066",       # Light yellow
-            "text": "#2C3E50"          # Dark blue gray
+            "primary": "#FF6B35",  # Sunset orange
+            "secondary": "#4ECDC4",  # Teal
+            "accent": "#FFE066",  # Light yellow
+            "text": "#2C3E50",  # Dark blue gray
         }
     else:
         theme = "night"
         animation_set = ["star_twinkle", "meteor_shower", "moon_glow"]
         color_palette = {
-            "primary": "#1A1A2E",      # Dark navy
-            "secondary": "#16213E",    # Darker blue
-            "accent": "#FFD700",       # Gold
-            "text": "#E8E8E8"          # Light gray
+            "primary": "#1A1A2E",  # Dark navy
+            "secondary": "#16213E",  # Darker blue
+            "accent": "#FFD700",  # Gold
+            "text": "#E8E8E8",  # Light gray
         }
-    
+
     return {
         "theme": theme,
         "animations": animation_set,
         "colors": color_palette,
-        "particle_effects": {
-            "enabled": True,
-            "type": theme,
-            "intensity": "normal"
-        },
+        "particle_effects": {"enabled": True, "type": theme, "intensity": "normal"},
         "transition_duration": "2s",
-        "hour": hour
+        "hour": hour,
     }
 
 
@@ -673,64 +669,72 @@ async def _get_user_daily_context_data(user_id: str, db: Session) -> Dict[str, A
     try:
         # Get JIRA tasks (using existing endpoint data)
         jira_tasks = await _fetch_user_jira_tasks(user_id)
-        
+
         # Calculate task summary
         total_tasks = len(jira_tasks)
         high_priority = len([t for t in jira_tasks if t.get("priority") == "High"])
         in_progress = len([t for t in jira_tasks if t.get("status") == "In Progress"])
-        
+
         return {
             "tasks_summary": {
                 "total": total_tasks,
                 "high_priority": high_priority,
                 "in_progress": in_progress,
-                "completion_rate": "75%"  # Would calculate from actual data
+                "completion_rate": "75%",  # Would calculate from actual data
             },
             "jira_tasks": jira_tasks,
             "recent_activity": await _fetch_recent_discussions(user_id),
             "upcoming_meetings": [],  # Would fetch from calendar
-            "team_updates": await _fetch_team_activity(user_id)
+            "team_updates": await _fetch_team_activity(user_id),
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to get daily context: {e}")
         return {"tasks_summary": {}, "jira_tasks": []}
 
 
-async def _generate_smart_recommendations(daily_context: Dict[str, Any]) -> List[Dict[str, Any]]:
+async def _generate_smart_recommendations(
+    daily_context: Dict[str, Any],
+) -> List[Dict[str, Any]]:
     """Generate AI-powered task recommendations"""
     tasks = daily_context.get("jira_tasks", [])
-    
+
     recommendations = []
-    
+
     # High priority tasks first
     high_priority_tasks = [t for t in tasks if t.get("priority") == "High"]
     for task in high_priority_tasks[:3]:  # Top 3 high priority
-        recommendations.append({
-            "type": "urgent_task",
-            "title": f"Complete {task['key']}",
-            "description": task.get("title", ""),
-            "reason": "High priority, needs attention",
-            "estimated_time": "2-4 hours",
-            "action": "start_coding",
-            "task_key": task["key"]
-        })
-    
+        recommendations.append(
+            {
+                "type": "urgent_task",
+                "title": f"Complete {task['key']}",
+                "description": task.get("title", ""),
+                "reason": "High priority, needs attention",
+                "estimated_time": "2-4 hours",
+                "action": "start_coding",
+                "task_key": task["key"],
+            }
+        )
+
     # Add coding session recommendation
     if len(recommendations) > 0:
-        recommendations.append({
-            "type": "focus_session",
-            "title": "Start 2-hour focus session",
-            "description": "Deep work on your high-priority tasks",
-            "reason": "Maximize productivity with uninterrupted coding",
-            "estimated_time": "2 hours",
-            "action": "start_focus_mode"
-        })
-    
+        recommendations.append(
+            {
+                "type": "focus_session",
+                "title": "Start 2-hour focus session",
+                "description": "Deep work on your high-priority tasks",
+                "reason": "Maximize productivity with uninterrupted coding",
+                "estimated_time": "2 hours",
+                "action": "start_focus_mode",
+            }
+        )
+
     return recommendations[:4]  # Limit to 4 recommendations
 
 
-async def _generate_quick_actions(daily_context: Dict[str, Any]) -> List[Dict[str, Any]]:
+async def _generate_quick_actions(
+    daily_context: Dict[str, Any],
+) -> List[Dict[str, Any]]:
     """Generate contextual quick actions"""
     return [
         {
@@ -738,29 +742,29 @@ async def _generate_quick_actions(daily_context: Dict[str, Any]) -> List[Dict[st
             "title": "Create Task from JIRA",
             "icon": "ticket",
             "description": "Start autonomous coding from JIRA ticket",
-            "action": "open_jira_selector"
+            "action": "open_jira_selector",
         },
         {
             "id": "review_prs",
             "title": "Review Pull Requests",
             "icon": "git-pull-request",
             "description": "Review team PRs waiting for feedback",
-            "action": "open_pr_dashboard"
+            "action": "open_pr_dashboard",
         },
         {
             "id": "check_team_updates",
             "title": "Team Updates",
             "icon": "users",
             "description": "See what your team is working on",
-            "action": "open_team_activity"
+            "action": "open_team_activity",
         },
         {
             "id": "browse_docs",
             "title": "Browse Documentation",
             "icon": "book",
             "description": "Search Confluence and internal docs",
-            "action": "open_doc_search"
-        }
+            "action": "open_doc_search",
+        },
     ]
 
 
@@ -770,26 +774,27 @@ async def _get_daily_motivation(energy_level: str) -> str:
         "high": [
             "Every line of code is a step toward something amazing!",
             "Today's bugs are tomorrow's features in disguise.",
-            "Code with passion, debug with patience."
+            "Code with passion, debug with patience.",
         ],
         "steady": [
             "Consistent progress beats occasional perfection.",
             "Great software is built one commit at a time.",
-            "Your code today shapes tomorrow's solutions."
+            "Your code today shapes tomorrow's solutions.",
         ],
         "winding_down": [
             "Finishing strong is just as important as starting right.",
             "Every problem solved makes you a better developer.",
-            "Time to wrap up and celebrate today's progress."
+            "Time to wrap up and celebrate today's progress.",
         ],
         "focused": [
             "Night owls write the most elegant code.",
             "The quiet hours are when the magic happens.",
-            "Deep focus leads to breakthrough solutions."
-        ]
+            "Deep focus leads to breakthrough solutions.",
+        ],
     }
-    
+
     import random
+
     return random.choice(quotes.get(energy_level, quotes["steady"]))
 
 
@@ -806,5 +811,5 @@ async def _save_wallpaper_preferences(
         "animation_speed": preferences.animation_speed,
         "particles_enabled": preferences.particles_enabled,
         "time_based_themes": preferences.time_based_themes,
-        "updated_at": datetime.now(timezone.utc).isoformat()
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }

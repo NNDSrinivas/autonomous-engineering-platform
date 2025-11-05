@@ -72,7 +72,7 @@ class ThompsonSamplingBandit:
                     # but handle both string and bytes for robustness
                     if isinstance(next(iter(data.keys()), ""), bytes):
                         data = {k.decode(): v.decode() for k, v in data.items()}
-                    
+
                     successes = float(data.get("successes", PRIOR_SUCCESSES))
                     failures = float(data.get("failures", PRIOR_FAILURES))
                     return successes, failures
@@ -220,7 +220,7 @@ class LearningService:
         # Map user role to experience level (based on RoleName: viewer/planner/admin)
         experience_map = {
             "admin": "expert",
-            "planner": "expert", 
+            "planner": "expert",
             "viewer": "standard",
             # Legacy values for backwards compatibility
             "developer": "expert",

@@ -222,7 +222,7 @@ async def _build_enhanced_context(
                 f"{api_base}/api/context/task/{request.currentTask}"
             )
             if response.status_code == 200:
-                    enhanced_context["task_context"] = response.json()
+                enhanced_context["task_context"] = response.json()
         except Exception as e:
             logger.warning(f"Could not fetch task context: {e}")
 
@@ -242,7 +242,7 @@ async def _handle_task_query(
                 data = response.json()
                 tasks = data.get("items", [])
             else:
-                    tasks = []
+                tasks = []
         except Exception:
             tasks = []
 

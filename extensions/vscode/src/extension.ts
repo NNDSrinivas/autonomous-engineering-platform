@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { greet, fetchContextPack, proposePlan, proposePlanLLM } from 'agent-core/runtime';
 import { checkPolicy } from 'agent-core/policy';
 import { applyEdits, runCommand } from 'agent-core/tools';
+import { ChatPanel } from './panels/ChatPanel';
 
 // Configuration constants
 const CONFIG = {
@@ -404,7 +405,12 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(openPanel, runPlan, generatePlanLLM);
+  // Enhanced Chat Panel Command
+  const openChat = vscode.commands.registerCommand('aep.openChat', () => {
+    ChatPanel.createOrShow(context.extensionUri);
+  });
+
+  context.subscriptions.push(openPanel, runPlan, generatePlanLLM, openChat);
 }
 export function deactivate() {}
 

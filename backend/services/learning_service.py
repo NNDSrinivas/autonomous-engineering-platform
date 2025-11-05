@@ -181,7 +181,7 @@ class ThompsonSamplingBandit:
             # Adjust for Beta(1,1) prior - subtract the initial counts for reporting
             trials_before_max = int(total) - PRIOR_TOTAL
             successes_before_max = int(successes) - PRIOR_SUCCESSES
-            
+
             # Detect data inconsistencies where values are less than priors
             if trials_before_max < 0:
                 logger.warning(
@@ -191,7 +191,7 @@ class ThompsonSamplingBandit:
                 logger.warning(
                     f"Data inconsistency detected for arm {arm}: successes ({successes}) less than prior ({PRIOR_SUCCESSES})"
                 )
-            
+
             actual_trials = max(0, trials_before_max)
             actual_successes = max(0, successes_before_max)
 

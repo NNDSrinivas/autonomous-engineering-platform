@@ -70,10 +70,14 @@ async def submit_feedback(
                 )
     except (ValueError, ConnectionError) as e:
         # Log error but don't fail the feedback submission
-        logger.warning(f"Failed to update bandit learning: {e}")
+        logger.warning(
+            f"Failed to update bandit learning for org {current_user['org_key']}, gen_id {feedback.gen_id}, rating {feedback.rating}: {e}"
+        )
     except Exception:
         # Log unexpected errors
-        logger.exception("Unexpected error in bandit learning")
+        logger.exception(
+            f"Unexpected error in bandit learning for org {current_user['org_key']}, gen_id {feedback.gen_id}, rating {feedback.rating}"
+        )
 
     return FeedbackResponse(success=True, message="Feedback submitted successfully")
 

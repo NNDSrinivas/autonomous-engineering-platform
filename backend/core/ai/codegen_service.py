@@ -374,14 +374,16 @@ async def generate_unified_diff(
                 )
 
         except ImportError:
-            logger.warning("Learning services not available, using default parameters")
+            logger.warning(
+                f"Learning services not available for org {org_key}, user {user_sub}, using default parameters"
+            )
         except (ValueError, ConnectionError, KeyError) as e:
             logger.warning(
-                f"Failed to use bandit learning due to recoverable error: {e}, using defaults"
+                f"Failed to use bandit learning for org {org_key}, user {user_sub} due to recoverable error: {e}, using defaults"
             )
         except Exception:
             logger.exception(
-                "Failed to use bandit learning due to unexpected error, using defaults"
+                f"Failed to use bandit learning for org {org_key}, user {user_sub} due to unexpected error, using defaults"
             )
 
     # Call model to generate diff

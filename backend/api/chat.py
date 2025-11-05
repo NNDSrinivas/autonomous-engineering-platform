@@ -49,7 +49,6 @@ async def get_http_client() -> httpx.AsyncClient:
                     )
                 except Exception as e:
                     logger.error(f"Failed to initialize httpx.AsyncClient: {e}")
-                    _async_client = None
                     raise
     return _async_client
 
@@ -143,6 +142,7 @@ async def generate_chat_response(
 
 
 @router.post("/proactive")
+@router.post("/suggestions/proactive")  # Backward compatibility
 async def generate_proactive_suggestions(
     request: ProactiveSuggestionsRequest, db: Session = Depends(get_db)
 ) -> Dict[str, Any]:

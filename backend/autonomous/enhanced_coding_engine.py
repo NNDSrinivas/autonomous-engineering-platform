@@ -133,6 +133,38 @@ class EnhancedAutonomousCodingEngine:
     - Comprehensive error handling
     """
 
+    # Configurable sensitive file patterns - can be overridden per deployment
+    DEFAULT_SENSITIVE_PATTERNS = [
+        "*.env",
+        "*.env.*",
+        ".env*",
+        "*.key",
+        "*.pem",
+        "*.p12",
+        "*.pfx",
+        "*secret*",
+        "*password*",
+        "*.credentials",
+        "id_rsa",
+        "id_dsa",
+        "*.private",
+        "config/database.yml",
+        "database.yml",
+        ".htpasswd",
+        "wp-config.php",
+        ".aws/credentials",
+        "*.keystore",
+        "*.jks",
+        "*.cert",
+        "*.crt",
+        "__pycache__/*",
+        "*.pyc",
+        ".git/*",
+        "node_modules/*",
+        ".vscode/settings.json",
+        ".idea/*",
+    ]
+
     def __init__(
         self,
         llm_service: LLMService,
@@ -141,6 +173,7 @@ class EnhancedAutonomousCodingEngine:
         db_session: Optional[Session] = None,
         github_service: Optional[GitHubService] = None,
         progress_callback: Optional[Callable] = None,
+        sensitive_patterns: Optional[List[str]] = None,
     ):
         self.llm_service = llm_service
         self.vector_store = vector_store
@@ -148,6 +181,9 @@ class EnhancedAutonomousCodingEngine:
         self.db_session = db_session
         self.github_service = github_service
         self.progress_callback = progress_callback
+
+        # Use custom patterns if provided, otherwise use defaults
+        self.sensitive_patterns = sensitive_patterns or self.DEFAULT_SENSITIVE_PATTERNS
 
         # Task management
         self.active_tasks: Dict[str, CodingTask] = {}
@@ -858,34 +894,7 @@ class EnhancedAutonomousCodingEngine:
         if not self.repo:
             return []
 
-        # Patterns for sensitive files to exclude
-        sensitive_patterns = [
-            "*.env",
-            "*.env.*",
-            ".env*",
-            "*.key",
-            "*.pem",
-            "*.p12",
-            "*.pfx",
-            "*secret*",
-            "*password*",
-            "*credential*",
-            "*.conf",
-            "config/*",
-            ".aws/*",
-            ".ssh/*",
-            "*.log",
-            "logs/*",
-            "temp/*",
-            "tmp/*",
-            "__pycache__/*",
-            "*.pyc",
-            ".git/*",
-            "node_modules/*",
-            ".venv/*",
-            "venv/*",
-        ]
-
+        # Use configurable sensitive patterns
         safe_files = []
         repo_root = self.repo.working_dir
         if not repo_root:
@@ -908,7 +917,7 @@ class EnhancedAutonomousCodingEngine:
             # Check if file matches any sensitive pattern
             is_sensitive = any(
                 fnmatch.fnmatch(file_path.lower(), pattern.lower())
-                for pattern in sensitive_patterns
+                for pattern in self.sensitive_patterns
             )
 
             if not is_sensitive:
@@ -1600,7 +1609,9 @@ class EnhancedAutonomousCodingEngine:
                         if alias.name in critical_modules:
                             return True
                         # For other modules (os, subprocess, sys, importlib), we check usage context
-                        # in the attribute access detection below                # Check for attribute access that could be dangerous
+                        # in the attribute access detection below
+
+                # Check for attribute access that could be dangerous
                 elif isinstance(node, ast.Attribute):
                     # Always dangerous attributes
                     dangerous_attrs = {

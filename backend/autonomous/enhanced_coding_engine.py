@@ -173,7 +173,7 @@ class EnhancedAutonomousCodingEngine:
     def _get_compiled_secret_patterns(cls):
         """Get compiled regex patterns for secret detection (lazy initialization)"""
         import re
-        
+
         if cls._COMPILED_SECRET_PATTERNS is None:
             secret_patterns = [
                 # API Keys (various formats)
@@ -218,43 +218,47 @@ class EnhancedAutonomousCodingEngine:
                 # Stripe keys
                 r"(?:sk|pk)_(?:test|live)_[0-9a-zA-Z]{24}",
             ]
-            cls._COMPILED_SECRET_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in secret_patterns]
-        
+            cls._COMPILED_SECRET_PATTERNS = [
+                re.compile(pattern, re.IGNORECASE) for pattern in secret_patterns
+            ]
+
         return cls._COMPILED_SECRET_PATTERNS
 
-    @classmethod 
+    @classmethod
     def _get_compiled_dangerous_patterns(cls):
         """Get compiled regex patterns for dangerous code detection (lazy initialization)"""
         import re
-        
+
         if cls._COMPILED_DANGEROUS_PATTERNS is None:
             dangerous_patterns = [
                 # Shell command execution patterns
-                r'\bos\.system\s*\(',
-                r'\bsubprocess\.call\s*\(',
-                r'\bsubprocess\.run\s*\(',
-                r'\bsubprocess\.Popen\s*\(',
-                r'\bexec\s*\(',
-                r'\beval\s*\(',
-                r'\b__import__\s*\(',
-                r'\bcompile\s*\(',
+                r"\bos\.system\s*\(",
+                r"\bsubprocess\.call\s*\(",
+                r"\bsubprocess\.run\s*\(",
+                r"\bsubprocess\.Popen\s*\(",
+                r"\bexec\s*\(",
+                r"\beval\s*\(",
+                r"\b__import__\s*\(",
+                r"\bcompile\s*\(",
                 # File system manipulation
-                r'\bos\.remove\s*\(',
-                r'\bos\.unlink\s*\(',
-                r'\bshutil\.rmtree\s*\(',
+                r"\bos\.remove\s*\(",
+                r"\bos\.unlink\s*\(",
+                r"\bshutil\.rmtree\s*\(",
                 # Network operations
-                r'\bsocket\.socket\s*\(',
-                r'\burllib\.request\s*\.',
-                r'\brequests\.get\s*\(',
-                r'\brequests\.post\s*\(',
+                r"\bsocket\.socket\s*\(",
+                r"\burllib\.request\s*\.",
+                r"\brequests\.get\s*\(",
+                r"\brequests\.post\s*\(",
                 # Dynamic code execution
-                r'\bexecfile\s*\(',
+                r"\bexecfile\s*\(",
                 # Potentially dangerous modules
-                r'\bimport\s+(?:os|subprocess|socket|urllib|requests)\b',
-                r'\bfrom\s+(?:os|subprocess|socket|urllib|requests)\b',
+                r"\bimport\s+(?:os|subprocess|socket|urllib|requests)\b",
+                r"\bfrom\s+(?:os|subprocess|socket|urllib|requests)\b",
             ]
-            cls._COMPILED_DANGEROUS_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in dangerous_patterns]
-        
+            cls._COMPILED_DANGEROUS_PATTERNS = [
+                re.compile(pattern, re.IGNORECASE) for pattern in dangerous_patterns
+            ]
+
         return cls._COMPILED_DANGEROUS_PATTERNS
 
     @staticmethod
@@ -1043,7 +1047,7 @@ class EnhancedAutonomousCodingEngine:
 
     def _file_content_is_safe(self, file_path: str) -> bool:
         """Check if file content appears safe (no actual secrets using compiled regex patterns)"""
-        
+
         # Use pre-compiled patterns for better performance
         compiled_patterns = self._get_compiled_secret_patterns()
 
@@ -1788,7 +1792,7 @@ class EnhancedAutonomousCodingEngine:
 
         # Use compiled patterns for dangerous code detection (performance optimized)
         compiled_dangerous_patterns = self._get_compiled_dangerous_patterns()
-        
+
         # Enhanced fallback to string matching for non-Python or invalid syntax
         # Additional high-risk patterns that are rarely legitimate in automated coding
         additional_high_risk_patterns = [
@@ -1843,7 +1847,7 @@ class EnhancedAutonomousCodingEngine:
         for compiled_pattern in compiled_dangerous_patterns:
             if compiled_pattern.search(code):
                 return True
-        
+
         # Check additional high-risk patterns
         for pattern in additional_high_risk_patterns:
             if pattern.lower() in code_normalized:

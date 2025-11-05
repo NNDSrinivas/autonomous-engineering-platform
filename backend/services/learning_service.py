@@ -25,7 +25,7 @@ MEDIUM_INPUT_THRESHOLD = 200  # Words for medium input classification
 
 # Beta distribution prior constants for Thompson Sampling
 PRIOR_SUCCESSES = 1.0  # Beta distribution alpha parameter (successes prior)
-PRIOR_FAILURES = 1.0   # Beta distribution beta parameter (failures prior)
+PRIOR_FAILURES = 1.0  # Beta distribution beta parameter (failures prior)
 
 
 class ThompsonSamplingBandit:
@@ -52,9 +52,9 @@ class ThompsonSamplingBandit:
     async def _get_arm_stats(self, context_key: str, arm: str) -> Tuple[float, float]:
         """Get success/failure counts for an arm in a context using Redis hash."""
         key = f"{context_key}:arm:{arm}"
-        
+
         # Try Redis first for atomic operations
-        if hasattr(self.cache, '_r') and self.cache._r:
+        if hasattr(self.cache, "_r") and self.cache._r:
             r = await self.cache._ensure()
             if r:
                 # Use Redis hash for atomic counters
@@ -66,12 +66,14 @@ class ThompsonSamplingBandit:
                     return successes, failures
                 # Use Beta(1,1) as the starting values for the Beta distribution.
                 return PRIOR_SUCCESSES, PRIOR_FAILURES
-        
+
         # Fallback to JSON cache (backwards compatibility)
         data = await self.cache.get_json(key)
         if data:
-            return data.get("successes", PRIOR_SUCCESSES), data.get("failures", PRIOR_FAILURES)
-        
+            return data.get("successes", PRIOR_SUCCESSES), data.get(
+                "failures", PRIOR_FAILURES
+            )
+
         # Use Beta(1,1) as the starting values for the Beta distribution.
         # This represents a uniform prior, meaning we assume no initial preference
         # for success or failure. This is standard in Thompson Sampling to ensure
@@ -84,9 +86,9 @@ class ThompsonSamplingBandit:
         """Atomically update success/failure counts for an arm using Redis hash."""
         key = f"{context_key}:arm:{arm}"
         field = "successes" if success else "failures"
-        
+
         # Try Redis atomic operations first
-        if hasattr(self.cache, '_r') and self.cache._r:
+        if hasattr(self.cache, "_r") and self.cache._r:
             r = await self.cache._ensure()
             if r:
                 # Atomically increment the appropriate field
@@ -96,10 +98,10 @@ class ThompsonSamplingBandit:
                 if ttl == -1:
                     await r.expire(key, self.CONTEXT_EXPIRY)
                 return
-        
+
         # Fallback to non-atomic JSON operations (backwards compatibility)
         successes, failures = await self._get_arm_stats(context_key, arm)
-        
+
         if success:
             successes += 1
         else:

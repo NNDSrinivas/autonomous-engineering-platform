@@ -18,23 +18,19 @@ import ast
 from pathlib import Path
 from typing import TYPE_CHECKING
 import httpx
+import git
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+
+from backend.core.ai.llm_service import LLMService
+from backend.models.integrations import JiraIssue, JiraConnection
+from backend.core.crypto import decrypt_token
 
 
 class DangerousCodeError(Exception):
     """Raised when potentially dangerous code patterns are detected"""
 
     pass
-
-
-from sqlalchemy.orm import Session
-from sqlalchemy import select
-
-# Git operations - GitPython is now a required dependency
-import git
-
-from backend.core.ai.llm_service import LLMService
-from backend.models.integrations import JiraIssue, JiraConnection
-from backend.core.crypto import decrypt_token
 
 
 # Security exception class

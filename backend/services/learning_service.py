@@ -189,21 +189,25 @@ class LearningService:
 
         # Generate common contexts dynamically to cover key usage patterns
         from backend.models.ai_feedback import TaskType
-        
+
         contexts = []
         task_types = [t.value for t in TaskType]
         size_buckets = ["small", "medium", "large"]
-        experience_levels = ["standard"]  # Can be expanded: ["novice", "standard", "expert"]
-        
+        experience_levels = [
+            "standard"
+        ]  # Can be expanded: ["novice", "standard", "expert"]
+
         # Generate contexts for all task types and sizes (starting with standard experience)
         for task_type in task_types:
             for size_bucket in size_buckets:
                 for experience in experience_levels:
-                    contexts.append({
-                        "task_type": task_type,
-                        "input_size_bucket": size_bucket,
-                        "user_experience": experience,
-                    })
+                    contexts.append(
+                        {
+                            "task_type": task_type,
+                            "input_size_bucket": size_bucket,
+                            "user_experience": experience,
+                        }
+                    )
 
         context_stats = {}
         for context in contexts:

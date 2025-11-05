@@ -165,6 +165,17 @@ class EnhancedAutonomousCodingEngine:
         ".idea/*",
     ]
 
+    @staticmethod
+    def _validate_workspace_path(path: str) -> str:
+        """Validate workspace path and prevent UNC path attacks on Windows"""
+        import platform
+        
+        # Prevent Windows UNC path attacks (\\server\share)
+        if platform.system() == "Windows" and path.startswith("\\\\"):
+            raise ValueError(f"UNC paths are not allowed for security reasons: {path}")
+        
+        return path
+
     def __init__(
         self,
         llm_service: LLMService,
@@ -177,7 +188,11 @@ class EnhancedAutonomousCodingEngine:
     ):
         self.llm_service = llm_service
         self.vector_store = vector_store
-        self.workspace_path = Path(workspace_path)
+        
+        # Validate workspace path for security (prevent UNC path attacks)
+        validated_path = self._validate_workspace_path(workspace_path)
+        self.workspace_path = Path(validated_path)
+        
         self.db_session = db_session
         self.github_service = github_service
         self.progress_callback = progress_callback
@@ -1188,23 +1203,22 @@ class EnhancedAutonomousCodingEngine:
                     # Atomic file modification: write to temp file, then rename
                     import tempfile
 
-                    temp_fd = None
                     temp_file_path = None
                     try:
                         # Create temporary file in secure system temp directory with restrictive permissions
-                        temp_fd, temp_file_path = tempfile.mkstemp(
+                        # Using NamedTemporaryFile for secure temporary file creation
+                        with tempfile.NamedTemporaryFile(
+                            mode="w",
                             suffix=".tmp",
-                            text=True,
+                            delete=False,
+                            encoding="utf-8",
                             dir=None,  # Use secure system temp directory
-                        )
-                        # Set restrictive permissions: only owner can read/write
-                        os.chmod(temp_file_path, 0o600)
-
-                        with os.fdopen(temp_fd, "w", encoding="utf-8") as temp_file:
+                        ) as temp_file:
                             temp_file.write(generated_code)
-                        temp_fd = (
-                            None  # File descriptor is closed by fdopen context manager
-                        )
+                            temp_file_path = temp_file.name
+                        
+                        # Set restrictive permissions for additional security
+                        os.chmod(temp_file_path, 0o600)
 
                         # Atomic replace operation with cross-filesystem fallback
                         try:
@@ -1215,15 +1229,7 @@ class EnhancedAutonomousCodingEngine:
                         logger.info(f"Modified file atomically: {step.file_path}")
 
                     except Exception as e:
-                        # Clean up temp file descriptor and file if operation failed
-                        if temp_fd is not None:
-                            try:
-                                os.close(temp_fd)
-                            except OSError as close_error:
-                                # Log cleanup errors but don't fail the operation
-                                logger.warning(
-                                    f"Failed to close temp file descriptor {temp_fd}: {close_error}"
-                                )
+                        # Clean up temp file if operation failed
                         if temp_file_path and os.path.exists(temp_file_path):
                             try:
                                 os.unlink(temp_file_path)

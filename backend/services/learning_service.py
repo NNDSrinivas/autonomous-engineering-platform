@@ -7,9 +7,21 @@ import numpy as np
 from backend.infra.cache.redis_cache import cache
 
 # Configuration constants
+# MIN_TRIALS_FOR_FULL_CONFIDENCE determines the number of trials required before the
+# system considers its success rate estimates to be fully reliable for a given arm/context.
+# The value 20 is chosen as a practical heuristic: it provides a reasonable balance between
+# exploration (trying less-tested arms) and exploitation (favoring arms with higher observed success rates).
+# With fewer than 20 trials, the confidence in the estimated success rate is scaled down,
+# encouraging continued exploration. This threshold can be tuned based on application needs:
+# increasing it makes the system more conservative (more exploration), while decreasing it
+# leads to faster exploitation. See: Sutton & Barto, "Reinforcement Learning: An Introduction" (Section 2.4).
 MIN_TRIALS_FOR_FULL_CONFIDENCE = (
     20  # Minimum trials to reach full confidence in estimates
 )
+
+# Input size thresholds for contextual bucketing
+SMALL_INPUT_THRESHOLD = 50  # Characters for small input classification
+MEDIUM_INPUT_THRESHOLD = 200  # Characters for medium input classification
 
 
 class ThompsonSamplingBandit:
@@ -150,9 +162,9 @@ class LearningService:
         """Extract relevant context features for bandit selection."""
         # Categorize input size
         input_length = len(input_text.split())
-        if input_length < 50:
+        if input_length < SMALL_INPUT_THRESHOLD:
             size_bucket = "small"
-        elif input_length < 200:
+        elif input_length < MEDIUM_INPUT_THRESHOLD:
             size_bucket = "medium"
         else:
             size_bucket = "large"
@@ -175,24 +187,23 @@ class LearningService:
         """Get overall learning statistics for an organization."""
         bandit = self.get_bandit(org_key)
 
-        # Get stats for common contexts
-        contexts = [
-            {
-                "task_type": "codegen",
-                "input_size_bucket": "small",
-                "user_experience": "standard",
-            },
-            {
-                "task_type": "codegen",
-                "input_size_bucket": "medium",
-                "user_experience": "standard",
-            },
-            {
-                "task_type": "codegen",
-                "input_size_bucket": "large",
-                "user_experience": "standard",
-            },
-        ]
+        # Generate common contexts dynamically to cover key usage patterns
+        from backend.models.ai_feedback import TaskType
+        
+        contexts = []
+        task_types = [t.value for t in TaskType]
+        size_buckets = ["small", "medium", "large"]
+        experience_levels = ["standard"]  # Can be expanded: ["novice", "standard", "expert"]
+        
+        # Generate contexts for all task types and sizes (starting with standard experience)
+        for task_type in task_types:
+            for size_bucket in size_buckets:
+                for experience in experience_levels:
+                    contexts.append({
+                        "task_type": task_type,
+                        "input_size_bucket": size_bucket,
+                        "user_experience": experience,
+                    })
 
         context_stats = {}
         for context in contexts:

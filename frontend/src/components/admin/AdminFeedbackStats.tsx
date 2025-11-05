@@ -85,7 +85,7 @@ export function AdminFeedbackStats() {
       }
 
       if (errors.length > 0) {
-        const errorMessage = errors.join('. ') + '. Some data may be incomplete.';
+        const errorMessage = errors.join('. ') + ' Some data may be incomplete.';
         setError(errorMessage);
       }
     } catch (error) {

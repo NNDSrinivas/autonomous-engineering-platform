@@ -59,7 +59,7 @@ class FeedbackService:
 
     def _validate_user_match(self, field_value: Any, expected_value: str) -> bool:
         """Helper method to validate user field matches with consistent string conversion."""
-        return str(field_value) == str(expected_value)
+        return field_value is not None and str(field_value) == str(expected_value)
 
     async def submit_feedback(
         self,

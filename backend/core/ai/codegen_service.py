@@ -113,7 +113,7 @@ async def call_model(
 
     Args:
         prompt: The formatted prompt with intent and context
-        max_retries: Number of fallback attempts if truncation occurs
+        max_retries: Number of fallback attempts if truncation occurs (only used in fallback path)
         model: AI model to use (from bandit or default)
         temperature: Temperature parameter (from bandit or default)
 
@@ -413,11 +413,11 @@ async def generate_unified_diff(
 
         except ImportError:
             logger.warning(
-                f"Learning services not available for org {org_key}, user {user_sub or 'unknown'}, using default parameters"
+                "Learning services not available (missing dependencies), using default parameters"
             )
         except (ValueError, ConnectionError, KeyError) as e:
             logger.warning(
-                f"Failed to use bandit learning for org {org_key}, user {user_sub or 'unknown'} due to recoverable error: {e}, using defaults"
+                f"Bandit learning unavailable for org {org_key}, user {user_sub or 'unknown'} due to {type(e).__name__}: {e}, using default parameters"
             )
         except Exception:
             logger.exception(

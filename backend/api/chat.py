@@ -200,8 +200,7 @@ async def _build_enhanced_context(
             # Make request to existing context API
             api_base = get_api_base_url()
             response = requests.get(
-                f"{api_base}/api/context/task/{request.currentTask}",
-                timeout=10
+                f"{api_base}/api/context/task/{request.currentTask}", timeout=10
             )
             if response.status_code == 200:
                 enhanced_context["task_context"] = response.json()
@@ -531,7 +530,9 @@ def _format_time_ago(timestamp: str) -> str:
             weeks = seconds // 604800
             return f"{weeks} week{'s' if weeks != 1 else ''} ago"
         elif seconds < 31536000:  # 365 days
-            months = seconds // 2592000  # 30 days for more accurate monthly calculations
+            months = (
+                seconds // 2592000
+            )  # 30 days for more accurate monthly calculations
             return f"{months} month{'s' if months != 1 else ''} ago"
         else:
             years = seconds // 31536000

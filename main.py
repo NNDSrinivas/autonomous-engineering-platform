@@ -76,7 +76,7 @@ class TeamMember(BaseModel):
     skills: List[str]
 
 
-async def get_ai_response(prompt: str, system_prompt: str = None) -> str:
+async def get_ai_response(prompt: str, system_prompt: Optional[str] = None) -> str:
     """Get response from GPT-4"""
     if not OPENAI_AVAILABLE:
         return "AI service is not available. Please check your OpenAI API key configuration."
@@ -91,7 +91,7 @@ async def get_ai_response(prompt: str, system_prompt: str = None) -> str:
             model="gpt-4", messages=messages, max_tokens=1000, temperature=0.7
         )
 
-        return response.choices[0].message.content
+        return response.choices[0].message.content or "No response generated"
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
         return "Error generating AI response. Please try again later."

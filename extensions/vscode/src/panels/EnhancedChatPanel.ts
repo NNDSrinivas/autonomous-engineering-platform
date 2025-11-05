@@ -10,7 +10,6 @@
  */
 
 import * as vscode from 'vscode';
-import * as path from 'path';
 
 interface EnhancedChatMessage {
   id: string;

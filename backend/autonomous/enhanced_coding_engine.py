@@ -896,7 +896,7 @@ class EnhancedAutonomousCodingEngine:
             try:
                 file_path.resolve().relative_to(self.workspace_path.resolve())
             except ValueError:
-                raise SecurityError(f"File path {step.file_path} is outside workspace")
+                raise SecurityError("Invalid file path: outside workspace")
 
             # Security validation: check for dangerous file extensions with whitelist
             dangerous_extensions = {".exe", ".bat", ".cmd", ".ps1", ".bin"}
@@ -1214,14 +1214,14 @@ class EnhancedAutonomousCodingEngine:
             "exec(",
             "__import__",
             "rm -rf",
-            "DROP TABLE",
-            "DROP DATABASE",
+            "drop table",
+            "drop database",
         ]
 
         # Medium-risk patterns that need context checking
         medium_risk_patterns = [
             ("open(", ["w", "a", "x"]),  # File writes, not reads
-            ("delete", ["DROP", "rm ", "del "]),  # SQL/file deletion context
+            ("delete", ["drop", "rm ", "del "]),  # SQL/file deletion context
         ]
 
         code_lower = code.lower()

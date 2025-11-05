@@ -179,8 +179,8 @@ class ThompsonSamplingBandit:
             total = successes + failures
 
             # Adjust for Beta(1,1) prior - subtract the initial counts for reporting
-            trials_before_max = int(total) - PRIOR_TOTAL
-            successes_before_max = int(successes) - PRIOR_SUCCESSES
+            trials_before_max = int(total - PRIOR_TOTAL)
+            successes_before_max = int(successes - PRIOR_SUCCESSES)
 
             # Detect data inconsistencies where values are less than priors
             if trials_before_max < 0:

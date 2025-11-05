@@ -10,6 +10,8 @@ import os
 import logging
 from typing import List, Dict, Optional, Tuple
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .repo_context import repo_snapshot, list_neighbors
 from backend.core.ai_service import AIService
 from backend.core.utils.hashing import sha256_hash
@@ -325,7 +327,7 @@ async def generate_unified_diff(
     org_key: Optional[str] = None,
     user_role: Optional[str] = None,
     user_sub: Optional[str] = None,
-    session=None,
+    session: Optional[AsyncSession] = None,
 ) -> Tuple[str, Optional[int]]:
     """
     Generate a unified diff for the given intent and target files.

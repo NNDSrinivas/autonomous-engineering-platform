@@ -110,7 +110,7 @@ async def call_model(
     """
     Call AI model to generate diff using the shared model router.
     Enables bandit learning and parameter optimization.
-    
+
     Primary approach uses complete_chat() via model router for centralized routing,
     fallbacks, and telemetry. If router fails, falls back to direct AI service call
     with truncation handling and retry logic.

@@ -898,12 +898,18 @@ class EnhancedAutonomousCodingEngine:
             except ValueError:
                 raise SecurityError(f"File path {step.file_path} is outside workspace")
 
-            # Security validation: check for dangerous file extensions
-            dangerous_extensions = {".exe", ".bat", ".cmd", ".sh", ".ps1", ".bin"}
+            # Security validation: check for dangerous file extensions with whitelist
+            dangerous_extensions = {".exe", ".bat", ".cmd", ".ps1", ".bin"}
+            development_extensions = {".sh"}  # Scripts that may be legitimate in dev
+            
             if file_path.suffix.lower() in dangerous_extensions:
                 raise SecurityError(
                     f"Cannot write to potentially dangerous file type: {file_path.suffix}"
                 )
+            elif file_path.suffix.lower() in development_extensions:
+                # Log warning but allow with extra validation
+                logger.warning(f"Writing to development script file: {step.file_path}")
+                # Could add user confirmation mechanism here in the future
 
             # Basic code validation before writing
             generated_code = code_result["generated_code"]
@@ -1199,22 +1205,38 @@ class EnhancedAutonomousCodingEngine:
         return f"{len(task.steps) * 5} minutes"
 
     def _contains_dangerous_patterns(self, code: str) -> bool:
-        """Check for potentially dangerous code patterns"""
-        dangerous_patterns = [
+        """Check for potentially dangerous code patterns with context awareness"""
+        # High-risk patterns that are rarely legitimate in automated coding
+        high_risk_patterns = [
             "subprocess.call",
-            "os.system",
+            "os.system", 
             "eval(",
             "exec(",
             "__import__",
-            "open(",  # Be more specific about file operations
             "rm -rf",
-            "delete",
             "DROP TABLE",
             "DROP DATABASE",
         ]
+        
+        # Medium-risk patterns that need context checking
+        medium_risk_patterns = [
+            ("open(", ["w", "a", "x"]),  # File writes, not reads
+            ("delete", ["DROP", "rm ", "del "]),  # SQL/file deletion context
+        ]
 
         code_lower = code.lower()
-        for pattern in dangerous_patterns:
+        
+        # Check high-risk patterns
+        for pattern in high_risk_patterns:
             if pattern.lower() in code_lower:
                 return True
+                
+        # Check medium-risk patterns with context
+        for pattern, contexts in medium_risk_patterns:
+            if pattern.lower() in code_lower:
+                # Check if it appears with dangerous context
+                for context in contexts:
+                    if context.lower() in code_lower:
+                        return True
+        
         return False

@@ -11,6 +11,7 @@ This API provides endpoints for:
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import threading
+import random
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel
 import logging
@@ -100,7 +101,7 @@ def get_coding_engine(
                 db_session=db,
             )
 
-        # Update db_session if provided (for request-scoped sessions)
+        # Update db_session if provided (for request-scoped sessions) - inside lock for thread safety
         if db is not None:
             _coding_engines[workspace_id].db_session = db
 
@@ -329,7 +330,7 @@ async def health_check(db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        return {"status": "unhealthy", "error": f"{type(e).__name__}: {str(e)}"}
+        return {"status": "unhealthy", "error": "Internal server error"}
 
 
 @router.get("/user-daily-context")
@@ -792,8 +793,6 @@ async def _get_daily_motivation(energy_level: str) -> str:
             "Deep focus leads to breakthrough solutions.",
         ],
     }
-
-    import random
 
     return random.choice(quotes.get(energy_level, quotes["steady"]))
 

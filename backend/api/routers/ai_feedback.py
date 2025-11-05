@@ -58,7 +58,7 @@ async def submit_feedback(
         )
         gen_log = gen_result.scalar_one_or_none()
 
-        if gen_log and gen_log.params is not None and isinstance(gen_log.params, dict):
+        if gen_log and isinstance(gen_log.params, dict):
             bandit_context = gen_log.params.get("bandit_context")
             bandit_arm = gen_log.params.get("bandit_arm")
 
@@ -73,7 +73,7 @@ async def submit_feedback(
         logger.warning(f"Failed to update bandit learning: {e}")
     except Exception as e:
         # Log unexpected errors
-        logger.exception(f"Unexpected error in bandit learning: {e}")
+        logger.exception("Unexpected error in bandit learning")
 
     return FeedbackResponse(success=True, message="Feedback submitted successfully")
 

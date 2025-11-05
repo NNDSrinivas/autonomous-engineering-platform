@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.utils.hashing import sha256_hash
 from backend.models.ai_feedback import AiFeedback, AiGenerationLog, TaskType
 
+# Cache valid task type values for performance
+VALID_TASK_TYPES = frozenset(t.value for t in TaskType)
+
 
 class FeedbackService:
     """Service for managing AI feedback operations."""
@@ -30,9 +33,9 @@ class FeedbackService:
     ) -> int:
         """Log an AI generation request and return the log ID."""
         # Validate task type
-        if task_type not in [t.value for t in TaskType]:
+        if task_type not in VALID_TASK_TYPES:
             raise ValueError(
-                f"Invalid task_type: {task_type}. Must be one of: {[t.value for t in TaskType]}"
+                f"Invalid task_type: {task_type}. Must be one of: {list(VALID_TASK_TYPES)}"
             )
 
         prompt_hash = sha256_hash(prompt)

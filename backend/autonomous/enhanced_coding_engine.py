@@ -295,7 +295,17 @@ class EnhancedAutonomousCodingEngine:
 
     @staticmethod
     def _validate_workspace_path(path: str) -> str:
-        """Validate workspace path and prevent UNC path and device name attacks on Windows"""
+        """
+        Validate workspace path and prevent UNC path and device name attacks on Windows.
+
+        This method is specifically used during initialization to validate the workspace root
+        directory path. For file operations within the workspace, use _validate_relative_path().
+
+        Security Features:
+        - Prevents Windows UNC path attacks (\\\\server\\share)
+        - Blocks reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+        - Used in __init__ to ensure safe workspace root establishment
+        """
         import platform
         import os
 
@@ -1464,11 +1474,12 @@ class EnhancedAutonomousCodingEngine:
             language = self._detect_language(step.file_path)
 
             if language == "python":
-                # Basic Python syntax validation
+                # Safe Python syntax validation using AST parsing (no code execution)
                 try:
                     with open(file_path, "r", encoding="utf-8") as f:
                         content = f.read()
-                    compile(content, step.file_path, "exec")
+                    # Use ast.parse() for safe syntax validation without execution risks
+                    ast.parse(content, step.file_path)
                 except SyntaxError as e:
                     validation_results["syntax_valid"] = False
                     validation_results["warnings"].append(

@@ -148,7 +148,7 @@ def apply_diff(
     ) as tf:
         tf.write(diff_text)
         patch_file = tf.name
-    
+
     # Set restrictive permissions for additional security
     os.chmod(patch_file, 0o600)
 

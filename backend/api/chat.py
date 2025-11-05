@@ -25,7 +25,9 @@ SECONDS_PER_MINUTE = int(timedelta(minutes=1).total_seconds())  # 60
 SECONDS_PER_HOUR = int(timedelta(hours=1).total_seconds())  # 3600
 SECONDS_PER_DAY = int(timedelta(days=1).total_seconds())  # 86400
 SECONDS_PER_WEEK = int(timedelta(weeks=1).total_seconds())  # 604800
-SECONDS_PER_MONTH = int(timedelta(days=30.44).total_seconds())  # 2628000 (~30.44 days for better accuracy)
+SECONDS_PER_MONTH = int(
+    timedelta(days=30.44).total_seconds()
+)  # 2628000 (~30.44 days for better accuracy)
 SECONDS_PER_YEAR = int(timedelta(days=365).total_seconds())  # 31536000
 
 # HTTP client management - thread-safe singleton pattern

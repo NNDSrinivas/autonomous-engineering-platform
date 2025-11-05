@@ -169,11 +169,11 @@ class EnhancedAutonomousCodingEngine:
     def _validate_workspace_path(path: str) -> str:
         """Validate workspace path and prevent UNC path attacks on Windows"""
         import platform
-        
+
         # Prevent Windows UNC path attacks (\\server\share)
         if platform.system() == "Windows" and path.startswith("\\\\"):
             raise ValueError(f"UNC paths are not allowed for security reasons: {path}")
-        
+
         return path
 
     def __init__(
@@ -188,11 +188,11 @@ class EnhancedAutonomousCodingEngine:
     ):
         self.llm_service = llm_service
         self.vector_store = vector_store
-        
+
         # Validate workspace path for security (prevent UNC path attacks)
         validated_path = self._validate_workspace_path(workspace_path)
         self.workspace_path = Path(validated_path)
-        
+
         self.db_session = db_session
         self.github_service = github_service
         self.progress_callback = progress_callback
@@ -1216,7 +1216,7 @@ class EnhancedAutonomousCodingEngine:
                         ) as temp_file:
                             temp_file.write(generated_code)
                             temp_file_path = temp_file.name
-                        
+
                         # Set restrictive permissions for additional security
                         os.chmod(temp_file_path, 0o600)
 

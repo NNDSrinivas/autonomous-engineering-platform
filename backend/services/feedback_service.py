@@ -7,8 +7,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.utils.hashing import sha256_hash
-
-from backend.models.ai_feedback import AiFeedback, AiGenerationLog
+from backend.models.ai_feedback import AiFeedback, AiGenerationLog, TaskType
 
 
 class FeedbackService:
@@ -30,6 +29,12 @@ class FeedbackService:
         result_ref: Optional[str] = None,
     ) -> int:
         """Log an AI generation request and return the log ID."""
+        # Validate task type
+        if task_type not in [t.value for t in TaskType]:
+            raise ValueError(
+                f"Invalid task_type: {task_type}. Must be one of: {[t.value for t in TaskType]}"
+            )
+
         prompt_hash = sha256_hash(prompt)
 
         log_entry = AiGenerationLog(

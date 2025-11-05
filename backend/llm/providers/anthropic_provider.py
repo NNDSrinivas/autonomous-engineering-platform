@@ -33,11 +33,17 @@ class AnthropicProvider:
             "claude-3-opus-20240229": {"input": 0.015, "output": 0.075},
         }
 
-    def complete(self, prompt: str, context: Dict[str, Any], temperature: float = 0.1, max_tokens: Optional[int] = None) -> Dict[str, Any]:
+    def complete(
+        self,
+        prompt: str,
+        context: Dict[str, Any],
+        temperature: float = 0.1,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Generate completion using Anthropic API."""
         # Use provided max_tokens or fall back to default
         tokens = max_tokens if max_tokens is not None else self.MAX_TOKENS
-        
+
         try:
             message = self.client.messages.create(
                 model=self.model,
@@ -63,7 +69,7 @@ class AnthropicProvider:
             first_content = message.content[0]
             try:
                 # Try to access text attribute for TextBlock
-                text_content = getattr(first_content, 'text', str(first_content))
+                text_content = getattr(first_content, "text", str(first_content))
             except Exception:
                 text_content = str(first_content)
 

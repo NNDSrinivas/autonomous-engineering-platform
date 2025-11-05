@@ -196,14 +196,14 @@ class ModelRouter:
             try:
                 logger.info(f"Calling model {candidate} for phase {phase}")
                 sanitized_context = self._sanitize_context(context)
-                
+
                 # Prepare parameters for provider.complete call
                 complete_kwargs = {}
                 if temperature is not None:
-                    complete_kwargs['temperature'] = temperature
+                    complete_kwargs["temperature"] = temperature
                 if max_tokens is not None:
-                    complete_kwargs['max_tokens'] = max_tokens
-                
+                    complete_kwargs["max_tokens"] = max_tokens
+
                 result = provider.complete(prompt, sanitized_context, **complete_kwargs)
 
                 # Safely convert telemetry values with validation using centralized helpers

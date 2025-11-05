@@ -419,10 +419,10 @@ async def complete_chat(
 ) -> str:
     """
     Convenience wrapper for model router that provides a chat-completion interface.
-    
+
     Args:
         system: System prompt content
-        user: User prompt content  
+        user: User prompt content
         model: Optional model override (otherwise uses task_type routing)
         temperature: Optional temperature override
         max_tokens: Optional max tokens override
@@ -430,17 +430,17 @@ async def complete_chat(
         task_type: Task type for routing (codegen, plan, review, etc.)
         tags: Optional metadata tags for telemetry
         audit_context: Optional audit context for logging
-        
+
     Returns:
         Generated text response
     """
     router = get_model_router()
-    
+
     # Build context from parameters for the provider
     context = {"user_prompt": user}
     if tags:
         context.update(tags)
-    
+
     # Use the model router's call method with task_type as phase
     response_text, telemetry = router.call(
         phase=task_type,
@@ -448,5 +448,5 @@ async def complete_chat(
         context=context,
         audit_context=audit_context,
     )
-    
+
     return response_text

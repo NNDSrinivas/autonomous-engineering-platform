@@ -83,9 +83,10 @@ def get_coding_engine(
     """Get or create a thread-safe coding engine instance for a workspace"""
     # Validate workspace_id to prevent directory traversal
     import re
-    if not re.match(r'^[a-zA-Z0-9_-]+$', workspace_id):
+
+    if not re.match(r"^[a-zA-Z0-9_-]+$", workspace_id):
         raise ValueError(f"Invalid workspace_id: {workspace_id}")
-    
+
     with _engine_lock:
         if workspace_id not in _coding_engines:
             # Initialize with proper dependencies (without db_session)
@@ -103,13 +104,13 @@ def get_coding_engine(
 
         # Return engine instance (db_session should be set per request, not shared)
         engine = _coding_engines[workspace_id]
-        
+
         # Create a copy for this request to avoid session conflicts
         # Note: This is a temporary solution. Better approach would be dependency injection.
         if db is not None:
             # Create a request-scoped wrapper or clone
             engine.db_session = db
-            
+
         return engine
 
 

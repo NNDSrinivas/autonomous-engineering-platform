@@ -1,7 +1,7 @@
 import os
 import logging
 import openai
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,17 @@ class OpenAIProvider:
             "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
         }
 
-    def complete(self, prompt: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    def complete(
+        self,
+        prompt: str,
+        context: Dict[str, Any],
+        temperature: float = 0.1,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Generate completion using OpenAI API."""
+        # Use provided max_tokens or fall back to default
+        tokens = max_tokens if max_tokens is not None else self.MAX_TOKENS
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -41,18 +50,13 @@ class OpenAIProvider:
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": str(context)},
                 ],
-                max_tokens=self.MAX_TOKENS,
-                temperature=0.1,
+                max_tokens=tokens,
+                temperature=temperature,
                 top_p=0.9,
             )
 
             usage = response.usage
             pricing = self.pricing.get(self.model, {"input": 0.01, "output": 0.01})
-
-            # Calculate cost based on actual input/output tokens
-            cost_usd = (usage.prompt_tokens / 1000) * pricing["input"] + (
-                usage.completion_tokens / 1000
-            ) * pricing["output"]
 
             # Safely extract response content
             if not response.choices or len(response.choices) == 0:
@@ -61,6 +65,22 @@ class OpenAIProvider:
             content = response.choices[0].message.content
             if content is None:
                 raise RuntimeError("OpenAI API returned null content")
+
+            # Handle potential None usage object
+            if usage is None:
+                logger.warning(f"OpenAI API returned null usage for model {self.model}")
+                return {
+                    "text": content.strip(),
+                    "tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cost_usd": 0.0,
+                }
+
+            # Calculate cost based on actual input/output tokens
+            cost_usd = (usage.prompt_tokens / 1000) * pricing["input"] + (
+                usage.completion_tokens / 1000
+            ) * pricing["output"]
 
             return {
                 "text": content.strip(),

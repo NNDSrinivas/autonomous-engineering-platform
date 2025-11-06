@@ -110,24 +110,44 @@ async function ensureAuth(ctx, client) {
     let token = kv.get('aep.token');
     if (token) {
         client.setToken(token);
-        return;
+        // Verify token is still valid by trying to fetch issues
+        try {
+            await client.listMyJiraIssues();
+            return; // Token is valid
+        }
+        catch {
+            // Token expired, remove it and continue with auth flow
+            await kv.set('aep.token', null);
+        }
     }
     const pick = await vscode.window.showQuickPick([
-        { label: 'Device Code', description: 'Open browser and paste code' }
+        { label: 'Device Code', description: 'Open browser and paste code' },
+        { label: 'Cancel', description: 'Skip authentication for now' }
     ], { placeHolder: 'Choose sign-in method' });
-    if (!pick)
-        return;
-    const flow = await client.startDeviceCode();
-    await vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-    // Show user code for manual entry if needed
-    await vscode.window.showInputBox({
-        prompt: 'Device code (pre-filled, press Enter to continue)',
-        value: flow.user_code,
-        ignoreFocusOut: true
-    });
-    const tok = await client.pollDeviceCode(flow.device_code);
-    await kv.set('aep.token', tok.access_token);
-    client.setToken(tok.access_token);
+    if (!pick || pick.label === 'Cancel') {
+        throw new Error('Authentication cancelled by user');
+    }
+    try {
+        const flow = await client.startDeviceCode();
+        await vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
+        // Show user code for manual entry if needed
+        const userInput = await vscode.window.showInputBox({
+            prompt: 'Device code (pre-filled, press Enter to continue)',
+            value: flow.user_code,
+            ignoreFocusOut: true
+        });
+        if (!userInput) {
+            throw new Error('Authentication cancelled by user');
+        }
+        const tok = await client.pollDeviceCode(flow.device_code);
+        await kv.set('aep.token', tok.access_token);
+        client.setToken(tok.access_token);
+    }
+    catch (error) {
+        console.error('Authentication error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(`Authentication failed: ${errorMessage}`);
+    }
 }
 
 
@@ -279,10 +299,16 @@ async function activate(context) {
             planDisposable: !!planProvider
         });
         context.subscriptions.push(chatProvider, planProvider, authProvider, vscode.commands.registerCommand('aep.signIn', async () => {
-            await (0, deviceCode_1.ensureAuth)(context, client);
-            vscode.window.showInformationMessage('AEP: Signed in');
-            chat.refresh();
-            plan.refresh();
+            try {
+                await (0, deviceCode_1.ensureAuth)(context, client);
+                vscode.window.showInformationMessage('✅ AEP: Successfully signed in');
+                chat.refresh();
+                plan.refresh();
+            }
+            catch (error) {
+                console.error('Authentication failed:', error);
+                vscode.window.showErrorMessage('❌ AEP: Sign in failed. Please check your connection and try again.');
+            }
         }), vscode.commands.registerCommand('aep.startSession', async () => {
             await (0, deviceCode_1.ensureAuth)(context, client);
             await chat.sendHello();
@@ -572,6 +598,9 @@ class ChatSidebarProvider {
             <div class="logo">🤖</div>
             <h1>AEP Agent</h1>
             <p class="tagline">Your AI-powered development assistant</p>
+            <div class="status-indicator status-disconnected">
+              ⚠️ Not connected - Authentication required
+            </div>
           </div>
           
           <div class="auth-section">
@@ -581,6 +610,9 @@ class ChatSidebarProvider {
             <vscode-button appearance="secondary" id="signIn">
               🔐 Sign In
             </vscode-button>
+            <p style="margin-top: 1rem; font-size: 0.85em; color: var(--vscode-descriptionForeground); text-align: center;">
+              ℹ️ Requires AEP backend server for authentication
+            </p>
           </div>
         </div>
 

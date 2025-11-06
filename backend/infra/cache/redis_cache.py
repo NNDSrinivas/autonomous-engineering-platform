@@ -8,6 +8,7 @@ from typing import Any, Optional, Iterable
 
 try:
     from redis import asyncio as aioredis  # type: ignore
+
     aioredis_available = True
 except ImportError:
     aioredis = None  # type: ignore

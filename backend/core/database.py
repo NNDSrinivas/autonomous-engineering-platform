@@ -13,21 +13,19 @@ from sqlalchemy import DateTime
 from sqlalchemy import ForeignKey
 from sqlalchemy import Integer
 from sqlalchemy import JSON
-from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
 from sqlalchemy import String
 from sqlalchemy import Text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 from backend.core.config import get_settings
 
-from sqlalchemy.ext.declarative import DeclarativeMeta, declarative_base
 from sqlalchemy.orm import DeclarativeBase
 
 logger = structlog.get_logger(__name__)
+
 
 # Use modern SQLAlchemy 2.0 declarative base
 class Base(DeclarativeBase):

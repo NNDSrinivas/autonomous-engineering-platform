@@ -48,6 +48,11 @@ from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
 from .routers.rate_limit_admin import router as rate_limit_admin_router
+
+# VS Code Extension API endpoints
+from .routers.oauth_device import router as oauth_device_router
+from .routers.jira_integration import router as jira_integration_router
+from .routers.agent_planning import router as agent_planning_router
 from .routers import ai_codegen
 from .routers import ai_feedback
 from ..core.realtime import presence as presence_lifecycle
@@ -130,11 +135,6 @@ app.include_router(search_router)
 app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
-
-# VS Code Extension API endpoints (Phase 2)
-from .routers.oauth_device import router as oauth_device_router
-from .routers.jira_integration import router as jira_integration_router  
-from .routers.agent_planning import router as agent_planning_router
 
 app.include_router(oauth_device_router)
 app.include_router(jira_integration_router)

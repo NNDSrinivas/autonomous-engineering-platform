@@ -217,11 +217,8 @@
   "devDependencies": {
     "@types/node": "^20.19.21",
     "@types/vscode": "^1.84.0",
+    "esbuild": "^0.21.5",
     "typescript": "^5.4.5",
     "@vscode/vsce": "^2.22.0"
-  },
-  "dependencies": {
-    "axios": "^1.6.2",
-    "ws": "^8.14.2"
   }
 }

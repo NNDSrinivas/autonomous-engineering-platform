@@ -132,13 +132,24 @@ function addChatMessage(role, content, timestamp) {
         : 'background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-style: italic;'
     }`;
     
-    messageDiv.innerHTML = `
-      <div style="font-size: 0.9em; opacity: 0.7; margin-bottom: 4px;">
-        ${role === 'user' ? '👤 You' : role === 'assistant' ? '🤖 AEP Agent' : '💭 System'} • ${timestamp}
-      </div>
-      <div>${content}</div>
-    `;
+    // Create metadata div
+    const metaDiv = document.createElement('div');
+    metaDiv.style.cssText = "font-size: 0.9em; opacity: 0.7; margin-bottom: 4px;";
+    metaDiv.textContent =
+      (role === 'user'
+        ? '👤 You'
+        : role === 'assistant'
+        ? '🤖 AEP Agent'
+        : '💭 System')
+      + ' • ' + timestamp;
     
+    // Create content div (sanitize user content via textContent)
+    const contentDiv = document.createElement('div');
+    contentDiv.textContent = content;
+    
+    messageDiv.appendChild(metaDiv);
+    messageDiv.appendChild(contentDiv);
+
     chatContainer.appendChild(messageDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
   }

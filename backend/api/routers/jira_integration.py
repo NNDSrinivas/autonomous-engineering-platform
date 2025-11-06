@@ -4,11 +4,9 @@ Jira Integration API for VS Code Extension
 Provides endpoints for accessing user's Jira tasks and integration data.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from backend.database.session import get_db
-from sqlalchemy.orm import Session
 from backend.api.routers.oauth_device import get_current_user
 import logging
 
@@ -124,8 +122,8 @@ async def get_my_jira_issues(
 
 @router.get("/issue/{issue_key}", response_model=JiraIssue)
 async def get_jira_issue(
-    issue_key: str, 
-    authorization: str = Header(None), 
+    issue_key: str,
+    authorization: str = Header(None),
     # TODO: Add database dependency when replacing mock data with real Jira integration
     # db: Session = Depends(get_db)
 ):

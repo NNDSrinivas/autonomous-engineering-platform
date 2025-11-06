@@ -157,12 +157,13 @@ async def poll_device_code(request: DeviceCodePollRequest):
             ):
                 # SECURITY WARNING: Auto-approving device code in development mode
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     "🚨 SECURITY WARNING: Auto-approving device code '%s' after %d seconds. "
                     "This is ONLY for development! Never enable auto-approval in production!",
                     device_code[:8] + "...",
-                    int(time_since_creation)
+                    int(time_since_creation),
                 )
                 device_info["status"] = "authorized"
                 device_info["authorized_at"] = current_time

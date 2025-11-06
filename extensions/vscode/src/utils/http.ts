@@ -35,7 +35,13 @@ export function makeHttpRequest(url: string, options: {
                 resolve({
                     ok: (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300,
                     status: res.statusCode || 0,
-                    json: () => Promise.resolve(JSON.parse(data))
+                    json: () => {
+                        try {
+                            return Promise.resolve(JSON.parse(data));
+                        } catch (error) {
+                            return Promise.reject(new Error(`Invalid JSON response: ${error instanceof Error ? error.message : 'Unknown error'}`));
+                        }
+                    }
                 });
             });
         });

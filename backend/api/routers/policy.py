@@ -65,6 +65,8 @@ def get_policy(request: Request, db: Session = Depends(get_db)) -> Dict[str, Any
             try:
                 policy[field] = json.loads(policy[field])
             except (json.JSONDecodeError, TypeError):
+                # Keep field as string if JSON parsing fails (graceful degradation)
+                # This handles cases where the field contains plain text instead of JSON
                 pass
 
     return policy

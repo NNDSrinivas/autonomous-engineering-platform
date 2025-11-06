@@ -45,6 +45,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EnhancedChatPanel = void 0;
 const vscode = __importStar(require("vscode"));
+const http_1 = require("../utils/http");
 class EnhancedChatPanel {
     constructor(panel, extensionUri) {
         this._disposables = [];
@@ -82,6 +83,11 @@ class EnhancedChatPanel {
         // Initialize with smart greeting
         this._initializeWithGreeting();
     }
+    /**
+     * Creates a new panel or shows the existing one
+     * @param extensionUri - VS Code extension URI for resource loading
+     * @returns The EnhancedChatPanel instance (either new or existing)
+     */
     static createOrShow(extensionUri) {
         const column = vscode.ViewColumn.Beside;
         if (EnhancedChatPanel.currentPanel) {
@@ -101,7 +107,7 @@ class EnhancedChatPanel {
         this._showTypingIndicator('Analyzing task and gathering context...');
         try {
             // Create task from JIRA with full context
-            const response = await fetch(`${this._apiBase}/api/autonomous/create-from-jira`, {
+            const response = await (0, http_1.compatibleFetch)(`${this._apiBase}/api/autonomous/create-from-jira`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -158,13 +164,15 @@ class EnhancedChatPanel {
     }
     async _loadJiraTasks() {
         try {
-            const response = await fetch(`${this._apiBase}/api/jira/tasks`, {
+            const response = await (0, http_1.compatibleFetch)(`${this._apiBase}/api/jira/tasks`, {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' }
             });
             if (response.ok) {
-                const tasks = await response.json();
-                await this._presentJiraTasks(tasks.items || []);
+                const tasksResponse = await response.json();
+                // Handle both 'tasks' and 'items' properties for API compatibility
+                const tasksList = tasksResponse.tasks || tasksResponse.items || [];
+                await this._presentJiraTasks(tasksList);
             }
         }
         catch (error) {
@@ -281,7 +289,7 @@ ${taskData.next_action}
     async _handleStepApproval(taskId, stepId, approved) {
         this._showTypingIndicator(`${approved ? 'Executing' : 'Skipping'} step...`);
         try {
-            const response = await fetch(`${this._apiBase}/api/autonomous/execute-step`, {
+            const response = await (0, http_1.compatibleFetch)(`${this._apiBase}/api/autonomous/execute-step`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -462,7 +470,7 @@ ${taskData.next_action}
     }
     async _generateEnhancedResponse(userInput) {
         try {
-            const response = await fetch(`${this._apiBase}/api/chat/enhanced-respond`, {
+            const response = await (0, http_1.compatibleFetch)(`${this._apiBase}/api/chat/enhanced-respond`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

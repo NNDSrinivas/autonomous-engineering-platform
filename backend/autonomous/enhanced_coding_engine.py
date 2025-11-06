@@ -44,7 +44,7 @@ class SecurityError(Exception):
 
 # Use TYPE_CHECKING to avoid circular imports
 if TYPE_CHECKING:
-    from backend.core.memory.vector_store import VectorStore
+    from backend.core.memory_system.vector_store import VectorStore
     from backend.integrations.github.service import GitHubService
 else:
     VectorStore = "VectorStore"

@@ -141,6 +141,7 @@ class Settings(BaseSettings):
 
     # AI Configuration
     openai_api_key: Optional[str] = None
+    openai_model: str = "gpt-3.5-turbo"
 
     # Platform Configuration
     debug: bool = False

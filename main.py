@@ -8,6 +8,7 @@ from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Union
+from typing_extensions import TypedDict
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -44,9 +45,12 @@ try:
 except Exception as e:
     OPENAI_AVAILABLE = False
     logger.warning(f"⚠️ OpenAI client failed to initialize: {e}")
-    # Define a more specific fallback type when OpenAI is not available
-    # This matches the expected structure of OpenAI chat completion messages
-    ChatCompletionMessageParam = Dict[str, Union[str, List[str]]]
+
+    # Define a proper fallback type that matches OpenAI's ChatCompletionMessageParam structure
+    class ChatCompletionMessageParam(TypedDict):
+        role: str  # "system", "user", "assistant", or "tool"
+        content: Union[str, List[str]]  # Message content
+
 
 app = FastAPI(
     title="Autonomous Engineering Intelligence Platform",

@@ -201,7 +201,7 @@ class DeviceAuthorizationResponse(BaseModel):
 async def authorize_device_code(request: DeviceAuthorizationRequest):
     """
     Authorize or deny a device code by user code.
-    
+
     This endpoint allows users to approve or deny device authorization requests
     through a web interface or API call.
     """
@@ -212,23 +212,17 @@ async def authorize_device_code(request: DeviceAuthorizationRequest):
             if info["user_code"] == request.user_code:
                 device_code = dc
                 break
-        
+
         if not device_code:
-            raise HTTPException(
-                status_code=404,
-                detail="Invalid user code"
-            )
-        
+            raise HTTPException(status_code=404, detail="Invalid user code")
+
         device_info = _device_codes[device_code]
-        
+
         # Check if already expired
         if datetime.utcnow() > device_info["expires_at"]:
             del _device_codes[device_code]
-            raise HTTPException(
-                status_code=400,
-                detail="Device code has expired"
-            )
-        
+            raise HTTPException(status_code=400, detail="Device code has expired")
+
         # Update authorization status
         if request.action.lower() == "approve":
             device_info["status"] = "authorized"
@@ -240,21 +234,16 @@ async def authorize_device_code(request: DeviceAuthorizationRequest):
             message = f"Device with user code {request.user_code} has been denied"
         else:
             raise HTTPException(
-                status_code=400,
-                detail="Invalid action. Must be 'approve' or 'deny'"
+                status_code=400, detail="Invalid action. Must be 'approve' or 'deny'"
             )
-        
-        return DeviceAuthorizationResponse(
-            message=message,
-            user_code=request.user_code
-        )
-        
+
+        return DeviceAuthorizationResponse(message=message, user_code=request.user_code)
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to authorize device: {str(e)}"
+            status_code=500, detail=f"Failed to authorize device: {str(e)}"
         )
 
 

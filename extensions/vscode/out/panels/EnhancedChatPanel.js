@@ -1,6 +1,7 @@
+"use strict";
 /**
  * Enhanced Chat Panel - Cline-style autonomous coding interface
- * 
+ *
  * Features:
  * - Morning greeting with JIRA tasks
  * - Step-by-step coding workflow
@@ -8,305 +9,246 @@
  * - Real-time progress tracking
  * - Enterprise context integration
  */
-
-import * as vscode from 'vscode';
-
-interface EnhancedChatMessage {
-  id: string;
-  type: 'user' | 'assistant' | 'system' | 'task-presentation' | 'step-approval' | 'progress';
-  content: string;
-  timestamp: Date;
-  metadata?: {
-    taskId?: string;
-    stepId?: string;
-    fileChanges?: FileChange[];
-    diffPreview?: string;
-    actions?: ActionButton[];
-    jiraContext?: JiraTaskContext;
-  };
-}
-
-interface JiraTaskContext {
-  key: string;
-  title: string;
-  description: string;
-  priority: string;
-  assignee: string;
-  meetingContext: string[];
-  documentationLinks: string[];
-  relatedFiles: string[];
-}
-
-interface FileChange {
-  path: string;
-  operation: 'create' | 'modify' | 'delete';
-  preview: string;
-  reasoning: string;
-}
-
-interface ActionButton {
-  id: string;
-  label: string;
-  style: 'primary' | 'secondary' | 'danger';
-  action: string;
-}
-
-interface CodingStep {
-  id: string;
-  description: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'failed';
-  fileChanges: FileChange[];
-  userApproved?: boolean;
-}
-
-export class EnhancedChatPanel {
-  public static currentPanel: EnhancedChatPanel | undefined;
-  private readonly _panel: vscode.WebviewPanel;
-  private _disposables: vscode.Disposable[] = [];
-  private _chatState: {
-    messages: EnhancedChatMessage[];
-    currentTask?: JiraTaskContext;
-    currentSteps?: CodingStep[];
-    userContext?: any;
-  } = { messages: [] };
-  private _apiBase: string;
-
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-    this._panel = panel;
-    this._apiBase = vscode.workspace.getConfiguration('aep').get('coreApi') || 'http://localhost:8002';
-
-    // Set webview content
-    this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
-
-    // Handle messages from webview
-    this._panel.webview.onDidReceiveMessage(
-      async message => {
-        switch (message.command) {
-          case 'sendMessage':
-            await this._handleUserMessage(message.text);
-            break;
-          case 'approveStep':
-            await this._handleStepApproval(message.taskId, message.stepId, true);
-            break;
-          case 'rejectStep':
-            await this._handleStepApproval(message.taskId, message.stepId, false);
-            break;
-          case 'selectJiraTask':
-            await this._handleJiraTaskSelection(message.jiraKey);
-            break;
-          case 'viewFile':
-            await this._openFilePreview(message.filePath);
-            break;
-          case 'viewDiff':
-            await this._showDiffPreview(message.filePath, message.changes);
-            break;
-          case 'startDailyWorkflow':
-            await this._initiateDailyWorkflow();
-            break;
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.EnhancedChatPanel = void 0;
+const vscode = __importStar(require("vscode"));
+class EnhancedChatPanel {
+    constructor(panel, extensionUri) {
+        this._disposables = [];
+        this._chatState = { messages: [] };
+        this._panel = panel;
+        this._apiBase = vscode.workspace.getConfiguration('aep').get('coreApi') || 'http://localhost:8002';
+        // Set webview content
+        this._panel.webview.html = this._getWebviewContent(this._panel.webview, extensionUri);
+        // Handle messages from webview
+        this._panel.webview.onDidReceiveMessage(async (message) => {
+            switch (message.command) {
+                case 'sendMessage':
+                    await this._handleUserMessage(message.text);
+                    break;
+                case 'approveStep':
+                    await this._handleStepApproval(message.taskId, message.stepId, true);
+                    break;
+                case 'rejectStep':
+                    await this._handleStepApproval(message.taskId, message.stepId, false);
+                    break;
+                case 'selectJiraTask':
+                    await this._handleJiraTaskSelection(message.jiraKey);
+                    break;
+                case 'viewFile':
+                    await this._openFilePreview(message.filePath);
+                    break;
+                case 'viewDiff':
+                    await this._showDiffPreview(message.filePath, message.changes);
+                    break;
+                case 'startDailyWorkflow':
+                    await this._initiateDailyWorkflow();
+                    break;
+            }
+        }, null, this._disposables);
+        // Initialize with smart greeting
+        this._initializeWithGreeting();
+    }
+    static createOrShow(extensionUri) {
+        const column = vscode.ViewColumn.Beside;
+        if (EnhancedChatPanel.currentPanel) {
+            EnhancedChatPanel.currentPanel._panel.reveal(column);
+            return EnhancedChatPanel.currentPanel;
         }
-      },
-      null,
-      this._disposables
-    );
-
-    // Initialize with smart greeting
-    this._initializeWithGreeting();
-  }
-
-  public static createOrShow(extensionUri: vscode.Uri): EnhancedChatPanel {
-    const column = vscode.ViewColumn.Beside;
-
-    if (EnhancedChatPanel.currentPanel) {
-      EnhancedChatPanel.currentPanel._panel.reveal(column);
-      return EnhancedChatPanel.currentPanel;
+        const panel = vscode.window.createWebviewPanel('aepEnhancedChat', 'AEP Agent', column, {
+            enableScripts: true,
+            localResourceRoots: [extensionUri],
+            retainContextWhenHidden: true
+        });
+        EnhancedChatPanel.currentPanel = new EnhancedChatPanel(panel, extensionUri);
+        return EnhancedChatPanel.currentPanel;
     }
-
-    const panel = vscode.window.createWebviewPanel(
-      'aepEnhancedChat',
-      'AEP Agent',
-      column,
-      {
-        enableScripts: true,
-        localResourceRoots: [extensionUri],
-        retainContextWhenHidden: true
-      }
-    );
-
-    EnhancedChatPanel.currentPanel = new EnhancedChatPanel(panel, extensionUri);
-    return EnhancedChatPanel.currentPanel;
-  }
-
-  public async startAutonomousCoding(jiraKey: string) {
-    await this._handleJiraTaskSelection(jiraKey);
-  }
-
-  private async _initializeWithGreeting() {
-    const timeOfDay = this._getTimeOfDay();
-    const userName = await this._getUserName();
-    
-    // Show smart greeting
-    const greetingMessage: EnhancedChatMessage = {
-      id: `greeting-${Date.now()}`,
-      type: 'system',
-      content: `Good ${timeOfDay}, ${userName}! 🌟`,
-      timestamp: new Date(),
-      metadata: {
-        actions: [
-          {
-            id: 'daily-workflow',
-            label: 'Show My Tasks',
-            style: 'primary',
-            action: 'startDailyWorkflow'
-          },
-          {
-            id: 'quick-help',
-            label: 'Quick Help',
-            style: 'secondary',
-            action: 'showHelp'
-          }
-        ]
-      }
-    };
-
-    this._addMessage(greetingMessage);
-    
-    // Auto-load JIRA tasks
-    await this._loadJiraTasks();
-  }
-
-  private async _loadJiraTasks() {
-    try {
-      const response = await fetch(`${this._apiBase}/api/jira/tasks`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (response.ok) {
-        const tasks = await response.json() as any;
-        await this._presentJiraTasks(tasks.items || []);
-      }
-    } catch (error) {
-      console.error('Failed to load JIRA tasks:', error);
+    async startAutonomousCoding(jiraKey) {
+        await this._handleJiraTaskSelection(jiraKey);
     }
-  }
-
-  private async _presentJiraTasks(tasks: any[]) {
-    if (tasks.length === 0) {
-      const noTasksMessage: EnhancedChatMessage = {
-        id: `no-tasks-${Date.now()}`,
-        type: 'system',
-        content: 'You have no assigned tasks today. Great job staying on top of everything! 🎉',
-        timestamp: new Date()
-      };
-      this._addMessage(noTasksMessage);
-      return;
+    async _initializeWithGreeting() {
+        const timeOfDay = this._getTimeOfDay();
+        const userName = await this._getUserName();
+        // Show smart greeting
+        const greetingMessage = {
+            id: `greeting-${Date.now()}`,
+            type: 'system',
+            content: `Good ${timeOfDay}, ${userName}! 🌟`,
+            timestamp: new Date(),
+            metadata: {
+                actions: [
+                    {
+                        id: 'daily-workflow',
+                        label: 'Show My Tasks',
+                        style: 'primary',
+                        action: 'startDailyWorkflow'
+                    },
+                    {
+                        id: 'quick-help',
+                        label: 'Quick Help',
+                        style: 'secondary',
+                        action: 'showHelp'
+                    }
+                ]
+            }
+        };
+        this._addMessage(greetingMessage);
+        // Auto-load JIRA tasks
+        await this._loadJiraTasks();
     }
-
-    const tasksMessage: EnhancedChatMessage = {
-      id: `tasks-${Date.now()}`,
-      type: 'task-presentation',
-      content: `You have ${tasks.length} assigned task${tasks.length > 1 ? 's' : ''} today:`,
-      timestamp: new Date(),
-      metadata: {
-        actions: tasks.map(task => ({
-          id: `select-${task.key}`,
-          label: `${task.key}: ${task.summary}`,
-          style: 'secondary' as const,
-          action: 'selectJiraTask'
-        }))
-      }
-    };
-
-    this._addMessage(tasksMessage);
-  }
-
-  private async _handleJiraTaskSelection(jiraKey: string) {
-    // Show loading indicator
-    this._showTypingIndicator('Analyzing task and gathering context...');
-
-    try {
-      // Create task from JIRA with full context
-      const response = await fetch(`${this._apiBase}/api/autonomous/create-from-jira`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jira_key: jiraKey,
-          user_context: this._chatState.userContext
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create task: ${response.status}`);
-      }
-
-      const taskData = await response.json();
-      
-      // Present comprehensive task overview
-      await this._presentTaskOverview(taskData);
-
-    } catch (error) {
-      this._hideTypingIndicator();
-      this._addMessage({
-        id: `error-${Date.now()}`,
-        type: 'system',
-        content: `Sorry, I couldn't analyze that task. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        timestamp: new Date()
-      });
+    async _loadJiraTasks() {
+        try {
+            const response = await fetch(`${this._apiBase}/api/jira/tasks`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (response.ok) {
+                const tasks = await response.json();
+                await this._presentJiraTasks(tasks.items || []);
+            }
+        }
+        catch (error) {
+            console.error('Failed to load JIRA tasks:', error);
+        }
     }
-  }
-
-  private async _presentTaskOverview(taskData: any) {
-    this._hideTypingIndicator();
-
-    const overviewMessage: EnhancedChatMessage = {
-      id: `task-overview-${Date.now()}`,
-      type: 'task-presentation',
-      content: this._formatTaskOverview(taskData),
-      timestamp: new Date(),
-      metadata: {
-        taskId: taskData.task.id,
-        jiraContext: {
-          key: taskData.task.jira_key,
-          title: taskData.task.title,
-          description: taskData.task.description,
-          priority: taskData.context.priority || 'Medium',
-          assignee: taskData.context.assignee || 'You',
-          meetingContext: taskData.context.meeting_insights ? [taskData.context.meeting_insights] : [],
-          documentationLinks: taskData.context.documentation_links || [],
-          relatedFiles: taskData.context.related_files || []
-        },
-        actions: [
-          {
-            id: 'approve-plan',
-            label: 'Start Implementation',
-            style: 'primary',
-            action: 'approvePlan'
-          },
-          {
-            id: 'modify-plan',
-            label: 'Modify Plan',
-            style: 'secondary',
-            action: 'modifyPlan'
-          },
-          {
-            id: 'view-files',
-            label: 'View Related Files',
-            style: 'secondary',
-            action: 'viewRelatedFiles'
-          }
-        ]
-      }
-    };
-
-    this._addMessage(overviewMessage);
-  }
-
-  private _formatTaskOverview(taskData: any): string {
-    const task = taskData.task;
-    const context = taskData.context;
-    const plan = taskData.implementation_plan;
-
-    return `
+    async _presentJiraTasks(tasks) {
+        if (tasks.length === 0) {
+            const noTasksMessage = {
+                id: `no-tasks-${Date.now()}`,
+                type: 'system',
+                content: 'You have no assigned tasks today. Great job staying on top of everything! 🎉',
+                timestamp: new Date()
+            };
+            this._addMessage(noTasksMessage);
+            return;
+        }
+        const tasksMessage = {
+            id: `tasks-${Date.now()}`,
+            type: 'task-presentation',
+            content: `You have ${tasks.length} assigned task${tasks.length > 1 ? 's' : ''} today:`,
+            timestamp: new Date(),
+            metadata: {
+                actions: tasks.map(task => ({
+                    id: `select-${task.key}`,
+                    label: `${task.key}: ${task.summary}`,
+                    style: 'secondary',
+                    action: 'selectJiraTask'
+                }))
+            }
+        };
+        this._addMessage(tasksMessage);
+    }
+    async _handleJiraTaskSelection(jiraKey) {
+        // Show loading indicator
+        this._showTypingIndicator('Analyzing task and gathering context...');
+        try {
+            // Create task from JIRA with full context
+            const response = await fetch(`${this._apiBase}/api/autonomous/create-from-jira`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jira_key: jiraKey,
+                    user_context: this._chatState.userContext
+                })
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to create task: ${response.status}`);
+            }
+            const taskData = await response.json();
+            // Present comprehensive task overview
+            await this._presentTaskOverview(taskData);
+        }
+        catch (error) {
+            this._hideTypingIndicator();
+            this._addMessage({
+                id: `error-${Date.now()}`,
+                type: 'system',
+                content: `Sorry, I couldn't analyze that task. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                timestamp: new Date()
+            });
+        }
+    }
+    async _presentTaskOverview(taskData) {
+        this._hideTypingIndicator();
+        const overviewMessage = {
+            id: `task-overview-${Date.now()}`,
+            type: 'task-presentation',
+            content: this._formatTaskOverview(taskData),
+            timestamp: new Date(),
+            metadata: {
+                taskId: taskData.task.id,
+                jiraContext: {
+                    key: taskData.task.jira_key,
+                    title: taskData.task.title,
+                    description: taskData.task.description,
+                    priority: taskData.context.priority || 'Medium',
+                    assignee: taskData.context.assignee || 'You',
+                    meetingContext: taskData.context.meeting_insights ? [taskData.context.meeting_insights] : [],
+                    documentationLinks: taskData.context.documentation_links || [],
+                    relatedFiles: taskData.context.related_files || []
+                },
+                actions: [
+                    {
+                        id: 'approve-plan',
+                        label: 'Start Implementation',
+                        style: 'primary',
+                        action: 'approvePlan'
+                    },
+                    {
+                        id: 'modify-plan',
+                        label: 'Modify Plan',
+                        style: 'secondary',
+                        action: 'modifyPlan'
+                    },
+                    {
+                        id: 'view-files',
+                        label: 'View Related Files',
+                        style: 'secondary',
+                        action: 'viewRelatedFiles'
+                    }
+                ]
+            }
+        };
+        this._addMessage(overviewMessage);
+    }
+    _formatTaskOverview(taskData) {
+        const task = taskData.task;
+        const context = taskData.context;
+        const plan = taskData.implementation_plan;
+        return `
 ## 📋 ${task.title}
 
 **JIRA:** ${task.jira_key}  
@@ -323,271 +265,254 @@ ${task.description}
 - **Git Branch:** \`${plan.git_branch}\`
 
 ### 📁 Related Files
-${context.related_files.map((file: string) => `- \`${file}\``).join('\n')}
+${context.related_files.map((file) => `- \`${file}\``).join('\n')}
 
 ### 📚 Documentation
-${context.documentation_links.map((link: string) => `- [Documentation](${link})`).join('\n')}
+${context.documentation_links.map((link) => `- [Documentation](${link})`).join('\n')}
 
 ### 💬 Meeting Context
 ${context.meeting_insights || 'No recent discussions found'}
 
 ### 🔄 Next Steps Preview
-${taskData.steps_preview.map((step: any, i: number) => `${i + 1}. **${step.operation}** \`${step.file}\` - ${step.description}`).join('\n')}
+${taskData.steps_preview.map((step, i) => `${i + 1}. **${step.operation}** \`${step.file}\` - ${step.description}`).join('\n')}
 
 ---
 
 ${taskData.next_action}
     `.trim();
-  }
-
-  private async _handleStepApproval(taskId: string, stepId: string, approved: boolean) {
-    this._showTypingIndicator(`${approved ? 'Executing' : 'Skipping'} step...`);
-
-    try {
-      const response = await fetch(`${this._apiBase}/api/autonomous/execute-step`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          task_id: taskId,
-          step_id: stepId,
-          user_approved: approved
-        })
-      });
-
-      const result = await response.json() as any;
-      this._hideTypingIndicator();
-
-      if (result.status === 'completed') {
-        this._addMessage({
-          id: `step-result-${Date.now()}`,
-          type: 'progress',
-          content: `✅ Step completed: ${result.step}\n\nFile: \`${result.file_path}\`\n\n${result.next_step ? `**Next:** ${result.next_step.description}` : '🎉 All steps completed!'}`,
-          timestamp: new Date(),
-          metadata: {
-            actions: result.next_step ? [
-              {
-                id: 'approve-next',
-                label: 'Approve Next Step',
-                style: 'primary',
-                action: 'approveStep'
-              },
-              {
-                id: 'review-changes',
-                label: 'Review Changes',
-                style: 'secondary',
-                action: 'viewDiff'
-              }
-            ] : [
-              {
-                id: 'create-pr',
-                label: 'Create Pull Request',
-                style: 'primary',
-                action: 'createPR'
-              }
-            ]
-          }
-        });
-      } else {
-        this._addMessage({
-          id: `step-error-${Date.now()}`,
-          type: 'system',
-          content: `❌ Step failed: ${result.error}`,
-          timestamp: new Date()
-        });
-      }
-
-    } catch (error) {
-      this._hideTypingIndicator();
-      this._addMessage({
-        id: `error-${Date.now()}`,
-        type: 'system',
-        content: `Error executing step: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        timestamp: new Date()
-      });
     }
-  }
-
-  private async _openFilePreview(filePath: string) {
-    try {
-      const uri = vscode.Uri.file(filePath);
-      await vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside });
-    } catch (error) {
-      vscode.window.showErrorMessage(`Could not open file: ${filePath}`);
-    }
-  }
-
-  private async _showDiffPreview(filePath: string, changes: string) {
-    try {
-      // Use workspace storage for temp files to avoid permission issues
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      if (!workspaceFolder) {
-        vscode.window.showErrorMessage('No workspace folder found for diff preview');
-        return;
-      }
-      
-      // Create temp file in workspace's .vscode directory
-      const tempUri = vscode.Uri.joinPath(workspaceFolder.uri, '.vscode', 'temp-diff.diff');
-      const edit = new vscode.WorkspaceEdit();
-      edit.createFile(tempUri, { overwrite: true });
-      edit.insert(tempUri, new vscode.Position(0, 0), changes);
-      
-      await vscode.workspace.applyEdit(edit);
-      await vscode.window.showTextDocument(tempUri, { viewColumn: vscode.ViewColumn.Beside });
-    } catch (error) {
-      vscode.window.showErrorMessage(`Could not show diff preview: ${error}`);
-    }
-  }
-
-  private _getTimeOfDay(): string {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'morning';
-    if (hour < 17) return 'afternoon';
-    return 'evening';
-  }
-
-  private async _getUserName(): Promise<string> {
-    // Try to get user name from git config or workspace
-    try {
-      const gitExtension = vscode.extensions.getExtension('vscode.git');
-      if (gitExtension) {
-        const git = gitExtension.exports.getAPI(1);
-        const repo = git.repositories[0];
-        if (repo) {
-          const config = await repo.getConfig('user.name');
-          if (config) {
-            return config.split(' ')[0]; // First name only
-          }
-        }
-      }
-    } catch (error) {
-      // Fallback to generic greeting
-    }
-    
-    return 'Developer';
-  }
-
-  private async _initiateDailyWorkflow() {
-    const workflowMessage: EnhancedChatMessage = {
-      id: `workflow-${Date.now()}`,
-      type: 'system',
-      content: '🚀 Let me set up your daily workflow...',
-      timestamp: new Date()
-    };
-
-    this._addMessage(workflowMessage);
-    await this._loadJiraTasks();
-  }
-
-  private _addMessage(message: EnhancedChatMessage) {
-    this._chatState.messages.push(message);
-    this._updateWebview();
-  }
-
-  private _updateWebview() {
-    this._panel.webview.postMessage({
-      command: 'updateChat',
-      chatState: this._chatState
-    });
-  }
-
-  private _showTypingIndicator(message: string = 'Thinking...') {
-    this._panel.webview.postMessage({ 
-      command: 'showTyping',
-      message 
-    });
-  }
-
-  private _hideTypingIndicator() {
-    this._panel.webview.postMessage({ command: 'hideTyping' });
-  }
-
-  private async _handleUserMessage(text: string) {
-    // Add user message
-    this._addMessage({
-      id: `user-${Date.now()}`,
-      type: 'user',
-      content: text,
-      timestamp: new Date()
-    });
-
-    // Show typing indicator
-    this._showTypingIndicator();
-
-    try {
-      // Enhanced response generation with enterprise context
-      const response = await this._generateEnhancedResponse(text);
-      
-      this._hideTypingIndicator();
-      this._addMessage({
-        id: `assistant-${Date.now()}`,
-        type: 'assistant',
-        content: response.content,
-        timestamp: new Date(),
-        metadata: response.metadata
-      });
-
-    } catch (error) {
-      this._hideTypingIndicator();
-      this._addMessage({
-        id: `error-${Date.now()}`,
-        type: 'system',
-        content: 'Sorry, I encountered an error processing your request.',
-        timestamp: new Date()
-      });
-    }
-  }
-
-  private async _generateEnhancedResponse(userInput: string): Promise<{content: string, metadata?: any}> {
-    try {
-      const response = await fetch(`${this._apiBase}/api/chat/enhanced-respond`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userInput,
-          context: {
-            currentTask: this._chatState.currentTask,
-            userContext: this._chatState.userContext,
-            conversationHistory: this._chatState.messages.slice(-5)
-          }
-        })
-      });
-
-      if (response.ok) {
-        return await response.json() as any;
-      } else {
-        throw new Error(`API error: ${response.status}`);
-      }
-    } catch (error) {
-      // Fallback to basic response
-      return {
-        content: "I'm here to help with your development work. Try asking about your JIRA tasks or let me help you implement a feature!",
-        metadata: {
-          actions: [
-            {
-              id: 'show-tasks',
-              label: 'Show My Tasks',
-              style: 'primary',
-              action: 'startDailyWorkflow'
+    async _handleStepApproval(taskId, stepId, approved) {
+        this._showTypingIndicator(`${approved ? 'Executing' : 'Skipping'} step...`);
+        try {
+            const response = await fetch(`${this._apiBase}/api/autonomous/execute-step`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    task_id: taskId,
+                    step_id: stepId,
+                    user_approved: approved
+                })
+            });
+            const result = await response.json();
+            this._hideTypingIndicator();
+            if (result.status === 'completed') {
+                this._addMessage({
+                    id: `step-result-${Date.now()}`,
+                    type: 'progress',
+                    content: `✅ Step completed: ${result.step}\n\nFile: \`${result.file_path}\`\n\n${result.next_step ? `**Next:** ${result.next_step.description}` : '🎉 All steps completed!'}`,
+                    timestamp: new Date(),
+                    metadata: {
+                        actions: result.next_step ? [
+                            {
+                                id: 'approve-next',
+                                label: 'Approve Next Step',
+                                style: 'primary',
+                                action: 'approveStep'
+                            },
+                            {
+                                id: 'review-changes',
+                                label: 'Review Changes',
+                                style: 'secondary',
+                                action: 'viewDiff'
+                            }
+                        ] : [
+                            {
+                                id: 'create-pr',
+                                label: 'Create Pull Request',
+                                style: 'primary',
+                                action: 'createPR'
+                            }
+                        ]
+                    }
+                });
             }
-          ]
+            else {
+                this._addMessage({
+                    id: `step-error-${Date.now()}`,
+                    type: 'system',
+                    content: `❌ Step failed: ${result.error}`,
+                    timestamp: new Date()
+                });
+            }
         }
-      };
+        catch (error) {
+            this._hideTypingIndicator();
+            this._addMessage({
+                id: `error-${Date.now()}`,
+                type: 'system',
+                content: `Error executing step: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                timestamp: new Date()
+            });
+        }
     }
-  }
-
-  public dispose() {
-    EnhancedChatPanel.currentPanel = undefined;
-    this._panel.dispose();
-    while (this._disposables.length) {
-      const disposable = this._disposables.pop();
-      if (disposable) {
-        disposable.dispose();
-      }
+    async _openFilePreview(filePath) {
+        try {
+            const uri = vscode.Uri.file(filePath);
+            await vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside });
+        }
+        catch (error) {
+            vscode.window.showErrorMessage(`Could not open file: ${filePath}`);
+        }
     }
-  }
-
-  private _getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-    return `<!DOCTYPE html>
+    async _showDiffPreview(filePath, changes) {
+        try {
+            // Use workspace storage for temp files to avoid permission issues
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            if (!workspaceFolder) {
+                vscode.window.showErrorMessage('No workspace folder found for diff preview');
+                return;
+            }
+            // Create temp file in workspace's .vscode directory
+            const tempUri = vscode.Uri.joinPath(workspaceFolder.uri, '.vscode', 'temp-diff.diff');
+            const edit = new vscode.WorkspaceEdit();
+            edit.createFile(tempUri, { overwrite: true });
+            edit.insert(tempUri, new vscode.Position(0, 0), changes);
+            await vscode.workspace.applyEdit(edit);
+            await vscode.window.showTextDocument(tempUri, { viewColumn: vscode.ViewColumn.Beside });
+        }
+        catch (error) {
+            vscode.window.showErrorMessage(`Could not show diff preview: ${error}`);
+        }
+    }
+    _getTimeOfDay() {
+        const hour = new Date().getHours();
+        if (hour < 12)
+            return 'morning';
+        if (hour < 17)
+            return 'afternoon';
+        return 'evening';
+    }
+    async _getUserName() {
+        // Try to get user name from git config or workspace
+        try {
+            const gitExtension = vscode.extensions.getExtension('vscode.git');
+            if (gitExtension) {
+                const git = gitExtension.exports.getAPI(1);
+                const repo = git.repositories[0];
+                if (repo) {
+                    const config = await repo.getConfig('user.name');
+                    if (config) {
+                        return config.split(' ')[0]; // First name only
+                    }
+                }
+            }
+        }
+        catch (error) {
+            // Fallback to generic greeting
+        }
+        return 'Developer';
+    }
+    async _initiateDailyWorkflow() {
+        const workflowMessage = {
+            id: `workflow-${Date.now()}`,
+            type: 'system',
+            content: '🚀 Let me set up your daily workflow...',
+            timestamp: new Date()
+        };
+        this._addMessage(workflowMessage);
+        await this._loadJiraTasks();
+    }
+    _addMessage(message) {
+        this._chatState.messages.push(message);
+        this._updateWebview();
+    }
+    _updateWebview() {
+        this._panel.webview.postMessage({
+            command: 'updateChat',
+            chatState: this._chatState
+        });
+    }
+    _showTypingIndicator(message = 'Thinking...') {
+        this._panel.webview.postMessage({
+            command: 'showTyping',
+            message
+        });
+    }
+    _hideTypingIndicator() {
+        this._panel.webview.postMessage({ command: 'hideTyping' });
+    }
+    async _handleUserMessage(text) {
+        // Add user message
+        this._addMessage({
+            id: `user-${Date.now()}`,
+            type: 'user',
+            content: text,
+            timestamp: new Date()
+        });
+        // Show typing indicator
+        this._showTypingIndicator();
+        try {
+            // Enhanced response generation with enterprise context
+            const response = await this._generateEnhancedResponse(text);
+            this._hideTypingIndicator();
+            this._addMessage({
+                id: `assistant-${Date.now()}`,
+                type: 'assistant',
+                content: response.content,
+                timestamp: new Date(),
+                metadata: response.metadata
+            });
+        }
+        catch (error) {
+            this._hideTypingIndicator();
+            this._addMessage({
+                id: `error-${Date.now()}`,
+                type: 'system',
+                content: 'Sorry, I encountered an error processing your request.',
+                timestamp: new Date()
+            });
+        }
+    }
+    async _generateEnhancedResponse(userInput) {
+        try {
+            const response = await fetch(`${this._apiBase}/api/chat/enhanced-respond`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: userInput,
+                    context: {
+                        currentTask: this._chatState.currentTask,
+                        userContext: this._chatState.userContext,
+                        conversationHistory: this._chatState.messages.slice(-5)
+                    }
+                })
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+            else {
+                throw new Error(`API error: ${response.status}`);
+            }
+        }
+        catch (error) {
+            // Fallback to basic response
+            return {
+                content: "I'm here to help with your development work. Try asking about your JIRA tasks or let me help you implement a feature!",
+                metadata: {
+                    actions: [
+                        {
+                            id: 'show-tasks',
+                            label: 'Show My Tasks',
+                            style: 'primary',
+                            action: 'startDailyWorkflow'
+                        }
+                    ]
+                }
+            };
+        }
+    }
+    dispose() {
+        EnhancedChatPanel.currentPanel = undefined;
+        this._panel.dispose();
+        while (this._disposables.length) {
+            const disposable = this._disposables.pop();
+            if (disposable) {
+                disposable.dispose();
+            }
+        }
+    }
+    _getWebviewContent(webview, extensionUri) {
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1511,5 +1436,7 @@ What would you like to work on today?\`,
     </script>
 </body>
 </html>`;
-  }
+    }
 }
+exports.EnhancedChatPanel = EnhancedChatPanel;
+//# sourceMappingURL=EnhancedChatPanel.js.map

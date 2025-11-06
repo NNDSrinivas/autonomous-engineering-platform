@@ -267,7 +267,7 @@ export class ChatPanel {
         throw new Error(`API error: ${response.status}`);
       }
 
-      return await response.json();
+      return await response.json() as any;
     } catch (error) {
       // Fallback to rule-based responses
       return this._generateFallbackResponse(userInput);
@@ -315,8 +315,8 @@ export class ChatPanel {
         fetch(`${this._apiBase}/api/activity/recent`)
       ]);
 
-      const tasks = tasksResponse.ok ? await tasksResponse.json() : { items: [] };
-      const activity = activityResponse.ok ? await activityResponse.json() : { items: [] };
+      const tasks = tasksResponse.ok ? await tasksResponse.json() as any : { items: [] };
+      const activity = activityResponse.ok ? await activityResponse.json() as any : { items: [] };
 
       return {
         tasks: tasks.items || [],
@@ -343,7 +343,7 @@ export class ChatPanel {
       });
 
       if (response.ok) {
-        const suggestions = await response.json();
+        const suggestions = await response.json() as any;
         if (suggestions.items && suggestions.items.length > 0) {
           this._addMessage({
             id: this._generateMessageId('proactive'),
@@ -448,7 +448,7 @@ export class ChatPanel {
     // Fetch context pack for selected task
     try {
       const response = await fetch(`${this._apiBase}/api/context/task/${encodeURIComponent(taskKey)}`);
-      const contextPack = await response.json();
+      const contextPack = await response.json() as any;
 
       this._addMessage({
         id: this._generateMessageId('task-selected'),

@@ -23,7 +23,7 @@ jobs:
           ENABLE_AUDIT_LOGGING: false
         run: |
           # Initialize test database with migrations
-          alembic upgrade head || echo "Migration failed or not needed"
+          alembic upgrade head
           
           API_PORT=8002 python -m backend.api.main > /tmp/main.log 2>&1 &
           MAIN_PID=$!

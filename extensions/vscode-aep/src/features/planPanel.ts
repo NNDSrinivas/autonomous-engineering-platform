@@ -39,6 +39,7 @@ export class PlanPanelProvider implements vscode.WebviewViewProvider {
       <link rel="stylesheet" href="${this.css('plan.css')}">
       <div class="wrap">
         <h3>Plan & Act</h3>
+        ${this.steps.length > 0 ? `
         <div class="steps">
           <ul>
             ${this.steps.map((s,i)=>`<li class="${i===this.selectedIndex?'sel':''}" data-i="${i}">${s.kind}: ${s.title}</li>`).join('')}
@@ -52,6 +53,12 @@ export class PlanPanelProvider implements vscode.WebviewViewProvider {
           <button id="reject">Reject</button>
           <button id="apply">Apply Patch</button>
         </div>
+        ` : `
+        <div class="empty">
+          <p>Select a JIRA task from the Agent panel to generate a plan.</p>
+          <p><small>Plans break down tasks into reviewable steps with code patches.</small></p>
+        </div>
+        `}
       </div>
       <script>${this.script('plan.js')}</script>
     `;

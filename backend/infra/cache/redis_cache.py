@@ -8,8 +8,10 @@ from typing import Any, Optional, Iterable
 
 try:
     from redis import asyncio as aioredis  # type: ignore
+    aioredis_available = True
 except ImportError:
-    aioredis = None
+    aioredis = None  # type: ignore
+    aioredis_available = False
 
 REDIS_URL = os.getenv("REDIS_URL")
 

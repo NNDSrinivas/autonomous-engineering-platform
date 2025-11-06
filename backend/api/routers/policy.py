@@ -180,6 +180,7 @@ def check_policy_action(
     Returns:
         Policy check result with allowed status and reasons
     """
+
     # from ...core.policy_engine.engine import check_action
     def check_action(policy: dict, action: dict) -> dict:
         """Temporary stub for check_action"""

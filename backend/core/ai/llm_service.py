@@ -35,7 +35,7 @@ class CodeAnalysis:
     suggestions: List[str]
     complexity: Dict[str, Any]
     test_suggestions: List[str]
-    security_concerns: List[str] = None
+    security_concerns: Optional[List[str]] = None
 
 
 class LLMService:
@@ -80,7 +80,16 @@ class LLMService:
             content = response.choices[0].message.content
 
             # Parse structured response
-            return self._parse_engineering_response(content)
+            if content:
+                return self._parse_engineering_response(content)
+            else:
+                logger.warning("Empty response from OpenAI")
+                return EngineeringResponse(
+                    answer="I received an empty response. Please try again.",
+                    reasoning="Empty response from AI service",
+                    suggested_actions=["Try rephrasing your question"],
+                    confidence=0.0,
+                )
 
         except Exception as e:
             logger.error("Error generating engineering response", error=str(e))
@@ -143,7 +152,18 @@ class LLMService:
             content = response.choices[0].message.content
 
             # Parse analysis response
-            return self._parse_code_analysis(content)
+            if content:
+                return self._parse_code_analysis(content)
+            else:
+                logger.warning("Empty response from OpenAI for code analysis")
+                return CodeAnalysis(
+                    quality_score=0.5,
+                    issues=[],
+                    suggestions=["Unable to analyze - empty response"],
+                    complexity={"cyclomatic": 0},
+                    test_suggestions=["Add tests"],
+                    security_concerns=None,
+                )
 
         except Exception as e:
             logger.error("Error analyzing code", error=str(e))

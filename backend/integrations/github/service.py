@@ -171,7 +171,7 @@ class GitHubService:
         """Get content of a file from repository"""
 
         url = f"{self.base_url}/repos/{repository}/contents/{file_path}"
-        params = {"ref": branch}
+        params: Dict[str, Any] = {"ref": branch}
 
         try:
             response = await self.client.get(url, params=params)
@@ -250,7 +250,7 @@ class GitHubService:
         """Get list of user's repositories"""
 
         url = f"{self.base_url}/user/repos"
-        params = {"type": "all", "sort": "updated", "per_page": 20}
+        params: Dict[str, Any] = {"type": "all", "sort": "updated", "per_page": 20}
 
         try:
             response = await self.client.get(url, params=params)
@@ -267,7 +267,11 @@ class GitHubService:
         """Get pull requests for a repository"""
 
         url = f"{self.base_url}/repos/{repository}/pulls"
-        params = {"state": "open", "sort": "updated", "direction": "desc"}
+        params: Dict[str, Any] = {
+            "state": "open",
+            "sort": "updated",
+            "direction": "desc",
+        }
 
         try:
             response = await self.client.get(url, params=params)
@@ -304,7 +308,7 @@ class GitHubService:
         """Get recent commits for a repository"""
 
         url = f"{self.base_url}/repos/{repository}/commits"
-        params = {"per_page": 10}
+        params: Dict[str, Any] = {"per_page": 10}
 
         try:
             response = await self.client.get(url, params=params)
@@ -362,12 +366,12 @@ class GitHubService:
         """Analyze team activity patterns"""
 
         # Count PRs by author
-        pr_authors = {}
+        pr_authors: Dict[str, int] = {}
         for pr in prs:
             pr_authors[pr.author] = pr_authors.get(pr.author, 0) + 1
 
         # Count commits by author
-        commit_authors = {}
+        commit_authors: Dict[str, int] = {}
         for commit in commits:
             author = commit["author"]
             commit_authors[author] = commit_authors.get(author, 0) + 1

@@ -5,15 +5,26 @@ Provides secure authentication without client secrets using OAuth 2.0 device cod
 This allows the VS Code extension to authenticate users through their browser.
 """
 
+import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import secrets
 from datetime import datetime, timedelta
 
+# Production safety check
+if os.environ.get("OAUTH_DEVICE_USE_IN_MEMORY_STORE", "false").lower() != "true":
+    raise RuntimeError(
+        "In-memory device code and access token store is enabled. "
+        "This is NOT suitable for production. "
+        "Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=true ONLY for development/testing."
+    )
+
 router = APIRouter(prefix="/oauth", tags=["OAuth Device Code"])
 
-# In-memory store for device codes (in production, use Redis or database)
+# TODO: Replace in-memory store with Redis or a persistent database before deploying to production.
+#       This code should not be used in production environments.
+#       Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=true in your environment ONLY for development/testing.
 _device_codes: Dict[str, Dict[str, Any]] = {}
 _access_tokens: Dict[str, Dict[str, Any]] = {}
 
@@ -128,15 +139,13 @@ async def poll_device_code(request: DeviceCodePollRequest):
 
         # Check authorization status
         if device_info["status"] == "pending":
-            # For MVP, auto-approve after 10 seconds (in production, check user approval)
-            if datetime.utcnow() > device_info["created_at"] + timedelta(seconds=10):
-                device_info["status"] = "authorized"
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail="authorization_pending",
-                    headers={"Content-Type": "application/json"},
-                )
+            # Wait for explicit user approval; do not auto-authorize
+            # TODO: Implement proper user approval mechanism via web interface
+            raise HTTPException(
+                status_code=400,
+                detail="authorization_pending",
+                headers={"Content-Type": "application/json"},
+            )
 
         elif device_info["status"] == "denied":
             del _device_codes[device_code]

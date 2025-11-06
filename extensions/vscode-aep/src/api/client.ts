@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { DeviceCodeStart, DeviceCodeToken, JiraIssue, ProposedStep } from './types';
-import { getConfig } from '../config';
 
 export class AEPClient {
   private token: string | undefined;

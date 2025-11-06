@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     database_url: Optional[str] = None  # Allow override with full URL
 
     redis_url: str = "redis://localhost:6379/0"
-    
+
     # OAuth Device Code Configuration
     oauth_device_use_in_memory_store: bool = False
     redis_max_connections: int = (

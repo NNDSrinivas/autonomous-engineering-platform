@@ -16,45 +16,61 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/agent", tags=["Agent Planning"])
 
+
 class ProposedStep(BaseModel):
-    id: str = Field(description="Unique step identifier") 
+    id: str = Field(description="Unique step identifier")
     kind: str = Field(description="Step type: edit, run, or open")
     title: str = Field(description="Step title/summary")
-    details: Optional[str] = Field(default=None, description="Detailed step description")
-    patch: Optional[str] = Field(default=None, description="Code diff/patch for edit steps")
-    command: Optional[str] = Field(default=None, description="Command to execute for run steps")
-    files: Optional[List[str]] = Field(default=None, description="Files affected by this step")
-    estimated_time: Optional[int] = Field(default=None, description="Estimated time in minutes")
+    details: Optional[str] = Field(
+        default=None, description="Detailed step description"
+    )
+    patch: Optional[str] = Field(
+        default=None, description="Code diff/patch for edit steps"
+    )
+    command: Optional[str] = Field(
+        default=None, description="Command to execute for run steps"
+    )
+    files: Optional[List[str]] = Field(
+        default=None, description="Files affected by this step"
+    )
+    estimated_time: Optional[int] = Field(
+        default=None, description="Estimated time in minutes"
+    )
+
 
 class ProposeRequest(BaseModel):
     issue_key: str = Field(description="Jira issue key to generate plan for")
     context: Optional[Dict[str, Any]] = Field(description="Additional context")
+
 
 class ProposeResponse(BaseModel):
     issue_key: str = Field(description="Source Jira issue")
     plan_id: str = Field(description="Generated plan identifier")
     steps: List[ProposedStep] = Field(description="Proposed execution steps")
     summary: str = Field(description="Plan summary")
-    estimated_total_time: Optional[int] = Field(description="Total estimated time in minutes")
+    estimated_total_time: Optional[int] = Field(
+        description="Total estimated time in minutes"
+    )
+
 
 @router.post("/propose", response_model=List[ProposedStep])
 async def propose_plan(
     request: ProposeRequest,
     authorization: str = Header(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Generate a step-by-step execution plan for a Jira issue.
-    
+
     This endpoint analyzes the Jira issue and generates a concrete plan
     that can be executed step-by-step with user approval.
     """
     try:
         # Validate user authentication
-        user = await get_current_user(authorization)
-        
+        await get_current_user(authorization)
+
         issue_key = request.issue_key
-        
+
         # For MVP, generate mock plans based on issue key
         if issue_key == "AEP-123":
             return [
@@ -76,11 +92,11 @@ async def propose_plan(
 +  interval: number 
 +};""",
                     files=["src/api/types.ts"],
-                    estimated_time=5
+                    estimated_time=5,
                 ),
                 ProposedStep(
                     id="step-2",
-                    kind="edit", 
+                    kind="edit",
                     title="Implement authentication manager",
                     details="Create device code authentication flow in AuthManager",
                     patch="""--- a/src/auth/AuthManager.ts
@@ -103,7 +119,7 @@ async def propose_plan(
 +    }
    }""",
                     files=["src/auth/AuthManager.ts"],
-                    estimated_time=15
+                    estimated_time=15,
                 ),
                 ProposedStep(
                     id="step-3",
@@ -111,7 +127,7 @@ async def propose_plan(
                     title="Test OAuth flow",
                     details="Run extension and test device code authentication",
                     command="npm run compile && code --extensionDevelopmentPath=. --new-window",
-                    estimated_time=10
+                    estimated_time=10,
                 ),
                 ProposedStep(
                     id="step-4",
@@ -135,10 +151,10 @@ async def propose_plan(
 +    await this.clearTokenStorage();
 +  }""",
                     files=["src/auth/AuthManager.ts"],
-                    estimated_time=8
-                )
+                    estimated_time=8,
+                ),
             ]
-        
+
         elif issue_key == "AEP-124":
             return [
                 ProposedStep(
@@ -161,7 +177,7 @@ async def propose_plan(
 +export type SmartSuggestion = { id: string; title: string; description: string; priority: 'low'|'medium'|'high' };
 +export type UpcomingMeeting = { title: string; time: string; attendees: string[]; url?: string };""",
                     files=["src/api/types.ts"],
-                    estimated_time=5
+                    estimated_time=5,
                 ),
                 ProposedStep(
                     id="step-2",
@@ -196,7 +212,7 @@ async def propose_plan(
 +          </div>
 +        </div>""",
                     files=["src/features/chatSidebar.ts"],
-                    estimated_time=20
+                    estimated_time=20,
                 ),
                 ProposedStep(
                     id="step-3",
@@ -204,10 +220,10 @@ async def propose_plan(
                     title="Test enhanced briefing",
                     details="Verify new morning briefing features work correctly",
                     command="npm run compile && code --extensionDevelopmentPath=.",
-                    estimated_time=10
-                )
+                    estimated_time=10,
+                ),
             ]
-        
+
         else:
             # Generic plan for unknown issues
             return [
@@ -216,48 +232,49 @@ async def propose_plan(
                     kind="open",
                     title="Analyze issue requirements",
                     details=f"Review and understand requirements for {issue_key}",
-                    estimated_time=10
+                    estimated_time=10,
                 ),
                 ProposedStep(
-                    id="step-2", 
+                    id="step-2",
                     kind="edit",
                     title="Implement solution",
                     details="Create initial implementation based on issue analysis",
                     patch="// TODO: Generate specific implementation",
-                    estimated_time=30
+                    estimated_time=30,
                 ),
                 ProposedStep(
                     id="step-3",
                     kind="run",
-                    title="Test implementation", 
+                    title="Test implementation",
                     details="Run tests and verify solution works correctly",
                     command="npm test",
-                    estimated_time=15
-                )
+                    estimated_time=15,
+                ),
             ]
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to propose plan for {request.issue_key}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate plan: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate plan: {str(e)}"
+        )
+
 
 @router.get("/plans/{plan_id}", response_model=ProposeResponse)
 async def get_plan(
-    plan_id: str,
-    authorization: str = Header(None),
-    db: Session = Depends(get_db)
+    plan_id: str, authorization: str = Header(None), db: Session = Depends(get_db)
 ):
     """
     Get details of a previously generated plan.
     """
     try:
-        user = await get_current_user(authorization)
-        
+        await get_current_user(authorization)
+
         # For MVP, return mock plan data
         # In production, retrieve from database
         raise HTTPException(status_code=404, detail="Plan not found")
-        
+
     except HTTPException:
         raise
     except Exception as e:

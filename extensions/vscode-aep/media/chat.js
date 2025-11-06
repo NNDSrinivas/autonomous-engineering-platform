@@ -74,6 +74,18 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
   
+  // Get Started button (primary CTA)
+  document.getElementById('getStarted')?.addEventListener('click', () => {
+    console.log('Get Started clicked');
+    vscode.postMessage({ type: 'signIn' });
+  });
+  
+  // Sign In button (secondary action)  
+  document.getElementById('signIn')?.addEventListener('click', () => {
+    console.log('Sign In clicked');
+    vscode.postMessage({ type: 'signIn' });
+  });
+  
   // External links
   document.querySelectorAll('[data-url]')?.forEach(a=> a.addEventListener('click', (e)=>{ 
     e.preventDefault(); 

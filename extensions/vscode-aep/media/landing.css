@@ -4,12 +4,11 @@
 .hero-section {
   text-align: center;
   padding: 3rem 0;
-  background: linear-gradient(135deg, 
-    var(--vscode-button-background) 0%, 
-    var(--vscode-button-hoverBackground) 100%);
-  border-radius: 12px;
+  background: var(--vscode-sideBar-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
   margin-bottom: 2rem;
-  color: var(--vscode-button-foreground);
+  color: var(--vscode-foreground);
 }
 
 .hero-title {
@@ -77,12 +76,12 @@
 
 /* Authentication Section */
 .auth-section {
-  background: var(--vscode-sideBar-background);
+  background: var(--vscode-editor-background);
   border: 1px solid var(--vscode-panel-border);
-  border-radius: 12px;
-  padding: 2rem;
+  border-radius: 6px;
+  padding: 1.5rem;
   text-align: center;
-  margin: 2rem 0;
+  margin: 1.5rem 0;
 }
 
 .auth-title {
@@ -98,11 +97,8 @@
   line-height: 1.5;
 }
 
-.auth-buttons {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
+.auth-section vscode-button {
+  margin: 0 0.5rem;
 }
 
 /* Demo Chat Section */

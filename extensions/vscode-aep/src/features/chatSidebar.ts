@@ -70,14 +70,12 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
           </div>
           
           <div class="auth-section">
-            <button class="btn-primary" id="getStarted">
-              <span class="btn-icon">🚀</span>
-              Get Started
-            </button>
-            <button class="btn-secondary" id="signIn">
-              <span class="btn-icon">🔐</span>
-              Sign In
-            </button>
+            <vscode-button id="getStarted">
+              🚀 Get Started
+            </vscode-button>
+            <vscode-button appearance="secondary" id="signIn">
+              🔐 Sign In
+            </vscode-button>
           </div>
         </div>
 

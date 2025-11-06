@@ -80,6 +80,11 @@ export function activate(context: vscode.ExtensionContext) {
 
             const deviceData = await response.json();
             
+            // Validate response structure
+            if (!deviceData || !deviceData.verification_uri || !deviceData.user_code || !deviceData.device_code) {
+                throw new Error('Invalid response from authentication server: missing required fields');
+            }
+            
             // Show user code and open browser
             const selection = await vscode.window.showInformationMessage(
                 `Please visit ${deviceData.verification_uri} and enter code: ${deviceData.user_code}`,

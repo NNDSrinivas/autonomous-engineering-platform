@@ -51,6 +51,7 @@ app = FastAPI(
 
 # Include the autonomous coding router with concierge endpoints
 app.include_router(autonomous_coding_router, prefix="/api")
+# OAuth router defines its own '/oauth' prefix, so no additional prefix needed
 app.include_router(oauth_device_router)
 app.include_router(jira_integration_router, prefix="/api")
 app.include_router(agent_planning_router, prefix="/api")

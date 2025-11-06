@@ -37,7 +37,8 @@ async def get_my_jira_issues(
     limit: int = 10,
     status: Optional[str] = None,
     project: Optional[str] = None,
-    db: Session = Depends(get_db),
+    # TODO: Add database dependency when replacing mock data with real Jira integration
+    # db: Session = Depends(get_db),
 ):
     """
     Get Jira issues assigned to the authenticated user.
@@ -123,7 +124,10 @@ async def get_my_jira_issues(
 
 @router.get("/issue/{issue_key}", response_model=JiraIssue)
 async def get_jira_issue(
-    issue_key: str, authorization: str = Header(None), db: Session = Depends(get_db)
+    issue_key: str, 
+    authorization: str = Header(None), 
+    # TODO: Add database dependency when replacing mock data with real Jira integration
+    # db: Session = Depends(get_db)
 ):
     """
     Get detailed information about a specific Jira issue.

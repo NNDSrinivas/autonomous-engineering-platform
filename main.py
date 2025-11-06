@@ -35,6 +35,7 @@ load_dotenv()
 # Import OpenAI for real AI capabilities
 try:
     from openai import OpenAI
+    from openai.types.chat import ChatCompletionMessageParam
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     OPENAI_AVAILABLE = True
@@ -42,6 +43,8 @@ try:
 except Exception as e:
     OPENAI_AVAILABLE = False
     logger.warning(f"⚠️ OpenAI client failed to initialize: {e}")
+    # Define a fallback type when OpenAI is not available
+    ChatCompletionMessageParam = dict
 
 app = FastAPI(
     title="Autonomous Engineering Intelligence Platform",
@@ -95,8 +98,6 @@ def get_ai_response(prompt: str, system_prompt: Optional[str] = None) -> str:
         return "AI service is not available. Please check your OpenAI API key configuration."
 
     try:
-        from openai.types.chat import ChatCompletionMessageParam
-        
         messages: list[ChatCompletionMessageParam] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})

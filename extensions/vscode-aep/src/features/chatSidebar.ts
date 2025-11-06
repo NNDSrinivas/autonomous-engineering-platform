@@ -57,7 +57,6 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 
   async render(){
     // For now, always show the landing page until we implement proper auth
-    const now = greeting();
     
     // Modern AI assistant landing page
     const body = `

@@ -14,9 +14,10 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import secrets
 from datetime import datetime, timedelta
+from backend.core.config import settings
 
 # Production safety check
-if os.environ.get("OAUTH_DEVICE_USE_IN_MEMORY_STORE", "false").lower() != "true":
+if not settings.oauth_device_use_in_memory_store:
     raise RuntimeError(
         "In-memory device code and access token store is NOT suitable for production. "
         "Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=true in your environment to acknowledge you are running in development/testing mode. "

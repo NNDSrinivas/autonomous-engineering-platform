@@ -4,10 +4,16 @@
   "description": "Autonomous Engineering Platform – IDE Agent with Plan & Act approvals and org memory.",
   "version": "0.1.0",
   "publisher": "navralabs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NNDSrinivas/autonomous-engineering-platform.git"
+  },
   "engines": { "vscode": "^1.89.0" },
   "categories": ["Other"],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onView:aep.chatView",
+    "onView:aep.planView"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -16,7 +22,8 @@
       { "command": "aep.startSession", "title": "AEP: Start Agent Session" },
       { "command": "aep.plan.approve", "title": "AEP: Approve Step" },
       { "command": "aep.plan.reject", "title": "AEP: Reject Step" },
-      { "command": "aep.applyPatch", "title": "AEP: Apply AI Patch" }
+      { "command": "aep.applyPatch", "title": "AEP: Apply AI Patch" },
+      { "command": "aep.debug.testWebviews", "title": "AEP: Debug Test Webviews" }
     ],
     "viewsContainers": {
       "activitybar": [
@@ -25,8 +32,18 @@
     },
     "views": {
       "aep": [
-        { "id": "aep.chatView", "name": "Agent", "icon": "$(comment-discussion)" },
-        { "id": "aep.planView", "name": "Plan & Act", "icon": "$(list-ordered)" }
+        { 
+          "id": "aep.chatView", 
+          "name": "Agent", 
+          "icon": "$(comment-discussion)",
+          "type": "webview"
+        },
+        { 
+          "id": "aep.planView", 
+          "name": "Plan & Act", 
+          "icon": "$(list-ordered)",
+          "type": "webview"
+        }
       ]
     },
     "configuration": {

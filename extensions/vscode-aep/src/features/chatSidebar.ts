@@ -101,49 +101,420 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AEP Agent</title>
   <style>
-    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 16px; }
-    .wrap { max-width: 400px; }
-    h2 { color: var(--vscode-foreground); margin-bottom: 16px; }
-    p { color: var(--vscode-descriptionForeground); margin-bottom: 16px; }
-    .issues { list-style: none; padding: 0; margin: 16px 0; }
-    .issues li { background: var(--vscode-list-hoverBackground); padding: 12px; margin: 8px 0; border-radius: 4px; cursor: pointer; border: 1px solid var(--vscode-contrastBorder); }
-    .issues li:hover { background: var(--vscode-list-activeSelectionBackground); }
-    .ask { margin-top: 16px; display: flex; gap: 8px; }
-    .ask input { flex: 1; padding: 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; }
-    .ask button { padding: 8px 16px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; }
-    .st { float: right; font-size: 0.8em; opacity: 0.7; }
+    :root {
+      --vscode-button-primary-background: #0e639c;
+      --vscode-button-primary-foreground: #ffffff;
+      --vscode-button-primary-hoverBackground: #1177bb;
+      --border-radius: 6px;
+      --spacing-xs: 4px;
+      --spacing-sm: 8px;
+      --spacing-md: 12px;
+      --spacing-lg: 16px;
+      --spacing-xl: 24px;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: var(--vscode-font-family);
+      color: var(--vscode-foreground);
+      background: var(--vscode-editor-background);
+      line-height: 1.4;
+      font-size: 13px;
+    }
+    
+    .container {
+      padding: var(--spacing-lg);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .header {
+      margin-bottom: var(--spacing-xl);
+    }
+    
+    .welcome-section {
+      background: var(--vscode-textBlockQuote-background);
+      border-left: 3px solid var(--vscode-focusBorder);
+      padding: var(--spacing-lg);
+      border-radius: var(--border-radius);
+      margin-bottom: var(--spacing-xl);
+    }
+    
+    .welcome-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: var(--spacing-sm);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+    
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse 2s infinite;
+    }
+    
+    .welcome-subtitle {
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+      margin-bottom: var(--spacing-md);
+    }
+    
+    .quick-actions {
+      display: flex;
+      gap: var(--spacing-sm);
+      flex-wrap: wrap;
+    }
+    
+    .btn {
+      padding: var(--spacing-sm) var(--spacing-md);
+      border: none;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+    }
+    
+    .btn-primary {
+      background: var(--vscode-button-primary-background);
+      color: var(--vscode-button-primary-foreground);
+    }
+    
+    .btn-primary:hover {
+      background: var(--vscode-button-primary-hoverBackground);
+    }
+    
+    .btn-secondary {
+      background: var(--vscode-button-secondaryBackground);
+      color: var(--vscode-button-secondaryForeground);
+      border: 1px solid var(--vscode-contrastBorder);
+    }
+    
+    .btn-secondary:hover {
+      background: var(--vscode-button-secondaryHoverBackground);
+    }
+    
+    .section {
+      margin-bottom: var(--spacing-xl);
+    }
+    
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: var(--spacing-md);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+    
+    .issues-container {
+      flex: 1;
+      overflow-y: auto;
+    }
+    
+    .issues-list {
+      list-style: none;
+      gap: var(--spacing-sm);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .issue-item {
+      background: var(--vscode-list-hoverBackground);
+      border: 1px solid var(--vscode-contrastBorder);
+      border-radius: var(--border-radius);
+      padding: var(--spacing-md);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    
+    .issue-item:hover {
+      background: var(--vscode-list-activeSelectionBackground);
+      border-color: var(--vscode-focusBorder);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .issue-header {
+      display: flex;
+      justify-content: between;
+      align-items: flex-start;
+      gap: var(--spacing-sm);
+      margin-bottom: var(--spacing-xs);
+    }
+    
+    .issue-key {
+      background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    
+    .issue-status {
+      background: var(--vscode-statusBar-background);
+      color: var(--vscode-statusBar-foreground);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      margin-left: auto;
+    }
+    
+    .issue-title {
+      font-weight: 500;
+      font-size: 13px;
+      line-height: 1.3;
+      margin-bottom: var(--spacing-xs);
+    }
+    
+    .issue-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground);
+    }
+    
+    .chat-input-section {
+      margin-top: auto;
+      padding-top: var(--spacing-lg);
+      border-top: 1px solid var(--vscode-contrastBorder);
+    }
+    
+    .input-container {
+      display: flex;
+      gap: var(--spacing-sm);
+      align-items: flex-end;
+    }
+    
+    .chat-input {
+      flex: 1;
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-input-border);
+      border-radius: var(--border-radius);
+      padding: var(--spacing-md);
+      font-family: inherit;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 40px;
+      max-height: 120px;
+    }
+    
+    .chat-input:focus {
+      outline: none;
+      border-color: var(--vscode-focusBorder);
+      box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+    }
+    
+    .chat-input::placeholder {
+      color: var(--vscode-input-placeholderForeground);
+    }
+    
+    .send-btn {
+      background: var(--vscode-button-primary-background);
+      color: var(--vscode-button-primary-foreground);
+      border: none;
+      border-radius: var(--border-radius);
+      padding: var(--spacing-md);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      min-width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .send-btn:hover:not(:disabled) {
+      background: var(--vscode-button-primary-hoverBackground);
+    }
+    
+    .send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: var(--spacing-xl);
+      color: var(--vscode-descriptionForeground);
+    }
+    
+    .empty-state-icon {
+      font-size: 32px;
+      margin-bottom: var(--spacing-md);
+      opacity: 0.5;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .tooltip {
+      position: relative;
+    }
+    
+    .tooltip:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--vscode-editorHoverWidget-background);
+      color: var(--vscode-editorHoverWidget-foreground);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      white-space: nowrap;
+      z-index: 1000;
+      border: 1px solid var(--vscode-contrastBorder);
+    }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <h2>${now}! 👋</h2>
-  <p>Select a Jira task to begin, or ask a question.</p>
-  <ul class="issues">
-    ${issues.map(i=>`<li data-key="${i.key}"><b>${i.key}</b> – ${i.summary} <span class="st">${i.status}</span></li>`).join('')}
-  </ul>
-  <div class="ask">
-    <input id="q" placeholder="Ask the agent about your project…" />
-    <button id="ask">Ask</button>
+  <div class="container">
+    <div class="header">
+      <div class="welcome-section">
+        <div class="welcome-title">
+          <span class="status-indicator"></span>
+          ${now}! Welcome to AEP Agent
+        </div>
+        <div class="welcome-subtitle">
+          Your AI-powered development assistant is ready to help
+        </div>
+        <div class="quick-actions">
+          <button class="btn btn-primary" onclick="signIn()">
+            🔑 Sign In
+          </button>
+          <button class="btn btn-secondary" onclick="startSession()">
+            🚀 Start Session
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">
+        📋 Available Issues (${issues.length})
+      </div>
+      <div class="issues-container">
+        ${issues.length > 0 ? `
+          <ul class="issues-list">
+            ${issues.map(issue => `
+              <li class="issue-item" data-key="${issue.key}" onclick="selectIssue('${issue.key}')">
+                <div class="issue-header">
+                  <span class="issue-key">${issue.key}</span>
+                  <span class="issue-status">${issue.status}</span>
+                </div>
+                <div class="issue-title">${issue.summary}</div>
+                <div class="issue-meta">
+                  <span>🔗 ID: ${issue.id}</span>
+                  <span>📋 Status: ${issue.status}</span>
+                </div>
+              </li>
+            `).join('')}
+          </ul>
+        ` : `
+          <div class="empty-state">
+            <div class="empty-state-icon">📝</div>
+            <div>No issues found. Sign in to load your JIRA issues.</div>
+          </div>
+        `}
+      </div>
+    </div>
+    
+    <div class="chat-input-section">
+      <div class="input-container">
+        <textarea 
+          class="chat-input" 
+          id="chatInput"
+          placeholder="Ask the agent about your project, request code analysis, or get help with implementation..."
+          rows="2"
+        ></textarea>
+        <button class="send-btn tooltip" data-tooltip="Send message" onclick="sendMessage()" id="sendBtn">
+          ➤
+        </button>
+      </div>
+    </div>
   </div>
-</div>
-<script>
-  const vscode = acquireVsCodeApi();
-  document.getElementById('ask')?.addEventListener('click', () => {
-    const input = document.getElementById('q');
-    const question = input.value.trim();
-    if (question) {
-      vscode.postMessage({ type: 'ask', question });
-      input.value = '';
+
+  <script>
+    const vscode = acquireVsCodeApi();
+    
+    function signIn() {
+      vscode.postMessage({ type: 'signin' });
     }
-  });
-  document.querySelectorAll('.issues li').forEach(li => {
-    li.addEventListener('click', () => {
-      const key = li.getAttribute('data-key');
+    
+    function startSession() {
+      vscode.postMessage({ type: 'start-session' });
+    }
+    
+    function selectIssue(key) {
       vscode.postMessage({ type: 'selectIssue', key });
+      
+      // Visual feedback
+      document.querySelectorAll('.issue-item').forEach(item => {
+        item.style.background = 'var(--vscode-list-hoverBackground)';
+      });
+      event.target.closest('.issue-item').style.background = 'var(--vscode-list-activeSelectionBackground)';
+    }
+    
+    function sendMessage() {
+      const input = document.getElementById('chatInput');
+      const message = input.value.trim();
+      
+      if (message) {
+        vscode.postMessage({ type: 'ask', question: message });
+        input.value = '';
+        input.style.height = '40px'; // Reset height
+        updateSendButton();
+      }
+    }
+    
+    function updateSendButton() {
+      const input = document.getElementById('chatInput');
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.disabled = !input.value.trim();
+    }
+    
+    // Auto-resize textarea
+    document.getElementById('chatInput').addEventListener('input', function() {
+      this.style.height = '40px';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+      updateSendButton();
     });
-  });
-</script>
+    
+    // Enter to send (Shift+Enter for new line)
+    document.getElementById('chatInput').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    
+    // Initialize
+    updateSendButton();
+  </script>
 </body>
 </html>`;
       this.view!.webview.html = html;

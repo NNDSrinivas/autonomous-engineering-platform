@@ -6,8 +6,8 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
-from .logging import logger
-from .metrics import REQ_COUNTER, REQ_LATENCY
+from .obs_logging import logger
+from .obs_metrics import REQ_COUNTER, REQ_LATENCY
 
 HEADER_REQ_ID = "X-Request-Id"
 HTTP_STATUS_INTERNAL_ERROR = "500"

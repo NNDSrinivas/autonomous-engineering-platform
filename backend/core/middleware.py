@@ -20,7 +20,7 @@ from .config import settings
 from .db import SessionLocal
 
 # Import metrics from observability module to avoid conflicts
-from .obs.metrics import REQ_LATENCY, REQ_COUNTER as REQ_STATUS
+from .obs.obs_metrics import REQ_LATENCY, REQ_COUNTER as REQ_STATUS
 
 # Additional metrics for this module
 REQ_INFLIGHT = Gauge("http_inflight_requests", "In-flight HTTP requests", ["service"])

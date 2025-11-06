@@ -13,9 +13,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
-from ..context.schemas import AgentNoteOut
-from ..context.service import parse_tags_field
-from ..core.db import get_db
+from ...context.schemas import AgentNoteOut
+from ...context.service import parse_tags_field
+from ...core.db import get_db
 
 logger = logging.getLogger(__name__)
 

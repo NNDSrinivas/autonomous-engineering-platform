@@ -254,8 +254,10 @@ export class EnhancedChatPanel {
       });
 
       if (response.ok) {
-        const tasks = await response.json() as JiraTasksResponse;
-        await this._presentJiraTasks(tasks.tasks || []);
+        const tasksResponse = await response.json() as JiraTasksResponse;
+        // Handle both 'tasks' and 'items' properties for API compatibility
+        const tasksList = tasksResponse.tasks || (tasksResponse as any).items || [];
+        await this._presentJiraTasks(tasksList);
       }
     } catch (error) {
       console.error('Failed to load JIRA tasks:', error);

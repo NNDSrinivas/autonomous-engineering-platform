@@ -22,7 +22,7 @@ import calendar
 from backend.core.db import get_db
 from backend.autonomous.enhanced_coding_engine import EnhancedAutonomousCodingEngine
 from backend.core.ai.llm_service import LLMService
-from backend.core.memory.vector_store import VectorStore
+from backend.core.memory_system.vector_store import VectorStore
 from backend.core.settings import settings
 import os
 from pathlib import Path

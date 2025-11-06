@@ -37,6 +37,7 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const EnhancedChatPanel_1 = require("./panels/EnhancedChatPanel");
+const http_1 = require("./utils/http");
 function activate(context) {
     console.log('🚀 AEP Enhanced Extension Activating...');
     // Register enhanced commands
@@ -90,7 +91,7 @@ function activate(context) {
             const config = vscode.workspace.getConfiguration('aep');
             const baseUrl = config.get('coreApi', 'http://localhost:8002');
             // Start OAuth device flow
-            const response = await fetch(`${baseUrl}/oauth/device/start`, {
+            const response = await (0, http_1.makeHttpRequest)(`${baseUrl}/oauth/device/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -103,10 +104,15 @@ function activate(context) {
             }
             const deviceData = await response.json();
             // Validate response structure with detailed error reporting
-            const requiredFields = ['verification_uri', 'user_code', 'device_code'];
-            const missingFields = requiredFields.filter(field => !deviceData[field]);
-            if (missingFields.length > 0) {
-                throw new Error(`Invalid response from authentication server: missing required fields: ${missingFields.join(', ')}`);
+            if (!deviceData.verification_uri || !deviceData.user_code || !deviceData.device_code) {
+                const missing = [];
+                if (!deviceData.verification_uri)
+                    missing.push('verification_uri');
+                if (!deviceData.user_code)
+                    missing.push('user_code');
+                if (!deviceData.device_code)
+                    missing.push('device_code');
+                throw new Error(`Invalid response from authentication server: missing required fields: ${missing.join(', ')}`);
             }
             // Show user code and open browser
             const selection = await vscode.window.showInformationMessage(`Please visit ${deviceData.verification_uri} and enter code: ${deviceData.user_code}`, 'Open Browser', 'Cancel');

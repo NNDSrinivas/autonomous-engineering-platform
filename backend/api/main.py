@@ -7,15 +7,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 # --- Observability imports (PR-28)
-from ..core.obs.logging import configure_json_logging
+from ..core.obs.obs_logging import configure_json_logging
 from ..core.obs.tracing import init_tracing, instrument_fastapi_app
-from ..core.obs.metrics import metrics_app, PROM_ENABLED
-from ..core.obs.middleware import ObservabilityMiddleware
+from ..core.obs.obs_metrics import metrics_app, PROM_ENABLED
+from ..core.obs.obs_middleware import ObservabilityMiddleware
 
 # --- Health & Resilience imports (PR-29)
 from ..core.health.router import router as health_router
 from ..core.health.shutdown import on_startup, on_shutdown
-from ..core.resilience.middleware import ResilienceMiddleware
+from ..core.resilience.resilience_middleware import ResilienceMiddleware
 
 from ..core.settings import settings
 
@@ -25,7 +25,7 @@ from ..core.middleware import AuditMiddleware
 
 # removed unused: RequestIDMiddleware (ObservabilityMiddleware provides this)
 from ..core.rate_limit.middleware import RateLimitMiddleware
-from ..core.audit.middleware import EnhancedAuditMiddleware
+from ..core.audit_service.middleware import EnhancedAuditMiddleware
 from ..core.cache.middleware import CacheMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
@@ -35,15 +35,15 @@ from ..workers.queue import process_meeting
 from ..workers.integrations import jira_sync, github_index
 from ..workers.answers import generate_answer
 from .tasks import router as tasks_router
-from .plan import router as plan_router
+from .routers.plan import router as plan_router
 from .deliver import router as deliver_router
-from .policy import router as policy_router
+from .routers.policy import router as policy_router
 from .change import router as change_router
 from .chat import router as chat_router
 from ..search.router import router as search_router
 from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
-from .memory import router as memory_router
+from .routers.memory import router as memory_router
 from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
@@ -55,8 +55,8 @@ from .routers.jira_integration import router as jira_integration_router
 from .routers.agent_planning import router as agent_planning_router
 from .routers.ai_codegen import router as ai_codegen_router
 from .routers.ai_feedback import router as ai_feedback_router
-from ..core.realtime import presence as presence_lifecycle
-from ..core.obs.logging import logger
+from ..core.realtime_engine import presence as presence_lifecycle
+from ..core.obs.obs_logging import logger
 
 # Initialize observability after imports
 configure_json_logging()

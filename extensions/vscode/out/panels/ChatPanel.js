@@ -44,6 +44,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChatPanel = void 0;
 const vscode = __importStar(require("vscode"));
+const http_1 = require("../utils/http");
 class ChatPanel {
     constructor(panel, extensionUri) {
         this._disposables = [];
@@ -226,7 +227,7 @@ class ChatPanel {
     async _generateResponse(userInput) {
         try {
             // Call enhanced LLM endpoint with conversation context
-            const response = await fetch(`${this._apiBase}/api/chat/respond`, {
+            const response = await (0, http_1.compatibleFetch)(`${this._apiBase}/api/chat/respond`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -274,8 +275,8 @@ class ChatPanel {
     async _fetchTeamContext() {
         try {
             const [tasksResponse, activityResponse] = await Promise.all([
-                fetch(`${this._apiBase}/api/jira/tasks`),
-                fetch(`${this._apiBase}/api/activity/recent`)
+                (0, http_1.compatibleFetch)(`${this._apiBase}/api/jira/tasks`),
+                (0, http_1.compatibleFetch)(`${this._apiBase}/api/activity/recent`)
             ]);
             const tasks = tasksResponse.ok ? await tasksResponse.json() : { items: [] };
             const activity = activityResponse.ok ? await activityResponse.json() : { items: [] };
@@ -291,7 +292,7 @@ class ChatPanel {
     async _loadProactiveSuggestions() {
         try {
             // Use memory graph to generate proactive suggestions via chat endpoint
-            const response = await fetch(`${this._apiBase}/api/chat/proactive`, {
+            const response = await (0, http_1.compatibleFetch)(`${this._apiBase}/api/chat/proactive`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -393,7 +394,7 @@ class ChatPanel {
         this._chatState.currentTask = taskKey;
         // Fetch context pack for selected task
         try {
-            const response = await fetch(`${this._apiBase}/api/context/task/${encodeURIComponent(taskKey)}`);
+            const response = await (0, http_1.compatibleFetch)(`${this._apiBase}/api/context/task/${encodeURIComponent(taskKey)}`);
             const contextPack = await response.json();
             this._addMessage({
                 id: this._generateMessageId('task-selected'),

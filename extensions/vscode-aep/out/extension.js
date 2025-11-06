@@ -240,25 +240,33 @@ const client_1 = __webpack_require__(/*! ./api/client */ "./src/api/client.ts");
 const config_1 = __webpack_require__(/*! ./config */ "./src/config.ts");
 async function activate(context) {
     console.log('🚀 AEP Extension activating...');
-    // Show activation in VS Code
-    vscode.window.showInformationMessage('AEP Extension activated successfully!');
-    const cfg = (0, config_1.getConfig)();
-    console.log('📊 Extension config:', { baseUrl: cfg.baseUrl, orgId: cfg.orgId });
-    const client = new client_1.AEPClient(context, cfg.baseUrl, cfg.orgId);
-    const approvals = new approvals_1.Approvals(context, client);
-    const chat = new chatSidebar_1.ChatSidebarProvider(context, client);
-    const plan = new planPanel_1.PlanPanelProvider(context, client, approvals);
-    context.subscriptions.push(vscode.window.registerWebviewViewProvider('aep.chatView', chat), vscode.window.registerWebviewViewProvider('aep.planView', plan), vscode.commands.registerCommand('aep.signIn', async () => {
-        await (0, deviceCode_1.ensureAuth)(context, client);
-        vscode.window.showInformationMessage('AEP: Signed in');
-        chat.refresh();
-        plan.refresh();
-    }), vscode.commands.registerCommand('aep.startSession', async () => {
-        await (0, deviceCode_1.ensureAuth)(context, client);
-        await chat.sendHello();
-    }), vscode.commands.registerCommand('aep.plan.approve', async () => approvals.approveSelected()), vscode.commands.registerCommand('aep.plan.reject', async () => approvals.rejectSelected()), vscode.commands.registerCommand('aep.applyPatch', async () => plan.applySelectedPatch()));
-    console.log('✅ AEP Extension activated successfully');
-    vscode.window.showInformationMessage('AEP Extension loaded! Check the Activity Bar for AEP icon.');
+    try {
+        // Show activation in VS Code
+        vscode.window.showInformationMessage('AEP Extension activated successfully!');
+        const cfg = (0, config_1.getConfig)();
+        console.log('📊 Extension config:', { baseUrl: cfg.baseUrl, orgId: cfg.orgId });
+        const client = new client_1.AEPClient(context, cfg.baseUrl, cfg.orgId);
+        const approvals = new approvals_1.Approvals(context, client);
+        const chat = new chatSidebar_1.ChatSidebarProvider(context, client);
+        const plan = new planPanel_1.PlanPanelProvider(context, client, approvals);
+        console.log('🔧 Registering webview providers...');
+        context.subscriptions.push(vscode.window.registerWebviewViewProvider('aep.chatView', chat), vscode.window.registerWebviewViewProvider('aep.planView', plan), vscode.commands.registerCommand('aep.signIn', async () => {
+            await (0, deviceCode_1.ensureAuth)(context, client);
+            vscode.window.showInformationMessage('AEP: Signed in');
+            chat.refresh();
+            plan.refresh();
+        }), vscode.commands.registerCommand('aep.startSession', async () => {
+            await (0, deviceCode_1.ensureAuth)(context, client);
+            await chat.sendHello();
+        }), vscode.commands.registerCommand('aep.plan.approve', async () => approvals.approveSelected()), vscode.commands.registerCommand('aep.plan.reject', async () => approvals.rejectSelected()), vscode.commands.registerCommand('aep.applyPatch', async () => plan.applySelectedPatch()));
+        console.log('✅ AEP Extension activated successfully');
+        console.log('Setting up vscode host providers...');
+        vscode.window.showInformationMessage('AEP Extension loaded! Check the Activity Bar for AEP icon.');
+    }
+    catch (error) {
+        console.error('❌ AEP Extension activation failed:', error);
+        vscode.window.showErrorMessage(`AEP Extension failed to activate: ${error}`);
+    }
 }
 function deactivate() {
     console.log('🛑 AEP Extension deactivating...');
@@ -379,9 +387,16 @@ class ChatSidebarProvider {
         this.client = client;
     }
     resolveWebviewView(view) {
-        this.view = view;
-        view.webview.options = { enableScripts: true };
-        this.render();
+        console.log('🔧 ChatSidebarProvider resolveWebviewView called');
+        try {
+            this.view = view;
+            view.webview.options = { enableScripts: true };
+            this.render();
+            console.log('✅ ChatSidebarProvider webview resolved successfully');
+        }
+        catch (error) {
+            console.error('❌ ChatSidebarProvider resolveWebviewView failed:', error);
+        }
     }
     refresh() { if (this.view)
         this.render(); }
@@ -398,48 +413,62 @@ class ChatSidebarProvider {
         const now = (0, time_1.greeting)();
         try {
             const issues = await this.client.listMyJiraIssues();
-            const html = `
-        <link rel="stylesheet" href="${this.cssUri('chat.css')}">
-        <div class="wrap">
-          <h2>${now}! 👋</h2>
-          <p>Select a Jira task to begin, or ask a question.</p>
-          <ul class="issues">
-            ${issues.map(i => `<li data-key="${i.key}"><b>${i.key}</b> – ${i.summary} <span class="st">${i.status}</span></li>`).join('')}
-          </ul>
-          <div class="ask">
-            <input id="q" placeholder="Ask the agent about your project…" />
-            <button id="ask">Ask</button>
-          </div>
-        </div>
-        <script>${this.script('chat.js')}</script>
-      `;
+            const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="${this.cssUri('chat.css')}">
+</head>
+<body>
+<div class="wrap">
+  <h2>${now}! 👋</h2>
+  <p>Select a Jira task to begin, or ask a question.</p>
+  <ul class="issues">
+    ${issues.map(i => `<li data-key="${i.key}"><b>${i.key}</b> – ${i.summary} <span class="st">${i.status}</span></li>`).join('')}
+  </ul>
+  <div class="ask">
+    <input id="q" placeholder="Ask the agent about your project…" />
+    <button id="ask">Ask</button>
+  </div>
+</div>
+<script>${this.script('chat.js')}</script>
+</body>
+</html>`;
             this.view.webview.html = html;
         }
         catch (error) {
             // Show sign-in UI when not authenticated or backend not available
-            const html = `
-        <link rel="stylesheet" href="${this.cssUri('chat.css')}">
-        <div class="wrap">
-          <h2>${now}! 👋</h2>
-          <p>Welcome to AEP Agent! Please sign in to get started.</p>
-          <div class="signin">
-            <button id="signin">🔑 Sign In to AEP</button>
-          </div>
-          <div class="status">
-            <p><small>Backend: <span id="status">Checking...</span></small></p>
-          </div>
-        </div>
-        <script>
-          const vscode = acquireVsCodeApi();
-          document.getElementById('signin')?.addEventListener('click', () => {
-            vscode.postMessage({ type: 'signin' });
-          });
-          
-          // Check backend status
-          fetch('http://localhost:8000/health').then(r => r.ok ? 'Connected' : 'Error').catch(() => 'Not running')
-            .then(status => document.getElementById('status').textContent = status);
-        </script>
-      `;
+            const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="${this.cssUri('chat.css')}">
+</head>
+<body>
+<div class="wrap">
+  <h2>${now}! 👋</h2>
+  <p>Welcome to AEP Agent! Please sign in to get started.</p>
+  <div class="signin">
+    <button id="signin">🔑 Sign In to AEP</button>
+  </div>
+  <div class="status">
+    <p><small>Backend: <span id="status">Checking...</span></small></p>
+  </div>
+</div>
+<script>
+  const vscode = acquireVsCodeApi();
+  document.getElementById('signin')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'signin' });
+  });
+  
+  // Check backend status
+  fetch('http://localhost:8000/health').then(r => r.ok ? 'Connected' : 'Error').catch(() => 'Not running')
+    .then(status => document.getElementById('status').textContent = status);
+</script>
+</body>
+</html>`;
             this.view.webview.html = html;
         }
         this.view.webview.onDidReceiveMessage(async (m) => {
@@ -532,9 +561,16 @@ class PlanPanelProvider {
         this.selectedPatch = null;
     }
     resolveWebviewView(view) {
-        this.view = view;
-        view.webview.options = { enableScripts: true };
-        this.render();
+        console.log('🔧 PlanPanelProvider resolveWebviewView called');
+        try {
+            this.view = view;
+            view.webview.options = { enableScripts: true };
+            this.render();
+            console.log('✅ PlanPanelProvider webview resolved successfully');
+        }
+        catch (error) {
+            console.error('❌ PlanPanelProvider resolveWebviewView failed:', error);
+        }
         view.webview.onDidReceiveMessage(async (m) => {
             if (m.type === 'load-plan' && m.issue) {
                 this.steps = await this.client.proposePlan(m.issue);
@@ -569,33 +605,40 @@ class PlanPanelProvider {
         vscode.window.showInformationMessage(res.applied ? 'Patch applied' : 'Patch failed');
     }
     render() {
-        const html = `
-      <link rel="stylesheet" href="${this.css('plan.css')}">
-      <div class="wrap">
-        <h3>Plan & Act</h3>
-        ${this.steps.length > 0 ? `
-        <div class="steps">
-          <ul>
-            ${this.steps.map((s, i) => `<li class="${i === this.selectedIndex ? 'sel' : ''}" data-i="${i}">${s.kind}: ${s.title}</li>`).join('')}
-          </ul>
-        </div>
-        <div class="details">
-          ${this.selectedPatch ? `<pre>${this.escape(this.selectedPatch)}</pre>` : '<em>Select a step</em>'}
-        </div>
-        <div class="actions">
-          <button id="approve">Approve</button>
-          <button id="reject">Reject</button>
-          <button id="apply">Apply Patch</button>
-        </div>
-        ` : `
-        <div class="empty">
-          <p>Select a JIRA task from the Agent panel to generate a plan.</p>
-          <p><small>Plans break down tasks into reviewable steps with code patches.</small></p>
-        </div>
-        `}
-      </div>
-      <script>${this.script('plan.js')}</script>
-    `;
+        const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="${this.css('plan.css')}">
+</head>
+<body>
+<div class="wrap">
+  <h3>Plan & Act</h3>
+  ${this.steps.length > 0 ? `
+  <div class="steps">
+    <ul>
+      ${this.steps.map((s, i) => `<li class="${i === this.selectedIndex ? 'sel' : ''}" data-i="${i}">${s.kind}: ${s.title}</li>`).join('')}
+    </ul>
+  </div>
+  <div class="details">
+    ${this.selectedPatch ? `<pre>${this.escape(this.selectedPatch)}</pre>` : '<em>Select a step</em>'}
+  </div>
+  <div class="actions">
+    <button id="approve">Approve</button>
+    <button id="reject">Reject</button>
+    <button id="apply">Apply Patch</button>
+  </div>
+  ` : `
+  <div class="empty">
+    <p>Select a JIRA task from the Agent panel to generate a plan.</p>
+    <p><small>Plans break down tasks into reviewable steps with code patches.</small></p>
+  </div>
+  `}
+</div>
+<script>${this.script('plan.js')}</script>
+</body>
+</html>`;
         this.view.webview.html = html;
     }
     css(name) { return this.view.webview.asWebviewUri(vscode.Uri.file(`${this.ctx.extensionPath}/media/${name}`)); }

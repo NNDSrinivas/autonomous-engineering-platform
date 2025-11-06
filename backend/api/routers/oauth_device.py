@@ -148,9 +148,11 @@ async def poll_device_code(request: DeviceCodePollRequest):
                 current_time - device_info["created_at"]
             ).total_seconds()
 
-            # Auto-approve after 30 seconds ONLY if explicit development flag is set
+            # Auto-approve after 30 seconds ONLY if BOTH explicit development flags are set
             if (
                 os.environ.get("OAUTH_DEVICE_AUTO_APPROVE", "false").lower() == "true"
+                and os.environ.get("OAUTH_DEVICE_USE_IN_MEMORY_STORE", "false").lower()
+                == "true"
                 and time_since_creation > 30
             ):
                 device_info["status"] = "authorized"

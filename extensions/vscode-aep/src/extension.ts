@@ -9,40 +9,48 @@ import { getConfig } from './config';
 export async function activate(context: vscode.ExtensionContext) {
   console.log('🚀 AEP Extension activating...');
   
-  // Show activation in VS Code
-  vscode.window.showInformationMessage('AEP Extension activated successfully!');
-  
-  const cfg = getConfig();
-  console.log('📊 Extension config:', { baseUrl: cfg.baseUrl, orgId: cfg.orgId });
-  
-  const client = new AEPClient(context, cfg.baseUrl, cfg.orgId);
-  const approvals = new Approvals(context, client);
+  try {
+    // Show activation in VS Code
+    vscode.window.showInformationMessage('AEP Extension activated successfully!');
+    
+    const cfg = getConfig();
+    console.log('📊 Extension config:', { baseUrl: cfg.baseUrl, orgId: cfg.orgId });
+    
+    const client = new AEPClient(context, cfg.baseUrl, cfg.orgId);
+    const approvals = new Approvals(context, client);
 
-  const chat = new ChatSidebarProvider(context, client);
-  const plan = new PlanPanelProvider(context, client, approvals);
+    const chat = new ChatSidebarProvider(context, client);
+    const plan = new PlanPanelProvider(context, client, approvals);
 
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('aep.chatView', chat),
-    vscode.window.registerWebviewViewProvider('aep.planView', plan),
+    console.log('🔧 Registering webview providers...');
+    
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider('aep.chatView', chat),
+      vscode.window.registerWebviewViewProvider('aep.planView', plan),
 
-    vscode.commands.registerCommand('aep.signIn', async () => {
-      await ensureAuth(context, client);
-      vscode.window.showInformationMessage('AEP: Signed in');
-      chat.refresh(); plan.refresh();
-    }),
+      vscode.commands.registerCommand('aep.signIn', async () => {
+        await ensureAuth(context, client);
+        vscode.window.showInformationMessage('AEP: Signed in');
+        chat.refresh(); plan.refresh();
+      }),
 
-    vscode.commands.registerCommand('aep.startSession', async () => {
-      await ensureAuth(context, client);
-      await chat.sendHello();
-    }),
+      vscode.commands.registerCommand('aep.startSession', async () => {
+        await ensureAuth(context, client);
+        await chat.sendHello();
+      }),
 
-    vscode.commands.registerCommand('aep.plan.approve', async () => approvals.approveSelected()),
-    vscode.commands.registerCommand('aep.plan.reject', async () => approvals.rejectSelected()),
-    vscode.commands.registerCommand('aep.applyPatch', async () => plan.applySelectedPatch())
-  );
-  
-  console.log('✅ AEP Extension activated successfully');
-  vscode.window.showInformationMessage('AEP Extension loaded! Check the Activity Bar for AEP icon.');
+      vscode.commands.registerCommand('aep.plan.approve', async () => approvals.approveSelected()),
+      vscode.commands.registerCommand('aep.plan.reject', async () => approvals.rejectSelected()),
+      vscode.commands.registerCommand('aep.applyPatch', async () => plan.applySelectedPatch())
+    );
+    
+    console.log('✅ AEP Extension activated successfully');
+    console.log('Setting up vscode host providers...');
+    vscode.window.showInformationMessage('AEP Extension loaded! Check the Activity Bar for AEP icon.');
+  } catch (error) {
+    console.error('❌ AEP Extension activation failed:', error);
+    vscode.window.showErrorMessage(`AEP Extension failed to activate: ${error}`);
+  }
 }
 
 export function deactivate() {

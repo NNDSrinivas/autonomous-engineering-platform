@@ -11,7 +11,15 @@ export class PlanPanelProvider implements vscode.WebviewViewProvider {
   constructor(private ctx: vscode.ExtensionContext, private client: AEPClient, private approvals: Approvals){}
 
   resolveWebviewView(view: vscode.WebviewView){
-    this.view = view; view.webview.options = { enableScripts: true }; this.render();
+    console.log('🔧 PlanPanelProvider resolveWebviewView called');
+    try {
+      this.view = view; 
+      view.webview.options = { enableScripts: true }; 
+      this.render();
+      console.log('✅ PlanPanelProvider webview resolved successfully');
+    } catch (error) {
+      console.error('❌ PlanPanelProvider resolveWebviewView failed:', error);
+    }
     view.webview.onDidReceiveMessage(async (m)=>{
       if(m.type==='load-plan' && m.issue){
         this.steps = await this.client.proposePlan(m.issue);
@@ -35,33 +43,40 @@ export class PlanPanelProvider implements vscode.WebviewViewProvider {
   }
 
   private render(){
-    const html = `
-      <link rel="stylesheet" href="${this.css('plan.css')}">
-      <div class="wrap">
-        <h3>Plan & Act</h3>
-        ${this.steps.length > 0 ? `
-        <div class="steps">
-          <ul>
-            ${this.steps.map((s,i)=>`<li class="${i===this.selectedIndex?'sel':''}" data-i="${i}">${s.kind}: ${s.title}</li>`).join('')}
-          </ul>
-        </div>
-        <div class="details">
-          ${this.selectedPatch? `<pre>${this.escape(this.selectedPatch)}</pre>` : '<em>Select a step</em>'}
-        </div>
-        <div class="actions">
-          <button id="approve">Approve</button>
-          <button id="reject">Reject</button>
-          <button id="apply">Apply Patch</button>
-        </div>
-        ` : `
-        <div class="empty">
-          <p>Select a JIRA task from the Agent panel to generate a plan.</p>
-          <p><small>Plans break down tasks into reviewable steps with code patches.</small></p>
-        </div>
-        `}
-      </div>
-      <script>${this.script('plan.js')}</script>
-    `;
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="${this.css('plan.css')}">
+</head>
+<body>
+<div class="wrap">
+  <h3>Plan & Act</h3>
+  ${this.steps.length > 0 ? `
+  <div class="steps">
+    <ul>
+      ${this.steps.map((s,i)=>`<li class="${i===this.selectedIndex?'sel':''}" data-i="${i}">${s.kind}: ${s.title}</li>`).join('')}
+    </ul>
+  </div>
+  <div class="details">
+    ${this.selectedPatch? `<pre>${this.escape(this.selectedPatch)}</pre>` : '<em>Select a step</em>'}
+  </div>
+  <div class="actions">
+    <button id="approve">Approve</button>
+    <button id="reject">Reject</button>
+    <button id="apply">Apply Patch</button>
+  </div>
+  ` : `
+  <div class="empty">
+    <p>Select a JIRA task from the Agent panel to generate a plan.</p>
+    <p><small>Plans break down tasks into reviewable steps with code patches.</small></p>
+  </div>
+  `}
+</div>
+<script>${this.script('plan.js')}</script>
+</body>
+</html>`;
     this.view!.webview.html = html;
   }
 

@@ -34,6 +34,13 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+
+# Define fallback type for ChatCompletionMessageParam (used when OpenAI unavailable)
+class FallbackChatCompletionMessageParam(TypedDict):
+    role: str  # "system", "user", "assistant", or "tool"
+    content: Union[str, List[str]]  # Message content
+
+
 # Import OpenAI for real AI capabilities
 try:
     from openai import OpenAI
@@ -45,11 +52,8 @@ try:
 except Exception as e:
     OPENAI_AVAILABLE = False
     logger.warning(f"⚠️ OpenAI client failed to initialize: {e}")
-
-    # Define a proper fallback type that matches OpenAI's ChatCompletionMessageParam structure
-    class ChatCompletionMessageParam(TypedDict):
-        role: str  # "system", "user", "assistant", or "tool"
-        content: Union[str, List[str]]  # Message content
+    # Use the fallback type when OpenAI is not available
+    ChatCompletionMessageParam = FallbackChatCompletionMessageParam
 
 
 app = FastAPI(

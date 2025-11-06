@@ -19,6 +19,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import the autonomous coding router
 from backend.api.routers.autonomous_coding import router as autonomous_coding_router
+from backend.api.routers.oauth_device import router as oauth_device_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +47,7 @@ app = FastAPI(
 
 # Include the autonomous coding router with concierge endpoints
 app.include_router(autonomous_coding_router, prefix="/api")
+app.include_router(oauth_device_router)
 
 # CORS middleware
 app.add_middleware(

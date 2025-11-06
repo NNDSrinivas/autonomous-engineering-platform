@@ -239,8 +239,11 @@ const approvals_1 = __webpack_require__(/*! ./features/approvals */ "./src/featu
 const client_1 = __webpack_require__(/*! ./api/client */ "./src/api/client.ts");
 const config_1 = __webpack_require__(/*! ./config */ "./src/config.ts");
 async function activate(context) {
-    console.log('AEP Extension activating...');
+    console.log('🚀 AEP Extension activating...');
+    // Show activation in VS Code
+    vscode.window.showInformationMessage('AEP Extension activated successfully!');
     const cfg = (0, config_1.getConfig)();
+    console.log('📊 Extension config:', { baseUrl: cfg.baseUrl, orgId: cfg.orgId });
     const client = new client_1.AEPClient(context, cfg.baseUrl, cfg.orgId);
     const approvals = new approvals_1.Approvals(context, client);
     const chat = new chatSidebar_1.ChatSidebarProvider(context, client);
@@ -254,10 +257,12 @@ async function activate(context) {
         await (0, deviceCode_1.ensureAuth)(context, client);
         await chat.sendHello();
     }), vscode.commands.registerCommand('aep.plan.approve', async () => approvals.approveSelected()), vscode.commands.registerCommand('aep.plan.reject', async () => approvals.rejectSelected()), vscode.commands.registerCommand('aep.applyPatch', async () => plan.applySelectedPatch()));
-    console.log('AEP Extension activated successfully');
+    console.log('✅ AEP Extension activated successfully');
     vscode.window.showInformationMessage('AEP Extension loaded! Check the Activity Bar for AEP icon.');
 }
-function deactivate() { }
+function deactivate() {
+    console.log('🛑 AEP Extension deactivating...');
+}
 
 
 /***/ }),

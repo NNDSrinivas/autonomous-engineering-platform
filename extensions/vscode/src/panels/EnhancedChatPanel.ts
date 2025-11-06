@@ -148,6 +148,11 @@ export class EnhancedChatPanel {
     this._initializeWithGreeting();
   }
 
+  /**
+   * Creates a new panel or shows the existing one
+   * @param extensionUri - VS Code extension URI for resource loading
+   * @returns The EnhancedChatPanel instance (either new or existing)
+   */
   public static createOrShow(extensionUri: vscode.Uri): EnhancedChatPanel {
     const column = vscode.ViewColumn.Beside;
 

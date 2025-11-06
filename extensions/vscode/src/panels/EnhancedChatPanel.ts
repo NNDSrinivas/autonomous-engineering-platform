@@ -113,12 +113,12 @@ export class EnhancedChatPanel {
     this._initializeWithGreeting();
   }
 
-  public static createOrShow(extensionUri: vscode.Uri) {
+  public static createOrShow(extensionUri: vscode.Uri): EnhancedChatPanel {
     const column = vscode.ViewColumn.Beside;
 
     if (EnhancedChatPanel.currentPanel) {
       EnhancedChatPanel.currentPanel._panel.reveal(column);
-      return;
+      return EnhancedChatPanel.currentPanel;
     }
 
     const panel = vscode.window.createWebviewPanel(
@@ -133,6 +133,11 @@ export class EnhancedChatPanel {
     );
 
     EnhancedChatPanel.currentPanel = new EnhancedChatPanel(panel, extensionUri);
+    return EnhancedChatPanel.currentPanel;
+  }
+
+  public async startAutonomousCoding(jiraKey: string) {
+    await this._handleJiraTaskSelection(jiraKey);
   }
 
   private async _initializeWithGreeting() {

@@ -20,6 +20,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Import the autonomous coding router
 from backend.api.routers.autonomous_coding import router as autonomous_coding_router
 from backend.api.routers.oauth_device import router as oauth_device_router
+from backend.api.routers.jira_integration import router as jira_integration_router
+from backend.api.routers.agent_planning import router as agent_planning_router
+from backend.api.routers.ai_codegen import router as ai_codegen_router
+from backend.api.routers.ai_feedback import router as ai_feedback_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

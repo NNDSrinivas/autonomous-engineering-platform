@@ -521,11 +521,31 @@ class ChatSidebarProvider {
         this.view = view;
         view.webview.options = { enableScripts: true };
         this.render();
-        view.webview.onDidReceiveMessage((m) => {
-            if (m.type === 'openExternal')
+        view.webview.onDidReceiveMessage(async (m) => {
+            console.log('ChatSidebar received message:', m);
+            if (m.type === 'openExternal') {
                 vscode.env.openExternal(vscode.Uri.parse(m.url));
-            if (m.type === 'pickIssue')
+            }
+            else if (m.type === 'openPortal') {
+                vscode.commands.executeCommand('aep.openPortal');
+            }
+            else if (m.type === 'pickIssue') {
                 vscode.commands.executeCommand('aep.startSession');
+            }
+            else if (m.type === 'signIn') {
+                vscode.commands.executeCommand('aep.signIn');
+                // Refresh after sign in attempt
+                setTimeout(() => this.render(), 2000);
+            }
+            else if (m.type === 'startSession') {
+                vscode.commands.executeCommand('aep.startSession');
+            }
+            else if (m.type === 'refresh') {
+                await this.render();
+            }
+            else if (m.type === 'chat' && m.message) {
+                await this.handleChatMessage(m.message);
+            }
         });
     }
     refresh() {
@@ -542,44 +562,125 @@ class ChatSidebarProvider {
         }
     }
     async render() {
-        try {
-            const issues = await this.client.listMyJiraIssues();
-            const now = (0, time_1.greeting)();
-            const makeIssue = (i) => `
-        <div class="card">
-          <div class="row">
-            <span class="badge gray">${i.status}</span>
-            <span class="h">${i.key}</span>
+        // For now, always show the landing page until we implement proper auth
+        const now = (0, time_1.greeting)();
+        // Modern AI assistant landing page
+        const body = `
+      <div class="landing-container">
+        <div class="hero-section">
+          <div class="logo-area">
+            <div class="logo">🤖</div>
+            <h1>AEP Agent</h1>
+            <p class="tagline">Your AI-powered development assistant</p>
           </div>
-          <div>${i.summary}</div>
-          <div class="row" style="margin-top:8px;">
-            ${i.url ? `<a class="link" data-url="${i.url}">Open in Jira</a>` : ''}
-            <vscode-button data-key="${i.key}" appearance="secondary">Plan</vscode-button>
-          </div>
-        </div>`;
-            const body = `
-        <div class="card">
-          <div class="row"><span class="badge green">●</span><span class="h">${now}, welcome to AEP Agent</span></div>
-          <div>Ask about your project, request code analysis, or pick a Jira issue to start planning.</div>
-          <div class="row" style="margin-top:8px;">
-            <vscode-button id="signIn">Sign In</vscode-button>
-            <vscode-button id="start" appearance="secondary">Start Session</vscode-button>
+          
+          <div class="auth-section">
+            <button class="btn-primary" id="getStarted">
+              <span class="btn-icon">🚀</span>
+              Get Started
+            </button>
+            <button class="btn-secondary" id="signIn">
+              <span class="btn-icon">🔐</span>
+              Sign In
+            </button>
           </div>
         </div>
-        ${issues.length ? issues.map(makeIssue).join('') : `<div class="empty">No issues found. Sign in to load your Jira issues.</div>`}`;
-            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css'], ['chat.js']);
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon">💻</div>
+            <h3>Code Analysis</h3>
+            <p>Get instant AI-powered code reviews and suggestions</p>
+          </div>
+          
+          <div class="feature-card">
+            <div class="feature-icon">📋</div>
+            <h3>Task Planning</h3>
+            <p>Break down JIRA issues into actionable steps</p>
+          </div>
+          
+          <div class="feature-card">
+            <div class="feature-icon">🔧</div>
+            <h3>Auto Patches</h3>
+            <p>Apply AI-generated code changes with confidence</p>
+          </div>
+          
+          <div class="feature-card">
+            <div class="feature-icon">👥</div>
+            <h3>Team Collaboration</h3>
+            <p>Share insights and collaborate with your team</p>
+          </div>
+        </div>
+
+        <div class="quick-start">
+          <h3>Quick Start</h3>
+          <div class="quick-actions">
+            <button class="action-btn" id="tryDemo">
+              <span class="action-icon">🎯</span>
+              <div>
+                <div class="action-title">Try Demo</div>
+                <div class="action-desc">Explore features without signing in</div>
+              </div>
+            </button>
+            
+            <button class="action-btn" id="loadSample">
+              <span class="action-icon">📝</span>
+              <div>
+                <div class="action-title">Load Sample Tasks</div>
+                <div class="action-desc">See how AEP handles real projects</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="demo-chat" id="demoChat" style="display: none;">
+          <div class="chat-header">
+            <h3>� Chat with AEP Agent</h3>
+            <button class="close-btn" id="closeDemo">×</button>
+          </div>
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input-area">
+            <textarea id="chatInput" placeholder="Ask me anything about your code..."></textarea>
+            <button id="sendMessage" class="send-btn">Send</button>
+          </div>
+        </div>
+      </div>`;
+        this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
+    }
+    async handleChatMessage(message) {
+        try {
+            // Show user message immediately
+            this.showChatMessage('user', message);
+            // Show typing indicator
+            this.showChatMessage('system', '🤔 Thinking...');
+            // Send to AI backend
+            const response = await fetch(`${this.client['baseUrl']}/api/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message, type: 'question' })
+            });
+            if (response.ok) {
+                const result = await response.json();
+                this.showChatMessage('assistant', result.response || result.message || 'I received your message but had trouble generating a response.');
+            }
+            else {
+                this.showChatMessage('assistant', 'Sorry, I\'m having trouble connecting right now. Please try again later.');
+            }
         }
         catch (error) {
-            // Show error state
-            const body = `
-        <div class="card">
-          <div class="h">Welcome to AEP Agent</div>
-          <div>Please sign in to connect your IDE with AEP.</div>
-          <div class="row" style="margin-top:8px;">
-            <vscode-button id="signIn">Sign In</vscode-button>
-          </div>
-        </div>`;
-            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css'], ['chat.js']);
+            console.error('Chat error:', error);
+            this.showChatMessage('assistant', 'I encountered an error processing your message. Please check your connection and try again.');
+        }
+    }
+    showChatMessage(role, content) {
+        // Send message to webview for display
+        if (this.view) {
+            this.view.webview.postMessage({
+                type: 'chatMessage',
+                role,
+                content,
+                timestamp: new Date().toLocaleTimeString()
+            });
         }
     }
 }
@@ -715,9 +816,9 @@ class PlanPanelProvider {
             if (m.type === 'load-demo-plan') {
                 // Load demo plan for testing
                 this.steps = [
-                    { description: 'Analyze requirements and create project structure', status: 'pending', patch: '// Demo patch 1\n+ Create new component\n- Remove old file' },
-                    { description: 'Implement core functionality', status: 'pending', patch: '// Demo patch 2\n+ Add main logic\n+ Update tests' },
-                    { description: 'Add error handling and validation', status: 'pending', patch: '// Demo patch 3\n+ Try-catch blocks\n+ Input validation' }
+                    { kind: 'setup', title: 'Analyze requirements and create project structure', description: 'Analyze requirements and create project structure', status: 'pending', patch: '// Demo patch 1\n+ Create new component\n- Remove old file' },
+                    { kind: 'implement', title: 'Implement core functionality', description: 'Implement core functionality', status: 'pending', patch: '// Demo patch 2\n+ Add main logic\n+ Update tests' },
+                    { kind: 'validate', title: 'Add error handling and validation', description: 'Add error handling and validation', status: 'pending', patch: '// Demo patch 3\n+ Try-catch blocks\n+ Input validation' }
                 ];
                 this.selectedIndex = 0;
                 this.selectedPatch = this.steps[0]?.patch || null;

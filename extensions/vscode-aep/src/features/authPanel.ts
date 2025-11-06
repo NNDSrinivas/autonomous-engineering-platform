@@ -34,7 +34,7 @@ export class AuthPanel implements vscode.WebviewViewProvider {
         const flow = await this.client.startDeviceCode();
         view.webview.postMessage({ type:'flow', flow });
         vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-        const tok = await this.client.pollDeviceCode(flow.device_code);
+        await this.client.pollDeviceCode(flow.device_code);
         view.webview.postMessage({ type:'done' });
       }
     });

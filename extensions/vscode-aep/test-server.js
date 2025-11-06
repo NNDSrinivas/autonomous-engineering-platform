@@ -131,7 +131,7 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ error: 'Not found' }));
 });
 
-const PORT = 8000;
+const PORT = 8001;
 server.listen(PORT, () => {
   console.log(`🚀 AEP Test Server running on http://localhost:${PORT}`);
   console.log('📋 Available endpoints:');
@@ -142,5 +142,5 @@ server.listen(PORT, () => {
   console.log('  POST /api/oauth/device/code - Device code flow');
   console.log('  POST /api/oauth/device/token - Get access token');
   console.log('\n💡 Configure VS Code extension with:');
-  console.log('  aep.baseUrl: http://localhost:8000');
+  console.log('  aep.baseUrl: http://localhost:8001');
 });

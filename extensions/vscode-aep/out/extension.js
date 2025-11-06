@@ -456,7 +456,7 @@ class AuthPanel {
                 const flow = await this.client.startDeviceCode();
                 view.webview.postMessage({ type: 'flow', flow });
                 vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-                const tok = await this.client.pollDeviceCode(flow.device_code);
+                await this.client.pollDeviceCode(flow.device_code);
                 view.webview.postMessage({ type: 'done' });
             }
         });
@@ -575,14 +575,12 @@ class ChatSidebarProvider {
           </div>
           
           <div class="auth-section">
-            <button class="btn-primary" id="getStarted">
-              <span class="btn-icon">🚀</span>
-              Get Started
-            </button>
-            <button class="btn-secondary" id="signIn">
-              <span class="btn-icon">🔐</span>
-              Sign In
-            </button>
+            <vscode-button id="getStarted">
+              🚀 Get Started
+            </vscode-button>
+            <vscode-button appearance="secondary" id="signIn">
+              🔐 Sign In
+            </vscode-button>
           </div>
         </div>
 

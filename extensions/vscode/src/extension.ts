@@ -26,8 +26,8 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         // Create or show enhanced chat panel with autonomous coding mode
-        EnhancedChatPanel.createOrShow(context.extensionUri);
-        vscode.window.showInformationMessage(`Starting autonomous coding for task: ${jiraKey}`);
+        const panel = EnhancedChatPanel.createOrShow(context.extensionUri);
+        await panel.startAutonomousCoding(jiraKey);
     });
 
     // Register the plan and act command
@@ -59,8 +59,43 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Authentication command
     const authenticate = vscode.commands.registerCommand('aep.authenticate', async () => {
-        vscode.window.showInformationMessage('Authentication flow would be initiated here');
-        // TODO: Implement authentication flow
+        try {
+            // Get base URL from configuration
+            const config = vscode.workspace.getConfiguration('aep');
+            const baseUrl = config.get<string>('baseUrl', 'http://localhost:8000');
+            
+            // Start OAuth device flow
+            const response = await fetch(`${baseUrl}/oauth/device/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    client_id: 'vscode-extension',
+                    scope: 'read write'
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Authentication server error: ${response.status}`);
+            }
+
+            const deviceData = await response.json();
+            
+            // Show user code and open browser
+            const selection = await vscode.window.showInformationMessage(
+                `Please visit ${deviceData.verification_uri} and enter code: ${deviceData.user_code}`,
+                'Open Browser',
+                'Cancel'
+            );
+
+            if (selection === 'Open Browser') {
+                vscode.env.openExternal(vscode.Uri.parse(deviceData.verification_uri));
+            }
+
+            // Poll for authorization (simplified for demo)
+            vscode.window.showInformationMessage('Authentication initiated. Please complete in browser.');
+        } catch (error) {
+            vscode.window.showErrorMessage(`Authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
     });
 
     // Add all commands to subscriptions

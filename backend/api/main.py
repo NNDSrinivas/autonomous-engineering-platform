@@ -53,8 +53,8 @@ from .routers.rate_limit_admin import router as rate_limit_admin_router
 from .routers.oauth_device import router as oauth_device_router
 from .routers.jira_integration import router as jira_integration_router
 from .routers.agent_planning import router as agent_planning_router
-from .routers import ai_codegen
-from .routers import ai_feedback
+from .routers.ai_codegen import router as ai_codegen_router
+from .routers.ai_feedback import router as ai_feedback_router
 from ..core.realtime import presence as presence_lifecycle
 from ..core.obs.logging import logger
 
@@ -235,8 +235,8 @@ app.include_router(ctx_router)
 app.include_router(live_plan_router)  # PR-19: Live Plan Mode
 app.include_router(presence_router.router)  # PR-22: Presence & Cursor Sync
 app.include_router(plan_router)
-app.include_router(ai_codegen.router)  # PR-31: AI Code Generation
-app.include_router(ai_feedback.router)  # PR-32: AI Feedback & Learning
+app.include_router(ai_codegen_router)  # PR-31: AI Code Generation
+app.include_router(ai_feedback_router)  # PR-32: AI Feedback & Learning
 
 # ---- Feature 1 endpoints (Finalize + Query) ----
 

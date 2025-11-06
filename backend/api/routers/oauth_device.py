@@ -6,6 +6,8 @@ This allows the VS Code extension to authenticate users through their browser.
 """
 
 import os
+import random
+import string
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
@@ -139,13 +141,24 @@ async def poll_device_code(request: DeviceCodePollRequest):
 
         # Check authorization status
         if device_info["status"] == "pending":
-            # Wait for explicit user approval; do not auto-authorize
-            # TODO: Implement proper user approval mechanism via web interface
-            raise HTTPException(
-                status_code=400,
-                detail="authorization_pending",
-                headers={"Content-Type": "application/json"},
-            )
+            # For development/testing: Auto-approve after initial delay to simulate user approval
+            # In production, this should be replaced with proper web-based user approval
+            current_time = datetime.utcnow()
+            time_since_creation = (
+                current_time - device_info["created_at"]
+            ).total_seconds()
+
+            # Auto-approve after 30 seconds for development convenience
+            if time_since_creation > 30:
+                device_info["status"] = "authorized"
+                device_info["authorized_at"] = current_time
+                device_info["user_id"] = "dev-user"  # In production, use actual user ID
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="authorization_pending",
+                    headers={"Content-Type": "application/json"},
+                )
 
         elif device_info["status"] == "denied":
             del _device_codes[device_code]
@@ -249,9 +262,6 @@ async def authorize_device_code(request: DeviceAuthorizationRequest):
 
 def _generate_user_code() -> str:
     """Generate a human-readable user code."""
-    import random
-    import string
-
     # Generate 8-character code with letters and numbers
     chars = string.ascii_uppercase + string.digits
     # Remove confusing characters

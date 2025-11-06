@@ -7,9 +7,14 @@ import { AEPClient } from './api/client';
 import { getConfig } from './config';
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log('AEP Extension activating...');
+  console.log('🚀 AEP Extension activating...');
+  
+  // Show activation in VS Code
+  vscode.window.showInformationMessage('AEP Extension activated successfully!');
   
   const cfg = getConfig();
+  console.log('📊 Extension config:', { baseUrl: cfg.baseUrl, orgId: cfg.orgId });
+  
   const client = new AEPClient(context, cfg.baseUrl, cfg.orgId);
   const approvals = new Approvals(context, client);
 
@@ -36,8 +41,10 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('aep.applyPatch', async () => plan.applySelectedPatch())
   );
   
-  console.log('AEP Extension activated successfully');
+  console.log('✅ AEP Extension activated successfully');
   vscode.window.showInformationMessage('AEP Extension loaded! Check the Activity Bar for AEP icon.');
 }
 
-export function deactivate() {}
+export function deactivate() {
+  console.log('🛑 AEP Extension deactivating...');
+}

@@ -15,9 +15,9 @@ from datetime import datetime, timedelta
 # Production safety check
 if os.environ.get("OAUTH_DEVICE_USE_IN_MEMORY_STORE", "false").lower() != "true":
     raise RuntimeError(
-        "In-memory device code and access token store is enabled. "
-        "This is NOT suitable for production. "
-        "Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=true ONLY for development/testing."
+        "In-memory device code and access token store is NOT suitable for production. "
+        "Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=true in your environment to acknowledge you are running in development/testing mode. "
+        "Replace with Redis or persistent database before production deployment."
     )
 
 router = APIRouter(prefix="/oauth", tags=["OAuth Device Code"])
@@ -184,6 +184,77 @@ async def poll_device_code(request: DeviceCodePollRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to poll device code: {str(e)}"
+        )
+
+
+class DeviceAuthorizationRequest(BaseModel):
+    user_code: str = Field(description="User code to authorize")
+    action: str = Field(description="Authorization action: 'approve' or 'deny'")
+
+
+class DeviceAuthorizationResponse(BaseModel):
+    message: str = Field(description="Authorization result message")
+    user_code: str = Field(description="User code that was authorized")
+
+
+@router.post("/device/authorize", response_model=DeviceAuthorizationResponse)
+async def authorize_device_code(request: DeviceAuthorizationRequest):
+    """
+    Authorize or deny a device code by user code.
+    
+    This endpoint allows users to approve or deny device authorization requests
+    through a web interface or API call.
+    """
+    try:
+        # Find device code by user code
+        device_code = None
+        for dc, info in _device_codes.items():
+            if info["user_code"] == request.user_code:
+                device_code = dc
+                break
+        
+        if not device_code:
+            raise HTTPException(
+                status_code=404,
+                detail="Invalid user code"
+            )
+        
+        device_info = _device_codes[device_code]
+        
+        # Check if already expired
+        if datetime.utcnow() > device_info["expires_at"]:
+            del _device_codes[device_code]
+            raise HTTPException(
+                status_code=400,
+                detail="Device code has expired"
+            )
+        
+        # Update authorization status
+        if request.action.lower() == "approve":
+            device_info["status"] = "authorized"
+            device_info["authorized_at"] = datetime.utcnow()
+            message = f"Device with user code {request.user_code} has been authorized"
+        elif request.action.lower() == "deny":
+            device_info["status"] = "denied"
+            device_info["denied_at"] = datetime.utcnow()
+            message = f"Device with user code {request.user_code} has been denied"
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid action. Must be 'approve' or 'deny'"
+            )
+        
+        return DeviceAuthorizationResponse(
+            message=message,
+            user_code=request.user_code
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to authorize device: {str(e)}"
         )
 
 

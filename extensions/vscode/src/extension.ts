@@ -1,206 +1,84 @@
 import * as vscode from 'vscode';
-import { AgentPanel } from './panels/AgentPanel';
-import { PlanActPanel } from './panels/PlanActPanel';
-import { AuthManager } from './auth/AuthManager';
-import { AEPApiClient } from './api/AEPApiClient';
+import { EnhancedChatPanel } from './panels/EnhancedChatPanel';
+export function activate(context: vscode.ExtensionContext) {
+    console.log('🚀 AEP Enhanced Extension Activating...');
 
-/**
- * AEP VS Code Extension - Production Ready
- * 
- * Provides Cline-like capabilities with enterprise intelligence:
- * - Morning briefings with Jira task context
- * - Step-by-step plan & act workflow with approvals
- * - Cross-source memory with citations
- * - OAuth device flow authentication
- * - Real-time collaboration awareness
- */
+    // Register enhanced commands
+    const enhancedChatCommand = vscode.commands.registerCommand('aep.openEnhancedChat', () => {
+        EnhancedChatPanel.createOrShow(context.extensionUri);
+    });
 
-let agentPanel: AgentPanel | undefined;
-let planActPanel: PlanActPanel | undefined;
-let authManager: AuthManager;
-let apiClient: AEPApiClient;
+    // Register legacy chat command for backward compatibility
+    const legacyChatCommand = vscode.commands.registerCommand('aep.openChat', () => {
+        // For now, redirect to enhanced chat
+        EnhancedChatPanel.createOrShow(context.extensionUri);
+    });
 
-export async function activate(context: vscode.ExtensionContext) {
-    console.log('AEP Autonomous Agent activating...');
+    // Register autonomous coding commands
+    const startAutonomousCoding = vscode.commands.registerCommand('aep.startAutonomousCoding', async () => {
+        const jiraKey = await vscode.window.showInputBox({
+            prompt: 'Enter JIRA ticket key (e.g., ENG-123)',
+            placeHolder: 'ENG-123'
+        });
 
-    // Initialize core services
-    authManager = new AuthManager(context);
-    apiClient = new AEPApiClient(authManager);
+        if (!jiraKey) {
+            return;
+        }
 
-    // Register authentication status
-    await updateAuthenticationContext();
+        // Create or show enhanced chat panel with autonomous coding mode
+        EnhancedChatPanel.createOrShow(context.extensionUri);
+        vscode.window.showInformationMessage(`Starting autonomous coding for task: ${jiraKey}`);
+    });
 
-    // Register all commands
-    registerCommands(context);
+    // Register the plan and act command
+    const planAndAct = vscode.commands.registerCommand('aep.planAndAct', () => {
+        EnhancedChatPanel.createOrShow(context.extensionUri);
+        vscode.window.showInformationMessage('Opening plan & act mode');
+    });
 
-    // Auto-greeting on startup if configured
-    const config = vscode.workspace.getConfiguration('aep');
-    if (config.get('autoGreeting') && await authManager.isAuthenticated()) {
-        setTimeout(() => {
-            vscode.commands.executeCommand('aep.morningBrief');
-        }, 2000); // Delay to let VS Code finish loading
-    }
+    // Register agent commands
+    const openAgent = vscode.commands.registerCommand('aep.openAgent', () => {
+        EnhancedChatPanel.createOrShow(context.extensionUri);
+    });
 
-    console.log('AEP Autonomous Agent activated successfully!');
-}
+    const morningBrief = vscode.commands.registerCommand('aep.morningBrief', () => {
+        EnhancedChatPanel.createOrShow(context.extensionUri);
+        vscode.window.showInformationMessage('Good morning! Opening your briefing...');
+    });
 
-function registerCommands(context: vscode.ExtensionContext) {
+    // Register Jira related commands
+    const pickJiraTask = vscode.commands.registerCommand('aep.pickJiraTask', async () => {
+        EnhancedChatPanel.createOrShow(context.extensionUri);
+        vscode.window.showInformationMessage('Opening JIRA task picker...');
+    });
+
+    const showPlan = vscode.commands.registerCommand('aep.showPlan', () => {
+        EnhancedChatPanel.createOrShow(context.extensionUri);
+        vscode.window.showInformationMessage('Showing current plan...');
+    });
+
     // Authentication command
     const authenticate = vscode.commands.registerCommand('aep.authenticate', async () => {
-        try {
-            const success = await authManager.authenticate();
-            if (success) {
-                await updateAuthenticationContext();
-                vscode.window.showInformationMessage('Successfully authenticated with AEP!');
-                
-                // Auto-show morning brief after authentication
-                setTimeout(() => {
-                    vscode.commands.executeCommand('aep.morningBrief');
-                }, 1000);
-            }
-        } catch (error) {
-            vscode.window.showErrorMessage(`Authentication failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
+        vscode.window.showInformationMessage('Authentication flow would be initiated here');
+        // TODO: Implement authentication flow
     });
 
-    // Open Agent Panel command
-    const openAgent = vscode.commands.registerCommand('aep.openAgent', async () => {
-        if (!await authManager.isAuthenticated()) {
-            const result = await vscode.window.showInformationMessage(
-                'Please authenticate with AEP first.',
-                'Authenticate'
-            );
-            if (result === 'Authenticate') {
-                vscode.commands.executeCommand('aep.authenticate');
-            }
-            return;
-        }
-
-        agentPanel = AgentPanel.createOrShow(context.extensionUri, apiClient);
-    });
-
-    // Morning Brief command
-    const morningBrief = vscode.commands.registerCommand('aep.morningBrief', async () => {
-        if (!await authManager.isAuthenticated()) {
-            vscode.commands.executeCommand('aep.authenticate');
-            return;
-        }
-
-        try {
-            // Show morning brief in agent panel
-            agentPanel = AgentPanel.createOrShow(context.extensionUri, apiClient);
-            agentPanel.showMorningBrief();
-            
-            // Also show notification with quick stats
-            const briefData = await apiClient.getMorningBrief();
-            const taskCount = briefData.jiraTasks?.length || 0;
-            const message = `Good morning! You have ${taskCount} Jira task${taskCount !== 1 ? 's' : ''} assigned.`;
-            
-            const result = await vscode.window.showInformationMessage(
-                message,
-                'View Tasks',
-                'Pick Task',
-                'Open Chat'
-            );
-
-            switch (result) {
-                case 'View Tasks':
-                    agentPanel.focusOnTasks();
-                    break;
-                case 'Pick Task':
-                    vscode.commands.executeCommand('aep.pickJiraTask');
-                    break;
-                case 'Open Chat':
-                    vscode.window.showInformationMessage('Chat panel coming soon!');
-                    break;
-            }
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to load morning brief: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-    });
-
-    // Pick Jira Task command
-    const pickJiraTask = vscode.commands.registerCommand('aep.pickJiraTask', async () => {
-        if (!await authManager.isAuthenticated()) {
-            vscode.commands.executeCommand('aep.authenticate');
-            return;
-        }
-
-        try {
-            const tasks = await apiClient.getJiraTasks();
-            
-            if (!tasks || tasks.length === 0) {
-                vscode.window.showInformationMessage('No Jira tasks assigned to you.');
-                return;
-            }
-
-            // Show quick pick for task selection
-            const items = tasks.map(task => ({
-                label: task.key,
-                description: task.summary,
-                detail: `${task.status} • ${task.priority} • ${task.assignee}`,
-                task
-            }));
-
-            const selected = await vscode.window.showQuickPick(items, {
-                placeHolder: 'Select a Jira task to work on',
-                matchOnDescription: true,
-                matchOnDetail: true
-            });
-
-            if (selected) {
-                // Start task-centric workflow
-                planActPanel = PlanActPanel.createOrShow(context.extensionUri, apiClient);
-                planActPanel.startTaskWorkflow(selected.task);
-            }
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to load Jira tasks: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-    });
-
-    // Plan & Act command
-    const planAndAct = vscode.commands.registerCommand('aep.planAndAct', async () => {
-        if (!await authManager.isAuthenticated()) {
-            vscode.commands.executeCommand('aep.authenticate');
-            return;
-        }
-
-        planActPanel = PlanActPanel.createOrShow(context.extensionUri, apiClient);
-    });
-
-    // Show Plan command
-    const showPlan = vscode.commands.registerCommand('aep.showPlan', async () => {
-        if (!await authManager.isAuthenticated()) {
-            vscode.commands.executeCommand('aep.authenticate');
-            return;
-        }
-
-        if (planActPanel) {
-            planActPanel.reveal();
-        } else {
-            vscode.commands.executeCommand('aep.planAndAct');
-        }
-    });
-
-    // Register all commands
+    // Add all commands to subscriptions
     context.subscriptions.push(
-        authenticate,
+        enhancedChatCommand,
+        legacyChatCommand,
+        startAutonomousCoding,
+        planAndAct,
         openAgent,
         morningBrief,
         pickJiraTask,
-        planAndAct,
-        showPlan
+        showPlan,
+        authenticate
     );
-}
 
-async function updateAuthenticationContext() {
-    const isAuthenticated = await authManager.isAuthenticated();
-    vscode.commands.executeCommand('setContext', 'aep.authenticated', isAuthenticated);
+    console.log('✅ AEP Enhanced Extension Activated!');
 }
 
 export function deactivate() {
-    // Clean up resources
-    agentPanel?.dispose();
-    planActPanel?.dispose();
-    authManager?.dispose();
+    console.log('🛑 AEP Enhanced Extension Deactivated');
 }

@@ -67,6 +67,9 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
             <div class="logo">🤖</div>
             <h1>AEP Agent</h1>
             <p class="tagline">Your AI-powered development assistant</p>
+            <div class="status-indicator status-disconnected">
+              ⚠️ Not connected - Authentication required
+            </div>
           </div>
           
           <div class="auth-section">
@@ -76,6 +79,9 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
             <vscode-button appearance="secondary" id="signIn">
               🔐 Sign In
             </vscode-button>
+            <p style="margin-top: 1rem; font-size: 0.85em; color: var(--vscode-descriptionForeground); text-align: center;">
+              ℹ️ Requires AEP backend server for authentication
+            </p>
           </div>
         </div>
 

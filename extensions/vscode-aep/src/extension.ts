@@ -60,9 +60,14 @@ export async function activate(context: vscode.ExtensionContext) {
       authProvider,
 
       vscode.commands.registerCommand('aep.signIn', async () => {
-        await ensureAuth(context, client);
-        vscode.window.showInformationMessage('AEP: Signed in');
-        chat.refresh(); plan.refresh();
+        try {
+          await ensureAuth(context, client);
+          vscode.window.showInformationMessage('✅ AEP: Successfully signed in');
+          chat.refresh(); plan.refresh();
+        } catch (error) {
+          console.error('Authentication failed:', error);
+          vscode.window.showErrorMessage('❌ AEP: Sign in failed. Please check your connection and try again.');
+        }
       }),
 
       vscode.commands.registerCommand('aep.startSession', async () => {

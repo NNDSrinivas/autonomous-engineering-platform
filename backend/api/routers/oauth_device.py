@@ -5,6 +5,7 @@ Provides secure authentication without client secrets using OAuth 2.0 device cod
 This allows the VS Code extension to authenticate users through their browser.
 """
 
+import logging
 import os
 import random
 import string
@@ -21,6 +22,14 @@ if os.environ.get("OAUTH_DEVICE_USE_IN_MEMORY_STORE", "false").lower() != "true"
         "Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=true in your environment to acknowledge you are running in development/testing mode. "
         "Replace with Redis or persistent database before production deployment."
     )
+
+# Log warning about insecure development mode
+logger = logging.getLogger(__name__)
+logger.warning(
+    "🚨 SECURITY WARNING: OAuth device code flow is running in DEVELOPMENT MODE with in-memory storage. "
+    "This is NOT suitable for production! The OAUTH_DEVICE_USE_IN_MEMORY_STORE flag is enabled. "
+    "Replace with Redis or persistent database before production deployment."
+)
 
 router = APIRouter(prefix="/oauth", tags=["OAuth Device Code"])
 

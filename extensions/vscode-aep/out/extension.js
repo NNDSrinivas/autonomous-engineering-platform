@@ -417,14 +417,29 @@ class ChatSidebarProvider {
     }
     async render() {
         const now = (0, time_1.greeting)();
+        console.log('🎨 ChatSidebarProvider render() called');
         try {
+            console.log('🔍 Attempting to fetch JIRA issues...');
             const issues = await this.client.listMyJiraIssues();
+            console.log('✅ Successfully fetched issues:', issues.length);
             const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="${this.cssUri('chat.css')}">
+  <style>
+    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 16px; }
+    .wrap { max-width: 400px; }
+    h2 { color: var(--vscode-foreground); margin-bottom: 16px; }
+    p { color: var(--vscode-descriptionForeground); margin-bottom: 16px; }
+    .issues { list-style: none; padding: 0; margin: 16px 0; }
+    .issues li { background: var(--vscode-list-hoverBackground); padding: 12px; margin: 8px 0; border-radius: 4px; cursor: pointer; border: 1px solid var(--vscode-contrastBorder); }
+    .issues li:hover { background: var(--vscode-list-activeSelectionBackground); }
+    .ask { margin-top: 16px; display: flex; gap: 8px; }
+    .ask input { flex: 1; padding: 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; }
+    .ask button { padding: 8px 16px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; }
+    .st { float: right; font-size: 0.8em; opacity: 0.7; }
+  </style>
 </head>
 <body>
 <div class="wrap">
@@ -438,19 +453,45 @@ class ChatSidebarProvider {
     <button id="ask">Ask</button>
   </div>
 </div>
-<script>${this.script('chat.js')}</script>
+<script>
+  const vscode = acquireVsCodeApi();
+  document.getElementById('ask')?.addEventListener('click', () => {
+    const input = document.getElementById('q');
+    const question = input.value.trim();
+    if (question) {
+      vscode.postMessage({ type: 'ask', question });
+      input.value = '';
+    }
+  });
+  document.querySelectorAll('.issues li').forEach(li => {
+    li.addEventListener('click', () => {
+      const key = li.getAttribute('data-key');
+      vscode.postMessage({ type: 'selectIssue', key });
+    });
+  });
+</script>
 </body>
 </html>`;
             this.view.webview.html = html;
         }
         catch (error) {
+            console.warn('⚠️ Could not fetch issues, showing sign-in UI:', error);
             // Show sign-in UI when not authenticated or backend not available
             const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="${this.cssUri('chat.css')}">
+  <style>
+    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 16px; }
+    .wrap { max-width: 400px; }
+    h2 { color: var(--vscode-foreground); margin-bottom: 16px; }
+    p { color: var(--vscode-descriptionForeground); margin-bottom: 16px; }
+    .signin button { padding: 12px 24px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .signin button:hover { background: var(--vscode-button-hoverBackground); }
+    .status { margin-top: 16px; padding: 12px; background: var(--vscode-textBlockQuote-background); border-left: 4px solid var(--vscode-textBlockQuote-border); border-radius: 4px; }
+    .error { color: var(--vscode-errorForeground); font-family: monospace; font-size: 12px; margin-top: 8px; }
+  </style>
 </head>
 <body>
 <div class="wrap">
@@ -460,7 +501,16 @@ class ChatSidebarProvider {
     <button id="signin">🔑 Sign In to AEP</button>
   </div>
   <div class="status">
-    <p><small>Backend: <span id="status">Checking...</span></small></p>
+    <p><strong>Status:</strong> <span id="status">Not authenticated</span></p>
+    <div class="error">Error: ${error instanceof Error ? error.message : String(error)}</div>
+  </div>
+  <div style="margin-top: 20px;">
+    <p><strong>Getting Started:</strong></p>
+    <ol>
+      <li>Click "Sign In to AEP" above</li>
+      <li>Complete the OAuth flow</li>
+      <li>Start working with JIRA issues</li>
+    </ol>
   </div>
 </div>
 <script>
@@ -468,22 +518,19 @@ class ChatSidebarProvider {
   document.getElementById('signin')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'signin' });
   });
-  
-  // Check backend status
-  fetch('http://localhost:8000/health').then(r => r.ok ? 'Connected' : 'Error').catch(() => 'Not running')
-    .then(status => document.getElementById('status').textContent = status);
 </script>
 </body>
 </html>`;
             this.view.webview.html = html;
         }
+        // Set up message handling
         this.view.webview.onDidReceiveMessage(async (m) => {
-            if (m.type === 'pick-issue') {
-                vscode.commands.executeCommand('revealView', 'aep.planView');
-                vscode.commands.executeCommand('aep.startSession');
+            if (m.type === 'selectIssue') {
+                vscode.commands.executeCommand('workbench.view.extension.aep');
+                vscode.window.showInformationMessage(`Selected issue: ${m.key}`);
             }
             if (m.type === 'ask') {
-                vscode.window.showInformationMessage('Question sent (wire to backend Q&A endpoint)');
+                vscode.window.showInformationMessage(`Question: ${m.question}`);
             }
             if (m.type === 'signin') {
                 vscode.commands.executeCommand('aep.signIn');
@@ -584,6 +631,18 @@ class PlanPanelProvider {
                 this.selectedPatch = this.steps[0]?.patch || null;
                 this.render();
             }
+            if (m.type === 'load-demo-plan') {
+                // Load demo plan for testing
+                this.steps = [
+                    { description: 'Analyze requirements and create project structure', status: 'pending', patch: '// Demo patch 1\n+ Create new component\n- Remove old file' },
+                    { description: 'Implement core functionality', status: 'pending', patch: '// Demo patch 2\n+ Add main logic\n+ Update tests' },
+                    { description: 'Add error handling and validation', status: 'pending', patch: '// Demo patch 3\n+ Try-catch blocks\n+ Input validation' }
+                ];
+                this.selectedIndex = 0;
+                this.selectedPatch = this.steps[0]?.patch || null;
+                this.render();
+                vscode.window.showInformationMessage('Demo plan loaded! 🚀');
+            }
             if (m.type === 'select' && typeof m.index === 'number') {
                 this.selectedIndex = m.index;
                 this.selectedPatch = this.steps[m.index]?.patch || null;
@@ -611,55 +670,118 @@ class PlanPanelProvider {
         vscode.window.showInformationMessage(res.applied ? 'Patch applied' : 'Patch failed');
     }
     render() {
+        console.log('🎨 PlanPanelProvider render() called with steps:', this.steps.length);
+        // Show default content if no steps are loaded
+        if (this.steps.length === 0) {
+            const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 16px; }
+    .wrap { max-width: 400px; }
+    h2 { color: var(--vscode-foreground); margin-bottom: 16px; }
+    p { color: var(--vscode-descriptionForeground); margin-bottom: 16px; }
+    .placeholder { text-align: center; padding: 40px 20px; border: 2px dashed var(--vscode-contrastBorder); border-radius: 8px; background: var(--vscode-textBlockQuote-background); }
+    .placeholder h3 { margin-bottom: 16px; color: var(--vscode-foreground); }
+    .sample-issue { background: var(--vscode-list-hoverBackground); padding: 12px; margin: 8px 0; border-radius: 4px; cursor: pointer; border: 1px solid var(--vscode-contrastBorder); }
+    .sample-issue:hover { background: var(--vscode-list-activeSelectionBackground); }
+    button { padding: 8px 16px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; margin: 4px; }
+    button:hover { background: var(--vscode-button-hoverBackground); }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h2>📋 Plan & Act</h2>
+  <div class="placeholder">
+    <h3>🚀 Ready to Plan!</h3>
+    <p>Select a JIRA issue from the Agent tab to generate an execution plan.</p>
+    <div style="margin-top: 20px;">
+      <p><strong>How it works:</strong></p>
+      <ol style="text-align: left; display: inline-block;">
+        <li>Choose a JIRA issue in the Agent tab</li>
+        <li>AI generates a step-by-step plan</li>
+        <li>Review and approve each step</li>
+        <li>Apply code changes automatically</li>
+      </ol>
+    </div>
+    <div style="margin-top: 20px;">
+      <button id="demo-plan">🧪 Load Demo Plan</button>
+    </div>
+  </div>
+</div>
+<script>
+  const vscode = acquireVsCodeApi();
+  document.getElementById('demo-plan')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'load-demo-plan' });
+  });
+</script>
+</body>
+</html>`;
+            this.view.webview.html = html;
+            return;
+        }
+        // Show actual plan content
         const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="${this.css('plan.css')}">
+  <style>
+    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 16px; }
+    .wrap { max-width: 500px; }
+    h2 { color: var(--vscode-foreground); margin-bottom: 16px; }
+    .steps { list-style: none; padding: 0; }
+    .step { background: var(--vscode-list-hoverBackground); padding: 12px; margin: 8px 0; border-radius: 4px; cursor: pointer; border: 1px solid var(--vscode-contrastBorder); }
+    .step.selected { background: var(--vscode-list-activeSelectionBackground); border-color: var(--vscode-focusBorder); }
+    .step:hover { background: var(--vscode-list-activeSelectionBackground); }
+    .actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+    button { padding: 8px 16px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: var(--vscode-button-hoverBackground); }
+    button.approve { background: var(--vscode-testing-iconPassed); }
+    button.reject { background: var(--vscode-testing-iconFailed); }
+    .patch { margin-top: 16px; padding: 12px; background: var(--vscode-textCodeBlock-background); border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; border: 1px solid var(--vscode-contrastBorder); }
+  </style>
 </head>
 <body>
 <div class="wrap">
-  <h3>Plan & Act</h3>
-  ${this.steps.length > 0 ? `
-  <div class="steps">
-    <ul>
-      ${this.steps.map((s, i) => `<li class="${i === this.selectedIndex ? 'sel' : ''}" data-i="${i}">${s.kind}: ${s.title}</li>`).join('')}
-    </ul>
-  </div>
-  <div class="details">
-    ${this.selectedPatch ? `<pre>${this.escape(this.selectedPatch)}</pre>` : '<em>Select a step</em>'}
-  </div>
+  <h2>📋 Execution Plan (${this.steps.length} steps)</h2>
+  <ol class="steps">
+    ${this.steps.map((step, i) => `
+      <li class="step ${i === this.selectedIndex ? 'selected' : ''}" data-index="${i}">
+        <strong>Step ${i + 1}:</strong> ${step.description || step.task || 'Untitled step'}
+        ${step.status ? `<span style="float: right; color: var(--vscode-descriptionForeground);">${step.status}</span>` : ''}
+      </li>
+    `).join('')}
+  </ol>
   <div class="actions">
-    <button id="approve">Approve</button>
-    <button id="reject">Reject</button>
-    <button id="apply">Apply Patch</button>
+    <button class="approve" id="approve">✅ Approve Step</button>
+    <button class="reject" id="reject">❌ Reject Step</button>
+    ${this.selectedPatch ? '<button id="apply-patch">🔧 Apply Patch</button>' : ''}
   </div>
-  ` : `
-  <div class="empty">
-    <p>Select a JIRA task from the Agent panel to generate a plan.</p>
-    <p><small>Plans break down tasks into reviewable steps with code patches.</small></p>
-  </div>
-  `}
+  ${this.selectedPatch ? `<div class="patch"><strong>Selected Patch:</strong><br><pre>${this.selectedPatch.substring(0, 500)}${this.selectedPatch.length > 500 ? '...' : ''}</pre></div>` : ''}
 </div>
-<script>${this.script('plan.js')}</script>
+<script>
+  const vscode = acquireVsCodeApi();
+  document.querySelectorAll('.step').forEach((step, index) => {
+    step.addEventListener('click', () => {
+      vscode.postMessage({ type: 'select', index });
+    });
+  });
+  document.getElementById('approve')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'approve' });
+  });
+  document.getElementById('reject')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'reject' });
+  });
+  document.getElementById('apply-patch')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'applyPatch' });
+  });
+</script>
 </body>
 </html>`;
         this.view.webview.html = html;
-    }
-    css(name) { return this.view.webview.asWebviewUri(vscode.Uri.file(`${this.ctx.extensionPath}/media/${name}`)); }
-    escape(s) { return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
-    script(name) {
-        if (name === 'plan.js')
-            return `(() => {
-    const vscode = acquireVsCodeApi();
-    const ul = document.querySelector('.steps ul');
-    ul?.addEventListener('click', (e)=>{ const li = (e.target as HTMLElement).closest('li'); if(!li) return; const i = Number(li.getAttribute('data-i')); vscode.postMessage({type:'select', index:i}); });
-    document.getElementById('approve')?.addEventListener('click', ()=> vscode.postMessage({type:'approve'}));
-    document.getElementById('reject')?.addEventListener('click', ()=> vscode.postMessage({type:'reject'}));
-    document.getElementById('apply')?.addEventListener('click', ()=> vscode.postMessage({type:'applyPatch'}));
-  })();`;
-        return '';
     }
 }
 exports.PlanPanelProvider = PlanPanelProvider;

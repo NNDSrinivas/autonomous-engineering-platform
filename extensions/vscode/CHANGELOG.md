@@ -8,11 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0-rc1] - 2025-11-06
 
 ### Breaking Changes
-- Complete extension rewrite with modern architecture
-- Removed dependency on agent-core module  
-- New Enhanced Chat Panel with improved UI/UX
-- Updated authentication flow with OAuth device code
-- Modernized webview implementation with VS Code UI Toolkit
+- **Complete extension rewrite with modern architecture**
+- **REMOVED: agent-core module dependency** 
+  - Removed `baseUrl` and `paths` configuration in tsconfig.json for agent-core imports
+  - All `agent-core/*` import paths are no longer valid
+  - Extension now uses direct backend API integration instead of agent-core abstraction
+  - Migration: Replace agent-core imports with direct API calls to backend services
+- **New Enhanced Chat Panel with improved UI/UX**
+- **Updated authentication flow with OAuth device code**
+- **Modernized webview implementation with VS Code UI Toolkit**
 
 ### Added
 - Enhanced chat panel with JIRA integration

@@ -24,9 +24,17 @@ export async function activate(context: vscode.ExtensionContext) {
 
     console.log('🔧 Registering webview providers...');
     
+    const chatProvider = vscode.window.registerWebviewViewProvider('aep.chatView', chat);
+    const planProvider = vscode.window.registerWebviewViewProvider('aep.planView', plan);
+    
+    console.log('📋 Registered providers:', {
+      chatView: 'aep.chatView',
+      planView: 'aep.planView'
+    });
+    
     context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider('aep.chatView', chat),
-      vscode.window.registerWebviewViewProvider('aep.planView', plan),
+      chatProvider,
+      planProvider,
 
       vscode.commands.registerCommand('aep.signIn', async () => {
         await ensureAuth(context, client);

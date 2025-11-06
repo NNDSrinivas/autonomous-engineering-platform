@@ -250,7 +250,13 @@ async function activate(context) {
         const chat = new chatSidebar_1.ChatSidebarProvider(context, client);
         const plan = new planPanel_1.PlanPanelProvider(context, client, approvals);
         console.log('🔧 Registering webview providers...');
-        context.subscriptions.push(vscode.window.registerWebviewViewProvider('aep.chatView', chat), vscode.window.registerWebviewViewProvider('aep.planView', plan), vscode.commands.registerCommand('aep.signIn', async () => {
+        const chatProvider = vscode.window.registerWebviewViewProvider('aep.chatView', chat);
+        const planProvider = vscode.window.registerWebviewViewProvider('aep.planView', plan);
+        console.log('📋 Registered providers:', {
+            chatView: 'aep.chatView',
+            planView: 'aep.planView'
+        });
+        context.subscriptions.push(chatProvider, planProvider, vscode.commands.registerCommand('aep.signIn', async () => {
             await (0, deviceCode_1.ensureAuth)(context, client);
             vscode.window.showInformationMessage('AEP: Signed in');
             chat.refresh();

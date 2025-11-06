@@ -1,5 +1,15 @@
 import * as vscode from 'vscode';
 import { EnhancedChatPanel } from './panels/EnhancedChatPanel';
+
+// API Response Interfaces
+interface DeviceCodeResponse {
+    verification_uri: string;
+    user_code: string;
+    device_code: string;
+    expires_in?: number;
+    interval?: number;
+}
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('🚀 AEP Enhanced Extension Activating...');
 
@@ -78,14 +88,15 @@ export function activate(context: vscode.ExtensionContext) {
                 throw new Error(`Authentication server error: ${response.status}`);
             }
 
-            const deviceData = await response.json() as any;
+            const deviceData = await response.json() as DeviceCodeResponse;
             
             // Validate response structure with detailed error reporting
-            const requiredFields = ['verification_uri', 'user_code', 'device_code'];
-            const missingFields = requiredFields.filter(field => !deviceData[field]);
-            
-            if (missingFields.length > 0) {
-                throw new Error(`Invalid response from authentication server: missing required fields: ${missingFields.join(', ')}`);
+            if (!deviceData.verification_uri || !deviceData.user_code || !deviceData.device_code) {
+                const missing = [];
+                if (!deviceData.verification_uri) missing.push('verification_uri');
+                if (!deviceData.user_code) missing.push('user_code');
+                if (!deviceData.device_code) missing.push('device_code');
+                throw new Error(`Invalid response from authentication server: missing required fields: ${missing.join(', ')}`);
             }
             
             // Show user code and open browser

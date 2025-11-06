@@ -59,6 +59,41 @@ interface CodingStep {
   userApproved?: boolean;
 }
 
+// API Response Interfaces
+interface JiraTask {
+  key: string;
+  summary: string;
+  description?: string;
+  status: string;
+  assignee?: string;
+  priority?: string;
+}
+
+interface JiraTasksResponse {
+  tasks: JiraTask[];
+  total: number;
+}
+
+interface StepExecutionResult {
+  success: boolean;
+  status?: string;
+  step?: string;
+  file_path?: string;
+  next_step?: {
+    description: string;
+    id?: string;
+  };
+  result?: any;
+  error?: string;
+  files_modified?: string[];
+}
+
+interface ChatResponse {
+  content: string;
+  metadata?: any;
+  suggestions?: string[];
+}
+
 export class EnhancedChatPanel {
   public static currentPanel: EnhancedChatPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
@@ -213,8 +248,8 @@ export class EnhancedChatPanel {
       });
 
       if (response.ok) {
-        const tasks = await response.json() as any;
-        await this._presentJiraTasks(tasks.items || []);
+        const tasks = await response.json() as JiraTasksResponse;
+        await this._presentJiraTasks(tasks.tasks || []);
       }
     } catch (error) {
       console.error('Failed to load JIRA tasks:', error);
@@ -350,7 +385,7 @@ ${taskData.next_action}
         })
       });
 
-      const result = await response.json() as any;
+      const result = await response.json() as StepExecutionResult;
       this._hideTypingIndicator();
 
       if (result.status === 'completed') {
@@ -549,7 +584,7 @@ ${taskData.next_action}
       });
 
       if (response.ok) {
-        return await response.json() as any;
+        return await response.json() as ChatResponse;
       } else {
         throw new Error(`API error: ${response.status}`);
       }

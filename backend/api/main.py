@@ -131,6 +131,15 @@ app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 
+# VS Code Extension API endpoints (Phase 2)
+from .routers.oauth_device import router as oauth_device_router
+from .routers.jira_integration import router as jira_integration_router  
+from .routers.agent_planning import router as agent_planning_router
+
+app.include_router(oauth_device_router)
+app.include_router(jira_integration_router)
+app.include_router(agent_planning_router)
+
 # Admin RBAC endpoints (PR-24)
 app.include_router(admin_rbac_router)
 

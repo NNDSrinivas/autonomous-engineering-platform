@@ -1,0 +1,60 @@
+{
+  "name": "aep-agent",
+  "displayName": "AEP Agent (Preview)",
+  "description": "Autonomous Engineering Platform – IDE Agent with Plan & Act approvals and org memory.",
+  "version": "0.1.0",
+  "publisher": "navralabs",
+  "engines": { "vscode": "^1.89.0" },
+  "categories": ["Other"],
+  "contributes": {
+    "commands": [
+      { "command": "aep.signIn", "title": "AEP: Sign In" },
+      { "command": "aep.startSession", "title": "AEP: Start Agent Session" },
+      { "command": "aep.plan.approve", "title": "AEP: Approve Step" },
+      { "command": "aep.plan.reject", "title": "AEP: Reject Step" },
+      { "command": "aep.applyPatch", "title": "AEP: Apply AI Patch" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "aep", "title": "AEP", "icon": "media/chat.svg" }
+      ]
+    },
+    "views": {
+      "aep": [
+        { "id": "aep.chatView", "name": "Agent", "icon": "$(comment-discussion)" },
+        { "id": "aep.planView", "name": "Plan & Act", "icon": "$(list-ordered)" }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "AEP Agent",
+      "properties": {
+        "aep.baseUrl": {
+          "type": "string","default": "http://localhost:8000","description": "AEP backend base URL"
+        },
+        "aep.orgId": {
+          "type": "string","default": "org-dev","description": "Organization ID"
+        },
+        "aep.llm": {
+          "type": "string","default": "gpt-4o-mini","markdownDescription": "Preferred LLM model (router may override)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "webpack --mode production",
+    "compile": "webpack --mode development",
+    "watch": "webpack --watch",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.89.0",
+    "@types/node": "^20.11.30",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.4.5",
+    "webpack": "^5.91.0",
+    "webpack-cli": "^5.1.4",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1"
+  }
+}

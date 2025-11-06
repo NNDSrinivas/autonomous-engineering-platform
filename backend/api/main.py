@@ -235,6 +235,7 @@ app.include_router(ctx_router)
 app.include_router(live_plan_router)  # PR-19: Live Plan Mode
 app.include_router(presence_router.router)  # PR-22: Presence & Cursor Sync
 app.include_router(plan_router)
+# Note: These routers already include /api prefix internally (ai_codegen: /api/ai, ai_feedback: /api/feedback)
 app.include_router(ai_codegen_router)  # PR-31: AI Code Generation
 app.include_router(ai_feedback_router)  # PR-32: AI Feedback & Learning
 

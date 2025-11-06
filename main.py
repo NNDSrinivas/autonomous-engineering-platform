@@ -95,7 +95,9 @@ def get_ai_response(prompt: str, system_prompt: Optional[str] = None) -> str:
         return "AI service is not available. Please check your OpenAI API key configuration."
 
     try:
-        messages = []
+        from openai.types.chat import ChatCompletionMessageParam
+        
+        messages: list[ChatCompletionMessageParam] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})

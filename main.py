@@ -44,7 +44,7 @@ except Exception as e:
     OPENAI_AVAILABLE = False
     logger.warning(f"⚠️ OpenAI client failed to initialize: {e}")
     # Define a fallback type when OpenAI is not available
-    ChatCompletionMessageParam = dict
+    ChatCompletionMessageParam = Dict[str, Any]
 
 app = FastAPI(
     title="Autonomous Engineering Intelligence Platform",

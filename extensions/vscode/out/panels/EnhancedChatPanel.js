@@ -171,7 +171,7 @@ class EnhancedChatPanel {
             if (response.ok) {
                 const tasksResponse = await response.json();
                 // Handle both 'tasks' and 'items' properties for API compatibility
-                const tasksList = tasksResponse.tasks || tasksResponse.items || [];
+                const tasksList = 'tasks' in tasksResponse ? tasksResponse.tasks : tasksResponse.items;
                 await this._presentJiraTasks(tasksList);
             }
         }

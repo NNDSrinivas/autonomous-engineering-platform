@@ -536,7 +536,6 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ChatSidebarProvider = void 0;
 const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
-const time_1 = __webpack_require__(/*! ../util/time */ "./src/util/time.ts");
 const view_1 = __webpack_require__(/*! ../webview/view */ "./src/webview/view.ts");
 class ChatSidebarProvider {
     constructor(ctx, client) {
@@ -589,7 +588,6 @@ class ChatSidebarProvider {
     }
     async render() {
         // For now, always show the landing page until we implement proper auth
-        const now = (0, time_1.greeting)();
         // Modern AI assistant landing page
         const body = `
       <div class="landing-container">
@@ -980,27 +978,6 @@ class KV {
     set(k, v) { return this.ctx.globalState.update(k, v); }
 }
 exports.KV = KV;
-
-
-/***/ }),
-
-/***/ "./src/util/time.ts":
-/*!**************************!*\
-  !*** ./src/util/time.ts ***!
-  \**************************/
-/***/ ((__unused_webpack_module, exports) => {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.greeting = greeting;
-function greeting(now = new Date()) {
-    const h = now.getHours();
-    if (h < 12)
-        return 'Good morning';
-    if (h < 18)
-        return 'Good afternoon';
-    return 'Good evening';
-}
 
 
 /***/ }),

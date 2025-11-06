@@ -66,7 +66,7 @@ class EnhancedChatPanel {
                     await this._handleStepApproval(message.taskId, message.stepId, false);
                     break;
                 case 'selectJiraTask':
-                    await this._handleJiraTaskSelection(message.jiraKey);
+                    await this.startAutonomousCoding(message.jiraKey);
                     break;
                 case 'viewFile':
                     await this._openFilePreview(message.filePath);
@@ -97,7 +97,34 @@ class EnhancedChatPanel {
         return EnhancedChatPanel.currentPanel;
     }
     async startAutonomousCoding(jiraKey) {
-        await this._handleJiraTaskSelection(jiraKey);
+        // Show loading indicator
+        this._showTypingIndicator('Analyzing task and gathering context...');
+        try {
+            // Create task from JIRA with full context
+            const response = await fetch(`${this._apiBase}/api/autonomous/create-from-jira`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jira_key: jiraKey,
+                    user_context: this._chatState.userContext
+                })
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to create task: ${response.status}`);
+            }
+            const taskData = await response.json();
+            // Present comprehensive task overview
+            await this._presentTaskOverview(taskData);
+        }
+        catch (error) {
+            this._hideTypingIndicator();
+            this._addMessage({
+                id: `error-${Date.now()}`,
+                type: 'system',
+                content: `Sorry, I couldn't analyze that task. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                timestamp: new Date()
+            });
+        }
     }
     async _initializeWithGreeting() {
         const timeOfDay = this._getTimeOfDay();
@@ -170,36 +197,6 @@ class EnhancedChatPanel {
             }
         };
         this._addMessage(tasksMessage);
-    }
-    async _handleJiraTaskSelection(jiraKey) {
-        // Show loading indicator
-        this._showTypingIndicator('Analyzing task and gathering context...');
-        try {
-            // Create task from JIRA with full context
-            const response = await fetch(`${this._apiBase}/api/autonomous/create-from-jira`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jira_key: jiraKey,
-                    user_context: this._chatState.userContext
-                })
-            });
-            if (!response.ok) {
-                throw new Error(`Failed to create task: ${response.status}`);
-            }
-            const taskData = await response.json();
-            // Present comprehensive task overview
-            await this._presentTaskOverview(taskData);
-        }
-        catch (error) {
-            this._hideTypingIndicator();
-            this._addMessage({
-                id: `error-${Date.now()}`,
-                type: 'system',
-                content: `Sorry, I couldn't analyze that task. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                timestamp: new Date()
-            });
-        }
     }
     async _presentTaskOverview(taskData) {
         this._hideTypingIndicator();

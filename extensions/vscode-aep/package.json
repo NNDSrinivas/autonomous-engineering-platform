@@ -11,9 +11,7 @@
   "engines": { "vscode": "^1.89.0" },
   "categories": ["Other"],
   "activationEvents": [
-    "onStartupFinished",
-    "onView:aep.chatView",
-    "onView:aep.planView"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {

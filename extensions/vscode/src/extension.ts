@@ -62,7 +62,7 @@ export function activate(context: vscode.ExtensionContext) {
         try {
             // Get base URL from configuration
             const config = vscode.workspace.getConfiguration('aep');
-            const baseUrl = config.get<string>('baseUrl', 'http://localhost:8000');
+            const baseUrl = config.get<string>('coreApi', 'http://localhost:8002');
             
             // Start OAuth device flow
             const response = await fetch(`${baseUrl}/oauth/device/start`, {
@@ -82,7 +82,7 @@ export function activate(context: vscode.ExtensionContext) {
             
             // Validate response structure with detailed error reporting
             const requiredFields = ['verification_uri', 'user_code', 'device_code'];
-            const missingFields = requiredFields.filter(field => !deviceData || !deviceData[field]);
+            const missingFields = requiredFields.filter(field => !deviceData[field]);
             
             if (missingFields.length > 0) {
                 throw new Error(`Invalid response from authentication server: missing required fields: ${missingFields.join(', ')}`);

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { EnhancedChatPanel } from './panels/EnhancedChatPanel';
+import { makeHttpRequest } from './utils/http';
 
 // API Response Interfaces
 interface DeviceCodeResponse {
@@ -75,7 +76,7 @@ export function activate(context: vscode.ExtensionContext) {
             const baseUrl = config.get<string>('coreApi', 'http://localhost:8002');
             
             // Start OAuth device flow
-            const response = await fetch(`${baseUrl}/oauth/device/start`, {
+            const response = await makeHttpRequest(`${baseUrl}/oauth/device/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

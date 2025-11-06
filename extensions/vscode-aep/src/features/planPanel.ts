@@ -12,11 +12,68 @@ export class PlanPanelProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(view: vscode.WebviewView){
     console.log('🔧 PlanPanelProvider resolveWebviewView called');
+    console.log('🔍 Webview details:', { 
+      viewType: view.viewType, 
+      title: view.title,
+      description: view.description 
+    });
     try {
       this.view = view; 
       view.webview.options = { enableScripts: true }; 
-      this.render();
-      console.log('✅ PlanPanelProvider webview resolved successfully');
+      
+      // Immediately set simple HTML to test
+      view.webview.html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { 
+      font-family: var(--vscode-font-family); 
+      color: var(--vscode-foreground); 
+      background: var(--vscode-editor-background); 
+      margin: 16px; 
+      padding: 16px;
+    }
+    .test-message { 
+      background: var(--vscode-textBlockQuote-background); 
+      padding: 16px; 
+      border-radius: 8px; 
+      border-left: 4px solid var(--vscode-focusBorder);
+      margin-bottom: 16px;
+    }
+    button { 
+      padding: 8px 16px; 
+      background: var(--vscode-button-background); 
+      color: var(--vscode-button-foreground); 
+      border: none; 
+      border-radius: 4px; 
+      cursor: pointer; 
+    }
+  </style>
+</head>
+<body>
+  <div class="test-message">
+    <h3>📋 Plan & Act - Connection Test</h3>
+    <p>This is a test to verify the webview is working properly.</p>
+    <button onclick="testDemo()">Load Demo Plan</button>
+  </div>
+  <script>
+    const vscode = acquireVsCodeApi();
+    function testDemo() {
+      vscode.postMessage({ type: 'load-demo-plan' });
+    }
+  </script>
+</body>
+</html>`;
+      
+      console.log('✅ PlanPanelProvider webview HTML set successfully');
+      
+      // Then call the full render
+      setTimeout(() => {
+        this.render();
+      }, 1000);
+      
     } catch (error) {
       console.error('❌ PlanPanelProvider resolveWebviewView failed:', error);
     }

@@ -14,7 +14,12 @@ export async function ensureAuth(ctx: vscode.ExtensionContext, client: AEPClient
 
   const flow = await client.startDeviceCode();
   await vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-  const code = await vscode.window.showInputBox({ prompt: 'Paste the device code (if requested)', value: flow.user_code });
+  // Show user code for manual entry if needed
+  await vscode.window.showInputBox({ 
+    prompt: 'Device code (pre-filled, press Enter to continue)', 
+    value: flow.user_code,
+    ignoreFocusOut: true 
+  });
   const tok = await client.pollDeviceCode(flow.device_code);
   await kv.set('aep.token', tok.access_token);
   client.setToken(tok.access_token);

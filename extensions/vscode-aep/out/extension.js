@@ -119,7 +119,12 @@ async function ensureAuth(ctx, client) {
         return;
     const flow = await client.startDeviceCode();
     await vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-    const code = await vscode.window.showInputBox({ prompt: 'Paste the device code (if requested)', value: flow.user_code });
+    // Show user code for manual entry if needed
+    await vscode.window.showInputBox({
+        prompt: 'Device code (pre-filled, press Enter to continue)',
+        value: flow.user_code,
+        ignoreFocusOut: true
+    });
     const tok = await client.pollDeviceCode(flow.device_code);
     await kv.set('aep.token', tok.access_token);
     client.setToken(tok.access_token);
@@ -234,6 +239,7 @@ const approvals_1 = __webpack_require__(/*! ./features/approvals */ "./src/featu
 const client_1 = __webpack_require__(/*! ./api/client */ "./src/api/client.ts");
 const config_1 = __webpack_require__(/*! ./config */ "./src/config.ts");
 async function activate(context) {
+    console.log('AEP Extension activating...');
     const cfg = (0, config_1.getConfig)();
     const client = new client_1.AEPClient(context, cfg.baseUrl, cfg.orgId);
     const approvals = new approvals_1.Approvals(context, client);
@@ -248,6 +254,8 @@ async function activate(context) {
         await (0, deviceCode_1.ensureAuth)(context, client);
         await chat.sendHello();
     }), vscode.commands.registerCommand('aep.plan.approve', async () => approvals.approveSelected()), vscode.commands.registerCommand('aep.plan.reject', async () => approvals.rejectSelected()), vscode.commands.registerCommand('aep.applyPatch', async () => plan.applySelectedPatch()));
+    console.log('AEP Extension activated successfully');
+    vscode.window.showInformationMessage('AEP Extension loaded! Check the Activity Bar for AEP icon.');
 }
 function deactivate() { }
 

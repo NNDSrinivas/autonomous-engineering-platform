@@ -6,6 +6,10 @@
   "publisher": "navralabs",
   "engines": { "vscode": "^1.89.0" },
   "categories": ["Other"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
   "contributes": {
     "commands": [
       { "command": "aep.signIn", "title": "AEP: Sign In" },

@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { AEPClient } from '../api/client';
-import { greeting } from '../util/time';
 import { boilerplate } from '../webview/view';
 
 export class ChatSidebarProvider implements vscode.WebviewViewProvider {

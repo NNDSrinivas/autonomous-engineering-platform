@@ -75,6 +75,13 @@ interface JiraTasksResponse {
   total: number;
 }
 
+interface JiraItemsResponse {
+  items: JiraTask[];
+  total: number;
+}
+
+type JiraApiResponse = JiraTasksResponse | JiraItemsResponse;
+
 interface StepExecutionResult {
   success: boolean;
   status?: string;
@@ -254,9 +261,9 @@ export class EnhancedChatPanel {
       });
 
       if (response.ok) {
-        const tasksResponse = await response.json() as JiraTasksResponse;
+        const tasksResponse = await response.json() as JiraApiResponse;
         // Handle both 'tasks' and 'items' properties for API compatibility
-        const tasksList = tasksResponse.tasks || (tasksResponse as any).items || [];
+        const tasksList = 'tasks' in tasksResponse ? tasksResponse.tasks : tasksResponse.items;
         await this._presentJiraTasks(tasksList);
       }
     } catch (error) {

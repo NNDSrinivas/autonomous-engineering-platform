@@ -10,6 +10,7 @@
  */
 
 import * as vscode from 'vscode';
+import { compatibleFetch } from '../utils/http';
 
 interface EnhancedChatMessage {
   id: string;
@@ -182,7 +183,7 @@ export class EnhancedChatPanel {
 
     try {
       // Create task from JIRA with full context
-      const response = await fetch(`${this._apiBase}/api/autonomous/create-from-jira`, {
+      const response = await compatibleFetch(`${this._apiBase}/api/autonomous/create-from-jira`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -247,7 +248,7 @@ export class EnhancedChatPanel {
 
   private async _loadJiraTasks() {
     try {
-      const response = await fetch(`${this._apiBase}/api/jira/tasks`, {
+      const response = await compatibleFetch(`${this._apiBase}/api/jira/tasks`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -380,7 +381,7 @@ ${taskData.next_action}
     this._showTypingIndicator(`${approved ? 'Executing' : 'Skipping'} step...`);
 
     try {
-      const response = await fetch(`${this._apiBase}/api/autonomous/execute-step`, {
+      const response = await compatibleFetch(`${this._apiBase}/api/autonomous/execute-step`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -575,7 +576,7 @@ ${taskData.next_action}
 
   private async _generateEnhancedResponse(userInput: string): Promise<{content: string, metadata?: any}> {
     try {
-      const response = await fetch(`${this._apiBase}/api/chat/enhanced-respond`, {
+      const response = await compatibleFetch(`${this._apiBase}/api/chat/enhanced-respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

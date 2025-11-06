@@ -3,6 +3,7 @@ import { ensureAuth } from './auth/deviceCode';
 import { ChatSidebarProvider } from './features/chatSidebar';
 import { PlanPanelProvider } from './features/planPanel';
 import { Approvals } from './features/approvals';
+import { AuthPanel } from './features/authPanel';
 import { AEPClient } from './api/client';
 import { getConfig } from './config';
 
@@ -33,6 +34,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const chat = new ChatSidebarProvider(context, client);
     const plan = new PlanPanelProvider(context, client, approvals);
+    const auth = new AuthPanel(context, client, cfg.portalUrl);
 
     console.log('🔧 Registering webview providers...');
     console.log('🎯 About to register:', { 
@@ -43,6 +45,7 @@ export async function activate(context: vscode.ExtensionContext) {
     
     const chatProvider = vscode.window.registerWebviewViewProvider('aep.chatView', chat);
     const planProvider = vscode.window.registerWebviewViewProvider('aep.planView', plan);
+    const authProvider = vscode.window.registerWebviewViewProvider('aep.authView', auth);
     
     console.log('📋 Registered providers:', {
       chatView: 'aep.chatView',
@@ -54,6 +57,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       chatProvider,
       planProvider,
+      authProvider,
 
       vscode.commands.registerCommand('aep.signIn', async () => {
         await ensureAuth(context, client);
@@ -64,6 +68,11 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.commands.registerCommand('aep.startSession', async () => {
         await ensureAuth(context, client);
         await chat.sendHello();
+      }),
+
+      vscode.commands.registerCommand('aep.openPortal', async () => {
+        const portal = cfg.portalUrl || 'https://portal.aep.navra.ai';
+        vscode.env.openExternal(vscode.Uri.parse(portal));
       }),
 
       vscode.commands.registerCommand('aep.plan.approve', async () => approvals.approveSelected()),

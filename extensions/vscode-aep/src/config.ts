@@ -4,6 +4,7 @@ export function getConfig(){
   return {
     baseUrl: String(c.get('baseUrl')),
     orgId: String(c.get('orgId')),
-    llm: String(c.get('llm'))
+    llm: String(c.get('llm')),
+    portalUrl: String(c.get('portalUrl'))
   };
 }

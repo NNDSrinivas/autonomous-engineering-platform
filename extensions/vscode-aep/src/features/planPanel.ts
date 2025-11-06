@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { AEPClient } from '../api/client';
 import { Approvals } from './approvals';
+import { boilerplate } from '../webview/view';
 
 export class PlanPanelProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
@@ -166,65 +167,29 @@ export class PlanPanelProvider implements vscode.WebviewViewProvider {
       return;
     }
     
-    // Show actual plan content
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 16px; }
-    .wrap { max-width: 500px; }
-    h2 { color: var(--vscode-foreground); margin-bottom: 16px; }
-    .steps { list-style: none; padding: 0; }
-    .step { background: var(--vscode-list-hoverBackground); padding: 12px; margin: 8px 0; border-radius: 4px; cursor: pointer; border: 1px solid var(--vscode-contrastBorder); }
-    .step.selected { background: var(--vscode-list-activeSelectionBackground); border-color: var(--vscode-focusBorder); }
-    .step:hover { background: var(--vscode-list-activeSelectionBackground); }
-    .actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
-    button { padding: 8px 16px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; }
-    button:hover { background: var(--vscode-button-hoverBackground); }
-    button.approve { background: var(--vscode-testing-iconPassed); }
-    button.reject { background: var(--vscode-testing-iconFailed); }
-    .patch { margin-top: 16px; padding: 12px; background: var(--vscode-textCodeBlock-background); border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; border: 1px solid var(--vscode-contrastBorder); }
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <h2>📋 Execution Plan (${this.steps.length} steps)</h2>
-  <ol class="steps">
-    ${this.steps.map((step, i) => `
-      <li class="step ${i === this.selectedIndex ? 'selected' : ''}" data-index="${i}">
-        <strong>Step ${i + 1}:</strong> ${step.description || step.task || 'Untitled step'}
-        ${step.status ? `<span style="float: right; color: var(--vscode-descriptionForeground);">${step.status}</span>` : ''}
-      </li>
-    `).join('')}
-  </ol>
-  <div class="actions">
-    <button class="approve" id="approve">✅ Approve Step</button>
-    <button class="reject" id="reject">❌ Reject Step</button>
-    ${this.selectedPatch ? '<button id="apply-patch">🔧 Apply Patch</button>' : ''}
-  </div>
-  ${this.selectedPatch ? `<div class="patch"><strong>Selected Patch:</strong><br><pre>${this.selectedPatch.substring(0, 500)}${this.selectedPatch.length > 500 ? '...' : ''}</pre></div>` : ''}
-</div>
-<script>
-  const vscode = acquireVsCodeApi();
-  document.querySelectorAll('.step').forEach((step, index) => {
-    step.addEventListener('click', () => {
-      vscode.postMessage({ type: 'select', index });
-    });
-  });
-  document.getElementById('approve')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'approve' });
-  });
-  document.getElementById('reject')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'reject' });
-  });
-  document.getElementById('apply-patch')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'applyPatch' });
-  });
-</script>
-</body>
-</html>`;
-    this.view!.webview.html = html;
+    // Show actual plan content using new boilerplate
+    const body = `
+      <div class="wrap">
+        <div class="card"><div class="h">Plan & Act</div></div>
+        <div class="steps">
+          <ul>
+            ${this.steps.map((s,i)=>`<li class="${i===this.selectedIndex?'sel':''}" data-i="${i}">${s.kind}: ${s.title}</li>`).join('')}
+          </ul>
+        </div>
+        <div class="details">
+          ${this.selectedPatch? `<pre>${this.escape(this.selectedPatch)}</pre>` : '<em>Select a step</em>'}
+        </div>
+        <div class="actions">
+          <vscode-button id="approve">Approve</vscode-button>
+          <vscode-button appearance="secondary" id="reject">Reject</vscode-button>
+          <vscode-button id="apply">Apply Patch</vscode-button>
+        </div>
+      </div>`;
+    
+    this.view!.webview.html = boilerplate(this.view!.webview, this.ctx, body, ['base.css', 'plan.css'], ['plan.js']);
+  }
+
+  private escape(text: string): string {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 }

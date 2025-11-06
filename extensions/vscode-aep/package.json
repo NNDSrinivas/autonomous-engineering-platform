@@ -2,7 +2,7 @@
   "name": "aep-agent",
   "displayName": "AEP Agent (Preview)",
   "description": "Autonomous Engineering Platform – IDE Agent with Plan & Act approvals and org memory.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "navralabs",
   "repository": {
     "type": "git",
@@ -18,6 +18,7 @@
     "commands": [
       { "command": "aep.signIn", "title": "AEP: Sign In" },
       { "command": "aep.startSession", "title": "AEP: Start Agent Session" },
+      { "command": "aep.openPortal", "title": "AEP: Open Web Portal" },
       { "command": "aep.plan.approve", "title": "AEP: Approve Step" },
       { "command": "aep.plan.reject", "title": "AEP: Reject Step" },
       { "command": "aep.applyPatch", "title": "AEP: Apply AI Patch" },
@@ -56,6 +57,11 @@
         },
         "aep.llm": {
           "type": "string","default": "gpt-4o-mini","markdownDescription": "Preferred LLM model (router may override)"
+        },
+        "aep.portalUrl": { 
+          "type": "string", 
+          "default": "https://portal.aep.navra.ai", 
+          "description": "Sign up / account portal" 
         }
       }
     }

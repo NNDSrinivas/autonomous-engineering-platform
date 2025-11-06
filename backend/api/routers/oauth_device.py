@@ -148,8 +148,11 @@ async def poll_device_code(request: DeviceCodePollRequest):
                 current_time - device_info["created_at"]
             ).total_seconds()
 
-            # Auto-approve after 30 seconds for development convenience
-            if time_since_creation > 30:
+            # Auto-approve after 30 seconds ONLY if explicit development flag is set
+            if (
+                os.environ.get("OAUTH_DEVICE_AUTO_APPROVE", "false").lower() == "true"
+                and time_since_creation > 30
+            ):
                 device_info["status"] = "authorized"
                 device_info["authorized_at"] = current_time
                 device_info["user_id"] = "dev-user"  # In production, use actual user ID
@@ -191,6 +194,13 @@ async def poll_device_code(request: DeviceCodePollRequest):
                 expires_in=86400,  # 24 hours
                 scope=device_info["scope"],
             )
+
+        # If we reach here, status is in an unexpected state
+        raise HTTPException(
+            status_code=400,
+            detail="invalid_grant",
+            headers={"Content-Type": "application/json"},
+        )
 
     except HTTPException:
         raise

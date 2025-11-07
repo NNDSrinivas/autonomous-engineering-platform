@@ -34,12 +34,20 @@ class AEPClient {
         const r = await fetch(`${this.baseUrl}/oauth/device/poll`, { method: 'POST', headers: this.headers(), body: JSON.stringify({ device_code: deviceCode }) });
         if (!r.ok)
             throw new Error(await r.text());
-        return await r.json();
+        const tok = await r.json();
+        this.setToken(tok.access_token);
+        return tok;
     }
     async listMyJiraIssues() {
         const r = await fetch(`${this.baseUrl}/api/integrations/jira/my-issues`, { headers: this.headers() });
         if (!r.ok)
             return [];
+        return await r.json();
+    }
+    async me() {
+        const r = await fetch(`${this.baseUrl}/api/me`, { headers: this.headers() });
+        if (!r.ok)
+            return {};
         return await r.json();
     }
     async proposePlan(issueKey) {
@@ -57,98 +65,6 @@ class AEPClient {
     }
 }
 exports.AEPClient = AEPClient;
-
-
-/***/ }),
-
-/***/ "./src/auth/deviceCode.ts":
-/*!********************************!*\
-  !*** ./src/auth/deviceCode.ts ***!
-  \********************************/
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
-
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.ensureAuth = ensureAuth;
-const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
-const storage_1 = __webpack_require__(/*! ../util/storage */ "./src/util/storage.ts");
-async function ensureAuth(ctx, client) {
-    const kv = new storage_1.KV(ctx);
-    let token = kv.get('aep.token');
-    if (token) {
-        client.setToken(token);
-        // Verify token is still valid by trying to fetch issues
-        try {
-            await client.listMyJiraIssues();
-            return; // Token is valid
-        }
-        catch {
-            // Token expired, remove it and continue with auth flow
-            await kv.set('aep.token', null);
-        }
-    }
-    const pick = await vscode.window.showQuickPick([
-        { label: 'Device Code', description: 'Open browser and paste code' },
-        { label: 'Cancel', description: 'Skip authentication for now' }
-    ], { placeHolder: 'Choose sign-in method' });
-    if (!pick || pick.label === 'Cancel') {
-        throw new Error('Authentication cancelled by user');
-    }
-    try {
-        const flow = await client.startDeviceCode();
-        await vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-        // Show user code for manual entry if needed
-        const userInput = await vscode.window.showInputBox({
-            prompt: 'Device code (pre-filled, press Enter to continue)',
-            value: flow.user_code,
-            ignoreFocusOut: true
-        });
-        if (!userInput) {
-            throw new Error('Authentication cancelled by user');
-        }
-        const tok = await client.pollDeviceCode(flow.device_code);
-        await kv.set('aep.token', tok.access_token);
-        client.setToken(tok.access_token);
-    }
-    catch (error) {
-        console.error('Authentication error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        throw new Error(`Authentication failed: ${errorMessage}`);
-    }
-}
 
 
 /***/ }),
@@ -253,7 +169,6 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
-const deviceCode_1 = __webpack_require__(/*! ./auth/deviceCode */ "./src/auth/deviceCode.ts");
 const chatSidebar_1 = __webpack_require__(/*! ./features/chatSidebar */ "./src/features/chatSidebar.ts");
 const planPanel_1 = __webpack_require__(/*! ./features/planPanel */ "./src/features/planPanel.ts");
 const approvals_1 = __webpack_require__(/*! ./features/approvals */ "./src/features/approvals.ts");
@@ -300,18 +215,37 @@ async function activate(context) {
         });
         context.subscriptions.push(chatProvider, planProvider, authProvider, vscode.commands.registerCommand('aep.signIn', async () => {
             try {
-                await (0, deviceCode_1.ensureAuth)(context, client);
-                vscode.window.showInformationMessage('✅ AEP: Successfully signed in');
-                chat.refresh();
-                plan.refresh();
+                const flow = await client.startDeviceCode();
+                vscode.window.showInformationMessage(`Open browser to complete sign-in. Code: ${flow.user_code}`, 'Open').then(sel => {
+                    if (sel === 'Open') {
+                        vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
+                    }
+                });
+                // Simple poll loop
+                const poll = async () => {
+                    try {
+                        await client.pollDeviceCode(flow.device_code);
+                        vscode.window.showInformationMessage('✅ AEP: Successfully signed in');
+                        chat.refresh();
+                    }
+                    catch (e) {
+                        if (String(e.message || e).includes('428')) {
+                            // Still pending, continue polling
+                            setTimeout(poll, 2000);
+                        }
+                        else {
+                            vscode.window.showErrorMessage('AEP sign-in failed: ' + (e.message || e));
+                        }
+                    }
+                };
+                poll();
             }
-            catch (error) {
-                console.error('Authentication failed:', error);
-                vscode.window.showErrorMessage('❌ AEP: Sign in failed. Please check your connection and try again.');
+            catch (e) {
+                vscode.window.showErrorMessage('AEP sign-in could not start: ' + (e.message || e));
             }
         }), vscode.commands.registerCommand('aep.startSession', async () => {
-            await (0, deviceCode_1.ensureAuth)(context, client);
-            await chat.sendHello();
+            vscode.window.showInformationMessage('Session starting…');
+            // hook to your existing planning flow
         }), vscode.commands.registerCommand('aep.openPortal', async () => {
             const portal = cfg.portalUrl || 'https://portal.aep.navra.ai';
             vscode.env.openExternal(vscode.Uri.parse(portal));
@@ -587,9 +521,35 @@ class ChatSidebarProvider {
         }
     }
     async render() {
-        // For now, always show the landing page until we implement proper auth
-        // Modern AI assistant landing page
-        const body = `
+        // Check authentication status and load user info
+        const [me, issues] = await Promise.all([
+            this.client.me().catch(() => ({})),
+            this.client.listMyJiraIssues().catch(() => [])
+        ]);
+        const greeting = (() => {
+            const h = new Date().getHours();
+            return h < 12 ? 'Good morning' : 'Good afternoon';
+        })();
+        const makeIssue = (i) => `
+      <div class="card">
+        <div class="row"><b>${i.key}</b> — ${i.summary} <span class="chip">${i.status}</span></div>
+        <div class="row">
+          <vscode-button appearance="secondary" data-url="${i.url}" class="open">Open in Jira</vscode-button>
+          <vscode-button class="plan">Plan</vscode-button>
+        </div>
+      </div>`;
+        // Show authenticated view if user is signed in, otherwise show sign-in
+        const body = me?.email ? `
+      <div class="card">
+        <div class="row"><span class="h">${greeting}, welcome to AEP Agent</span></div>
+        <div class="row mono">Signed in as ${me.email}</div>
+        <div class="row" style="gap:8px;margin-top:8px;">
+          <vscode-button id="start" appearance="primary">Start Session</vscode-button>
+          <vscode-button id="refresh" appearance="secondary">Refresh</vscode-button>
+        </div>
+      </div>
+      ${issues.length ? issues.map(makeIssue).join('') : `<div class="empty">No issues found. Check your Jira integration.</div>`}
+    ` : `
       <div class="landing-container">
         <div class="hero-section">
           <div class="logo-area">
@@ -602,11 +562,11 @@ class ChatSidebarProvider {
           </div>
           
           <div class="auth-section">
-            <vscode-button id="getStarted">
-              🚀 Get Started
+            <vscode-button appearance="primary" id="signIn">
+              � Sign In with Auth0
             </vscode-button>
-            <vscode-button appearance="secondary" id="signIn">
-              🔐 Sign In
+            <vscode-button appearance="secondary" id="getStarted">
+              � Demo Mode
             </vscode-button>
             <p style="margin-top: 1rem; font-size: 0.85em; color: var(--vscode-descriptionForeground); text-align: center;">
               ℹ️ Requires AEP backend server for authentication
@@ -957,27 +917,6 @@ class PlanPanelProvider {
     }
 }
 exports.PlanPanelProvider = PlanPanelProvider;
-
-
-/***/ }),
-
-/***/ "./src/util/storage.ts":
-/*!*****************************!*\
-  !*** ./src/util/storage.ts ***!
-  \*****************************/
-/***/ ((__unused_webpack_module, exports) => {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.KV = void 0;
-class KV {
-    constructor(ctx) {
-        this.ctx = ctx;
-    }
-    get(k) { return this.ctx.globalState.get(k); }
-    set(k, v) { return this.ctx.globalState.update(k, v); }
-}
-exports.KV = KV;
 
 
 /***/ }),

@@ -170,7 +170,8 @@ class EnhancedChatPanel {
             });
             if (response.ok) {
                 const tasksResponse = await response.json();
-                // Handle both 'tasks' and 'items' properties for API compatibility
+                // TODO: Standardize API response format on backend to use single property name
+                // Currently supporting both 'tasks' and 'items' for backward compatibility
                 const tasksList = 'tasks' in tasksResponse ? tasksResponse.tasks : tasksResponse.items;
                 await this._presentJiraTasks(tasksList);
             }

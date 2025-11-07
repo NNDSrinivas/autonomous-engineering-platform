@@ -7,7 +7,7 @@ import httpx
 from cachetools import TTLCache
 from jose import jwt, jwk
 from jose.utils import base64url_decode
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # ---- Environment ----
@@ -17,10 +17,11 @@ AUTH0_ISSUER = f"https://{AUTH0_DOMAIN}/"
 JWKS_URL = f"{AUTH0_ISSUER}.well-known/jwks.json"
 
 # ---- Caches ----
-_jwks_cache: TTLCache[str, Dict[str, Any]] = TTLCache(maxsize=1, ttl=60 * 60)   # 1h
-_kid_fail_cache: TTLCache[str, float] = TTLCache(maxsize=64, ttl=10 * 60)       # 10m
+_jwks_cache: TTLCache[str, Dict[str, Any]] = TTLCache(maxsize=1, ttl=60 * 60)  # 1h
+_kid_fail_cache: TTLCache[str, float] = TTLCache(maxsize=64, ttl=10 * 60)  # 10m
 
 bearer = HTTPBearer(auto_error=True)
+
 
 async def _fetch_jwks() -> Dict[str, Any]:
     cached = _jwks_cache.get("jwks")
@@ -32,6 +33,7 @@ async def _fetch_jwks() -> Dict[str, Any]:
         data = r.json()
         _jwks_cache["jwks"] = data
         return data
+
 
 def _verify_signature(token: str, jwks: Dict[str, Any]) -> Dict[str, Any]:
     headers = jwt.get_unverified_header(token)
@@ -58,6 +60,7 @@ def _verify_signature(token: str, jwks: Dict[str, Any]) -> Dict[str, Any]:
 
     return jwt.get_unverified_claims(token)
 
+
 async def _decode_and_validate(token: str) -> Dict[str, Any]:
     jwks = await _fetch_jwks()
     _ = _verify_signature(token, jwks)
@@ -75,6 +78,7 @@ async def _decode_and_validate(token: str) -> Dict[str, Any]:
     # optional: enforce email_verified/org/role claims if you use them
     return claims
 
+
 async def require_auth(
     credentials: HTTPAuthorizationCredentials = Depends(bearer),
 ) -> Dict[str, Any]:
@@ -85,6 +89,7 @@ async def require_auth(
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Unauthorized: {e}")
 
+
 def require_role(*allowed_roles: str):
     """
     Usage: `@app.get("/admin")(depends=[Depends(require_role("admin"))])`
@@ -92,6 +97,7 @@ def require_role(*allowed_roles: str):
       - "https://navralabs.com/roles": ["admin", ...]  (recommended custom claim)
       - "permissions": ["role:admin"]                  (Auth0 RBAC)
     """
+
     async def _inner(claims: Dict[str, Any] = Depends(require_auth)) -> Dict[str, Any]:
         roles = []
         # Custom claim namespace (recommended)
@@ -101,9 +107,12 @@ def require_role(*allowed_roles: str):
         # Auth0 permissions fallback
         perms = claims.get("permissions")
         if isinstance(perms, list):
-            roles.extend([p.replace("role:", "") for p in perms if p.startswith("role:")])
+            roles.extend(
+                [p.replace("role:", "") for p in perms if p.startswith("role:")]
+            )
 
         if not any(r in set(roles) for r in allowed_roles):
             raise HTTPException(status_code=403, detail="Insufficient role")
         return claims
+
     return _inner

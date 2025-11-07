@@ -61,3 +61,6 @@ temp/
 # Node.js
 node_modules/
 web/.next/
+
+# Frontend Configuration (generated from template + env vars)
+frontend/auth_config.json

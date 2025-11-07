@@ -47,6 +47,12 @@ lint:
 	ruff check .
 	black --check .
 
+# Frontend configuration generation
+frontend-config:
+	python scripts/generate_frontend_config.py
+
+config: frontend-config
+
 test:
 	pytest -q
 

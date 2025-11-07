@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { ensureAuth } from './auth/deviceCode';
 import { ChatSidebarProvider } from './features/chatSidebar';
 import { PlanPanelProvider } from './features/planPanel';
 import { Approvals } from './features/approvals';

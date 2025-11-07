@@ -100,18 +100,40 @@ function activate(context) {
                 })
             });
             if (!response.ok) {
-                throw new Error(`Authentication server error: ${response.status}`);
+                // Provide user-friendly error messages based on status code
+                let errorMessage;
+                if (response.status >= 500) {
+                    // Server errors (5xx)
+                    errorMessage = 'Authentication service is temporarily unavailable. Please try again later.';
+                }
+                else if (response.status >= 400) {
+                    // Client errors (4xx)
+                    if (response.status === 404) {
+                        errorMessage = 'Authentication endpoint not found. Please check your API configuration.';
+                    }
+                    else if (response.status === 401 || response.status === 403) {
+                        errorMessage = 'Authentication request was rejected. Please check your credentials.';
+                    }
+                    else {
+                        errorMessage = 'Please check your network connection and API configuration.';
+                    }
+                }
+                else {
+                    // Other errors
+                    errorMessage = 'An unexpected error occurred during authentication.';
+                }
+                throw new Error(`${errorMessage} (Status: ${response.status})`);
             }
             const deviceData = await response.json();
             // Validate response structure with detailed error reporting
-            if (!deviceData.verification_uri || !deviceData.user_code || !deviceData.device_code) {
-                const missing = [];
-                if (!deviceData.verification_uri)
-                    missing.push('verification_uri');
-                if (!deviceData.user_code)
-                    missing.push('user_code');
-                if (!deviceData.device_code)
-                    missing.push('device_code');
+            const missing = [];
+            if (!deviceData.verification_uri)
+                missing.push('verification_uri');
+            if (!deviceData.user_code)
+                missing.push('user_code');
+            if (!deviceData.device_code)
+                missing.push('device_code');
+            if (missing.length > 0) {
                 throw new Error(`Invalid response from authentication server: missing required fields: ${missing.join(', ')}`);
             }
             // Show user code and open browser

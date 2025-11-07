@@ -50,7 +50,8 @@ from .routers.admin_rbac import router as admin_rbac_router
 from .routers.rate_limit_admin import router as rate_limit_admin_router
 
 # VS Code Extension API endpoints
-from .routers.oauth_device import router as oauth_device_router
+from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
+from .routers.me import router as me_router
 from .routers.jira_integration import router as jira_integration_router
 from .routers.agent_planning import router as agent_planning_router
 from .routers.ai_codegen import router as ai_codegen_router
@@ -136,7 +137,8 @@ app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 
-app.include_router(oauth_device_router)
+app.include_router(oauth_device_auth0_router)
+app.include_router(me_router)
 app.include_router(jira_integration_router)
 app.include_router(agent_planning_router)
 

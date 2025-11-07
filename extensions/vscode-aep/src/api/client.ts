@@ -20,13 +20,21 @@ export class AEPClient {
   async pollDeviceCode(deviceCode: string): Promise<DeviceCodeToken>{
     const r = await fetch(`${this.baseUrl}/oauth/device/poll`, { method: 'POST', headers: this.headers(), body: JSON.stringify({ device_code: deviceCode }) });
     if (!r.ok) throw new Error(await r.text());
-    return await r.json() as DeviceCodeToken;
+    const tok = await r.json() as DeviceCodeToken;
+    this.setToken(tok.access_token);
+    return tok;
   }
 
   async listMyJiraIssues(): Promise<JiraIssue[]>{
     const r = await fetch(`${this.baseUrl}/api/integrations/jira/my-issues`, { headers: this.headers() });
     if (!r.ok) return [];
     return await r.json() as JiraIssue[];
+  }
+
+  async me(): Promise<{email?:string; name?:string; sub?:string; org?:string; roles?: string[]}> {
+    const r = await fetch(`${this.baseUrl}/api/me`, { headers: this.headers() });
+    if (!r.ok) return {};
+    return await r.json() as {email?:string; name?:string; sub?:string; org?:string; roles?: string[]};
   }
 
   async proposePlan(issueKey: string): Promise<ProposedStep[]>{

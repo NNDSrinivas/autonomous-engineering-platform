@@ -159,6 +159,7 @@ class Settings(BaseSettings):
     # Auth0 Configuration
     auth0_domain: Optional[str] = None
     auth0_client_id: Optional[str] = None
+    auth0_client_secret: Optional[str] = None
     auth0_audience: Optional[str] = None
     auth0_algorithm: str = "RS256"
 

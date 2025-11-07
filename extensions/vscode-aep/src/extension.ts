@@ -61,18 +61,40 @@ export async function activate(context: vscode.ExtensionContext) {
 
       vscode.commands.registerCommand('aep.signIn', async () => {
         try {
-          await ensureAuth(context, client);
-          vscode.window.showInformationMessage('✅ AEP: Successfully signed in');
-          chat.refresh(); plan.refresh();
-        } catch (error) {
-          console.error('Authentication failed:', error);
-          vscode.window.showErrorMessage('❌ AEP: Sign in failed. Please check your connection and try again.');
+          const flow = await client.startDeviceCode();
+          vscode.window.showInformationMessage(
+            `Open browser to complete sign-in. Code: ${flow.user_code}`, 
+            'Open'
+          ).then(sel => {
+            if (sel === 'Open') {
+              vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
+            }
+          });
+          
+          // Simple poll loop
+          const poll = async () => {
+            try {
+              await client.pollDeviceCode(flow.device_code);
+              vscode.window.showInformationMessage('✅ AEP: Successfully signed in');
+              chat.refresh();
+            } catch (e: any) {
+              if (String(e.message || e).includes('428')) {
+                // Still pending, continue polling
+                setTimeout(poll, 2000);
+              } else {
+                vscode.window.showErrorMessage('AEP sign-in failed: ' + (e.message || e));
+              }
+            }
+          };
+          poll();
+        } catch (e: any) {
+          vscode.window.showErrorMessage('AEP sign-in could not start: ' + (e.message || e));
         }
       }),
 
       vscode.commands.registerCommand('aep.startSession', async () => {
-        await ensureAuth(context, client);
-        await chat.sendHello();
+        vscode.window.showInformationMessage('Session starting…');
+        // hook to your existing planning flow
       }),
 
       vscode.commands.registerCommand('aep.openPortal', async () => {

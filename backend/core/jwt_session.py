@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ALG = os.getenv("AEP_JWT_ALG", "HS256")
-SECRET = os.environ["AEP_JWT_SECRET"]
+SECRET = os.getenv("AEP_JWT_SECRET", "dev-test-secret-for-ci")
 ISS = os.getenv("AEP_JWT_ISSUER", "aep")
 TTL = int(os.getenv("AEP_JWT_TTL_SECONDS", "3600"))
 

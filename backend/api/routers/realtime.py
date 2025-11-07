@@ -14,16 +14,16 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..core.config import settings
-from ..core.logging import setup_logging
-from ..core.metrics import router as metrics_router
-from ..core.middleware import AuditMiddleware
-from ..core.middleware import RateLimitMiddleware
-from ..core.middleware import RequestIDMiddleware
-from ..core.db import get_db, SessionLocal
-from ..services import meetings as svc
-from ..services import answers as asvc
-from ..workers.answers import generate_answer
+from backend.core.config import settings
+from backend.core.logging import setup_logging
+from backend.core.metrics import router as metrics_router
+from backend.core.middleware import AuditMiddleware
+from backend.core.middleware import RateLimitMiddleware
+from backend.core.middleware import RequestIDMiddleware
+from backend.core.db import get_db, SessionLocal
+from backend.services import meetings as svc
+from backend.services import answers as asvc
+from backend.workers.answers import generate_answer
 
 # Constants for answer generation triggering
 ANSWER_GENERATION_INTERVAL = 3  # Generate answer every N captions
@@ -624,4 +624,6 @@ def stream_answers(session_id: str) -> StreamingResponse:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host=settings.api_host, port=settings.realtime_port)
+    # Use port 8001 for realtime API (different from main API port 8002 in CI)
+    realtime_port = 8001
+    uvicorn.run(app, host="0.0.0.0", port=realtime_port)

@@ -23,6 +23,9 @@ jobs:
           ENABLE_AUDIT_LOGGING: false
           OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
         run: |
+          # Set PYTHONPATH to include the project root
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          
           # Initialize test database with migrations
           alembic upgrade head
 

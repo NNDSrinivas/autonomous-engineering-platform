@@ -92,11 +92,12 @@ export function activate(context: vscode.ExtensionContext) {
             const deviceData = await response.json() as DeviceCodeResponse;
             
             // Validate response structure with detailed error reporting
-            if (!deviceData.verification_uri || !deviceData.user_code || !deviceData.device_code) {
-                const missing = [];
-                if (!deviceData.verification_uri) missing.push('verification_uri');
-                if (!deviceData.user_code) missing.push('user_code');
-                if (!deviceData.device_code) missing.push('device_code');
+            const missing = [];
+            if (!deviceData.verification_uri) missing.push('verification_uri');
+            if (!deviceData.user_code) missing.push('user_code');
+            if (!deviceData.device_code) missing.push('device_code');
+            
+            if (missing.length > 0) {
                 throw new Error(`Invalid response from authentication server: missing required fields: ${missing.join(', ')}`);
             }
             

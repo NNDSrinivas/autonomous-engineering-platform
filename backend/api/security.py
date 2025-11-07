@@ -45,3 +45,42 @@ def check_policy_inline(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Policy violation: {reason}",
         )
+
+
+# Auth0 JWT Authentication
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from backend.core.jwt_session import SessionJWT
+
+bearer = HTTPBearer(auto_error=False)
+
+
+class UserCtx:
+    def __init__(self, sub: str, email: str | None, org: str | None, roles: list[str]):
+        self.id = sub
+        self.email = email
+        self.org_id = org
+        self.roles = roles
+
+
+def current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)) -> UserCtx:
+    if not creds:
+        raise HTTPException(401, "Missing Authorization")
+    try:
+        claims = SessionJWT.decode(creds.credentials)
+    except Exception as e:
+        raise HTTPException(401, f"Invalid session token: {e}")
+    return UserCtx(
+        sub=claims["sub"],
+        email=claims.get("email"),
+        org=claims.get("org"),
+        roles=claims.get("roles", []),
+    )
+
+
+def require_role(role: str):
+    def _dep(u: UserCtx = Depends(current_user)) -> UserCtx:
+        if role not in (u.roles or []):
+            raise HTTPException(403, "Insufficient role")
+        return u
+
+    return _dep

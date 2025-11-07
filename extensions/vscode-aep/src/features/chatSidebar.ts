@@ -55,10 +55,44 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   async render(){
-    // For now, always show the landing page until we implement proper auth
+    // Check authentication status and load user info
+    const [me, issues] = await Promise.all([
+      this.client.me().catch(() => ({} as any)), 
+      this.client.listMyJiraIssues().catch(() => [])
+    ]);
     
-    // Modern AI assistant landing page
-    const body = `
+    async render(){
+    // Check authentication status and load user info
+    const [me, issues] = await Promise.all([
+      this.client.me().catch(() => ({} as any)), 
+      this.client.listMyJiraIssues().catch(() => [])
+    ]);
+    
+    const greeting = (() => {
+      const h = new Date().getHours(); 
+      return h < 12 ? 'Good morning' : 'Good afternoon';
+    })();
+
+    const makeIssue = (i: any) => `
+      <div class="card">
+        <div class="row"><b>${i.key}</b> — ${i.summary} <span class="chip">${i.status}</span></div>
+        <div class="row">
+          <vscode-button appearance="secondary" data-url="${i.url}" class="open">Open in Jira</vscode-button>
+          <vscode-button class="plan">Plan</vscode-button>
+        </div>
+      </div>`;
+
+    const body = me?.email ? `
+      <div class="card">
+        <div class="row"><span class="h">${greeting}, welcome to AEP Agent</span></div>
+        <div class="row mono">Signed in as ${me.email}</div>
+        <div class="row" style="gap:8px;margin-top:8px;">
+          <vscode-button id="start" appearance="primary">Start Session</vscode-button>
+          <vscode-button id="refresh" appearance="secondary">Refresh</vscode-button>
+        </div>
+      </div>
+      ${issues.length ? issues.map(makeIssue).join('') : `<div class="empty">No issues found. Check your Jira integration.</div>`}
+    ` : `
       <div class="landing-container">
         <div class="hero-section">
           <div class="logo-area">
@@ -71,13 +105,65 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
           </div>
           
           <div class="auth-section">
-            <vscode-button id="getStarted">
-              🚀 Get Started
+            <vscode-button id="signIn" appearance="primary">
+              🔐 Sign In with Auth0
             </vscode-button>
-            <vscode-button appearance="secondary" id="signIn">
-              🔐 Sign In
+            <vscode-button appearance="secondary" id="getStarted">
+              🚀 Demo Mode
             </vscode-button>
             <p style="margin-top: 1rem; font-size: 0.85em; color: var(--vscode-descriptionForeground); text-align: center;">
+              ℹ️ Requires AEP backend server for authentication
+            </p>
+          </div>
+        </div>
+        ${issues.length === 0 ? `<div class="empty">Sign in to load your Jira issues.</div>` : ''}
+      </div>`;
+
+    const makeIssue = (i: any) => `
+      <div class="card">
+        <div class="row"><b>${i.key}</b> — ${i.summary} <span class="chip">${i.status}</span></div>
+        <div class="row">
+          <vscode-button appearance="secondary" data-url="${i.url}" class="open">Open in Jira</vscode-button>
+          <vscode-button class="plan">Plan</vscode-button>
+        </div>
+      </div>`;
+
+    const body = me?.email ? `
+      <div class="card">
+        <div class="row"><span class="h">${greeting}, welcome to AEP Agent</span></div>
+        <div class="row mono">Signed in as ${me.email}</div>
+        <div class="row" style="gap:8px;margin-top:8px;">
+          <vscode-button id="start" appearance="primary">Start Session</vscode-button>
+          <vscode-button id="refresh" appearance="secondary">Refresh</vscode-button>
+        </div>
+      </div>
+      ${issues.length ? issues.map(makeIssue).join('') : `<div class="empty">No issues found. Check your Jira integration.</div>`}
+    ` : `
+      <div class="landing-container">
+        <div class="hero-section">
+          <div class="logo-area">
+            <div class="logo">🤖</div>
+            <h1>AEP Agent</h1>
+            <p class="tagline">Your AI-powered development assistant</p>
+            <div class="status-indicator status-disconnected">
+              ⚠️ Not connected - Authentication required
+            </div>
+          </div>
+          
+          <div class="auth-section">
+            <vscode-button id="signIn" appearance="primary">
+              � Sign In with Auth0
+            </vscode-button>
+            <vscode-button appearance="secondary" id="getStarted">
+              � Demo Mode
+            </vscode-button>
+            <p style="margin-top: 1rem; font-size: 0.85em; color: var(--vscode-descriptionForeground); text-align: center;">
+              ℹ️ Requires AEP backend server for authentication
+            </p>
+          </div>
+        </div>
+        ${issues.length === 0 ? `<div class="empty">Sign in to load your Jira issues.</div>` : ''}
+      </div>`;
               ℹ️ Requires AEP backend server for authentication
             </p>
           </div>

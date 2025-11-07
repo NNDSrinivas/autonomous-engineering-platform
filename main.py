@@ -43,7 +43,9 @@ load_dotenv()
 # This mirrors OpenAI's actual ChatCompletionMessageParam structure more accurately
 class FallbackChatCompletionMessageParam(TypedDict, total=False):
     role: Literal["system", "user", "assistant", "tool"]  # Specific literal types
-    content: Union[str, List[Any], None]  # Can be string, list of content parts, or None
+    content: Union[
+        str, List[Any], None
+    ]  # Can be string, list of content parts, or None
     name: str  # Optional: name of the participant
     tool_calls: List[Any]  # Optional: tool calls made by assistant
     tool_call_id: str  # Optional: ID of tool call being responded to
@@ -430,11 +432,12 @@ if __name__ == "__main__":
     print("  make up     # Start with Docker services")
     print("")
     print("Legacy demo will start in 3 seconds...")
-    
+
     import time
     import uvicorn
+
     time.sleep(3)
-    
+
     print("🚀 Starting Legacy Demo Application...")
     print("🤖 AI Model: GPT-4")
     print(

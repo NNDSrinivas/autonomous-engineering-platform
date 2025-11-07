@@ -38,7 +38,7 @@ load_dotenv()
 # Define fallback type for ChatCompletionMessageParam (used when OpenAI unavailable)
 class FallbackChatCompletionMessageParam(TypedDict):
     role: str  # "system", "user", "assistant", or "tool"
-    content: Union[str, List[str]]  # Message content
+    content: Union[str, None]  # Message content - matches OpenAI's actual type
 
 
 # Import OpenAI for real AI capabilities

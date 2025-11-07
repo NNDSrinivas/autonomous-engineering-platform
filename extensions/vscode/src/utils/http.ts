@@ -47,6 +47,12 @@ export function makeHttpRequest(url: string, options: {
             });
         });
 
+        // Add timeout handling
+        req.setTimeout(30000, () => {
+            req.destroy();
+            reject(new Error('Request timeout (30s)'));
+        });
+
         req.on('error', reject);
 
         if (options.body) {

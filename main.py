@@ -8,7 +8,11 @@ from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Union
+from typing import TYPE_CHECKING
 from typing_extensions import TypedDict, Literal
+
+if TYPE_CHECKING:
+    from openai.types.chat import ChatCompletionMessageParam
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -415,9 +419,23 @@ async def get_features():
 
 
 if __name__ == "__main__":
+    print("⚠️  DEPRECATION WARNING ⚠️")
+    print("This main.py is a legacy demo application.")
+    print("Please use the production backend instead:")
+    print("")
+    print("  python -m backend.api.main")
+    print("")
+    print("Or use the modern startup commands:")
+    print("  make dev    # Start with hot reload")
+    print("  make up     # Start with Docker services")
+    print("")
+    print("Legacy demo will start in 3 seconds...")
+    
+    import time
     import uvicorn
-
-    print("🚀 Starting Autonomous Engineering Intelligence Platform...")
+    time.sleep(3)
+    
+    print("🚀 Starting Legacy Demo Application...")
     print("🤖 AI Model: GPT-4")
     print(
         "🔑 API Key Status:",

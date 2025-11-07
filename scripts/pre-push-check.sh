@@ -92,10 +92,12 @@ fi
 # Database health check (non-blocking)
 echo ""
 echo "🗄️ Checking database health..."
+# Set non-blocking mode for development pre-push hooks  
+export CI_NON_BLOCKING_DB_CHECKS=true
 if python scripts/db_health_check.py 2>/dev/null; then
     echo -e "${GREEN}✓ Database health check passed${NC}"
 else
-    echo -e "${YELLOW}⚠ Database health check failed (non-blocking for CI)${NC}"
+    echo -e "${YELLOW}⚠ Database health check failed (non-blocking for development)${NC}"
 fi
 
 # Summary

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Quick database health check for CI/pre-push hooks"""
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -51,15 +52,23 @@ if __name__ == "__main__":
     db_ok = check_database_health()
     redis_ok = check_redis_health()
     
-    # Report actual status but don't fail CI for database connection issues
+    # Report actual status
     if db_ok and redis_ok:
         print("✅ All database services healthy")
+        exit_code = 0
     elif db_ok and not redis_ok:
         print("⚠️ Database healthy, Redis connection issues")
+        exit_code = 1
     elif not db_ok and redis_ok:
         print("⚠️ Redis healthy, Database connection issues") 
+        exit_code = 1
     else:
         print("⚠️ Both Database and Redis connection issues")
+        exit_code = 1
     
-    # Always exit 0 for non-blocking CI (but with meaningful status reporting)
-    sys.exit(0)
+    # Allow override for CI environments via environment variable
+    if os.getenv("CI_NON_BLOCKING_DB_CHECKS", "false").lower() == "true":
+        print("📝 CI mode: treating as non-blocking (exit 0)")
+        exit_code = 0
+    
+    sys.exit(exit_code)

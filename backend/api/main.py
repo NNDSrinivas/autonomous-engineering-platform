@@ -59,6 +59,9 @@ from .routers.ai_feedback import router as ai_feedback_router
 from ..core.realtime_engine import presence as presence_lifecycle
 from ..core.obs.obs_logging import logger
 
+# Auth0 JWT validation routes
+from ..auth.routes import router as auth_routes_router
+
 # Initialize observability after imports
 configure_json_logging()
 init_tracing()
@@ -141,6 +144,9 @@ app.include_router(oauth_device_auth0_router)
 app.include_router(me_router)
 app.include_router(jira_integration_router)
 app.include_router(agent_planning_router)
+
+# Auth0 JWT protected routes
+app.include_router(auth_routes_router)
 
 # Admin RBAC endpoints (PR-24)
 app.include_router(admin_rbac_router)

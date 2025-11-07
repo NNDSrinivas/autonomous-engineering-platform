@@ -28,20 +28,22 @@ def check_database_health():
         
     except Exception as e:
         print(f"⚠️ Database connection issue: {e}")
-        # Don't fail CI for database connection issues
-        return True  # Non-blocking for CI
+        return False  # Return actual failure status
 
 def check_redis_health():
     """Quick Redis connection test"""
     try:
+        from backend.core.config import settings
         import redis
-        client = redis.from_url('redis://localhost:6379/0', socket_connect_timeout=3)
+        
+        # Use Redis URL from settings instead of hardcoded localhost
+        client = redis.from_url(settings.redis_url, socket_connect_timeout=3)
         client.ping()
         print("✅ Redis connection healthy")
         return True
     except Exception as e:
         print(f"⚠️ Redis connection issue: {e}")
-        return True  # Non-blocking for CI
+        return False  # Return actual failure status
 
 if __name__ == "__main__":
     print("🔍 Running database health checks...")
@@ -49,9 +51,15 @@ if __name__ == "__main__":
     db_ok = check_database_health()
     redis_ok = check_redis_health()
     
+    # Report actual status but don't fail CI for database connection issues
     if db_ok and redis_ok:
         print("✅ All database services healthy")
-        sys.exit(0)
+    elif db_ok and not redis_ok:
+        print("⚠️ Database healthy, Redis connection issues")
+    elif not db_ok and redis_ok:
+        print("⚠️ Redis healthy, Database connection issues") 
     else:
-        print("⚠️ Some database issues (non-blocking)")
-        sys.exit(0)  # Don't fail CI for database issues
+        print("⚠️ Both Database and Redis connection issues")
+    
+    # Always exit 0 for non-blocking CI (but with meaningful status reporting)
+    sys.exit(0)

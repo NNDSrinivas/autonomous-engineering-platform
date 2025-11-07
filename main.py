@@ -8,7 +8,7 @@ from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Union
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, Literal
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -36,9 +36,14 @@ load_dotenv()
 
 
 # Define fallback type for ChatCompletionMessageParam (used when OpenAI unavailable)
-class FallbackChatCompletionMessageParam(TypedDict):
-    role: str  # "system", "user", "assistant", or "tool"
-    content: Union[str, None]  # Message content - matches OpenAI's actual type
+# This mirrors OpenAI's actual ChatCompletionMessageParam structure more accurately
+class FallbackChatCompletionMessageParam(TypedDict, total=False):
+    role: Literal["system", "user", "assistant", "tool"]  # Specific literal types
+    content: Union[str, List[Any], None]  # Can be string, list of content parts, or None
+    name: str  # Optional: name of the participant
+    tool_calls: List[Any]  # Optional: tool calls made by assistant
+    tool_call_id: str  # Optional: ID of tool call being responded to
+    function_call: Any  # Optional: deprecated function call format
 
 
 # Import OpenAI for real AI capabilities

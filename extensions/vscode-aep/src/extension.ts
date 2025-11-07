@@ -9,26 +9,26 @@ import { getConfig } from './config';
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log('🚀 AEP Extension activating...');
-  console.log('🔍 Extension context:', { 
-    globalState: Object.keys(context.globalState.keys()), 
+  console.log('🔍 Extension context:', {
+    globalState: Object.keys(context.globalState.keys()),
     workspaceState: Object.keys(context.workspaceState.keys()),
-    subscriptions: context.subscriptions.length 
+    subscriptions: context.subscriptions.length
   });
-  
+
   // Show immediate activation confirmation
   vscode.window.showInformationMessage('🚀 AEP Extension is ACTIVATING...', 'Show Console').then(selection => {
     if (selection === 'Show Console') {
       vscode.commands.executeCommand('workbench.action.toggleDevTools');
     }
   });
-  
+
   try {
     // Show activation in VS Code
     vscode.window.showInformationMessage('AEP Extension activated successfully!');
-    
+
     const cfg = getConfig();
     console.log('📊 Extension config:', { baseUrl: cfg.baseUrl, orgId: cfg.orgId });
-    
+
     const client = new AEPClient(context, cfg.baseUrl, cfg.orgId);
     const approvals = new Approvals(context, client);
 
@@ -37,23 +37,23 @@ export async function activate(context: vscode.ExtensionContext) {
     const auth = new AuthPanel(context, client, cfg.portalUrl);
 
     console.log('🔧 Registering webview providers...');
-    console.log('🎯 About to register:', { 
-      chatProviderInstance: !!chat, 
+    console.log('🎯 About to register:', {
+      chatProviderInstance: !!chat,
       planProviderInstance: !!plan,
-      vscodeWindow: !!vscode.window 
+      vscodeWindow: !!vscode.window
     });
-    
+
     const chatProvider = vscode.window.registerWebviewViewProvider('aep.chatView', chat);
     const planProvider = vscode.window.registerWebviewViewProvider('aep.planView', plan);
     const authProvider = vscode.window.registerWebviewViewProvider('aep.authView', auth);
-    
+
     console.log('📋 Registered providers:', {
       chatView: 'aep.chatView',
       planView: 'aep.planView',
       chatDisposable: !!chatProvider,
       planDisposable: !!planProvider
     });
-    
+
     context.subscriptions.push(
       chatProvider,
       planProvider,
@@ -63,14 +63,14 @@ export async function activate(context: vscode.ExtensionContext) {
         try {
           const flow = await client.startDeviceCode();
           vscode.window.showInformationMessage(
-            `Open browser to complete sign-in. Code: ${flow.user_code}`, 
+            `Open browser to complete sign-in. Code: ${flow.user_code}`,
             'Open'
           ).then(sel => {
             if (sel === 'Open') {
               vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
             }
           });
-          
+
           // Simple poll loop
           const poll = async () => {
             try {
@@ -105,21 +105,21 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.commands.registerCommand('aep.plan.approve', async () => approvals.approveSelected()),
       vscode.commands.registerCommand('aep.plan.reject', async () => approvals.rejectSelected()),
       vscode.commands.registerCommand('aep.applyPatch', async () => plan.applySelectedPatch()),
-      
+
       // Debug command to test webview providers
       vscode.commands.registerCommand('aep.debug.testWebviews', async () => {
         console.log('🧪 Testing webview providers...');
         vscode.window.showInformationMessage('Testing webview providers - check console');
-        
+
         // Force refresh webviews
         chat.refresh();
         plan.refresh();
-        
+
         // Try to focus on the AEP views
         await vscode.commands.executeCommand('workbench.view.extension.aep');
       })
     );
-    
+
     console.log('✅ AEP Extension activated successfully');
     console.log('Setting up vscode host providers...');
     vscode.window.showInformationMessage('AEP Extension loaded! Check the Activity Bar for AEP icon.');

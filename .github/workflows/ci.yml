@@ -25,7 +25,7 @@ jobs:
         run: |
           # Set PYTHONPATH to include the project root
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-          
+
           # Initialize test database with migrations
           alembic upgrade head
 

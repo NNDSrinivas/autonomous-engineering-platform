@@ -3,6 +3,10 @@ import os
 import time
 import jwt
 from typing import Any, Dict
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 ALG = os.getenv("AEP_JWT_ALG", "HS256")
 SECRET = os.environ["AEP_JWT_SECRET"]

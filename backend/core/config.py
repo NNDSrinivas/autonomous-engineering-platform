@@ -156,6 +156,18 @@ class Settings(BaseSettings):
     # API Configuration
     api_v1_prefix: str = "/api"
 
+    # Auth0 Configuration
+    auth0_domain: Optional[str] = None
+    auth0_client_id: Optional[str] = None
+    auth0_audience: Optional[str] = None
+    auth0_algorithm: str = "RS256"
+
+    # AEP JWT Session Management
+    aep_jwt_secret: Optional[str] = None
+    aep_jwt_issuer: str = "aep"
+    aep_jwt_ttl_seconds: int = 3600
+    aep_jwt_alg: str = "HS256"
+
     def __init__(self, **values):
         super().__init__(**values)
         # Validate secrets in production

@@ -3,8 +3,10 @@
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.core.policy_engine.engine import PolicyEngine, get_policy_engine
+from backend.core.jwt_session import SessionJWT
 
 
 def check_policy_inline(
@@ -46,10 +48,6 @@ def check_policy_inline(
             detail=f"Policy violation: {reason}",
         )
 
-
-# Auth0 JWT Authentication
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from backend.core.jwt_session import SessionJWT
 
 bearer = HTTPBearer(auto_error=False)
 

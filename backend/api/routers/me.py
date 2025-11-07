@@ -17,6 +17,4 @@ class Me(BaseModel):
 
 @router.get("/me", response_model=Me)
 async def me(u=Depends(require_role("viewer"))):
-    return Me(
-        sub=u.id, email=u.email, name=None, org=u.org_id, roles=u.roles
-    )
+    return Me(sub=u.id, email=u.email, name=None, org=u.org_id, roles=u.roles)

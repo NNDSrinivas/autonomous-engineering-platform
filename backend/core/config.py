@@ -128,6 +128,9 @@ class Settings(BaseSettings):
     database_url: Optional[str] = None  # Allow override with full URL
 
     redis_url: str = "redis://localhost:6379/0"
+
+    # OAuth Device Code Configuration
+    oauth_device_use_in_memory_store: bool = False
     redis_max_connections: int = (
         20  # Maximum connections in Redis pool (default 20 for high concurrency)
     )
@@ -141,6 +144,7 @@ class Settings(BaseSettings):
 
     # AI Configuration
     openai_api_key: Optional[str] = None
+    openai_model: str = "gpt-3.5-turbo"
 
     # Platform Configuration
     debug: bool = False
@@ -151,6 +155,19 @@ class Settings(BaseSettings):
 
     # API Configuration
     api_v1_prefix: str = "/api"
+
+    # Auth0 Configuration
+    auth0_domain: Optional[str] = None
+    auth0_client_id: Optional[str] = None
+    auth0_client_secret: Optional[str] = None
+    auth0_audience: Optional[str] = None
+    auth0_algorithm: str = "RS256"
+
+    # AEP JWT Session Management
+    aep_jwt_secret: Optional[str] = None
+    aep_jwt_issuer: str = "aep"
+    aep_jwt_ttl_seconds: int = 3600
+    aep_jwt_alg: str = "HS256"
 
     def __init__(self, **values):
         super().__init__(**values)

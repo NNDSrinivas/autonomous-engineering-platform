@@ -10,6 +10,7 @@
  */
 
 import * as vscode from 'vscode';
+import { compatibleFetch } from '../utils/http';
 
 interface EnhancedChatMessage {
   id: string;
@@ -59,6 +60,48 @@ interface CodingStep {
   userApproved?: boolean;
 }
 
+// API Response Interfaces
+interface JiraTask {
+  key: string;
+  summary: string;
+  description?: string;
+  status: string;
+  assignee?: string;
+  priority?: string;
+}
+
+interface JiraTasksResponse {
+  tasks: JiraTask[];
+  total: number;
+}
+
+interface JiraItemsResponse {
+  items: JiraTask[];
+  total: number;
+}
+
+type JiraApiResponse = JiraTasksResponse | JiraItemsResponse;
+
+interface StepExecutionResult {
+  success: boolean;
+  status?: string;
+  step?: string;
+  file_path?: string;
+  next_step?: {
+    description: string;
+    id?: string;
+  };
+  result?: any;
+  error?: string;
+  files_modified?: string[];
+}
+
+interface ChatResponse {
+  content: string;
+  metadata?: any;
+  suggestions?: string[];
+}
+
 export class EnhancedChatPanel {
   public static currentPanel: EnhancedChatPanel | undefined;
   private readonly _panel: vscode.WebviewPanel;
@@ -92,7 +135,7 @@ export class EnhancedChatPanel {
             await this._handleStepApproval(message.taskId, message.stepId, false);
             break;
           case 'selectJiraTask':
-            await this._handleJiraTaskSelection(message.jiraKey);
+            await this.startAutonomousCoding(message.jiraKey);
             break;
           case 'viewFile':
             await this._openFilePreview(message.filePath);
@@ -113,12 +156,17 @@ export class EnhancedChatPanel {
     this._initializeWithGreeting();
   }
 
-  public static createOrShow(extensionUri: vscode.Uri) {
+  /**
+   * Creates a new panel or shows the existing one
+   * @param extensionUri - VS Code extension URI for resource loading
+   * @returns The EnhancedChatPanel instance (either new or existing)
+   */
+  public static createOrShow(extensionUri: vscode.Uri): EnhancedChatPanel {
     const column = vscode.ViewColumn.Beside;
 
     if (EnhancedChatPanel.currentPanel) {
       EnhancedChatPanel.currentPanel._panel.reveal(column);
-      return;
+      return EnhancedChatPanel.currentPanel;
     }
 
     const panel = vscode.window.createWebviewPanel(
@@ -133,12 +181,48 @@ export class EnhancedChatPanel {
     );
 
     EnhancedChatPanel.currentPanel = new EnhancedChatPanel(panel, extensionUri);
+    return EnhancedChatPanel.currentPanel;
+  }
+
+  public async startAutonomousCoding(jiraKey: string) {
+    // Show loading indicator
+    this._showTypingIndicator('Analyzing task and gathering context...');
+
+    try {
+      // Create task from JIRA with full context
+      const response = await compatibleFetch(`${this._apiBase}/api/autonomous/create-from-jira`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jira_key: jiraKey,
+          user_context: this._chatState.userContext
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create task: ${response.status}`);
+      }
+
+      const taskData = await response.json();
+
+      // Present comprehensive task overview
+      await this._presentTaskOverview(taskData);
+
+    } catch (error) {
+      this._hideTypingIndicator();
+      this._addMessage({
+        id: `error-${Date.now()}`,
+        type: 'system',
+        content: `Sorry, I couldn't analyze that task. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date()
+      });
+    }
   }
 
   private async _initializeWithGreeting() {
     const timeOfDay = this._getTimeOfDay();
     const userName = await this._getUserName();
-    
+
     // Show smart greeting
     const greetingMessage: EnhancedChatMessage = {
       id: `greeting-${Date.now()}`,
@@ -164,21 +248,24 @@ export class EnhancedChatPanel {
     };
 
     this._addMessage(greetingMessage);
-    
+
     // Auto-load JIRA tasks
     await this._loadJiraTasks();
   }
 
   private async _loadJiraTasks() {
     try {
-      const response = await fetch(`${this._apiBase}/api/jira/tasks`, {
+      const response = await compatibleFetch(`${this._apiBase}/api/jira/tasks`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });
 
       if (response.ok) {
-        const tasks = await response.json();
-        await this._presentJiraTasks(tasks.items || []);
+        const tasksResponse = await response.json() as JiraApiResponse;
+        // TODO: Standardize API response format on backend to use single property name
+        // Currently supporting both 'tasks' and 'items' for backward compatibility
+        const tasksList = 'tasks' in tasksResponse ? tasksResponse.tasks : tasksResponse.items;
+        await this._presentJiraTasks(tasksList);
       }
     } catch (error) {
       console.error('Failed to load JIRA tasks:', error);
@@ -213,41 +300,6 @@ export class EnhancedChatPanel {
     };
 
     this._addMessage(tasksMessage);
-  }
-
-  private async _handleJiraTaskSelection(jiraKey: string) {
-    // Show loading indicator
-    this._showTypingIndicator('Analyzing task and gathering context...');
-
-    try {
-      // Create task from JIRA with full context
-      const response = await fetch(`${this._apiBase}/api/autonomous/create-from-jira`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jira_key: jiraKey,
-          user_context: this._chatState.userContext
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create task: ${response.status}`);
-      }
-
-      const taskData = await response.json();
-      
-      // Present comprehensive task overview
-      await this._presentTaskOverview(taskData);
-
-    } catch (error) {
-      this._hideTypingIndicator();
-      this._addMessage({
-        id: `error-${Date.now()}`,
-        type: 'system',
-        content: `Sorry, I couldn't analyze that task. Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        timestamp: new Date()
-      });
-    }
   }
 
   private async _presentTaskOverview(taskData: any) {
@@ -339,7 +391,7 @@ ${taskData.next_action}
     this._showTypingIndicator(`${approved ? 'Executing' : 'Skipping'} step...`);
 
     try {
-      const response = await fetch(`${this._apiBase}/api/autonomous/execute-step`, {
+      const response = await compatibleFetch(`${this._apiBase}/api/autonomous/execute-step`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -349,7 +401,7 @@ ${taskData.next_action}
         })
       });
 
-      const result = await response.json();
+      const result = await response.json() as StepExecutionResult;
       this._hideTypingIndicator();
 
       if (result.status === 'completed') {
@@ -419,13 +471,13 @@ ${taskData.next_action}
         vscode.window.showErrorMessage('No workspace folder found for diff preview');
         return;
       }
-      
+
       // Create temp file in workspace's .vscode directory
       const tempUri = vscode.Uri.joinPath(workspaceFolder.uri, '.vscode', 'temp-diff.diff');
       const edit = new vscode.WorkspaceEdit();
       edit.createFile(tempUri, { overwrite: true });
       edit.insert(tempUri, new vscode.Position(0, 0), changes);
-      
+
       await vscode.workspace.applyEdit(edit);
       await vscode.window.showTextDocument(tempUri, { viewColumn: vscode.ViewColumn.Beside });
     } catch (error) {
@@ -457,7 +509,7 @@ ${taskData.next_action}
     } catch (error) {
       // Fallback to generic greeting
     }
-    
+
     return 'Developer';
   }
 
@@ -486,9 +538,9 @@ ${taskData.next_action}
   }
 
   private _showTypingIndicator(message: string = 'Thinking...') {
-    this._panel.webview.postMessage({ 
+    this._panel.webview.postMessage({
       command: 'showTyping',
-      message 
+      message
     });
   }
 
@@ -511,7 +563,7 @@ ${taskData.next_action}
     try {
       // Enhanced response generation with enterprise context
       const response = await this._generateEnhancedResponse(text);
-      
+
       this._hideTypingIndicator();
       this._addMessage({
         id: `assistant-${Date.now()}`,
@@ -532,9 +584,9 @@ ${taskData.next_action}
     }
   }
 
-  private async _generateEnhancedResponse(userInput: string): Promise<{content: string, metadata?: any}> {
+  private async _generateEnhancedResponse(userInput: string): Promise<{ content: string, metadata?: any }> {
     try {
-      const response = await fetch(`${this._apiBase}/api/chat/enhanced-respond`, {
+      const response = await compatibleFetch(`${this._apiBase}/api/chat/enhanced-respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -548,7 +600,7 @@ ${taskData.next_action}
       });
 
       if (response.ok) {
-        return await response.json();
+        return await response.json() as ChatResponse;
       } else {
         throw new Error(`API error: ${response.status}`);
       }
@@ -587,146 +639,460 @@ ${taskData.next_action}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AEP Agent - Enhanced</title>
+    <title>AEP Agent - Autonomous Engineering Platform</title>
     <style>
+        :root {
+            --aep-primary: #007ACC;
+            --aep-primary-hover: #005A9E;
+            --aep-accent: #0D7377;
+            --aep-success: #28A745;
+            --aep-warning: #FFC107;
+            --aep-danger: #DC3545;
+            --aep-gradient: linear-gradient(135deg, #007ACC 0%, #0D7377 100%);
+            --aep-card-bg: rgba(255, 255, 255, 0.05);
+            --aep-border-radius: 12px;
+            --aep-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+            --aep-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.25);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: var(--vscode-font-family);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
             padding: 0;
             margin: 0;
             height: 100vh;
             display: flex;
             flex-direction: column;
-            background-color: var(--vscode-editor-background);
+            background: var(--vscode-editor-background);
+            color: var(--vscode-editor-foreground);
+            line-height: 1.6;
+            overflow: hidden;
+        }
+
+        .header {
+            background: var(--aep-gradient);
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: var(--aep-shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            pointer-events: none;
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo {
+            width: 32px;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+        }
+
+        .header-title {
+            flex: 1;
+        }
+
+        .header-title h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-title p {
+            margin: 0;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 400;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--aep-success);
+            animation: pulse 2s infinite;
+            box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(40, 167, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
+        }
+
+        .welcome-screen {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            text-align: center;
+            background: radial-gradient(ellipse at center, rgba(0, 122, 204, 0.05) 0%, transparent 70%);
+        }
+
+        .welcome-icon {
+            width: 80px;
+            height: 80px;
+            background: var(--aep-gradient);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 24px;
+            box-shadow: var(--aep-shadow);
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .welcome-icon::after {
+            content: '🤖';
+            font-size: 36px;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .welcome-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin: 0 0 12px 0;
+            background: var(--aep-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .welcome-subtitle {
+            font-size: 16px;
+            color: var(--vscode-descriptionForeground);
+            margin: 0 0 32px 0;
+            max-width: 400px;
+            line-height: 1.5;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .feature-card {
+            background: var(--aep-card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--aep-border-radius);
+            padding: 20px;
+            text-align: left;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--aep-shadow-hover);
+            border-color: var(--aep-primary);
+        }
+
+        .feature-icon {
+            font-size: 24px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .feature-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 0 0 8px 0;
             color: var(--vscode-editor-foreground);
         }
-        
+
+        .feature-desc {
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            margin: 0;
+            line-height: 1.4;
+        }
+
         .chat-container {
             flex: 1;
             overflow-y: auto;
-            padding: 16px;
-            display: flex;
+            padding: 20px;
+            display: none;
             flex-direction: column;
             gap: 16px;
         }
-        
+
+        .chat-container.active {
+            display: flex;
+        }
+
         .message {
             max-width: 85%;
-            padding: 16px;
-            border-radius: 12px;
+            padding: 16px 20px;
+            border-radius: 18px;
             word-wrap: break-word;
             position: relative;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            animation: messageSlide 0.3s ease-out;
         }
-        
+
+        @keyframes messageSlide {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         .message.user {
             align-self: flex-end;
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
+            background: var(--aep-gradient);
+            color: white;
+            border-bottom-right-radius: 6px;
         }
-        
+
         .message.assistant, .message.system {
             align-self: flex-start;
-            background-color: var(--vscode-input-background);
-            border: 1px solid var(--vscode-input-border);
+            background: var(--aep-card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-bottom-left-radius: 6px;
         }
-        
+
         .message.task-presentation {
             align-self: stretch;
             max-width: 100%;
-            background-color: var(--vscode-textBlockQuote-background);
-            border-left: 4px solid var(--vscode-button-background);
+            background: linear-gradient(135deg, rgba(0, 122, 204, 0.1) 0%, rgba(13, 115, 119, 0.1) 100%);
+            border: 1px solid var(--aep-primary);
+            border-left: 4px solid var(--aep-primary);
         }
-        
+
         .message.progress {
             align-self: stretch;
             max-width: 100%;
-            background-color: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
+            background: linear-gradient(135deg, rgba(40, 167, 69, 0.1) 0%, rgba(255, 193, 7, 0.1) 100%);
+            border: 1px solid var(--aep-success);
+            color: var(--aep-success);
         }
-        
+
         .actions {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
-            margin-top: 12px;
+            margin-top: 16px;
         }
-        
+
         .action-button {
-            padding: 8px 16px;
+            padding: 10px 16px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 0.9em;
+            font-size: 13px;
             font-weight: 500;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
         }
-        
+
+        .action-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .action-button:hover::before {
+            left: 100%;
+        }
+
         .action-button.primary {
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
+            background: var(--aep-gradient);
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 122, 204, 0.3);
         }
-        
+
         .action-button.primary:hover {
-            background-color: var(--vscode-button-hoverBackground);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 122, 204, 0.4);
         }
-        
+
         .action-button.secondary {
-            background-color: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-            border: 1px solid var(--vscode-button-border);
+            background: var(--aep-card-bg);
+            color: var(--vscode-editor-foreground);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        
+
         .action-button.secondary:hover {
-            background-color: var(--vscode-button-secondaryHoverBackground);
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--aep-primary);
         }
-        
+
         .action-button.danger {
-            background-color: var(--vscode-errorBackground);
-            color: var(--vscode-errorForeground);
+            background: linear-gradient(135deg, var(--aep-danger), #c82333);
+            color: white;
         }
-        
+
+        .cta-button {
+            background: var(--aep-gradient);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: var(--aep-shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--aep-shadow-hover);
+        }
+
+        .cta-button:hover::before {
+            left: 100%;
+        }
+
         .input-container {
-            padding: 16px;
-            border-top: 1px solid var(--vscode-panel-border);
-            display: flex;
-            gap: 8px;
+            padding: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--aep-card-bg);
+            backdrop-filter: blur(10px);
+            display: none;
         }
-        
+
+        .input-container.active {
+            display: block;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: var(--aep-primary);
+            box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+        }
+
         .message-input {
             flex: 1;
-            padding: 12px;
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 6px;
-            background-color: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            font-family: var(--vscode-font-family);
-            resize: vertical;
+            padding: 12px 16px;
+            border: none;
+            background: transparent;
+            color: var(--vscode-editor-foreground);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 14px;
+            resize: none;
             min-height: 20px;
             max-height: 120px;
+            outline: none;
+            line-height: 1.4;
         }
-        
+
+        .message-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
         .send-button {
-            padding: 12px 20px;
-            background-color: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
+            padding: 12px 16px;
+            background: var(--aep-gradient);
+            color: white;
             border: none;
-            border-radius: 6px;
+            border-radius: 12px;
             cursor: pointer;
-            font-weight: 500;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 122, 204, 0.3);
         }
-        
+
         .send-button:hover {
-            background-color: var(--vscode-button-hoverBackground);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 122, 204, 0.4);
         }
-        
+
+        .send-button:disabled {
+            opacity: 0.5;
+            transform: none;
+            cursor: not-allowed;
+        }
+
         .typing-indicator {
             align-self: flex-start;
-            padding: 12px 16px;
-            background-color: var(--vscode-input-background);
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 12px;
+            padding: 16px 20px;
+            background: var(--aep-card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 18px;
             font-style: italic;
-            opacity: 0.8;
+            opacity: 0.9;
             animation: pulse 1.5s infinite;
+            backdrop-filter: blur(10px);
+        }
+
+        .typing-indicator::before {
+            content: '💭 ';
+            margin-right: 8px;
         }
         
         @keyframes pulse {
@@ -735,52 +1101,230 @@ ${taskData.next_action}
         }
         
         .markdown h2 {
-            color: var(--vscode-textPreformat-foreground);
-            margin-top: 16px;
-            margin-bottom: 8px;
+            color: var(--aep-primary);
+            margin: 20px 0 12px 0;
+            font-weight: 600;
+            font-size: 18px;
         }
         
         .markdown h3 {
             color: var(--vscode-textLink-foreground);
-            margin-top: 12px;
-            margin-bottom: 6px;
+            margin: 16px 0 8px 0;
+            font-weight: 500;
+            font-size: 16px;
         }
         
         .markdown code {
-            background-color: var(--vscode-textCodeBlock-background);
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-family: var(--vscode-editor-font-family);
+            background: rgba(255, 255, 255, 0.1);
+            padding: 3px 6px;
+            border-radius: 6px;
+            font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+            font-size: 13px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .markdown pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         
         .markdown ul {
-            margin-left: 16px;
+            margin-left: 20px;
+            padding: 0;
+        }
+        
+        .markdown li {
+            margin: 4px 0;
+            padding-left: 4px;
         }
         
         .markdown strong {
             font-weight: 600;
-            color: var(--vscode-textPreformat-foreground);
+            color: var(--aep-primary);
+        }
+        
+        .markdown a {
+            color: var(--aep-primary);
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.2s ease;
+        }
+        
+        .markdown a:hover {
+            border-bottom-color: var(--aep-primary);
+        }
+        
+        .quick-actions {
+            margin-top: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+        }
+        
+        .quick-action {
+            background: var(--aep-card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 12px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+            min-width: 140px;
+            text-align: center;
+        }
+        
+        .quick-action:hover {
+            transform: translateY(-2px);
+            border-color: var(--aep-primary);
+            box-shadow: 0 4px 16px rgba(0, 122, 204, 0.2);
+        }
+        
+        .quick-action .icon {
+            display: block;
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+        
+        .scrollbar-container {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+        
+        .scrollbar-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .scrollbar-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .scrollbar-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+        
+        .scrollbar-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .beta-badge {
+            background: linear-gradient(135deg, var(--aep-warning), #e0a800);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .shimmer {
+            background: linear-gradient(90deg, rgba(255,255,255,0.1) 25%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.1) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
         }
     </style>
 </head>
 <body>
-    <div class="chat-container" id="chatContainer">
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">AEP</div>
+            <div class="header-title">
+                <h1>Autonomous Engineering Platform</h1>
+                <p>AI-Powered Development Assistant <span class="beta-badge">Beta</span></p>
+            </div>
+            <div class="status-indicator"></div>
+        </div>
+    </div>
+
+    <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-icon"></div>
+        <h1 class="welcome-title">Good morning! Welcome to AEP Agent</h1>
+        <p class="welcome-subtitle">
+            Your AI-powered development assistant is ready to help with enterprise-grade tasks, 
+            intelligent code generation, and seamless JIRA integration.
+        </p>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <span class="feature-icon">🎯</span>
+                <h3 class="feature-title">Smart Task Management</h3>
+                <p class="feature-desc">Seamlessly integrate with JIRA and track your development tasks with AI assistance</p>
+            </div>
+            <div class="feature-card">
+                <span class="feature-icon">⚡</span>
+                <h3 class="feature-title">Autonomous Coding</h3>
+                <p class="feature-desc">Generate, review, and implement code changes with intelligent planning and execution</p>
+            </div>
+            <div class="feature-card">
+                <span class="feature-icon">🔍</span>
+                <h3 class="feature-title">Context-Aware Analysis</h3>
+                <p class="feature-desc">Deep understanding of your codebase with enterprise-level security and compliance</p>
+            </div>
+        </div>
+
+        <div class="quick-actions">
+            <div class="quick-action" onclick="startChat()">
+                <span class="icon">💬</span>
+                <span>Start Conversation</span>
+            </div>
+            <div class="quick-action" onclick="loadJiraTasks()">
+                <span class="icon">📋</span>
+                <span>Load JIRA Tasks</span>
+            </div>
+            <div class="quick-action" onclick="showPlanMode()">
+                <span class="icon">🚀</span>
+                <span>Plan & Execute</span>
+            </div>
+        </div>
+
+        <button class="cta-button" onclick="startChat()">
+            Get Started →
+        </button>
+    </div>
+
+    <div class="chat-container scrollbar-container" id="chatContainer">
         <!-- Messages will be inserted here -->
     </div>
-    
-    <div class="input-container">
-        <textarea 
-            class="message-input" 
-            id="messageInput" 
-            placeholder="Ask me about your tasks, or let me help you implement something..."
-            rows="1"
-        ></textarea>
-        <button class="send-button" id="sendButton">Send</button>
+
+    <div class="input-container" id="inputContainer">
+        <div class="input-wrapper">
+            <textarea 
+                class="message-input" 
+                id="messageInput" 
+                placeholder="Describe what you'd like me to help you with..."
+                rows="1"
+            ></textarea>
+            <button class="send-button" id="sendButton">
+                <span id="sendButtonText">Send</span>
+            </button>
+        </div>
     </div>
 
     <script>
         const vscode = acquireVsCodeApi();
         let chatState = { messages: [] };
+        let isTyping = false;
         
         window.addEventListener('message', event => {
             const message = event.data;
@@ -801,13 +1345,15 @@ ${taskData.next_action}
         function renderChat() {
             const container = document.getElementById('chatContainer');
             container.innerHTML = '';
-            
-            chatState.messages.forEach(message => {
-                const messageEl = createMessageElement(message);
-                container.appendChild(messageEl);
+
+            chatState.messages.forEach((message, index) => {
+                setTimeout(() => {
+                    const messageEl = createMessageElement(message);
+                    messageEl.classList.add('fade-in');
+                    container.appendChild(messageEl);
+                    container.scrollTop = container.scrollHeight;
+                }, index * 100);
             });
-            
-            container.scrollTop = container.scrollHeight;
         }
         
         function createMessageElement(message) {
@@ -839,6 +1385,15 @@ ${taskData.next_action}
         
         function handleAction(action, metadata) {
             switch (action.action) {
+                case 'loadJira':
+                    vscode.postMessage({ command: 'loadJiraTasks' });
+                    break;
+                case 'startPlanning':
+                    vscode.postMessage({ command: 'startPlanning' });
+                    break;
+                case 'analyzeCode':
+                    vscode.postMessage({ command: 'analyzeCode' });
+                    break;
                 case 'startDailyWorkflow':
                     vscode.postMessage({ command: 'startDailyWorkflow' });
                     break;
@@ -881,6 +1436,7 @@ ${taskData.next_action}
                 .replace(/^### (.*$)/gm, '<h3>$1</h3>')
                 .replace(/^## (.*$)/gm, '<h2>$1</h2>')
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\`\`\`([\s\S]*?)\`\`\`/g, '<pre><code>$1</code></pre>')
                 .replace(/\`(.*?)\`/g, '<code>$1</code>')
                 .replace(/^- (.*$)/gm, '<li>$1</li>')
                 .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
@@ -891,11 +1447,13 @@ ${taskData.next_action}
             hideTypingIndicator();
             const container = document.getElementById('chatContainer');
             const indicator = document.createElement('div');
-            indicator.className = 'typing-indicator';
+            indicator.className = 'typing-indicator fade-in';
             indicator.id = 'typingIndicator';
             indicator.textContent = message;
             container.appendChild(indicator);
             container.scrollTop = container.scrollHeight;
+            isTyping = true;
+            updateSendButton();
         }
         
         function hideTypingIndicator() {
@@ -903,20 +1461,86 @@ ${taskData.next_action}
             if (indicator) {
                 indicator.remove();
             }
+            isTyping = false;
+            updateSendButton();
         }
         
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const text = input.value.trim();
-            if (text) {
+            if (text && !isTyping) {
                 vscode.postMessage({ command: 'sendMessage', text });
                 input.value = '';
-                input.style.height = 'auto';
+                autoResize();
             }
         }
-        
+
+        function autoResize() {
+            const input = document.getElementById('messageInput');
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        }
+
+        function updateSendButton() {
+            const button = document.getElementById('sendButton');
+            const text = document.getElementById('sendButtonText');
+            if (isTyping) {
+                button.disabled = true;
+                text.textContent = '...';
+            } else {
+                button.disabled = false;
+                text.textContent = 'Send';
+            }
+        }
+
+        function startChat() {
+            document.getElementById('welcomeScreen').style.display = 'none';
+            document.getElementById('chatContainer').classList.add('active');
+            document.getElementById('inputContainer').classList.add('active');
+            
+            // Add welcome message
+            if (chatState.messages.length === 0) {
+                const welcomeMessage = {
+                    id: 'welcome',
+                    type: 'assistant',
+                    content: \`## 👋 Hello! I'm your AEP Agent
+
+I'm here to help you with:
+- **JIRA task management** and intelligent planning
+- **Autonomous coding** with step-by-step execution  
+- **Code analysis** and enterprise-grade solutions
+- **Architecture decisions** and best practices
+
+What would you like to work on today?\`,
+                    timestamp: new Date(),
+                    metadata: {
+                        actions: [
+                            { id: 'jira', label: '📋 Load JIRA Tasks', style: 'primary', action: 'loadJira' },
+                            { id: 'plan', label: '🚀 Plan & Execute', style: 'secondary', action: 'startPlanning' },
+                            { id: 'analyze', label: '🔍 Analyze Code', style: 'secondary', action: 'analyzeCode' }
+                        ]
+                    }
+                };
+                chatState.messages = [welcomeMessage];
+                renderChat();
+            }
+            
+            document.getElementById('messageInput').focus();
+        }
+
+        function loadJiraTasks() {
+            vscode.postMessage({ command: 'loadJiraTasks' });
+            startChat();
+        }
+
+        function showPlanMode() {
+            vscode.postMessage({ command: 'showPlanMode' });
+            startChat();
+        }
+
+        // Event listeners
         document.getElementById('sendButton').onclick = sendMessage;
-        
+
         const messageInput = document.getElementById('messageInput');
         messageInput.onkeydown = (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -924,11 +1548,13 @@ ${taskData.next_action}
                 sendMessage();
             }
         };
-        
-        messageInput.oninput = () => {
-            messageInput.style.height = 'auto';
-            messageInput.style.height = messageInput.scrollHeight + 'px';
-        };
+
+        messageInput.oninput = autoResize;
+
+        // Initialize
+        window.addEventListener('load', () => {
+            document.getElementById('messageInput').focus();
+        });
     </script>
 </body>
 </html>`;

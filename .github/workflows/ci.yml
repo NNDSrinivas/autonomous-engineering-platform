@@ -21,15 +21,20 @@ jobs:
           DATABASE_URL: sqlite:///./test.db
           APP_ENV: ci
           ENABLE_AUDIT_LOGGING: false
+          OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
+          CI_NON_BLOCKING_DB_CHECKS: true
         run: |
+          # Set PYTHONPATH to include the project root
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+
           # Initialize test database with migrations
-          alembic upgrade head || echo "Migration failed or not needed"
-          
+          alembic upgrade head
+
           API_PORT=8002 python -m backend.api.main > /tmp/main.log 2>&1 &
           MAIN_PID=$!
-          python -m backend.api.realtime > /tmp/realtime.log 2>&1 &
+          python -m backend.api.routers.realtime > /tmp/realtime.log 2>&1 &
           REALTIME_PID=$!
-          
+
           # Wait for servers to start with retries
           for i in {1..10}; do
             sleep 1
@@ -48,7 +53,7 @@ jobs:
               exit 1
             fi
           done
-          
+
           # Run health check tests
           python - <<'PY'
           import requests, sys
@@ -57,6 +62,6 @@ jobs:
               assert r.status_code==200
           print("health ok")
           PY
-          
+
           # Cleanup
           kill $MAIN_PID $REALTIME_PID 2>/dev/null || true

@@ -8,7 +8,7 @@ from enum import Enum
 import structlog
 
 from backend.core.ai.llm_service import LLMService
-from backend.core.memory.vector_store import VectorStore
+from backend.core.memory_system.vector_store import VectorStore
 from backend.integrations.github.service import GitHubService
 
 logger = structlog.get_logger(__name__)
@@ -57,7 +57,7 @@ class CodeTask:
     progress: float = 0.0
     generated_code: Optional[str] = None
     test_results: Optional[Dict[str, Any]] = None
-    execution_log: List[str] = None
+    execution_log: Optional[List[str]] = None
 
 
 @dataclass
@@ -496,8 +496,8 @@ class AutonomousCodingEngine:
 {chr(10).join(f"- {file}" for file in task.files_to_modify)}
 
 **Test Results:**
-- Coverage: {task.test_results.get("test_coverage", "N/A")}%
-- All tests passed: {task.test_results.get("all_tests_passed", "Unknown")}
+- Coverage: {task.test_results.get("test_coverage", "N/A") if task.test_results else "N/A"}%
+- All tests passed: {task.test_results.get("all_tests_passed", "Unknown") if task.test_results else "Unknown"}
 
 **Execution Log:**
 {chr(10).join(f"- {log}" for log in (task.execution_log or []))}

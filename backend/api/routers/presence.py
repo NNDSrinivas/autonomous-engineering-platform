@@ -10,12 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, Header, status
 from backend.api.deps import get_broadcaster
 from backend.core.auth.deps import require_role
 from backend.core.auth.models import Role, User
-from backend.core.realtime.presence import (
+from backend.core.realtime_engine.presence import (
     cursor_channel,
     note_heartbeat,
     presence_channel,
 )
-from backend.core.realtime.schemas import (
+from backend.core.realtime_engine.schemas import (
     CursorEvent,
     PresenceEvent,
     PresenceHeartbeat,

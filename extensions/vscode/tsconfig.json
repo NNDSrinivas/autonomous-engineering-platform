@@ -5,12 +5,24 @@
     "outDir": "out",
     "rootDir": "src",
     "strict": true,
-    "lib": ["ES2020", "DOM"],
-    "types": ["vscode", "node"],
-    "baseUrl": ".",
-    "paths": {
-      "agent-core/*": ["../../agent-core/dist/*"]
-    }
+    "sourceMap": true,
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
+    "types": [
+      "vscode",
+      "node"
+    ],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    ".vscode-test"
+  ]
 }

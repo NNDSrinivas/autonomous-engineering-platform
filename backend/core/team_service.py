@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 import logging
 from datetime import datetime
-from backend.core.memory.vector_store import VectorStore
+from backend.core.memory_system.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,12 @@ class TeamService:
         self._initialize_demo_knowledge()
 
     def _initialize_demo_knowledge(self):
+        """Initialize the team knowledge base with demo content"""
+        import asyncio
+
+        asyncio.create_task(self._async_initialize_demo_knowledge())
+
+    async def _async_initialize_demo_knowledge(self):
         """Initialize the team knowledge base with demo content"""
         try:
             demo_knowledge = [
@@ -61,10 +67,11 @@ class TeamService:
             ]
 
             for item in demo_knowledge:
-                self.vector_store.add_document(
+                await self.vector_store.add_knowledge(
                     content=item["content"],
+                    knowledge_type=item["metadata"]["category"],
+                    project=item["metadata"]["project"],
                     metadata=item["metadata"],
-                    doc_id=f"demo-{item['metadata']['category']}",
                 )
 
             logger.info("Demo knowledge base initialized")
@@ -82,14 +89,12 @@ class TeamService:
             logger.info(f"Searching team context for: {query[:50]}...")
 
             # Search vector store
-            results = self.vector_store.search(query, limit=limit)
+            results = await self.vector_store.search(query, limit=limit)
 
             # Filter by project if specified
             if project_id:
                 results = [
-                    r
-                    for r in results
-                    if r.get("metadata", {}).get("project") == project_id
+                    r for r in results if r.metadata.get("project") == project_id
                 ]
 
             # Format results
@@ -97,11 +102,11 @@ class TeamService:
             for result in results:
                 formatted_results.append(
                     {
-                        "content": result.get("content", ""),
-                        "score": result.get("score", 0.0),
-                        "metadata": result.get("metadata", {}),
+                        "content": result.content,
+                        "score": result.score,
+                        "metadata": result.metadata,
                         "relevant_sections": self._extract_relevant_sections(
-                            result.get("content", ""), query
+                            result.content, query
                         ),
                     }
                 )
@@ -205,8 +210,11 @@ class TeamService:
             # Add timestamp to metadata
             metadata["added_at"] = datetime.now().isoformat()
 
-            self.vector_store.add_document(
-                content=content, metadata=metadata, doc_id=doc_id
+            await self.vector_store.add_knowledge(
+                content=content,
+                knowledge_type=metadata.get("category", "general"),
+                project=metadata.get("project", "default"),
+                metadata=metadata,
             )
 
             logger.info(f"Added team knowledge: {doc_id}")

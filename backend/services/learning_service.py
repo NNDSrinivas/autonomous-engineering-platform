@@ -148,7 +148,9 @@ class ThompsonSamplingBandit:
         # Sample from beta distributions for each arm
         arm_scores = []
         for arm in arms:
-            successes, failures = await self._get_arm_stats(context_key, arm["name"])
+            successes, failures = await self._get_arm_stats(
+                context_key, str(arm["name"])
+            )
 
             # Thompson Sampling: sample from Beta(successes, failures), where
             # successes and failures include the prior (initially 1.0 each).

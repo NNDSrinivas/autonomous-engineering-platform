@@ -19,7 +19,7 @@ export function makeHttpRequest(url: string, options: {
         const parsedUrl = new URL(url);
         const isHttps = parsedUrl.protocol === 'https:';
         const httpModule = isHttps ? https : http;
-        
+
         const requestOptions = {
             hostname: parsedUrl.hostname,
             port: parsedUrl.port || (isHttps ? 443 : 80),
@@ -48,11 +48,11 @@ export function makeHttpRequest(url: string, options: {
         });
 
         req.on('error', reject);
-        
+
         if (options.body) {
             req.write(options.body);
         }
-        
+
         req.end();
     });
 }

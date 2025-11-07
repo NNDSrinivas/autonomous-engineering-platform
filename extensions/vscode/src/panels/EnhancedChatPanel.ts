@@ -204,7 +204,7 @@ export class EnhancedChatPanel {
       }
 
       const taskData = await response.json();
-      
+
       // Present comprehensive task overview
       await this._presentTaskOverview(taskData);
 
@@ -222,7 +222,7 @@ export class EnhancedChatPanel {
   private async _initializeWithGreeting() {
     const timeOfDay = this._getTimeOfDay();
     const userName = await this._getUserName();
-    
+
     // Show smart greeting
     const greetingMessage: EnhancedChatMessage = {
       id: `greeting-${Date.now()}`,
@@ -248,7 +248,7 @@ export class EnhancedChatPanel {
     };
 
     this._addMessage(greetingMessage);
-    
+
     // Auto-load JIRA tasks
     await this._loadJiraTasks();
   }
@@ -470,13 +470,13 @@ ${taskData.next_action}
         vscode.window.showErrorMessage('No workspace folder found for diff preview');
         return;
       }
-      
+
       // Create temp file in workspace's .vscode directory
       const tempUri = vscode.Uri.joinPath(workspaceFolder.uri, '.vscode', 'temp-diff.diff');
       const edit = new vscode.WorkspaceEdit();
       edit.createFile(tempUri, { overwrite: true });
       edit.insert(tempUri, new vscode.Position(0, 0), changes);
-      
+
       await vscode.workspace.applyEdit(edit);
       await vscode.window.showTextDocument(tempUri, { viewColumn: vscode.ViewColumn.Beside });
     } catch (error) {
@@ -508,7 +508,7 @@ ${taskData.next_action}
     } catch (error) {
       // Fallback to generic greeting
     }
-    
+
     return 'Developer';
   }
 
@@ -537,9 +537,9 @@ ${taskData.next_action}
   }
 
   private _showTypingIndicator(message: string = 'Thinking...') {
-    this._panel.webview.postMessage({ 
+    this._panel.webview.postMessage({
       command: 'showTyping',
-      message 
+      message
     });
   }
 
@@ -562,7 +562,7 @@ ${taskData.next_action}
     try {
       // Enhanced response generation with enterprise context
       const response = await this._generateEnhancedResponse(text);
-      
+
       this._hideTypingIndicator();
       this._addMessage({
         id: `assistant-${Date.now()}`,
@@ -583,7 +583,7 @@ ${taskData.next_action}
     }
   }
 
-  private async _generateEnhancedResponse(userInput: string): Promise<{content: string, metadata?: any}> {
+  private async _generateEnhancedResponse(userInput: string): Promise<{ content: string, metadata?: any }> {
     try {
       const response = await compatibleFetch(`${this._apiBase}/api/chat/enhanced-respond`, {
         method: 'POST',

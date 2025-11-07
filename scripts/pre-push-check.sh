@@ -78,14 +78,24 @@ else
     fi
 fi
 
-# 4. Run only fast tests (skip database tests that may hang)
+# 4. Run fast tests and database health check
 echo ""
-echo "🧪 Running fast tests (skipping database tests)..."
-if timeout 10 pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null || gtimeout 10 pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null || pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null; then
+echo "🧪 Running fast tests and database health check..."
+
+# Fast unit tests
+if pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null; then
     echo -e "${GREEN}✓ Fast tests passed${NC}"
 else
     echo -e "${YELLOW}⚠ Fast tests failed or dependencies missing (non-blocking)${NC}"
-    # Don't fail the push for test issues
+fi
+
+# Database health check (non-blocking)
+echo ""
+echo "🗄️ Checking database health..."
+if python scripts/db_health_check.py 2>/dev/null; then
+    echo -e "${GREEN}✓ Database health check passed${NC}"
+else
+    echo -e "${YELLOW}⚠ Database health check failed (non-blocking for CI)${NC}"
 fi
 
 # Summary

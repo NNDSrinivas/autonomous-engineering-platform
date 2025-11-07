@@ -1,5 +1,9 @@
 from __future__ import annotations
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 AUTH0_DOMAIN = os.environ["AUTH0_DOMAIN"].strip()
 AUTH0_CLIENT_ID = os.environ["AUTH0_CLIENT_ID"].strip()

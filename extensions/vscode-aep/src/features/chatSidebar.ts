@@ -4,46 +4,46 @@ import { boilerplate } from '../webview/view';
 
 export class ChatSidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
-  constructor(private ctx: vscode.ExtensionContext, private client: AEPClient){}
+  constructor(private ctx: vscode.ExtensionContext, private client: AEPClient) { }
 
-  resolveWebviewView(view: vscode.WebviewView){
-    this.view = view; 
+  resolveWebviewView(view: vscode.WebviewView) {
+    this.view = view;
     view.webview.options = { enableScripts: true };
     this.render();
-    view.webview.onDidReceiveMessage(async (m)=>{
+    view.webview.onDidReceiveMessage(async (m) => {
       console.log('ChatSidebar received message:', m);
-      
-      if(m.type==='openExternal') {
+
+      if (m.type === 'openExternal') {
         vscode.env.openExternal(vscode.Uri.parse(m.url));
       }
-      else if(m.type==='openPortal') {
+      else if (m.type === 'openPortal') {
         vscode.commands.executeCommand('aep.openPortal');
       }
-      else if(m.type==='pickIssue') {
+      else if (m.type === 'pickIssue') {
         vscode.commands.executeCommand('aep.startSession');
       }
-      else if(m.type==='signIn') {
+      else if (m.type === 'signIn') {
         vscode.commands.executeCommand('aep.signIn');
         // Refresh after sign in attempt
         setTimeout(() => this.render(), 2000);
       }
-      else if(m.type==='startSession') {
+      else if (m.type === 'startSession') {
         vscode.commands.executeCommand('aep.startSession');
       }
-      else if(m.type==='refresh') {
+      else if (m.type === 'refresh') {
         await this.render();
       }
-      else if(m.type==='chat' && m.message) {
+      else if (m.type === 'chat' && m.message) {
         await this.handleChatMessage(m.message);
       }
     });
   }
 
-  refresh(){ 
-    if(this.view) this.render(); 
+  refresh() {
+    if (this.view) this.render();
   }
 
-  async sendHello(){
+  async sendHello() {
     const issues = await this.client.listMyJiraIssues();
     this.post({ type: 'hello', issues });
   }
@@ -54,15 +54,15 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  async render(){
+  async render() {
     // Check authentication status and load user info
     const [me, issues] = await Promise.all([
-      this.client.me().catch(() => ({} as any)), 
+      this.client.me().catch(() => ({} as any)),
       this.client.listMyJiraIssues().catch(() => [])
     ]);
-    
+
     const greeting = (() => {
-      const h = new Date().getHours(); 
+      const h = new Date().getHours();
       return h < 12 ? 'Good morning' : 'Good afternoon';
     })();
 
@@ -170,7 +170,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
           </div>
         </div>
       </div>`;
-    
+
     this.view!.webview.html = boilerplate(this.view!.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
   }
 
@@ -178,17 +178,17 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
     try {
       // Show user message immediately
       this.showChatMessage('user', message);
-      
+
       // Show typing indicator
       this.showChatMessage('system', '🤔 Thinking...');
-      
+
       // Send to AI backend
       const response = await fetch(`${this.client['baseUrl']}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, type: 'question' })
       });
-      
+
       if (response.ok) {
         const result = await response.json() as any;
         this.showChatMessage('assistant', result.response || result.message || 'I received your message but had trouble generating a response.');
@@ -200,7 +200,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
       this.showChatMessage('assistant', 'I encountered an error processing your message. Please check your connection and try again.');
     }
   }
-  
+
   private showChatMessage(role: 'user' | 'assistant' | 'system', content: string) {
     // Send message to webview for display
     if (this.view) {

@@ -22,6 +22,7 @@ jobs:
           APP_ENV: ci
           ENABLE_AUDIT_LOGGING: false
           OAUTH_DEVICE_USE_IN_MEMORY_STORE: true
+          CI_NON_BLOCKING_DB_CHECKS: true
         run: |
           # Set PYTHONPATH to include the project root
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"

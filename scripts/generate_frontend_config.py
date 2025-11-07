@@ -28,8 +28,15 @@ def load_env_file():
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
-                    key, value = line.split('=', 1)
-                    os.environ[key] = value
+                    try:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip().strip('\'"')  # Remove surrounding quotes
+                        if key and value:  # Only set non-empty values
+                            os.environ[key] = value
+                    except ValueError:
+                        # Skip malformed lines
+                        continue
 
 def generate_frontend_config():
     """Generate auth_config.json from template and environment variables"""

@@ -9,6 +9,7 @@
  */
 
 import * as vscode from 'vscode';
+import { compatibleFetch } from '../utils/http';
 
 interface ChatMessage {
   id: string;
@@ -27,6 +28,23 @@ interface ChatState {
   currentTask?: string;
   teamContext?: any;
   proactiveSuggestions?: string[];
+}
+
+// API Response Interfaces
+interface TasksResponse {
+  items: any[];
+}
+
+interface ActivityResponse {
+  items: any[];
+}
+
+interface ProactiveResponse {
+  items?: string[];
+}
+
+interface ContextPackResponse {
+  [key: string]: any;
 }
 
 export class ChatPanel {
@@ -252,7 +270,7 @@ export class ChatPanel {
   }> {
     try {
       // Call enhanced LLM endpoint with conversation context
-      const response = await fetch(`${this._apiBase}/api/chat/respond`, {
+      const response = await compatibleFetch(`${this._apiBase}/api/chat/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -267,7 +285,11 @@ export class ChatPanel {
         throw new Error(`API error: ${response.status}`);
       }
 
-      return await response.json();
+      return await response.json() as {
+        content: string;
+        context?: any;
+        suggestions?: string[];
+      };
     } catch (error) {
       // Fallback to rule-based responses
       return this._generateFallbackResponse(userInput);
@@ -308,15 +330,15 @@ export class ChatPanel {
     };
   }
 
-  private async _fetchTeamContext(): Promise<any> {
+  private async _fetchTeamContext(): Promise<{ tasks: any[], recentActivity: any[] }> {
     try {
       const [tasksResponse, activityResponse] = await Promise.all([
-        fetch(`${this._apiBase}/api/jira/tasks`),
-        fetch(`${this._apiBase}/api/activity/recent`)
+        compatibleFetch(`${this._apiBase}/api/jira/tasks`),
+        compatibleFetch(`${this._apiBase}/api/activity/recent`)
       ]);
 
-      const tasks = tasksResponse.ok ? await tasksResponse.json() : { items: [] };
-      const activity = activityResponse.ok ? await activityResponse.json() : { items: [] };
+      const tasks = tasksResponse.ok ? await tasksResponse.json() as TasksResponse : { items: [] };
+      const activity = activityResponse.ok ? await activityResponse.json() as ActivityResponse : { items: [] };
 
       return {
         tasks: tasks.items || [],
@@ -330,7 +352,7 @@ export class ChatPanel {
   private async _loadProactiveSuggestions() {
     try {
       // Use memory graph to generate proactive suggestions via chat endpoint
-      const response = await fetch(`${this._apiBase}/api/chat/proactive`, {
+      const response = await compatibleFetch(`${this._apiBase}/api/chat/proactive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -343,7 +365,7 @@ export class ChatPanel {
       });
 
       if (response.ok) {
-        const suggestions = await response.json();
+        const suggestions = await response.json() as ProactiveResponse;
         if (suggestions.items && suggestions.items.length > 0) {
           this._addMessage({
             id: this._generateMessageId('proactive'),
@@ -447,8 +469,8 @@ export class ChatPanel {
     
     // Fetch context pack for selected task
     try {
-      const response = await fetch(`${this._apiBase}/api/context/task/${encodeURIComponent(taskKey)}`);
-      const contextPack = await response.json();
+      const response = await compatibleFetch(`${this._apiBase}/api/context/task/${encodeURIComponent(taskKey)}`);
+      const contextPack = await response.json() as ContextPackResponse;
 
       this._addMessage({
         id: this._generateMessageId('task-selected'),

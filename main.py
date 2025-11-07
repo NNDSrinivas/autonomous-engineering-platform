@@ -7,6 +7,12 @@ from typing import Any
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Union
+from typing import TYPE_CHECKING
+from typing_extensions import TypedDict, Literal
+
+if TYPE_CHECKING:
+    from openai.types.chat import ChatCompletionMessageParam
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -19,6 +25,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import the autonomous coding router
 from backend.api.routers.autonomous_coding import router as autonomous_coding_router
+from backend.api.routers.oauth_device import router as oauth_device_router
+from backend.api.routers.jira_integration import router as jira_integration_router
+from backend.api.routers.agent_planning import router as agent_planning_router
+from backend.api.routers.ai_codegen import router as ai_codegen_router
+from backend.api.routers.ai_feedback import router as ai_feedback_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -27,9 +38,24 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+
+# Define fallback type for ChatCompletionMessageParam (used when OpenAI unavailable)
+# This mirrors OpenAI's actual ChatCompletionMessageParam structure more accurately
+class FallbackChatCompletionMessageParam(TypedDict, total=False):
+    role: Literal["system", "user", "assistant", "tool"]  # Specific literal types
+    content: Union[
+        str, List[Any], None
+    ]  # Can be string, list of content parts, or None
+    name: str  # Optional: name of the participant
+    tool_calls: List[Any]  # Optional: tool calls made by assistant
+    tool_call_id: str  # Optional: ID of tool call being responded to
+    function_call: Any  # Optional: deprecated function call format
+
+
 # Import OpenAI for real AI capabilities
 try:
     from openai import OpenAI
+    from openai.types.chat import ChatCompletionMessageParam
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     OPENAI_AVAILABLE = True
@@ -37,6 +63,9 @@ try:
 except Exception as e:
     OPENAI_AVAILABLE = False
     logger.warning(f"⚠️ OpenAI client failed to initialize: {e}")
+    # Use the fallback type when OpenAI is not available
+    ChatCompletionMessageParam = FallbackChatCompletionMessageParam
+
 
 app = FastAPI(
     title="Autonomous Engineering Intelligence Platform",
@@ -46,6 +75,14 @@ app = FastAPI(
 
 # Include the autonomous coding router with concierge endpoints
 app.include_router(autonomous_coding_router, prefix="/api")
+# OAuth router intentionally doesn't use a prefix - it defines its own '/oauth' prefix internally
+# This design keeps OAuth endpoints at the root level (e.g., /oauth/device/start) rather than
+# nesting them under /api (e.g., /api/oauth/device/start) for better compatibility with OAuth standards
+app.include_router(oauth_device_router)
+app.include_router(jira_integration_router, prefix="/api")
+app.include_router(agent_planning_router, prefix="/api")
+app.include_router(ai_codegen_router, prefix="/api")
+app.include_router(ai_feedback_router, prefix="/api")
 
 # CORS middleware
 app.add_middleware(
@@ -82,7 +119,7 @@ def get_ai_response(prompt: str, system_prompt: Optional[str] = None) -> str:
         return "AI service is not available. Please check your OpenAI API key configuration."
 
     try:
-        messages = []
+        messages: list[ChatCompletionMessageParam] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
@@ -384,9 +421,24 @@ async def get_features():
 
 
 if __name__ == "__main__":
+    print("⚠️  DEPRECATION WARNING ⚠️")
+    print("This main.py is a legacy demo application.")
+    print("Please use the production backend instead:")
+    print("")
+    print("  python -m backend.api.main")
+    print("")
+    print("Or use the modern startup commands:")
+    print("  make dev    # Start with hot reload")
+    print("  make up     # Start with Docker services")
+    print("")
+    print("Legacy demo will start in 3 seconds...")
+
+    import time
     import uvicorn
 
-    print("🚀 Starting Autonomous Engineering Intelligence Platform...")
+    time.sleep(3)
+
+    print("🚀 Starting Legacy Demo Application...")
     print("🤖 AI Model: GPT-4")
     print(
         "🔑 API Key Status:",

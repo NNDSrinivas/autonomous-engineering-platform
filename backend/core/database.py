@@ -18,14 +18,18 @@ from sqlalchemy import Text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 from backend.core.config import get_settings
 
+from sqlalchemy.orm import DeclarativeBase
+
 logger = structlog.get_logger(__name__)
 
-Base = declarative_base()
+
+# Use modern SQLAlchemy 2.0 declarative base
+class Base(DeclarativeBase):
+    pass
 
 
 # Database Models
@@ -184,6 +188,8 @@ class DatabaseManager:
         """Initialize database connection and create tables"""
         try:
             # Create async engine
+            if not self.settings.database_url:
+                raise ValueError("Database URL is not configured")
             self.engine = create_async_engine(
                 self.settings.database_url, echo=self.settings.debug, future=True
             )

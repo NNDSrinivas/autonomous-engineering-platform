@@ -23,7 +23,13 @@ from backend.models.tasks import *  # noqa
 from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole  # noqa
 
 config = context.config
-if (
+# Always use settings.sqlalchemy_url if DATABASE_URL environment variable is set
+# This allows environment variables to override alembic.ini configuration
+import os
+
+if os.environ.get("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", settings.sqlalchemy_url)
+elif (
     not config.get_main_option("sqlalchemy.url")
     or config.get_main_option("sqlalchemy.url") == "sqlite:///"
 ):

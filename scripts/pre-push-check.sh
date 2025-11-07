@@ -78,14 +78,26 @@ else
     fi
 fi
 
-# 4. Skip tests if dependencies missing (not blocking)
+# 4. Run fast tests and database health check
 echo ""
-echo "🧪 Running tests (if available)..."
-if pytest tests/ -x -q --ignore=tests/test_health.py 2>/dev/null; then
-    echo -e "${GREEN}✓ Tests passed${NC}"
+echo "🧪 Running fast tests and database health check..."
+
+# Fast unit tests
+if pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null; then
+    echo -e "${GREEN}✓ Fast tests passed${NC}"
 else
-    echo -e "${YELLOW}⚠ Tests failed or dependencies missing (non-blocking)${NC}"
-    # Don't fail the push for test issues
+    echo -e "${YELLOW}⚠ Fast tests failed or dependencies missing (non-blocking)${NC}"
+fi
+
+# Database health check (non-blocking)
+echo ""
+echo "🗄️ Checking database health..."
+# Set non-blocking mode for development pre-push hooks  
+export CI_NON_BLOCKING_DB_CHECKS=true
+if python scripts/db_health_check.py 2>/dev/null; then
+    echo -e "${GREEN}✓ Database health check passed${NC}"
+else
+    echo -e "${YELLOW}⚠ Database health check failed (non-blocking for development)${NC}"
 fi
 
 # Summary

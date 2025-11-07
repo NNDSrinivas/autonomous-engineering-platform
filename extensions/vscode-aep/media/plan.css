@@ -1,0 +1,9 @@
+.wrap{ padding: 10px; }
+.card{ margin-bottom: 10px; }
+.steps{ float:left; width: 40%; }
+.steps ul{ list-style:none; padding:0; }
+.steps li{ padding:6px; border-left:3px solid transparent; cursor:pointer; }
+.steps li.sel{ background: var(--vscode-list-activeSelectionBackground); border-left-color: var(--vscode-focusBorder); }
+.details{ float:right; width: 58%; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); padding:8px; border-radius:6px; }
+.actions{ clear: both; padding-top: 10px; display:flex; gap:8px; }
+pre{ white-space: pre-wrap; word-break: break-word; }

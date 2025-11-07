@@ -7,15 +7,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 # --- Observability imports (PR-28)
-from ..core.obs.logging import configure_json_logging
+from ..core.obs.obs_logging import configure_json_logging
 from ..core.obs.tracing import init_tracing, instrument_fastapi_app
-from ..core.obs.metrics import metrics_app, PROM_ENABLED
-from ..core.obs.middleware import ObservabilityMiddleware
+from ..core.obs.obs_metrics import metrics_app, PROM_ENABLED
+from ..core.obs.obs_middleware import ObservabilityMiddleware
 
 # --- Health & Resilience imports (PR-29)
 from ..core.health.router import router as health_router
 from ..core.health.shutdown import on_startup, on_shutdown
-from ..core.resilience.middleware import ResilienceMiddleware
+from ..core.resilience.resilience_middleware import ResilienceMiddleware
 
 from ..core.settings import settings
 
@@ -25,7 +25,7 @@ from ..core.middleware import AuditMiddleware
 
 # removed unused: RequestIDMiddleware (ObservabilityMiddleware provides this)
 from ..core.rate_limit.middleware import RateLimitMiddleware
-from ..core.audit.middleware import EnhancedAuditMiddleware
+from ..core.audit_service.middleware import EnhancedAuditMiddleware
 from ..core.cache.middleware import CacheMiddleware
 from ..core.db import get_db
 from ..services import meetings as svc
@@ -35,23 +35,32 @@ from ..workers.queue import process_meeting
 from ..workers.integrations import jira_sync, github_index
 from ..workers.answers import generate_answer
 from .tasks import router as tasks_router
-from .plan import router as plan_router
+from .routers.plan import router as plan_router
 from .deliver import router as deliver_router
-from .policy import router as policy_router
+from .routers.policy import router as policy_router
 from .change import router as change_router
 from .chat import router as chat_router
 from ..search.router import router as search_router
 from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
-from .memory import router as memory_router
+from .routers.memory import router as memory_router
 from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
 from .routers.rate_limit_admin import router as rate_limit_admin_router
-from .routers import ai_codegen
-from .routers import ai_feedback
-from ..core.realtime import presence as presence_lifecycle
-from ..core.obs.logging import logger
+
+# VS Code Extension API endpoints
+from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
+from .routers.me import router as me_router
+from .routers.jira_integration import router as jira_integration_router
+from .routers.agent_planning import router as agent_planning_router
+from .routers.ai_codegen import router as ai_codegen_router
+from .routers.ai_feedback import router as ai_feedback_router
+from ..core.realtime_engine import presence as presence_lifecycle
+from ..core.obs.obs_logging import logger
+
+# Auth0 JWT validation routes
+from ..auth.routes import router as auth_routes_router
 
 # Initialize observability after imports
 configure_json_logging()
@@ -130,6 +139,14 @@ app.include_router(search_router)
 app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
+
+app.include_router(oauth_device_auth0_router)
+app.include_router(me_router)
+app.include_router(jira_integration_router)
+app.include_router(agent_planning_router)
+
+# Auth0 JWT protected routes
+app.include_router(auth_routes_router)
 
 # Admin RBAC endpoints (PR-24)
 app.include_router(admin_rbac_router)
@@ -226,8 +243,9 @@ app.include_router(ctx_router)
 app.include_router(live_plan_router)  # PR-19: Live Plan Mode
 app.include_router(presence_router.router)  # PR-22: Presence & Cursor Sync
 app.include_router(plan_router)
-app.include_router(ai_codegen.router)  # PR-31: AI Code Generation
-app.include_router(ai_feedback.router)  # PR-32: AI Feedback & Learning
+# Note: These routers already include /api prefix internally (ai_codegen: /api/ai, ai_feedback: /api/feedback)
+app.include_router(ai_codegen_router)  # PR-31: AI Code Generation
+app.include_router(ai_feedback_router)  # PR-32: AI Feedback & Learning
 
 # ---- Feature 1 endpoints (Finalize + Query) ----
 

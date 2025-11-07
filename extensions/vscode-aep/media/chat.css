@@ -1,0 +1,7 @@
+.wrap{ padding: 10px; font-family: var(--vscode-font-family); }
+.issues{ list-style:none; padding:0; margin:10px 0; }
+.issues li{ padding:6px; border-radius:6px; cursor:pointer; }
+.issues li:hover{ background: var(--vscode-list-hoverBackground); }
+.st{ opacity:0.8; font-size: 0.9em; margin-left: 8px; }
+.ask{ display:flex; gap:6px; }
+.ask input{ flex:1; }

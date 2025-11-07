@@ -78,13 +78,13 @@ else
     fi
 fi
 
-# 4. Skip tests if dependencies missing (not blocking)
+# 4. Run only fast tests (skip database tests that may hang)
 echo ""
-echo "🧪 Running tests (if available)..."
-if pytest tests/ -x -q --ignore=tests/test_health.py 2>/dev/null; then
-    echo -e "${GREEN}✓ Tests passed${NC}"
+echo "🧪 Running fast tests (skipping database tests)..."
+if timeout 10 pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null || gtimeout 10 pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null || pytest tests/test_settings.py tests/test_crypto.py tests/test_cached_decorator.py -x -q 2>/dev/null; then
+    echo -e "${GREEN}✓ Fast tests passed${NC}"
 else
-    echo -e "${YELLOW}⚠ Tests failed or dependencies missing (non-blocking)${NC}"
+    echo -e "${YELLOW}⚠ Fast tests failed or dependencies missing (non-blocking)${NC}"
     # Don't fail the push for test issues
 fi
 

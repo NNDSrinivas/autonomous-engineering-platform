@@ -1,0 +1,322 @@
+:root {
+    --accentA: #7c7cff;
+    --accentB: #23c0b1;
+    --ring: #6f7dac;
+    --border: rgba(255, 255, 255, .08);
+    --text: #dfe7ff;
+    --ink: #0b1020;
+    --ink2: #0f1622;
+    --ink3: #0e131b;
+}
+
+html,
+body {
+    height: 100%
+}
+
+body {
+    margin: 0;
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, Segoe UI, Inter, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    color: var(--text);
+    background: linear-gradient(180deg, #0a0f19 0, #0b101a 100%);
+}
+
+/* Header */
+.aurora {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(15, 22, 33, .88) 0, rgba(9, 12, 18, .88) 100%);
+    backdrop-filter: blur(8px);
+}
+
+.brand {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.brand .mark {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--accentA), var(--accentB));
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, .07) inset;
+}
+
+.brand .titles strong {
+    font-weight: 700;
+}
+
+.brand .sep {
+    opacity: .5;
+    margin: 0 6px;
+}
+
+.rail {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: auto;
+}
+
+.glow {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(900px 160px at 50% -20%, rgba(35, 192, 177, .08), transparent 60%);
+}
+
+/* Controls */
+.icon,
+.chip,
+.primary,
+.ghost,
+.avatar {
+    border: 1px solid var(--border);
+    color: var(--text);
+    background: var(--ink);
+    border-radius: 10px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: .15s ease;
+}
+
+.icon:hover,
+.chip:hover,
+.ghost:hover,
+.primary:hover,
+.avatar:hover {
+    transform: translateY(-.5px);
+}
+
+.icon {
+    padding: 6px 8px;
+}
+
+.avatar {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+}
+
+.primary {
+    background: linear-gradient(90deg, var(--accentA), var(--accentB));
+    color: #0b1020;
+    border: none;
+    font-weight: 700;
+}
+
+.primary.xl {
+    padding: 8px 12px;
+    border-radius: 10px;
+}
+
+/* Account Menu */
+.account {
+    position: relative;
+}
+
+.account-menu {
+    position: absolute;
+    right: 0;
+    top: 36px;
+    width: 260px;
+    z-index: 20;
+    background: #0e131b;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transform-origin: top right;
+    transform: scale(.98);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .12s ease, transform .12s ease;
+}
+
+.account-menu[aria-hidden="false"] {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+.account-head {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 8px 10px 8px;
+}
+
+.account-head .initial {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: #121a27;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    font-weight: 700;
+}
+
+.menu-item {
+    text-align: left;
+    border: none;
+    background: #0e131b;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+}
+
+.menu-item:hover {
+    background: #0f1622;
+}
+
+.menu-item.danger {
+    color: #ff8585;
+}
+
+/* Workspace rail */
+.workspace-rail {
+    margin: 10px 12px 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #0c1118;
+}
+
+.chip-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.chip-group .label {
+    opacity: .7;
+    font-size: 12px;
+    margin-right: 4px;
+}
+
+.chip.connect[aria-pressed="true"] {
+    background: linear-gradient(90deg, var(--accentA), var(--accentB));
+    color: #0b1020;
+    border: none;
+}
+
+/* Main */
+.main {
+    padding: 10px 12px 18px;
+}
+
+.hero {
+    margin: 10px 0 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.title h1 {
+    margin: 0 0 6px 0;
+    font-size: 16px;
+}
+
+.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    opacity: .75;
+}
+
+.kv {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.kv .breaker {
+    flex: 1;
+}
+
+.btn {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px 10px;
+    background: var(--ink3);
+    cursor: pointer;
+}
+
+.btn:hover {
+    background: #101827;
+}
+
+.actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Cards */
+.card-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(240px, 1fr));
+    gap: 10px;
+}
+
+.card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    background: var(--ink2);
+}
+
+/* Light theme */
+:root[data-vscode-theme-kind*="Light"] {
+    --accentA: #6b5cff;
+    --accentB: #16b3a6;
+    --border: rgba(0, 0, 0, .12);
+    --text: #111827;
+    --ink: #ffffff;
+    --ink2: #ffffff;
+    --ink3: #f7f9ff;
+}
+
+:root[data-vscode-theme-kind*="Light"] body {
+    color: var(--text);
+    background: linear-gradient(180deg, #f7f9ff 0, #f6f8ff 100%);
+}
+
+:root[data-vscode-theme-kind*="Light"] .aurora {
+    background: linear-gradient(180deg, #f8faff 0, #f5f7fe 100%);
+}
+
+:root[data-vscode-theme-kind*="Light"] .account-menu {
+    background: #fff;
+    border-color: var(--border);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .15);
+}
+
+:root[data-vscode-theme-kind*="Light"] .menu-item {
+    background: #fff;
+}
+
+:root[data-vscode-theme-kind*="Light"] .menu-item:hover {
+    background: #f6f8fe;
+}
+
+:root[data-vscode-theme-kind*="Light"] .workspace-rail {
+    background: #ffffff;
+}

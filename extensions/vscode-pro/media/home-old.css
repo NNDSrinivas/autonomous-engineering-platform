@@ -1,0 +1,337 @@
+/* -------- AEP Webview – Microsoft/GitHub-like styling -------- */
+
+/* VS Code theme tokens with sensible fallbacks */
+:root {
+  --fg: var(--vscode-foreground, #e6e6e6);
+  --muted-fg: var(--vscode-descriptionForeground, #9aa4ad);
+  --bg: var(--vscode-editor-background, #0f1115);
+  --card: var(--vscode-editorWidget-background, #16181d);
+  --card-elev: color-mix(in oklab, var(--card) 85%, black);
+  --border: var(--vscode-panel-border, #2a2f3a);
+  --accent: var(--vscode-button-background, #2f81f7);
+  --accent-hover: var(--vscode-button-hoverBackground, #2a6bd8);
+  --btn-fg: var(--vscode-button-foreground, #ffffff);
+  --link: var(--vscode-textLink-foreground, #2f81f7);
+  --focus: var(--vscode-focusBorder, #6ca0ff);
+  --input-bg: var(--vscode-input-background, #0f1115);
+  --input-border: var(--vscode-input-border, #2a2f3a);
+  --input-fg: var(--vscode-input-foreground, #e6e6e6);
+  --badge-bg: var(--vscode-badge-background, #273043);
+  --badge-fg: var(--vscode-badge-foreground, #cbd5e1);
+  --shadow: 0 8px 24px rgba(0,0,0,.25), 0 1px 0 rgba(255,255,255,.02) inset;
+
+  --radius: 12px;
+  --radius-lg: 16px;
+  --pad: 16px;
+  --gap: 12px;
+  --line: 1.4;
+}
+
+/* Light theme tweaks */
+@media (prefers-color-scheme: light) {
+  :root {
+    --fg: var(--vscode-foreground, #1f2328);
+    --muted-fg: var(--vscode-descriptionForeground, #57606a);
+    --bg: var(--vscode-editor-background, #ffffff);
+    --card: var(--vscode-editorWidget-background, #f6f8fa);
+    --card-elev: #ffffff;
+    --border: var(--vscode-panel-border, #d0d7de);
+    --input-bg: var(--vscode-input-background, #ffffff);
+    --input-fg: var(--vscode-input-foreground, #1f2328);
+    --badge-bg: var(--vscode-badge-background, #eaeef2);
+    --badge-fg: var(--vscode-badge-foreground, #1f2328);
+    --shadow: 0 8px 24px rgba(140,149,159,.2);
+  }
+}
+
+/* High contrast */
+@media (forced-colors: active) {
+  :root {
+    --border: CanvasText;
+    --focus: Highlight;
+  }
+}
+
+/* Base layout */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/var(--line) ui-sans-serif, system-ui, -apple-system, Segoe UI,
+        Roboto, Ubuntu, Cantarell, "Noto Sans", "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+}
+
+.container {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 20px;
+  padding: 20px;
+}
+
+/* Header */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+.row h2 {
+  font-weight: 600;
+  letter-spacing: .2px;
+  margin: 0;
+}
+.spacer { flex: 1 1 auto; }
+
+/* Buttons */
+button {
+  -webkit-font-smoothing: antialiased;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, transform .02s ease;
+}
+button:hover { background: var(--card-elev); }
+button:active { transform: translateY(1px); }
+button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--btn-fg);
+}
+button.primary:hover { background: var(--accent-hover); }
+button.tertiary {
+  background: transparent;
+  border-color: var(--border);
+}
+
+/* Card / hero */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+#hero h3 {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+#hero p {
+  margin: 0 0 14px;
+  color: var(--muted-fg);
+}
+#hero .actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: var(--gap);
+}
+#hero .actions button {
+  justify-content: center;
+  padding: 10px 12px;
+}/* Chat area */
+.chat {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: var(--gap);
+  min-height: 320px;
+}
+.log {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--pad);
+  overflow: auto;
+  scroll-behavior: smooth;
+}
+.msg {
+  max-width: 72ch;
+  padding: 10px 12px;
+  margin: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  backdrop-filter: saturate(120%);
+}
+.msg.user {
+  margin-left: auto;
+  background: color-mix(in oklab, var(--accent) 14%, var(--card));
+  border-color: color-mix(in oklab, var(--accent) 40%, var(--border));
+}
+.msg.bot {
+  background: color-mix(in oklab, var(--card) 92%, black);
+}
+
+/* Code blocks */
+.code-block {
+    margin: 8px 0;
+    border-radius: 6px;
+    overflow: hidden;
+    background-color: var(--vscode-textCodeBlock-background);
+    border: 1px solid var(--vscode-panel-border);
+}
+
+.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--vscode-sideBarSectionHeader-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    font-size: 12px;
+}
+
+.code-content {
+    padding: 12px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 13px;
+    line-height: 1.4;
+    overflow-x: auto;
+    margin: 0;
+}
+
+.inline-code {
+    background-color: var(--vscode-textCodeBlock-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 0.9em;
+}
+
+.copy-btn {
+    background: none;
+    border: none;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.copy-btn:hover {
+    background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Thinking animation */
+.thinking {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* Chat Input */
+.chat-input-container {
+    padding: 16px;
+    border-top: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-sideBar-background);
+    flex-shrink: 0;
+}
+
+.input-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 12px;
+    padding: 8px 12px;
+}
+
+.input-wrapper:focus-within {
+    border-color: var(--vscode-focusBorder);
+}
+
+.chat-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--vscode-input-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: 14px;
+    line-height: 1.4;
+    resize: none;
+    outline: none;
+    min-height: 20px;
+    max-height: 120px;
+}
+
+.chat-input::placeholder {
+    color: var(--vscode-input-placeholderForeground);
+}
+
+.send-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.send-btn:hover:not(:disabled) {
+    background-color: var(--vscode-button-hoverBackground);
+    transform: scale(1.05);
+}
+
+.send-btn:disabled {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    cursor: not-allowed;
+    transform: none;
+}
+
+.send-icon {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+/* Scrollbar styling */
+.chat-log::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chat-log::-webkit-scrollbar-track {
+    background: var(--vscode-scrollbarSlider-background);
+}
+
+.chat-log::-webkit-scrollbar-thumb {
+    background: var(--vscode-scrollbarSlider-background);
+    border-radius: 3px;
+}
+
+.chat-log::-webkit-scrollbar-thumb:hover {
+    background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+/* Responsive adjustments */
+@media (max-width: 300px) {
+    .action-grid {
+        grid-template-columns: 1fr;
+        max-width: 200px;
+    }
+
+    .header .title {
+        font-size: 14px;
+    }
+
+    .btn {
+        font-size: 11px;
+        padding: 4px 8px;
+    }
+}

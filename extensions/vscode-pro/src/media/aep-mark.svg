@@ -1,0 +1,27 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="aep-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="50%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#14b8a6"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Abstract geometric shape representing AI/automation -->
+  <g fill="url(#aep-gradient)">
+    <!-- Central diamond -->
+    <path d="M12 4l4 4-4 4-4-4z" opacity="0.9"/>
+    <!-- Side connectors -->
+    <circle cx="6" cy="12" r="2" opacity="0.7"/>
+    <circle cx="18" cy="12" r="2" opacity="0.7"/>
+    <!-- Bottom nodes -->
+    <circle cx="9" cy="17" r="1.5" opacity="0.8"/>
+    <circle cx="15" cy="17" r="1.5" opacity="0.8"/>
+    <!-- Connection lines -->
+    <path d="M8 12h2M14 12h2M10.5 15.5L9 17M13.5 15.5L15 17" 
+          stroke="url(#aep-gradient)" 
+          stroke-width="1.5" 
+          stroke-linecap="round" 
+          opacity="0.6"/>
+  </g>
+</svg>

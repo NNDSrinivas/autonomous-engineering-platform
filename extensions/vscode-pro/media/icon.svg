@@ -1,0 +1,54 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#007ACC;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0056B3;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="url(#gradient)" stroke="#004080" stroke-width="2"/>
+  
+  <!-- Robot head -->
+  <rect x="44" y="32" width="40" height="32" rx="6" fill="white"/>
+  
+  <!-- Eyes -->
+  <circle cx="52" cy="44" r="4" fill="#007ACC"/>
+  <circle cx="76" cy="44" r="4" fill="#007ACC"/>
+  
+  <!-- Antenna -->
+  <line x1="64" y1="32" x2="64" y2="20" stroke="white" stroke-width="2"/>
+  <circle cx="64" cy="18" r="3" fill="#FFD700"/>
+  
+  <!-- Body -->
+  <rect x="40" y="64" width="48" height="36" rx="4" fill="white"/>
+  
+  <!-- Control panel -->
+  <rect x="48" y="72" width="32" height="20" rx="2" fill="#E8E8E8"/>
+  <rect x="52" y="76" width="6" height="3" fill="#007ACC"/>
+  <rect x="62" y="76" width="6" height="3" fill="#007ACC"/>
+  <rect x="72" y="76" width="6" height="3" fill="#007ACC"/>
+  <rect x="52" y="84" width="12" height="3" fill="#28A745"/>
+  <rect x="68" y="84" width="8" height="3" fill="#DC3545"/>
+  
+  <!-- Arms -->
+  <rect x="28" y="68" width="12" height="6" rx="3" fill="white"/>
+  <rect x="88" y="68" width="12" height="6" rx="3" fill="white"/>
+  
+  <!-- Hands/Tools -->
+  <circle cx="22" cy="71" r="6" fill="#FFD700"/>
+  <circle cx="106" cy="71" r="6" fill="#FFD700"/>
+  
+  <!-- Gear icon in left hand -->
+  <g transform="translate(22,71) scale(0.3)">
+    <path d="M12,8l1.13,2.96L16,11.35L14.65,16L12,17.96L9.35,16L8,11.35L10.87,10.04L12,8M12,6L8.5,9.5L3,10L6,15L8.5,18.5L12,22L15.5,18.5L18,15L21,10L15.5,9.5L12,6Z" fill="#007ACC"/>
+  </g>
+  
+  <!-- Code bracket in right hand -->
+  <g transform="translate(106,71) scale(0.4)">
+    <path d="M8,3L6,5L10,9L6,13L8,15L14,9L8,3M16,3L22,9L16,15L18,13L22,9L18,5L16,3Z" fill="#007ACC"/>
+  </g>
+  
+  <!-- AEP text -->
+  <text x="64" y="110" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="white">AEP</text>
+</svg>

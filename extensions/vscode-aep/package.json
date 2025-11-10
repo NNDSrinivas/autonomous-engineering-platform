@@ -11,13 +11,7 @@
   "engines": { "vscode": "^1.89.0" },
   "categories": ["Other"],
   "activationEvents": [
-    "onStartupFinished",
-    "onView:aep.chatView",
-    "onView:aep.planView",
-    "onView:aep.authView",
-    "onCommand:aep.signIn",
-    "onCommand:aep.startSession",
-    "onCommand:aep.openPortal"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -32,25 +26,25 @@
     ],
     "viewsContainers": {
       "activitybar": [
-        { "id": "aep", "title": "AEP", "icon": "media/chat.svg" }
+        { "id": "aep", "title": "AEP", "icon": "media/aep-activitybar.svg" }
       ]
     },
     "views": {
       "aep": [
         {
-          "id": "aep.chatView",
+          "id": "aep.chat",
           "name": "Agent",
           "icon": "$(comment-discussion)",
           "type": "webview"
         },
         {
-          "id": "aep.planView",
+          "id": "aep.plan",
           "name": "Plan & Act",
           "icon": "$(list-ordered)",
           "type": "webview"
         },
         {
-          "id": "aep.authView",
+          "id": "aep.auth",
           "name": "Account",
           "icon": "$(verified)",
           "type": "webview"

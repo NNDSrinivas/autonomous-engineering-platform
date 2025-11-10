@@ -1,13 +1,22 @@
 import * as vscode from 'vscode';
 import { AEPClient } from '../api/client';
 import { boilerplate } from '../webview/view';
+import { pollDeviceCode } from '../deviceFlow';
 
 export class AuthPanel implements vscode.WebviewViewProvider {
-  constructor(private ctx: vscode.ExtensionContext, private client: AEPClient, private portalUrl: string){}
-  private view?: vscode.WebviewView;
+  private view: vscode.WebviewView | undefined;
 
-  resolveWebviewView(view: vscode.WebviewView){
-    this.view = view; view.webview.options = { enableScripts: true };
+  constructor(
+    private readonly ctx: vscode.ExtensionContext,
+    private readonly client: AEPClient,
+    private readonly portalUrl: string,
+    private readonly output: vscode.OutputChannel
+  ) {}
+
+  resolveWebviewView(view: vscode.WebviewView) {
+    this.view = view;
+    view.webview.options = { enableScripts: true };
+
     const body = `
       <div class="card">
         <div class="row"><span class="h">Welcome to AEP Agent</span></div>
@@ -23,20 +32,50 @@ export class AuthPanel implements vscode.WebviewViewProvider {
         <pre class="mono" id="code"></pre>
         <div class="row"><vscode-button id="copy">Copy Code</vscode-button></div>
       </div>`;
+
     view.webview.html = boilerplate(view.webview, this.ctx, body, ['base.css'], ['auth.js']);
 
-    view.webview.onDidReceiveMessage(async m => {
-      if(m.type==='open') {
-        const url = m.url === 'portal:' ? this.portalUrl : m.url;
-        vscode.env.openExternal(vscode.Uri.parse(url));
-      }
-      if(m.type==='signin'){
-        const flow = await this.client.startDeviceCode();
-        view.webview.postMessage({ type:'flow', flow });
-        vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-        await this.client.pollDeviceCode(flow.device_code);
-        view.webview.postMessage({ type:'done' });
+    view.webview.onDidReceiveMessage(async message => {
+      try {
+        if (message.type === 'open') {
+          const targetUrl = message.url === 'portal:' ? this.portalUrl : message.url;
+          if (targetUrl) {
+            vscode.env.openExternal(vscode.Uri.parse(targetUrl));
+          }
+          return;
+        }
+
+        if (message.type === 'signin') {
+          await this.handleSignIn(view);
+          return;
+        }
+      } catch (error: any) {
+        const messageText = error?.message ?? String(error);
+        await this.client.clearToken();
+        this.output.appendLine(`Authentication failed: ${messageText}`);
+        vscode.window.showErrorMessage(`Authentication failed: ${messageText}`);
+        view.webview.postMessage({ type: 'error', message: messageText });
       }
     });
+  }
+
+  private async handleSignIn(view: vscode.WebviewView) {
+    this.output.appendLine('Starting authentication from Account panel.');
+    const flow = await this.client.startDeviceCode();
+
+    if (!flow.device_code) {
+      throw new Error('Device authorization response was missing a device code.');
+    }
+
+    view.webview.postMessage({ type: 'flow', flow });
+
+    const verificationUrl = flow.verification_uri_complete || flow.verification_uri;
+    if (verificationUrl) {
+      vscode.env.openExternal(vscode.Uri.parse(verificationUrl));
+    }
+
+    await pollDeviceCode(this.client, flow.device_code, this.output);
+    view.webview.postMessage({ type: 'done' });
+    vscode.window.showInformationMessage('Signed in to AEP successfully.');
   }
 }

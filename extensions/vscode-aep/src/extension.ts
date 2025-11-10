@@ -5,129 +5,99 @@ import { Approvals } from './features/approvals';
 import { AuthPanel } from './features/authPanel';
 import { AEPClient } from './api/client';
 import { getConfig } from './config';
+import { pollDeviceCode } from './deviceFlow';
+
+const OUTPUT_CHANNEL = 'AEP Agent';
+let outputChannel: vscode.OutputChannel | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log('🚀 AEP Extension activating...');
-  console.log('🔍 Extension context:', {
-    globalState: Object.keys(context.globalState.keys()),
-    workspaceState: Object.keys(context.workspaceState.keys()),
-    subscriptions: context.subscriptions.length
-  });
-
-  // Show immediate activation confirmation
-  vscode.window.showInformationMessage('🚀 AEP Extension is ACTIVATING...', 'Show Console').then(selection => {
-    if (selection === 'Show Console') {
-      vscode.commands.executeCommand('workbench.action.toggleDevTools');
-    }
-  });
+  outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL);
+  const output = outputChannel;
+  output.appendLine('Activating AEP Agent extension…');
 
   try {
-    // Show activation in VS Code
-    vscode.window.showInformationMessage('AEP Extension activated successfully!');
-
     const cfg = getConfig();
-    console.log('📊 Extension config:', { baseUrl: cfg.baseUrl, orgId: cfg.orgId });
+    output.appendLine(`Using backend ${cfg.baseUrl} for org ${cfg.orgId}`);
 
     const client = new AEPClient(context, cfg.baseUrl, cfg.orgId);
-    const approvals = new Approvals(context, client);
+    await client.hydrateToken(output);
+    const approvals = new Approvals(context, client, output);
+    const chat = new ChatSidebarProvider(context, client, output);
+    const plan = new PlanPanelProvider(context, client, approvals, output);
+    const auth = new AuthPanel(context, client, cfg.portalUrl, output);
 
-    const chat = new ChatSidebarProvider(context, client);
-    const plan = new PlanPanelProvider(context, client, approvals);
-    const auth = new AuthPanel(context, client, cfg.portalUrl);
+    const disposables: vscode.Disposable[] = [
+      vscode.window.registerWebviewViewProvider('aep.chatView', chat, {
+        webviewOptions: { retainContextWhenHidden: true }
+      }),
+      vscode.window.registerWebviewViewProvider('aep.planView', plan, {
+        webviewOptions: { retainContextWhenHidden: true }
+      }),
+      vscode.window.registerWebviewViewProvider('aep.authView', auth, {
+        webviewOptions: { retainContextWhenHidden: true }
+      }),
 
-    console.log('🔧 Registering webview providers...');
-    console.log('🎯 About to register:', {
-      chatProviderInstance: !!chat,
-      planProviderInstance: !!plan,
-      vscodeWindow: !!vscode.window
-    });
-
-    const chatProvider = vscode.window.registerWebviewViewProvider('aep.chatView', chat);
-    const planProvider = vscode.window.registerWebviewViewProvider('aep.planView', plan);
-    const authProvider = vscode.window.registerWebviewViewProvider('aep.authView', auth);
-
-    console.log('📋 Registered providers:', {
-      chatView: 'aep.chatView',
-      planView: 'aep.planView',
-      chatDisposable: !!chatProvider,
-      planDisposable: !!planProvider
-    });
-
-    context.subscriptions.push(
-      chatProvider,
-      planProvider,
-      authProvider,
-
-      vscode.commands.registerCommand('aep.signIn', async () => {
-        try {
-          const flow = await client.startDeviceCode();
-          vscode.window.showInformationMessage(
-            `Open browser to complete sign-in. Code: ${flow.user_code}`,
-            'Open'
-          ).then(sel => {
-            if (sel === 'Open') {
-              vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-            }
-          });
-
-          // Simple poll loop
-          const poll = async () => {
-            try {
-              await client.pollDeviceCode(flow.device_code);
-              vscode.window.showInformationMessage('✅ AEP: Successfully signed in');
-              chat.refresh();
-            } catch (e: any) {
-              if (String(e.message || e).includes('428')) {
-                // Still pending, continue polling
-                setTimeout(poll, 2000);
-              } else {
-                vscode.window.showErrorMessage('AEP sign-in failed: ' + (e.message || e));
-              }
-            }
-          };
-          poll();
-        } catch (e: any) {
-          vscode.window.showErrorMessage('AEP sign-in could not start: ' + (e.message || e));
+      vscode.commands.registerCommand('aep.signIn', () => startDeviceFlow(client, chat, output)),
+      vscode.commands.registerCommand('aep.startSession', () => {
+        vscode.window.showInformationMessage('Starting an AEP planning session…');
+      }),
+      vscode.commands.registerCommand('aep.openPortal', () => {
+        if (cfg.portalUrl) {
+          vscode.env.openExternal(vscode.Uri.parse(cfg.portalUrl));
         }
       }),
+      vscode.commands.registerCommand('aep.plan.approve', () => approvals.approveSelected()),
+      vscode.commands.registerCommand('aep.plan.reject', () => approvals.rejectSelected()),
+      vscode.commands.registerCommand('aep.applyPatch', () => plan.applySelectedPatch())
+    ];
 
-      vscode.commands.registerCommand('aep.startSession', async () => {
-        vscode.window.showInformationMessage('Session starting…');
-        // hook to your existing planning flow
-      }),
-
-      vscode.commands.registerCommand('aep.openPortal', async () => {
-        const portal = cfg.portalUrl || 'https://portal.aep.navra.ai';
-        vscode.env.openExternal(vscode.Uri.parse(portal));
-      }),
-
-      vscode.commands.registerCommand('aep.plan.approve', async () => approvals.approveSelected()),
-      vscode.commands.registerCommand('aep.plan.reject', async () => approvals.rejectSelected()),
-      vscode.commands.registerCommand('aep.applyPatch', async () => plan.applySelectedPatch()),
-
-      // Debug command to test webview providers
-      vscode.commands.registerCommand('aep.debug.testWebviews', async () => {
-        console.log('🧪 Testing webview providers...');
-        vscode.window.showInformationMessage('Testing webview providers - check console');
-
-        // Force refresh webviews
-        chat.refresh();
-        plan.refresh();
-
-        // Try to focus on the AEP views
-        await vscode.commands.executeCommand('workbench.view.extension.aep');
-      })
-    );
-
-    console.log('✅ AEP Extension activated successfully');
-    console.log('Setting up vscode host providers...');
-    vscode.window.showInformationMessage('AEP Extension loaded! Check the Activity Bar for AEP icon.');
+    context.subscriptions.push(...disposables, output);
+    output.appendLine('AEP Agent extension activated successfully.');
   } catch (error) {
-    console.error('❌ AEP Extension activation failed:', error);
-    vscode.window.showErrorMessage(`AEP Extension failed to activate: ${error}`);
+    const message = error instanceof Error ? error.message : String(error);
+    output.appendLine(`Activation failed: ${message}`);
+    vscode.window.showErrorMessage(
+      'AEP Agent extension failed to activate. Check the AEP Agent output channel for details.'
+    );
+    throw error;
+  }
+}
+
+async function startDeviceFlow(
+  client: AEPClient,
+  chat: ChatSidebarProvider,
+  output: vscode.OutputChannel
+) {
+  try {
+    const flow = await client.startDeviceCode();
+    output.appendLine('Device flow started. Opening browser for verification.');
+
+    const verificationUrl = flow.verification_uri_complete || flow.verification_uri;
+    const codeLabel = flow.user_code ? ` (code: ${flow.user_code})` : '';
+
+    vscode.window
+      .showInformationMessage(`Open the browser to complete sign-in${codeLabel}`, 'Open Browser')
+      .then(selection => {
+        if (selection === 'Open Browser' && verificationUrl) {
+          vscode.env.openExternal(vscode.Uri.parse(verificationUrl));
+        }
+      });
+
+    if (!flow.device_code) {
+      throw new Error('Device authorization response was missing a device code.');
+    }
+
+    await pollDeviceCode(client, flow.device_code, output);
+    vscode.window.showInformationMessage('Signed in to AEP successfully.');
+    chat.refresh();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    output.appendLine(`Sign-in failed: ${message}`);
+    await client.clearToken();
+    vscode.window.showErrorMessage(`AEP sign-in failed: ${message}`);
   }
 }
 
 export function deactivate() {
-  console.log('🛑 AEP Extension deactivating...');
+  outputChannel?.appendLine('AEP Agent extension deactivated.');
 }

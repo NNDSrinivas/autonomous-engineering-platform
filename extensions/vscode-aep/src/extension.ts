@@ -79,6 +79,7 @@ async function startDeviceFlow(client: AEPClient, chat: ChatSidebarProvider, out
 }
 
 async function pollDeviceCode(client: AEPClient, deviceCode: string, output: vscode.OutputChannel) {
+  // 90 attempts × 2 seconds interval = 180 seconds (3 minutes) total timeout for device authorization.
   const maxAttempts = 90;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {

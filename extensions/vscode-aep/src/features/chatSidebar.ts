@@ -78,32 +78,50 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
         this.view.webview,
         this.ctx,
         body,
-        ['base.css', 'aurora.css', 'landing.css'],
-        ['chat.js']
+        ['modern.css'],
+        ['chat-modern.js']
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ChatSidebar render failed: ${message}`);
       const fallback = `
-        <div class="aep-shell">
-          <section class="panel aurora error">
-            <div class="panel-header">
-              <span class="badge badge-alert">Connectivity issue</span>
-              <h1>We couldn't reach your workspace</h1>
-              <p class="lead">${this.escape(message)}</p>
+        <div class="aep-container">
+          <div class="aep-card aep-card--elevated">
+            <div class="aep-card__header">
+              <div>
+                <h1 class="aep-card__title">Connection Error</h1>
+                <p class="aep-card__subtitle">Unable to reach AEP workspace</p>
+              </div>
+              <div class="aep-status aep-status--offline">
+                <span class="aep-status__dot"></span>
+                Offline
+              </div>
             </div>
-            <div class="panel-actions">
-              <vscode-button appearance="primary" id="retry" data-command="refresh">Try again</vscode-button>
-              <vscode-button appearance="secondary" id="openPortal" data-command="openPortal">Open status dashboard</vscode-button>
+            
+            <div class="aep-stack">
+              <div class="aep-card">
+                <p class="aep-text--sm">${this.escape(message)}</p>
+              </div>
+              
+              <div class="aep-grid">
+                <button class="aep-btn aep-btn--primary" data-command="refresh">
+                  <span class="codicon codicon-refresh"></span>
+                  Try Again
+                </button>
+                <button class="aep-btn aep-btn--secondary" data-command="openPortal">
+                  <span class="codicon codicon-globe"></span>
+                  Status Dashboard
+                </button>
+              </div>
             </div>
-          </section>
+          </div>
         </div>`;
       this.view.webview.html = boilerplate(
         this.view.webview,
         this.ctx,
         fallback,
-        ['base.css', 'aurora.css', 'landing.css'],
-        ['chat.js']
+        ['modern.css'],
+        ['chat-modern.js']
       );
     }
   }
@@ -123,242 +141,340 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
     const displayName = this.formatName(email);
     const issueCards = issues.length
       ? issues.map(issue => this.renderIssue(issue)).join('')
-      : `<div class="empty-state">
-          <h3>No Jira issues detected</h3>
-          <p>Connect a project in the Agent tab or load a demo to explore AEP workflows.</p>
-          <div class="empty-actions">
-          <vscode-button appearance="secondary" id="action-refresh" data-command="refresh">Refresh data</vscode-button>
-          <vscode-button appearance="secondary" id="action-start" data-command="startSession">Open command session</vscode-button>
+      : `<div class="aep-empty">
+          <div class="aep-empty__icon">📋</div>
+          <h3 class="aep-empty__title">No active issues</h3>
+          <p class="aep-empty__description">Connect your Jira workspace or start a new conversation to begin.</p>
+          <div class="aep-stack aep-stack--sm">
+            <button class="aep-btn aep-btn--primary" data-command="refresh">
+              <span class="codicon codicon-refresh"></span>
+              Refresh Issues
+            </button>
+            <button class="aep-btn aep-btn--secondary" data-command="startSession">
+              <span class="codicon codicon-comment-discussion"></span>
+              Start New Session
+            </button>
           </div>
         </div>`;
 
     return `
-      <div class="aep-shell">
-        <section class="panel aurora hero">
-          <div class="panel-header">
-            <span class="badge badge-success">Workspace connected</span>
-            <h1>${this.escape(greeting)}, ${this.escape(displayName)}.</h1>
-            <p class="lead">You're authenticated as ${this.escape(email)}. Launch a session or pick a Jira issue to begin shipping.</p>
-          </div>
-          <div class="panel-actions">
-            <vscode-button id="action-start" data-command="startSession" appearance="primary">Launch agent session</vscode-button>
-            <vscode-button id="action-refresh" data-command="refresh" appearance="secondary">Refresh workspace</vscode-button>
-            <vscode-button id="action-portal" data-command="openPortal" appearance="secondary">Open Portal</vscode-button>
-          </div>
-          <div class="panel-metrics">
-            <div class="metric">
-              <span class="metric-value">${issues.length}</span>
-              <span class="metric-label">Active Jira issues</span>
-            </div>
-            <div class="metric">
-              <span class="metric-value">Realtime</span>
-              <span class="metric-label">AEP sync</span>
-            </div>
-            <div class="metric">
-              <span class="metric-value">Secured</span>
-              <span class="metric-label">Auth0 login</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="grid">
-          <article class="module issues">
-            <header>
+      <div class="aep-container">
+        <div class="aep-stack">
+          <!-- Header Section -->
+          <div class="aep-card aep-card--elevated">
+            <div class="aep-card__header">
               <div>
-                <h2>Priority work</h2>
-                <p>Assign AEP to break down tasks, draft plans, and prepare patches.</p>
+                <h1 class="aep-card__title">${this.escape(greeting)}, ${this.escape(displayName)}</h1>
+                <p class="aep-card__subtitle">Connected as ${this.escape(email)}</p>
               </div>
-              <vscode-button appearance="secondary" id="action-refresh-secondary" data-command="refresh">Sync now</vscode-button>
-            </header>
-            <div class="issue-grid">${issueCards}</div>
-          </article>
-
-          <article class="module conversation">
-            <header>
-              <div>
-                <h2>Chat with AEP</h2>
-                <p>Ask for refactors, tests, deployment steps, or architecture reviews.</p>
-              </div>
-            </header>
-            <div class="chat-log" id="chatMessages">
-              <div class="chat-placeholder">
-                <span>💬</span>
-                <div>
-                  <strong>Ready for your next request</strong>
-                  <p>Summarize a pull request, draft a remediation plan, or generate a hotfix.</p>
-                </div>
+              <div class="aep-status aep-status--online aep-connection-status">
+                <span class="aep-status__dot"></span>
+                Connected
               </div>
             </div>
-            <div class="chat-compose">
-              <textarea id="chatInput" placeholder="Ask AEP to analyze a file, reason about tests, or prepare a plan..."></textarea>
-              <vscode-button id="chatSend" appearance="primary">Send</vscode-button>
-            </div>
-          </article>
-        </section>
-
-        <section class="grid tertiary">
-          <article class="module quick-actions">
-            <header>
-              <div>
-                <h2>Quick actions</h2>
-                <p>Drive the workflow without leaving VS Code.</p>
-              </div>
-            </header>
-            <div class="quick-actions-grid">
-              <button class="quick-action" data-command="startSession">
-                <span class="icon">⚡</span>
-                <div>
-                  <strong>Start an execution session</strong>
-                  <p>Open the Agent palette to create or resume tasks.</p>
-                </div>
+            <div class="aep-grid aep-grid--cols-2">
+              <button class="aep-btn aep-btn--primary" data-command="startSession">
+                <span class="codicon codicon-rocket"></span>
+                New Session
               </button>
-              <button class="quick-action" data-command="refresh">
-                <span class="icon">🔄</span>
-                <div>
-                  <strong>Resync integrations</strong>
-                  <p>Force refresh Jira issues and workspace metadata.</p>
-                </div>
-              </button>
-              <button class="quick-action" data-command="openPortal">
-                <span class="icon">🌐</span>
-                <div>
-                  <strong>Review insights in Portal</strong>
-                  <p>Jump to the AEP Portal for analytics and approvals.</p>
-                </div>
+              <button class="aep-btn aep-btn--secondary" data-command="openPortal">
+                <span class="codicon codicon-globe"></span>
+                Open Portal
               </button>
             </div>
-          </article>
-        </section>
+          </div>
+
+          <!-- Modern Chat Interface -->
+          <div class="aep-card">
+            <div class="aep-card__header">
+              <h2 class="aep-card__title">Chat with AEP Agent</h2>
+              <button class="aep-btn aep-btn--ghost aep-btn--sm" data-command="refresh" title="Refresh">
+                <span class="codicon codicon-refresh"></span>
+              </button>
+            </div>
+            
+            <div class="aep-chat">
+              <div class="aep-chat__header">
+                <div class="aep-stack aep-stack--sm">
+                  <span class="aep-text--bold">AEP Agent</span>
+                  <span class="aep-text--sm aep-text--muted">Ready to help with code, planning, and architecture</span>
+                </div>
+                <div class="aep-status aep-status--online">
+                  <span class="aep-status__dot"></span>
+                  Online
+                </div>
+              </div>
+              
+              <div class="aep-chat__messages" id="chatMessages">
+                <div class="aep-chat__message aep-chat__message--assistant">
+                  <div class="aep-chat__message-bubble">
+                    <p>👋 Hi! I'm your AEP Agent. I can help you:</p>
+                    <ul>
+                      <li><strong>Plan & execute</strong> development tasks</li>
+                      <li><strong>Review & improve</strong> code quality</li>
+                      <li><strong>Generate & apply</strong> code changes</li>
+                      <li><strong>Analyze & optimize</strong> project architecture</li>
+                    </ul>
+                    <p>What would you like to work on today?</p>
+                  </div>
+                  <div class="aep-chat__message-meta">AEP Agent • ${new Date().toLocaleTimeString()}</div>
+                </div>
+              </div>
+              
+              <div class="aep-chat__input">
+                <textarea 
+                  id="chatInput" 
+                  class="aep-chat__textarea" 
+                  placeholder="Ask me anything about your codebase, request refactoring, or start a new task..."
+                  rows="1"
+                ></textarea>
+                <button id="chatSend" class="aep-btn aep-btn--primary">
+                  <span class="codicon codicon-send"></span>
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Issues Section -->
+          ${issues.length > 0 ? `
+          <div class="aep-card">
+            <div class="aep-card__header">
+              <div>
+                <h2 class="aep-card__title">Active Issues (${issues.length})</h2>
+                <p class="aep-card__subtitle">Jira issues ready for AI-assisted development</p>
+              </div>
+              <button class="aep-btn aep-btn--ghost aep-btn--sm" data-command="refresh" title="Sync Issues">
+                <span class="codicon codicon-sync"></span>
+              </button>
+            </div>
+            <div class="aep-stack">
+              ${issueCards}
+            </div>
+          </div>
+          ` : `
+          <div class="aep-card">
+            ${issueCards}
+          </div>
+          `}
+
+          <!-- Quick Actions -->
+          <div class="aep-card">
+            <div class="aep-card__header">
+              <h2 class="aep-card__title">Quick Actions</h2>
+              <p class="aep-card__subtitle">Common development workflows</p>
+            </div>
+            <div class="aep-grid">
+              <button class="aep-btn aep-btn--secondary" data-command="startSession">
+                <span class="codicon codicon-play"></span>
+                Start Session
+              </button>
+              <button class="aep-btn aep-btn--secondary" data-command="refresh">
+                <span class="codicon codicon-refresh"></span>
+                Refresh Data
+              </button>
+            </div>
+          </div>
+        </div>
       </div>`;
   }
 
   private signedOutView(): string {
     return `
-      <div class="aep-shell">
-        <section class="panel aurora hero">
-          <div class="panel-header">
-            <span class="badge badge-offline">Authentication required</span>
-            <h1>Build with AEP Agent for engineering teams</h1>
-            <p class="lead">Securely connect your workspace, orchestrate AI-assisted plans, and apply production-ready patches without leaving VS Code.</p>
-          </div>
-          <div class="panel-actions">
-            <vscode-button id="cta-signin" data-command="signIn" appearance="primary">Sign in to AEP</vscode-button>
-            <vscode-button id="cta-demo" appearance="secondary">Explore the interactive demo</vscode-button>
-            <vscode-button id="cta-portal" data-command="openPortal" appearance="secondary">Visit Portal</vscode-button>
-          </div>
-          <div class="panel-metrics">
-            <div class="metric">
-              <span class="metric-value">Planning</span>
-              <span class="metric-label">Generate AI-driven execution plans</span>
-            </div>
-            <div class="metric">
-              <span class="metric-value">Shipping</span>
-              <span class="metric-label">Apply validated patches in seconds</span>
-            </div>
-            <div class="metric">
-              <span class="metric-value">Security</span>
-              <span class="metric-label">Device-code login backed by Auth0</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="grid">
-          <article class="module">
-            <header>
+      <div class="aep-container">
+        <div class="aep-stack">
+          <!-- Hero Section -->
+          <div class="aep-card aep-card--elevated">
+            <div class="aep-card__header">
               <div>
-                <h2>What you get with AEP</h2>
-                <p>Purpose-built workflows that keep engineers in flow.</p>
+                <h1 class="aep-card__title">AEP Agent for VS Code</h1>
+                <p class="aep-card__subtitle">AI-powered development assistant for engineering teams</p>
               </div>
-            </header>
-            <div class="feature-grid">
-              <div class="feature-card">
-                <span class="icon">🧠</span>
-                <h3>Full-context planning</h3>
-                <p>Draft executable plans from Jira issues with approvals woven in.</p>
-              </div>
-              <div class="feature-card">
-                <span class="icon">🛠️</span>
-                <h3>Code change automation</h3>
-                <p>Generate, review, and apply patches with guardrails and diff previews.</p>
-              </div>
-              <div class="feature-card">
-                <span class="icon">📊</span>
-                <h3>Operations visibility</h3>
-                <p>Track session health, rollout risk, and completions from the Portal.</p>
+              <div class="aep-status aep-status--offline">
+                <span class="aep-status__dot"></span>
+                Sign In Required
               </div>
             </div>
-          </article>
+            
+            <div class="aep-stack">
+              <p class="aep-text--md">
+                Connect your workspace to unlock AI-assisted planning, code generation, 
+                and automated patch application without leaving VS Code.
+              </p>
+              
+              <div class="aep-grid">
+                <button class="aep-btn aep-btn--primary" data-command="signIn">
+                  <span class="codicon codicon-sign-in"></span>
+                  Sign In to AEP
+                </button>
+                <button class="aep-btn aep-btn--secondary" data-command="openPortal">
+                  <span class="codicon codicon-globe"></span>
+                  Visit Portal
+                </button>
+              </div>
+            </div>
+          </div>
 
-          <article class="module demo" data-visible="false" aria-hidden="true">
-            <header>
-              <div>
-                <h2>Interactive showcase</h2>
-                <p>Try a simulated conversation before authenticating.</p>
-              </div>
-              <button id="demo-close" class="ghost" aria-label="Close demo">×</button>
-            </header>
-            <div class="demo-log" id="demoLog">
-              <div class="demo-message assistant">
-                <strong>AEP Agent</strong>
-                <p>Hi! I can help plan your sprint, triage bugs, and prep code changes. Ask me about your project.</p>
-              </div>
+          <!-- Features Grid -->
+          <div class="aep-card">
+            <div class="aep-card__header">
+              <h2 class="aep-card__title">What you get with AEP</h2>
+              <p class="aep-card__subtitle">Professional AI development workflows</p>
             </div>
-            <div class="demo-compose">
-              <textarea id="demoInput" placeholder="Try: Generate a rollout plan for the onboarding flow"></textarea>
-              <vscode-button id="demoSend" appearance="primary">Send</vscode-button>
-            </div>
-          </article>
-        </section>
+            
+            <div class="aep-grid">
+              <div class="aep-card">
+                <div class="aep-card__header">
+                  <span style="font-size: 24px;">🧠</span>
+                </div>
+                <h3 class="aep-text--lg aep-text--bold aep-mb--sm">Intelligent Planning</h3>
+                <p class="aep-text--sm aep-text--muted">
+                  Generate executable development plans from Jira issues with built-in approval workflows.
+                </p>
+              </div>
 
-        <section class="grid tertiary">
-          <article class="module timeline">
-            <header>
-              <div>
-                <h2>How teams ship with AEP</h2>
+              <div class="aep-card">
+                <div class="aep-card__header">
+                  <span style="font-size: 24px;">⚡</span>
+                </div>
+                <h3 class="aep-text--lg aep-text--bold aep-mb--sm">Code Automation</h3>
+                <p class="aep-text--sm aep-text--muted">
+                  AI-generated code changes with diff previews, testing, and safety guardrails.
+                </p>
               </div>
-            </header>
-            <ol class="timeline-steps">
-              <li>
-                <span class="step">01</span>
-                <div>
-                  <strong>Connect your workspace</strong>
-                  <p>Authenticate with your organization and link Jira or GitHub projects.</p>
+
+              <div class="aep-card">
+                <div class="aep-card__header">
+                  <span style="font-size: 24px;">�</span>
                 </div>
-              </li>
-              <li>
-                <span class="step">02</span>
-                <div>
-                  <strong>Generate plans</strong>
-                  <p>Send an issue to the Agent panel to receive a review-ready execution plan.</p>
+                <h3 class="aep-text--lg aep-text--bold aep-mb--sm">Full Observability</h3>
+                <p class="aep-text--sm aep-text--muted">
+                  Track development velocity, code quality, and deployment success metrics.
+                </p>
+              </div>
+
+              <div class="aep-card">
+                <div class="aep-card__header">
+                  <span style="font-size: 24px;">🛡️</span>
                 </div>
-              </li>
-              <li>
-                <span class="step">03</span>
-                <div>
-                  <strong>Approve and apply</strong>
-                  <p>Review AI-suggested patches, approve changes, and merge with confidence.</p>
+                <h3 class="aep-text--lg aep-text--bold aep-mb--sm">Enterprise Security</h3>
+                <p class="aep-text--sm aep-text--muted">
+                  OAuth device flow, role-based access control, and audit logging.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Getting Started -->
+          <div class="aep-card">
+            <div class="aep-card__header">
+              <h2 class="aep-card__title">Getting Started</h2>
+              <p class="aep-card__subtitle">Three steps to AI-powered development</p>
+            </div>
+            
+            <div class="aep-stack">
+              <div class="aep-card">
+                <div class="aep-card__header">
+                  <div class="aep-status aep-status--pending">
+                    <span>01</span>
+                  </div>
                 </div>
-              </li>
-            </ol>
-          </article>
-        </section>
+                <h3 class="aep-text--lg aep-text--bold aep-mb--sm">Connect Workspace</h3>
+                <p class="aep-text--sm aep-text--muted aep-mb--md">
+                  Authenticate with your organization and link GitHub or Jira projects securely.
+                </p>
+                <button class="aep-btn aep-btn--secondary aep-btn--sm" data-command="signIn">
+                  <span class="codicon codicon-arrow-right"></span>
+                  Start Here
+                </button>
+              </div>
+
+              <div class="aep-card">
+                <div class="aep-card__header">
+                  <div class="aep-status aep-status--pending">
+                    <span>02</span>
+                  </div>
+                </div>
+                <h3 class="aep-text--lg aep-text--bold aep-mb--sm">Chat & Plan</h3>
+                <p class="aep-text--sm aep-text--muted">
+                  Describe your development goals and receive AI-generated execution plans.
+                </p>
+              </div>
+
+              <div class="aep-card">
+                <div class="aep-card__header">
+                  <div class="aep-status aep-status--pending">
+                    <span>03</span>
+                  </div>
+                </div>
+                <h3 class="aep-text--lg aep-text--bold aep-mb--sm">Review & Apply</h3>
+                <p class="aep-text--sm aep-text--muted">
+                  Approve AI-suggested code changes and apply patches with confidence.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Call to Action -->
+          <div class="aep-card aep-card--elevated">
+            <div class="aep-stack aep-stack--sm">
+              <h2 class="aep-text--xl aep-text--bold">Ready to accelerate your development?</h2>
+              <p class="aep-text--muted">
+                Join thousands of developers using AEP to ship faster and maintain higher code quality.
+              </p>
+              <div class="aep-grid">
+                <button class="aep-btn aep-btn--primary" data-command="signIn">
+                  <span class="codicon codicon-rocket"></span>
+                  Get Started Now
+                </button>
+                <button class="aep-btn aep-btn--ghost" data-command="openPortal">
+                  <span class="codicon codicon-question"></span>
+                  Learn More
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>`;
   }
 
   private renderIssue(issue: JiraIssue): string {
     const status = issue.status ?? 'Pending';
+    const statusClass = this.getStatusClass(status);
     return `
-      <div class="issue-card">
-        <header>
-          <span class="issue-key">${this.escape(issue.key)}</span>
-          <span class="status-pill">${this.escape(status)}</span>
-        </header>
-        <p>${this.escape(issue.summary)}</p>
-        <footer>
-          <vscode-button appearance="primary" data-command="pickIssue" data-key="${this.escape(issue.key)}">Plan in Agent</vscode-button>
-          <vscode-button appearance="secondary" data-url="${issue.url ?? ''}">Open in Jira</vscode-button>
-        </footer>
+      <div class="aep-card">
+        <div class="aep-card__header">
+          <div>
+            <span class="aep-text--mono aep-text--sm aep-text--bold">${this.escape(issue.key)}</span>
+            <div class="aep-status ${statusClass}">
+              <span class="aep-status__dot"></span>
+              ${this.escape(status)}
+            </div>
+          </div>
+        </div>
+        <h3 class="aep-text--md aep-text--bold aep-mb--sm">${this.escape(issue.summary)}</h3>
+        <div class="aep-grid">
+          <button class="aep-btn aep-btn--primary aep-btn--sm" data-command="pickIssue" data-key="${this.escape(issue.key)}">
+            <span class="codicon codicon-play"></span>
+            Start Planning
+          </button>
+          <button class="aep-btn aep-btn--secondary aep-btn--sm" data-url="${issue.url ?? ''}">
+            <span class="codicon codicon-link-external"></span>
+            Open in Jira
+          </button>
+        </div>
       </div>`;
+  }
+
+  private getStatusClass(status: string): string {
+    const lowerStatus = status.toLowerCase();
+    if (lowerStatus.includes('done') || lowerStatus.includes('closed') || lowerStatus.includes('resolved')) {
+      return 'aep-status--online';
+    }
+    if (lowerStatus.includes('progress') || lowerStatus.includes('active') || lowerStatus.includes('development')) {
+      return 'aep-status--pending';
+    }
+    return 'aep-status--offline';
   }
 
   private escape(text: string | null | undefined): string {

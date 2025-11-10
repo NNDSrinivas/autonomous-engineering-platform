@@ -11,6 +11,7 @@
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AEPClient = void 0;
+const TOKEN_SECRET = 'aep.token';
 class AEPClient {
     constructor(ctx, baseUrl, orgId) {
         this.ctx = ctx;
@@ -18,23 +19,26 @@ class AEPClient {
         this.orgId = orgId;
     }
     async hydrateToken(output) {
-        const existing = await this.ctx.secrets.get('aep.token');
-        if (existing) {
-            this.token = existing;
-            output?.appendLine('Restored existing AEP session token.');
+        const existing = await this.ctx.secrets.get(TOKEN_SECRET);
+        if (!existing) {
+            return;
         }
+        if (existing === 'undefined' || existing.trim().length === 0) {
+            await this.ctx.secrets.delete(TOKEN_SECRET);
+            output?.appendLine('Removed invalid AEP session token from secret storage.');
+            return;
+        }
+        this.token = existing;
+        output?.appendLine('Restored existing AEP session token.');
     }
     async persistToken(token) {
         this.token = token;
         if (token) {
-            await this.ctx.secrets.store('aep.token', token);
+            await this.ctx.secrets.store(TOKEN_SECRET, token);
         }
         else {
-            await this.ctx.secrets.delete('aep.token');
+            await this.ctx.secrets.delete(TOKEN_SECRET);
         }
-    }
-    setToken(token) {
-        this.token = token;
     }
     hasToken() {
         return Boolean(this.token);
@@ -72,6 +76,9 @@ class AEPClient {
             throw new Error(await response.text());
         }
         const token = (await response.json());
+        if (!token.access_token) {
+            throw new Error('Device authorization succeeded but did not return an access token.');
+        }
         await this.persistToken(token.access_token);
         return token;
     }
@@ -175,13 +182,19 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getConfig = getConfig;
 const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
 function getConfig() {
-    const c = vscode.workspace.getConfiguration('aep');
+    const config = vscode.workspace.getConfiguration('aep');
     return {
-        baseUrl: String(c.get('baseUrl')),
-        orgId: String(c.get('orgId')),
-        llm: String(c.get('llm')),
-        portalUrl: String(c.get('portalUrl'))
+        baseUrl: normalize(config.get('baseUrl'), 'http://localhost:8000'),
+        orgId: normalize(config.get('orgId'), 'org-dev'),
+        llm: normalize(config.get('llm'), 'gpt-4o-mini'),
+        portalUrl: normalize(config.get('portalUrl'), 'https://portal.aep.navra.ai')
     };
+}
+function normalize(value, fallback) {
+    if (typeof value !== 'string' || value.trim().length === 0 || value === 'undefined') {
+        return fallback;
+    }
+    return value.trim();
 }
 
 

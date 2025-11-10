@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { ChatResponse, DeviceCodeStart, DeviceCodeToken, JiraIssue, ProposedStep } from './types';
 
+const TOKEN_SECRET = 'aep.token';
+
 export class AEPClient {
   private token: string | undefined;
 
@@ -11,24 +13,28 @@ export class AEPClient {
   ) {}
 
   async hydrateToken(output?: vscode.OutputChannel): Promise<void> {
-    const existing = await this.ctx.secrets.get('aep.token');
-    if (existing) {
-      this.token = existing;
-      output?.appendLine('Restored existing AEP session token.');
+    const existing = await this.ctx.secrets.get(TOKEN_SECRET);
+    if (!existing) {
+      return;
     }
+
+    if (existing === 'undefined' || existing.trim().length === 0) {
+      await this.ctx.secrets.delete(TOKEN_SECRET);
+      output?.appendLine('Removed invalid AEP session token from secret storage.');
+      return;
+    }
+
+    this.token = existing;
+    output?.appendLine('Restored existing AEP session token.');
   }
 
   async persistToken(token: string | undefined): Promise<void> {
     this.token = token;
     if (token) {
-      await this.ctx.secrets.store('aep.token', token);
+      await this.ctx.secrets.store(TOKEN_SECRET, token);
     } else {
-      await this.ctx.secrets.delete('aep.token');
+      await this.ctx.secrets.delete(TOKEN_SECRET);
     }
-  }
-
-  setToken(token: string | undefined) {
-    this.token = token;
   }
 
   hasToken(): boolean {
@@ -77,6 +83,10 @@ export class AEPClient {
     }
 
     const token = (await response.json()) as DeviceCodeToken;
+    if (!token.access_token) {
+      throw new Error('Device authorization succeeded but did not return an access token.');
+    }
+
     await this.persistToken(token.access_token);
     return token;
   }

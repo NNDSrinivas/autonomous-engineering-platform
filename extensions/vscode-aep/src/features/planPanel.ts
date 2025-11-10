@@ -168,7 +168,13 @@ export class PlanPanelProvider implements vscode.WebviewViewProvider {
               </ol>
             </section>
           </div>`;
-        this.view.webview.html = boilerplate(this.view.webview, this.ctx, body, ['base.css', 'plan.css'], ['plan.js']);
+        this.view.webview.html = boilerplate(
+          this.view.webview,
+          this.ctx,
+          body,
+          ['base.css', 'aurora.css', 'plan.css'],
+          ['plan.js']
+        );
         return;
       }
 
@@ -216,7 +222,13 @@ export class PlanPanelProvider implements vscode.WebviewViewProvider {
           </div>
         </div>`;
 
-      this.view.webview.html = boilerplate(this.view.webview, this.ctx, body, ['base.css', 'plan.css'], ['plan.js']);
+      this.view.webview.html = boilerplate(
+        this.view.webview,
+        this.ctx,
+        body,
+        ['base.css', 'aurora.css', 'plan.css'],
+        ['plan.js']
+      );
     } catch (error) {
       this.showError(error);
     }
@@ -308,6 +320,12 @@ export class PlanPanelProvider implements vscode.WebviewViewProvider {
         </section>
       </div>`;
 
-    this.view.webview.html = boilerplate(this.view.webview, this.ctx, body, ['base.css', 'plan.css'], ['plan.js']);
+    this.view.webview.html = boilerplate(
+      this.view.webview,
+      this.ctx,
+      body,
+      ['base.css', 'aurora.css', 'plan.css'],
+      ['plan.js']
+    );
   }
 }

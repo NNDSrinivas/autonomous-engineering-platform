@@ -567,7 +567,7 @@ class AuthPanel {
           <p class="hint">We keep polling every few seconds until your login completes.</p>
         </section>
       </div>`;
-        view.webview.html = (0, view_1.boilerplate)(view.webview, this.ctx, body, ['base.css'], ['auth.js']);
+        view.webview.html = (0, view_1.boilerplate)(view.webview, this.ctx, body, ['base.css', 'aurora.css'], ['auth.js']);
         view.webview.onDidReceiveMessage(async (message) => {
             try {
                 if (message.type === 'open') {
@@ -720,7 +720,7 @@ class ChatSidebarProvider {
             ]);
             const greeting = this.resolveGreeting();
             const body = me?.email ? this.signedInView(greeting, me.email, issues) : this.signedOutView();
-            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
+            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'aurora.css', 'landing.css'], ['chat.js']);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -739,7 +739,7 @@ class ChatSidebarProvider {
             </div>
           </section>
         </div>`;
-            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, fallback, ['base.css', 'landing.css'], ['chat.js']);
+            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, fallback, ['base.css', 'aurora.css', 'landing.css'], ['chat.js']);
         }
     }
     resolveGreeting() {
@@ -1233,7 +1233,7 @@ class PlanPanelProvider {
               </ol>
             </section>
           </div>`;
-                this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'plan.css'], ['plan.js']);
+                this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'aurora.css', 'plan.css'], ['plan.js']);
                 return;
             }
             const current = this.steps[this.selectedIndex];
@@ -1277,7 +1277,7 @@ class PlanPanelProvider {
             </section>
           </div>
         </div>`;
-            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'plan.css'], ['plan.js']);
+            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'aurora.css', 'plan.css'], ['plan.js']);
         }
         catch (error) {
             this.showError(error);
@@ -1362,7 +1362,7 @@ class PlanPanelProvider {
           </div>
         </section>
       </div>`;
-        this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'plan.css'], ['plan.js']);
+        this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'aurora.css', 'plan.css'], ['plan.js']);
     }
 }
 exports.PlanPanelProvider = PlanPanelProvider;

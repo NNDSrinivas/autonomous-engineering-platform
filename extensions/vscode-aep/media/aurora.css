@@ -1,0 +1,524 @@
+:root {
+  --aep-radius-lg: 18px;
+  --aep-radius-md: 12px;
+  --aep-gap: 20px;
+  --aep-surface: color-mix(in srgb, var(--vscode-editor-background) 85%, transparent);
+  --aep-surface-elevated: color-mix(in srgb, var(--vscode-editor-background) 65%, black 10%);
+  --aep-border: color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
+  --aep-aurora-1: color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent);
+  --aep-aurora-2: color-mix(in srgb, var(--vscode-button-background) 45%, transparent);
+  --aep-aurora-3: color-mix(in srgb, var(--vscode-editorInfo-foreground) 40%, transparent);
+  --aep-shadow: 0 30px 60px rgba(0, 0, 0, 0.18);
+}
+
+body {
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-foreground);
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--vscode-focusBorder) 28%, transparent) 0%, transparent 60%),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--vscode-button-hoverBackground) 20%, transparent) 0%, transparent 55%),
+    var(--vscode-sideBar-background);
+  margin: 0;
+  padding: 24px;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.aep-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aep-gap);
+  position: relative;
+  z-index: 1;
+}
+
+.panel {
+  position: relative;
+  border-radius: var(--aep-radius-lg);
+  padding: 28px;
+  background: var(--aep-surface);
+  border: 1px solid var(--aep-border);
+  box-shadow: var(--aep-shadow);
+  overflow: hidden;
+  backdrop-filter: blur(22px);
+}
+
+.panel.hero {
+  padding: 36px;
+}
+
+.panel.aurora {
+  color: var(--vscode-foreground);
+}
+
+.panel.aurora::before,
+.panel.aurora::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0.6;
+}
+
+.panel.aurora::before {
+  background: radial-gradient(120% 120% at 20% 20%, var(--aep-aurora-1), transparent 60%);
+}
+
+.panel.aurora::after {
+  background: radial-gradient(120% 120% at 80% 10%, var(--aep-aurora-2), transparent 60%),
+    radial-gradient(120% 120% at 50% 90%, var(--aep-aurora-3), transparent 65%);
+}
+
+.panel.error {
+  border-color: color-mix(in srgb, var(--vscode-inputValidation-errorBorder) 80%, transparent);
+}
+
+.panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.panel-header h1 {
+  font-size: 2.1rem;
+  margin: 0 0 12px;
+  letter-spacing: -0.02em;
+}
+
+.panel-header .lead {
+  color: var(--vscode-descriptionForeground);
+  font-size: 1.05rem;
+  margin: 0;
+  max-width: 760px;
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.panel-metrics {
+  margin-top: 32px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.metric {
+  background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
+  border-radius: var(--aep-radius-md);
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 60%, transparent);
+}
+
+.metric-value {
+  font-size: 1.35rem;
+  font-weight: 600;
+  display: block;
+}
+
+.metric-label {
+  font-size: 0.9rem;
+  color: var(--vscode-descriptionForeground);
+}
+
+.grid {
+  display: grid;
+  gap: var(--aep-gap);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.grid.tertiary {
+  grid-template-columns: 1fr;
+}
+
+.module {
+  background: var(--aep-surface-elevated);
+  border-radius: var(--aep-radius-lg);
+  padding: 24px;
+  border: 1px solid var(--aep-border);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.module header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.module header h2 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.module header p {
+  margin: 4px 0 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.issue-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.issue-card {
+  background: color-mix(in srgb, var(--vscode-editor-background) 75%, transparent);
+  border-radius: var(--aep-radius-md);
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: transform 150ms ease, border-color 150ms ease;
+}
+
+.issue-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--vscode-focusBorder);
+}
+
+.issue-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.issue-key {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.status-pill {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-badge-background) 65%, transparent);
+  color: var(--vscode-badge-foreground);
+}
+
+.plan-step.status-approved .status-pill,
+.plan-step.status-completed .status-pill,
+.plan-step.status-applied .status-pill {
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed) 45%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.plan-step.status-rejected .status-pill,
+.plan-step.status-failed .status-pill {
+  background: color-mix(in srgb, var(--vscode-testing-iconFailed) 55%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.plan-step.status-pending .status-pill,
+.plan-step.status-in-review .status-pill {
+  background: color-mix(in srgb, var(--vscode-testing-iconQueued) 55%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.issue-card p {
+  margin: 0;
+  color: var(--vscode-descriptionForeground);
+  min-height: 44px;
+}
+
+.issue-card footer {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chat-log {
+  background: color-mix(in srgb, var(--vscode-editor-background) 80%, transparent);
+  border-radius: var(--aep-radius-md);
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
+  padding: 18px;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chat-placeholder {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+.chat-placeholder span {
+  font-size: 1.6rem;
+}
+
+.chat-message {
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, transparent);
+  border-radius: var(--aep-radius-md);
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 65%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-message.user {
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--vscode-button-background) 40%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-button-background) 60%, transparent);
+}
+
+.chat-message.assistant {
+  border-color: color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent);
+}
+
+.chat-meta {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  letter-spacing: 0.02em;
+}
+
+.chat-compose {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.chat-compose textarea,
+.demo-compose textarea {
+  flex: 1;
+  border-radius: var(--aep-radius-md);
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--vscode-input-border) 70%, transparent);
+  background: color-mix(in srgb, var(--vscode-input-background) 85%, transparent);
+  color: var(--vscode-input-foreground);
+  resize: vertical;
+  min-height: 64px;
+}
+
+.chat-compose textarea:focus,
+.demo-compose textarea:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 65%, transparent);
+}
+
+.quick-actions-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.quick-action {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 65%, transparent);
+  border-radius: var(--aep-radius-md);
+  padding: 14px 18px;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease;
+  text-align: left;
+}
+
+.quick-action:hover {
+  transform: translateY(-2px);
+  border-color: var(--vscode-focusBorder);
+}
+
+.quick-action .icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.quick-action p {
+  margin: 4px 0 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-state {
+  border-radius: var(--aep-radius-md);
+  border: 1px dashed color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
+  padding: 24px;
+  text-align: center;
+  display: grid;
+  gap: 12px;
+}
+
+.empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--vscode-badge-background) 55%, transparent);
+  color: var(--vscode-badge-foreground);
+}
+
+.badge-success {
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed) 55%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.badge-offline {
+  background: color-mix(in srgb, var(--vscode-testing-iconQueued) 50%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.badge-alert {
+  background: color-mix(in srgb, var(--vscode-inputValidation-errorBorder) 65%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.ghost {
+  background: transparent;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+.module.demo[data-visible='false'] {
+  display: none;
+}
+
+.module.demo[data-visible='true'] {
+  display: flex;
+}
+
+.auth-status[data-visible='false'] {
+  display: none;
+}
+
+.auth-status[data-visible='true'] {
+  display: flex;
+}
+
+.auth-status .code-display {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.auth-status .code-value {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 1.6rem;
+  letter-spacing: 0.28em;
+  padding: 12px 16px;
+  border-radius: var(--aep-radius-md);
+  background: color-mix(in srgb, var(--vscode-editor-background) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 65%, transparent);
+}
+
+.auth-status .hint {
+  margin: 8px 0 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.auth-status.error {
+  border-color: color-mix(in srgb, var(--vscode-inputValidation-errorBorder) 70%, transparent);
+}
+
+.demo-log {
+  background: color-mix(in srgb, var(--vscode-editor-background) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
+  border-radius: var(--aep-radius-md);
+  padding: 16px;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.demo-message {
+  display: grid;
+  gap: 6px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, transparent);
+  border-radius: var(--aep-radius-md);
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 65%, transparent);
+}
+
+.demo-message.user {
+  border-color: color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent);
+}
+
+.demo-compose {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.timeline-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 20px;
+}
+
+.timeline-steps li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.timeline-steps .step {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent);
+  color: var(--vscode-foreground);
+  font-weight: 600;
+}
+
+.timeline-steps p {
+  margin: 4px 0 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 16px;
+  }
+
+  .panel.hero {
+    padding: 28px;
+  }
+
+  .panel-header h1 {
+    font-size: 1.8rem;
+  }
+
+  .panel-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chat-compose,
+  .demo-compose {
+    flex-direction: column;
+  }
+}

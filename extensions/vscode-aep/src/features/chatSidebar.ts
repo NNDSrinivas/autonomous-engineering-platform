@@ -74,7 +74,13 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 
       const greeting = this.resolveGreeting();
       const body = me?.email ? this.signedInView(greeting, me.email, issues) : this.signedOutView();
-      this.view.webview.html = boilerplate(this.view.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
+      this.view.webview.html = boilerplate(
+        this.view.webview,
+        this.ctx,
+        body,
+        ['base.css', 'aurora.css', 'landing.css'],
+        ['chat.js']
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ChatSidebar render failed: ${message}`);
@@ -92,7 +98,13 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
             </div>
           </section>
         </div>`;
-      this.view.webview.html = boilerplate(this.view.webview, this.ctx, fallback, ['base.css', 'landing.css'], ['chat.js']);
+      this.view.webview.html = boilerplate(
+        this.view.webview,
+        this.ctx,
+        fallback,
+        ['base.css', 'aurora.css', 'landing.css'],
+        ['chat.js']
+      );
     }
   }
 

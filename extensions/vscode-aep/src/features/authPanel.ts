@@ -47,7 +47,7 @@ export class AuthPanel implements vscode.WebviewViewProvider {
         </section>
       </div>`;
 
-    view.webview.html = boilerplate(view.webview, this.ctx, body, ['base.css'], ['auth.js']);
+    view.webview.html = boilerplate(view.webview, this.ctx, body, ['base.css', 'aurora.css'], ['auth.js']);
 
     view.webview.onDidReceiveMessage(async message => {
       try {

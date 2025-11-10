@@ -18,23 +18,36 @@ export class AuthPanel implements vscode.WebviewViewProvider {
     view.webview.options = { enableScripts: true };
 
     const body = `
-      <div class="card">
-        <div class="row"><span class="h">Welcome to AEP Agent</span></div>
-        <p>Sign in to connect your IDE with AEP. New here? <a class="link" id="signup">Create an account</a>.</p>
-        <div class="row">
-          <vscode-button id="signin">Sign In</vscode-button>
-          <vscode-button appearance="secondary" id="openPortal">Open Portal</vscode-button>
-        </div>
-      </div>
-      <div class="card" id="device" style="display:none;">
-        <div class="h">Device Code</div>
-        <p>We opened your browser. If asked, paste this code:</p>
-        <pre class="mono" id="code"></pre>
-        <div class="row"><vscode-button id="copy">Copy Code</vscode-button></div>
+      <div class="aep-shell">
+        <section class="panel aurora hero">
+          <div class="panel-header">
+            <span class="badge badge-offline">Sign in required</span>
+            <h1>Connect VS Code to AEP</h1>
+            <p class="lead">Authenticate with your organization to unlock chat, planning, and automated code execution.</p>
+          </div>
+          <div class="panel-actions">
+            <vscode-button id="signin" appearance="primary">Start sign-in</vscode-button>
+            <vscode-button id="openPortal" appearance="secondary">Open Portal</vscode-button>
+            <vscode-button id="signup" appearance="secondary">Create an account</vscode-button>
+          </div>
+        </section>
+
+        <section class="module auth-status" id="device" data-visible="false" aria-hidden="true">
+          <header>
+            <div>
+              <h2>Device code authentication</h2>
+              <p>Follow the prompt in your browser. Enter the code below if requested.</p>
+            </div>
+          </header>
+          <div class="code-display">
+            <span id="code" class="code-value">••••••</span>
+            <vscode-button id="copy" appearance="secondary">Copy code</vscode-button>
+          </div>
+          <p class="hint">We keep polling every few seconds until your login completes.</p>
+        </section>
       </div>`;
 
-    view.webview.html = boilerplate(view.webview, this.ctx, body, ['base.css'], ['auth.js']);
-
+    view.webview.html = boilerplate(view.webview, this.ctx, body, ['base.css', 'aurora.css'], ['auth.js']);
     view.webview.onDidReceiveMessage(async message => {
       try {
         if (message.type === 'open') {

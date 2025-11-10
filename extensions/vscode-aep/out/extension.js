@@ -539,21 +539,35 @@ class AuthPanel {
         this.view = view;
         view.webview.options = { enableScripts: true };
         const body = `
-      <div class="card">
-        <div class="row"><span class="h">Welcome to AEP Agent</span></div>
-        <p>Sign in to connect your IDE with AEP. New here? <a class="link" id="signup">Create an account</a>.</p>
-        <div class="row">
-          <vscode-button id="signin">Sign In</vscode-button>
-          <vscode-button appearance="secondary" id="openPortal">Open Portal</vscode-button>
-        </div>
-      </div>
-      <div class="card" id="device" style="display:none;">
-        <div class="h">Device Code</div>
-        <p>We opened your browser. If asked, paste this code:</p>
-        <pre class="mono" id="code"></pre>
-        <div class="row"><vscode-button id="copy">Copy Code</vscode-button></div>
+      <div class="aep-shell">
+        <section class="panel aurora hero">
+          <div class="panel-header">
+            <span class="badge badge-offline">Sign in required</span>
+            <h1>Connect VS Code to AEP</h1>
+            <p class="lead">Authenticate with your organization to unlock chat, planning, and automated code execution.</p>
+          </div>
+          <div class="panel-actions">
+            <vscode-button id="signin" appearance="primary">Start sign-in</vscode-button>
+            <vscode-button id="openPortal" appearance="secondary">Open Portal</vscode-button>
+            <vscode-button id="signup" appearance="secondary">Create an account</vscode-button>
+          </div>
+        </section>
+
+        <section class="module auth-status" id="device" data-visible="false" aria-hidden="true">
+          <header>
+            <div>
+              <h2>Device code authentication</h2>
+              <p>Follow the prompt in your browser. Enter the code below if requested.</p>
+            </div>
+          </header>
+          <div class="code-display">
+            <span id="code" class="code-value">••••••</span>
+            <vscode-button id="copy" appearance="secondary">Copy code</vscode-button>
+          </div>
+          <p class="hint">We keep polling every few seconds until your login completes.</p>
+        </section>
       </div>`;
-        view.webview.html = (0, view_1.boilerplate)(view.webview, this.ctx, body, ['base.css'], ['auth.js']);
+        view.webview.html = (0, view_1.boilerplate)(view.webview, this.ctx, body, ['base.css', 'aurora.css'], ['auth.js']);
         view.webview.onDidReceiveMessage(async (message) => {
             try {
                 if (message.type === 'open') {
@@ -706,24 +720,26 @@ class ChatSidebarProvider {
             ]);
             const greeting = this.resolveGreeting();
             const body = me?.email ? this.signedInView(greeting, me.email, issues) : this.signedOutView();
-            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
+            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'aurora.css', 'landing.css'], ['chat.js']);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.output.appendLine(`ChatSidebar render failed: ${message}`);
             const fallback = `
-        <div class="landing-container">
-          <div class="hero-section">
-            <div class="logo-area">
-              <div class="logo">⚠️</div>
-              <h1>AEP Agent</h1>
-              <p class="tagline">We couldn't load your workspace right now.</p>
+        <div class="aep-shell">
+          <section class="panel aurora error">
+            <div class="panel-header">
+              <span class="badge badge-alert">Connectivity issue</span>
+              <h1>We couldn't reach your workspace</h1>
+              <p class="lead">${this.escape(message)}</p>
             </div>
-            <p style="color: var(--vscode-descriptionForeground);">${this.escape(message)}</p>
-            <vscode-button appearance="secondary" id="retry">Retry</vscode-button>
-          </div>
+            <div class="panel-actions">
+              <vscode-button appearance="primary" id="retry" data-command="refresh">Try again</vscode-button>
+              <vscode-button appearance="secondary" id="openPortal" data-command="openPortal">Open status dashboard</vscode-button>
+            </div>
+          </section>
         </div>`;
-            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, fallback, ['base.css', 'landing.css'], ['chat.js']);
+            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, fallback, ['base.css', 'aurora.css', 'landing.css'], ['chat.js']);
         }
     }
     resolveGreeting() {
@@ -737,114 +753,241 @@ class ChatSidebarProvider {
         return 'Good evening';
     }
     signedInView(greeting, email, issues) {
+        const displayName = this.formatName(email);
         const issueCards = issues.length
             ? issues.map(issue => this.renderIssue(issue)).join('')
-            : `<div class="empty">No issues found. Check your Jira integration.</div>`;
+            : `<div class="empty-state">
+          <h3>No Jira issues detected</h3>
+          <p>Connect a project in the Agent tab or load a demo to explore AEP workflows.</p>
+          <div class="empty-actions">
+          <vscode-button appearance="secondary" id="action-refresh" data-command="refresh">Refresh data</vscode-button>
+          <vscode-button appearance="secondary" id="action-start" data-command="startSession">Open command session</vscode-button>
+          </div>
+        </div>`;
         return `
-      <div class="card">
-        <div class="row"><span class="h">${greeting}, welcome to AEP Agent</span></div>
-        <div class="row mono">Signed in as ${this.escape(email)}</div>
-        <div class="row" style="gap:8px;margin-top:8px;">
-          <vscode-button id="start" appearance="primary">Start Session</vscode-button>
-          <vscode-button id="refresh" appearance="secondary">Refresh</vscode-button>
-        </div>
-      </div>
-      ${issueCards}`;
+      <div class="aep-shell">
+        <section class="panel aurora hero">
+          <div class="panel-header">
+            <span class="badge badge-success">Workspace connected</span>
+            <h1>${this.escape(greeting)}, ${this.escape(displayName)}.</h1>
+            <p class="lead">You're authenticated as ${this.escape(email)}. Launch a session or pick a Jira issue to begin shipping.</p>
+          </div>
+          <div class="panel-actions">
+            <vscode-button id="action-start" data-command="startSession" appearance="primary">Launch agent session</vscode-button>
+            <vscode-button id="action-refresh" data-command="refresh" appearance="secondary">Refresh workspace</vscode-button>
+            <vscode-button id="action-portal" data-command="openPortal" appearance="secondary">Open Portal</vscode-button>
+          </div>
+          <div class="panel-metrics">
+            <div class="metric">
+              <span class="metric-value">${issues.length}</span>
+              <span class="metric-label">Active Jira issues</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value">Realtime</span>
+              <span class="metric-label">AEP sync</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value">Secured</span>
+              <span class="metric-label">Auth0 login</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="grid">
+          <article class="module issues">
+            <header>
+              <div>
+                <h2>Priority work</h2>
+                <p>Assign AEP to break down tasks, draft plans, and prepare patches.</p>
+              </div>
+              <vscode-button appearance="secondary" id="action-refresh-secondary" data-command="refresh">Sync now</vscode-button>
+            </header>
+            <div class="issue-grid">${issueCards}</div>
+          </article>
+
+          <article class="module conversation">
+            <header>
+              <div>
+                <h2>Chat with AEP</h2>
+                <p>Ask for refactors, tests, deployment steps, or architecture reviews.</p>
+              </div>
+            </header>
+            <div class="chat-log" id="chatMessages">
+              <div class="chat-placeholder">
+                <span>💬</span>
+                <div>
+                  <strong>Ready for your next request</strong>
+                  <p>Summarize a pull request, draft a remediation plan, or generate a hotfix.</p>
+                </div>
+              </div>
+            </div>
+            <div class="chat-compose">
+              <textarea id="chatInput" placeholder="Ask AEP to analyze a file, reason about tests, or prepare a plan..."></textarea>
+              <vscode-button id="chatSend" appearance="primary">Send</vscode-button>
+            </div>
+          </article>
+        </section>
+
+        <section class="grid tertiary">
+          <article class="module quick-actions">
+            <header>
+              <div>
+                <h2>Quick actions</h2>
+                <p>Drive the workflow without leaving VS Code.</p>
+              </div>
+            </header>
+            <div class="quick-actions-grid">
+              <button class="quick-action" data-command="startSession">
+                <span class="icon">⚡</span>
+                <div>
+                  <strong>Start an execution session</strong>
+                  <p>Open the Agent palette to create or resume tasks.</p>
+                </div>
+              </button>
+              <button class="quick-action" data-command="refresh">
+                <span class="icon">🔄</span>
+                <div>
+                  <strong>Resync integrations</strong>
+                  <p>Force refresh Jira issues and workspace metadata.</p>
+                </div>
+              </button>
+              <button class="quick-action" data-command="openPortal">
+                <span class="icon">🌐</span>
+                <div>
+                  <strong>Review insights in Portal</strong>
+                  <p>Jump to the AEP Portal for analytics and approvals.</p>
+                </div>
+              </button>
+            </div>
+          </article>
+        </section>
+      </div>`;
     }
     signedOutView() {
         return `
-      <div class="landing-container">
-        <div class="hero-section">
-          <div class="logo-area">
-            <div class="logo">🤖</div>
-            <h1>AEP Agent</h1>
-            <p class="tagline">Your AI-powered development assistant</p>
-            <div class="status-indicator status-disconnected">
-              ⚠️ Not connected - Authentication required
+      <div class="aep-shell">
+        <section class="panel aurora hero">
+          <div class="panel-header">
+            <span class="badge badge-offline">Authentication required</span>
+            <h1>Build with AEP Agent for engineering teams</h1>
+            <p class="lead">Securely connect your workspace, orchestrate AI-assisted plans, and apply production-ready patches without leaving VS Code.</p>
+          </div>
+          <div class="panel-actions">
+            <vscode-button id="cta-signin" data-command="signIn" appearance="primary">Sign in to AEP</vscode-button>
+            <vscode-button id="cta-demo" appearance="secondary">Explore the interactive demo</vscode-button>
+            <vscode-button id="cta-portal" data-command="openPortal" appearance="secondary">Visit Portal</vscode-button>
+          </div>
+          <div class="panel-metrics">
+            <div class="metric">
+              <span class="metric-value">Planning</span>
+              <span class="metric-label">Generate AI-driven execution plans</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value">Shipping</span>
+              <span class="metric-label">Apply validated patches in seconds</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value">Security</span>
+              <span class="metric-label">Device-code login backed by Auth0</span>
             </div>
           </div>
+        </section>
 
-          <div class="auth-section">
-            <vscode-button appearance="primary" id="signIn">
-              🔐 Sign In with Auth0
-            </vscode-button>
-            <vscode-button appearance="secondary" id="getStarted">
-              🧪 Demo Mode
-            </vscode-button>
-            <p style="margin-top: 1rem; font-size: 0.85em; color: var(--vscode-descriptionForeground); text-align: center;">
-              ℹ️ Requires AEP backend server for authentication
-            </p>
-          </div>
-        </div>
-
-        <div class="features-grid">
-          <div class="feature-card">
-            <div class="feature-icon">💻</div>
-            <h3>Code Analysis</h3>
-            <p>Get instant AI-powered code reviews and suggestions</p>
-          </div>
-
-          <div class="feature-card">
-            <div class="feature-icon">📋</div>
-            <h3>Task Planning</h3>
-            <p>Break down JIRA issues into actionable steps</p>
-          </div>
-
-          <div class="feature-card">
-            <div class="feature-icon">🔧</div>
-            <h3>Auto Patches</h3>
-            <p>Apply AI-generated code changes with confidence</p>
-          </div>
-
-          <div class="feature-card">
-            <div class="feature-icon">👥</div>
-            <h3>Team Collaboration</h3>
-            <p>Share insights and collaborate with your team</p>
-          </div>
-        </div>
-
-        <div class="quick-start">
-          <h3>Quick Start</h3>
-          <div class="quick-actions">
-            <button class="action-btn" id="tryDemo">
-              <span class="action-icon">🎯</span>
+        <section class="grid">
+          <article class="module">
+            <header>
               <div>
-                <div class="action-title">Try Demo</div>
-                <div class="action-desc">Explore features without signing in</div>
+                <h2>What you get with AEP</h2>
+                <p>Purpose-built workflows that keep engineers in flow.</p>
               </div>
-            </button>
+            </header>
+            <div class="feature-grid">
+              <div class="feature-card">
+                <span class="icon">🧠</span>
+                <h3>Full-context planning</h3>
+                <p>Draft executable plans from Jira issues with approvals woven in.</p>
+              </div>
+              <div class="feature-card">
+                <span class="icon">🛠️</span>
+                <h3>Code change automation</h3>
+                <p>Generate, review, and apply patches with guardrails and diff previews.</p>
+              </div>
+              <div class="feature-card">
+                <span class="icon">📊</span>
+                <h3>Operations visibility</h3>
+                <p>Track session health, rollout risk, and completions from the Portal.</p>
+              </div>
+            </div>
+          </article>
 
-            <button class="action-btn" id="loadSample">
-              <span class="action-icon">📝</span>
+          <article class="module demo" data-visible="false" aria-hidden="true">
+            <header>
               <div>
-                <div class="action-title">Load Sample Tasks</div>
-                <div class="action-desc">See how AEP handles real projects</div>
+                <h2>Interactive showcase</h2>
+                <p>Try a simulated conversation before authenticating.</p>
               </div>
-            </button>
-          </div>
-        </div>
+              <button id="demo-close" class="ghost" aria-label="Close demo">×</button>
+            </header>
+            <div class="demo-log" id="demoLog">
+              <div class="demo-message assistant">
+                <strong>AEP Agent</strong>
+                <p>Hi! I can help plan your sprint, triage bugs, and prep code changes. Ask me about your project.</p>
+              </div>
+            </div>
+            <div class="demo-compose">
+              <textarea id="demoInput" placeholder="Try: Generate a rollout plan for the onboarding flow"></textarea>
+              <vscode-button id="demoSend" appearance="primary">Send</vscode-button>
+            </div>
+          </article>
+        </section>
 
-        <div class="demo-chat" id="demoChat" style="display: none;">
-          <div class="chat-header">
-            <h3>💬 Chat with AEP Agent</h3>
-            <button class="close-btn" id="closeDemo">×</button>
-          </div>
-          <div class="chat-messages" id="chatMessages"></div>
-          <div class="chat-input-area">
-            <textarea id="chatInput" placeholder="Ask me anything about your code..."></textarea>
-            <button id="sendMessage" class="send-btn">Send</button>
-          </div>
-        </div>
+        <section class="grid tertiary">
+          <article class="module timeline">
+            <header>
+              <div>
+                <h2>How teams ship with AEP</h2>
+              </div>
+            </header>
+            <ol class="timeline-steps">
+              <li>
+                <span class="step">01</span>
+                <div>
+                  <strong>Connect your workspace</strong>
+                  <p>Authenticate with your organization and link Jira or GitHub projects.</p>
+                </div>
+              </li>
+              <li>
+                <span class="step">02</span>
+                <div>
+                  <strong>Generate plans</strong>
+                  <p>Send an issue to the Agent panel to receive a review-ready execution plan.</p>
+                </div>
+              </li>
+              <li>
+                <span class="step">03</span>
+                <div>
+                  <strong>Approve and apply</strong>
+                  <p>Review AI-suggested patches, approve changes, and merge with confidence.</p>
+                </div>
+              </li>
+            </ol>
+          </article>
+        </section>
       </div>`;
     }
     renderIssue(issue) {
+        const status = issue.status ?? 'Pending';
         return `
-      <div class="card">
-        <div class="row"><b>${this.escape(issue.key)}</b> — ${this.escape(issue.summary)} <span class="chip">${this.escape(issue.status)}</span></div>
-        <div class="row">
-          <vscode-button appearance="secondary" data-url="${issue.url ?? ''}" class="open">Open in Jira</vscode-button>
-          <vscode-button class="plan">Plan</vscode-button>
-        </div>
+      <div class="issue-card">
+        <header>
+          <span class="issue-key">${this.escape(issue.key)}</span>
+          <span class="status-pill">${this.escape(status)}</span>
+        </header>
+        <p>${this.escape(issue.summary)}</p>
+        <footer>
+          <vscode-button appearance="primary" data-command="pickIssue" data-key="${this.escape(issue.key)}">Plan in Agent</vscode-button>
+          <vscode-button appearance="secondary" data-url="${issue.url ?? ''}">Open in Jira</vscode-button>
+        </footer>
       </div>`;
     }
     escape(text) {
@@ -852,6 +995,14 @@ class ChatSidebarProvider {
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
+    }
+    formatName(email) {
+        const name = email.split('@')[0] ?? email;
+        return name
+            .split(/[._-]+/)
+            .filter(Boolean)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
     }
     async handleChatMessage(message) {
         if (!this.view) {
@@ -960,6 +1111,9 @@ class PlanPanelProvider {
                             this.selectStep(message.index);
                         }
                         break;
+                    case 'start-session':
+                        await vscode.commands.executeCommand('aep.startSession');
+                        break;
                     case 'approve':
                         await this.approveSelected();
                         break;
@@ -1034,60 +1188,131 @@ class PlanPanelProvider {
         try {
             if (this.steps.length === 0) {
                 const body = `
-          <div class="plan-placeholder">
-            <div class="card">
-              <div class="h">Plan &amp; Act</div>
-              <p class="lead">Select an issue from the Agent view to generate an execution plan.</p>
-              <vscode-button id="demo-plan" appearance="secondary">🧪 Load Demo Plan</vscode-button>
-            </div>
-            <ul class="how-it-works">
-              <li>Pick a JIRA issue from the Agent tab</li>
-              <li>AEP drafts a reviewable plan</li>
-              <li>Approve or reject each step</li>
-              <li>Apply AI-generated patches with one click</li>
-            </ul>
+          <div class="plan-shell">
+            <section class="panel aurora plan-hero">
+              <div class="panel-header">
+                <span class="badge badge-offline">Awaiting selection</span>
+                <h1>Plan &amp; Act with AEP</h1>
+                <p class="lead">Send an issue from the Agent sidebar or explore the demo workflow to see how AEP turns requests into execution plans.</p>
+              </div>
+              <div class="panel-actions">
+                <vscode-button id="plan-start" data-command="start-session" appearance="primary">Choose an issue</vscode-button>
+                <vscode-button id="demo-plan" appearance="secondary">Load demo plan</vscode-button>
+              </div>
+            </section>
+
+            <section class="module walkthrough">
+              <header>
+                <div>
+                  <h2>Your plan pipeline</h2>
+                  <p>Every plan runs through approvals, patch previews, and one-click application.</p>
+                </div>
+              </header>
+              <ol class="timeline-steps">
+                <li>
+                  <span class="step">01</span>
+                  <div>
+                    <strong>Select a Jira issue</strong>
+                    <p>Pick a task from the Agent panel or search from the command palette.</p>
+                  </div>
+                </li>
+                <li>
+                  <span class="step">02</span>
+                  <div>
+                    <strong>Review AI-generated steps</strong>
+                    <p>Assess the proposed milestones and request revisions where needed.</p>
+                  </div>
+                </li>
+                <li>
+                  <span class="step">03</span>
+                  <div>
+                    <strong>Apply curated patches</strong>
+                    <p>Approve confident steps and apply the suggested code changes.</p>
+                  </div>
+                </li>
+              </ol>
+            </section>
           </div>`;
-                this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'plan.css'], ['plan.js']);
+                this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'aurora.css', 'plan.css'], ['plan.js']);
                 return;
             }
+            const current = this.steps[this.selectedIndex];
+            const subtitle = current?.details || current?.description || '';
             const body = `
-        <div class="wrap">
-          <div class="card"><div class="h">Plan &amp; Act</div></div>
-          <div class="steps">
-            <ul>
-              ${this.steps
+        <div class="plan-shell">
+          <section class="panel aurora plan-hero">
+            <div class="panel-header">
+              <span class="badge badge-success">Execution plan ready</span>
+              <h1>Plan &amp; Act</h1>
+              <p class="lead">${this.steps.length} structured steps are ready for review. Approve, request changes, or apply the generated patch.</p>
+            </div>
+            <div class="panel-actions">
+              <vscode-button id="plan-approve" appearance="primary">Approve step</vscode-button>
+              <vscode-button id="plan-reject" appearance="secondary">Request revision</vscode-button>
+              <vscode-button id="plan-apply" appearance="secondary">Apply patch</vscode-button>
+            </div>
+          </section>
+
+          <div class="plan-layout">
+            <aside class="plan-steps">
+              <ul>
+                ${this.steps
                 .map((step, index) => this.renderStep(step, index === this.selectedIndex, index))
                 .join('')}
-            </ul>
-          </div>
-          <div class="details">
-            ${this.selectedPatch
-                ? `<pre>${this.escape(this.selectedPatch)}</pre>`
-                : '<em>Select a step to inspect details</em>'}
-          </div>
-          <div class="actions">
-            <vscode-button id="approve">Approve</vscode-button>
-            <vscode-button appearance="secondary" id="reject">Reject</vscode-button>
-            <vscode-button id="apply">Apply Patch</vscode-button>
+              </ul>
+            </aside>
+            <section class="plan-detail">
+              <header>
+                <div>
+                  <h2>${this.escape(current?.title ?? 'Select a step')}</h2>
+                  <p>${this.escape(subtitle)}</p>
+                </div>
+                ${current?.status ? `<span class="status-pill">${this.escape(current.status)}</span>` : ''}
+              </header>
+              <div class="plan-detail-body">
+                ${this.selectedPatch
+                ? `<pre class="code-block">${this.escape(this.selectedPatch)}</pre>`
+                : '<div class="empty-state">Select a step from the list to inspect patch details.</div>'}
+              </div>
+            </section>
           </div>
         </div>`;
-            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'plan.css'], ['plan.js']);
+            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'aurora.css', 'plan.css'], ['plan.js']);
         }
         catch (error) {
             this.showError(error);
         }
     }
     renderStep(step, isSelected, index) {
-        const classes = isSelected ? 'sel' : '';
+        const classes = ['plan-step'];
+        if (isSelected) {
+            classes.push('active');
+        }
+        if (step.status) {
+            classes.push(`status-${this.slugify(step.status)}`);
+        }
         const subtitle = step.details || step.description || '';
-        const subtitleHtml = subtitle ? ` <span class="hint">${this.escape(subtitle)}</span>` : '';
-        return `<li class="${classes}" data-i="${index}">${this.escape(step.kind)}: ${this.escape(step.title)}${subtitleHtml}</li>`;
+        return `
+      <li class="${classes.join(' ')}" data-i="${index}">
+        <span class="step-index">${(index + 1).toString().padStart(2, '0')}</span>
+        <div class="step-copy">
+          <strong>${this.escape(step.kind)} · ${this.escape(step.title)}</strong>
+          ${subtitle ? `<p>${this.escape(subtitle)}</p>` : ''}
+        </div>
+        ${step.status ? `<span class="status-pill">${this.escape(step.status)}</span>` : ''}
+      </li>`;
     }
     escape(text) {
         return String(text ?? '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
+    }
+    slugify(text) {
+        return text
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
     }
     demoPlan() {
         return [
@@ -1124,12 +1349,20 @@ class PlanPanelProvider {
         const message = error instanceof Error ? error.message : String(error);
         this.output.appendLine(`Plan panel error: ${message}`);
         const body = `
-      <div class="card error">
-        <div class="h">We hit a snag</div>
-        <p>${this.escape(message)}</p>
-        <vscode-button id="demo-plan" appearance="secondary">Try Demo Plan</vscode-button>
+      <div class="plan-shell">
+        <section class="panel aurora error">
+          <div class="panel-header">
+            <span class="badge badge-alert">Plan failed</span>
+            <h1>We hit a snag preparing your plan</h1>
+            <p class="lead">${this.escape(message)}</p>
+          </div>
+          <div class="panel-actions">
+            <vscode-button id="demo-plan" appearance="secondary">Load demo plan</vscode-button>
+            <vscode-button id="plan-start" data-command="start-session" appearance="secondary">Choose another issue</vscode-button>
+          </div>
+        </section>
       </div>`;
-        this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'plan.css'], ['plan.js']);
+        this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'aurora.css', 'plan.css'], ['plan.js']);
     }
 }
 exports.PlanPanelProvider = PlanPanelProvider;

@@ -42,8 +42,9 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage('Starting an AEP planning session…');
       }),
       vscode.commands.registerCommand('aep.openPortal', () => {
-        const portal = cfg.portalUrl || 'https://portal.aep.navra.ai';
-        vscode.env.openExternal(vscode.Uri.parse(portal));
+        if (cfg.portalUrl) {
+          vscode.env.openExternal(vscode.Uri.parse(cfg.portalUrl));
+        }
       }),
       vscode.commands.registerCommand('aep.plan.approve', () => approvals.approveSelected()),
       vscode.commands.registerCommand('aep.plan.reject', () => approvals.rejectSelected()),

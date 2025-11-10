@@ -1,312 +1,66 @@
-/* Modern AI Assistant Landing Page Styles */
-
-/* Hero Section */
-.hero-section {
-  text-align: center;
-  padding: 3rem 0;
-  background: linear-gradient(135deg, 
-    var(--vscode-button-background) 0%, 
-    var(--vscode-button-hoverBackground) 100%);
-  border-radius: 12px;
-  margin-bottom: 2rem;
-  color: var(--vscode-button-foreground);
-}
-
-.hero-title {
-  font-size: 2.5rem;
-  font-weight: 700;
-  margin-bottom: 1rem;
-  line-height: 1.2;
-}
-
-.hero-subtitle {
-  font-size: 1.2rem;
-  opacity: 0.9;
-  margin-bottom: 2rem;
-  max-width: 600px;
-  margin-left: auto;
-  margin-right: auto;
-  line-height: 1.5;
-}
-
-.hero-buttons {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-/* Features Grid */
-.features-grid {
+.feature-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.5rem;
-  margin: 2rem 0;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .feature-card {
-  background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 8px;
-  padding: 1.5rem;
-  transition: all 0.2s ease;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 20px;
+  display: grid;
+  gap: 10px;
+  transition: transform 150ms ease, border-color 150ms ease;
 }
 
 .feature-card:hover {
+  transform: translateY(-2px);
   border-color: var(--vscode-focusBorder);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.feature-icon {
-  font-size: 2rem;
-  margin-bottom: 1rem;
-  display: block;
+.feature-card .icon {
+  font-size: 1.6rem;
 }
 
-.feature-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-  color: var(--vscode-foreground);
-}
-
-.feature-description {
+.feature-card p {
+  margin: 0;
   color: var(--vscode-descriptionForeground);
-  line-height: 1.5;
 }
 
-/* Authentication Section */
-.auth-section {
-  background: var(--vscode-sideBar-background);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 12px;
-  padding: 2rem;
-  text-align: center;
-  margin: 2rem 0;
+.module.demo header {
+  align-items: center;
 }
 
-.auth-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
-  color: var(--vscode-foreground);
+.module.demo header .ghost {
+  opacity: 0.6;
 }
 
-.auth-description {
+.module.demo header .ghost:hover {
+  opacity: 1;
+}
+
+.demo-message strong {
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--vscode-descriptionForeground);
-  margin-bottom: 2rem;
-  line-height: 1.5;
 }
 
-.auth-buttons {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  flex-wrap: wrap;
+.demo-message p {
+  margin: 0;
 }
 
-/* Demo Chat Section */
-.demo-chat {
-  background: var(--vscode-editor-background);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin: 2rem 0;
+.module.timeline ol {
+  counter-reset: timeline;
 }
 
-.demo-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-  font-weight: 600;
-  color: var(--vscode-foreground);
+.timeline-steps li strong {
+  font-size: 1rem;
 }
 
-.demo-messages {
-  max-height: 300px;
-  overflow-y: auto;
-  margin-bottom: 1rem;
-  background: var(--vscode-input-background);
-  border-radius: 8px;
-  padding: 1rem;
-}
-
-.demo-message {
-  margin-bottom: 1rem;
-  padding: 0.75rem;
-  border-radius: 6px;
-  line-height: 1.4;
-}
-
-.demo-message.user {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  margin-left: 2rem;
-  text-align: right;
-}
-
-.demo-message.assistant {
-  background: var(--vscode-sideBar-background);
-  color: var(--vscode-foreground);
-  margin-right: 2rem;
-  border-left: 3px solid var(--vscode-focusBorder);
-}
-
-.demo-input-area {
-  display: flex;
-  gap: 0.5rem;
-  align-items: end;
-}
-
-.demo-input {
-  flex: 1;
-  min-height: 60px;
-  padding: 0.75rem;
-  border: 1px solid var(--vscode-input-border);
-  border-radius: 6px;
-  background: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  font-family: inherit;
-  resize: vertical;
-}
-
-.demo-input:focus {
-  outline: none;
-  border-color: var(--vscode-focusBorder);
-}
-
-/* Enhanced Button Styles */
-.primary-button {
-  background: var(--vscode-button-background) !important;
-  color: var(--vscode-button-foreground) !important;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
-.primary-button:hover {
-  background: var(--vscode-button-hoverBackground) !important;
-  transform: translateY(-1px);
-}
-
-.secondary-button {
-  background: transparent !important;
-  color: var(--vscode-foreground) !important;
-  border: 1px solid var(--vscode-button-border);
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
-.secondary-button:hover {
-  background: var(--vscode-button-secondaryHoverBackground) !important;
-  border-color: var(--vscode-focusBorder);
-}
-
-/* Status Indicators */
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
-  font-size: 0.9rem;
-  font-weight: 500;
-  margin-bottom: 1rem;
-}
-
-.status-connected {
-  background: rgba(0, 255, 0, 0.1);
-  color: var(--vscode-gitDecoration-addedResourceForeground);
-  border: 1px solid var(--vscode-gitDecoration-addedResourceForeground);
-}
-
-.status-disconnected {
-  background: rgba(255, 0, 0, 0.1);
-  color: var(--vscode-gitDecoration-deletedResourceForeground);
-  border: 1px solid var(--vscode-gitDecoration-deletedResourceForeground);
-}
-
-/* Loading States */
-.loading-spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--vscode-progressBar-background);
-  border-radius: 50%;
-  border-top-color: var(--vscode-progressBar-foreground);
-  animation: spin 1s ease-in-out infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-  .hero-title {
-    font-size: 2rem;
-  }
-  
-  .hero-subtitle {
-    font-size: 1rem;
-  }
-  
-  .features-grid {
+@media (max-width: 600px) {
+  .feature-grid {
     grid-template-columns: 1fr;
-  }
-  
-  .hero-buttons,
-  .auth-buttons {
-    flex-direction: column;
-    align-items: center;
-  }
-  
-  .demo-message.user,
-  .demo-message.assistant {
-    margin-left: 0;
-    margin-right: 0;
-  }
-}
-
-/* Accessibility */
-.primary-button:focus,
-.secondary-button:focus,
-.demo-input:focus {
-  outline: 2px solid var(--vscode-focusBorder);
-  outline-offset: 2px;
-}
-
-/* Animation for smooth transitions */
-.feature-card,
-.demo-message,
-.auth-section {
-  animation: fadeInUp 0.5s ease-out;
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }

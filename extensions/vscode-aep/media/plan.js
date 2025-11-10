@@ -1,25 +1,26 @@
 const vscode = acquireVsCodeApi();
 
 window.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('li[data-i]').forEach((li, index) => {
-    li.addEventListener('click', () => {
-      vscode.postMessage({ type: 'select', index: parseInt(li.getAttribute('data-i')) });
-    });
-  });
+  bind('demo-plan', 'load-demo-plan');
+  bind('plan-approve', 'approve');
+  bind('plan-reject', 'reject');
+  bind('plan-apply', 'applyPatch');
+  bind('plan-start', 'start-session');
 
-  document.getElementById('demo-plan')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'load-demo-plan' });
-  });
-  
-  document.getElementById('approve')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'approve' });
-  });
-  
-  document.getElementById('reject')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'reject' });
-  });
-  
-  document.getElementById('apply')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'applyPatch' });
+  document.body.addEventListener('click', event => {
+    const step = event.target?.closest('.plan-step[data-i]');
+    if (step instanceof HTMLElement) {
+      const index = parseInt(step.getAttribute('data-i') ?? '', 10);
+      if (!Number.isNaN(index)) {
+        vscode.postMessage({ type: 'select', index });
+      }
+    }
   });
 });
+
+function bind(id, type) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.addEventListener('click', () => vscode.postMessage({ type }));
+  }
+}

@@ -27,13 +27,13 @@ export async function activate(context: vscode.ExtensionContext) {
     const auth = new AuthPanel(context, client, cfg.portalUrl, output);
 
     const disposables: vscode.Disposable[] = [
-      vscode.window.registerWebviewViewProvider('aep.chat', chat, {
+      vscode.window.registerWebviewViewProvider('aep.chatView', chat, {
         webviewOptions: { retainContextWhenHidden: true }
       }),
-      vscode.window.registerWebviewViewProvider('aep.plan', plan, {
+      vscode.window.registerWebviewViewProvider('aep.planView', plan, {
         webviewOptions: { retainContextWhenHidden: true }
       }),
-      vscode.window.registerWebviewViewProvider('aep.auth', auth, {
+      vscode.window.registerWebviewViewProvider('aep.authView', auth, {
         webviewOptions: { retainContextWhenHidden: true }
       }),
 

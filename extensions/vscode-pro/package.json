@@ -1,0 +1,51 @@
+{
+    "name": "aep-professional",
+    "displayName": "AEP Professional",
+    "description": "AI engineering partner for VS Code",
+    "version": "4.0.0",
+    "publisher": "navralabs",
+    "engines": {
+        "vscode": "^1.74.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "main": "./out/extension.js",
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "aep",
+                    "title": "AEP",
+                    "icon": "media/aep-activitybar.svg"
+                }
+            ]
+        },
+        "views": {
+            "aep": [
+                {
+                    "id": "aep.chat",
+                    "name": "AEP Chat",
+                    "icon": "media/aep-activitybar.svg"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "aepPro.openHome",
+                "title": "Open AEP"
+            }
+        ]
+    },
+    "scripts": {
+        "compile": "tsc -p ./",
+        "watch": "tsc -w -p ./"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.74.0",
+        "typescript": "^5.0.0"
+    }
+}

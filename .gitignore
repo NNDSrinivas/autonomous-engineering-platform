@@ -62,5 +62,9 @@ temp/
 node_modules/
 web/.next/
 
+# VS Code Extension Testing
+extensions/**/.vscode-test/
+extensions/**/out/test/
+
 # Frontend Configuration (generated from template + env vars)
 frontend/auth_config.json

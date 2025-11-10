@@ -8,8 +8,12 @@
     "type": "git",
     "url": "https://github.com/NNDSrinivas/autonomous-engineering-platform.git"
   },
-  "engines": { "vscode": "^1.89.0" },
-  "categories": ["Other"],
+  "engines": {
+    "vscode": "^1.89.0"
+  },
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [
     "onStartupFinished",
     "onView:aep.chatView",
@@ -22,17 +26,42 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      { "command": "aep.signIn", "title": "AEP: Sign In" },
-      { "command": "aep.startSession", "title": "AEP: Start Agent Session" },
-      { "command": "aep.openPortal", "title": "AEP: Open Web Portal" },
-      { "command": "aep.plan.approve", "title": "AEP: Approve Step" },
-      { "command": "aep.plan.reject", "title": "AEP: Reject Step" },
-      { "command": "aep.applyPatch", "title": "AEP: Apply AI Patch" },
-      { "command": "aep.debug.testWebviews", "title": "AEP: Debug Test Webviews" }
+      {
+        "command": "aep.signIn",
+        "title": "AEP: Sign In"
+      },
+      {
+        "command": "aep.startSession",
+        "title": "AEP: Start Agent Session"
+      },
+      {
+        "command": "aep.openPortal",
+        "title": "AEP: Open Web Portal"
+      },
+      {
+        "command": "aep.plan.approve",
+        "title": "AEP: Approve Step"
+      },
+      {
+        "command": "aep.plan.reject",
+        "title": "AEP: Reject Step"
+      },
+      {
+        "command": "aep.applyPatch",
+        "title": "AEP: Apply AI Patch"
+      },
+      {
+        "command": "aep.debug.testWebviews",
+        "title": "AEP: Debug Test Webviews"
+      }
     ],
     "viewsContainers": {
       "activitybar": [
-        { "id": "aep", "title": "AEP", "icon": "media/aep-activitybar.svg" }
+        {
+          "id": "aep",
+          "title": "AEP",
+          "icon": "media/aep-activitybar.svg"
+        }
       ]
     },
     "views": {
@@ -62,18 +91,24 @@
       "title": "AEP Agent",
       "properties": {
         "aep.baseUrl": {
-          "type": "string","default": "http://localhost:8000","description": "AEP backend base URL"
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "AEP backend base URL"
         },
         "aep.orgId": {
-          "type": "string","default": "org-dev","description": "Organization ID"
+          "type": "string",
+          "default": "org-dev",
+          "description": "Organization ID"
         },
         "aep.llm": {
-          "type": "string","default": "gpt-4o-mini","markdownDescription": "Preferred LLM model (router may override)"
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "markdownDescription": "Preferred LLM model (router may override)"
         },
-        "aep.portalUrl": { 
-          "type": "string", 
-          "default": "https://portal.aep.navra.ai", 
-          "description": "Sign up / account portal" 
+        "aep.portalUrl": {
+          "type": "string",
+          "default": "https://portal.aep.navra.ai",
+          "description": "Sign up / account portal"
         }
       }
     }

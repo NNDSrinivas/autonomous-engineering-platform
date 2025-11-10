@@ -18,23 +18,38 @@ export class AEPClient {
       return;
     }
 
-    if (existing === 'undefined' || existing.trim().length === 0) {
+    const sanitized = this.sanitizeToken(existing);
+    if (!sanitized) {
       await this.ctx.secrets.delete(TOKEN_SECRET);
       output?.appendLine('Removed invalid AEP session token from secret storage.');
       return;
     }
 
-    this.token = existing;
+    this.token = sanitized;
     output?.appendLine('Restored existing AEP session token.');
   }
 
   async persistToken(token: string | undefined): Promise<void> {
-    this.token = token;
-    if (token) {
-      await this.ctx.secrets.store(TOKEN_SECRET, token);
+    const sanitized = this.sanitizeToken(token);
+    this.token = sanitized;
+    if (sanitized) {
+      await this.ctx.secrets.store(TOKEN_SECRET, sanitized);
     } else {
       await this.ctx.secrets.delete(TOKEN_SECRET);
     }
+  }
+
+  private sanitizeToken(token: string | undefined): string | undefined {
+    if (typeof token !== 'string') {
+      return undefined;
+    }
+
+    const trimmed = token.trim();
+    if (trimmed.length === 0 || trimmed === 'undefined') {
+      return undefined;
+    }
+
+    return trimmed;
   }
 
   hasToken(): boolean {

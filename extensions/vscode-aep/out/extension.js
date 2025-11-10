@@ -23,22 +23,34 @@ class AEPClient {
         if (!existing) {
             return;
         }
-        if (existing === 'undefined' || existing.trim().length === 0) {
+        const sanitized = this.sanitizeToken(existing);
+        if (!sanitized) {
             await this.ctx.secrets.delete(TOKEN_SECRET);
             output?.appendLine('Removed invalid AEP session token from secret storage.');
             return;
         }
-        this.token = existing;
+        this.token = sanitized;
         output?.appendLine('Restored existing AEP session token.');
     }
     async persistToken(token) {
-        this.token = token;
-        if (token) {
-            await this.ctx.secrets.store(TOKEN_SECRET, token);
+        const sanitized = this.sanitizeToken(token);
+        this.token = sanitized;
+        if (sanitized) {
+            await this.ctx.secrets.store(TOKEN_SECRET, sanitized);
         }
         else {
             await this.ctx.secrets.delete(TOKEN_SECRET);
         }
+    }
+    sanitizeToken(token) {
+        if (typeof token !== 'string') {
+            return undefined;
+        }
+        const trimmed = token.trim();
+        if (trimmed.length === 0 || trimmed === 'undefined') {
+            return undefined;
+        }
+        return trimmed;
     }
     hasToken() {
         return Boolean(this.token);
@@ -328,8 +340,9 @@ async function activate(context) {
                 vscode.window.showInformationMessage('Starting an AEP planning session…');
             }),
             vscode.commands.registerCommand('aep.openPortal', () => {
-                const portal = cfg.portalUrl || 'https://portal.aep.navra.ai';
-                vscode.env.openExternal(vscode.Uri.parse(portal));
+                if (cfg.portalUrl) {
+                    vscode.env.openExternal(vscode.Uri.parse(cfg.portalUrl));
+                }
             }),
             vscode.commands.registerCommand('aep.plan.approve', () => approvals.approveSelected()),
             vscode.commands.registerCommand('aep.plan.reject', () => approvals.rejectSelected()),

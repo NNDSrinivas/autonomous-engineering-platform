@@ -20,6 +20,7 @@ export async function activate(context: vscode.ExtensionContext) {
     output.appendLine(`Using backend ${cfg.baseUrl} for org ${cfg.orgId}`);
 
     const client = new AEPClient(context, cfg.baseUrl, cfg.orgId);
+    await client.hydrateToken(output);
     const approvals = new Approvals(context, client, output);
     const chat = new ChatSidebarProvider(context, client, output);
     const plan = new PlanPanelProvider(context, client, approvals, output);
@@ -91,6 +92,7 @@ async function startDeviceFlow(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     output.appendLine(`Sign-in failed: ${message}`);
+    await client.clearToken();
     vscode.window.showErrorMessage(`AEP sign-in failed: ${message}`);
   }
 }

@@ -10,8 +10,33 @@ export class AEPClient {
     private readonly orgId: string
   ) {}
 
-  setToken(token: string) {
+  async hydrateToken(output?: vscode.OutputChannel): Promise<void> {
+    const existing = await this.ctx.secrets.get('aep.token');
+    if (existing) {
+      this.token = existing;
+      output?.appendLine('Restored existing AEP session token.');
+    }
+  }
+
+  async persistToken(token: string | undefined): Promise<void> {
     this.token = token;
+    if (token) {
+      await this.ctx.secrets.store('aep.token', token);
+    } else {
+      await this.ctx.secrets.delete('aep.token');
+    }
+  }
+
+  setToken(token: string | undefined) {
+    this.token = token;
+  }
+
+  hasToken(): boolean {
+    return Boolean(this.token);
+  }
+
+  async clearToken(): Promise<void> {
+    await this.persistToken(undefined);
   }
 
   private headers(): Record<string, string> {
@@ -52,7 +77,7 @@ export class AEPClient {
     }
 
     const token = (await response.json()) as DeviceCodeToken;
-    this.setToken(token.access_token);
+    await this.persistToken(token.access_token);
     return token;
   }
 

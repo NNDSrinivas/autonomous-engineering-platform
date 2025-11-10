@@ -1,53 +1,59 @@
 import * as vscode from 'vscode';
 import { AEPClient } from '../api/client';
-import { KV } from '../util/storage';
+import { pollDeviceCode } from '../deviceFlow';
+export async function ensureAuth(_ctx: vscode.ExtensionContext, client: AEPClient) {
+  await client.hydrateToken();
 
-export async function ensureAuth(ctx: vscode.ExtensionContext, client: AEPClient){
-  const kv = new KV(ctx);
-  let token = kv.get<string>('aep.token');
-  if (token) { 
-    client.setToken(token); 
-    // Verify token is still valid by trying to fetch issues
+  if (client.hasToken()) {
     try {
       await client.listMyJiraIssues();
-      return; // Token is valid
+      return;
     } catch {
-      // Token expired, remove it and continue with auth flow
-      await kv.set('aep.token', null);
+      await client.clearToken();
     }
   }
 
-  const pick = await vscode.window.showQuickPick([
-    { label: 'Device Code', description: 'Open browser and paste code' },
-    { label: 'Cancel', description: 'Skip authentication for now' }
-  ], { placeHolder: 'Choose sign-in method' });
-  
+  const pick = await vscode.window.showQuickPick(
+    [
+      { label: 'Device Code', description: 'Open browser and paste code' },
+      { label: 'Cancel', description: 'Skip authentication for now' }
+    ],
+    { placeHolder: 'Choose sign-in method' }
+  );
+
   if (!pick || pick.label === 'Cancel') {
     throw new Error('Authentication cancelled by user');
   }
 
   try {
     const flow = await client.startDeviceCode();
-    await vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-    
-    // Show user code for manual entry if needed
-    const userInput = await vscode.window.showInputBox({ 
-      prompt: 'Device code (pre-filled, press Enter to continue)', 
+
+    if (!flow.device_code) {
+      throw new Error('Device authorization response was missing a device code.');
+    }
+
+    const verificationUri = flow.verification_uri_complete || flow.verification_uri;
+
+    if (!verificationUri) {
+      throw new Error('Device authorization response was missing a verification URL.');
+    }
+
+    await vscode.env.openExternal(vscode.Uri.parse(verificationUri));
+
+    const userInput = await vscode.window.showInputBox({
+      prompt: 'Device code (pre-filled, press Enter to continue)',
       value: flow.user_code,
-      ignoreFocusOut: true 
+      ignoreFocusOut: true
     });
-    
+
     if (!userInput) {
       throw new Error('Authentication cancelled by user');
     }
-    
-    const tok = await client.pollDeviceCode(flow.device_code);
-    await kv.set('aep.token', tok.access_token);
-    client.setToken(tok.access_token);
-    
-  } catch (error) {
+
+    await pollDeviceCode(client, flow.device_code);
+  } catch (error: unknown) {
     console.error('Authentication error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    throw new Error(`Authentication failed: ${errorMessage}`);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Authentication failed: ${message}`);
   }
 }

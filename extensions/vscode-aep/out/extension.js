@@ -17,51 +17,91 @@ class AEPClient {
         this.baseUrl = baseUrl;
         this.orgId = orgId;
     }
-    setToken(t) { this.token = t; }
+    setToken(token) {
+        this.token = token;
+    }
     headers() {
-        const h = { 'Content-Type': 'application/json', 'X-Org-Id': this.orgId };
-        if (this.token)
-            h['Authorization'] = `Bearer ${this.token}`;
-        return h;
+        const headers = {
+            'Content-Type': 'application/json',
+            'X-Org-Id': this.orgId
+        };
+        if (this.token) {
+            headers.Authorization = `Bearer ${this.token}`;
+        }
+        return headers;
     }
     async startDeviceCode() {
-        const r = await fetch(`${this.baseUrl}/oauth/device/start`, { method: 'POST', headers: this.headers() });
-        if (!r.ok)
-            throw new Error(await r.text());
-        return await r.json();
+        const response = await fetch(`${this.baseUrl}/oauth/device/start`, {
+            method: 'POST',
+            headers: this.headers()
+        });
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+        return (await response.json());
     }
     async pollDeviceCode(deviceCode) {
-        const r = await fetch(`${this.baseUrl}/oauth/device/poll`, { method: 'POST', headers: this.headers(), body: JSON.stringify({ device_code: deviceCode }) });
-        if (!r.ok)
-            throw new Error(await r.text());
-        const tok = await r.json();
-        this.setToken(tok.access_token);
-        return tok;
+        const response = await fetch(`${this.baseUrl}/oauth/device/poll`, {
+            method: 'POST',
+            headers: this.headers(),
+            body: JSON.stringify({ device_code: deviceCode })
+        });
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+        const token = (await response.json());
+        this.setToken(token.access_token);
+        return token;
     }
     async listMyJiraIssues() {
-        const r = await fetch(`${this.baseUrl}/api/integrations/jira/my-issues`, { headers: this.headers() });
-        if (!r.ok)
+        const response = await fetch(`${this.baseUrl}/api/integrations/jira/my-issues`, {
+            headers: this.headers()
+        });
+        if (!response.ok) {
             return [];
-        return await r.json();
+        }
+        return (await response.json());
     }
     async me() {
-        const r = await fetch(`${this.baseUrl}/api/me`, { headers: this.headers() });
-        if (!r.ok)
+        const response = await fetch(`${this.baseUrl}/api/me`, { headers: this.headers() });
+        if (!response.ok) {
             return {};
-        return await r.json();
+        }
+        return (await response.json());
     }
     async proposePlan(issueKey) {
-        const r = await fetch(`${this.baseUrl}/api/agent/propose`, { method: 'POST', headers: this.headers(), body: JSON.stringify({ issue_key: issueKey }) });
-        if (!r.ok)
-            throw new Error(await r.text());
-        return await r.json();
+        const response = await fetch(`${this.baseUrl}/api/agent/propose`, {
+            method: 'POST',
+            headers: this.headers(),
+            body: JSON.stringify({ issue_key: issueKey })
+        });
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+        return (await response.json());
     }
     async applyPatch(patch) {
-        const r = await fetch(`${this.baseUrl}/api/ai/apply-patch`, { method: 'POST', headers: this.headers(), body: JSON.stringify({ diff: patch, dry_run: false }) });
-        const j = await r.json();
-        if (!r.ok)
-            throw new Error(j.detail || JSON.stringify(j));
-        return j;
+        const response = await fetch(`${this.baseUrl}/api/ai/apply-patch`, {
+            method: 'POST',
+            headers: this.headers(),
+            body: JSON.stringify({ diff: patch, dry_run: false })
+        });
+        const payload = (await response.json());
+        if (!response.ok) {
+            throw new Error(payload.detail || JSON.stringify(payload));
+        }
+        return payload;
+    }
+    async chat(message, type = 'question') {
+        const response = await fetch(`${this.baseUrl}/api/chat`, {
+            method: 'POST',
+            headers: this.headers(),
+            body: JSON.stringify({ message, type })
+        });
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+        return (await response.json());
     }
 }
 exports.AEPClient = AEPClient;
@@ -125,6 +165,53 @@ function getConfig() {
 
 /***/ }),
 
+/***/ "./src/deviceFlow.ts":
+/*!***************************!*\
+  !*** ./src/deviceFlow.ts ***!
+  \***************************/
+/***/ ((__unused_webpack_module, exports) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DEVICE_POLL_INTERVAL_MS = exports.DEVICE_POLL_MAX_ATTEMPTS = void 0;
+exports.pollDeviceCode = pollDeviceCode;
+exports.DEVICE_POLL_MAX_ATTEMPTS = 90;
+exports.DEVICE_POLL_INTERVAL_MS = 2000;
+async function pollDeviceCode(client, deviceCode, output) {
+    // 90 attempts × 2 seconds interval = 180 seconds (3 minutes) total timeout for device authorization.
+    let lastError;
+    for (let attempt = 0; attempt < exports.DEVICE_POLL_MAX_ATTEMPTS; attempt++) {
+        try {
+            const token = await client.pollDeviceCode(deviceCode);
+            output?.appendLine('Received access token from device flow.');
+            return token;
+        }
+        catch (error) {
+            const message = typeof error?.message === 'string' ? error.message : String(error);
+            if (isPendingDeviceAuthorization(message)) {
+                await delay(exports.DEVICE_POLL_INTERVAL_MS);
+                continue;
+            }
+            lastError = error;
+            break;
+        }
+    }
+    if (lastError) {
+        throw lastError;
+    }
+    throw new Error('Timed out waiting for device authorization.');
+}
+function isPendingDeviceAuthorization(message) {
+    const normalized = message.toLowerCase();
+    return normalized.includes('428') || normalized.includes('authorization_pending');
+}
+async function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+/***/ }),
+
 /***/ "./src/extension.ts":
 /*!**************************!*\
   !*** ./src/extension.ts ***!
@@ -175,6 +262,7 @@ const approvals_1 = __webpack_require__(/*! ./features/approvals */ "./src/featu
 const authPanel_1 = __webpack_require__(/*! ./features/authPanel */ "./src/features/authPanel.ts");
 const client_1 = __webpack_require__(/*! ./api/client */ "./src/api/client.ts");
 const config_1 = __webpack_require__(/*! ./config */ "./src/config.ts");
+const deviceFlow_1 = __webpack_require__(/*! ./deviceFlow */ "./src/deviceFlow.ts");
 const OUTPUT_CHANNEL = 'AEP Agent';
 let outputChannel;
 async function activate(context) {
@@ -185,14 +273,20 @@ async function activate(context) {
         const cfg = (0, config_1.getConfig)();
         output.appendLine(`Using backend ${cfg.baseUrl} for org ${cfg.orgId}`);
         const client = new client_1.AEPClient(context, cfg.baseUrl, cfg.orgId);
-        const approvals = new approvals_1.Approvals(context, client);
-        const chat = new chatSidebar_1.ChatSidebarProvider(context, client);
-        const plan = new planPanel_1.PlanPanelProvider(context, client, approvals);
-        const auth = new authPanel_1.AuthPanel(context, client, cfg.portalUrl);
+        const approvals = new approvals_1.Approvals(context, client, output);
+        const chat = new chatSidebar_1.ChatSidebarProvider(context, client, output);
+        const plan = new planPanel_1.PlanPanelProvider(context, client, approvals, output);
+        const auth = new authPanel_1.AuthPanel(context, client, cfg.portalUrl, output);
         const disposables = [
-            vscode.window.registerWebviewViewProvider('aep.chatView', chat, { webviewOptions: { retainContextWhenHidden: true } }),
-            vscode.window.registerWebviewViewProvider('aep.planView', plan, { webviewOptions: { retainContextWhenHidden: true } }),
-            vscode.window.registerWebviewViewProvider('aep.authView', auth, { webviewOptions: { retainContextWhenHidden: true } }),
+            vscode.window.registerWebviewViewProvider('aep.chatView', chat, {
+                webviewOptions: { retainContextWhenHidden: true }
+            }),
+            vscode.window.registerWebviewViewProvider('aep.planView', plan, {
+                webviewOptions: { retainContextWhenHidden: true }
+            }),
+            vscode.window.registerWebviewViewProvider('aep.authView', auth, {
+                webviewOptions: { retainContextWhenHidden: true }
+            }),
             vscode.commands.registerCommand('aep.signIn', () => startDeviceFlow(client, chat, output)),
             vscode.commands.registerCommand('aep.startSession', () => {
                 vscode.window.showInformationMessage('Starting an AEP planning session…');
@@ -221,15 +315,17 @@ async function startDeviceFlow(client, chat, output) {
         output.appendLine('Device flow started. Opening browser for verification.');
         const verificationUrl = flow.verification_uri_complete || flow.verification_uri;
         const codeLabel = flow.user_code ? ` (code: ${flow.user_code})` : '';
-        vscode.window.showInformationMessage(`Open the browser to complete sign-in${codeLabel}`, 'Open Browser').then(sel => {
-            if (sel === 'Open Browser' && verificationUrl) {
+        vscode.window
+            .showInformationMessage(`Open the browser to complete sign-in${codeLabel}`, 'Open Browser')
+            .then(selection => {
+            if (selection === 'Open Browser' && verificationUrl) {
                 vscode.env.openExternal(vscode.Uri.parse(verificationUrl));
             }
         });
         if (!flow.device_code) {
             throw new Error('Device authorization response was missing a device code.');
         }
-        await pollDeviceCode(client, flow.device_code, output);
+        await (0, deviceFlow_1.pollDeviceCode)(client, flow.device_code, output);
         vscode.window.showInformationMessage('Signed in to AEP successfully.');
         chat.refresh();
     }
@@ -238,25 +334,6 @@ async function startDeviceFlow(client, chat, output) {
         output.appendLine(`Sign-in failed: ${message}`);
         vscode.window.showErrorMessage(`AEP sign-in failed: ${message}`);
     }
-}
-async function pollDeviceCode(client, deviceCode, output) {
-    const maxAttempts = 90;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-            await client.pollDeviceCode(deviceCode);
-            output.appendLine('Received access token from device flow.');
-            return;
-        }
-        catch (error) {
-            const message = typeof error?.message === 'string' ? error.message : String(error);
-            if (message.includes('428')) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                continue;
-            }
-            throw error;
-        }
-    }
-    throw new Error('Timed out waiting for device authorization.');
 }
 function deactivate() {
     outputChannel?.appendLine('AEP Agent extension deactivated.');
@@ -309,18 +386,47 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Approvals = void 0;
 const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
 class Approvals {
-    constructor(ctx, client) {
-        this.ctx = ctx;
-        this.client = client;
+    constructor(_ctx, _client, output) {
+        this._ctx = _ctx;
+        this._client = _client;
+        this.output = output;
         this.selected = null;
     }
-    set(step) { this.selected = step; }
-    async approve(step) { this.selected = step; await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Approving step…' }, async () => { }); }
-    async reject(step) { this.selected = step; vscode.window.showInformationMessage('Step rejected'); }
-    async approveSelected() { if (this.selected)
-        await this.approve(this.selected); }
-    async rejectSelected() { if (this.selected)
-        await this.reject(this.selected); }
+    set(step) {
+        this.selected = step;
+    }
+    async approve(step) {
+        this.selected = step;
+        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Approving “${step.title}”…` }, async (progress) => {
+            progress.report({ increment: 33, message: 'Syncing with AEP…' });
+            await vscode.env.clipboard.writeText(step.patch ?? step.details ?? step.description ?? step.title);
+            this.output.appendLine(`Approved step ${step.id ?? step.title}`);
+            progress.report({ increment: 66, message: 'Ready for execution' });
+        });
+        vscode.window.showInformationMessage('Step approved and copied to clipboard for quick application.');
+    }
+    async reject(step) {
+        this.selected = step;
+        const detail = step.details || step.description || step.title;
+        this.output.appendLine(`Rejected step ${step.id ?? step.title}: ${detail}`);
+        vscode.window.showWarningMessage(`Rejected plan step: ${step.title}`);
+    }
+    async approveSelected() {
+        if (this.selected) {
+            await this.approve(this.selected);
+        }
+        else {
+            vscode.window.showInformationMessage('Select a plan step to approve.');
+        }
+    }
+    async rejectSelected() {
+        if (this.selected) {
+            await this.reject(this.selected);
+        }
+        else {
+            vscode.window.showInformationMessage('Select a plan step to reject.');
+        }
+    }
 }
 exports.Approvals = Approvals;
 
@@ -371,11 +477,13 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AuthPanel = void 0;
 const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
 const view_1 = __webpack_require__(/*! ../webview/view */ "./src/webview/view.ts");
+const deviceFlow_1 = __webpack_require__(/*! ../deviceFlow */ "./src/deviceFlow.ts");
 class AuthPanel {
-    constructor(ctx, client, portalUrl) {
+    constructor(ctx, client, portalUrl, output) {
         this.ctx = ctx;
         this.client = client;
         this.portalUrl = portalUrl;
+        this.output = output;
     }
     resolveWebviewView(view) {
         this.view = view;
@@ -396,27 +504,42 @@ class AuthPanel {
         <div class="row"><vscode-button id="copy">Copy Code</vscode-button></div>
       </div>`;
         view.webview.html = (0, view_1.boilerplate)(view.webview, this.ctx, body, ['base.css'], ['auth.js']);
-        view.webview.onDidReceiveMessage(async (m) => {
+        view.webview.onDidReceiveMessage(async (message) => {
             try {
-                if (m.type === 'open') {
-                    const url = m.url === 'portal:' ? this.portalUrl : m.url;
-                    vscode.env.openExternal(vscode.Uri.parse(url));
+                if (message.type === 'open') {
+                    const targetUrl = message.url === 'portal:' ? this.portalUrl : message.url;
+                    if (targetUrl) {
+                        vscode.env.openExternal(vscode.Uri.parse(targetUrl));
+                    }
+                    return;
                 }
-                if (m.type === 'signin') {
-                    const flow = await this.client.startDeviceCode();
-                    view.webview.postMessage({ type: 'flow', flow });
-                    vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-                    await this.client.pollDeviceCode(flow.device_code);
-                    view.webview.postMessage({ type: 'done' });
-                    vscode.window.showInformationMessage('Signed in to AEP successfully.');
+                if (message.type === 'signin') {
+                    await this.handleSignIn(view);
+                    return;
                 }
             }
             catch (error) {
-                const message = error?.message ?? String(error);
-                vscode.window.showErrorMessage(`Authentication failed: ${message}`);
-                view.webview.postMessage({ type: 'error', message });
+                const messageText = error?.message ?? String(error);
+                this.output.appendLine(`Authentication failed: ${messageText}`);
+                vscode.window.showErrorMessage(`Authentication failed: ${messageText}`);
+                view.webview.postMessage({ type: 'error', message: messageText });
             }
         });
+    }
+    async handleSignIn(view) {
+        this.output.appendLine('Starting authentication from Account panel.');
+        const flow = await this.client.startDeviceCode();
+        if (!flow.device_code) {
+            throw new Error('Device authorization response was missing a device code.');
+        }
+        view.webview.postMessage({ type: 'flow', flow });
+        const verificationUrl = flow.verification_uri_complete || flow.verification_uri;
+        if (verificationUrl) {
+            vscode.env.openExternal(vscode.Uri.parse(verificationUrl));
+        }
+        await (0, deviceFlow_1.pollDeviceCode)(this.client, flow.device_code, this.output);
+        view.webview.postMessage({ type: 'done' });
+        vscode.window.showInformationMessage('Signed in to AEP successfully.');
     }
 }
 exports.AuthPanel = AuthPanel;
@@ -469,87 +592,116 @@ exports.ChatSidebarProvider = void 0;
 const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
 const view_1 = __webpack_require__(/*! ../webview/view */ "./src/webview/view.ts");
 class ChatSidebarProvider {
-    constructor(ctx, client) {
+    constructor(ctx, client, output) {
         this.ctx = ctx;
         this.client = client;
+        this.output = output;
     }
     resolveWebviewView(view) {
         this.view = view;
         view.webview.options = { enableScripts: true };
         this.render();
-        view.webview.onDidReceiveMessage(async (m) => {
-            console.log('ChatSidebar received message:', m);
-            if (m.type === 'openExternal') {
-                vscode.env.openExternal(vscode.Uri.parse(m.url));
+        view.webview.onDidReceiveMessage(async (message) => {
+            try {
+                switch (message.type) {
+                    case 'openExternal':
+                        if (message.url) {
+                            vscode.env.openExternal(vscode.Uri.parse(message.url));
+                        }
+                        break;
+                    case 'openPortal':
+                        await vscode.commands.executeCommand('aep.openPortal');
+                        break;
+                    case 'pickIssue':
+                    case 'startSession':
+                        await vscode.commands.executeCommand('aep.startSession');
+                        break;
+                    case 'signIn':
+                        await vscode.commands.executeCommand('aep.signIn');
+                        setTimeout(() => this.render(), 2000);
+                        break;
+                    case 'refresh':
+                        await this.render();
+                        break;
+                    case 'chat':
+                        if (message.message) {
+                            await this.handleChatMessage(message.message);
+                        }
+                        break;
+                    default:
+                        this.output.appendLine(`Unknown chat message type: ${message.type}`);
+                }
             }
-            else if (m.type === 'openPortal') {
-                vscode.commands.executeCommand('aep.openPortal');
-            }
-            else if (m.type === 'pickIssue') {
-                vscode.commands.executeCommand('aep.startSession');
-            }
-            else if (m.type === 'signIn') {
-                vscode.commands.executeCommand('aep.signIn');
-                // Refresh after sign in attempt
-                setTimeout(() => this.render(), 2000);
-            }
-            else if (m.type === 'startSession') {
-                vscode.commands.executeCommand('aep.startSession');
-            }
-            else if (m.type === 'refresh') {
-                await this.render();
-            }
-            else if (m.type === 'chat' && m.message) {
-                await this.handleChatMessage(m.message);
+            catch (error) {
+                const text = error instanceof Error ? error.message : String(error);
+                this.output.appendLine(`ChatSidebar message handling failed: ${text}`);
+                vscode.window.showErrorMessage(`AEP Agent chat error: ${text}`);
             }
         });
     }
     refresh() {
-        if (this.view)
-            this.render();
-    }
-    async sendHello() {
-        const issues = await this.client.listMyJiraIssues();
-        this.post({ type: 'hello', issues });
-    }
-    post(message) {
         if (this.view) {
-            this.view.webview.postMessage(message);
+            this.render();
         }
     }
     async render() {
+        if (!this.view) {
+            return;
+        }
         try {
             const [me, issues] = await Promise.all([
                 this.client.me().catch(() => ({})),
                 this.client.listMyJiraIssues().catch(() => [])
             ]);
-            const greeting = (() => {
-                const h = new Date().getHours();
-                if (h < 12)
-                    return 'Good morning';
-                if (h < 18)
-                    return 'Good afternoon';
-                return 'Good evening';
-            })();
-            const makeIssue = (i) => `
-      <div class="card">
-        <div class="row"><b>${i.key}</b> — ${i.summary} <span class="chip">${i.status}</span></div>
-        <div class="row">
-          <vscode-button appearance="secondary" data-url="${i.url}" class="open">Open in Jira</vscode-button>
-          <vscode-button class="plan">Plan</vscode-button>
-        </div>
-      </div>`;
-            const body = me?.email ? `
+            const greeting = this.resolveGreeting();
+            const body = me?.email ? this.signedInView(greeting, me.email, issues) : this.signedOutView();
+            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.output.appendLine(`ChatSidebar render failed: ${message}`);
+            const fallback = `
+        <div class="landing-container">
+          <div class="hero-section">
+            <div class="logo-area">
+              <div class="logo">⚠️</div>
+              <h1>AEP Agent</h1>
+              <p class="tagline">We couldn't load your workspace right now.</p>
+            </div>
+            <p style="color: var(--vscode-descriptionForeground);">${this.escape(message)}</p>
+            <vscode-button appearance="secondary" id="retry">Retry</vscode-button>
+          </div>
+        </div>`;
+            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, fallback, ['base.css', 'landing.css'], ['chat.js']);
+        }
+    }
+    resolveGreeting() {
+        const hour = new Date().getHours();
+        if (hour < 12) {
+            return 'Good morning';
+        }
+        if (hour < 18) {
+            return 'Good afternoon';
+        }
+        return 'Good evening';
+    }
+    signedInView(greeting, email, issues) {
+        const issueCards = issues.length
+            ? issues.map(issue => this.renderIssue(issue)).join('')
+            : `<div class="empty">No issues found. Check your Jira integration.</div>`;
+        return `
       <div class="card">
         <div class="row"><span class="h">${greeting}, welcome to AEP Agent</span></div>
-        <div class="row mono">Signed in as ${me.email}</div>
+        <div class="row mono">Signed in as ${this.escape(email)}</div>
         <div class="row" style="gap:8px;margin-top:8px;">
           <vscode-button id="start" appearance="primary">Start Session</vscode-button>
           <vscode-button id="refresh" appearance="secondary">Refresh</vscode-button>
         </div>
       </div>
-      ${issues.length ? issues.map(makeIssue).join('') : `<div class="empty">No issues found. Check your Jira integration.</div>`}
-    ` : `
+      ${issueCards}`;
+    }
+    signedOutView() {
+        return `
       <div class="landing-container">
         <div class="hero-section">
           <div class="logo-area">
@@ -580,19 +732,19 @@ class ChatSidebarProvider {
             <h3>Code Analysis</h3>
             <p>Get instant AI-powered code reviews and suggestions</p>
           </div>
-          
+
           <div class="feature-card">
             <div class="feature-icon">📋</div>
             <h3>Task Planning</h3>
             <p>Break down JIRA issues into actionable steps</p>
           </div>
-          
+
           <div class="feature-card">
             <div class="feature-icon">🔧</div>
             <h3>Auto Patches</h3>
             <p>Apply AI-generated code changes with confidence</p>
           </div>
-          
+
           <div class="feature-card">
             <div class="feature-icon">👥</div>
             <h3>Team Collaboration</h3>
@@ -610,7 +762,7 @@ class ChatSidebarProvider {
                 <div class="action-desc">Explore features without signing in</div>
               </div>
             </button>
-            
+
             <button class="action-btn" id="loadSample">
               <span class="action-icon">📝</span>
               <div>
@@ -633,56 +785,41 @@ class ChatSidebarProvider {
           </div>
         </div>
       </div>`;
-            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
-        }
-        catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            console.error('ChatSidebar render failed:', message);
-            const fallback = `
-        <div class="landing-container">
-          <div class="hero-section">
-            <div class="logo-area">
-              <div class="logo">⚠️</div>
-              <h1>AEP Agent</h1>
-              <p class="tagline">We couldn't load your workspace right now.</p>
-            </div>
-            <p style="color: var(--vscode-descriptionForeground);">${this.escape(message)}</p>
-            <vscode-button appearance="secondary" id="retry">Retry</vscode-button>
-          </div>
-        </div>`;
-            this.view.webview.html = (0, view_1.boilerplate)(this.view.webview, this.ctx, fallback, ['base.css', 'landing.css'], ['chat.js']);
-        }
+    }
+    renderIssue(issue) {
+        return `
+      <div class="card">
+        <div class="row"><b>${this.escape(issue.key)}</b> — ${this.escape(issue.summary)} <span class="chip">${this.escape(issue.status)}</span></div>
+        <div class="row">
+          <vscode-button appearance="secondary" data-url="${issue.url ?? ''}" class="open">Open in Jira</vscode-button>
+          <vscode-button class="plan">Plan</vscode-button>
+        </div>
+      </div>`;
     }
     escape(text) {
-        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
     async handleChatMessage(message) {
+        if (!this.view) {
+            return;
+        }
         try {
-            // Show user message immediately
             this.showChatMessage('user', message);
-            // Show typing indicator
             this.showChatMessage('system', '🤔 Thinking...');
-            // Send to AI backend
-            const response = await fetch(`${this.client['baseUrl']}/api/chat`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message, type: 'question' })
-            });
-            if (response.ok) {
-                const result = await response.json();
-                this.showChatMessage('assistant', result.response || result.message || 'I received your message but had trouble generating a response.');
-            }
-            else {
-                this.showChatMessage('assistant', 'Sorry, I\'m having trouble connecting right now. Please try again later.');
-            }
+            const response = await this.client.chat(message);
+            const answer = response.response || response.message || 'I received your message but had trouble generating a response.';
+            this.showChatMessage('assistant', answer);
         }
         catch (error) {
-            console.error('Chat error:', error);
+            const text = error instanceof Error ? error.message : String(error);
+            this.output.appendLine(`Chat error: ${text}`);
             this.showChatMessage('assistant', 'I encountered an error processing your message. Please check your connection and try again.');
         }
     }
     showChatMessage(role, content) {
-        // Send message to webview for display
         if (this.view) {
             this.view.webview.postMessage({
                 type: 'chatMessage',
@@ -743,10 +880,11 @@ exports.PlanPanelProvider = void 0;
 const vscode = __importStar(__webpack_require__(/*! vscode */ "vscode"));
 const view_1 = __webpack_require__(/*! ../webview/view */ "./src/webview/view.ts");
 class PlanPanelProvider {
-    constructor(ctx, client, approvals) {
+    constructor(ctx, client, approvals, output) {
         this.ctx = ctx;
         this.client = client;
         this.approvals = approvals;
+        this.output = output;
         this.steps = [];
         this.selectedIndex = 0;
         this.selectedPatch = null;
@@ -757,38 +895,31 @@ class PlanPanelProvider {
         this.render();
         view.webview.onDidReceiveMessage(async (message) => {
             try {
-                if (message.type === 'load-plan' && message.issue) {
-                    this.steps = await this.client.proposePlan(message.issue);
-                    this.selectedIndex = 0;
-                    this.selectedPatch = this.steps[0]?.patch || null;
-                    this.render();
-                    return;
-                }
-                if (message.type === 'load-demo-plan') {
-                    this.steps = this.demoPlan();
-                    this.selectedIndex = 0;
-                    this.selectedPatch = this.steps[0]?.patch || null;
-                    this.render();
-                    vscode.window.showInformationMessage('Demo plan loaded! 🚀');
-                    return;
-                }
-                if (message.type === 'select' && typeof message.index === 'number') {
-                    this.selectedIndex = message.index;
-                    this.selectedPatch = this.steps[message.index]?.patch || null;
-                    this.render();
-                    return;
-                }
-                if (message.type === 'approve') {
-                    await this.approvals.approve(this.steps[this.selectedIndex]);
-                    return;
-                }
-                if (message.type === 'reject') {
-                    await this.approvals.reject(this.steps[this.selectedIndex]);
-                    return;
-                }
-                if (message.type === 'applyPatch') {
-                    await vscode.commands.executeCommand('aep.applyPatch');
-                    return;
+                switch (message.type) {
+                    case 'load-plan':
+                        if (message.issue) {
+                            await this.loadPlan(message.issue);
+                        }
+                        break;
+                    case 'load-demo-plan':
+                        this.loadDemoPlan();
+                        break;
+                    case 'select':
+                        if (typeof message.index === 'number') {
+                            this.selectStep(message.index);
+                        }
+                        break;
+                    case 'approve':
+                        await this.approveSelected();
+                        break;
+                    case 'reject':
+                        await this.rejectSelected();
+                        break;
+                    case 'applyPatch':
+                        await vscode.commands.executeCommand('aep.applyPatch');
+                        break;
+                    default:
+                        this.output.appendLine(`Unknown plan message type: ${message.type}`);
                 }
             }
             catch (error) {
@@ -796,19 +927,53 @@ class PlanPanelProvider {
             }
         });
     }
-    refresh() { if (this.view)
-        this.render(); }
+    refresh() {
+        if (this.view) {
+            this.render();
+        }
+    }
     async applySelectedPatch() {
         if (!this.selectedPatch) {
             vscode.window.showWarningMessage('No patch selected');
             return;
         }
         try {
-            const res = await this.client.applyPatch(this.selectedPatch);
-            vscode.window.showInformationMessage(res.applied ? 'Patch applied' : 'Patch failed');
+            const result = await this.client.applyPatch(this.selectedPatch);
+            vscode.window.showInformationMessage(result.applied ? 'Patch applied' : 'Patch failed');
         }
         catch (error) {
+            this.output.appendLine(`Unable to apply patch: ${error?.message ?? error}`);
             vscode.window.showErrorMessage(`Unable to apply patch: ${error?.message ?? error}`);
+        }
+    }
+    async loadPlan(issueKey) {
+        this.output.appendLine(`Loading plan for ${issueKey}`);
+        const steps = await this.client.proposePlan(issueKey);
+        this.steps = steps;
+        this.selectStep(0);
+    }
+    loadDemoPlan() {
+        this.steps = this.demoPlan();
+        this.selectStep(0);
+        vscode.window.showInformationMessage('Demo plan loaded! 🚀');
+    }
+    selectStep(index) {
+        this.selectedIndex = Math.max(0, Math.min(index, this.steps.length - 1));
+        const step = this.steps[this.selectedIndex];
+        this.selectedPatch = step?.patch || null;
+        this.approvals.set(step ?? null);
+        this.render();
+    }
+    async approveSelected() {
+        const step = this.steps[this.selectedIndex];
+        if (step) {
+            await this.approvals.approve(step);
+        }
+    }
+    async rejectSelected() {
+        const step = this.steps[this.selectedIndex];
+        if (step) {
+            await this.approvals.reject(step);
         }
     }
     render() {
@@ -839,11 +1004,15 @@ class PlanPanelProvider {
           <div class="card"><div class="h">Plan &amp; Act</div></div>
           <div class="steps">
             <ul>
-              ${this.steps.map((s, i) => `<li class="${i === this.selectedIndex ? 'sel' : ''}" data-i="${i}">${this.escape(s.kind)}: ${this.escape(s.title)}</li>`).join('')}
+              ${this.steps
+                .map((step, index) => this.renderStep(step, index === this.selectedIndex, index))
+                .join('')}
             </ul>
           </div>
           <div class="details">
-            ${this.selectedPatch ? `<pre>${this.escape(this.selectedPatch)}</pre>` : '<em>Select a step to inspect details</em>'}
+            ${this.selectedPatch
+                ? `<pre>${this.escape(this.selectedPatch)}</pre>`
+                : '<em>Select a step to inspect details</em>'}
           </div>
           <div class="actions">
             <vscode-button id="approve">Approve</vscode-button>
@@ -857,14 +1026,44 @@ class PlanPanelProvider {
             this.showError(error);
         }
     }
+    renderStep(step, isSelected, index) {
+        const classes = isSelected ? 'sel' : '';
+        const subtitle = step.details || step.description || '';
+        const subtitleHtml = subtitle ? ` <span class="hint">${this.escape(subtitle)}</span>` : '';
+        return `<li class="${classes}" data-i="${index}">${this.escape(step.kind)}: ${this.escape(step.title)}${subtitleHtml}</li>`;
+    }
     escape(text) {
-        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
     demoPlan() {
         return [
-            { kind: 'Setup', title: 'Analyze requirements and create project structure', description: 'Analyze requirements and create project structure', status: 'pending', patch: '// Demo patch 1\n+ Create new component\n- Remove old file' },
-            { kind: 'Implement', title: 'Implement core functionality', description: 'Implement core functionality', status: 'pending', patch: '// Demo patch 2\n+ Add main logic\n+ Update tests' },
-            { kind: 'Validate', title: 'Add error handling and validation', description: 'Add error handling and validation', status: 'pending', patch: '// Demo patch 3\n+ Try-catch blocks\n+ Input validation' }
+            {
+                id: 'demo-1',
+                kind: 'Setup',
+                title: 'Analyze requirements and create project structure',
+                description: 'Analyze requirements and create project structure',
+                status: 'pending',
+                patch: '// Demo patch 1\n+ Create new component\n- Remove old file'
+            },
+            {
+                id: 'demo-2',
+                kind: 'Implement',
+                title: 'Implement core functionality',
+                description: 'Implement core functionality',
+                status: 'pending',
+                patch: '// Demo patch 2\n+ Add main logic\n+ Update tests'
+            },
+            {
+                id: 'demo-3',
+                kind: 'Validate',
+                title: 'Add error handling and validation',
+                description: 'Add error handling and validation',
+                status: 'pending',
+                patch: '// Demo patch 3\n+ Try-catch blocks\n+ Input validation'
+            }
         ];
     }
     showError(error) {
@@ -872,6 +1071,7 @@ class PlanPanelProvider {
             return;
         }
         const message = error instanceof Error ? error.message : String(error);
+        this.output.appendLine(`Plan panel error: ${message}`);
         const body = `
       <div class="card error">
         <div class="h">We hit a snag</div>

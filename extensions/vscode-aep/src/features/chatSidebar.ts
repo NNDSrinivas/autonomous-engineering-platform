@@ -1,93 +1,129 @@
 import * as vscode from 'vscode';
 import { AEPClient } from '../api/client';
 import { boilerplate } from '../webview/view';
+import type { JiraIssue } from '../api/types';
 
 export class ChatSidebarProvider implements vscode.WebviewViewProvider {
-  private view?: vscode.WebviewView;
-  constructor(private ctx: vscode.ExtensionContext, private client: AEPClient) { }
+  private view: vscode.WebviewView | undefined;
+
+  constructor(
+    private readonly ctx: vscode.ExtensionContext,
+    private readonly client: AEPClient,
+    private readonly output: vscode.OutputChannel
+  ) {}
 
   resolveWebviewView(view: vscode.WebviewView) {
     this.view = view;
     view.webview.options = { enableScripts: true };
     this.render();
-    view.webview.onDidReceiveMessage(async (m) => {
-      console.log('ChatSidebar received message:', m);
 
-      if (m.type === 'openExternal') {
-        vscode.env.openExternal(vscode.Uri.parse(m.url));
-      }
-      else if (m.type === 'openPortal') {
-        vscode.commands.executeCommand('aep.openPortal');
-      }
-      else if (m.type === 'pickIssue') {
-        vscode.commands.executeCommand('aep.startSession');
-      }
-      else if (m.type === 'signIn') {
-        vscode.commands.executeCommand('aep.signIn');
-        // Refresh after sign in attempt
-        setTimeout(() => this.render(), 2000);
-      }
-      else if (m.type === 'startSession') {
-        vscode.commands.executeCommand('aep.startSession');
-      }
-      else if (m.type === 'refresh') {
-        await this.render();
-      }
-      else if (m.type === 'chat' && m.message) {
-        await this.handleChatMessage(m.message);
+    view.webview.onDidReceiveMessage(async message => {
+      try {
+        switch (message.type) {
+          case 'openExternal':
+            if (message.url) {
+              vscode.env.openExternal(vscode.Uri.parse(message.url));
+            }
+            break;
+          case 'openPortal':
+            await vscode.commands.executeCommand('aep.openPortal');
+            break;
+          case 'pickIssue':
+          case 'startSession':
+            await vscode.commands.executeCommand('aep.startSession');
+            break;
+          case 'signIn':
+            await vscode.commands.executeCommand('aep.signIn');
+            setTimeout(() => this.render(), 2000);
+            break;
+          case 'refresh':
+            await this.render();
+            break;
+          case 'chat':
+            if (message.message) {
+              await this.handleChatMessage(message.message);
+            }
+            break;
+          default:
+            this.output.appendLine(`Unknown chat message type: ${message.type}`);
+        }
+      } catch (error) {
+        const text = error instanceof Error ? error.message : String(error);
+        this.output.appendLine(`ChatSidebar message handling failed: ${text}`);
+        vscode.window.showErrorMessage(`AEP Agent chat error: ${text}`);
       }
     });
   }
 
   refresh() {
-    if (this.view) this.render();
-  }
-
-  async sendHello() {
-    const issues = await this.client.listMyJiraIssues();
-    this.post({ type: 'hello', issues });
-  }
-
-  private post(message: any) {
     if (this.view) {
-      this.view.webview.postMessage(message);
+      this.render();
     }
   }
 
   async render() {
+    if (!this.view) {
+      return;
+    }
+
     try {
       const [me, issues] = await Promise.all([
         this.client.me().catch(() => ({} as any)),
         this.client.listMyJiraIssues().catch(() => [])
       ]);
 
-      const greeting = (() => {
-        const h = new Date().getHours();
-        if (h < 12) return 'Good morning';
-        if (h < 18) return 'Good afternoon';
-        return 'Good evening';
-      })();
+      const greeting = this.resolveGreeting();
+      const body = me?.email ? this.signedInView(greeting, me.email, issues) : this.signedOutView();
+      this.view.webview.html = boilerplate(this.view.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ChatSidebar render failed: ${message}`);
+      const fallback = `
+        <div class="landing-container">
+          <div class="hero-section">
+            <div class="logo-area">
+              <div class="logo">⚠️</div>
+              <h1>AEP Agent</h1>
+              <p class="tagline">We couldn't load your workspace right now.</p>
+            </div>
+            <p style="color: var(--vscode-descriptionForeground);">${this.escape(message)}</p>
+            <vscode-button appearance="secondary" id="retry">Retry</vscode-button>
+          </div>
+        </div>`;
+      this.view.webview.html = boilerplate(this.view.webview, this.ctx, fallback, ['base.css', 'landing.css'], ['chat.js']);
+    }
+  }
 
-      const makeIssue = (i: any) => `
-      <div class="card">
-        <div class="row"><b>${i.key}</b> — ${i.summary} <span class="chip">${i.status}</span></div>
-        <div class="row">
-          <vscode-button appearance="secondary" data-url="${i.url}" class="open">Open in Jira</vscode-button>
-          <vscode-button class="plan">Plan</vscode-button>
-        </div>
-      </div>`;
+  private resolveGreeting(): string {
+    const hour = new Date().getHours();
+    if (hour < 12) {
+      return 'Good morning';
+    }
+    if (hour < 18) {
+      return 'Good afternoon';
+    }
+    return 'Good evening';
+  }
 
-      const body = me?.email ? `
+  private signedInView(greeting: string, email: string, issues: JiraIssue[]): string {
+    const issueCards = issues.length
+      ? issues.map(issue => this.renderIssue(issue)).join('')
+      : `<div class="empty">No issues found. Check your Jira integration.</div>`;
+
+    return `
       <div class="card">
         <div class="row"><span class="h">${greeting}, welcome to AEP Agent</span></div>
-        <div class="row mono">Signed in as ${me.email}</div>
+        <div class="row mono">Signed in as ${this.escape(email)}</div>
         <div class="row" style="gap:8px;margin-top:8px;">
           <vscode-button id="start" appearance="primary">Start Session</vscode-button>
           <vscode-button id="refresh" appearance="secondary">Refresh</vscode-button>
         </div>
       </div>
-      ${issues.length ? issues.map(makeIssue).join('') : `<div class="empty">No issues found. Check your Jira integration.</div>`}
-    ` : `
+      ${issueCards}`;
+  }
+
+  private signedOutView(): string {
+    return `
       <div class="landing-container">
         <div class="hero-section">
           <div class="logo-area">
@@ -118,19 +154,19 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
             <h3>Code Analysis</h3>
             <p>Get instant AI-powered code reviews and suggestions</p>
           </div>
-          
+
           <div class="feature-card">
             <div class="feature-icon">📋</div>
             <h3>Task Planning</h3>
             <p>Break down JIRA issues into actionable steps</p>
           </div>
-          
+
           <div class="feature-card">
             <div class="feature-icon">🔧</div>
             <h3>Auto Patches</h3>
             <p>Apply AI-generated code changes with confidence</p>
           </div>
-          
+
           <div class="feature-card">
             <div class="feature-icon">👥</div>
             <h3>Team Collaboration</h3>
@@ -148,7 +184,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
                 <div class="action-desc">Explore features without signing in</div>
               </div>
             </button>
-            
+
             <button class="action-btn" id="loadSample">
               <span class="action-icon">📝</span>
               <div>
@@ -171,60 +207,51 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
           </div>
         </div>
       </div>`;
-
-      this.view!.webview.html = boilerplate(this.view!.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error('ChatSidebar render failed:', message);
-      const fallback = `
-        <div class="landing-container">
-          <div class="hero-section">
-            <div class="logo-area">
-              <div class="logo">⚠️</div>
-              <h1>AEP Agent</h1>
-              <p class="tagline">We couldn't load your workspace right now.</p>
-            </div>
-            <p style="color: var(--vscode-descriptionForeground);">${this.escape(message)}</p>
-            <vscode-button appearance="secondary" id="retry">Retry</vscode-button>
-          </div>
-        </div>`;
-      this.view!.webview.html = boilerplate(this.view!.webview, this.ctx, fallback, ['base.css', 'landing.css'], ['chat.js']);
-    }
   }
 
-  private escape(text: string) {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  private renderIssue(issue: JiraIssue): string {
+    return `
+      <div class="card">
+        <div class="row"><b>${this.escape(issue.key)}</b> — ${this.escape(issue.summary)} <span class="chip">${
+          this.escape(issue.status)
+        }</span></div>
+        <div class="row">
+          <vscode-button appearance="secondary" data-url="${issue.url ?? ''}" class="open">Open in Jira</vscode-button>
+          <vscode-button class="plan">Plan</vscode-button>
+        </div>
+      </div>`;
+  }
+
+  private escape(text: string | null | undefined): string {
+    return String(text ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   private async handleChatMessage(message: string) {
-    try {
-      // Show user message immediately
-      this.showChatMessage('user', message);
+    if (!this.view) {
+      return;
+    }
 
-      // Show typing indicator
+    try {
+      this.showChatMessage('user', message);
       this.showChatMessage('system', '🤔 Thinking...');
 
-      // Send to AI backend
-      const response = await fetch(`${this.client['baseUrl']}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, type: 'question' })
-      });
-
-      if (response.ok) {
-        const result = await response.json() as any;
-        this.showChatMessage('assistant', result.response || result.message || 'I received your message but had trouble generating a response.');
-      } else {
-        this.showChatMessage('assistant', 'Sorry, I\'m having trouble connecting right now. Please try again later.');
-      }
+      const response = await this.client.chat(message);
+      const answer = response.response || response.message || 'I received your message but had trouble generating a response.';
+      this.showChatMessage('assistant', answer);
     } catch (error) {
-      console.error('Chat error:', error);
-      this.showChatMessage('assistant', 'I encountered an error processing your message. Please check your connection and try again.');
+      const text = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`Chat error: ${text}`);
+      this.showChatMessage(
+        'assistant',
+        'I encountered an error processing your message. Please check your connection and try again.'
+      );
     }
   }
 
   private showChatMessage(role: 'user' | 'assistant' | 'system', content: string) {
-    // Send message to webview for display
     if (this.view) {
       this.view.webview.postMessage({
         type: 'chatMessage',

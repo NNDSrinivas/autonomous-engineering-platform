@@ -13,12 +13,30 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 window.addEventListener('message', (ev) => {
-  const { type, flow } = ev.data || {};
+  const { type, flow, message } = ev.data || {};
   if(type==='flow'){
-    document.getElementById('device').style.display='block';
-    document.getElementById('code').textContent = flow.user_code || '';
+    const deviceCard = document.getElementById('device');
+    if (deviceCard) {
+      deviceCard.style.display = 'block';
+    }
+    const codeEl = document.getElementById('code');
+    if (codeEl) {
+      codeEl.textContent = flow.user_code || '';
+    }
   }
   if(type==='done'){
-    document.getElementById('signin').setAttribute('disabled','true');
+    document.getElementById('signin')?.setAttribute('disabled','true');
+  }
+  if(type==='error'){
+    const deviceCard = document.getElementById('device');
+    if (deviceCard) {
+      deviceCard.style.display = 'block';
+      deviceCard.innerHTML = `<div class="h">Something went wrong</div><p class="mono"></p><vscode-button id="retrySignIn">Try again</vscode-button>`;
+      const msgEl = deviceCard.querySelector('p');
+      if (msgEl) {
+        msgEl.textContent = message || 'Please try signing in again.';
+      }
+      document.getElementById('retrySignIn')?.addEventListener('click', () => vscode.postMessage({ type: 'signin' }));
+    }
   }
 });

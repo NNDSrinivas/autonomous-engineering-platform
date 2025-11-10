@@ -26,16 +26,23 @@ export class AuthPanel implements vscode.WebviewViewProvider {
     view.webview.html = boilerplate(view.webview, this.ctx, body, ['base.css'], ['auth.js']);
 
     view.webview.onDidReceiveMessage(async m => {
-      if(m.type==='open') {
-        const url = m.url === 'portal:' ? this.portalUrl : m.url;
-        vscode.env.openExternal(vscode.Uri.parse(url));
-      }
-      if(m.type==='signin'){
-        const flow = await this.client.startDeviceCode();
-        view.webview.postMessage({ type:'flow', flow });
-        vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
-        await this.client.pollDeviceCode(flow.device_code);
-        view.webview.postMessage({ type:'done' });
+      try {
+        if(m.type==='open') {
+          const url = m.url === 'portal:' ? this.portalUrl : m.url;
+          vscode.env.openExternal(vscode.Uri.parse(url));
+        }
+        if(m.type==='signin'){
+          const flow = await this.client.startDeviceCode();
+          view.webview.postMessage({ type:'flow', flow });
+          vscode.env.openExternal(vscode.Uri.parse(flow.verification_uri_complete || flow.verification_uri));
+          await this.client.pollDeviceCode(flow.device_code);
+          view.webview.postMessage({ type:'done' });
+          vscode.window.showInformationMessage('Signed in to AEP successfully.');
+        }
+      } catch (error: any) {
+        const message = error?.message ?? String(error);
+        vscode.window.showErrorMessage(`Authentication failed: ${message}`);
+        view.webview.postMessage({ type:'error', message });
       }
     });
   }

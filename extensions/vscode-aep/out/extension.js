@@ -17,8 +17,30 @@ class AEPClient {
         this.baseUrl = baseUrl;
         this.orgId = orgId;
     }
+    async hydrateToken(output) {
+        const existing = await this.ctx.secrets.get('aep.token');
+        if (existing) {
+            this.token = existing;
+            output?.appendLine('Restored existing AEP session token.');
+        }
+    }
+    async persistToken(token) {
+        this.token = token;
+        if (token) {
+            await this.ctx.secrets.store('aep.token', token);
+        }
+        else {
+            await this.ctx.secrets.delete('aep.token');
+        }
+    }
     setToken(token) {
         this.token = token;
+    }
+    hasToken() {
+        return Boolean(this.token);
+    }
+    async clearToken() {
+        await this.persistToken(undefined);
     }
     headers() {
         const headers = {
@@ -50,7 +72,7 @@ class AEPClient {
             throw new Error(await response.text());
         }
         const token = (await response.json());
-        this.setToken(token.access_token);
+        await this.persistToken(token.access_token);
         return token;
     }
     async listMyJiraIssues() {
@@ -273,6 +295,7 @@ async function activate(context) {
         const cfg = (0, config_1.getConfig)();
         output.appendLine(`Using backend ${cfg.baseUrl} for org ${cfg.orgId}`);
         const client = new client_1.AEPClient(context, cfg.baseUrl, cfg.orgId);
+        await client.hydrateToken(output);
         const approvals = new approvals_1.Approvals(context, client, output);
         const chat = new chatSidebar_1.ChatSidebarProvider(context, client, output);
         const plan = new planPanel_1.PlanPanelProvider(context, client, approvals, output);
@@ -332,6 +355,7 @@ async function startDeviceFlow(client, chat, output) {
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         output.appendLine(`Sign-in failed: ${message}`);
+        await client.clearToken();
         vscode.window.showErrorMessage(`AEP sign-in failed: ${message}`);
     }
 }
@@ -520,6 +544,7 @@ class AuthPanel {
             }
             catch (error) {
                 const messageText = error?.message ?? String(error);
+                await this.client.clearToken();
                 this.output.appendLine(`Authentication failed: ${messageText}`);
                 vscode.window.showErrorMessage(`Authentication failed: ${messageText}`);
                 view.webview.postMessage({ type: 'error', message: messageText });

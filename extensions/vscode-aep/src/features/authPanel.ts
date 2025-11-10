@@ -51,6 +51,7 @@ export class AuthPanel implements vscode.WebviewViewProvider {
         }
       } catch (error: any) {
         const messageText = error?.message ?? String(error);
+        await this.client.clearToken();
         this.output.appendLine(`Authentication failed: ${messageText}`);
         vscode.window.showErrorMessage(`Authentication failed: ${messageText}`);
         view.webview.postMessage({ type: 'error', message: messageText });

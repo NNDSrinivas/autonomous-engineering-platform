@@ -55,18 +55,20 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   async render() {
-    // Check authentication status and load user info
-    const [me, issues] = await Promise.all([
-      this.client.me().catch(() => ({} as any)),
-      this.client.listMyJiraIssues().catch(() => [])
-    ]);
+    try {
+      const [me, issues] = await Promise.all([
+        this.client.me().catch(() => ({} as any)),
+        this.client.listMyJiraIssues().catch(() => [])
+      ]);
 
-    const greeting = (() => {
-      const h = new Date().getHours();
-      return h < 12 ? 'Good morning' : 'Good afternoon';
-    })();
+      const greeting = (() => {
+        const h = new Date().getHours();
+        if (h < 12) return 'Good morning';
+        if (h < 18) return 'Good afternoon';
+        return 'Good evening';
+      })();
 
-    const makeIssue = (i: any) => `
+      const makeIssue = (i: any) => `
       <div class="card">
         <div class="row"><b>${i.key}</b> — ${i.summary} <span class="chip">${i.status}</span></div>
         <div class="row">
@@ -75,8 +77,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
         </div>
       </div>`;
 
-    // Show authenticated view if user is signed in, otherwise show sign-in
-    const body = me?.email ? `
+      const body = me?.email ? `
       <div class="card">
         <div class="row"><span class="h">${greeting}, welcome to AEP Agent</span></div>
         <div class="row mono">Signed in as ${me.email}</div>
@@ -97,13 +98,13 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
               ⚠️ Not connected - Authentication required
             </div>
           </div>
-          
+
           <div class="auth-section">
             <vscode-button appearance="primary" id="signIn">
-              � Sign In with Auth0
+              🔐 Sign In with Auth0
             </vscode-button>
             <vscode-button appearance="secondary" id="getStarted">
-              � Demo Mode
+              🧪 Demo Mode
             </vscode-button>
             <p style="margin-top: 1rem; font-size: 0.85em; color: var(--vscode-descriptionForeground); text-align: center;">
               ℹ️ Requires AEP backend server for authentication
@@ -160,7 +161,7 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
 
         <div class="demo-chat" id="demoChat" style="display: none;">
           <div class="chat-header">
-            <h3>� Chat with AEP Agent</h3>
+            <h3>💬 Chat with AEP Agent</h3>
             <button class="close-btn" id="closeDemo">×</button>
           </div>
           <div class="chat-messages" id="chatMessages"></div>
@@ -171,7 +172,28 @@ export class ChatSidebarProvider implements vscode.WebviewViewProvider {
         </div>
       </div>`;
 
-    this.view!.webview.html = boilerplate(this.view!.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
+      this.view!.webview.html = boilerplate(this.view!.webview, this.ctx, body, ['base.css', 'landing.css'], ['chat.js']);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('ChatSidebar render failed:', message);
+      const fallback = `
+        <div class="landing-container">
+          <div class="hero-section">
+            <div class="logo-area">
+              <div class="logo">⚠️</div>
+              <h1>AEP Agent</h1>
+              <p class="tagline">We couldn't load your workspace right now.</p>
+            </div>
+            <p style="color: var(--vscode-descriptionForeground);">${this.escape(message)}</p>
+            <vscode-button appearance="secondary" id="retry">Retry</vscode-button>
+          </div>
+        </div>`;
+      this.view!.webview.html = boilerplate(this.view!.webview, this.ctx, fallback, ['base.css', 'landing.css'], ['chat.js']);
+    }
+  }
+
+  private escape(text: string) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   private async handleChatMessage(message: string) {

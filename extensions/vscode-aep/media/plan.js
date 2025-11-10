@@ -6,6 +6,10 @@ window.addEventListener('DOMContentLoaded', () => {
       vscode.postMessage({ type: 'select', index: parseInt(li.getAttribute('data-i')) });
     });
   });
+
+  document.getElementById('demo-plan')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'load-demo-plan' });
+  });
   
   document.getElementById('approve')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'approve' });

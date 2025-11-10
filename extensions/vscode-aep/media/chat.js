@@ -24,6 +24,10 @@ window.addEventListener('DOMContentLoaded', () => {
     console.log('Refresh clicked');
     vscode.postMessage({ type:'refresh' });
   });
+
+  document.getElementById('retry')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'refresh' });
+  });
   
   // Send chat button
   document.getElementById('sendChat')?.addEventListener('click', ()=> {

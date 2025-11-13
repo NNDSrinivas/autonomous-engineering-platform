@@ -113,7 +113,7 @@ def refresh_task_links() -> None:
             db.execute(
                 text(
                     f"""
-                    UPDATE task SET 
+                    UPDATE task SET
                         status = CASE id
                             {" ".join(f"WHEN :task_id_{i} THEN :status_{i}" for i in range(len(task_ids_to_update)))}
                             ELSE status

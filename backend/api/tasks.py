@@ -53,8 +53,8 @@ def create_task(
         action_org = db.execute(
             text(
                 """
-                SELECT m.org_id FROM action_item a 
-                JOIN meeting m ON a.meeting_id = m.id 
+                SELECT m.org_id FROM action_item a
+                JOIN meeting m ON a.meeting_id = m.id
                 WHERE a.id = :action_item_id
             """
             ),

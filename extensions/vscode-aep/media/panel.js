@@ -1,7 +1,6 @@
 (function () {
   const vscode = acquireVsCodeApi();
   const $ = (s, el = document) => el.querySelector(s);
-  const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 
   const messages = $('#messages');
   const input = $('#input');
@@ -9,65 +8,37 @@
   const attachMenu = $('#attachMenu');
   const sendBtn = $('#sendBtn');
 
-  const modelPill = $('#modelPill');
-  const modePill = $('#modePill');
-  const modelValBottom = $('#modelValBottom');
-  const modeValBottom = $('#modeValBottom');
+  const modelChip = $('#modelChip');
+  const modeChip = $('#modeChip');
   const modelMenu = $('#modelMenu');
   const modeMenu = $('#modeMenu');
+  const modelValBottom = $('#modelValBottom');
+  const modeValBottom = $('#modeValBottom');
 
-  // Model & mode options – UI only for now
-  const MODEL_OPTIONS = [
-    {
-      group: 'OpenAI',
-      items: [
-        'OpenAI GPT-4o — Flagship',
-        'OpenAI GPT-4o-mini',
-        'OpenAI o3-mini (reasoning)'
-      ]
-    },
-    {
-      group: 'Anthropic',
-      items: ['Claude 3.5 Sonnet', 'Claude 3.5 Haiku']
-    },
-    {
-      group: 'Google',
-      items: ['Gemini 1.5 Pro', 'Gemini 1.5 Flash']
-    },
-    {
-      group: 'Meta',
-      items: ['Llama 3.1 70B', 'Llama 3.1 8B']
-    },
-    {
-      group: 'Others',
-      items: ['Mistral Large', 'Mistral Small']
-    },
-    {
-      group: 'Custom',
-      items: ['Bring your own key…']
-    }
+  const headerActions = document.querySelectorAll('.top-icon');
+
+  const MODELS = [
+    'OpenAI GPT-4o — Flagship',
+    'OpenAI GPT-4o-mini',
+    'Anthropic Claude 3.5 Sonnet',
+    'Anthropic Claude 3.5 Haiku',
+    'Llama 3.1 405B (API)',
+    'Bring your own API key…'
   ];
 
-  const MODE_OPTIONS = [
+  const MODES = [
     'Agent (full access)',
-    'Chat only (read-only)',
-    'Explain selection',
-    'Refactor file',
-    'Tests & QA'
+    'Lightweight inline hints',
+    'Explain only'
   ];
 
-  const persisted = vscode.getState() || {};
-  const state = {
-    attachOpen: !!persisted.attachOpen,
-    model: persisted.model || 'OpenAI GPT-4o — Flagship',
-    mode: persisted.mode || 'Agent (full access)'
+  const state = vscode.getState() || {
+    attachOpen: false,
+    model: MODELS[0],
+    mode: MODES[0]
   };
 
-  setAttach(state.attachOpen);
-  setModel(state.model);
-  setMode(state.mode);
-  buildModelMenu();
-  buildModeMenu();
+  // ---------- Persistence helpers ----------
 
   function persist() {
     vscode.setState({
@@ -77,90 +48,30 @@
     });
   }
 
-  // ----- Attach menu -----
+  // ---------- Attach menu ----------
+
   function setAttach(open) {
     attachMenu.classList.toggle('open', open);
     attachMenu.setAttribute('aria-hidden', String(!open));
     persist();
   }
 
+  setAttach(state.attachOpen);
+
   attachBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     setAttach(!attachMenu.classList.contains('open'));
   });
 
-  attachMenu.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-action]');
-    if (!btn) return;
-    vscode.postMessage({ type: 'attach', action: btn.getAttribute('data-action') });
-    setAttach(false);
-  });
-
-  // ----- Dropdown menus (model/mode) -----
-  function buildModelMenu() {
-    let html = '';
-    MODEL_OPTIONS.forEach((grp) => {
-      html += `<div class="menu-group-label">${grp.group}</div>`;
-      grp.items.forEach((item) => {
-        html += `<button data-value="${item}">${item}</button>`;
-      });
-    });
-    modelMenu.innerHTML = html;
-  }
-
-  function buildModeMenu() {
-    let html = '';
-    html += `<div class="menu-group-label">Mode</div>`;
-    MODE_OPTIONS.forEach((item) => {
-      html += `<button data-value="${item}">${item}</button>`;
-    });
-    modeMenu.innerHTML = html;
-  }
-
-  function closeDropdowns() {
-    modelMenu.classList.remove('open');
-    modeMenu.classList.remove('open');
-    modelMenu.setAttribute('aria-hidden', 'true');
-    modeMenu.setAttribute('aria-hidden', 'true');
-  }
-
-  modelPill.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const open = !modelMenu.classList.contains('open');
-    closeDropdowns();
-    if (open) {
-      modelMenu.classList.add('open');
-      modelMenu.setAttribute('aria-hidden', 'false');
+  document.addEventListener('click', (e) => {
+    if (!attachMenu.classList.contains('open')) return;
+    const path = e.composedPath();
+    if (!path.includes(attachMenu) && !path.includes(attachBtn)) {
+      setAttach(false);
     }
   });
 
-  modePill.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const open = !modeMenu.classList.contains('open');
-    closeDropdowns();
-    if (open) {
-      modeMenu.classList.add('open');
-      modeMenu.setAttribute('aria-hidden', 'false');
-    }
-  });
-
-  modelMenu.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-value]');
-    if (!btn) return;
-    const value = btn.getAttribute('data-value');
-    setModel(value);
-    vscode.postMessage({ type: 'setModel', value });
-    closeDropdowns();
-  });
-
-  modeMenu.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-value]');
-    if (!btn) return;
-    const value = btn.getAttribute('data-value');
-    setMode(value);
-    vscode.postMessage({ type: 'setMode', value });
-    closeDropdowns();
-  });
+  // ---------- Dropdowns (model / mode) ----------
 
   function setModel(v) {
     if (!v) return;
@@ -176,27 +87,57 @@
     persist();
   }
 
-  // ----- Global clicks / keys -----
-  document.addEventListener('click', (e) => {
-    // Close attach if open and click outside
-    if (attachMenu.classList.contains('open')) {
-      const path = e.composedPath();
-      if (!path.includes(attachMenu) && !path.includes(attachBtn)) {
-        setAttach(false);
-      }
-    }
-    // Close dropdowns
-    const path = e.composedPath();
-    if (!path.includes(modelMenu) && !path.includes(modelPill) &&
-      !path.includes(modeMenu) && !path.includes(modePill)) {
-      closeDropdowns();
-    }
+  setModel(state.model);
+  setMode(state.mode);
+
+  function toggleMenu(menu, open) {
+    if (!menu) return;
+    const shouldOpen = typeof open === 'boolean'
+      ? open
+      : !menu.classList.contains('open');
+    menu.classList.toggle('open', shouldOpen);
+    menu.setAttribute('aria-hidden', String(!shouldOpen));
+  }
+
+  modelChip?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMenu(modelMenu);
+    toggleMenu(modeMenu, false);
   });
+
+  modeChip?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMenu(modeMenu);
+    toggleMenu(modelMenu, false);
+  });
+
+  modelMenu?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-model]');
+    if (!btn) return;
+    setModel(btn.getAttribute('data-model'));
+    toggleMenu(modelMenu, false);
+  });
+
+  modeMenu?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-mode]');
+    if (!btn) return;
+    setMode(btn.getAttribute('data-mode'));
+    toggleMenu(modeMenu, false);
+  });
+
+  document.addEventListener('click', (e) => {
+    const path = e.composedPath();
+    if (!path.includes(modelChip)) toggleMenu(modelMenu, false);
+    if (!path.includes(modeChip)) toggleMenu(modeMenu, false);
+  });
+
+  // ---------- Keyboard shortcuts ----------
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       setAttach(false);
-      closeDropdowns();
+      toggleMenu(modelMenu, false);
+      toggleMenu(modeMenu, false);
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -204,29 +145,61 @@
     }
   });
 
-  // ----- Textarea behaviour -----
+  // ---------- Input auto-growth ----------
+
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 160) + 'px';
   });
 
-  // ----- Toolbar buttons -----
-  $$('.ctrl').forEach((btn) => {
+  // ---------- Header actions ----------
+
+  headerActions.forEach((btn) => {
     btn.addEventListener('click', () => {
       const action = btn.getAttribute('data-action');
-      if (!action) return;
-      vscode.postMessage({ type: 'toolbar', action });
+      switch (action) {
+        case 'refresh': {
+          // Just drop a small hint bubble for now
+          addBubble('Resetting context (demo only). In the real agent this would restart NAVI for this workspace.', 'bot');
+          break;
+        }
+        case 'new': {
+          messages.innerHTML = '';
+          vscode.postMessage({ type: 'ready' });
+          break;
+        }
+        case 'focus-code': {
+          addBubble('Code focus mode will prioritise reasoning about the active file and test failures (UI stub for now).', 'bot');
+          break;
+        }
+        case 'sources': {
+          addBubble(
+            'Connections panel (coming soon): link MCP servers and tools like Slack, Teams, Jira, GitHub, Bitbucket, cloud, wikis, and more.',
+            'bot'
+          );
+          break;
+        }
+        case 'settings': {
+          vscode.postMessage({ type: 'openSettings' });
+          break;
+        }
+        default:
+          break;
+      }
     });
   });
 
-  // ----- Sending messages -----
+  // ---------- Sending & rendering ----------
+
   sendBtn.addEventListener('click', send);
 
   function send() {
     const text = input.value.trim();
     if (!text) return;
+
     addBubble(text, 'user');
     vscode.postMessage({ type: 'send', text });
+
     input.value = '';
     input.style.height = 'auto';
   }
@@ -234,7 +207,14 @@
   function addBubble(text, who) {
     const wrap = document.createElement('div');
     wrap.className = 'msg ' + who;
-    wrap.innerHTML = renderText(text);
+
+    const inner = renderText(text, who);
+    wrap.innerHTML = inner;
+
+    // if the whole bubble is a single code block for user, add styling hint
+    if (who === 'user' && /^\s*<pre>[\s\S]*<\/pre>\s*$/.test(inner)) {
+      wrap.classList.add('only-code');
+    }
 
     const meta = document.createElement('div');
     meta.className = 'meta';
@@ -245,34 +225,51 @@
     messages.scrollTop = messages.scrollHeight;
   }
 
+  function looksLikeCode(text) {
+    const newlineCount = (text.match(/\n/g) || []).length;
+    if (newlineCount === 0) return false;
+    const tokens = ['{', '}', ';', '=>', 'function ', 'class ', 'const ', 'let ', 'var ', 'public ', 'private ', '#include', 'import '];
+    return tokens.some(t => text.includes(t));
+  }
+
   function renderText(text) {
-    const fence = /```([\w-]+)?\n([\s\S]*?)```/g;
-    if (fence.test(text)) {
-      return text.replace(fence, function (_match, _lang, code) {
+    const fenceRe = /```([\w-]+)?\n([\s\S]*?)```/g;
+
+    // If the user used fenced code blocks, honour those first.
+    if (text.includes('```')) {
+      return text.replace(fenceRe, function (_, lang, code) {
         return '<pre><code>' + escapeHtml(code) + '</code></pre>';
       });
     }
+
+    // If it looks like multi-line code but no backticks, wrap entire thing as code.
+    if (looksLikeCode(text)) {
+      return '<pre><code>' + escapeHtml(text) + '</code></pre>';
+    }
+
+    // Plain text
     return '<span>' + escapeHtml(text) + '</span>';
   }
 
   function escapeHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   function clock() {
     return new Date().toTimeString().slice(0, 5);
   }
 
-  // ----- Messages from extension -----
+  // ---------- Initial handshake ----------
+
+  vscode.postMessage({ type: 'ready' });
+
   window.addEventListener('message', function (event) {
     const msg = event.data;
     if (msg.type === 'bot') {
       addBubble(msg.text, 'bot');
-    } else if (msg.type === 'reset') {
-      messages.innerHTML = '';
     }
   });
-
-  // Initial handshake
-  vscode.postMessage({ type: 'ready' });
 })();

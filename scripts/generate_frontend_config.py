@@ -91,7 +91,7 @@ def generate_frontend_config():
         json.dump(config, f, indent=2)
         f.write("\n")  # Add newline at end
 
-    print(f"✅ Generated frontend configuration:")
+    print("✅ Generated frontend configuration:")
     print(f"   Template: {template_path}")
     print(f"   Output:   {output_path}")
     print(f"   Domain:   {config['auth0Domain']}")

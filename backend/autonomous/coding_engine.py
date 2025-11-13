@@ -285,14 +285,14 @@ class AutonomousCodingEngine:
 
         analysis_prompt = f"""
         Analyze the following coding task and provide detailed requirements analysis:
-        
+
         Task: {task.title}
         Description: {task.description}
         Type: {task.task_type.value}
         Files to modify: {task.files_to_modify}
-        
+
         Context: {task.context}
-        
+
         Provide:
         1. Technical requirements breakdown
         2. Dependencies and constraints
@@ -322,10 +322,10 @@ class AutonomousCodingEngine:
 
         planning_prompt = f"""
         Create a detailed implementation plan for this coding task:
-        
+
         Task: {task.title}
         Requirements Analysis: {analysis.get("technical_requirements", "")}
-        
+
         Create step-by-step plan including:
         1. Implementation approach
         2. Code structure and design patterns

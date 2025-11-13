@@ -39,10 +39,10 @@ def get_github_credentials(db: Session, org_id: str) -> str:
             db.execute(
                 text(
                     """
-                SELECT access_token 
-                FROM gh_connection 
-                WHERE org_id = :org_id 
-                ORDER BY created_at DESC 
+                SELECT access_token
+                FROM gh_connection
+                WHERE org_id = :org_id
+                ORDER BY created_at DESC
                 LIMIT 1
             """
                 ),
@@ -73,10 +73,10 @@ def get_jira_credentials(db: Session, org_id: str) -> Tuple[str, str, str]:
             db.execute(
                 text(
                     """
-                SELECT base_url, access_token, email 
-                FROM jira_connection 
-                WHERE org_id = :org_id 
-                ORDER BY created_at DESC 
+                SELECT base_url, access_token, email
+                FROM jira_connection
+                WHERE org_id = :org_id
+                ORDER BY created_at DESC
                 LIMIT 1
             """
                 ),
@@ -131,7 +131,7 @@ def audit_delivery_action(
         db.execute(
             text(
                 """
-                INSERT INTO audit_log (service, method, path, status, org_id, details, created_at) 
+                INSERT INTO audit_log (service, method, path, status, org_id, details, created_at)
                 VALUES (:service, :method, :path, :status, :org_id, :details, :created_at)
             """
             ),

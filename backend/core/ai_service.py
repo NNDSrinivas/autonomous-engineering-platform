@@ -47,8 +47,8 @@ class AIService:
                 messages = [
                     {
                         "role": "system",
-                        "content": """You are an expert engineering assistant specializing in software development, architecture, and best practices. 
-                        Provide detailed, actionable answers with code examples when relevant. 
+                        "content": """You are an expert engineering assistant specializing in software development, architecture, and best practices.
+                        Provide detailed, actionable answers with code examples when relevant.
                         Consider the provided context to make your response more relevant.""",
                     },
                     {
@@ -122,7 +122,7 @@ class AIService:
 Provide analysis in this JSON format:
 {{
     "issues": ["list of issues found"],
-    "suggestions": ["list of improvement suggestions"], 
+    "suggestions": ["list of improvement suggestions"],
     "complexity_score": 1-10,
     "maintainability_score": 1-10,
     "security_concerns": ["list of security issues"],

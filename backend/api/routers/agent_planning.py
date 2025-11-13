@@ -84,12 +84,12 @@ async def propose_plan(
 @@ -1,2 +1,8 @@
  export type JiraIssue = { id: string; key: string; summary: string; status: string; url?: string };
  export type ProposedStep = { id: string; kind: 'edit'|'run'|'open'; title: string; details?: string; patch?: string };
-+export type DeviceCodeStart = { 
-+  device_code: string; 
-+  user_code: string; 
-+  verification_uri: string; 
-+  verification_uri_complete?: string; 
-+  interval: number 
++export type DeviceCodeStart = {
++  device_code: string;
++  user_code: string;
++  verification_uri: string;
++  verification_uri_complete?: string;
++  interval: number
 +};""",
                     files=["src/api/types.ts"],
                     estimated_time=5,
@@ -108,7 +108,7 @@ async def propose_plan(
 +    try {
 +      const deviceFlow = await this.apiClient.startDeviceCode();
 +      await vscode.env.openExternal(vscode.Uri.parse(deviceFlow.verification_uri));
-+      
++
 +      // Poll for completion
 +      const token = await this.pollForToken(deviceFlow.device_code);
 +      await this.storeToken(token);
@@ -137,7 +137,7 @@ async def propose_plan(
                     patch="""--- a/src/auth/AuthManager.ts
 +++ b/src/auth/AuthManager.ts
 @@ -25,0 +25,15 @@ export class AuthManager {
-+  
++
 +  private async handleAuthError(error: any): Promise<void> {
 +    if (error.code === 'access_denied') {
 +      vscode.window.showWarningMessage('Authentication was denied');
@@ -146,7 +146,7 @@ async def propose_plan(
 +    } else {
 +      vscode.window.showErrorMessage(`Authentication failed: ${error.message}`);
 +    }
-+    
++
 +    // Clear any stored partial state
 +    await this.clearTokenStorage();
 +  }""",
@@ -190,7 +190,7 @@ async def propose_plan(
          <ul class="issues">
            ${issues.map(i=>`<li data-key="${i.key}"><b>${i.key}</b> – ${i.summary} <span class="st">${i.status}</span></li>`).join('')}
          </ul>
-+        
++
 +        <div class="team-activity">
 +          <h3>Team Activity</h3>
 +          <ul class="activity-feed">
@@ -199,7 +199,7 @@ async def propose_plan(
 +            <li><strong>Carol</strong> created AEP-126 <span class="time">6h ago</span></li>
 +          </ul>
 +        </div>
-+        
++
 +        <div class="suggestions">
 +          <h3>Smart Suggestions</h3>
 +          <div class="suggestion-card priority-high">

@@ -1,54 +1,65 @@
 """
 OAuth Device Code Flow for VS Code Extension Authentication
 
-Provides secure authentication without client secrets using OAuth 2.0 device code flow.
+Provides secure authentication without client secrets using OAuth 2.0 device
+code flow.
 This allows the VS Code extension to authenticate users through their browser.
 """
 
 import logging
 import os
 import random
+import secrets
 import string
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
-import secrets
-from datetime import datetime, timedelta
+
 from backend.core.config import settings
 
 # Production safety check
 if not settings.oauth_device_use_in_memory_store:
     raise RuntimeError(
-        "In-memory device code and access token store is NOT suitable for production. "
-        "Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=true in your environment to acknowledge you are running in development/testing mode. "
-        "Replace with Redis or persistent database before production deployment."
+        "In-memory device code and access token store is NOT suitable for "
+        "production. Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=true in your "
+        "environment to acknowledge you are running in development/testing "
+        "mode. Replace with Redis or persistent database before production "
+        "deployment."
     )
 
 # Log warning about insecure development mode
 logger = logging.getLogger(__name__)
 logger.warning(
-    "🚨 SECURITY WARNING: OAuth device code flow is running in DEVELOPMENT MODE with in-memory storage. "
-    "This is NOT suitable for production! The OAUTH_DEVICE_USE_IN_MEMORY_STORE flag is enabled. "
+    "🚨 SECURITY WARNING: OAuth device code flow is running in "
+    "DEVELOPMENT MODE with in-memory storage. This is NOT suitable for "
+    "production! The OAUTH_DEVICE_USE_IN_MEMORY_STORE flag is enabled. "
     "Replace with Redis or persistent database before production deployment."
 )
 
 router = APIRouter(prefix="/oauth", tags=["OAuth Device Code"])
 
-# TODO: Replace in-memory store with Redis or a persistent database before deploying to production.
-#       This code should not be used in production environments.
-#       Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=true in your environment ONLY for development/testing.
+# SECURITY: In-memory store for development only.
+# Replace with Redis/database for production.
+# This code should not be used in production environments.
+# Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=true in your environment ONLY
+# for development/testing.
 _device_codes: Dict[str, Dict[str, Any]] = {}
 _access_tokens: Dict[str, Dict[str, Any]] = {}
 
 
 class DeviceCodeStartRequest(BaseModel):
+    """Request model for starting OAuth device code flow."""
+
     client_id: Optional[str] = Field(
         default="aep-vscode-extension", description="Client identifier"
     )
-    scope: Optional[str] = Field(default="read write", description="Requested scopes")
-
-
+    scope: Optional[str] = Field(
+        default="read write", description="Requested scopes"
+    )
 class DeviceCodeStartResponse(BaseModel):
+    """Response model for device code flow start."""
     device_code: str = Field(description="Device verification code")
     user_code: str = Field(description="User verification code to display")
     verification_uri: str = Field(description="URI for user to visit")
@@ -60,11 +71,13 @@ class DeviceCodeStartResponse(BaseModel):
 
 
 class DeviceCodePollRequest(BaseModel):
+    """Request model for polling device code status."""
     device_code: str = Field(description="Device code from start request")
     client_id: Optional[str] = Field(default="aep-vscode-extension")
 
 
 class DeviceCodeTokenResponse(BaseModel):
+    """Response model for successful device code authorization."""
     access_token: str = Field(description="Access token for API calls")
     token_type: str = Field(default="Bearer")
     expires_in: int = Field(description="Token expiration in seconds")
@@ -72,6 +85,7 @@ class DeviceCodeTokenResponse(BaseModel):
 
 
 class DeviceCodeErrorResponse(BaseModel):
+    """Response model for device code flow errors."""
     error: str = Field(description="Error code")
     error_description: Optional[str] = Field(
         description="Human-readable error description"
@@ -91,7 +105,8 @@ async def start_device_code_flow(request: DeviceCodeStartRequest):
         user_code = _generate_user_code()
 
         # Store device code with metadata
-        expires_at = datetime.utcnow() + timedelta(minutes=10)  # 10 minute expiry
+        # 10 minute expiry
+        expires_at = datetime.utcnow() + timedelta(minutes=10)
         _device_codes[device_code] = {
             "user_code": user_code,
             "client_id": request.client_id,
@@ -101,10 +116,13 @@ async def start_device_code_flow(request: DeviceCodeStartRequest):
             "created_at": datetime.utcnow(),
         }
 
-        # Base verification URI (would be your actual auth page)
-        base_uri = "https://auth.aep.dev/device"  # Replace with actual URI
+        # Base verification URI (for development, use localhost)
+        base_uri = (
+            "http://localhost:8000/docs#/OAuth%20Device%20Code/"
+            "authorize_device_code_oauth_device_authorize_post"
+        )
         verification_uri = base_uri
-        verification_uri_complete = f"{base_uri}?user_code={user_code}"
+        verification_uri_complete = f"{base_uri}&user_code={user_code}"
 
         return DeviceCodeStartResponse(
             device_code=device_code,
@@ -118,7 +136,7 @@ async def start_device_code_flow(request: DeviceCodeStartRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start device code flow: {str(e)}"
-        )
+        ) from e
 
 
 @router.post("/device/poll", response_model=DeviceCodeTokenResponse)
@@ -158,18 +176,18 @@ async def poll_device_code(request: DeviceCodePollRequest):
                 current_time - device_info["created_at"]
             ).total_seconds()
 
-            # Auto-approve after 30 seconds ONLY if BOTH explicit development flags are set
-            if (
-                os.environ.get("OAUTH_DEVICE_AUTO_APPROVE", "false").lower() == "true"
-                and os.environ.get("OAUTH_DEVICE_USE_IN_MEMORY_STORE", "false").lower()
-                == "true"
-                and time_since_creation > 30
-            ):
+            # Auto-approve after 30 seconds ONLY if development flags are set
+            auto_approve = (os.environ.get("OAUTH_DEVICE_AUTO_APPROVE", "false")
+                           .lower() == "true")
+            use_memory_store = (os.environ.get("OAUTH_DEVICE_USE_IN_MEMORY_STORE",
+                                              "false").lower() == "true")
+
+            if auto_approve and use_memory_store and time_since_creation > 30:
                 # SECURITY WARNING: Auto-approving device code in development mode
-                logger = logging.getLogger(__name__)
                 logger.warning(
-                    "🚨 SECURITY WARNING: Auto-approving device code '%s' after %d seconds. "
-                    "This is ONLY for development! Never enable auto-approval in production!",
+                    "🚨 SECURITY WARNING: Auto-approving device code '%s' "
+                    "after %d seconds. This is ONLY for development! "
+                    "Never enable auto-approval in production!",
                     device_code[:8] + "...",
                     int(time_since_creation),
                 )
@@ -227,15 +245,18 @@ async def poll_device_code(request: DeviceCodePollRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to poll device code: {str(e)}"
-        )
+        ) from e
 
 
 class DeviceAuthorizationRequest(BaseModel):
+    """Request model for device authorization."""
     user_code: str = Field(description="User code to authorize")
-    action: str = Field(description="Authorization action: 'approve' or 'deny'")
+    action: str = Field(description="Authorization action:"
+    "'approve' or 'deny'")
 
 
 class DeviceAuthorizationResponse(BaseModel):
+    """Response model for device authorization."""
     message: str = Field(description="Authorization result message")
     user_code: str = Field(description="User code that was authorized")
 
@@ -277,17 +298,21 @@ async def authorize_device_code(request: DeviceAuthorizationRequest):
             message = f"Device with user code {request.user_code} has been denied"
         else:
             raise HTTPException(
-                status_code=400, detail="Invalid action. Must be 'approve' or 'deny'"
+                status_code=400,
+                detail="Invalid action. Must be 'approve' or 'deny'"
             )
 
-        return DeviceAuthorizationResponse(message=message, user_code=request.user_code)
+        return DeviceAuthorizationResponse(
+            message=message,
+            user_code=request.user_code
+        )
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to authorize device: {str(e)}"
-        )
+        ) from e
 
 
 def _generate_user_code() -> str:

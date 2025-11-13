@@ -1,11 +1,13 @@
 :root {
-  --bg: #0f1116;
+  --bg: #080a0f;
   --fg: #e9edf7;
   --muted: #8f9bb2;
   --panel: #181b22;
   --panel2: #202534;
-  --border: #2b3140;
+  --border-soft: rgba(255, 255, 255, 0.04);
   --accent: #ff8f6a;
+  --accent-soft: rgba(255, 143, 106, 0.35);
+  --user-blue: #214a8f;
 }
 
 * {
@@ -22,8 +24,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font: 13px/1.5 system-ui, -apple-system, "SF Pro Text", Segoe UI, Roboto,
-    sans-serif;
+  font: 13px/1.5 system-ui, -apple-system, "SF Pro Text", Segoe UI, Roboto, sans-serif;
 }
 
 /* Ambient background glow */
@@ -34,12 +35,9 @@ body::before {
   pointer-events: none;
   opacity: 0.7;
   z-index: 0;
-  background: radial-gradient(900px 420px at 50% 120px,
-      rgba(110, 78, 255, 0.25),
-      transparent 60%),
-    radial-gradient(900px 420px at 60% 200px,
-      rgba(255, 142, 93, 0.18),
-      transparent 65%);
+  background:
+    radial-gradient(900px 420px at 50% 120px, rgba(110, 78, 255, 0.25), transparent 60%),
+    radial-gradient(900px 420px at 60% 200px, rgba(255, 142, 93, 0.18), transparent 65%);
 }
 
 #root {
@@ -59,10 +57,8 @@ body::before {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: linear-gradient(180deg,
-      rgba(8, 10, 14, 0.96),
-      rgba(8, 10, 14, 0.7));
-  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(8, 10, 14, 0.96), rgba(8, 10, 14, 0.7));
+  border-bottom: 1px solid #111319;
 }
 
 .brand {
@@ -74,10 +70,8 @@ body::before {
 .mascot {
   width: 28px;
   height: 28px;
-  border-radius: 999px;
-  object-fit: contain;
-  box-shadow: 0 8px 18px rgba(255, 143, 106, 0.35);
-  background: radial-gradient(circle at 30% 10%, #ffffff22, transparent 60%);
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(255, 143, 106, 0.35);
 }
 
 .titles {
@@ -95,33 +89,42 @@ body::before {
   color: var(--muted);
 }
 
+/* Header actions */
+
 .header-right {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.ctrl {
-  width: 32px;
-  height: 32px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: radial-gradient(circle at 20% 0%, #2f3a59, #141822);
-  color: var(--fg);
+.top-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(130, 150, 190, 0.4);
+  background: radial-gradient(circle at 30% 0%, rgba(120, 160, 255, 0.25), rgba(20, 25, 40, 0.98));
+  color: #e4ebff;
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.65),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-.ctrl:hover {
+.top-icon:hover {
   transform: translateY(-1px);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(192, 108, 255, 0.3);
-  filter: brightness(1.05);
+  border-color: rgba(167, 197, 255, 0.9);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(167, 197, 255, 0.6);
+}
+
+.icon-symbol {
+  font-size: 15px;
+  line-height: 1;
 }
 
 /* Messages */
@@ -135,44 +138,52 @@ body::before {
   overflow: auto;
 }
 
-/* Compact bubbles */
 .msg {
   max-width: 880px;
   border-radius: 18px;
   padding: 14px 16px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-soft);
   background: var(--panel);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.55);
 }
 
 .msg.bot {
   align-self: flex-start;
-  background: #191521;
-  border-color: rgba(255, 143, 106, 0.45);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.65),
-    0 0 0 1px rgba(255, 143, 106, 0.45) inset,
-    inset 0 0 26px rgba(255, 143, 106, 0.12);
+  background: radial-gradient(circle at 0% 0%, rgba(255, 143, 106, 0.16), #151722);
+  border-color: rgba(255, 143, 106, 0.24);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.7),
+    0 0 36px rgba(255, 143, 106, 0.18);
 }
 
 .msg.user {
   align-self: flex-end;
   background: linear-gradient(180deg,
-      rgba(26, 58, 98, 0.9),
-      rgba(20, 42, 72, 0.96));
-  border-color: #29466a;
+      rgba(34, 77, 145, 0.98),
+      rgba(23, 46, 85, 0.98));
+  border-color: rgba(67, 120, 205, 0.5);
 }
+
+/* Code blocks inside messages */
 
 .msg pre {
   margin: 10px 0;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 12px;
-  background: #0b0e14;
-  border: 1px solid #252b3a;
+  background: #050810;
+  border: 1px solid #272f42;
   overflow: auto;
-  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas,
-    "Liberation Mono", monospace;
+  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   color: #e6edf3;
 }
+
+/* tweak for user code bubble that is all code */
+.msg.user.only-code {
+  background: radial-gradient(circle at 0 0, rgba(70, 120, 220, 0.3), #111722);
+  border-color: rgba(120, 180, 255, 0.6);
+}
+
+/* message footer */
 
 .meta {
   margin-top: 6px;
@@ -187,10 +198,8 @@ body::before {
   bottom: 0;
   z-index: 3;
   padding: 12px 18px 14px;
-  background: linear-gradient(180deg,
-      rgba(8, 10, 14, 0),
-      rgba(8, 10, 14, 0.95));
-  border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(8, 10, 14, 0.0), rgba(8, 10, 14, 0.97));
+  border-top: 1px solid #111319;
 }
 
 .bar {
@@ -199,24 +208,25 @@ body::before {
   align-items: center;
   gap: 10px;
   border-radius: 18px;
-  border: 1px solid var(--accent);
+  border: 1px solid rgba(255, 143, 106, 0.7);
   padding: 10px 12px;
   background: rgba(18, 22, 32, 0.96);
   box-shadow:
     0 14px 36px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(255, 143, 106, 0.25);
+    0 0 20px rgba(255, 143, 106, 0.35);
 }
 
 .bar:focus-within {
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.7),
-    0 0 0 2px rgba(255, 143, 106, 0.6);
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.75),
+    0 0 0 2px rgba(255, 143, 106, 0.65);
 }
 
 .attach-btn {
   width: 32px;
   height: 32px;
   border-radius: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-soft);
   background: #202534;
   color: var(--fg);
   cursor: pointer;
@@ -249,15 +259,19 @@ body::before {
   transform: translateY(1px);
 }
 
-/* Menus */
+/* Attach menu */
 
 .menu {
+  position: absolute;
+  left: 10px;
+  bottom: 44px;
+  width: 236px;
+  padding: 8px;
   border-radius: 12px;
   background: var(--panel2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-soft);
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.7);
   display: none;
-  padding: 8px;
 }
 
 .menu.open {
@@ -274,93 +288,101 @@ body::before {
   padding: 8px 10px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 .menu>button:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
-/* Attach menu anchored to composer bar */
-.attach-menu {
-  position: absolute;
-  left: 10px;
-  bottom: 44px;
-  width: 236px;
-}
-
-/* Floating menus for model/mode */
-.menu.floating {
-  position: absolute;
-  bottom: 52px;
-  min-width: 260px;
-  right: 18px;
-  max-height: 260px;
-  overflow: auto;
-}
-
-.menu.floating#modelMenu {
-  right: 210px;
-}
-
-/* Grouped menu for model list */
-.menu-group-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  padding: 4px 8px 4px;
-}
-
-/* Bottom row */
+/* Bottom pills */
 
 .bottom-row {
   margin-top: 10px;
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
-/* Dropdown pills */
+.chip-with-menu {
+  position: relative;
+}
 
 .small-pill {
-  border-radius: 999px;
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  background: rgba(20, 24, 34, 0.95);
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.dropdown {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  cursor: pointer;
-  background: radial-gradient(circle at 0% 0%, #23273b, #121521);
-  color: var(--fg);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
   border-radius: 999px;
-  border: 1px solid #32384f;
+  padding: 6px 12px 6px 12px;
+  border: 1px solid var(--border-soft);
+  background: rgba(20, 24, 34, 0.95);
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
 }
 
-.dropdown .label {
+.chip-label {
+  letter-spacing: 0.05em;
+}
+
+.chip-value {
+  color: #e9edf7;
+}
+
+.chip-caret {
+  font-size: 9px;
   opacity: 0.8;
-  font-size: 10px;
 }
 
-.dropdown .value {
-  font-size: 11.5px;
+/* drop-down menus for model/mode */
+
+.chip-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  min-width: 240px;
+  padding: 6px;
+  border-radius: 10px;
+  background: #141827;
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.8);
+  display: none;
+  z-index: 5;
 }
 
-.dropdown .caret {
-  font-size: 10px;
-  opacity: 0.9;
+.chip-menu.open {
+  display: block;
 }
 
-.dropdown:focus-visible,
-.dropdown:hover {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.65),
-    0 0 0 1px rgba(255, 143, 106, 0.4);
+.chip-menu button {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.chip-menu button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Responsive-ish tweaks */
+
+@media (max-width: 900px) {
+  .topbar {
+    padding-inline: 12px;
+  }
+
+  .messages {
+    padding-inline: 12px;
+  }
+
+  .composer {
+    padding-inline: 12px;
+  }
 }

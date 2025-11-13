@@ -1,103 +1,249 @@
 import * as vscode from 'vscode';
-import { ChatSidebarProvider } from './features/chatSidebar';
-import { PlanPanelProvider } from './features/planPanel';
-import { Approvals } from './features/approvals';
-import { AuthPanel } from './features/authPanel';
-import { AEPClient } from './api/client';
-import { getConfig } from './config';
-import { pollDeviceCode } from './deviceFlow';
 
-const OUTPUT_CHANNEL = 'AEP Agent';
-let outputChannel: vscode.OutputChannel | undefined;
+const VIEW_ID = 'aep.sidebar';
 
-export async function activate(context: vscode.ExtensionContext) {
-  outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL);
-  const output = outputChannel;
-  output.appendLine('Activating AEP Agent extension…');
+export function activate(context: vscode.ExtensionContext) {
+  const provider = new AepSidebarProvider(context);
 
-  try {
-    const cfg = getConfig();
-    output.appendLine(`Using backend ${cfg.baseUrl} for org ${cfg.orgId}`);
+  // Sidebar webview
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(VIEW_ID, provider)
+  );
 
-    const client = new AEPClient(context, cfg.baseUrl, cfg.orgId);
-    await client.hydrateToken(output);
-    const approvals = new Approvals(context, client, output);
-    const chat = new ChatSidebarProvider(context, client, output);
-    const plan = new PlanPanelProvider(context, client, approvals, output);
-    const auth = new AuthPanel(context, client, cfg.portalUrl, output);
-
-    const disposables: vscode.Disposable[] = [
-      vscode.window.registerWebviewViewProvider('aep.chatView', chat, {
-        webviewOptions: { retainContextWhenHidden: true }
-      }),
-      vscode.window.registerWebviewViewProvider('aep.planView', plan, {
-        webviewOptions: { retainContextWhenHidden: true }
-      }),
-      vscode.window.registerWebviewViewProvider('aep.authView', auth, {
-        webviewOptions: { retainContextWhenHidden: true }
-      }),
-
-      vscode.commands.registerCommand('aep.signIn', () => startDeviceFlow(client, chat, output)),
-      vscode.commands.registerCommand('aep.startSession', () => {
-        vscode.window.showInformationMessage('Starting an AEP planning session…');
-      }),
-      vscode.commands.registerCommand('aep.openPortal', () => {
-        if (cfg.portalUrl) {
-          vscode.env.openExternal(vscode.Uri.parse(cfg.portalUrl));
-        }
-      }),
-      vscode.commands.registerCommand('aep.plan.approve', () => approvals.approveSelected()),
-      vscode.commands.registerCommand('aep.plan.reject', () => approvals.rejectSelected()),
-      vscode.commands.registerCommand('aep.applyPatch', () => plan.applySelectedPatch())
-    ];
-
-    context.subscriptions.push(...disposables, output);
-    output.appendLine('AEP Agent extension activated successfully.');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    output.appendLine(`Activation failed: ${message}`);
-    vscode.window.showErrorMessage(
-      'AEP Agent extension failed to activate. Check the AEP Agent output channel for details.'
-    );
-    throw error;
-  }
+  // Command palette entry – focuses the sidebar
+  context.subscriptions.push(
+    vscode.commands.registerCommand('aep.openPanel', async () => {
+      await vscode.commands.executeCommand('workbench.view.extension.aep');
+      provider.reveal();
+    })
+  );
 }
 
-async function startDeviceFlow(
-  client: AEPClient,
-  chat: ChatSidebarProvider,
-  output: vscode.OutputChannel
-) {
-  try {
-    const flow = await client.startDeviceCode();
-    output.appendLine('Device flow started. Opening browser for verification.');
+export function deactivate() { }
 
-    const verificationUrl = flow.verification_uri_complete || flow.verification_uri;
-    const codeLabel = flow.user_code ? ` (code: ${flow.user_code})` : '';
+class AepSidebarProvider implements vscode.WebviewViewProvider {
+  private view: vscode.WebviewView | undefined;
 
-    vscode.window
-      .showInformationMessage(`Open the browser to complete sign-in${codeLabel}`, 'Open Browser')
-      .then(selection => {
-        if (selection === 'Open Browser' && verificationUrl) {
-          vscode.env.openExternal(vscode.Uri.parse(verificationUrl));
+  constructor(private readonly ctx: vscode.ExtensionContext) { }
+
+  resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    _context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken
+  ) {
+    this.view = webviewView;
+
+    const webview = webviewView.webview;
+    webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.ctx.extensionUri, 'media')],
+    };
+
+    webview.html = this.getHtml(webview);
+
+    webview.onDidReceiveMessage((msg) => {
+      switch (msg.type) {
+        case 'ready': {
+          this.sendWelcome(webview);
+          break;
         }
-      });
 
-    if (!flow.device_code) {
-      throw new Error('Device authorization response was missing a device code.');
+        case 'send': {
+          // Demo reply – later this will call the real backend
+          webview.postMessage({
+            type: 'bot',
+            text:
+              "Got it! This is a demo reply for now — soon I'll be wired into the AEP backend so I can actually reason about your code and tasks.",
+            time: now(),
+          });
+          break;
+        }
+
+        case 'attach': {
+          vscode.window.showInformationMessage(
+            `Attachment action: ${msg.action}`
+          );
+          break;
+        }
+
+        case 'toolbar': {
+          this.handleToolbar(msg.action, webview);
+          break;
+        }
+
+        case 'setModel': {
+          // later: persist + forward to backend
+          vscode.window.setStatusBarMessage(`AEP model: ${msg.value}`, 2000);
+          break;
+        }
+
+        case 'setMode': {
+          vscode.window.setStatusBarMessage(`AEP mode: ${msg.value}`, 2000);
+          break;
+        }
+
+        case 'openSettings': {
+          vscode.commands.executeCommand('workbench.action.openSettings', 'aep');
+          break;
+        }
+      }
+    });
+  }
+
+  reveal() {
+    if (this.view) {
+      try {
+        // @ts-ignore
+        this.view.show?.(true);
+      } catch {
+        // noop
+      }
     }
+  }
 
-    await pollDeviceCode(client, flow.device_code, output);
-    vscode.window.showInformationMessage('Signed in to AEP successfully.');
-    chat.refresh();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    output.appendLine(`Sign-in failed: ${message}`);
-    await client.clearToken();
-    vscode.window.showErrorMessage(`AEP sign-in failed: ${message}`);
+  private sendWelcome(webview: vscode.Webview) {
+    webview.postMessage({
+      type: 'reset',
+    });
+
+    webview.postMessage({
+      type: 'bot',
+      text:
+        "Hi! I'm NAVI, your AI engineering partner. I can help with code analysis, debugging, design decisions, and more. What would you like to work on today?",
+      time: now(),
+    });
+  }
+
+  private handleToolbar(action: string, webview: vscode.Webview) {
+    switch (action) {
+      case 'refresh':
+        this.sendWelcome(webview);
+        break;
+
+      case 'new':
+        webview.postMessage({ type: 'reset' });
+        this.sendWelcome(webview);
+        break;
+
+      case 'focus':
+        vscode.window.showInformationMessage(
+          'Focus on current file/selection will be wired up soon.'
+        );
+        break;
+
+      case 'settings':
+        vscode.commands.executeCommand('workbench.action.openSettings', 'aep');
+        break;
+
+      case 'connect':
+        vscode.window.showInformationMessage(
+          'Connections hub (Slack, Jira, GitHub, MCP servers, etc.) will live here.'
+        );
+        break;
+    }
+  }
+
+  private getHtml(webview: vscode.Webview): string {
+    const mediaRoot = vscode.Uri.joinPath(this.ctx.extensionUri, 'media');
+
+    const cssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(mediaRoot, 'panel.css')
+    );
+    const jsUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(mediaRoot, 'panel.js')
+    );
+    const mascotUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(mediaRoot, 'navi-fox.svg')
+    );
+
+    const nonce = makeNonce();
+
+    const csp = [
+      "default-src 'none'",
+      `img-src ${webview.cspSource} data:`,
+      `style-src ${webview.cspSource} 'unsafe-inline'`,
+      `script-src 'nonce-${nonce}'`,
+      `font-src ${webview.cspSource}`,
+      `connect-src ${webview.cspSource}`,
+    ].join('; ');
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="${cssUri}" />
+  <title>AEP Professional</title>
+</head>
+<body>
+  <div id="root">
+    <header class="topbar">
+      <div class="brand">
+        <img src="${mascotUri}" alt="NAVI" class="mascot" />
+        <div class="titles">
+          <div class="title">AEP Professional</div>
+          <div class="subtitle">Your AI engineering partner</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="ctrl" data-action="refresh" title="Restart conversation">⟳</button>
+        <button class="ctrl" data-action="new" title="New chat">＋</button>
+        <button class="ctrl" data-action="focus" title="Focus current file / selection">◎</button>
+        <button class="ctrl" data-action="settings" title="Settings">⚙</button>
+        <button class="ctrl" data-action="connect" title="Connections / MCP / Apps">⇄</button>
+      </div>
+    </header>
+
+    <main id="messages" class="messages" aria-live="polite"></main>
+
+    <footer class="composer">
+      <div class="bar">
+        <button id="attachBtn" class="attach-btn" aria-label="Attach">+</button>
+        <textarea id="input" rows="1" placeholder="Ask NAVI about your code or task..."></textarea>
+        <button id="sendBtn" class="send" aria-label="Send">Send</button>
+
+        <div id="attachMenu" class="menu attach-menu" role="menu" aria-hidden="true">
+          <button data-action="file" role="menuitem">Attach files…</button>
+          <button data-action="image" role="menuitem">Add image…</button>
+          <button data-action="code" role="menuitem">Insert code…</button>
+          <button data-action="screenshot" role="menuitem">Screenshot window…</button>
+          <button data-action="repo" role="menuitem">Connect repo…</button>
+        </div>
+      </div>
+
+      <div class="bottom-row">
+        <button class="small-pill dropdown" id="modelPill">
+          <span class="label">MODEL</span>
+          <span class="value" id="modelValBottom">OpenAI GPT-4o — Flagship</span>
+          <span class="caret">▾</span>
+        </button>
+
+        <button class="small-pill dropdown" id="modePill">
+          <span class="label">MODE</span>
+          <span class="value" id="modeValBottom">Agent (full access)</span>
+          <span class="caret">▾</span>
+        </button>
+
+        <div id="modelMenu" class="menu floating" aria-hidden="true"></div>
+        <div id="modeMenu" class="menu floating" aria-hidden="true"></div>
+      </div>
+    </footer>
+  </div>
+  <script nonce="${nonce}" src="${jsUri}"></script>
+</body>
+</html>`;
   }
 }
 
-export function deactivate() {
-  outputChannel?.appendLine('AEP Agent extension deactivated.');
+function makeNonce(): string {
+  const chars =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  return Array.from({ length: 32 }, () =>
+    chars.charAt(Math.floor(Math.random() * chars.length))
+  ).join('');
+}
+
+function now(): string {
+  return new Date().toTimeString().slice(0, 5);
 }

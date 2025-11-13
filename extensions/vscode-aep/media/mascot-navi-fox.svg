@@ -1,0 +1,58 @@
+<svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-label="NAVI fox">
+  <defs>
+    <linearGradient id="p" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8A3D"/>
+      <stop offset="100%" stop-color="#FF5E7E"/>
+    </linearGradient>
+
+    <style>
+      /* ---------- Base motions ---------- */
+      @keyframes nod {0%{transform:rotate(0)}50%{transform:rotate(-2.5deg)}100%{transform:rotate(0)}}
+      @keyframes blink {0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+      @keyframes pulse {
+        0%{r:22; opacity:.55}
+        70%{r:28; opacity:0}
+        100%{r:28; opacity:0}
+      }
+      /* one-shot celebration cues */
+      @keyframes earFlick {0%{transform:rotate(0)}40%{transform:rotate(-12deg)}80%{transform:rotate(10deg)}100%{transform:rotate(0)}}
+      @keyframes tailWave {0%{transform:rotate(0)}50%{transform:rotate(12deg)}100%{transform:rotate(0)}}
+
+      /* ---------- Targets ---------- */
+      #head{transform-origin:22px 22px; animation:nod 5s ease-in-out infinite}
+      .eye{animation:blink 6s ease-in-out infinite; transform-origin:50% 50%}
+      .pulse-ring{fill:none; stroke:url(#p); stroke-width:2.4; opacity:0}
+
+      /* states set from the host (add/remove on the <svg> tag) */
+      svg.thinking .pulse-ring{animation:pulse 2s ease-out infinite}
+      svg.celebrate #earL, svg.celebrate #earR{animation:earFlick .65s ease-out 1}
+      svg.celebrate #tail{animation:tailWave .7s ease-out 1}
+    </style>
+  </defs>
+
+  <!-- shows only while .thinking is present -->
+  <circle class="pulse-ring" cx="22" cy="22" r="22"/>
+
+  <!-- Tail (behind head) -->
+  <g id="tail" transform="translate(33,29)">
+    <path d="M0 0 C7 0 9 7 3 10 C-1 12 -2 7 0 0 Z" fill="url(#p)" opacity=".85"/>
+  </g>
+
+  <!-- Fox head/body -->
+  <g id="head">
+    <path d="M22 5 L36 16 33 34 22 39 11 34 8 16Z" fill="url(#p)"/>
+
+    <!-- ears as separate parts for the celebration -->
+    <g id="earL" transform="translate(12,14)">
+      <path d="M0 3 L6 -1 4 6 Z" fill="#fff" opacity=".95"/>
+    </g>
+    <g id="earR" transform="translate(26,14)">
+      <path d="M6 3 L0 -1 2 6 Z" fill="#fff" opacity=".95"/>
+    </g>
+
+    <!-- eyes + nose -->
+    <ellipse cx="18" cy="24" rx="1.6" ry="1.6" class="eye" fill="#0F172A"/>
+    <ellipse cx="26" cy="24" rx="1.6" ry="1.6" class="eye" fill="#0F172A"/>
+    <rect x="20.3" y="26.5" width="3.4" height="1.2" rx=".6" fill="#0F172A" opacity=".75"/>
+  </g>
+</svg>

@@ -1,267 +1,288 @@
 import * as vscode from 'vscode';
-
-const VIEW_ID = 'aep.sidebar';
+import * as path from 'path';
+import * as fs from 'fs';
 
 export function activate(context: vscode.ExtensionContext) {
-  const provider = new AepSidebarProvider(context);
+    const provider = new AEPViewProvider(context.extensionUri);
 
-  // Register the sidebar webview
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(VIEW_ID, provider)
-  );
-
-  // Command: AEP: Open Panel – just focuses the sidebar view
-  context.subscriptions.push(
-    vscode.commands.registerCommand('aep.openPanel', async () => {
-      // Reveal our view container
-      await vscode.commands.executeCommand('workbench.view.extension.aep');
-      // Ask provider to reveal the webview itself if it's already resolved
-      provider.reveal();
-    })
-  );
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            'aepChat', 
+            provider,
+            {
+                webviewOptions: {
+                    retainContextWhenHidden: true
+                }
+            }
+        )
+    );
 }
 
-export function deactivate() { }
+class AEPViewProvider implements vscode.WebviewViewProvider {
+    public static readonly viewType = 'aepChat';
+    private _view?: vscode.WebviewView;
 
-class AepSidebarProvider implements vscode.WebviewViewProvider {
-  private view: vscode.WebviewView | undefined;
+    constructor(private readonly _extensionUri: vscode.Uri) {}
 
-  constructor(private readonly ctx: vscode.ExtensionContext) { }
+    resolveWebviewView(
+        webviewView: vscode.WebviewView,
+        context: vscode.WebviewViewResolveContext<unknown>,
+        token: vscode.CancellationToken
+    ): void | Thenable<void> {
+        this._view = webviewView;
 
-  resolveWebviewView(
-    webviewView: vscode.WebviewView,
-    _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
-  ) {
-    this.view = webviewView;
+        webviewView.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [
+                this._extensionUri
+            ]
+        };
 
-    const webview = webviewView.webview;
-    webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.ctx.extensionUri, 'media')],
-    };
+        webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-    webview.html = this.getHtml(webview);
-
-    webview.onDidReceiveMessage((msg) => {
-      switch (msg.type) {
-        case 'ready':
-          webview.postMessage({
-            type: 'bot',
-            text:
-              "Hi! I'm NAVI, your AI engineering partner. I can help with code analysis, debugging, design decisions, and more. What would you like to work on today?",
-            time: now()
-          });
-          break;
-
-        case 'send':
-          // Simple echo for now
-          webview.postMessage({
-            type: 'bot',
-            text:
-              "Got it! This is a demo reply for now — soon I'll be wired into the AEP backend so I can actually reason about your code and tasks.",
-            time: now()
-          });
-          break;
-
-        case 'attach':
-          vscode.window.showInformationMessage(
-            `Attachment action: ${msg.action}`
-          );
-          break;
-
-        case 'openSettings':
-          vscode.commands.executeCommand(
-            'workbench.action.openSettings',
-            'aep'
-          );
-          break;
-
-        default:
-          break;
-      }
-    });
-  }
-
-  // Called from the command to bring the view into focus
-  reveal() {
-    if (this.view) {
-      try {
-        // @ts-ignore
-        this.view.show?.(true);
-      } catch {
-        // ignore – the container command already brought it into view
-      }
+        webviewView.webview.onDidReceiveMessage(message => {
+            switch (message.type) {
+                case 'alert':
+                    vscode.window.showInformationMessage(message.text);
+                    return;
+                case 'error':
+                    vscode.window.showErrorMessage(message.text);
+                    return;
+                case 'sendMessage':
+                    this._handleSendMessage(message.text);
+                    return;
+                case 'resetConversation':
+                    this._handleResetConversation();
+                    return;
+                case 'newChat':
+                    this._handleNewChat();
+                    return;
+                case 'focusMode':
+                    this._handleFocusMode(message.enabled);
+                    return;
+                case 'openIntegrations':
+                    this._handleOpenIntegrations();
+                    return;
+                case 'connectApiKey':
+                    this._handleConnectApiKey();
+                    return;
+            }
+        });
     }
-  }
 
-  private getHtml(webview: vscode.Webview): string {
-    const mediaRoot = vscode.Uri.joinPath(this.ctx.extensionUri, 'media');
+    private _handleSendMessage(text: string) {
+        // Simulate AI response for now
+        setTimeout(() => {
+            this._view?.webview.postMessage({
+                type: 'response',
+                text: `I received your message: "${text}". This is a simulated response from the AEP AI assistant.`
+            });
+        }, 1000);
+    }
 
-    const cssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(mediaRoot, 'panel.css')
-    );
-    const jsUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(mediaRoot, 'panel.js')
-    );
-    const mascotUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(mediaRoot, 'mascot-navi-fox.svg')
-    );
+    private _handleResetConversation() {
+        this._view?.webview.postMessage({
+            type: 'clearChat'
+        });
+    }
 
-    const nonce = makeNonce();
+    private _handleNewChat() {
+        this._view?.webview.postMessage({
+            type: 'clearChat'
+        });
+    }
 
-    const csp = [
-      "default-src 'none'",
-      `img-src ${webview.cspSource} data:`,
-      `style-src ${webview.cspSource} 'unsafe-inline'`,
-      `script-src 'nonce-${nonce}'`,
-      `font-src ${webview.cspSource}`,
-      `connect-src ${webview.cspSource}`,
-    ].join('; ');
+    private _handleFocusMode(enabled: boolean) {
+        vscode.window.showInformationMessage(`Focus mode ${enabled ? 'enabled' : 'disabled'}`);
+    }
 
-    return `<!DOCTYPE html>
+    private _handleOpenIntegrations() {
+        vscode.window.showInformationMessage('Opening integrations panel...');
+    }
+
+    private _handleConnectApiKey() {
+        vscode.window.showInformationMessage('Opening API key configuration...');
+    }
+
+    private _getHtmlForWebview(webview: vscode.Webview): string {
+        const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.css'));
+        const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.js'));
+
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="${csp}">
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="${cssUri}" />
-  <title>AEP Professional</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${cssUri}" rel="stylesheet">
+    <title>AEP Chat</title>
 </head>
 <body>
-  <div id="root">
-    <header class="topbar">
-      <div class="brand">
-        <!-- Inline NAVI fox so we never depend on paths -->
-        <svg class="mascot" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-label="NAVI fox">
-          <defs>
-            <linearGradient id="p" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#FF8A3D"/>
-              <stop offset="100%" stop-color="#FF5E7E"/>
-            </linearGradient>
-
-            <style>
-              @keyframes nod {0%{transform:rotate(0)}50%{transform:rotate(-2.5deg)}100%{transform:rotate(0)}}
-              @keyframes blink {0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
-              @keyframes pulse {0%{r:22;opacity:.55}70%{r:28;opacity:0}100%{r:28;opacity:0}}
-              @keyframes earFlick {0%{transform:rotate(0)}40%{transform:rotate(-12deg)}80%{transform:rotate(10deg)}100%{transform:rotate(0)}}
-              @keyframes tailWave {0%{transform:rotate(0)}50%{transform:rotate(12deg)}100%{transform:rotate(0)}}
-
-              #head{transform-origin:22px 22px;animation:nod 5s ease-in-out infinite}
-              .eye{animation:blink 6s ease-in-out infinite;transform-origin:50% 50%}
-              .pulse-ring{fill:none;stroke:url(#p);stroke-width:2.4;opacity:0}
-            </style>
-          </defs>
-
-          <circle class="pulse-ring" cx="22" cy="22" r="22"/>
-
-          <g id="tail" transform="translate(33,29)">
-            <path d="M0 0 C7 0 9 7 3 10 C-1 12 -2 7 0 0 Z" fill="url(#p)" opacity=".85"/>
-          </g>
-
-          <g id="head">
-            <path d="M22 5 L36 16 33 34 22 39 11 34 8 16Z" fill="url(#p)"/>
-
-            <g id="earL" transform="translate(12,14)">
-              <path d="M0 3 L6 -1 4 6 Z" fill="#fff" opacity=".95"/>
-            </g>
-            <g id="earR" transform="translate(26,14)">
-              <path d="M6 3 L0 -1 2 6 Z" fill="#fff" opacity=".95"/>
-            </g>
-
-            <ellipse cx="18" cy="24" rx="1.6" ry="1.6" class="eye" fill="#0F172A"/>
-            <ellipse cx="26" cy="24" rx="1.6" ry="1.6" class="eye" fill="#0F172A"/>
-            <rect x="20.3" y="26.5" width="3.4" height="1.2" rx=".6" fill="#0F172A" opacity=".75"/>
-          </g>
-        </svg>
-
-        <div class="titles">
-          <div class="title">AEP Professional</div>
-          <div class="subtitle">Your AI engineering partner</div>
+    <div class="container">
+        <!-- Header Section -->
+        <div class="header">
+            <div class="header-top">
+                <div class="branding">
+                    <svg class="navi-icon" width="20" height="20" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <!-- NAVI Fox Icon -->
+                        <circle cx="100" cy="100" r="98" fill="#FF6B35" stroke="#E55A2B" stroke-width="4"/>
+                        <circle cx="100" cy="100" r="85" fill="url(#foxGradient)"/>
+                        <defs>
+                            <radialGradient id="foxGradient" cx="0.3" cy="0.3">
+                                <stop offset="0%" stop-color="#FFE5CC"/>
+                                <stop offset="100%" stop-color="#FF8A50"/>
+                            </radialGradient>
+                        </defs>
+                        <!-- Fox ears -->
+                        <path d="M70 60 Q75 45 85 55 Q90 50 95 65 L90 75 Q85 70 80 72 Q75 70 70 75 Z" fill="#FF6B35"/>
+                        <path d="M105 65 Q110 50 115 55 Q125 45 130 60 L125 75 Q120 70 115 72 Q110 70 105 75 Z" fill="#FF6B35"/>
+                        <!-- Fox face -->
+                        <ellipse cx="100" cy="110" rx="35" ry="25" fill="#FFE5CC"/>
+                        <!-- Fox eyes -->
+                        <circle cx="88" cy="105" r="6" fill="#2C3E50"/>
+                        <circle cx="112" cy="105" r="6" fill="#2C3E50"/>
+                        <circle cx="90" cy="103" r="2" fill="white"/>
+                        <circle cx="114" cy="103" r="2" fill="white"/>
+                        <!-- Fox nose and mouth -->
+                        <path d="M98 115 Q100 113 102 115 Q100 117 98 115 Z" fill="#2C3E50"/>
+                        <path d="M100 117 Q95 122 90 120 M100 117 Q105 122 110 120" stroke="#2C3E50" stroke-width="2" fill="none"/>
+                    </svg>
+                    <span class="title">AEP Assistant</span>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" id="resetBtn" title="New Chat">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 5V2L8 6L12 10V7C15.31 7 18 9.69 18 13S15.31 19 12 19S6 16.31 6 13H4C4 17.42 7.58 21 12 21S20 17.42 20 13S16.42 5 12 5Z" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" id="focusBtn" title="Focus Mode">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="3" fill="currentColor"/>
+                            <path d="M19.4 15C18.8 15.8 18.1 16.5 17.3 17.1L18.7 18.5L17.3 19.9L15.9 18.5C15.1 18.9 14.3 19.2 13.4 19.4V21H10.6V19.4C9.7 19.2 8.9 18.9 8.1 18.5L6.7 19.9L5.3 18.5L6.7 17.1C6.1 16.3 5.8 15.5 5.6 14.6H4V11.8H5.6C5.8 10.9 6.1 10.1 6.7 9.3L5.3 7.9L6.7 6.5L8.1 7.9C8.9 7.5 9.7 7.2 10.6 7V5.4H13.4V7C14.3 7.2 15.1 7.5 15.9 7.9L17.3 6.5L18.7 7.9L17.3 9.3C17.9 10.1 18.2 10.9 18.4 11.8H20V14.6H18.4C18.2 14.9 18.1 15.2 19.4 15Z" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" id="integrationsBtn" title="Integrations">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 2L13.09 8.26L20 9L13.09 9.74L12 16L10.91 9.74L4 9L10.91 8.26L12 2Z" fill="currentColor"/>
+                            <path d="M19 15L20.09 18.26L24 19L20.09 19.74L19 23L17.91 19.74L14 19L17.91 18.26L19 15Z" fill="currentColor"/>
+                            <path d="M5 15L6.09 18.26L10 19L6.09 19.74L5 23L3.91 19.74L0 19L3.91 18.26L5 15Z" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" id="apiKeyBtn" title="Connect API Key">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                            <path d="M7 14C5.9 14 5 13.1 5 12S5.9 10 7 10 9 10.9 9 12 8.1 14 7 14M12.6 10C11.8 7.7 9.6 6 7 6C3.7 6 1 8.7 1 12S3.7 18 7 18C9.6 18 11.8 16.3 12.6 14H16V18H20V14H23V10H12.6Z" fill="currentColor"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="header-controls">
+                <div class="select-group">
+                    <div class="select-pill">
+                        <select id="modelSelect">
+                            <option value="gpt-4">GPT-4</option>
+                            <option value="gpt-3.5">GPT-3.5 Turbo</option>
+                            <option value="claude">Claude 3</option>
+                            <option value="byok">BYOK</option>
+                        </select>
+                        <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24">
+                            <path d="M7 10L12 15L17 10H7Z" fill="currentColor"/>
+                        </svg>
+                    </div>
+                    
+                    <div class="select-pill">
+                        <select id="modeSelect">
+                            <option value="chat">Chat</option>
+                            <option value="plan">Plan</option>
+                            <option value="code">Code</option>
+                            <option value="review">Review</option>
+                        </select>
+                        <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24">
+                            <path d="M7 10L12 15L17 10H7Z" fill="currentColor"/>
+                        </svg>
+                    </div>
+                </div>
+                
+                <div class="attachments-menu">
+                    <button class="attach-btn" id="attachBtn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                            <path d="M16.5 6V17.5C16.5 19.43 14.93 21 13 21S9.5 19.43 9.5 17.5V5C9.5 3.62 10.62 2.5 12 2.5S14.5 3.62 14.5 5V15.5C14.5 16.05 14.05 16.5 13.5 16.5S12.5 16.05 12.5 15.5V6H11V15.5C11 16.88 12.12 18 13.5 18S16 16.88 16 15.5V5C16 2.79 14.21 1 12 1S8 2.79 8 5V17.5C8 20.26 10.24 22.5 13 22.5S18 20.26 18 17.5V6H16.5Z" fill="currentColor"/>
+                        </svg>
+                        <span>Attach</span>
+                    </button>
+                    <div class="attach-dropdown" id="attachDropdown">
+                        <div class="attach-option" data-type="file">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" fill="currentColor"/>
+                            </svg>
+                            <span>Upload File</span>
+                        </div>
+                        <div class="attach-option" data-type="code">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                <path d="M8,3A2,2 0 0,0 6,5V9A2,2 0 0,1 4,11H3V13H4A2,2 0 0,1 6,15V19A2,2 0 0,0 8,21H10V19H8V14A2,2 0 0,0 6,12A2,2 0 0,0 8,10V5H10V3M16,3A2,2 0 0,1 18,5V9A2,2 0 0,0 20,11H21V13H20A2,2 0 0,0 18,15V19A2,2 0 0,1 16,21H14V19H16V14A2,2 0 0,1 18,12A2,2 0 0,1 16,10V5H14V3H16Z" fill="currentColor"/>
+                            </svg>
+                            <span>Code Selection</span>
+                        </div>
+                        <div class="attach-option" data-type="context">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,14H13V16H11V14M11,8H13V12H11V8Z" fill="currentColor"/>
+                            </svg>
+                            <span>Project Context</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
-      <div class="header-right">
-        <button class="top-icon" data-action="refresh" title="Restart chat">
-          <span class="icon-symbol">↻</span>
-        </button>
-        <button class="top-icon" data-action="new" title="New conversation">
-          <span class="icon-symbol">✚</span>
-        </button>
-        <button class="top-icon" data-action="focus-code" title="Code focus">
-          <span class="icon-symbol">◎</span>
-        </button>
-        <button class="top-icon" data-action="sources" title="Connections · MCP, Slack, Git…">
-          <span class="icon-symbol">⛓</span>
-        </button>
-        <button class="top-icon" data-action="settings" title="Settings">
-          <span class="icon-symbol">⚙</span>
-        </button>
-      </div>
-    </header>
 
-    <main id="messages" class="messages" aria-live="polite"></main>
-
-    <footer class="composer">
-      <div class="bar">
-        <button id="attachBtn" class="attach-btn" aria-label="Attach">+</button>
-        <textarea id="input" rows="1" placeholder="Ask NAVI about your code or task..."></textarea>
-        <button id="sendBtn" class="send" aria-label="Send">Send</button>
-
-        <div id="attachMenu" class="menu attach-menu" role="menu" aria-hidden="true">
-          <button data-action="file" role="menuitem">Attach files…</button>
-          <button data-action="image" role="menuitem">Add image…</button>
-          <button data-action="code" role="menuitem">Insert code…</button>
-          <button data-action="screenshot" role="menuitem">Screenshot window…</button>
-          <button data-action="repo" role="menuitem">Connect repo…</button>
-        </div>
-      </div>
-
-      <div class="bottom-row">
-        <div class="chip-with-menu">
-          <button class="small-pill" id="modelChip">
-            <span class="chip-label">MODEL</span>
-            <span class="chip-value" id="modelValBottom">OpenAI GPT-4o — Flagship</span>
-            <span class="chip-caret">▾</span>
-          </button>
-          <div class="chip-menu" id="modelMenu" aria-hidden="true">
-            <button data-model="OpenAI GPT-4o — Flagship">OpenAI GPT-4o — Flagship</button>
-            <button data-model="OpenAI GPT-4o-mini">OpenAI GPT-4o-mini</button>
-            <button data-model="Anthropic Claude 3.5 Sonnet">Anthropic Claude 3.5 Sonnet</button>
-            <button data-model="Anthropic Claude 3.5 Haiku">Anthropic Claude 3.5 Haiku</button>
-            <button data-model="Llama 3.1 405B (API)">Llama 3.1 405B (API)</button>
-            <button data-model="Bring your own API key…">Bring your own API key…</button>
-          </div>
+        <!-- Chat Area -->
+        <div class="chat-area" id="chatArea">
+            <div class="welcome-message">
+                <div class="navi-avatar">
+                    <svg width="32" height="32" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="100" cy="100" r="98" fill="#FF6B35" stroke="#E55A2B" stroke-width="4"/>
+                        <circle cx="100" cy="100" r="85" fill="url(#foxGradient2)"/>
+                        <defs>
+                            <radialGradient id="foxGradient2" cx="0.3" cy="0.3">
+                                <stop offset="0%" stop-color="#FFE5CC"/>
+                                <stop offset="100%" stop-color="#FF8A50"/>
+                            </radialGradient>
+                        </defs>
+                        <path d="M70 60 Q75 45 85 55 Q90 50 95 65 L90 75 Q85 70 80 72 Q75 70 70 75 Z" fill="#FF6B35"/>
+                        <path d="M105 65 Q110 50 115 55 Q125 45 130 60 L125 75 Q120 70 115 72 Q110 70 105 75 Z" fill="#FF6B35"/>
+                        <ellipse cx="100" cy="110" rx="35" ry="25" fill="#FFE5CC"/>
+                        <circle cx="88" cy="105" r="6" fill="#2C3E50"/>
+                        <circle cx="112" cy="105" r="6" fill="#2C3E50"/>
+                        <circle cx="90" cy="103" r="2" fill="white"/>
+                        <circle cx="114" cy="103" r="2" fill="white"/>
+                        <path d="M98 115 Q100 113 102 115 Q100 117 98 115 Z" fill="#2C3E50"/>
+                        <path d="M100 117 Q95 122 90 120 M100 117 Q105 122 110 120" stroke="#2C3E50" stroke-width="2" fill="none"/>
+                    </svg>
+                </div>
+                <p class="welcome-text">Hello! I'm NAVI, your autonomous engineering assistant. How can I help you today?</p>
+            </div>
         </div>
 
-        <div class="chip-with-menu">
-          <button class="small-pill" id="modeChip">
-            <span class="chip-label">MODE</span>
-            <span class="chip-value" id="modeValBottom">Agent (full access)</span>
-            <span class="chip-caret">▾</span>
-          </button>
-          <div class="chip-menu" id="modeMenu" aria-hidden="true">
-            <button data-mode="Agent (full access)">Agent (full access)</button>
-            <button data-mode="Lightweight inline hints">Lightweight inline hints</button>
-            <button data-mode="Explain only">Explain only</button>
-          </div>
+        <!-- Input Area -->
+        <div class="input-area">
+            <div class="input-container">
+                <textarea 
+                    id="messageInput" 
+                    placeholder="Ask NAVI anything about your code..."
+                    rows="1"
+                    maxlength="10000">
+                </textarea>
+                <button id="sendBtn" class="send-btn" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z" fill="currentColor"/>
+                    </svg>
+                </button>
+            </div>
         </div>
-      </div>
-    </footer>
-  </div>
-  <script nonce="${nonce}" src="${jsUri}"></script>
+    </div>
+
+    <script src="${jsUri}"></script>
 </body>
 </html>`;
-  }
+    }
 }
 
-function makeNonce(): string {
-  const chars =
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  return Array.from({ length: 32 }, () =>
-    chars.charAt(Math.floor(Math.random() * chars.length))
-  ).join('');
-}
-
-function now(): string {
-  return new Date().toTimeString().slice(0, 5);
-}
+export function deactivate() {}

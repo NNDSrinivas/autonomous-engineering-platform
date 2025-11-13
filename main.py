@@ -1,35 +1,49 @@
+"""
+Autonomous Engineering Intelligence Platform - Legacy Demo Application.
+
+This is a legacy demo application for showcasing basic AI capabilities.
+For production use, please use the modern backend at backend.api.main.
+"""
 import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Union
-from typing import TYPE_CHECKING
-from typing_extensions import TypedDict, Literal
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-if TYPE_CHECKING:
-    from openai.types.chat import ChatCompletionMessageParam
-
+import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing_extensions import Literal, TypedDict
+
+# Local imports
+from backend.api.routers.agent_planning import (
+    router as agent_planning_router,
+)
+from backend.api.routers.ai_codegen import (
+    router as ai_codegen_router,
+)
+from backend.api.routers.ai_feedback import (
+    router as ai_feedback_router,
+)
+from backend.api.routers.autonomous_coding import (
+    router as autonomous_coding_router,
+)
+from backend.api.routers.jira_integration import (
+    router as jira_integration_router,
+)
+from backend.api.routers.oauth_device import (
+    router as oauth_device_router,
+)
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Import the autonomous coding router
-from backend.api.routers.autonomous_coding import router as autonomous_coding_router
-from backend.api.routers.oauth_device import router as oauth_device_router
-from backend.api.routers.jira_integration import router as jira_integration_router
-from backend.api.routers.agent_planning import router as agent_planning_router
-from backend.api.routers.ai_codegen import router as ai_codegen_router
-from backend.api.routers.ai_feedback import router as ai_feedback_router
+if TYPE_CHECKING:
+    from openai.types.chat import ChatCompletionMessageParam
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,30 +53,29 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-# Define fallback type for ChatCompletionMessageParam (used when OpenAI unavailable)
-# This mirrors OpenAI's actual ChatCompletionMessageParam structure more accurately
 class FallbackChatCompletionMessageParam(TypedDict, total=False):
-    role: Literal["system", "user", "assistant", "tool"]  # Specific literal types
-    content: Union[
-        str, List[Any], None
-    ]  # Can be string, list of content parts, or None
-    name: str  # Optional: name of the participant
-    tool_calls: List[Any]  # Optional: tool calls made by assistant
-    tool_call_id: str  # Optional: ID of tool call being responded to
-    function_call: Any  # Optional: deprecated function call format
+    """
+    Fallback type for ChatCompletionMessageParam when OpenAI unavailable.
+
+    This mirrors OpenAI's actual ChatCompletionMessageParam structure.
+    """
+    role: Literal["system", "user", "assistant", "tool"]
+    content: Union[str, List[Any], None]
+    name: str
+    tool_calls: List[Any]
+    tool_call_id: str
+    function_call: Any
 
 
 # Import OpenAI for real AI capabilities
 try:
     from openai import OpenAI
-    from openai.types.chat import ChatCompletionMessageParam
-
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     OPENAI_AVAILABLE = True
     logger.info("✅ OpenAI GPT-4 client initialized successfully")
-except Exception as e:
+except (ImportError, ValueError, TypeError) as e:
     OPENAI_AVAILABLE = False
-    logger.warning(f"⚠️ OpenAI client failed to initialize: {e}")
+    logger.warning("⚠️ OpenAI client failed to initialize: %s", e)
     # Use the fallback type when OpenAI is not available
     ChatCompletionMessageParam = FallbackChatCompletionMessageParam
 
@@ -75,9 +88,10 @@ app = FastAPI(
 
 # Include the autonomous coding router with concierge endpoints
 app.include_router(autonomous_coding_router, prefix="/api")
-# OAuth router intentionally doesn't use a prefix - it defines its own '/oauth' prefix internally
-# This design keeps OAuth endpoints at the root level (e.g., /oauth/device/start) rather than
-# nesting them under /api (e.g., /api/oauth/device/start) for better compatibility with OAuth standards
+# OAuth router intentionally doesn't use a prefix - it defines its own
+# '/oauth' prefix internally. This design keeps OAuth endpoints at the root
+# level (e.g., /oauth/device/start) rather than nesting them under /api
+# (e.g., /api/oauth/device/start) for better OAuth standards compatibility
 app.include_router(oauth_device_router)
 app.include_router(jira_integration_router, prefix="/api")
 app.include_router(agent_planning_router, prefix="/api")
@@ -94,19 +108,21 @@ app.add_middleware(
 )
 
 
-# Pydantic models
 class QuestionRequest(BaseModel):
+    """Request model for AI question answering."""
     question: str
     context: Optional[Dict[str, Any]] = None
 
 
 class CodeAnalysisRequest(BaseModel):
+    """Request model for AI code analysis."""
     code: str
     language: str = "python"
     analysis_type: str = "general"
 
 
 class TeamMember(BaseModel):
+    """Model representing a team member."""
     id: str
     name: str
     role: str
@@ -114,9 +130,12 @@ class TeamMember(BaseModel):
 
 
 def get_ai_response(prompt: str, system_prompt: Optional[str] = None) -> str:
-    """Get response from GPT-4"""
+    """Get response from GPT-4."""
     if not OPENAI_AVAILABLE:
-        return "AI service is not available. Please check your OpenAI API key configuration."
+        return (
+            "AI service is not available. Please check your OpenAI API key "
+            "configuration."
+        )
 
     try:
         messages: list[ChatCompletionMessageParam] = []
@@ -125,18 +144,22 @@ def get_ai_response(prompt: str, system_prompt: Optional[str] = None) -> str:
         messages.append({"role": "user", "content": prompt})
 
         response = client.chat.completions.create(
-            model="gpt-4", messages=messages, max_tokens=1000, temperature=0.7
+            model="gpt-4",
+            messages=messages,
+            max_tokens=1000,
+            temperature=0.7
         )
 
-        return response.choices[0].message.content or "No response generated"
-    except Exception as e:
-        logger.error(f"OpenAI API error: {e}")
+        return (response.choices[0].message.content or
+                "No response generated")
+    except (ImportError, ValueError, TypeError, AttributeError) as e:
+        logger.error("OpenAI API error: %s", e)
         return "Error generating AI response. Please try again later."
 
 
 @app.get("/")
 async def root():
-    """Welcome endpoint"""
+    """Welcome endpoint."""
     return {
         "message": "🤖 Autonomous Engineering Intelligence Platform",
         "version": "2.0.0",
@@ -159,7 +182,7 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check with AI status"""
+    """Health check with AI status."""
     api_key_configured = bool(os.getenv("OPENAI_API_KEY"))
 
     # Test OpenAI connection
@@ -173,8 +196,8 @@ async def health_check():
                 max_tokens=5,
             )
             openai_status = True
-        except Exception as e:
-            logger.warning(f"OpenAI connection test failed: {e}")
+        except (ImportError, ValueError, TypeError, AttributeError) as e:
+            logger.warning("OpenAI connection test failed: %s", e)
 
     return {
         "status": "healthy",
@@ -194,35 +217,38 @@ async def health_check():
 
 @app.post("/api/ask")
 async def ask_question(request: QuestionRequest):
-    """AI-powered question answering with GPT-4"""
+    """AI-powered question answering with GPT-4."""
     try:
         question = request.question
         context = request.context or {}
 
         # Create enhanced system prompt
-        system_prompt = """You are an expert AI engineering assistant with deep knowledge in:
-        - Software architecture and design patterns
-        - Programming languages and frameworks
-        - DevOps and cloud technologies
-        - Best practices and code quality
-        - System design and scalability
-        - Team collaboration and productivity
-        
-        Provide detailed, practical answers with examples when appropriate.
-        Focus on actionable insights and industry best practices."""
+        system_prompt = (
+            "You are an expert AI engineering assistant with deep knowledge "
+            "in:\n"
+            "- Software architecture and design patterns\n"
+            "- Programming languages and frameworks\n"
+            "- DevOps and cloud technologies\n"
+            "- Best practices and code quality\n"
+            "- System design and scalability\n"
+            "- Team collaboration and productivity\n\n"
+            "Provide detailed, practical answers with examples when "
+            "appropriate.\n"
+            "Focus on actionable insights and industry best practices."
+        )
 
         # Enhance the question with context
-        enhanced_prompt = f"""
-        Question: {question}
-        
-        Context: {json.dumps(context, indent=2) if context else "No additional context provided"}
-        
-        Please provide a comprehensive answer that includes:
-        1. Core concept explanation
-        2. Practical examples or code samples if relevant
-        3. Best practices and recommendations
-        4. Common pitfalls to avoid
-        """
+        context_str = (json.dumps(context, indent=2) if context
+                      else "No additional context provided")
+        enhanced_prompt = (
+            f"Question: {question}\n\n"
+            f"Context: {context_str}\n\n"
+            "Please provide a comprehensive answer that includes:\n"
+            "1. Core concept explanation\n"
+            "2. Practical examples or code samples if relevant\n"
+            "3. Best practices and recommendations\n"
+            "4. Common pitfalls to avoid"
+        )
 
         # Get AI response
         ai_answer = get_ai_response(enhanced_prompt, system_prompt)
@@ -237,48 +263,46 @@ async def ask_question(request: QuestionRequest):
         }
 
     except Exception as e:
-        logger.error(f"Error in ask_question: {e}")
+        logger.error("Error in ask_question: %s", e)
         raise HTTPException(
-            status_code=500, detail="Error processing question. Please try again later."
-        )
+            status_code=500,
+            detail="Error processing question. Please try again later."
+        ) from e
 
 
 @app.post("/api/analyze-code")
 async def analyze_code(request: CodeAnalysisRequest):
-    """AI-powered code analysis with GPT-4"""
+    """AI-powered code analysis with GPT-4."""
     try:
         code = request.code
         language = request.language
         analysis_type = request.analysis_type
 
         # Create system prompt for code analysis
-        system_prompt = f"""You are an expert code reviewer and software architect. 
-        Analyze the provided {language} code and provide:
-        1. Code quality assessment (1-10 scale)
-        2. Complexity analysis
-        3. Maintainability score
-        4. Specific issues and improvements
-        5. Best practice recommendations
-        
-        Return your analysis in JSON format with these fields:
-        - complexity_score (1-10)
-        - maintainability_score (1-10)
-        - quality_score (1-10)
-        - issues (array of strings)
-        - suggestions (array of strings)
-        - summary (string)
-        """
+        system_prompt = (
+            f"You are an expert code reviewer and software architect.\n"
+            f"Analyze the provided {language} code and provide:\n"
+            "1. Code quality assessment (1-10 scale)\n"
+            "2. Complexity analysis\n"
+            "3. Maintainability score\n"
+            "4. Specific issues and improvements\n"
+            "5. Best practice recommendations\n\n"
+            "Return your analysis in JSON format with these fields:\n"
+            "- complexity_score (1-10)\n"
+            "- maintainability_score (1-10)\n"
+            "- quality_score (1-10)\n"
+            "- issues (array of strings)\n"
+            "- suggestions (array of strings)\n"
+            "- summary (string)"
+        )
 
         # Create analysis prompt
-        analysis_prompt = f"""
-        Please analyze this {language} code with focus on {analysis_type}:
-        
-        ```{language}
-        {code}
-        ```
-        
-        Provide a detailed analysis following the JSON format specified.
-        """
+        analysis_prompt = (
+            f"Please analyze this {language} code with focus on "
+            f"{analysis_type}:\n\n"
+            f"```{language}\n{code}\n```\n\n"
+            "Provide a detailed analysis following the JSON format specified."
+        )
 
         # Get AI analysis
         ai_response = get_ai_response(analysis_prompt, system_prompt)
@@ -294,7 +318,7 @@ async def analyze_code(request: CodeAnalysisRequest):
                 json_str = ai_response
 
             analysis_result = json.loads(json_str)
-        except Exception:
+        except (json.JSONDecodeError, ValueError, KeyError):
             # Fallback if JSON parsing fails
             analysis_result = {
                 "complexity_score": 7,
@@ -302,9 +326,8 @@ async def analyze_code(request: CodeAnalysisRequest):
                 "quality_score": 7,
                 "issues": ["Unable to parse detailed analysis"],
                 "suggestions": ["Review code structure and add comments"],
-                "summary": (
-                    ai_response[:200] + "..." if len(ai_response) > 200 else ai_response
-                ),
+                "summary": (ai_response[:200] + "..."
+                           if len(ai_response) > 200 else ai_response),
             }
 
         return {
@@ -316,15 +339,16 @@ async def analyze_code(request: CodeAnalysisRequest):
         }
 
     except Exception as e:
-        logger.error(f"Error in analyze_code: {e}")
+        logger.error("Error in analyze_code: %s", e)
         raise HTTPException(
-            status_code=500, detail="Error analyzing code. Please try again later."
-        )
+            status_code=500,
+            detail="Error analyzing code. Please try again later."
+        ) from e
 
 
 @app.get("/api/team-analytics")
 async def get_team_analytics():
-    """Enhanced team analytics with AI insights"""
+    """Enhanced team analytics with AI insights."""
     try:
         # Simulate knowledge base stats
         knowledge_base = {
@@ -335,18 +359,19 @@ async def get_team_analytics():
 
         # Get AI insights about team performance
         if OPENAI_AVAILABLE:
-            insights_prompt = """Based on typical software engineering team metrics, provide insights about:
-            1. Team productivity trends
-            2. Code quality patterns
-            3. Knowledge sharing effectiveness
-            4. Recommendations for improvement
-            
-            Return insights in JSON format with:
-            - productivity_score (1-10)
-            - quality_score (1-10)
-            - collaboration_score (1-10)
-            - recommendations (array)
-            """
+            insights_prompt = (
+                "Based on typical software engineering team metrics, "
+                "provide insights about:\n"
+                "1. Team productivity trends\n"
+                "2. Code quality patterns\n"
+                "3. Knowledge sharing effectiveness\n"
+                "4. Recommendations for improvement\n\n"
+                "Return insights in JSON format with:\n"
+                "- productivity_score (1-10)\n"
+                "- quality_score (1-10)\n"
+                "- collaboration_score (1-10)\n"
+                "- recommendations (array)"
+            )
 
             ai_insights_response = get_ai_response(insights_prompt)
 
@@ -354,7 +379,9 @@ async def get_team_analytics():
                 if "```json" in ai_insights_response:
                     json_start = ai_insights_response.find("```json") + 7
                     json_end = ai_insights_response.find("```", json_start)
-                    json_str = ai_insights_response[json_start:json_end].strip()
+                    json_str = ai_insights_response[
+                        json_start:json_end
+                    ].strip()
                 else:
                     json_str = ai_insights_response
 
@@ -362,7 +389,7 @@ async def get_team_analytics():
                 ai_insights["ai_model"] = "GPT-4"
                 ai_insights["response_quality"] = 0.92
                 ai_insights["platform_effectiveness"] = "High"
-            except Exception:
+            except (json.JSONDecodeError, ValueError, KeyError):
                 ai_insights = {
                     "productivity_score": 8,
                     "quality_score": 7,
@@ -389,15 +416,16 @@ async def get_team_analytics():
         }
 
     except Exception as e:
-        logger.error(f"Error in team_analytics: {e}")
+        logger.error("Error in team_analytics: %s", e)
         raise HTTPException(
-            status_code=500, detail="Error getting analytics. Please try again later."
-        )
+            status_code=500,
+            detail="Error getting analytics. Please try again later."
+        ) from e
 
 
 @app.get("/api/features")
 async def get_features():
-    """List available platform features"""
+    """List available platform features."""
     return {
         "ai_capabilities": {
             "question_answering": True,
@@ -420,6 +448,108 @@ async def get_features():
     }
 
 
+@app.get("/api/me")
+async def get_me():
+    """Get current user information."""
+    return {
+        "email": "demo@aep.dev",
+        "name": "Demo User",
+        "sub": "demo-user-id",
+        "org": "org-dev",
+        "roles": ["user", "developer"]
+    }
+
+
+@app.get("/api/integrations/jira/my-issues")
+async def get_my_jira_issues():
+    """Get current user's Jira issues."""
+    return [
+        {
+            "id": "AEP-123",
+            "key": "AEP-123",
+            "summary": "Improve VS Code extension UI",
+            "status": "In Progress",
+            "assignee": "demo@aep.dev",
+            "priority": "High",
+            "type": "Task"
+        },
+        {
+            "id": "AEP-124",
+            "key": "AEP-124",
+            "summary": "Add OAuth authentication flow",
+            "status": "Done",
+            "assignee": "demo@aep.dev",
+            "priority": "Medium",
+            "type": "Story"
+        }
+    ]
+
+
+@app.post("/api/chat")
+async def chat_endpoint(request: dict):
+    """Chat endpoint for extension."""
+    message = request.get("message", "")
+    chat_type = request.get("type", "question")
+
+    # Simulate a chat response
+    return {
+        "response": (f"I received your {chat_type}: '{message}'. "
+                    "This is a demo response from the AEP backend."),
+        "type": "success",
+        "timestamp": "2025-11-09T23:40:00Z"
+    }
+
+
+@app.post("/api/agent/propose")
+async def propose_plan(request: dict):
+    """Propose a plan for a given issue."""
+    issue_key = request.get("issue_key", "")
+
+    # Simulate a plan proposal
+    return [
+        {
+            "id": 1,
+            "title": "Analyze Current UI State",
+            "description": (
+                f"Review the current implementation of {issue_key} "
+                "to understand the existing UI components and "
+                "identify areas for improvement."
+            ),
+            "type": "analysis",
+            "estimated_time": "30 minutes",
+            "status": "pending"
+        },
+        {
+            "id": 2,
+            "title": "Design New UI Components",
+            "description": ("Create modern, professional UI components using "
+                          "CSS Grid and Flexbox with proper accessibility "
+                          "features."),
+            "type": "design",
+            "estimated_time": "2 hours",
+            "status": "pending"
+        },
+        {
+            "id": 3,
+            "title": "Implement Professional Styling",
+            "description": ("Apply the new design system with consistent "
+                          "spacing, typography, and color scheme."),
+            "type": "implementation",
+            "estimated_time": "3 hours",
+            "status": "pending"
+        },
+        {
+            "id": 4,
+            "title": "Test and Validate",
+            "description": ("Test the new UI across different scenarios and "
+                          "validate accessibility compliance."),
+            "type": "testing",
+            "estimated_time": "1 hour",
+            "status": "pending"
+        }
+    ]
+
+
 if __name__ == "__main__":
     print("⚠️  DEPRECATION WARNING ⚠️")
     print("This main.py is a legacy demo application.")
@@ -433,17 +563,15 @@ if __name__ == "__main__":
     print("")
     print("Legacy demo will start in 3 seconds...")
 
-    import time
-    import uvicorn
+
 
     time.sleep(3)
 
     print("🚀 Starting Legacy Demo Application...")
     print("🤖 AI Model: GPT-4")
-    print(
-        "🔑 API Key Status:",
-        "✅ Configured" if os.getenv("OPENAI_API_KEY") else "❌ Missing",
-    )
+    API_STATUS = ("✅ Configured" if os.getenv("OPENAI_API_KEY")
+                  else "❌ Missing")
+    print("🔑 API Key Status:", API_STATUS)
     print("🌐 Server: http://localhost:8000")
     print("📖 Docs: http://localhost:8000/docs")
 

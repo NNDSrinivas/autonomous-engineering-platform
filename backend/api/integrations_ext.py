@@ -163,10 +163,10 @@ def slack_connect(
         db.execute(
             text(
                 """
-                INSERT INTO slack_connection (org_id, bot_token, team_id) 
+                INSERT INTO slack_connection (org_id, bot_token, team_id)
                 VALUES (:o,:t,:team)
-                ON CONFLICT (org_id, team_id) DO UPDATE SET 
-                    bot_token=:t, 
+                ON CONFLICT (org_id, team_id) DO UPDATE SET
+                    bot_token=:t,
                     updated_at=CURRENT_TIMESTAMP
                 """
             ),
@@ -232,11 +232,11 @@ def confluence_connect(
     db.execute(
         text(
             """
-            INSERT INTO confluence_connection (org_id, base_url, access_token, email) 
+            INSERT INTO confluence_connection (org_id, base_url, access_token, email)
             VALUES (:o,:b,:a,:e)
-            ON CONFLICT (org_id, base_url) DO UPDATE SET 
-                access_token=:a, 
-                email=:e, 
+            ON CONFLICT (org_id, base_url) DO UPDATE SET
+                access_token=:a,
+                email=:e,
                 updated_at=CURRENT_TIMESTAMP
             """
         ),

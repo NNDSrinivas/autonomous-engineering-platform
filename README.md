@@ -570,12 +570,14 @@ The **AEP Agent** provides intelligent coding assistance directly in VS Code wit
    npm run build
    ```
 
-2. **Build VS Code Extension**
+2. **Build AEP Professional Extension**
    ```bash
-   cd ../extensions/vscode
+   cd ../extensions/aep-professional
    npm install
-   npm run build
+   npm run compile
    ```
+
+> 📖 **For developers**: See [extensions/aep-professional/DEVELOPMENT.md](extensions/aep-professional/DEVELOPMENT.md) for detailed development workflow, conflict resolution, and troubleshooting.
 
 #### **Launch Extension**
 

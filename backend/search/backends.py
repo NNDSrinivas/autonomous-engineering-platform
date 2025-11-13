@@ -199,7 +199,7 @@ def _ts_rank_score(
             db.execute(
                 text(
                     f"""
-          SELECT mo.source, mo.foreign_id, 
+          SELECT mo.source, mo.foreign_id,
                  ts_rank(to_tsvector('english', mc.text), plainto_tsquery('english', :q)) AS rnk
           FROM memory_chunk mc
           JOIN memory_object mo ON mo.id = mc.object_id
@@ -262,7 +262,7 @@ def semantic_pgvector(
         db.execute(
             text(
                 f"""
-      SELECT mo.source, mo.foreign_id, mo.title, mo.url, mo.meta_json, 
+      SELECT mo.source, mo.foreign_id, mo.title, mo.url, mo.meta_json,
              mc.text, mc.seq,
              EXTRACT(EPOCH FROM mc.created_at) AS cts,
              -- pgvector <-> operator returns cosine distance in [0, 2] for normalized vectors
@@ -326,9 +326,9 @@ def semantic_json(
         db.execute(
             text(
                 f"""
-      SELECT mo.source, mo.foreign_id, mo.title, mo.url, mo.meta_json, 
+      SELECT mo.source, mo.foreign_id, mo.title, mo.url, mo.meta_json,
              mc.text, mc.seq,
-             EXTRACT(EPOCH FROM mc.created_at) AS cts, 
+             EXTRACT(EPOCH FROM mc.created_at) AS cts,
              mc.embedding
       FROM memory_chunk mc
       JOIN memory_object mo ON mo.id = mc.object_id

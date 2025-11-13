@@ -108,7 +108,7 @@ class LLMService:
     ) -> CodeAnalysis:
         """Analyze code and provide engineering insights"""
 
-        system_prompt = """You are an expert software engineer and code reviewer. 
+        system_prompt = """You are an expert software engineer and code reviewer.
         Analyze the provided code and return a structured assessment including:
         - Quality score (0.0 to 1.0)
         - Specific issues found
@@ -116,19 +116,19 @@ class LLMService:
         - Complexity analysis
         - Test recommendations
         - Security concerns if any
-        
+
         Be thorough but constructive in your analysis."""
 
         user_prompt = f"""
         Please analyze this {language} code:
-        
+
         ```{language}
         {code}
         ```
-        
+
         Context: {context.get("description", "No additional context provided")}
         Project: {context.get("project", "Unknown")}
-        
+
         Provide detailed analysis focusing on:
         1. Code quality and maintainability
         2. Performance considerations
@@ -188,12 +188,12 @@ class LLMService:
 
         user_prompt = f"""
         Generate {language} code for: {description}
-        
+
         Context:
         - Project: {context.get("project", "Unknown")}
         - Framework: {context.get("framework", "Standard")}
         - Style: {context.get("coding_style", "Standard best practices")}
-        
+
         Requirements:
         1. Follow {language} best practices
         2. Include comprehensive documentation
@@ -236,14 +236,14 @@ class LLMService:
         """Build system prompt for engineering contexts"""
 
         base_prompt = """You are an AI engineering assistant and digital coworker for software development teams.
-        
+
         Your role is to:
         1. Provide technical guidance and solutions
-        2. Help with code reviews and architecture decisions  
+        2. Help with code reviews and architecture decisions
         3. Assist with debugging and problem-solving
         4. Support team collaboration and knowledge sharing
         5. Offer best practices and industry insights
-        
+
         You have access to team context, project history, and codebase knowledge.
         Always consider:
         - Team's technical stack and preferences
@@ -251,7 +251,7 @@ class LLMService:
         - Code quality and maintainability
         - Performance and scalability
         - Security implications
-        
+
         Provide practical, actionable advice that helps the team move forward efficiently."""
 
         # Add specific context

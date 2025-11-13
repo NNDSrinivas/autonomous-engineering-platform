@@ -208,7 +208,7 @@ def context_for_task(key: str, db: Session = Depends(get_db)):
         db.execute(
             text(
                 """
-        SELECT r.repo_full_name as repo, f.path FROM gh_file f 
+        SELECT r.repo_full_name as repo, f.path FROM gh_file f
         JOIN gh_repo r ON r.id=f.repo_id
         ORDER BY f.updated DESC NULLS LAST LIMIT 20
     """

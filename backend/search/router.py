@@ -327,9 +327,9 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
                 db.execute(
                     text(
                         """
-                        INSERT INTO sync_cursor (org_id, source, cursor) 
+                        INSERT INTO sync_cursor (org_id, source, cursor)
                         VALUES (:o, 'slack', :c)
-                        ON CONFLICT (org_id, source) 
+                        ON CONFLICT (org_id, source)
                         DO UPDATE SET cursor = EXCLUDED.cursor, updated_at = CURRENT_TIMESTAMP
                         """
                     ),

@@ -1,12 +1,12 @@
 // media/panel.js
 // NAVI chat UI with:
-// - Inline NAVI fox SVG (animated)
-// - Persistent history via vscode.getState/setState
-// - Welcome message only when there is no history
-// - Enter-to-send + input cleared
-// - Header buttons wired (new chat, connectors, settings)
-// - Typing indicator while NAVI is "thinking"
-// - Model / Mode pill click events
+// - Inline fox logo animations
+// - Persistent chat (per panel) using vscode.getState/setState
+// - Welcome message only when there's no history
+// - Typing indicator + "thinking" animation
+// - Header buttons: New chat, MCP, Settings
+// - Dropdowns for Model, Mode, Attach
+// - Simple markdown-style code block rendering (``` fences)
 
 (function () {
   const vscode = acquireVsCodeApi();
@@ -14,18 +14,22 @@
 
   const root = document.getElementById('root');
 
-  // ---------- Restore any previous state ----------
+  // ---------- Restore previous state ----------
   const prevState = vscode.getState() || {};
   /** @type {{role:'user'|'bot',text:string}[]} */
-  let messagesRaw = Array.isArray(prevState.messages) ? prevState.messages : [];
+  let messages = Array.isArray(prevState.messages)
+    ? prevState.messages
+      .filter(
+        (m) =>
+          m &&
+          (m.role === 'user' || m.role === 'bot') &&
+          typeof m.text === 'string' &&
+          m.text.trim().length > 0,
+      )
+      .map((m) => ({ role: m.role, text: m.text.trim() }))
+    : [];
 
-  // Filter out corrupted / legacy entries (prevents "undefined" bubbles)
-  let messages = messagesRaw
-    .filter((m) => m && (m.role === 'user' || m.role === 'bot') && typeof m.text === 'string')
-    .map((m) => ({ role: m.role, text: m.text.trim() }))
-    .filter((m) => m.text.length > 0);
-
-  // ---------- Layout skeleton ----------
+  // ---------- Layout ----------
   root.innerHTML = `
     <div class="navi-shell">
       <header class="navi-header">
@@ -39,13 +43,13 @@
           </div>
         </div>
         <div class="navi-header-actions">
-          <button class="navi-icon-btn" data-action="newChat" title="New chat">
-            <span>⊕</span>
+          <button class="navi-icon-btn" data-action="newChat" title="Start a fresh chat">
+            <span>＋</span>
           </button>
-          <button class="navi-icon-btn" data-action="connectors" title="Connect repos & tools">
+          <button class="navi-icon-btn" data-action="mcp" title="MCP servers & connectors">
             <span>🔌</span>
           </button>
-          <button class="navi-icon-btn" data-action="settings" title="Settings">
+          <button class="navi-icon-btn" data-action="settings" title="Settings & Account">
             <span>⚙︎</span>
           </button>
         </div>
@@ -79,8 +83,10 @@
     </div>
   `;
 
-  // ---------- Inline NAVI fox SVG (your final version) ----------
+  // ---------- Inline NAVI fox SVG and animation control ----------
   const logoHost = root.querySelector('.navi-logo-inline');
+  let logoSvg = null;
+
   if (logoHost) {
     logoHost.innerHTML = `
 <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-label="NAVI fox">
@@ -132,19 +138,139 @@
     <rect x="20.3" y="26.5" width="3.4" height="1.2" rx=".6" fill="#0F172A" opacity=".75"/>
   </g>
 </svg>`;
+    logoSvg = logoHost.querySelector('svg');
+  }
+
+  function setThinking(on) {
+    if (!logoSvg) return;
+    if (on) logoSvg.classList.add('thinking');
+    else logoSvg.classList.remove('thinking');
+  }
+
+  function celebrateOnce() {
+    if (!logoSvg) return;
+    logoSvg.classList.add('navi-logo-celebrate');
+    setTimeout(() => logoSvg && logoSvg.classList.remove('navi-logo-celebrate'), 600);
   }
 
   const messagesEl = document.getElementById('navi-messages');
   const formEl = document.getElementById('navi-form');
   const inputEl = document.getElementById('navi-input');
+  const attachBtn = document.getElementById('navi-attach');
 
   let typingEl = null;
+
+  function showTyping() {
+    if (typingEl) return;
+    typingEl = document.createElement('div');
+    typingEl.className = 'navi-msg-row navi-msg-row-bot';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'navi-bubble navi-bubble-bot navi-bubble-typing';
+    bubble.innerHTML = `
+      <span class="navi-typing-label">NAVI is thinking</span>
+      <span class="navi-typing-dots">
+        <span></span><span></span><span></span>
+      </span>
+    `;
+
+    typingEl.appendChild(bubble);
+    messagesEl.appendChild(typingEl);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function hideTyping() {
+    if (!typingEl) return;
+    typingEl.remove();
+    typingEl = null;
+  }
 
   function persist() {
     vscode.setState({ messages });
   }
 
-  // ---------- Rendering helpers ----------
+  // ---------- Render helpers ----------
+  function renderTextSegments(text, container) {
+    const lines = String(text).split('\n');
+    lines.forEach((line, idx) => {
+      if (line.startsWith('> ')) {
+        const quote = document.createElement('div');
+        quote.className = 'navi-line-quote';
+        quote.textContent = line.slice(2);
+        container.appendChild(quote);
+      } else if (line.trim().length > 0) {
+        const p = document.createElement('div');
+        p.textContent = line;
+        container.appendChild(p);
+      }
+      if (idx < lines.length - 1) {
+        container.appendChild(document.createElement('br'));
+      }
+    });
+  }
+
+  // Support markdown-style ``` fenced blocks + heuristics for raw code / JSON
+  function renderMessageContent(text, container) {
+    const raw = String(text);
+
+    // 1) Skip heuristics for the temporary demo echo message
+    if (raw.startsWith('I received your message:')) {
+      renderTextSegments(raw, container);
+      return;
+    }
+
+    // 2) Heuristic: looks like CSS/JS (braces + >=2 semicolons)
+    const looksLikeCssOrJs =
+      raw.includes('{') &&
+      raw.includes('}') &&
+      (raw.match(/;/g) || []).length >= 2;
+
+    // 3) Heuristic: looks like JSON (braces + key: value with quotes)
+    const looksLikeJson =
+      raw.includes('{') &&
+      raw.includes('}') &&
+      /"[^"]*"\s*:/.test(raw);
+
+    if (!raw.includes('```') && (looksLikeCssOrJs || looksLikeJson)) {
+      const pre = document.createElement('pre');
+      pre.className = 'navi-code-block';
+      const codeEl = document.createElement('code');
+      codeEl.textContent = raw.trim();
+      pre.appendChild(codeEl);
+      container.appendChild(pre);
+      return;
+    }
+
+    // 4) Standard markdown-style ``` fenced blocks
+    if (!raw.includes('```')) {
+      renderTextSegments(raw, container);
+      return;
+    }
+
+    const segments = raw.split('```');
+    segments.forEach((seg, index) => {
+      if (index % 2 === 1) {
+        // code segment: optional first line is language
+        let codeText = seg;
+        const firstNewline = seg.indexOf('\n');
+        if (firstNewline !== -1) {
+          const maybeLang = seg.slice(0, firstNewline).trim();
+          if (/^[a-zA-Z0-9+-_]+$/.test(maybeLang)) {
+            codeText = seg.slice(firstNewline + 1);
+          }
+        }
+        const pre = document.createElement('pre');
+        pre.className = 'navi-code-block';
+        const codeEl = document.createElement('code');
+        codeEl.textContent = codeText.trim();
+        pre.appendChild(codeEl);
+        container.appendChild(pre);
+      } else if (seg.trim().length > 0) {
+        renderTextSegments(seg, container);
+      }
+    });
+  }
+
   function renderMessage(msg) {
     if (!messagesEl) return;
     const { role, text } = msg;
@@ -157,22 +283,7 @@
     bubble.className =
       role === 'user' ? 'navi-bubble navi-bubble-user' : 'navi-bubble navi-bubble-bot';
 
-    const lines = String(text).split('\n');
-    lines.forEach((line, idx) => {
-      if (line.startsWith('> ')) {
-        const quote = document.createElement('div');
-        quote.className = 'navi-line-quote';
-        quote.textContent = line.slice(2);
-        bubble.appendChild(quote);
-      } else {
-        const p = document.createElement('div');
-        p.textContent = line;
-        bubble.appendChild(p);
-      }
-      if (idx < lines.length - 1) {
-        bubble.appendChild(document.createElement('br'));
-      }
-    });
+    renderMessageContent(text, bubble);
 
     row.appendChild(bubble);
     messagesEl.appendChild(row);
@@ -191,9 +302,7 @@
     const msg = { role, text: cleanText };
     messages.push(msg);
     renderMessage(msg);
-    if (messagesEl) {
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }
+    if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
     persist();
   }
 
@@ -233,6 +342,7 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
     typingEl = row;
+    setThinking(true);
   }
 
   function hideTyping() {
@@ -240,12 +350,13 @@
       typingEl.parentElement.removeChild(typingEl);
     }
     typingEl = null;
+    setThinking(false);
   }
 
-  // ---------- Initial render from restored state ----------
+  // ---------- Initial render ----------
   renderAll();
 
-  // ---------- Form submit / keyboard ----------
+  // ---------- Form / keyboard ----------
   formEl.addEventListener('submit', (e) => {
     e.preventDefault();
     const text = inputEl.value.trim();
@@ -253,7 +364,6 @@
 
     addMessage('user', text);
     vscode.postMessage({ type: 'sendMessage', text });
-    showTyping();
 
     inputEl.value = '';
     inputEl.focus();
@@ -266,6 +376,103 @@
     }
   });
 
+
+
+  // ---------- Dropdown infra (shared for model/mode/attach) ----------
+  const MODEL_OPTIONS = ['ChatGPT 5.1', 'gpt-4.2', 'o3-mini'];
+  const MODE_OPTIONS = ['Agent (full access)', 'Safe (read-only)', 'Audit (explain only)'];
+  const ATTACH_OPTIONS = [
+    { id: 'file', label: 'File from workspace' },
+    { id: 'snippet', label: 'Code snippet' },
+    { id: 'screenshot', label: 'Screenshot / image' },
+    { id: 'link', label: 'Repo / URL' },
+  ];
+
+  const modelPill = document.getElementById('navi-model-pill');
+  const modePill = document.getElementById('navi-mode-pill');
+
+  let openDropdown = null;
+  /** @type {'model'|'mode'|'attach'|null} */
+  let openDropdownKind = null;
+
+  function closeDropdown() {
+    if (openDropdown && openDropdown.parentElement) {
+      openDropdown.parentElement.removeChild(openDropdown);
+    }
+    openDropdown = null;
+    openDropdownKind = null;
+  }
+
+  function createDropdown(kind, anchorEl) {
+    closeDropdown();
+
+    const menu = document.createElement('div');
+    menu.className = 'navi-dropdown';
+    menu.style.position = 'fixed';
+
+    let options;
+    if (kind === 'model') options = MODEL_OPTIONS.map((v) => ({ id: v, label: v }));
+    else if (kind === 'mode') options = MODE_OPTIONS.map((v) => ({ id: v, label: v }));
+    else options = ATTACH_OPTIONS;
+
+    options.forEach((opt) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'navi-dropdown-item';
+      item.textContent = opt.label;
+      item.addEventListener('click', () => {
+        closeDropdown();
+        if (kind === 'model') {
+          if (modelPill) modelPill.textContent = `Model: ${opt.label}`;
+          vscode.postMessage({ type: 'modelChanged', value: opt.label });
+        } else if (kind === 'mode') {
+          if (modePill) modePill.textContent = `Mode: ${opt.label}`;
+          vscode.postMessage({ type: 'modeChanged', value: opt.label });
+        } else {
+          vscode.postMessage({ type: 'attachTypeSelected', value: opt.id });
+        }
+      });
+      menu.appendChild(item);
+    });
+
+    document.body.appendChild(menu);
+
+    const pillRect = anchorEl.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+
+    let left = pillRect.left;
+    if (left + menuRect.width > window.innerWidth - 8) {
+      left = window.innerWidth - menuRect.width - 8;
+    }
+
+    // Prefer opening upwards so it doesn't get cut off
+    let top = pillRect.top - menuRect.height - 8;
+    if (top < 8) {
+      top = pillRect.bottom + 8;
+      if (top + menuRect.height > window.innerHeight - 8) {
+        top = window.innerHeight - menuRect.height - 8;
+      }
+    }
+
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+
+    openDropdown = menu;
+    openDropdownKind = kind;
+  }
+
+  // ---------- Attach button dropdown ----------
+  if (attachBtn) {
+    attachBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (openDropdown && openDropdownKind === 'attach') {
+        closeDropdown();
+      } else {
+        createDropdown('attach', attachBtn);
+      }
+    });
+  }
+
   // ---------- Header buttons ----------
   root.querySelectorAll('.navi-icon-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -274,28 +481,32 @@
 
       if (action === 'newChat') {
         vscode.postMessage({ type: 'newChat' });
-      } else if (action === 'connectors') {
-        vscode.postMessage({ type: 'openConnectors' });
+      } else if (action === 'mcp') {
+        vscode.postMessage({ type: 'openMcp' });
       } else if (action === 'settings') {
         vscode.postMessage({ type: 'openSettings' });
       }
     });
   });
 
-  // ---------- Model / Mode pills ----------
-  const modelPill = document.getElementById('navi-model-pill');
-  const modePill = document.getElementById('navi-mode-pill');
-
+  // Model / Mode dropdowns (one-click switch between them)
   if (modelPill) {
-    modelPill.addEventListener('click', () => {
-      vscode.postMessage({ type: 'chooseModel' });
+    modelPill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      createDropdown('model', modelPill);
     });
   }
+
   if (modePill) {
-    modePill.addEventListener('click', () => {
-      vscode.postMessage({ type: 'chooseMode' });
+    modePill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      createDropdown('mode', modePill);
     });
   }
+
+  document.addEventListener('click', () => {
+    closeDropdown();
+  });
 
   // ---------- Handle messages from extension ----------
   window.addEventListener('message', (event) => {
@@ -312,12 +523,13 @@
       case 'clearChat':
         hideTyping();
         clearChat();
+        celebrateOnce();
         break;
-      case 'updateModelLabel':
-        if (modelPill && typeof msg.label === 'string') modelPill.textContent = msg.label;
+      case 'showTyping':
+        showTyping();
         break;
-      case 'updateModeLabel':
-        if (modePill && typeof msg.label === 'string') modePill.textContent = msg.label;
+      case 'hideTyping':
+        hideTyping();
         break;
       default:
         console.log('[AEP] Unknown message in webview:', msg);

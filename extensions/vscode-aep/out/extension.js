@@ -30,12 +30,7 @@ class NaviWebviewProvider {
                     if (!text)
                         return;
                     console.log('[AEP] User message:', text);
-                    setTimeout(() => {
-                        webviewView.webview.postMessage({
-                            type: 'botMessage',
-                            text: `I received your message: "${text}". I'm currently in demo mode - backend integration coming soon!`,
-                        });
-                    }, 500);
+                    this.callNaviBackend(text, webviewView);
                     break;
                 }
                 case 'newChat': {
@@ -46,54 +41,83 @@ class NaviWebviewProvider {
                     });
                     break;
                 }
-                case 'openConnectors': {
-                    vscode.window.showInformationMessage('NAVI connectors: repo and tool integrations coming soon!');
+                case 'openMcp': {
+                    vscode.window.showInformationMessage('MCP servers & connectors configuration will live here (coming soon).');
                     break;
                 }
                 case 'openSettings': {
                     vscode.window.showInformationMessage('NAVI settings: configuration panel coming soon!');
                     break;
                 }
-                case 'chooseModel': {
-                    const models = ['ChatGPT 5.1', 'gpt-4.2', 'o3-mini'];
-                    const picked = await vscode.window.showQuickPick(models, {
-                        title: 'Select NAVI model',
-                        placeHolder: 'Choose which model NAVI should use',
+                case 'modelChanged': {
+                    const label = String(msg.value || '').trim();
+                    if (!label)
+                        return;
+                    webviewView.webview.postMessage({
+                        type: 'botMessage',
+                        text: `Switched model to **${label}** (demo-only selector for now).`,
                     });
-                    if (picked) {
-                        webviewView.webview.postMessage({
-                            type: 'updateModelLabel',
-                            label: `Model: ${picked}`,
-                        });
-                        webviewView.webview.postMessage({
-                            type: 'botMessage',
-                            text: `Switched model to **${picked}** (demo-only selector for now).`,
-                        });
-                    }
                     break;
                 }
-                case 'chooseMode': {
-                    const modes = ['Agent (full access)', 'Safe (read-only)', 'Audit (explain only)'];
-                    const picked = await vscode.window.showQuickPick(modes, {
-                        title: 'Select NAVI mode',
-                        placeHolder: 'Choose how powerful NAVI should be',
+                case 'modeChanged': {
+                    const label = String(msg.value || '').trim();
+                    if (!label)
+                        return;
+                    webviewView.webview.postMessage({
+                        type: 'botMessage',
+                        text: `Mode updated to **${label}** (demo-only for now).`,
                     });
-                    if (picked) {
-                        webviewView.webview.postMessage({
-                            type: 'updateModeLabel',
-                            label: `Mode: ${picked}`,
-                        });
-                        webviewView.webview.postMessage({
-                            type: 'botMessage',
-                            text: `Mode updated to **${picked}** (demo-only for now).`,
-                        });
-                    }
+                    break;
+                }
+                case 'attachTypeSelected': {
+                    const type = String(msg.value || '').trim();
+                    if (!type)
+                        return;
+                    vscode.window.showInformationMessage(`Attachment flow for "${type}" is not wired yet – this will open the real picker later.`);
                     break;
                 }
                 default:
                     console.warn('[AEP] Unknown message type:', msg?.type);
             }
         });
+    }
+    async callNaviBackend(message, webviewView) {
+        try {
+            // Show typing indicator
+            webviewView.webview.postMessage({ type: 'showTyping' });
+            // Get backend URL from configuration
+            const config = vscode.workspace.getConfiguration('aep');
+            const backendUrl = config.get('naviBackendUrl', 'http://localhost:8000');
+            console.log('[AEP] Calling NAVI backend:', backendUrl);
+            // Make HTTP request to backend
+            const response = await fetch(`${backendUrl}/api/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message }),
+            });
+            if (!response.ok) {
+                throw new Error(`Backend responded with ${response.status}: ${response.statusText}`);
+            }
+            const data = await response.json();
+            const reply = data.reply || 'No response received from backend';
+            // Hide typing indicator and send response
+            webviewView.webview.postMessage({ type: 'hideTyping' });
+            webviewView.webview.postMessage({
+                type: 'botMessage',
+                text: reply,
+            });
+        }
+        catch (error) {
+            console.error('[AEP] Backend call failed:', error);
+            // Hide typing indicator and send error
+            webviewView.webview.postMessage({ type: 'hideTyping' });
+            webviewView.webview.postMessage({
+                type: 'botMessage',
+                text: `⚠️ **Backend Error**: ${error instanceof Error ? error.message : 'Unknown error'}\n\nMake sure your NAVI backend is running at the configured URL (check VS Code Settings → AEP → NAVI Backend URL).`,
+            });
+        }
     }
 }
 NaviWebviewProvider.viewType = 'aep.chatView';

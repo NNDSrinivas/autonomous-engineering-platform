@@ -12,6 +12,16 @@
   "main": "./out/extension.js",
   "icon": "media/aep-icon-256.png",
   "contributes": {
+    "configuration": {
+      "title": "NAVI Assistant",
+      "properties": {
+        "aep.naviBackendUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "Backend URL for NAVI Assistant API calls"
+        }
+      }
+    },
     "commands": [
       {
         "command": "aep.openNavi",
@@ -23,7 +33,7 @@
         {
           "id": "aep",
           "title": "AEP",
-          "icon": "media/mascot-navi-fox.svg"
+          "icon": "media/aep-activitybar.svg"
         }
       ]
     },
@@ -42,7 +52,12 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "demo-backend": "node demo-backend.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "cors": "^2.8.5"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

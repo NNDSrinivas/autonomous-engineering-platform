@@ -1,0 +1,120 @@
+{
+    "name": "aep-professional",
+    "displayName": "AEP Professional (Navra Labs)",
+    "description": "Your AI engineering partner in VS Code. Plans, context packs, MCP tools, Jira/GitHub/Confluence integrations and safe, step-by-step coding.",
+    "version": "4.0.0",
+    "publisher": "navralabs",
+    "icon": "media/marketplace-icon.png",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Other"
+    ],
+    "keywords": [
+        "ai",
+        "autonomous",
+        "engineering",
+        "navra",
+        "aep",
+        "assistant"
+    ],
+    "galleryBanner": {
+        "color": "#0b1020",
+        "theme": "dark"
+    },
+    "main": "./out/extension.js",
+    "activationEvents": [
+        "onView:aep.welcome"
+    ],
+    "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "aep",
+                    "title": "AEP",
+                    "icon": "media/aep-activitybar.svg"
+                }
+            ]
+        },
+        "views": {
+            "aep": [
+                {
+                    "id": "aep.welcome",
+                    "name": "AEP Professional",
+                    "icon": "media/aep-activitybar.svg"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "aepPro.openHome",
+                "title": "AEP: Open Panel"
+            },
+            {
+                "command": "aep.refresh",
+                "title": "AEP: Refresh"
+            },
+            {
+                "command": "aep.signIn",
+                "title": "AEP: Sign In"
+            },
+            {
+                "command": "aep.signOut",
+                "title": "AEP: Sign Out"
+            },
+            {
+                "command": "aep.openSettings",
+                "title": "AEP: Open Settings"
+            },
+            {
+                "command": "aep.changeModel",
+                "title": "AEP: Change Model"
+            },
+            {
+                "command": "aep.addMcpServer",
+                "title": "AEP: Add MCP Server"
+            },
+            {
+                "command": "aep.removeMcpServer",
+                "title": "AEP: Remove MCP Server"
+            },
+            {
+                "command": "aep.newPlan",
+                "title": "AEP: New Plan"
+            }
+        ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "aepPro.openHome",
+                    "when": "view == aep.welcome",
+                    "group": "navigation"
+                },
+                {
+                    "command": "aep.refresh",
+                    "when": "view == aep.welcome",
+                    "group": "navigation@1"
+                }
+            ]
+        }
+    },
+    "scripts": {
+        "compile": "tsc -p ./",
+        "watch": "tsc -w -p ./",
+        "vscode:prepublish": "npm run compile",
+        "package": "vsce package",
+        "publish": "vsce publish"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.85.0",
+        "typescript": "^5.6.3",
+        "vsce": "^2.15.0"
+    },
+    "license": "MIT",
+    "homepage": "https://aep.navralabs.com",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/navralabs/aep-professional"
+    }
+}

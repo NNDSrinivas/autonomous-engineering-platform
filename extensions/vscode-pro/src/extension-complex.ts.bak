@@ -1,0 +1,219 @@
+import * as vscode from 'vscode';
+
+export function activate(context: vscode.ExtensionContext) {
+  console.log('AEP: Extension activating...');
+  
+  const provider = new AepWelcomeViewProvider(context.extensionUri);
+
+  // Register provider for the EXACT id from package.json
+  console.log('AEP: Registering webview view provider for aep.welcome');
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('aep.welcome', provider, {
+      webviewOptions: { retainContextWhenHidden: true }
+    })
+  );
+  
+  console.log('AEP: Extension activated successfully');
+
+  // Command to bring the AEP container and view to front
+  context.subscriptions.push(
+    vscode.commands.registerCommand('aepPro.openHome', async () => {
+      await vscode.commands.executeCommand('workbench.view.extension.aep');
+      await vscode.commands.executeCommand('aep.welcome.focus');
+    })
+  );
+
+  // Optional: manual refresh
+  context.subscriptions.push(
+    vscode.commands.registerCommand('aep.refresh', () => provider.refresh())
+  );
+
+  // Additional commands for functionality
+  context.subscriptions.push(
+    vscode.commands.registerCommand('aep.signIn', async () => {
+      vscode.window.showInformationMessage('Sign In coming soon!');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('aep.newPlan', async () => {
+      vscode.window.showInformationMessage('New Plan coming soon!');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('aep.addMcpServer', async () => {
+      const name = await vscode.window.showInputBox({
+        prompt: 'Enter MCP server name',
+        placeHolder: 'e.g. filesystem, postgres, etc.'
+      });
+      if (name) {
+        vscode.window.showInformationMessage(`MCP Server "${name}" added!`);
+        provider.refresh();
+      }
+    })
+  );
+}
+
+export function deactivate() { }
+
+class AepWelcomeViewProvider implements vscode.WebviewViewProvider {
+  private _view?: vscode.WebviewView;
+
+  constructor(private readonly _extUri: vscode.Uri) { }
+
+  resolveWebviewView(webviewView: vscode.WebviewView) {
+    console.log('AEP: resolveWebviewView called!');
+    this._view = webviewView;
+
+    const webview = webviewView.webview;
+    webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this._extUri]
+    };
+
+    webview.html = this.html(webview);
+    webview.onDidReceiveMessage((msg) => {
+      switch (msg.type) {
+        case 'ping':
+          webview.postMessage({ type: 'pong', when: new Date().toISOString(), text: msg.text });
+          break;
+        case 'signIn':
+          vscode.commands.executeCommand('aep.signIn');
+          break;
+        case 'newPlan':
+          vscode.commands.executeCommand('aep.newPlan');
+          break;
+        case 'addMcp':
+          vscode.commands.executeCommand('aep.addMcpServer');
+          break;
+      }
+    });
+  }
+
+  refresh() {
+    if (this._view) this._view.webview.html = this.html(this._view.webview);
+  }
+
+  private html(webview: vscode.Webview): string {
+    const nonce = getNonce();
+
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AEP Professional</title>
+  <style>
+    body { margin: 0; padding: 16px; font-family: var(--vscode-font-family); background: var(--vscode-editor-background); color: var(--vscode-foreground); font-size: 13px; }
+    .aep-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--vscode-widget-border); }
+    .brand { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: linear-gradient(45deg, #0078d4, #8b5cf6); }
+    .sub { opacity: 0.7; font-weight: normal; }
+    .actions { display: flex; gap: 8px; }
+    .pill { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 6px 12px; border-radius: 12px; cursor: pointer; font-size: 11px; font-weight: 500; }
+    .pill:hover { background: var(--vscode-button-hoverBackground); }
+    .pill.solid { background: #0078d4; color: white; }
+    .pill.solid:hover { background: #005a9e; }
+    .card { margin-bottom: 16px; padding: 16px; background: var(--vscode-editor-background); border: 1px solid var(--vscode-widget-border); border-radius: 8px; }
+    .card h3 { margin: 0 0 12px 0; font-size: 14px; font-weight: 600; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .input { flex: 1; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); padding: 8px 12px; border-radius: 4px; font-size: 13px; }
+    .btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .btn:hover { background: var(--vscode-button-hoverBackground); }
+    .btn.ghost { background: transparent; color: var(--vscode-button-secondaryForeground); border: 1px solid var(--vscode-button-border); }
+    .log { min-height: 80px; max-height: 200px; overflow-y: auto; padding: 12px; background: var(--vscode-editor-background); border: 1px solid var(--vscode-widget-border); border-radius: 6px; margin-top: 12px; font-size: 12px; }
+    .log.empty { display: flex; align-items: center; justify-content: center; color: var(--vscode-descriptionForeground); font-style: italic; }
+    .bubble { margin: 6px 0; padding: 8px 12px; background: var(--vscode-button-secondaryBackground); border-radius: 8px; }
+    .bubble.reply { background: rgba(0, 120, 212, 0.1); border-left: 3px solid #0078d4; }
+  </style>
+</head>
+<body>
+  <header class="aep-header">
+    <div class="brand">
+      <span class="dot"></span>
+      <strong>AEP</strong>
+      <span class="sub"> · Navra Labs</span>
+    </div>
+    <div class="actions">
+      <button class="pill" onclick="signIn()">Settings</button>
+      <button class="pill solid" onclick="newPlan()">New Plan</button>
+    </div>
+  </header>
+
+  <section class="card">
+    <h3>AEP Chat</h3>
+    <div class="row">
+      <input id="msg" class="input" placeholder="Ask AEP anything about your code…" />
+      <button id="send" class="btn">Send</button>
+      <button id="clear" class="btn ghost">Clear</button>
+    </div>
+    <div id="log" class="log empty">No messages yet. Start a conversation.</div>
+  </section>
+
+  <section class="card">
+    <h3>Quick Actions</h3>
+    <button class="pill">Review Code</button>
+    <button class="pill">Debug Issue</button>
+    <button class="pill" onclick="addMcp()">Add MCP Server</button>
+  </section>
+
+  <script nonce="${nonce}">
+    const vscode = acquireVsCodeApi();
+    const msg = document.getElementById('msg');
+    const log = document.getElementById('log');
+    
+    document.getElementById('send').addEventListener('click', () => {
+      const text = msg.value.trim();
+      if (!text) return;
+      if (log.classList.contains('empty')) { 
+        log.classList.remove('empty'); 
+        log.textContent = ''; 
+      }
+      const me = document.createElement('div'); 
+      me.className = 'bubble'; 
+      me.textContent = 'You: ' + text;
+      log.appendChild(me);
+      vscode.postMessage({ type: 'ping', text });
+      msg.value = '';
+      log.scrollTop = log.scrollHeight;
+    });
+    
+    document.getElementById('clear').addEventListener('click', () => { 
+      log.innerHTML = 'No messages yet. Start a conversation.'; 
+      log.classList.add('empty'); 
+    });
+    
+    window.addEventListener('message', e => {
+      if (e.data?.type === 'pong') {
+        if (log.classList.contains('empty')) {
+          log.classList.remove('empty');
+          log.textContent = '';
+        }
+        const a = document.createElement('div'); 
+        a.className = 'bubble reply'; 
+        a.textContent = 'AEP: Got "' + e.data.text + '" at ' + e.data.when;
+        log.appendChild(a);
+        log.scrollTop = log.scrollHeight;
+      }
+    });
+
+    function signIn() { vscode.postMessage({ type: 'signIn' }); }
+    function newPlan() { vscode.postMessage({ type: 'newPlan' }); }
+    function addMcp() { vscode.postMessage({ type: 'addMcp' }); }
+
+    msg.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') document.getElementById('send').click();
+    });
+  </script>
+</body>
+</html>`;
+  }
+}
+
+function getNonce() {
+  let s = '', chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (let i = 0; i < 32; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}

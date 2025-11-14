@@ -1,0 +1,852 @@
+/* =================================================================
+   AEP Professional Aurora Interface
+   Design Language: Violet→Teal gradients, premium microinteractions
+   ================================================================= */
+
+:root {
+    --aep-violet: #8b5cf6;
+    --aep-teal: #14b8a6;
+    --aep-purple-deep: #5b21b6;
+    --aep-cyan: #06b6d4;
+
+    --aep-gray-50: #f8fafc;
+    --aep-gray-100: #f1f5f9;
+    --aep-gray-200: #e2e8f0;
+    --aep-gray-300: #cbd5e1;
+    --aep-gray-600: #475569;
+    --aep-gray-700: #334155;
+    --aep-gray-800: #1e293b;
+    --aep-gray-900: #0f172a;
+
+    --aep-radius: 8px;
+    --aep-radius-lg: 12px;
+    --aep-shadow: 0 1px 3px rgba(0, 0, 0, .12), 0 1px 2px rgba(0, 0, 0, .24);
+    --aep-shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, .1), 0 2px 4px -1px rgba(0, 0, 0, .06);
+    --aep-shadow-xl: 0 10px 15px -3px rgba(0, 0, 0, .1), 0 4px 6px -2px rgba(0, 0, 0, .05);
+
+    --aep-gradient-primary: linear-gradient(135deg, var(--aep-violet) 0%, var(--aep-teal) 100%);
+    --aep-gradient-aurora: linear-gradient(135deg, #8b5cf6 0%, #06b6d4 50%, #14b8a6 100%);
+    --aep-gradient-hover: linear-gradient(135deg, #a78bfa 0%, #22d3ee 100%);
+}
+
+/* Dark theme support */
+body.vscode-dark {
+    --aep-bg: var(--aep-gray-900);
+    --aep-bg-card: var(--aep-gray-800);
+    --aep-text: var(--aep-gray-100);
+    --aep-text-muted: var(--aep-gray-300);
+    --aep-border: var(--aep-gray-700);
+}
+
+body.vscode-light {
+    --aep-bg: var(--aep-gray-50);
+    --aep-bg-card: white;
+    --aep-text: var(--aep-gray-900);
+    --aep-text-muted: var(--aep-gray-600);
+    --aep-border: var(--aep-gray-200);
+}
+
+/* Reset & base */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.aep {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    background: var(--aep-bg);
+    color: var(--aep-text);
+    overflow-x: hidden;
+}
+
+.aep button {
+    font: inherit;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-radius: var(--aep-radius);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.aep input,
+.aep select {
+    font: inherit;
+    background: var(--aep-bg-card);
+    color: var(--aep-text);
+    border: 1px solid var(--aep-border);
+    border-radius: var(--aep-radius);
+    padding: 8px 12px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.aep input:focus,
+.aep select:focus {
+    outline: none;
+    border-color: var(--aep-violet);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+/* =================================================================
+   Aurora Bar - Premium header with gradient glow
+   ================================================================= */
+.aurora {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--aep-gradient-aurora);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 56px;
+    overflow: hidden;
+    position: relative;
+}
+
+.aurora::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--aep-gradient-aurora);
+    opacity: 0.9;
+    z-index: -2;
+}
+
+.aurora .glow {
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+    animation: aurora-pulse 4s ease-in-out infinite;
+    pointer-events: none;
+    z-index: -1;
+}
+
+@keyframes aurora-pulse {
+
+    0%,
+    100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.1;
+        transform: scale(1.1);
+    }
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    color: white;
+}
+
+.brand .mark {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    filter: brightness(0) invert(1);
+}
+
+.brand .titles {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.brand .sep {
+    opacity: 0.7;
+    font-weight: 300;
+}
+
+.rail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+/* Button variants in Aurora bar */
+.aurora .chip {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.aurora .chip:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.aurora .primary {
+    background: white;
+    color: var(--aep-purple-deep);
+    padding: 10px 16px;
+    font-weight: 600;
+    box-shadow: var(--aep-shadow-lg);
+}
+
+.aurora .primary:hover {
+    background: var(--aep-gray-50);
+    transform: translateY(-2px);
+    box-shadow: var(--aep-shadow-xl);
+}
+
+.aurora .primary.xl {
+    padding: 12px 20px;
+    font-size: 14px;
+}
+
+.aurora .avatar {
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    color: white;
+    font-weight: 600;
+    font-size: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.aurora .avatar:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.aurora .icon {
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border-radius: 50%;
+    font-size: 14px;
+}
+
+.aurora .icon:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* =================================================================
+   Hero Section - Professional welcome area
+   ================================================================= */
+.hero {
+    padding: 32px 16px;
+    text-align: center;
+    background: linear-gradient(180deg, var(--aep-bg) 0%, var(--aep-bg-card) 100%);
+}
+
+.hero-main h1 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    background: var(--aep-gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.hero-main p {
+    color: var(--aep-text-muted);
+    font-size: 14px;
+    margin-bottom: 24px;
+    max-width: 300px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.cta {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.cta .primary {
+    background: var(--aep-gradient-primary);
+    color: white;
+    padding: 12px 20px;
+    font-weight: 600;
+    box-shadow: var(--aep-shadow);
+}
+
+.cta .primary:hover {
+    background: var(--aep-gradient-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--aep-shadow-lg);
+}
+
+.cta .ghost {
+    color: var(--aep-text-muted);
+    padding: 12px 20px;
+    border: 1px solid var(--aep-border);
+}
+
+.cta .ghost:hover {
+    color: var(--aep-text);
+    border-color: var(--aep-violet);
+    background: rgba(139, 92, 246, 0.05);
+}
+
+.inline-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+    font-size: 12px;
+}
+
+.inline-controls label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--aep-text-muted);
+}
+
+.inline-controls select {
+    min-width: 140px;
+}
+
+.status {
+    color: var(--aep-text-muted);
+    font-size: 11px;
+}
+
+/* =================================================================
+   Connection Status - Service integration display
+   ================================================================= */
+.connections {
+    padding: 16px;
+    background: var(--aep-bg-card);
+    border-top: 1px solid var(--aep-border);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.conn-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 120px;
+}
+
+.conn-item .label {
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--aep-text-muted);
+}
+
+.conn-item .status {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.conn-item .status.connected {
+    color: var(--aep-teal);
+}
+
+.conn-item .status.disconnected {
+    color: var(--aep-text-muted);
+}
+
+.conn-item button {
+    font-size: 11px;
+    padding: 4px 8px;
+    color: var(--aep-violet);
+    border: 1px solid var(--aep-violet);
+}
+
+.conn-item button:hover {
+    background: var(--aep-violet);
+    color: white;
+}
+
+.refresh-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--aep-bg);
+    color: var(--aep-text-muted);
+    border: 1px solid var(--aep-border);
+    margin-left: auto;
+}
+
+.refresh-btn:hover {
+    color: var(--aep-violet);
+    border-color: var(--aep-violet);
+    transform: rotate(90deg);
+}
+
+/* =================================================================
+   Feed Grid - Live work display
+   ================================================================= */
+.feed-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 12px;
+}
+
+@media (max-width: 400px) {
+    .feed-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.feed-card {
+    background: var(--aep-bg);
+    border: 1px solid var(--aep-border);
+    border-radius: var(--aep-radius);
+    padding: 12px;
+}
+
+.feed-card h4 {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--aep-text-muted);
+}
+
+.feed-items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.feed-items li {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--aep-border);
+    font-size: 12px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.feed-items li:last-child {
+    border-bottom: none;
+}
+
+.feed-items li.empty {
+    color: var(--aep-text-muted);
+    font-style: italic;
+    justify-content: center;
+}
+
+.feed-items a {
+    color: var(--aep-violet);
+    text-decoration: none;
+    font-weight: 500;
+    font-family: 'SF Mono', Monaco, Consolas, monospace;
+}
+
+.feed-items a:hover {
+    text-decoration: underline;
+}
+
+.feed-items em {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--aep-text-muted);
+    background: var(--aep-bg-card);
+    padding: 2px 6px;
+    border-radius: 10px;
+}
+
+/* =================================================================
+   Panel & Accordion Sections
+   ================================================================= */
+.panel {
+    background: var(--aep-bg-card);
+    border: 1px solid var(--aep-border);
+    border-radius: var(--aep-radius);
+    margin: 16px;
+}
+
+.panel details {
+    border: none;
+}
+
+.panel summary {
+    padding: 16px;
+    cursor: pointer;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+    border-bottom: 1px solid transparent;
+}
+
+.panel details[open] summary {
+    border-bottom-color: var(--aep-border);
+}
+
+.panel summary:hover {
+    background: var(--aep-bg);
+}
+
+/* =================================================================
+   Quick Action Grid
+   ================================================================= */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    padding: 16px;
+}
+
+.card {
+    background: var(--aep-bg-card);
+    border: 1px solid var(--aep-border);
+    border-radius: var(--aep-radius);
+    padding: 16px 12px;
+    text-align: center;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    color: var(--aep-text);
+    font-size: 12px;
+    font-weight: 500;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.card:hover {
+    border-color: var(--aep-violet);
+    background: rgba(139, 92, 246, 0.05);
+    transform: translateY(-2px);
+    box-shadow: var(--aep-shadow-lg);
+}
+
+/* =================================================================
+   MCP Server Management
+   ================================================================= */
+.chips {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 12px 16px;
+}
+
+.chip {
+    background: var(--aep-bg);
+    border: 1px solid var(--aep-border);
+    border-radius: 12px;
+    padding: 4px 8px;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.chip button {
+    background: none;
+    border: none;
+    color: var(--aep-text-muted);
+    font-size: 10px;
+    cursor: pointer;
+    padding: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chip button:hover {
+    background: rgba(220, 38, 127, 0.1);
+    color: #dc2626;
+}
+
+.row {
+    display: flex;
+    gap: 8px;
+    padding: 0 16px 16px;
+}
+
+.row input {
+    flex: 1;
+}
+
+.row .ghost {
+    padding: 8px 12px;
+    color: var(--aep-violet);
+    border: 1px solid var(--aep-border);
+}
+
+.row .ghost:hover {
+    border-color: var(--aep-violet);
+    background: rgba(139, 92, 246, 0.05);
+}
+
+/* =================================================================
+   Utility Classes
+   ================================================================= */
+.ghost {
+    background: transparent !important;
+    color: var(--aep-text-muted);
+    border: 1px solid var(--aep-border);
+}
+
+.ghost:hover {
+    color: var(--aep-text);
+    border-color: var(--aep-violet);
+}
+
+.small {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+}
+
+/* =================================================================
+   Responsive Adjustments
+   ================================================================= */
+@media (max-width: 480px) {
+    .aurora {
+        padding: 8px 12px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .rail {
+        gap: 4px;
+    }
+
+    .hero {
+        padding: 24px 16px;
+    }
+
+    .hero-main h1 {
+        font-size: 20px;
+    }
+
+    .cta {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .inline-controls {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .connections {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* =================================================================
+   Aurora Account & Workspace Enhancements
+   ================================================================= */
+
+/* Account Menu */
+.account {
+    position: relative;
+}
+
+.account .account-menu {
+    position: absolute;
+    right: 0;
+    top: 36px;
+    width: 240px;
+    z-index: 20;
+    background: #0e131b;
+    border: 1px solid var(--aep-border);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transform-origin: top right;
+    transform: scale(.98);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .12s ease, transform .12s ease;
+}
+
+.account .account-menu[aria-hidden="false"] {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+.account .account-head {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 8px 10px 8px;
+}
+
+.account .account-head .initial {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: #121a27;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--aep-border);
+    font-weight: 700;
+}
+
+.account .who strong {
+    display: block;
+}
+
+.account .who span {
+    opacity: .7;
+    font-size: 12px;
+}
+
+.menu-item {
+    text-align: left;
+    border: none;
+    background: #0e131b;
+    color: var(--aep-text);
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.menu-item:hover {
+    background: #0f1622;
+}
+
+.menu-item.danger {
+    color: #ff8585;
+}
+
+.menu-item.danger:hover {
+    background: rgba(255, 133, 133, 0.1);
+}
+
+/* Workspace Rail */
+.workspace-rail {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--aep-border);
+    border-radius: 12px;
+    background: #0c1118;
+}
+
+.chip-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.chip-group .label {
+    opacity: .7;
+    font-size: 12px;
+    margin-right: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.chip.connect {
+    background: rgba(139, 92, 246, 0.1);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: var(--aep-violet);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chip.connect:hover {
+    background: rgba(139, 92, 246, 0.2);
+    border-color: rgba(139, 92, 246, 0.5);
+}
+
+.chip.connect[aria-pressed="true"] {
+    background: var(--aep-gradient-primary);
+    color: white;
+    border: none;
+    font-weight: 600;
+}
+
+.chip.connect[aria-pressed="true"]:hover {
+    background: var(--aep-gradient-hover);
+}
+
+/* Light theme overrides */
+:root[data-vscode-theme-kind*="Light"] {
+    --accentA: #6b5cff;
+    --accentB: #16b3a6;
+    --ring: #6f7dac;
+    --border: rgba(0, 0, 0, .12);
+    --text: #111827;
+    background: #ffffff10;
+}
+
+:root[data-vscode-theme-kind*="Light"] .aurora {
+    background: linear-gradient(180deg, #f8faff 0%, #f5f7fe 100%);
+}
+
+:root[data-vscode-theme-kind*="Light"] .account .account-menu {
+    background: #fff;
+    border-color: var(--border);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .15);
+}
+
+:root[data-vscode-theme-kind*="Light"] .account .account-head .initial {
+    background: #f6f8fe;
+    border-color: var(--border);
+}
+
+:root[data-vscode-theme-kind*="Light"] .menu-item {
+    background: #fff;
+    color: #111827;
+}
+
+:root[data-vscode-theme-kind*="Light"] .menu-item:hover {
+    background: #f6f8fe;
+}
+
+:root[data-vscode-theme-kind*="Light"] .workspace-rail {
+    background: #ffffff;
+    border-color: var(--border);
+}
+
+:root[data-vscode-theme-kind*="Light"] .chip.connect {
+    background: rgba(107, 92, 255, 0.1);
+    border-color: rgba(107, 92, 255, 0.3);
+    color: #6b5cff;
+}
+
+:root[data-vscode-theme-kind*="Light"] .chip.connect:hover {
+    background: rgba(107, 92, 255, 0.2);
+    border-color: rgba(107, 92, 255, 0.5);
+}

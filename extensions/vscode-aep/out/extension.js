@@ -4,7 +4,6 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 // src/extension.ts
 const vscode = require("vscode");
-const NAVI_BACKEND_URL = 'http://127.0.0.1:8787/api/chat';
 function activate(context) {
     const provider = new NaviWebviewProvider(context.extensionUri, context);
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(
@@ -189,8 +188,11 @@ class NaviWebviewProvider {
         };
         let response;
         try {
-            console.log('[Extension Host] [AEP] Calling NAVI backend', NAVI_BACKEND_URL, payload);
-            response = await fetch(NAVI_BACKEND_URL, {
+            // Read backend URL from configuration with fallback
+            const config = vscode.workspace.getConfiguration('aep');
+            const backendUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8787/api/chat';
+            console.log('[Extension Host] [AEP] Calling NAVI backend', backendUrl, payload);
+            response = await fetch(backendUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -211,6 +213,7 @@ class NaviWebviewProvider {
         // Non-2xx: show a clean error bubble, no empty reply above it.
         if (!response.ok) {
             console.error('[Extension Host] [AEP] NAVI backend non-OK response:', response.status, response.statusText);
+            this.postToWebview({ type: 'botThinking', value: false });
             this.postToWebview({
                 type: 'error',
                 text: `⚠️ NAVI backend error: HTTP ${response.status} ${response.statusText || ''}`.trim()

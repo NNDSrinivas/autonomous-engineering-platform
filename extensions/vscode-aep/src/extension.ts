@@ -1,8 +1,6 @@
 // src/extension.ts
 import * as vscode from 'vscode';
 
-const NAVI_BACKEND_URL = 'http://127.0.0.1:8787/api/chat';
-
 type Role = 'user' | 'assistant' | 'system';
 
 interface NaviMessage {
@@ -255,9 +253,13 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
     let response: Response;
     try {
-      console.log('[Extension Host] [AEP] Calling NAVI backend', NAVI_BACKEND_URL, payload);
+      // Read backend URL from configuration with fallback
+      const config = vscode.workspace.getConfiguration('aep');
+      const backendUrl = config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787/api/chat';
+      
+      console.log('[Extension Host] [AEP] Calling NAVI backend', backendUrl, payload);
 
-      response = await fetch(NAVI_BACKEND_URL, {
+      response = await fetch(backendUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -283,6 +285,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         response.status,
         response.statusText
       );
+      this.postToWebview({ type: 'botThinking', value: false });
       this.postToWebview({
         type: 'error',
         text: `⚠️ NAVI backend error: HTTP ${response.status} ${response.statusText || ''}`.trim()

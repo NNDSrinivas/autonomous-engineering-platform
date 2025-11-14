@@ -80,7 +80,7 @@ const reply = response.content[0].text;
 
 ### Local LLM (Ollama)
 ```bash
-curl http://localhost:11434/api/generate \\
+curl http://localhost:11434/api/generate \
   -d '{"model": "llama2", "prompt": "message", "stream": false}'
 ```
 

@@ -18,15 +18,13 @@
   const prevState = vscode.getState() || {};
   /** @type {{role:'user'|'bot',text:string}[]} */
   let messages = Array.isArray(prevState.messages)
-    ? prevState.messages
-      .filter(
+    ? prevState.messages.filter(
         (m) =>
           m &&
           (m.role === 'user' || m.role === 'bot') &&
           typeof m.text === 'string' &&
           m.text.trim().length > 0,
-      )
-      .map((m) => ({ role: m.role, text: m.text.trim() }))
+      ).map((m) => ({ role: m.role, text: m.text.trim() }))
     : [];
 
   // ---------- Layout ----------
@@ -192,13 +190,14 @@
     const looksLikeCssOrJs =
       raw.includes('{') &&
       raw.includes('}') &&
-      (raw.match(/;/g) || []).length >= 2 &&
+      (raw.match(/;/g) || []).length >= 3 && // Require at least 3 semicolons
       (
         raw.includes('function') ||
         raw.includes('const') ||
         raw.includes('let') ||
         raw.includes('var') ||
-        /[.#][a-zA-Z]/.test(raw)
+        /[.#][a-zA-Z]/.test(raw) ||
+        /:\s*[^;]+;/.test(raw) // Property: value; pattern
       );
 
     // 3) Heuristic: looks like JSON (braces + key: value with quotes)

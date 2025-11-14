@@ -505,28 +505,7 @@ body {
   background: #6b7280;
 }
 
-/* Enhanced header icon buttons – brighter for dark mode visibility */
-.navi-icon-btn {
-  background: rgba(15, 23, 42, 0.95) !important;
-  border: 1px solid rgba(148, 163, 184, 0.85) !important;
-  color: #e5e7eb !important;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.18s ease-out;
-}
-
-.navi-icon-btn:hover {
-  background: rgba(129, 140, 248, 0.24) !important;
-  border-color: #a5b4fc !important;
-  box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.8) !important;
-  color: #ffffff !important;
-}
+/* Consolidated header icon buttons styles moved to unified section below */
 
 .navi-icon-btn span {
   color: inherit;
@@ -587,11 +566,6 @@ body {
 }
 
 /* Size differences if you want them */
-.navi-icon-btn {
-  width: 32px;
-  height: 32px;
-}
-
 .navi-attach-btn {
   width: 40px;
   height: 40px;

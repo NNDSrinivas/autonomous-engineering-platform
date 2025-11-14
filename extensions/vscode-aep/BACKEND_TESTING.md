@@ -18,16 +18,18 @@ You should see:
 🔍 Health check: GET http://localhost:8000/api/health
 ```
 
+**📝 Note**: This is the **simple demo backend**. For full features including rich context integration, use the **enhanced backend** on port 8787 (see [ENHANCED_TESTING.md](ENHANCED_TESTING.md)).
+
 ### 2. Configure VS Code Settings
 
 1. Open VS Code Settings (Cmd/Ctrl + ,)
-2. Search for "aep navi"
-3. Set **AEP: Navi Backend Url** to: `http://localhost:8000`
+2. Search for "aep navi"  
+3. Set **AEP: Navi Backend Url** to: `http://localhost:8000/api/chat` (demo) or `http://localhost:8787/api/chat` (enhanced)
 
 Or add to your `settings.json`:
 ```json
 {
-  "aep.naviBackendUrl": "http://localhost:8000"
+  "aep.naviBackendUrl": "http://localhost:8000/api/chat"
 }
 ```
 

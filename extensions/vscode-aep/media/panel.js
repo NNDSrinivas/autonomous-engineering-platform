@@ -19,12 +19,12 @@
   /** @type {{role:'user'|'bot',text:string}[]} */
   let messages = Array.isArray(prevState.messages)
     ? prevState.messages.filter(
-        (m) =>
-          m &&
-          (m.role === 'user' || m.role === 'bot') &&
-          typeof m.text === 'string' &&
-          m.text.trim().length > 0,
-      ).map((m) => ({ role: m.role, text: m.text.trim() }))
+      (m) =>
+        m &&
+        (m.role === 'user' || m.role === 'bot') &&
+        typeof m.text === 'string' &&
+        m.text.trim().length > 0,
+    ).map((m) => ({ role: m.role, text: m.text.trim() }))
     : [];
 
   // ---------- Layout ----------
@@ -186,6 +186,33 @@
   function renderMessageContent(text, container) {
     const raw = String(text);
 
+    // Early check: if markdown fences exist, skip expensive heuristics
+    if (raw.includes('```')) {
+      // Handle standard markdown-style ``` fenced blocks
+      const segments = raw.split('```');
+      for (let i = 0; i < segments.length; i++) {
+        if (i % 2 === 0) {
+          // Text segment
+          renderTextSegments(segments[i], container);
+        } else {
+          // Code segment
+          const pre = document.createElement('pre');
+          pre.className = 'navi-code-block';
+          const codeEl = document.createElement('code');
+          codeEl.textContent = segments[i].trim();
+          pre.appendChild(codeEl);
+          container.appendChild(pre);
+        }
+      }
+      return;
+    }
+
+    // Skip heuristics for very short strings (performance optimization)
+    if (raw.length < 20) {
+      renderTextSegments(raw, container);
+      return;
+    }
+
     // 1) Improved heuristic: looks like CSS/JS (braces + semicolons + code keywords)
     const looksLikeCssOrJs =
       raw.includes('{') &&
@@ -200,13 +227,13 @@
         /:\s*[^;]+;/.test(raw) // Property: value; pattern
       );
 
-    // 3) Heuristic: looks like JSON (braces + key: value with quotes)
+    // 2) Heuristic: looks like JSON (braces + key: value with quotes)
     const looksLikeJson =
       raw.includes('{') &&
       raw.includes('}') &&
       /"[^"]*"\s*:/.test(raw);
 
-    if (!raw.includes('```') && (looksLikeCssOrJs || looksLikeJson)) {
+    if (looksLikeCssOrJs || looksLikeJson) {
       const pre = document.createElement('pre');
       pre.className = 'navi-code-block';
       const codeEl = document.createElement('code');
@@ -216,34 +243,8 @@
       return;
     }
 
-    // 4) Standard markdown-style ``` fenced blocks
-    if (!raw.includes('```')) {
-      renderTextSegments(raw, container);
-      return;
-    }
-
-    const segments = raw.split('```');
-    segments.forEach((seg, index) => {
-      if (index % 2 === 1) {
-        // code segment: optional first line is language
-        let codeText = seg;
-        const firstNewline = seg.indexOf('\n');
-        if (firstNewline !== -1) {
-          const maybeLang = seg.slice(0, firstNewline).trim();
-          if (/^[a-zA-Z0-9+\-_]+$/.test(maybeLang)) {
-            codeText = seg.slice(firstNewline + 1);
-          }
-        }
-        const pre = document.createElement('pre');
-        pre.className = 'navi-code-block';
-        const codeEl = document.createElement('code');
-        codeEl.textContent = codeText.trim();
-        pre.appendChild(codeEl);
-        container.appendChild(pre);
-      } else if (seg.trim().length > 0) {
-        renderTextSegments(seg, container);
-      }
-    });
+    // Default: render as regular text
+    renderTextSegments(raw, container);
   }
 
   function renderMessage(msg) {

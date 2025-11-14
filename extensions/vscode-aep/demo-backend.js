@@ -2,6 +2,18 @@
 /**
  * Quick Demo Backend for NAVI Extension Testing
  * 
+ * ⚠️  **WARNING: NOT PRODUCTION READY** ⚠️
+ * This is a DEMO server with NO security features:
+ * - No authentication or authorization
+ * - No rate limiting or request validation  
+ * - No input sanitization or output filtering
+ * - No HTTPS/TLS encryption
+ * - Accepts all CORS origins (*)
+ * 
+ * ❌ DO NOT expose this server to the internet
+ * ❌ DO NOT use in production environments
+ * ✅ Local development and testing ONLY
+ * 
  * This is a simple Express.js server that provides a /api/chat endpoint
  * for testing the NAVI VS Code extension's HTTP integration.
  * 
@@ -9,7 +21,7 @@
  *   node demo-backend.js
  * 
  * Then configure VS Code setting:
- *   "aep.naviBackendUrl": "http://localhost:8000"
+ *   "aep.naviBackendUrl": "http://localhost:8000/api/chat"
  */
 
 const express = require('express');
@@ -62,7 +74,13 @@ app.listen(PORT, () => {
     console.log(`🦊 NAVI Demo Backend running at http://localhost:${PORT}`);
     console.log(`💬 Chat endpoint: POST http://localhost:${PORT}/api/chat`);
     console.log(`🔍 Health check: GET http://localhost:${PORT}/api/health`);
+    
+    console.log(`\n⚠️  SECURITY WARNING: DEMO ONLY - NOT PRODUCTION READY`);
+    console.log(`   • No authentication, rate limiting, or input validation`);
+    console.log(`   • Do NOT expose to internet or production environments`);
+    console.log(`   • Local development testing ONLY`);
+    
     console.log(`\n📋 VS Code Configuration:`);
-    console.log(`   "aep.naviBackendUrl": "http://localhost:${PORT}"`);
+    console.log(`   "aep.naviBackendUrl": "http://localhost:${PORT}/api/chat"`);
     console.log(`\n🛑 Press Ctrl+C to stop`);
 });

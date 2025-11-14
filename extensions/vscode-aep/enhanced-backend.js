@@ -18,6 +18,12 @@
 const express = require('express');
 const cors = require('cors');
 
+// Processing time calculation constants
+const MAX_PROCESSING_MS = 3000;    // Maximum response delay
+const BASE_DELAY_MS = 800;         // Base processing time
+const MS_PER_CHAR = 5;             // Additional delay per message character
+const SELECTION_BONUS_MS = 500;    // Extra delay when user has code selected
+
 const app = express();
 const PORT = 8787;
 
@@ -30,13 +36,13 @@ app.use(express.json());
 
 // Enhanced chat endpoint with rich context
 app.post('/api/chat', (req, res) => {
-    messageQueue = messageQueue.then(() => 
+    messageQueue = messageQueue.then(() =>
         new Promise(resolve => {
-            const { 
-                message, 
-                model = 'Unknown', 
-                mode = 'Unknown', 
-                editor = {}, 
+            const {
+                message,
+                model = 'Unknown',
+                mode = 'Unknown',
+                editor = {},
                 conversationId = null,
                 history = []
             } = req.body;
@@ -69,8 +75,11 @@ app.post('/api/chat', (req, res) => {
             };
 
             // Simulate processing time based on content complexity
-            const processingTime = Math.min(3000, 800 + (message.length * 5) + (editor.selection ? 500 : 0));
-            
+            const processingTime = Math.min(
+                MAX_PROCESSING_MS, 
+                BASE_DELAY_MS + (message.length * MS_PER_CHAR) + (editor.selection ? SELECTION_BONUS_MS : 0)
+            );
+
             setTimeout(() => {
                 res.json(responseData);
                 resolve();
@@ -108,7 +117,7 @@ function generateContextualReply(message, model, mode, editor) {
     if (mode.toLowerCase().includes('agent')) {
         return `🤖 **Agent Mode Active**: I have full access to your workspace and can:\n\n• **Read/Write Files**: Create, modify, delete any project files\n• **Run Commands**: Execute terminal commands and scripts  \n• **Code Generation**: Write complete functions, classes, modules\n• **Project Analysis**: Understand entire codebase structure\n• **Debugging**: Find and fix issues across multiple files\n\nYour message: "${message}"\n\n${hasFile ? `Current context: ${editor.fileName} (${language})` : 'Ready to assist with any coding task!'}\n\n🧠 **Model**: ${model}`;
     }
-    
+
     if (mode.toLowerCase().includes('chat')) {
         return `💬 **Chat Mode**: I can help answer questions and provide guidance, but I'm limited to read-only access.\n\nYour question: "${message}"\n\n${hasFile ? `I can see you're in ${editor.fileName}, which looks like ${language} code. ` : ''}I can provide explanations, suggestions, and code examples, but I cannot modify files directly.\n\n🧠 **Model**: ${model}`;
     }
@@ -129,12 +138,12 @@ function generateContextualReply(message, model, mode, editor) {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-    res.json({ 
-        status: 'healthy', 
+    res.json({
+        status: 'healthy',
         backend: 'Enhanced NAVI Backend',
         version: '2.0.0',
         features: ['rich_context', 'editor_integration', 'streaming_ready'],
-        timestamp: new Date().toISOString() 
+        timestamp: new Date().toISOString()
     });
 });
 

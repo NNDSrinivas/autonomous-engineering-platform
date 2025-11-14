@@ -18,9 +18,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class ChatMessage(BaseModel):
     role: str
     content: str
+
 
 class ChatRequest(BaseModel):
     id: str
@@ -30,6 +32,7 @@ class ChatRequest(BaseModel):
     stream: Optional[bool] = False
     context: Optional[Dict[str, Any]] = None
 
+
 SYSTEM_PROMPT = """You are NAVI, an autonomous engineering assistant living inside VS Code.
 - Be concise, but helpful.
 - Prefer concrete steps and code examples.
@@ -37,53 +40,55 @@ SYSTEM_PROMPT = """You are NAVI, an autonomous engineering assistant living insi
 - Use markdown for lists and code, with triple backticks for code blocks.
 """
 
+
 @app.post("/api/chat")
 async def chat(request: Request):
     stream_flag = request.query_params.get("stream")
     body = await request.json()
     payload = ChatRequest(**body)
-    
+
     # Get the latest user message
     user_message = ""
     if payload.messages:
         last_message = payload.messages[-1]
         if last_message.role == "user":
             user_message = last_message.content
-    
+
     print(f"Received conversation ID: {payload.id}")
     print(f"Latest user message: {user_message}")
     print(f"Message history: {len(payload.messages)} messages")
-    
+
     if stream_flag == "1":
         # --- Streaming response ---
         async def event_stream() -> AsyncGenerator[str, None]:
             # Simulate a smart response based on context
             response = generate_contextual_response(payload)
-            
+
             # Stream the response word by word
             words = response.split()
             for i, word in enumerate(words):
                 if i > 0:
                     word = " " + word
-                
+
                 data = json.dumps({"delta": word})
                 yield f"data: {data}\n\n"
-                
+
                 # Small delay to simulate streaming
                 await asyncio.sleep(0.1)
-            
+
             # Signal completion
             yield "data: [DONE]\n\n"
-        
+
         return StreamingResponse(
             event_stream(),
             media_type="text/event-stream",
         )
-    
+
     else:
         # --- Non-streaming response ---
         response = generate_contextual_response(payload)
         return JSONResponse({"reply": response})
+
 
 def generate_contextual_response(payload: ChatRequest) -> str:
     """Generate a contextual response based on the user's message and VS Code context"""
@@ -93,25 +98,25 @@ def generate_contextual_response(payload: ChatRequest) -> str:
         last_message = payload.messages[-1]
         if last_message.role == "user":
             user_message = last_message.content
-    
+
     message = user_message.lower()
     context = payload.context or {}
-    
+
     # Extract context info
-    active_file = context.get('activeFile')
-    active_language = context.get('activeLanguageId')
-    selection_text = context.get('selectionText')
-    workspace_root = context.get('workspaceRoot', {})
-    
+    active_file = context.get("activeFile")
+    active_language = context.get("activeLanguageId")
+    selection_text = context.get("selectionText")
+    workspace_root = context.get("workspaceRoot", {})
+
     # Context-aware responses
     if active_file:
-        file_name = active_file.split('/')[-1] if '/' in active_file else active_file
-        
+        file_name = active_file.split("/")[-1] if "/" in active_file else active_file
+
         if selection_text and len(selection_text.strip()) > 0:
             return f"""I can see you have code selected in **{file_name}** ({active_language}):
 
-```{active_language or 'text'}
-{selection_text[:200]}{'...' if len(selection_text) > 200 else ''}
+```{active_language or "text"}
+{selection_text[:200]}{"..." if len(selection_text) > 200 else ""}
 ```
 
 **Your question**: {user_message}
@@ -124,8 +129,8 @@ I can help you with:
 • **Testing** - Writing unit tests
 
 What would you like me to focus on?"""
-        
-        elif 'explain' in message or 'what does' in message:
+
+        elif "explain" in message or "what does" in message:
             return f"""I can see you're working on **{file_name}** ({active_language}). 
 
 To explain this code, I would need to:
@@ -135,8 +140,8 @@ To explain this code, I would need to:
 4. **Explain** in clear, simple terms
 
 Since I can see you have this file open, I can provide more specific help if you select the code you want explained, or ask about specific functions or concepts!"""
-        
-        elif 'fix' in message or 'debug' in message or 'error' in message:
+
+        elif "fix" in message or "debug" in message or "error" in message:
             return f"""I'm ready to help debug **{file_name}** ({active_language})!
 
 **Debugging approach**:
@@ -152,9 +157,9 @@ Since I can see you have this file open, I can provide more specific help if you
 • Best practices and code quality
 
 Can you describe the specific issue you're encountering, or select the problematic code?"""
-        
+
         else:
-            return f"""I can see you're working on **{file_name}** ({active_language}) in your {workspace_root.get('name', 'workspace')}.
+            return f"""I can see you're working on **{file_name}** ({active_language}) in your {workspace_root.get("name", "workspace")}.
 
 **Your question**: {user_message}
 
@@ -166,12 +171,12 @@ I'm ready to help with any coding tasks! I can:
 • **Generate tests** and documentation
 
 What would you like to work on?"""
-    
+
     # General responses for when no file is open
-    if 'hello' in message or 'hi' in message:
+    if "hello" in message or "hi" in message:
         return f"""Hello! I'm NAVI, your autonomous engineering assistant. 
 
-I can see you're in the **{workspace_root.get('name', 'workspace')}** workspace. I'm ready to help with:
+I can see you're in the **{workspace_root.get("name", "workspace")}** workspace. I'm ready to help with:
 
 • **Code development** - Writing, reviewing, and debugging
 • **Project analysis** - Understanding codebases and architecture  
@@ -180,8 +185,8 @@ I can see you're in the **{workspace_root.get('name', 'workspace')}** workspace.
 • **Documentation** - Writing docs and comments
 
 What can I help you build today?"""
-    
-    elif 'create' in message or 'make' in message or 'build' in message:
+
+    elif "create" in message or "make" in message or "build" in message:
         return f"""I'd love to help you create something! 
 
 **What I can build**:
@@ -198,8 +203,8 @@ What can I help you build today?"""
 4. We can iterate and improve together
 
 What would you like to create?"""
-    
-    elif 'help' in message:
+
+    elif "help" in message:
         return f"""I'm NAVI, your VS Code AI assistant! Here's what I can do:
 
 **🔍 Code Analysis**
@@ -227,29 +232,35 @@ Try asking me to:
 • "Write tests for this code"
 
 What can I help you with?"""
-    
+
     else:
         # More varied responses based on message content
-        if 'test' in message:
+        if "test" in message:
             return "I see you're testing! Everything looks good. Try asking me something more specific like 'explain this code' or 'help me debug an issue'."
-        elif 'thanks' in message or 'thank you' in message:
+        elif "thanks" in message or "thank you" in message:
             return "You're welcome! I'm here whenever you need help with coding, debugging, or building something new."
-        elif any(greeting in message for greeting in ['how are you', 'what\'s up', 'how\'s it going']):
+        elif any(
+            greeting in message
+            for greeting in ["how are you", "what's up", "how's it going"]
+        ):
             return f"I'm doing great, thanks for asking! I'm ready to help you code. I can see you're in the **{workspace_root.get('name', 'current')}** workspace. What would you like to work on?"
-        elif 'tell me about' in message or 'what is' in message:
+        elif "tell me about" in message or "what is" in message:
             return f"Great question! For **{user_message}**, I'd be happy to explain. Can you be more specific about what aspect you'd like to know about? I can help with concepts, code examples, or practical implementations."
         else:
             return f"Interesting question: _{user_message}_\n\nI'm ready to help! Here are some things I'm great at:\n\n• **Code analysis** and explanation\n• **Debugging** and troubleshooting\n• **Writing new code** and features\n• **Refactoring** and optimization\n\nWhat specific coding task can I help you with?"
+
 
 @app.get("/health")
 async def health():
     return {
         "status": "healthy",
-        "backend": "NAVI FastAPI Backend", 
+        "backend": "NAVI FastAPI Backend",
         "version": "1.0.0",
-        "features": ["streaming", "context_aware", "vs_code_integration"]
+        "features": ["streaming", "context_aware", "vs_code_integration"],
     }
+
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8787)

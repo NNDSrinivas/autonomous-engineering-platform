@@ -255,7 +255,7 @@
         const firstNewline = seg.indexOf('\n');
         if (firstNewline !== -1) {
           const maybeLang = seg.slice(0, firstNewline).trim();
-          if (/^[a-zA-Z0-9+-_]+$/.test(maybeLang)) {
+          if (/^[a-zA-Z0-9+\-_]+$/.test(maybeLang)) {
             codeText = seg.slice(firstNewline + 1);
           }
         }

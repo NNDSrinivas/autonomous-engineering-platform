@@ -45,6 +45,9 @@ class NaviWebviewProvider {
     async callNaviBackend(payload) {
         const endpoint = this.getBackendUrl();
         console.log('[AEP] Calling NAVI backend:', endpoint, payload);
+        // Set up timeout for request
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
         let response;
         try {
             response = await fetch(endpoint, {
@@ -53,11 +56,16 @@ class NaviWebviewProvider {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(payload),
+                signal: controller.signal,
             });
         }
         catch (err) {
+            clearTimeout(timeoutId);
             console.error('[AEP] NAVI backend unreachable:', err);
             return `⚠️ Could not reach NAVI backend: ${err?.message ?? String(err)}`;
+        }
+        finally {
+            clearTimeout(timeoutId);
         }
         if (!response.ok) {
             const text = await response.text().catch(() => '');

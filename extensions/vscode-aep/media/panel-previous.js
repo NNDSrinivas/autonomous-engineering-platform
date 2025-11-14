@@ -1,31 +1,24 @@
 // media/panel.js
 // NAVI chat UI with:
-// - Inline NAVI fox SVG (animated)
+// - Inline mascot logo (no path/CSP issues)
 // - Persistent history via vscode.getState/setState
-// - Welcome message only when there is no history
+// - Welcome message from extension (only on first load)
 // - Enter-to-send + input cleared
 // - Header buttons wired (new chat, connectors, settings)
 // - Typing indicator while NAVI is "thinking"
-// - Model / Mode pill click events
 
 (function () {
   const vscode = acquireVsCodeApi();
+
   console.log('[AEP] NAVI panel.js booting…');
 
   const root = document.getElementById('root');
+  const prevState = vscode.getState() || { messages: [] };
 
-  // ---------- Restore any previous state ----------
-  const prevState = vscode.getState() || {};
-  /** @type {{role:'user'|'bot',text:string}[]} */
-  let messagesRaw = Array.isArray(prevState.messages) ? prevState.messages : [];
+  /** @type {{role: 'user' | 'bot', text: string}[]} */
+  let messages = Array.isArray(prevState.messages) ? prevState.messages : [];
 
-  // Filter out corrupted / legacy entries (prevents "undefined" bubbles)
-  let messages = messagesRaw
-    .filter((m) => m && (m.role === 'user' || m.role === 'bot') && typeof m.text === 'string')
-    .map((m) => ({ role: m.role, text: m.text.trim() }))
-    .filter((m) => m.text.length > 0);
-
-  // ---------- Layout skeleton ----------
+  // ---------- Basic layout ----------
   root.innerHTML = `
     <div class="navi-shell">
       <header class="navi-header">
@@ -72,75 +65,44 @@
           </button>
         </form>
         <div class="navi-bottom-row">
-          <button class="navi-pill" id="navi-model-pill" type="button">Model: ChatGPT 5.1</button>
-          <button class="navi-pill" id="navi-mode-pill" type="button">Mode: Agent (full access)</button>
+          <div class="navi-pill" id="navi-model-pill">Model: ChatGPT 5.1</div>
+          <div class="navi-pill" id="navi-mode-pill">Mode: Agent (full access)</div>
         </div>
       </footer>
     </div>
   `;
 
-  // ---------- Inline NAVI fox SVG (your final version) ----------
+  // ---------- Inline logo SVG (no file path issues) ----------
   const logoHost = root.querySelector('.navi-logo-inline');
   if (logoHost) {
     logoHost.innerHTML = `
-<svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-label="NAVI fox">
-  <defs>
-    <linearGradient id="p" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF8A3D"/>
-      <stop offset="100%" stop-color="#FF5E7E"/>
-    </linearGradient>
-
-    <style>
-      @keyframes nod {0%{transform:rotate(0)}50%{transform:rotate(-2.5deg)}100%{transform:rotate(0)}}
-      @keyframes blink {0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
-      @keyframes pulse {
-        0%{r:22; opacity:.55}
-        70%{r:28; opacity:0}
-        100%{r:28; opacity:0}
-      }
-      @keyframes earFlick {0%{transform:rotate(0)}40%{transform:rotate(-12deg)}80%{transform:rotate(10deg)}100%{transform:rotate(0)}}
-      @keyframes tailWave {0%{transform:rotate(0)}50%{transform:rotate(12deg)}100%{transform:rotate(0)}}
-
-      #head{transform-origin:22px 22px; animation:nod 5s ease-in-out infinite}
-      .eye{animation:blink 6s ease-in-out infinite; transform-origin:50% 50%}
-      .pulse-ring{fill:none; stroke:url(#p); stroke-width:2.4; opacity:0}
-
-      svg.thinking .pulse-ring{animation:pulse 2s ease-out infinite}
-      svg.celebrate #earL, svg.celebrate #earR{animation:earFlick .65s ease-out 1}
-      svg.celebrate #tail{animation:tailWave .7s ease-out 1}
-    </style>
-  </defs>
-
-  <circle class="pulse-ring" cx="22" cy="22" r="22"/>
-
-  <g id="tail" transform="translate(33,29)">
-    <path d="M0 0 C7 0 9 7 3 10 C-1 12 -2 7 0 0 Z" fill="url(#p)" opacity=".85"/>
-  </g>
-
-  <g id="head">
-    <path d="M22 5 L36 16 33 34 22 39 11 34 8 16Z" fill="url(#p)"/>
-
-    <g id="earL" transform="translate(12,14)">
-      <path d="M0 3 L6 -1 4 6 Z" fill="#fff" opacity=".95"/>
-    </g>
-    <g id="earR" transform="translate(26,14)">
-      <path d="M6 3 L0 -1 2 6 Z" fill="#fff" opacity=".95"/>
-    </g>
-
-    <ellipse cx="18" cy="24" rx="1.6" ry="1.6" class="eye" fill="#0F172A"/>
-    <ellipse cx="26" cy="24" rx="1.6" ry="1.6" class="eye" fill="#0F172A"/>
-    <rect x="20.3" y="26.5" width="3.4" height="1.2" rx=".6" fill="#0F172A" opacity=".75"/>
-  </g>
-</svg>`;
+      <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-label="NAVI fox">
+        <defs>
+          <linearGradient id="navifox-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#FF8A3D"/>
+            <stop offset="100%" stop-color="#FF5E7E"/>
+          </linearGradient>
+        </defs>
+        <circle cx="22" cy="22" r="22" fill="#020617"/>
+        <path d="M10 15 L20 8 L22.5 16 Z" fill="url(#navifox-grad)"/>
+        <path d="M34 15 L24 8 L21.5 16 Z" fill="url(#navifox-grad)"/>
+        <path d="M13 20 Q22 11 31 20 L30 30 Q22 36 14 30 Z" fill="url(#navifox-grad)"/>
+        <circle cx="18" cy="22" r="1.4" fill="#020617"/>
+        <circle cx="26" cy="22" r="1.4" fill="#020617"/>
+        <path d="M19 26 Q22 28.5 25 26" stroke="#020617" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+      </svg>
+    `;
   }
 
   const messagesEl = document.getElementById('navi-messages');
   const formEl = document.getElementById('navi-form');
   const inputEl = document.getElementById('navi-input');
 
+  // Typing indicator state
   let typingEl = null;
 
-  function persist() {
+  // ---------- Persistence ----------
+  function persistState() {
     vscode.setState({ messages });
   }
 
@@ -149,8 +111,8 @@
     if (!messagesEl) return;
     const { role, text } = msg;
 
-    const row = document.createElement('div');
-    row.className =
+    const wrapper = document.createElement('div');
+    wrapper.className =
       role === 'user' ? 'navi-msg-row navi-msg-row-user' : 'navi-msg-row navi-msg-row-bot';
 
     const bubble = document.createElement('div');
@@ -174,11 +136,11 @@
       }
     });
 
-    row.appendChild(bubble);
-    messagesEl.appendChild(row);
+    wrapper.appendChild(bubble);
+    messagesEl.appendChild(wrapper);
   }
 
-  function renderAll() {
+  function renderAllMessages() {
     if (!messagesEl) return;
     messagesEl.innerHTML = '';
     messages.forEach(renderMessage);
@@ -186,21 +148,18 @@
   }
 
   function addMessage(role, text) {
-    const cleanText = String(text || '').trim();
-    if (!cleanText) return;
-    const msg = { role, text: cleanText };
-    messages.push(msg);
-    renderMessage(msg);
-    if (messagesEl) {
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    }
-    persist();
+    messages.push({ role, text });
+    renderMessage({ role, text });
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    persistState();
   }
 
   function clearChat() {
     messages = [];
-    if (messagesEl) messagesEl.innerHTML = '';
-    persist();
+    if (messagesEl) {
+      messagesEl.innerHTML = '';
+    }
+    persistState();
   }
 
   // ---------- Typing indicator ----------
@@ -242,8 +201,8 @@
     typingEl = null;
   }
 
-  // ---------- Initial render from restored state ----------
-  renderAll();
+  // ---------- Restore any previous messages ----------
+  renderAllMessages();
 
   // ---------- Form submit / keyboard ----------
   formEl.addEventListener('submit', (e) => {
@@ -253,6 +212,7 @@
 
     addMessage('user', text);
     vscode.postMessage({ type: 'sendMessage', text });
+
     showTyping();
 
     inputEl.value = '';
@@ -282,21 +242,6 @@
     });
   });
 
-  // ---------- Model / Mode pills ----------
-  const modelPill = document.getElementById('navi-model-pill');
-  const modePill = document.getElementById('navi-mode-pill');
-
-  if (modelPill) {
-    modelPill.addEventListener('click', () => {
-      vscode.postMessage({ type: 'chooseModel' });
-    });
-  }
-  if (modePill) {
-    modePill.addEventListener('click', () => {
-      vscode.postMessage({ type: 'chooseMode' });
-    });
-  }
-
   // ---------- Handle messages from extension ----------
   window.addEventListener('message', (event) => {
     const msg = event.data;
@@ -305,7 +250,7 @@
     switch (msg.type) {
       case 'botMessage':
         hideTyping();
-        if (typeof msg.text === 'string') {
+        if (typeof msg.text === 'string' && msg.text.trim()) {
           addMessage('bot', msg.text);
         }
         break;
@@ -313,17 +258,11 @@
         hideTyping();
         clearChat();
         break;
-      case 'updateModelLabel':
-        if (modelPill && typeof msg.label === 'string') modelPill.textContent = msg.label;
-        break;
-      case 'updateModeLabel':
-        if (modePill && typeof msg.label === 'string') modePill.textContent = msg.label;
-        break;
       default:
         console.log('[AEP] Unknown message in webview:', msg);
     }
   });
 
-  // ---------- Tell extension we're ready ----------
+  // Tell the extension we're ready, and whether we already have history
   vscode.postMessage({ type: 'ready', hasHistory: messages.length > 0 });
 })();

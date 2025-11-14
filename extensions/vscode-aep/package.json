@@ -2,7 +2,7 @@
   "name": "aep-professional",
   "displayName": "AEP Professional",
   "publisher": "navralabs",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -11,12 +11,11 @@
   ],
   "main": "./out/extension.js",
   "icon": "media/aep-icon-256.png",
-  "activationEvents": [],
   "contributes": {
     "commands": [
       {
-        "command": "aep.openPanel",
-        "title": "AEP: Open Panel"
+        "command": "aep.openNavi",
+        "title": "AEP: Open NAVI Assistant"
       }
     ],
     "viewsContainers": {
@@ -24,17 +23,17 @@
         {
           "id": "aep",
           "title": "AEP",
-          "icon": "media/aep-activitybar.svg"
+          "icon": "media/mascot-navi-fox.svg"
         }
       ]
     },
     "views": {
       "aep": [
         {
-          "id": "aep.sidebar",
-          "name": "AEP Professional",
+          "id": "aep.chatView",
+          "name": "NAVI Assistant",
           "type": "webview",
-          "icon": "media/aep-activitybar.svg"
+          "icon": "media/mascot-navi-fox.svg"
         }
       ]
     }

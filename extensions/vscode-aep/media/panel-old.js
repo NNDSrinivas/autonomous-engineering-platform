@@ -10,6 +10,17 @@
   const vscode = acquireVsCodeApi();
   const root = document.getElementById('root');
 
+  // Only allow mascotSrc as a safe URL (HTTPS, relative path, or data:image/*)
+  function isSafeMascotSrc(url) {
+    if (!url || typeof url !== 'string') return false;
+    // Check for "javascript:" or other scripting schemes
+    if (/^javascript:/i.test(url)) return false;
+    // Allow HTTPS, relative, and data:image/* URLs
+    if (/^(https:\/\/|\.\/|\/)/.test(url)) return true;
+    if (/^data:image\/(png|jpeg|jpg|gif|webp);base64,/.test(url)) return true;
+    return false;
+  }
+
   const state = {
     streamingMessageId: null,
     streamingBubble: null,
@@ -72,7 +83,9 @@
   const mascotSrc = root.getAttribute('data-mascot-src');
   const logoImg = root.querySelector('.navi-logo');
   if (mascotSrc && logoImg) {
-    logoImg.src = mascotSrc;
+    if (isSafeMascotSrc(mascotSrc)) {
+      logoImg.src = mascotSrc;
+    }
   }
 
   if (logoHost) {

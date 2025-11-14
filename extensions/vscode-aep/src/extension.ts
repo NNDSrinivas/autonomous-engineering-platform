@@ -1,5 +1,6 @@
 // src/extension.ts
 import * as vscode from 'vscode';
+import * as path from 'path';
 
 type Role = 'user' | 'assistant' | 'system';
 
@@ -147,27 +148,50 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           case 'pickAttachment': {
+            console.log('[Extension Host] [AEP] Webview requested attachment picker');
+            
             // Open file picker for attachments
             const uris = await vscode.window.showOpenDialog({
-              canSelectMany: true,
               openLabel: 'Attach to NAVI chat',
+              canSelectMany: true,
+              canSelectFiles: true,
+              canSelectFolders: false,
               filters: {
-                'Code & Text': ['ts', 'tsx', 'js', 'jsx', 'java', 'py', 'cs', 'go', 'rb', 'kt', 'c', 'cpp', 'h', 'sql', 'yml', 'yaml', 'json', 'md', 'txt'],
-                'All Files': ['*'],
-              },
+                'Code & Text': ['ts', 'tsx', 'js', 'jsx', 'java', 'cs', 'py', 'go', 'rb', 'php', 'cpp', 'c', 'h', 'json', 'yml', 'yaml', 'md', 'txt'],
+                'All Files': ['*']
+              }
             });
 
             if (!uris || uris.length === 0) {
+              console.log('[Extension Host] [AEP] Attachment picker canceled');
               this.postToWebview({ type: 'attachmentsCanceled' });
               return;
             }
 
+            // Map to lightweight metadata objects the webview can render as chips
+            const files = await Promise.all(
+              uris.map(async (uri) => {
+                let size = 0;
+                try {
+                  const stat = await vscode.workspace.fs.stat(uri);
+                  size = stat.size ?? 0;
+                } catch {
+                  // ignore stat failures, size stays 0
+                }
+
+                return {
+                  name: path.basename(uri.fsPath),
+                  uri: uri.toString(),
+                  size
+                };
+              })
+            );
+
+            console.log('[Extension Host] [AEP] Selected attachments:', files);
+
             this.postToWebview({
               type: 'attachmentsSelected',
-              files: uris.map((u) => ({
-                path: u.fsPath,
-                name: vscode.workspace.asRelativePath(u.fsPath),
-              })),
+              files
             });
             break;
           }

@@ -18,30 +18,38 @@ const cors = require('cors');
 const app = express();
 const PORT = 8000;
 
+// Simple message queue to serialize /api/chat responses and prevent out-of-order delivery
+let messageQueue = Promise.resolve();
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 // Simple chat endpoint for testing
 app.post('/api/chat', (req, res) => {
-    const { message } = req.body;
+    messageQueue = messageQueue.then(() => 
+        new Promise(resolve => {
+            const { message } = req.body;
 
-    console.log(`[Demo Backend] Received: ${message}`);
+            console.log(`[Demo Backend] Received: ${message}`);
 
-    // Simple demo responses
-    const responses = [
-        `Hello! I received your message: "${message}". I'm a demo backend server running on Node.js + Express.`,
-        `Thanks for testing NAVI! Your message was: "${message}". 🦊 The backend integration is working perfectly!`,
-        `I heard you say: "${message}". This is just a demo server - connect your real AI backend here! ✨`,
-        `Message processed: "${message}". Ready to connect to real AI services like OpenAI, Claude, or local LLMs! 🚀`,
-    ];
+            // Simple demo responses
+            const responses = [
+                `Hello! I received your message: "${message}". I'm a demo backend server running on Node.js + Express.`,
+                `Thanks for testing NAVI! Your message was: "${message}". 🦊 The backend integration is working perfectly!`,
+                `I heard you say: "${message}". This is just a demo server - connect your real AI backend here! ✨`,
+                `Message processed: "${message}". Ready to connect to real AI services like OpenAI, Claude, or local LLMs! 🚀`,
+            ];
 
-    const reply = responses[Math.floor(Math.random() * responses.length)];
+            const reply = responses[Math.floor(Math.random() * responses.length)];
 
-    // Simulate some processing time
-    setTimeout(() => {
-        res.json({ reply });
-    }, 800 + Math.random() * 1200); // 0.8-2s delay
+            // Simulate some processing time
+            setTimeout(() => {
+                res.json({ reply });
+                resolve();
+            }, 800 + Math.random() * 1200); // 0.8-2s delay
+        })
+    );
 });
 
 // Health check endpoint

@@ -174,13 +174,6 @@ body {
   border-color: rgba(192, 132, 252, 0.9);
 }
 
-/* .navi-icon-btn:hover {
-  background: rgba(26, 35, 58, 0.98);
-  border-color: #a855f7 !important;
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.9) !important;
-  color: #ffffff;
-} */
-
 .navi-icon-btn span {
   color: inherit;
 }
@@ -428,11 +421,6 @@ body {
   align-items: center;
 }
 
-/* .navi-pill:hover {
-  border-color: #a855f7 !important;
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.9) !important;
-} */
-
 /* === NAVI shapes + unified glow === */
 
 :root {
@@ -579,13 +567,6 @@ body {
 }
 
 /* === FINAL: Unified NAVI button glow === */
-
-:root {
-  --navi-accent: #a855f7;
-  /* magenta border */
-  --navi-glow: rgba(168, 85, 247, 0.9);
-  /* magenta glow */
-}
 
 /* Base shapes for ALL small buttons */
 .navi-icon-btn,

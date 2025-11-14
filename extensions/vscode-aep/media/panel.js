@@ -160,31 +160,6 @@
 
   let typingEl = null;
 
-  function showTyping() {
-    if (typingEl) return;
-    typingEl = document.createElement('div');
-    typingEl.className = 'navi-msg-row navi-msg-row-bot';
-
-    const bubble = document.createElement('div');
-    bubble.className = 'navi-bubble navi-bubble-bot navi-bubble-typing';
-    bubble.innerHTML = `
-      <span class="navi-typing-label">NAVI is thinking</span>
-      <span class="navi-typing-dots">
-        <span></span><span></span><span></span>
-      </span>
-    `;
-
-    typingEl.appendChild(bubble);
-    messagesEl.appendChild(typingEl);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  function hideTyping() {
-    if (!typingEl) return;
-    typingEl.remove();
-    typingEl = null;
-  }
-
   function persist() {
     vscode.setState({ messages });
   }
@@ -213,17 +188,18 @@
   function renderMessageContent(text, container) {
     const raw = String(text);
 
-    // 1) Skip heuristics for the temporary demo echo message
-    if (raw.startsWith('I received your message:')) {
-      renderTextSegments(raw, container);
-      return;
-    }
-
-    // 2) Heuristic: looks like CSS/JS (braces + >=2 semicolons)
+    // 1) Improved heuristic: looks like CSS/JS (braces + semicolons + code keywords)
     const looksLikeCssOrJs =
       raw.includes('{') &&
       raw.includes('}') &&
-      (raw.match(/;/g) || []).length >= 2;
+      (raw.match(/;/g) || []).length >= 2 &&
+      (
+        raw.includes('function') ||
+        raw.includes('const') ||
+        raw.includes('let') ||
+        raw.includes('var') ||
+        /[.#][a-zA-Z]/.test(raw)
+      );
 
     // 3) Heuristic: looks like JSON (braces + key: value with quotes)
     const looksLikeJson =

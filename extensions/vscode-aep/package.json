@@ -17,8 +17,8 @@
       "properties": {
         "aep.navi.backendUrl": {
           "type": "string",
-          "default": "http://127.0.0.1:8787/chat",
-          "description": "Backend URL for NAVI Assistant API calls (full endpoint URL including /chat)"
+          "default": "http://127.0.0.1:8787/api/chat",
+          "description": "Backend URL for NAVI Assistant API calls (full endpoint URL including /api/chat)"
         }
       }
     },
@@ -53,8 +53,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
-    "demo-backend": "node demo-backend.js",
-    "enhanced-backend": "node enhanced-backend.js"
+    "demo-backend": "node demo-backend.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

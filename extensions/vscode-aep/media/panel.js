@@ -312,8 +312,6 @@
   }
 
   // Old thinking indicator system - now redirects to new unified thinking system
-  let thinkingRow = null;
-
   function setThinking(isThinking) {
     state.thinking = isThinking;
     // Redirect to new unified thinking message system

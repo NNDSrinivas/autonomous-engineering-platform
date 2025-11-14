@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, AsyncGenerator, List
 import json
 import asyncio
-import time
 
 app = FastAPI()
 

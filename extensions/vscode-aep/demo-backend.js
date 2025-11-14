@@ -21,14 +21,14 @@
  *   node demo-backend.js
  * 
  * Then configure VS Code setting:
- *   "aep.naviBackendUrl": "http://localhost:8000/api/chat"
+ *   "aep.naviBackendUrl": "http://localhost:8787/api/chat"
  */
 
 const express = require('express');
 const cors = require('cors');
 
 const app = express();
-const PORT = 8000;
+const PORT = 8787;
 
 // Simple message queue to serialize /api/chat responses and prevent out-of-order delivery
 let messageQueue = Promise.resolve();

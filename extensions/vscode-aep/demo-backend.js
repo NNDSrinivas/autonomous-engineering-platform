@@ -27,7 +27,7 @@ app.use(express.json());
 
 // Simple chat endpoint for testing
 app.post('/api/chat', (req, res) => {
-    messageQueue = messageQueue.then(() => 
+    messageQueue = messageQueue.then(() =>
         new Promise(resolve => {
             const { message } = req.body;
 

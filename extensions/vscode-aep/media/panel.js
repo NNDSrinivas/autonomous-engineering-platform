@@ -338,8 +338,16 @@
     const text = inputEl.value.trim();
     if (!text) return;
 
+    const currentModel = modelPill ? modelPill.textContent.trim() : 'ChatGPT 5.1';
+    const currentMode = modePill ? modePill.textContent.trim() : 'Agent (full access)';
+
     addMessage('user', text);
-    vscode.postMessage({ type: 'sendMessage', text });
+    vscode.postMessage({
+      type: 'sendMessage',
+      text,
+      model: currentModel,
+      mode: currentMode
+    });
 
     inputEl.value = '';
     inputEl.focus();
@@ -456,11 +464,11 @@
       if (!action) return;
 
       if (action === 'newChat') {
-        vscode.postMessage({ type: 'newChat' });
+        vscode.postMessage({ type: 'buttonAction', action: 'newChat' });
       } else if (action === 'mcp') {
-        vscode.postMessage({ type: 'openMcp' });
+        vscode.postMessage({ type: 'buttonAction', action: 'connectors' });
       } else if (action === 'settings') {
-        vscode.postMessage({ type: 'openSettings' });
+        vscode.postMessage({ type: 'buttonAction', action: 'settings' });
       }
     });
   });

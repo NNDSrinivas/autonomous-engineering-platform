@@ -13,6 +13,7 @@ class NaviWebviewProvider {
             localResourceRoots: [this._extensionUri],
         };
         webviewView.webview.html = getWebviewContent(webviewView.webview, this._extensionUri);
+        // Handle messages from the webview
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.type) {
                 case 'ready': {
@@ -30,6 +31,7 @@ class NaviWebviewProvider {
                     if (!text)
                         return;
                     console.log('[AEP] User message:', text);
+                    // Echo back for now - this is where you'd integrate with your backend
                     setTimeout(() => {
                         webviewView.webview.postMessage({
                             type: 'botMessage',
@@ -54,44 +56,8 @@ class NaviWebviewProvider {
                     vscode.window.showInformationMessage('NAVI settings: configuration panel coming soon!');
                     break;
                 }
-                case 'chooseModel': {
-                    const models = ['ChatGPT 5.1', 'gpt-4.2', 'o3-mini'];
-                    const picked = await vscode.window.showQuickPick(models, {
-                        title: 'Select NAVI model',
-                        placeHolder: 'Choose which model NAVI should use',
-                    });
-                    if (picked) {
-                        webviewView.webview.postMessage({
-                            type: 'updateModelLabel',
-                            label: `Model: ${picked}`,
-                        });
-                        webviewView.webview.postMessage({
-                            type: 'botMessage',
-                            text: `Switched model to **${picked}** (demo-only selector for now).`,
-                        });
-                    }
-                    break;
-                }
-                case 'chooseMode': {
-                    const modes = ['Agent (full access)', 'Safe (read-only)', 'Audit (explain only)'];
-                    const picked = await vscode.window.showQuickPick(modes, {
-                        title: 'Select NAVI mode',
-                        placeHolder: 'Choose how powerful NAVI should be',
-                    });
-                    if (picked) {
-                        webviewView.webview.postMessage({
-                            type: 'updateModeLabel',
-                            label: `Mode: ${picked}`,
-                        });
-                        webviewView.webview.postMessage({
-                            type: 'botMessage',
-                            text: `Mode updated to **${picked}** (demo-only for now).`,
-                        });
-                    }
-                    break;
-                }
                 default:
-                    console.warn('[AEP] Unknown message type:', msg?.type);
+                    console.warn('[AEP] Unknown message type:', msg.type);
             }
         });
     }
@@ -113,11 +79,11 @@ function getWebviewContent(webview, extensionUri) {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} data:;">
-  <link href="${styleUri}" rel="stylesheet" />
+  <link href="${styleUri}" rel="stylesheet">
   <title>NAVI Assistant</title>
 </head>
 <body>
@@ -137,4 +103,4 @@ function getNonce() {
 function deactivate() {
     console.log('[AEP] NAVI extension deactivated');
 }
-//# sourceMappingURL=extension.js.map
+//# sourceMappingURL=extension-with-history.js.map

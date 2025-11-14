@@ -7,22 +7,21 @@ class NaviWebviewProvider {
     constructor(_extensionUri) {
         this._extensionUri = _extensionUri;
     }
-    resolveWebviewView(webviewView, _context, _token) {
+    resolveWebviewView(webviewView, context, _token) {
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this._extensionUri],
+            localResourceRoots: [this._extensionUri]
         };
         webviewView.webview.html = getWebviewContent(webviewView.webview, this._extensionUri);
+        // Handle messages from the webview
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.type) {
                 case 'ready': {
-                    const hasHistory = !!msg.hasHistory;
-                    if (!hasHistory) {
-                        webviewView.webview.postMessage({
-                            type: 'botMessage',
-                            text: `Hello! I'm NAVI, your autonomous engineering assistant. How can I help you today?`,
-                        });
-                    }
+                    // Initial welcome
+                    webviewView.webview.postMessage({
+                        type: 'botMessage',
+                        text: `Hello! I'm NAVI, your autonomous engineering assistant. How can I help you today?`,
+                    });
                     break;
                 }
                 case 'sendMessage': {
@@ -30,6 +29,7 @@ class NaviWebviewProvider {
                     if (!text)
                         return;
                     console.log('[AEP] User message:', text);
+                    // Echo back for now - this is where you'd integrate with your backend
                     setTimeout(() => {
                         webviewView.webview.postMessage({
                             type: 'botMessage',
@@ -38,6 +38,7 @@ class NaviWebviewProvider {
                     }, 500);
                     break;
                 }
+                // 🔽 NEW: handle header buttons directly
                 case 'newChat': {
                     webviewView.webview.postMessage({ type: 'clearChat' });
                     webviewView.webview.postMessage({
@@ -47,51 +48,15 @@ class NaviWebviewProvider {
                     break;
                 }
                 case 'openConnectors': {
-                    vscode.window.showInformationMessage('NAVI connectors: repo and tool integrations coming soon!');
+                    vscode.window.showInformationMessage('NAVI connectors: repo + tool integrations coming soon!');
                     break;
                 }
                 case 'openSettings': {
-                    vscode.window.showInformationMessage('NAVI settings: configuration panel coming soon!');
-                    break;
-                }
-                case 'chooseModel': {
-                    const models = ['ChatGPT 5.1', 'gpt-4.2', 'o3-mini'];
-                    const picked = await vscode.window.showQuickPick(models, {
-                        title: 'Select NAVI model',
-                        placeHolder: 'Choose which model NAVI should use',
-                    });
-                    if (picked) {
-                        webviewView.webview.postMessage({
-                            type: 'updateModelLabel',
-                            label: `Model: ${picked}`,
-                        });
-                        webviewView.webview.postMessage({
-                            type: 'botMessage',
-                            text: `Switched model to **${picked}** (demo-only selector for now).`,
-                        });
-                    }
-                    break;
-                }
-                case 'chooseMode': {
-                    const modes = ['Agent (full access)', 'Safe (read-only)', 'Audit (explain only)'];
-                    const picked = await vscode.window.showQuickPick(modes, {
-                        title: 'Select NAVI mode',
-                        placeHolder: 'Choose how powerful NAVI should be',
-                    });
-                    if (picked) {
-                        webviewView.webview.postMessage({
-                            type: 'updateModeLabel',
-                            label: `Mode: ${picked}`,
-                        });
-                        webviewView.webview.postMessage({
-                            type: 'botMessage',
-                            text: `Mode updated to **${picked}** (demo-only for now).`,
-                        });
-                    }
+                    vscode.window.showInformationMessage('NAVI settings panel coming soon!');
                     break;
                 }
                 default:
-                    console.warn('[AEP] Unknown message type:', msg?.type);
+                    console.warn('[AEP] Unknown message type:', msg.type);
             }
         });
     }
@@ -99,30 +64,34 @@ class NaviWebviewProvider {
 NaviWebviewProvider.viewType = 'aep.chatView';
 function activate(context) {
     console.log('[AEP] NAVI extension activating…');
+    // Register the webview view provider
     const provider = new NaviWebviewProvider(context.extensionUri);
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(NaviWebviewProvider.viewType, provider));
+    // Register the command to open NAVI (for command palette access)
     const openCommand = vscode.commands.registerCommand('aep.openNavi', () => {
         vscode.commands.executeCommand('aep.chatView.focus');
     });
     context.subscriptions.push(openCommand);
 }
 function getWebviewContent(webview, extensionUri) {
+    // Generate a nonce for CSP
     const nonce = getNonce();
+    // Get URIs for resources
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'panel.js'));
     const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'panel.css'));
+    const mascotUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'mascot-navi-fox.svg'));
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} data:;">
-  <link href="${styleUri}" rel="stylesheet" />
-  <title>NAVI Assistant</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} data:;">
+    <link href="${styleUri}" rel="stylesheet">
+    <title>NAVI Assistant</title>
 </head>
 <body>
-  <div id="root"></div>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
+    <div id="root" data-mascot-src="${mascotUri}"></div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
 }
@@ -137,4 +106,4 @@ function getNonce() {
 function deactivate() {
     console.log('[AEP] NAVI extension deactivated');
 }
-//# sourceMappingURL=extension.js.map
+//# sourceMappingURL=extension-old-backup.js.map

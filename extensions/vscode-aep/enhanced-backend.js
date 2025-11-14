@@ -76,7 +76,7 @@ app.post('/api/chat', (req, res) => {
 
             // Simulate processing time based on content complexity
             const processingTime = Math.min(
-                MAX_PROCESSING_MS, 
+                MAX_PROCESSING_MS,
                 BASE_DELAY_MS + (message.length * MS_PER_CHAR) + (editor.selection ? SELECTION_BONUS_MS : 0)
             );
 

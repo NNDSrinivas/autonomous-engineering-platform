@@ -74,12 +74,12 @@ app.listen(PORT, () => {
     console.log(`🦊 NAVI Demo Backend running at http://localhost:${PORT}`);
     console.log(`💬 Chat endpoint: POST http://localhost:${PORT}/api/chat`);
     console.log(`🔍 Health check: GET http://localhost:${PORT}/api/health`);
-    
+
     console.log(`\n⚠️  SECURITY WARNING: DEMO ONLY - NOT PRODUCTION READY`);
     console.log(`   • No authentication, rate limiting, or input validation`);
     console.log(`   • Do NOT expose to internet or production environments`);
     console.log(`   • Local development testing ONLY`);
-    
+
     console.log(`\n📋 VS Code Configuration:`);
     console.log(`   "aep.naviBackendUrl": "http://localhost:${PORT}/api/chat"`);
     console.log(`\n🛑 Press Ctrl+C to stop`);

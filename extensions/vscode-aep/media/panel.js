@@ -1,39 +1,121 @@
 // media/panel.js
-// NAVI chat UI with:
-// - Inline fox logo animations
-// - Persistent chat (per panel) using vscode.getState/setState
-// - Welcome message only when there's no history
-// - Typing indicator + "thinking" animation
-// - Header buttons: New chat, MCP, Settings
-// - Dropdowns for Model, Mode, Attach
-// - Simple markdown-style code block rendering (``` fences)
+// NAVI chat panel with streaming support
 
 (function () {
-  const vscode = acquireVsCodeApi();
-  console.log('[AEP] NAVI panel.js booting…');
+  // ---------------------------------------------------------------------------
+  // NAVI webview VS Code API bootstrap
+  // ---------------------------------------------------------------------------
+  const vscode = (() => {
+    try {
+      const api = acquireVsCodeApi();
+      if (typeof window !== 'undefined') {
+        // expose globally so later modules (footer, etc.) can reuse it
+        window.vscode = api;
+      }
+      return api;
+    } catch (err) {
+      console.error('[NAVI] Failed to acquire VS Code API:', err);
+      return null;
+    }
+  })();
 
   const root = document.getElementById('root');
 
-  // ---------- Restore previous state ----------
-  const prevState = vscode.getState() || {};
-  /** @type {{role:'user'|'bot',text:string}[]} */
-  let messages = Array.isArray(prevState.messages)
-    ? prevState.messages.filter(
-      (m) =>
-        m &&
-        (m.role === 'user' || m.role === 'bot') &&
-        typeof m.text === 'string' &&
-        m.text.trim().length > 0,
-    ).map((m) => ({ role: m.role, text: m.text.trim() }))
-    : [];
+  // Streaming state
+  const state = {
+    streamingMessageId: null,
+    streamingBubble: null,
+    streamingText: '',
+    thinking: false,
+  };
 
-  // ---------- Layout ----------
+  // Thinking message helpers
+  let thinkingMessageEl = null;
+
+  function showThinkingMessage() {
+    const messagesEl = document.getElementById('navi-messages');
+    if (!messagesEl) return;
+
+    // Make sure we never have duplicates
+    hideThinkingMessage();
+
+    const bubble = document.createElement('div');
+    bubble.className = 'navi-message navi-message-thinking';
+    bubble.dataset.kind = 'thinking';
+    bubble.textContent = 'NAVI is thinking...';
+
+    messagesEl.appendChild(bubble);
+    thinkingMessageEl = bubble;
+
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function hideThinkingMessage() {
+    if (thinkingMessageEl && thinkingMessageEl.parentElement) {
+      thinkingMessageEl.parentElement.removeChild(thinkingMessageEl);
+    }
+    thinkingMessageEl = null;
+  }
+
+  // Simple toast helper (used by Attach button)
+  function showToast(message) {
+    let toast = document.getElementById('navi-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'navi-toast';
+      toast.className = 'navi-toast';
+      document.body.appendChild(toast);
+    }
+
+    toast.textContent = message;
+    toast.classList.add('navi-toast-visible');
+
+    clearTimeout(showToast._timeout);
+    showToast._timeout = setTimeout(() => {
+      toast.classList.remove('navi-toast-visible');
+    }, 4000);
+  }
+
+  // Create the UI
   root.innerHTML = `
     <div class="navi-shell">
       <header class="navi-header">
         <div class="navi-brand">
-          <div class="navi-logo-wrap">
-            <div class="navi-logo-inline" aria-label="NAVI fox"></div>
+          <div class="navi-logo-container">
+            <svg class="navi-logo-svg" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-label="NAVI fox">
+              <defs>
+                <linearGradient id="naviFoxGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#FF8A3D"/>
+                  <stop offset="100%" stop-color="#FF5E7E"/>
+                </linearGradient>
+              </defs>
+              
+              <!-- Background circle -->
+              <circle cx="22" cy="22" r="20" fill="#020617"/>
+              
+              <!-- Tail (behind head) -->
+              <g transform="translate(33,29)">
+                <path d="M0 0 C7 0 9 7 3 10 C-1 12 -2 7 0 0 Z" fill="url(#naviFoxGrad)" opacity="0.85"/>
+              </g>
+              
+              <!-- Fox head -->
+              <g>
+                <path d="M22 5 L36 16 33 34 22 39 11 34 8 16Z" fill="url(#naviFoxGrad)"/>
+                
+                <!-- ears -->
+                <g transform="translate(12,14)">
+                  <path d="M0 3 L6 -1 4 6 Z" fill="#fff" opacity="0.95"/>
+                </g>
+                <g transform="translate(26,14)">
+                  <path d="M6 3 L0 -1 2 6 Z" fill="#fff" opacity="0.95"/>
+                </g>
+                
+                <!-- eyes + nose -->
+                <ellipse cx="18" cy="24" rx="1.6" ry="1.6" fill="#0F172A"/>
+                <ellipse cx="26" cy="24" rx="1.6" ry="1.6" fill="#0F172A"/>
+                <rect x="20.3" y="26.5" width="3.4" height="1.2" rx="0.6" fill="#0F172A" opacity="0.75"/>
+              </g>
+            </svg>
           </div>
           <div class="navi-title-block">
             <div class="navi-title">NAVI — Autonomous Engineering Assistant</div>
@@ -42,13 +124,13 @@
         </div>
         <div class="navi-header-actions">
           <button class="navi-icon-btn" data-action="newChat" title="Start a fresh chat">
-            <span>＋</span>
+            <span class="navi-icon-main">+</span>
           </button>
-          <button class="navi-icon-btn" data-action="mcp" title="MCP servers & connectors">
-            <span>🔌</span>
+          <button class="navi-icon-btn" data-action="connectors" title="Connect tools & MCP servers">
+            <span class="navi-icon-main">🔌</span>
           </button>
-          <button class="navi-icon-btn" data-action="settings" title="Settings & Account">
-            <span>⚙︎</span>
+          <button class="navi-icon-btn" data-action="settings" title="Settings">
+            <span class="navi-icon-main">⚙︎</span>
           </button>
         </div>
       </header>
@@ -59,8 +141,11 @@
 
       <footer class="navi-footer">
         <form id="navi-form" class="navi-form">
-          <button type="button" id="navi-attach" class="navi-attach-btn" title="Attach files or code">
+          <button type="button" id="navi-attach-btn" class="navi-icon-btn navi-attach-btn" title="Attach files or code">
             +
+          </button>
+          <button type="button" id="navi-actions-btn" class="navi-icon-btn navi-actions-btn" title="Quick actions">
+            ✨
           </button>
           <input
             id="navi-input"
@@ -77,95 +162,104 @@
           <button class="navi-pill" id="navi-model-pill" type="button">Model: ChatGPT 5.1</button>
           <button class="navi-pill" id="navi-mode-pill" type="button">Mode: Agent (full access)</button>
         </div>
+
+        <!-- Command menu overlay (now anchored to footer) -->
+        <div id="navi-command-menu" class="navi-command-menu navi-command-menu-hidden">
+          <button class="navi-command-item" data-command-id="explain-code">
+            <div class="navi-command-title">Explain code</div>
+            <div class="navi-command-subtitle">High-level and line-by-line explanation</div>
+          </button>
+          <button class="navi-command-item" data-command-id="refactor-code">
+            <div class="navi-command-title">Refactor for readability</div>
+            <div class="navi-command-subtitle">Cleaner, more idiomatic version</div>
+          </button>
+          <button class="navi-command-item" data-command-id="add-tests">
+            <div class="navi-command-title">Generate tests</div>
+            <div class="navi-command-subtitle">Unit tests for the selected code or function</div>
+          </button>
+          <button class="navi-command-item" data-command-id="review-diff">
+            <div class="navi-command-title">Code review</div>
+            <div class="navi-command-subtitle">Bugs, smells, and style issues</div>
+          </button>
+          <button class="navi-command-item" data-command-id="document-code">
+            <div class="navi-command-title">Document this code</div>
+            <div class="navi-command-subtitle">Comments and docstrings</div>
+          </button>
+        </div>
       </footer>
     </div>
   `;
 
-  // ---------- Inline NAVI fox SVG and animation control ----------
-  const logoHost = root.querySelector('.navi-logo-inline');
-  let logoSvg = null;
+  // Setup NAVI fox logo
+  const logoContainer = root.querySelector('.navi-logo-container');
+  const logoSvg = root.querySelector('.navi-logo-svg');
 
-  if (logoHost) {
-    logoHost.innerHTML = `
-<svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-label="NAVI fox">
-  <defs>
-    <linearGradient id="p" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF8A3D"/>
-      <stop offset="100%" stop-color="#FF5E7E"/>
-    </linearGradient>
+  if (logoContainer && logoSvg) {
+    // Style the container
+    logoContainer.style.cssText = `
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 18px rgba(129, 140, 248, 0.6);
+    `;
 
-    <style>
-      @keyframes nod {0%{transform:rotate(0)}50%{transform:rotate(-2.5deg)}100%{transform:rotate(0)}}
-      @keyframes blink {0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
-      @keyframes pulse {
-        0%{r:22; opacity:.55}
-        70%{r:28; opacity:0}
-        100%{r:28; opacity:0}
-      }
-      @keyframes earFlick {0%{transform:rotate(0)}40%{transform:rotate(-12deg)}80%{transform:rotate(10deg)}100%{transform:rotate(0)}}
-      @keyframes tailWave {0%{transform:rotate(0)}50%{transform:rotate(12deg)}100%{transform:rotate(0)}}
+    // Style the SVG
+    logoSvg.style.cssText = `
+      width: 32px;
+      height: 32px;
+      display: block;
+      border-radius: 10px;
+    `;
 
-      #head{transform-origin:22px 22px; animation:nod 5s ease-in-out infinite}
-      .eye{animation:blink 6s ease-in-out infinite; transform-origin:50% 50%}
-      .pulse-ring{fill:none; stroke:url(#p); stroke-width:2.4; opacity:0}
-
-      svg.thinking .pulse-ring{animation:pulse 2s ease-out infinite}
-      svg.celebrate #earL, svg.celebrate #earR{animation:earFlick .65s ease-out 1}
-      svg.celebrate #tail{animation:tailWave .7s ease-out 1}
-    </style>
-  </defs>
-
-  <circle class="pulse-ring" cx="22" cy="22" r="22"/>
-
-  <g id="tail" transform="translate(33,29)">
-    <path d="M0 0 C7 0 9 7 3 10 C-1 12 -2 7 0 0 Z" fill="url(#p)" opacity=".85"/>
-  </g>
-
-  <g id="head">
-    <path d="M22 5 L36 16 33 34 22 39 11 34 8 16Z" fill="url(#p)"/>
-
-    <g id="earL" transform="translate(12,14)">
-      <path d="M0 3 L6 -1 4 6 Z" fill="#fff" opacity=".95"/>
-    </g>
-    <g id="earR" transform="translate(26,14)">
-      <path d="M6 3 L0 -1 2 6 Z" fill="#fff" opacity=".95"/>
-    </g>
-
-    <ellipse cx="18" cy="24" rx="1.6" ry="1.6" class="eye" fill="#0F172A"/>
-    <ellipse cx="26" cy="24" rx="1.6" ry="1.6" class="eye" fill="#0F172A"/>
-    <rect x="20.3" y="26.5" width="3.4" height="1.2" rx=".6" fill="#0F172A" opacity=".75"/>
-  </g>
-</svg>`;
-    logoSvg = logoHost.querySelector('svg');
+    console.log('[NAVI] Fox logo embedded successfully');
+  } else {
+    console.warn('[NAVI] Logo container or SVG not found');
   }
 
-  function setThinking(on) {
-    if (!logoSvg) return;
-    if (on) logoSvg.classList.add('thinking');
-    else logoSvg.classList.remove('thinking');
-  }
-
-  function celebrateOnce() {
-    if (!logoSvg) return;
-    logoSvg.classList.add('navi-logo-celebrate');
-    setTimeout(() => logoSvg && logoSvg.classList.remove('navi-logo-celebrate'), 600);
-  }
-
+  // Get DOM elements
   const messagesEl = document.getElementById('navi-messages');
   const formEl = document.getElementById('navi-form');
   const inputEl = document.getElementById('navi-input');
   const attachBtn = document.getElementById('navi-attach');
+  const modelPill = document.getElementById('navi-model-pill');
+  const modePill = document.getElementById('navi-mode-pill');
 
-  let typingEl = null;
-
-  function persist() {
-    vscode.setState({ messages });
-  }
-
-  // ---------- Render helpers ----------
+  // Message rendering
   function renderTextSegments(text, container) {
     const lines = String(text).split('\n');
+    container.innerHTML = '';
+
+    let inCodeBlock = false;
+    let codeBuffer = [];
+
+    const flushCodeBlock = () => {
+      if (!codeBuffer.length) return;
+      const pre = document.createElement('pre');
+      pre.className = 'navi-code-block';
+      pre.textContent = codeBuffer.join('\n');
+      container.appendChild(pre);
+      codeBuffer = [];
+    };
+
     lines.forEach((line, idx) => {
+      if (line.trim().startsWith('```')) {
+        if (inCodeBlock) {
+          flushCodeBlock();
+          inCodeBlock = false;
+        } else {
+          inCodeBlock = true;
+        }
+        return;
+      }
+
+      if (inCodeBlock) {
+        codeBuffer.push(line);
+        return;
+      }
+
       if (line.startsWith('> ')) {
         const quote = document.createElement('div');
         quote.className = 'navi-line-quote';
@@ -176,181 +270,71 @@
         p.textContent = line;
         container.appendChild(p);
       }
-      if (idx < lines.length - 1) {
+
+      if (idx < lines.length - 1 && !inCodeBlock) {
         container.appendChild(document.createElement('br'));
       }
     });
+
+    flushCodeBlock();
   }
 
-  // Support markdown-style ``` fenced blocks + heuristics for raw code / JSON
-  function renderMessageContent(text, container) {
-    const raw = String(text);
-
-    // Early check: if markdown fences exist, skip expensive heuristics
-    if (raw.includes('```')) {
-      // Handle standard markdown-style ``` fenced blocks
-      const segments = raw.split('```');
-      for (let i = 0; i < segments.length; i++) {
-        if (i % 2 === 0) {
-          // Text segment
-          renderTextSegments(segments[i], container);
-        } else {
-          // Code segment
-          const pre = document.createElement('pre');
-          pre.className = 'navi-code-block';
-          const codeEl = document.createElement('code');
-          codeEl.textContent = segments[i].trim();
-          pre.appendChild(codeEl);
-          container.appendChild(pre);
-        }
-      }
+  function appendMessage(text, role, options = {}) {
+    // Guard against empty messages to prevent phantom bubbles
+    const safeText = String(text || '');
+    if (!safeText.trim()) {
+      console.warn('[NAVI] Ignoring empty message for role:', role);
       return;
     }
 
-    // Skip heuristics for very short strings (performance optimization)
-    if (raw.length < 20) {
-      renderTextSegments(raw, container);
-      return;
-    }
-
-    // 1) Improved heuristic: looks like CSS/JS (braces + semicolons + code keywords)
-    const looksLikeCssOrJs =
-      raw.includes('{') &&
-      raw.includes('}') &&
-      (raw.match(/;/g) || []).length >= 3 && // Require at least 3 semicolons
-      (
-        raw.includes('function') ||
-        raw.includes('const') ||
-        raw.includes('let') ||
-        raw.includes('var') ||
-        /[.#][a-zA-Z]/.test(raw) ||
-        /:\s*[^;]+;/.test(raw) // Property: value; pattern
-      );
-
-    // 2) Heuristic: looks like JSON (braces + key: value with quotes)
-    const looksLikeJson =
-      raw.includes('{') &&
-      raw.includes('}') &&
-      /"[^"]*"\s*:/.test(raw);
-
-    if (looksLikeCssOrJs || looksLikeJson) {
-      const pre = document.createElement('pre');
-      pre.className = 'navi-code-block';
-      const codeEl = document.createElement('code');
-      codeEl.textContent = raw.trim();
-      pre.appendChild(codeEl);
-      container.appendChild(pre);
-      return;
-    }
-
-    // Default: render as regular text
-    renderTextSegments(raw, container);
-  }
-
-  function renderMessage(msg) {
-    if (!messagesEl) return;
-    const { role, text } = msg;
-
-    const row = document.createElement('div');
-    row.className =
-      role === 'user' ? 'navi-msg-row navi-msg-row-user' : 'navi-msg-row navi-msg-row-bot';
+    const wrapper = document.createElement('div');
+    wrapper.className = role === 'user' ? 'navi-msg-row navi-msg-row-user' : 'navi-msg-row navi-msg-row-bot';
 
     const bubble = document.createElement('div');
-    bubble.className =
-      role === 'user' ? 'navi-bubble navi-bubble-user' : 'navi-bubble navi-bubble-bot';
+    bubble.className = role === 'user' ? 'navi-bubble navi-bubble-user' : 'navi-bubble navi-bubble-bot';
 
-    renderMessageContent(text, bubble);
+    if (options.muted) bubble.classList.add('navi-bubble-muted');
 
-    row.appendChild(bubble);
-    messagesEl.appendChild(row);
-  }
-
-  function renderAll() {
-    if (!messagesEl) return;
-    messagesEl.innerHTML = '';
-    messages.forEach(renderMessage);
+    renderTextSegments(safeText, bubble);
+    wrapper.appendChild(bubble);
+    messagesEl.appendChild(wrapper);
     messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
 
-  function addMessage(role, text) {
-    const cleanText = String(text || '').trim();
-    if (!cleanText) return;
-    const msg = { role, text: cleanText };
-    messages.push(msg);
-    renderMessage(msg);
-    if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
-    persist();
+    return { wrapper, bubble };
   }
 
   function clearChat() {
-    messages = [];
-    if (messagesEl) messagesEl.innerHTML = '';
-    persist();
+    messagesEl.innerHTML = '';
+    state.streamingBubble = null;
+    state.streamingMessageId = null;
+    state.streamingText = '';
+    hideThinkingMessage();
   }
 
-  // ---------- Typing indicator ----------
-  function showTyping() {
-    if (!messagesEl) return;
-    hideTyping();
+  // Old thinking indicator system - now redirects to new unified thinking system
+  let thinkingRow = null;
 
-    const row = document.createElement('div');
-    row.className = 'navi-msg-row navi-msg-row-bot';
-
-    const bubble = document.createElement('div');
-    bubble.className = 'navi-bubble navi-bubble-bot navi-bubble-typing';
-
-    const label = document.createElement('span');
-    label.className = 'navi-typing-label';
-    label.textContent = 'NAVI is thinking';
-
-    const dots = document.createElement('span');
-    dots.className = 'navi-typing-dots';
-    dots.innerHTML = `
-      <span class="navi-typing-dot"></span>
-      <span class="navi-typing-dot"></span>
-      <span class="navi-typing-dot"></span>
-    `;
-
-    bubble.appendChild(label);
-    bubble.appendChild(dots);
-    row.appendChild(bubble);
-    messagesEl.appendChild(row);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-
-    typingEl = row;
-    setThinking(true);
-  }
-
-  function hideTyping() {
-    if (typingEl && typingEl.parentElement) {
-      typingEl.parentElement.removeChild(typingEl);
+  function setThinking(isThinking) {
+    state.thinking = isThinking;
+    // Redirect to new unified thinking message system
+    if (isThinking) {
+      showThinkingMessage();
+    } else {
+      hideThinkingMessage();
     }
-    typingEl = null;
-    setThinking(false);
   }
 
-  // ---------- Initial render ----------
-  renderAll();
-
-  // ---------- Form / keyboard ----------
+  // Event handlers
   formEl.addEventListener('submit', (e) => {
     e.preventDefault();
     const text = inputEl.value.trim();
     if (!text) return;
 
-    const currentModel = modelPill ? modelPill.textContent.trim() : 'ChatGPT 5.1';
-    const currentMode = modePill ? modePill.textContent.trim() : 'Agent (full access)';
-
-    addMessage('user', text);
-    vscode.postMessage({
-      type: 'sendMessage',
-      text,
-      model: currentModel,
-      mode: currentMode
-    });
-
+    appendMessage(text, 'user');
+    vscode.postMessage({ type: 'sendMessage', text });
     inputEl.value = '';
     inputEl.focus();
+    showThinkingMessage();
   });
 
   inputEl.addEventListener('keydown', (e) => {
@@ -360,166 +344,321 @@
     }
   });
 
+  // Attach button handler moved to avoid conflicts - see PR-2 section
 
-
-  // ---------- Dropdown infra (shared for model/mode/attach) ----------
-  const MODEL_OPTIONS = ['ChatGPT 5.1', 'gpt-4.2', 'o3-mini'];
-  const MODE_OPTIONS = ['Agent (full access)', 'Safe (read-only)', 'Audit (explain only)'];
-  const ATTACH_OPTIONS = [
-    { id: 'file', label: 'File from workspace' },
-    { id: 'snippet', label: 'Code snippet' },
-    { id: 'screenshot', label: 'Screenshot / image' },
-    { id: 'link', label: 'Repo / URL' },
-  ];
-
-  const modelPill = document.getElementById('navi-model-pill');
-  const modePill = document.getElementById('navi-mode-pill');
-
-  let openDropdown = null;
-  /** @type {'model'|'mode'|'attach'|null} */
-  let openDropdownKind = null;
-
-  function closeDropdown() {
-    if (openDropdown && openDropdown.parentElement) {
-      openDropdown.parentElement.removeChild(openDropdown);
-    }
-    openDropdown = null;
-    openDropdownKind = null;
-  }
-
-  function createDropdown(kind, anchorEl) {
-    closeDropdown();
-
-    const menu = document.createElement('div');
-    menu.className = 'navi-dropdown';
-    menu.style.position = 'fixed';
-
-    let options;
-    if (kind === 'model') options = MODEL_OPTIONS.map((v) => ({ id: v, label: v }));
-    else if (kind === 'mode') options = MODE_OPTIONS.map((v) => ({ id: v, label: v }));
-    else options = ATTACH_OPTIONS;
-
-    options.forEach((opt) => {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'navi-dropdown-item';
-      item.textContent = opt.label;
-      item.addEventListener('click', () => {
-        closeDropdown();
-        if (kind === 'model') {
-          if (modelPill) modelPill.textContent = `Model: ${opt.label}`;
-          vscode.postMessage({ type: 'modelChanged', value: opt.label });
-        } else if (kind === 'mode') {
-          if (modePill) modePill.textContent = `Mode: ${opt.label}`;
-          vscode.postMessage({ type: 'modeChanged', value: opt.label });
-        } else {
-          vscode.postMessage({ type: 'attachTypeSelected', value: opt.id });
-        }
-      });
-      menu.appendChild(item);
-    });
-
-    document.body.appendChild(menu);
-
-    const pillRect = anchorEl.getBoundingClientRect();
-    const menuRect = menu.getBoundingClientRect();
-
-    let left = pillRect.left;
-    if (left + menuRect.width > window.innerWidth - 8) {
-      left = window.innerWidth - menuRect.width - 8;
-    }
-
-    // Prefer opening upwards so it doesn't get cut off
-    let top = pillRect.top - menuRect.height - 8;
-    if (top < 8) {
-      top = pillRect.bottom + 8;
-      if (top + menuRect.height > window.innerHeight - 8) {
-        top = window.innerHeight - menuRect.height - 8;
-      }
-    }
-
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-
-    openDropdown = menu;
-    openDropdownKind = kind;
-  }
-
-  // ---------- Attach button dropdown ----------
-  if (attachBtn) {
-    attachBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (openDropdown && openDropdownKind === 'attach') {
-        closeDropdown();
-      } else {
-        createDropdown('attach', attachBtn);
-      }
-    });
-  }
-
-  // ---------- Header buttons ----------
+  // Header buttons
   root.querySelectorAll('.navi-icon-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const action = btn.getAttribute('data-action');
       if (!action) return;
 
       if (action === 'newChat') {
-        vscode.postMessage({ type: 'buttonAction', action: 'newChat' });
-      } else if (action === 'mcp') {
-        vscode.postMessage({ type: 'buttonAction', action: 'connectors' });
+        vscode.postMessage({ type: 'newChat' });
+      } else if (action === 'connectors') {
+        vscode.postMessage({ type: 'openConnectors' });
       } else if (action === 'settings') {
-        vscode.postMessage({ type: 'buttonAction', action: 'settings' });
+        vscode.postMessage({ type: 'openSettings' });
       }
     });
   });
 
-  // Model / Mode dropdowns (one-click switch between them)
-  if (modelPill) {
-    modelPill.addEventListener('click', (e) => {
-      e.stopPropagation();
-      createDropdown('model', modelPill);
-    });
-  }
-
-  if (modePill) {
-    modePill.addEventListener('click', (e) => {
-      e.stopPropagation();
-      createDropdown('mode', modePill);
-    });
-  }
-
-  document.addEventListener('click', () => {
-    closeDropdown();
+  // Model/mode pills
+  modelPill.addEventListener('click', () => {
+    vscode.postMessage({ type: 'modelPickerRequested', options: ['ChatGPT 5.1', 'gpt-4.2', 'o3-mini'] });
   });
 
-  // ---------- Handle messages from extension ----------
+  modePill.addEventListener('click', () => {
+    vscode.postMessage({ type: 'modePickerRequested', options: ['Agent (full access)', 'Chat only', 'Read-only explorer'] });
+  });
+
+  // Messages from extension
   window.addEventListener('message', (event) => {
     const msg = event.data;
     if (!msg || typeof msg !== 'object') return;
 
     switch (msg.type) {
       case 'botMessage':
-        hideTyping();
-        if (typeof msg.text === 'string') {
-          addMessage('bot', msg.text);
+        hideThinkingMessage();
+        state.streamingBubble = null;
+        state.streamingMessageId = null;
+        state.streamingText = '';
+        appendMessage(msg.text, 'bot');
+        break;
+
+      case 'clearChat':
+        clearChat();
+        hideThinkingMessage();
+        break;
+
+      case 'botThinking':
+        setThinking(!!msg.value);
+        break;
+
+      case 'botStreamStart':
+        hideThinkingMessage();
+        state.streamingMessageId = msg.messageId;
+        state.streamingText = '';
+        const { bubble } = appendMessage('', 'bot');
+        state.streamingBubble = bubble;
+        break;
+
+      case 'botStreamDelta':
+        if (!msg.messageId || msg.messageId !== state.streamingMessageId) return;
+        if (!state.streamingBubble) {
+          const { bubble: newBubble } = appendMessage('', 'bot');
+          state.streamingBubble = newBubble;
+        }
+        state.streamingText += msg.text || '';
+        renderTextSegments(state.streamingText, state.streamingBubble);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        break;
+
+      case 'botStreamEnd':
+        if (msg.messageId === state.streamingMessageId) {
+          state.streamingMessageId = null;
+          state.streamingBubble = null;
         }
         break;
-      case 'clearChat':
-        hideTyping();
+
+      case 'insertCommandPrompt': {
+        const input = document.querySelector('#navi-input') || document.querySelector('.navi-input');
+        if (input) {
+          input.value = msg.prompt || '';
+          input.focus();
+        }
+        break;
+      }
+
+      case 'resetChat': {
+        // Clear messages & show welcome bubble again
         clearChat();
-        celebrateOnce();
+        appendMessage(
+          "New chat started! How can I help you today?",
+          'bot'
+        );
         break;
-      case 'showTyping':
-        showTyping();
+      }
+
+      case 'attachmentsSelected': {
+        const files = msg.files || [];
+        if (!files.length) break;
+
+        const chip = document.createElement('div');
+        chip.className = 'navi-attachment-chip';
+        chip.textContent =
+          files.length === 1
+            ? `Attached: ${files[0].name}`
+            : `Attached ${files.length} files`;
+
+        const footer = document.querySelector('.navi-footer');
+        if (footer) {
+          const oldChip = footer.querySelector('.navi-attachment-chip');
+          if (oldChip) oldChip.remove();
+          footer.insertBefore(chip, footer.firstChild);
+        }
         break;
-      case 'hideTyping':
-        hideTyping();
+      }
+
+      case 'attachmentsCanceled':
+        // optional: quietly ignore for now
         break;
+
       default:
         console.log('[AEP] Unknown message in webview:', msg);
     }
   });
 
-  // ---------- Tell extension we're ready ----------
-  vscode.postMessage({ type: 'ready', hasHistory: messages.length > 0 });
+  // Tell extension we're ready
+  vscode.postMessage({ type: 'ready' });
 })();
+
+// ---------------------------------------------------------------------------
+// NAVI footer controls + command menu wiring (attach + wand)
+// ---------------------------------------------------------------------------
+window.addEventListener('DOMContentLoaded', () => {
+  const vscodeApi =
+    (typeof window !== 'undefined' && window.vscode) || null;
+
+  console.log('[NAVI] Footer wiring: vscodeApi present?', !!vscodeApi);
+
+  if (!vscodeApi) {
+    console.warn(
+      '[NAVI] vscode API instance not found – footer wiring disabled.'
+    );
+    return;
+  }
+
+  const attachBtn = document.getElementById('navi-attach-btn');
+  const actionsBtn = document.getElementById('navi-actions-btn');
+  const commandMenu = document.getElementById('navi-command-menu');
+
+  console.log(
+    '[NAVI] Footer wiring:',
+    'attachBtn', !!attachBtn,
+    'actionsBtn', !!actionsBtn,
+    'commandMenu', !!commandMenu
+  );
+
+  // ---------- Command menu (wand) ----------
+
+  let commandMenuOpen = false;
+
+  function openCommandMenu() {
+    if (!commandMenu) return;
+    commandMenu.classList.remove('navi-command-menu-hidden');
+    commandMenu.classList.add('navi-command-menu-visible');
+    commandMenuOpen = true;
+  }
+
+  function closeCommandMenu() {
+    if (!commandMenu) return;
+    commandMenu.classList.remove('navi-command-menu-visible');
+    commandMenu.classList.add('navi-command-menu-hidden');
+    commandMenuOpen = false;
+  }
+
+  function toggleCommandMenu() {
+    if (commandMenuOpen) {
+      closeCommandMenu();
+    } else {
+      openCommandMenu();
+    }
+  }
+
+  // ---------- Attachment button ----------
+
+  // Attach button – show inline "coming soon" chip and close wand menu if open
+  if (attachBtn) {
+    attachBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      console.log('[NAVI] Attach button clicked');
+
+      // Close the quick-actions (wand) menu so they don't overlap
+      closeCommandMenu();
+
+      const footer = document.querySelector('.navi-footer');
+      if (!footer) return;
+
+      // Reuse/update a single chip so it doesn't spam the UI
+      let chip = footer.querySelector('.navi-attachment-chip');
+      if (!chip) {
+        chip = document.createElement('div');
+        chip.className = 'navi-attachment-chip';
+        footer.insertBefore(chip, footer.firstChild);
+      }
+
+      chip.textContent =
+        'Attachment flow is not implemented yet – coming soon.';
+    });
+  }
+
+  // Start menu closed
+  closeCommandMenu();
+
+  // ---------- Wand button ----------
+
+  // Wire up wand button
+  if (actionsBtn && commandMenu) {
+    actionsBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      console.log('[NAVI] Actions button clicked');
+      toggleCommandMenu();
+    });
+
+    // Close when clicking anywhere outside the menu / wand
+    document.addEventListener('click', (event) => {
+      if (!commandMenuOpen) return;
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !commandMenu.contains(target) &&
+        target !== actionsBtn
+      ) {
+        closeCommandMenu();
+      }
+    });
+  }
+
+  // Command menu items – use event delegation so clicks anywhere
+  // inside the button (icon, text, etc.) are handled reliably.
+  if (commandMenu) {
+    const items = Array.from(
+      commandMenu.querySelectorAll('.navi-command-item')
+    );
+    console.log('[NAVI] Command menu items found:', items.length);
+
+    const ITEM_SELECTOR = '.navi-command-item';
+
+    commandMenu.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!target) return;
+
+      const item = target.closest
+        ? target.closest(ITEM_SELECTOR)
+        : null;
+
+      if (!item) {
+        return; // clicked on the purple frame, not on a button
+      }
+
+      event.stopPropagation();
+
+      const id =
+        item.dataset.commandId ||
+        item.getAttribute('data-command-id') ||
+        '';
+
+      console.log('[NAVI] Command selected:', id);
+
+      if (id) {
+        vscodeApi.postMessage({
+          type: 'commandSelected',
+          command: id,
+        });
+      }
+
+      closeCommandMenu();
+    });
+
+    // Keyboard support: Enter on a focused item acts like click.
+    commandMenu.addEventListener('keydown', (event) => {
+      const target = event.target;
+      if (!target) return;
+
+      if (event.key === 'Enter' || event.key === ' ') {
+        const item = target.closest
+          ? target.closest(ITEM_SELECTOR)
+          : null;
+        if (!item) return;
+
+        event.preventDefault();
+        item.click();
+      }
+    });
+  }
+
+  // Click outside → close menu
+  document.addEventListener('click', (event) => {
+    if (!commandMenuOpen) return;
+
+    const target = event.target;
+    if (!target) return;
+
+    if (
+      commandMenu && commandMenu.contains(target) ||
+      actionsBtn?.contains(target)
+    ) {
+      return;
+    }
+
+    closeCommandMenu();
+  });
+
+  // ESC closes menu
+  document.addEventListener('keydown', (event) => {
+    if (!commandMenuOpen) return;
+    if (event.key === 'Escape') {
+      closeCommandMenu();
+    }
+  });
+});

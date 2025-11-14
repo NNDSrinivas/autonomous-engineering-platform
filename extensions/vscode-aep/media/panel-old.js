@@ -13,11 +13,16 @@
   // Only allow mascotSrc as a safe URL (HTTPS, relative path, or data:image/*)
   function isSafeMascotSrc(url) {
     if (!url || typeof url !== 'string') return false;
-    // Check for "javascript:" or other scripting schemes
-    if (/^javascript:/i.test(url)) return false;
-    // Allow HTTPS, relative, and data:image/* URLs
-    if (/^(https:\/\/|\.\/|\/)/.test(url)) return true;
-    if (/^data:image\/(png|jpeg|jpg|gif|webp);base64,/.test(url)) return true;
+    // Defensive: normalize and trim input to address tricky input vectors
+    const normalizedUrl = url.trim().replace(/^[\s\u200B-\u200D\uFEFF]+|[\s\u200B-\u200D\uFEFF]+$/g, '');
+    // Lowercase protocol portion only for scheme checks
+    const protoMatch = normalizedUrl.match(/^([a-zA-Z]+):/);
+    const proto = protoMatch ? protoMatch[1].toLowerCase() : '';
+    // Reject any javascript: or vbscript:, etc.
+    if (proto === 'javascript' || proto === 'vbscript' || proto === 'data' && !/^data:image\/(png|jpeg|jpg|gif|webp);base64,/.test(normalizedUrl)) return false;
+    // Allow HTTPS, relative, and certain image data URLs only
+    if (/^(https:\/\/|\.\/|\/)/.test(normalizedUrl)) return true;
+    if (/^data:image\/(png|jpeg|jpg|gif|webp);base64,/.test(normalizedUrl)) return true;
     return false;
   }
 

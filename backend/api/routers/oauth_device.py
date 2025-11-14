@@ -55,11 +55,12 @@ class DeviceCodeStartRequest(BaseModel):
     client_id: Optional[str] = Field(
         default="aep-vscode-extension", description="Client identifier"
     )
-    scope: Optional[str] = Field(
-        default="read write", description="Requested scopes"
-    )
+    scope: Optional[str] = Field(default="read write", description="Requested scopes")
+
+
 class DeviceCodeStartResponse(BaseModel):
     """Response model for device code flow start."""
+
     device_code: str = Field(description="Device verification code")
     user_code: str = Field(description="User verification code to display")
     verification_uri: str = Field(description="URI for user to visit")
@@ -72,12 +73,14 @@ class DeviceCodeStartResponse(BaseModel):
 
 class DeviceCodePollRequest(BaseModel):
     """Request model for polling device code status."""
+
     device_code: str = Field(description="Device code from start request")
     client_id: Optional[str] = Field(default="aep-vscode-extension")
 
 
 class DeviceCodeTokenResponse(BaseModel):
     """Response model for successful device code authorization."""
+
     access_token: str = Field(description="Access token for API calls")
     token_type: str = Field(default="Bearer")
     expires_in: int = Field(description="Token expiration in seconds")
@@ -86,6 +89,7 @@ class DeviceCodeTokenResponse(BaseModel):
 
 class DeviceCodeErrorResponse(BaseModel):
     """Response model for device code flow errors."""
+
     error: str = Field(description="Error code")
     error_description: Optional[str] = Field(
         description="Human-readable error description"
@@ -177,10 +181,13 @@ async def poll_device_code(request: DeviceCodePollRequest):
             ).total_seconds()
 
             # Auto-approve after 30 seconds ONLY if development flags are set
-            auto_approve = (os.environ.get("OAUTH_DEVICE_AUTO_APPROVE", "false")
-                           .lower() == "true")
-            use_memory_store = (os.environ.get("OAUTH_DEVICE_USE_IN_MEMORY_STORE",
-                                              "false").lower() == "true")
+            auto_approve = (
+                os.environ.get("OAUTH_DEVICE_AUTO_APPROVE", "false").lower() == "true"
+            )
+            use_memory_store = (
+                os.environ.get("OAUTH_DEVICE_USE_IN_MEMORY_STORE", "false").lower()
+                == "true"
+            )
 
             if auto_approve and use_memory_store and time_since_creation > 30:
                 # SECURITY WARNING: Auto-approving device code in development mode
@@ -250,13 +257,14 @@ async def poll_device_code(request: DeviceCodePollRequest):
 
 class DeviceAuthorizationRequest(BaseModel):
     """Request model for device authorization."""
+
     user_code: str = Field(description="User code to authorize")
-    action: str = Field(description="Authorization action:"
-    "'approve' or 'deny'")
+    action: str = Field(description="Authorization action:" "'approve' or 'deny'")
 
 
 class DeviceAuthorizationResponse(BaseModel):
     """Response model for device authorization."""
+
     message: str = Field(description="Authorization result message")
     user_code: str = Field(description="User code that was authorized")
 
@@ -298,14 +306,10 @@ async def authorize_device_code(request: DeviceAuthorizationRequest):
             message = f"Device with user code {request.user_code} has been denied"
         else:
             raise HTTPException(
-                status_code=400,
-                detail="Invalid action. Must be 'approve' or 'deny'"
+                status_code=400, detail="Invalid action. Must be 'approve' or 'deny'"
             )
 
-        return DeviceAuthorizationResponse(
-            message=message,
-            user_code=request.user_code
-        )
+        return DeviceAuthorizationResponse(message=message, user_code=request.user_code)
 
     except HTTPException:
         raise

@@ -88,26 +88,48 @@ class NaviWebviewProvider {
             // Get backend URL from configuration
             const config = vscode.workspace.getConfiguration('aep');
             const backendUrl = config.get('naviBackendUrl', 'http://localhost:8000');
-            console.log('[AEP] Calling NAVI backend:', backendUrl);
-            // Make HTTP request to backend
-            const response = await fetch(`${backendUrl}/api/chat`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ message }),
-            });
-            if (!response.ok) {
-                throw new Error(`Backend responded with ${response.status}: ${response.statusText}`);
+            // Validate backend URL
+            let parsedUrl;
+            try {
+                parsedUrl = new URL(`${backendUrl}/api/chat`);
+                // Only allow http and https protocols
+                if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                    throw new Error('Backend URL must use http or https protocol');
+                }
             }
-            const data = await response.json();
-            const reply = data.reply || 'No response received from backend';
-            // Hide typing indicator and send response
-            webviewView.webview.postMessage({ type: 'hideTyping' });
-            webviewView.webview.postMessage({
-                type: 'botMessage',
-                text: reply,
-            });
+            catch (err) {
+                throw new Error(`Invalid backend URL: ${backendUrl}`);
+            }
+            console.log('[AEP] Calling NAVI backend:', parsedUrl.toString());
+            // Set up timeout for request
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+            try {
+                // Make HTTP request to backend
+                const response = await fetch(parsedUrl.toString(), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message }),
+                    signal: controller.signal,
+                });
+                if (!response.ok) {
+                    throw new Error(`Backend responded with ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                const reply = data.reply || 'No response received from backend';
+                // Hide typing indicator and send response
+                webviewView.webview.postMessage({ type: 'hideTyping' });
+                webviewView.webview.postMessage({
+                    type: 'botMessage',
+                    text: reply,
+                });
+            }
+            catch (fetchError) {
+                clearTimeout(timeoutId);
+                throw fetchError;
+            }
         }
         catch (error) {
             console.error('[AEP] Backend call failed:', error);

@@ -1,388 +1,479 @@
+// src/extension.ts
 import * as vscode from 'vscode';
 
-const DEFAULT_BACKEND_URL = 'http://127.0.0.1:8787/api/chat';
-const CONFIG_SECTION = 'aep';
-const CONFIG_BACKEND_KEY = 'naviBackendUrl';
+const NAVI_BACKEND_URL = 'http://127.0.0.1:8787/api/chat';
 
-interface NaviBackendRequest {
-  message: string;
-  model?: string;
-  mode?: string;
-  editor?: {
-    fileName?: string | null;
-    languageId?: string | null;
-    selection?: string | null;
-  };
-  conversationId?: string | null;
-  history?: Array<{
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-  }>;
+type Role = 'user' | 'assistant' | 'system';
+
+interface NaviMessage {
+  role: Role;
+  content: string;
 }
 
-interface NaviBackendResponse {
+interface NaviChatRequest {
+  id: string;
+  model: string;
+  mode: string;
+  messages: NaviMessage[];
+  stream: boolean;
+}
+
+interface NaviChatResponseJson {
   reply?: string;
-  meta?: {
-    model_used?: string;
-    finish_reason?: string | null;
-    usage?: {
-      input_tokens?: number;
-      output_tokens?: number;
-      total_tokens?: number;
-    };
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
   };
+  // You can extend this later (tool calls, traces, etc.)
 }
 
-/**
- * NAVI chat webview provider
- */
+export function activate(context: vscode.ExtensionContext) {
+  const provider = new NaviWebviewProvider(context.extensionUri, context);
+
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      // Make sure this matches the view id in package.json
+      'aep.chatView',
+      provider
+    )
+  );
+}
+
+export function deactivate() {
+  // nothing yet
+}
+
 class NaviWebviewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'aep.chatView';
+  private _view?: vscode.WebviewView;
+  private _extensionUri: vscode.Uri;
+  private _context: vscode.ExtensionContext;
 
-  private _view: vscode.WebviewView | undefined;
+  // Conversation state
+  private _conversationId: string;
+  private _messages: NaviMessage[] = [];
+  private _currentModel: string = 'ChatGPT 5.1';
+  private _currentMode: string = 'Agent (full access)';
 
-  constructor(private readonly _extensionUri: vscode.Uri) { }
-
-  // ---------- Backend helpers ----------
-
-  private getBackendUrl(): string {
-    const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
-    const configured = config.get<string>(CONFIG_BACKEND_KEY);
-    return (configured && configured.trim()) || DEFAULT_BACKEND_URL;
+  constructor(extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
+    this._extensionUri = extensionUri;
+    this._context = context;
+    this._conversationId = generateConversationId();
   }
-
-  private getEditorContext() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return {
-        fileName: null,
-        languageId: null,
-        selection: null,
-      };
-    }
-
-    const { document, selection } = editor;
-    const selectedText = selection.isEmpty
-      ? null
-      : document.getText(selection) || null;
-
-    return {
-      fileName: document.fileName,
-      languageId: document.languageId,
-      selection: selectedText,
-    };
-  }
-
-  /**
-   * Call the NAVI backend in non-streaming mode.
-   * Expects JSON `{ reply: string, meta?: {...} }`.
-   */
-  private async callNaviBackend(payload: NaviBackendRequest): Promise<string> {
-    const endpoint = this.getBackendUrl();
-    console.log('[AEP] Calling NAVI backend:', endpoint, payload);
-
-    // Set up timeout for request
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-
-    let response: Response;
-    try {
-      response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      console.error('[AEP] NAVI backend unreachable:', err);
-      return `⚠️ Could not reach NAVI backend: ${err?.message ?? String(err)}`;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      console.error(
-        '[AEP] NAVI backend HTTP error:',
-        response.status,
-        response.statusText,
-        text,
-      );
-      return `⚠️ NAVI backend error (${response.status} ${response.statusText}): ${text}`;
-    }
-
-    let data: NaviBackendResponse;
-    try {
-      data = (await response.json()) as NaviBackendResponse;
-    } catch (err: any) {
-      console.error('[AEP] NAVI backend JSON parse error:', err);
-      const fallback = await response.text().catch(() => '');
-      return fallback || '⚠️ NAVI backend returned an unreadable response.';
-    }
-
-    if (typeof data.reply === 'string' && data.reply.trim().length > 0) {
-      return data.reply;
-    }
-
-    // Fallback: stringify whatever we got
-    return (
-      '⚠️ NAVI backend did not include a `reply`. Raw response:\n' +
-      '```json\n' +
-      JSON.stringify(data, null, 2) +
-      '\n```'
-    );
-  }
-
-  /**
-   * Streaming scaffolding (client-side progressive reveal).
-   * For now we keep it unused so existing UI still sees a single `botMessage`.
-   * Later, when we want real streaming, we can:
-   *  - change the backend to stream tokens
-   *  - or call OpenAI directly here
-   *  - use `botStreamStart` / `botStreamChunk` / `botStreamEnd` message types.
-   */
-  private async streamReplyToWebview(
-    reply: string,
-    webview: vscode.Webview,
-  ): Promise<void> {
-    // NOTE: not actively used yet – infrastructure only.
-    const CHUNK_SIZE = 40;
-    const chunks: string[] = [];
-
-    for (let i = 0; i < reply.length; i += CHUNK_SIZE) {
-      chunks.push(reply.slice(i, i + CHUNK_SIZE));
-    }
-
-    if (!chunks.length) {
-      return;
-    }
-
-    webview.postMessage({ type: 'botStreamStart' });
-
-    for (const chunk of chunks) {
-      webview.postMessage({ type: 'botStreamChunk', text: chunk });
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-
-    webview.postMessage({ type: 'botStreamEnd' });
-  }
-
-  // ---------- Webview lifecycle ----------
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken,
+    _token: vscode.CancellationToken
   ) {
     this._view = webviewView;
 
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [this._extensionUri],
+      localResourceRoots: [this._extensionUri]
     };
 
-    webviewView.webview.html = getWebviewContent(
-      webviewView.webview,
-      this._extensionUri,
-    );
+    webviewView.webview.html = this.getWebviewHtml(webviewView.webview);
 
-    // Handle messages from the webview
     webviewView.webview.onDidReceiveMessage(async (msg: any) => {
-      switch (msg.type) {
-        case 'ready': {
-          // Initial welcome
-          webviewView.webview.postMessage({
-            type: 'botMessage',
-            text: `New chat started! How can I help you?`,
-          });
-          break;
-        }
-
-        case 'sendMessage': {
-          const text = String(msg.text || '').trim();
-          const modelLabel = msg.model ? String(msg.model) : 'ChatGPT 5.1';
-          const modeLabel =
-            msg.mode ?? msg.modeLabel ?? 'Agent (full access)';
-
-          if (!text) {
-            return;
-          }
-
-          console.log('[AEP] User message:', text);
-
-          // Show typing indicator
-          webviewView.webview.postMessage({ type: 'showTyping' });
-
-          const payload: NaviBackendRequest = {
-            message: text,
-            model: modelLabel,
-            mode: modeLabel,
-            editor: this.getEditorContext(),
-            conversationId: null, // TODO: wire real thread ids
-            history: undefined, // TODO: send prior exchanges here
-          };
-
-          try {
-            const reply = await this.callNaviBackend(payload);
-
-            // Hide typing indicator and send response
-            webviewView.webview.postMessage({ type: 'hideTyping' });
-
-            // For now we send as a single message.
-            // Later we can switch to streamReplyToWebview() once the webview implements streaming.
-            webviewView.webview.postMessage({
+      try {
+        switch (msg.type) {
+          case 'ready': {
+            // Panel is ready, send initial welcome message
+            this.postToWebview({
               type: 'botMessage',
-              text: reply,
+              text: "Hello! I'm NAVI, your autonomous engineering assistant. How can I help you today?"
             });
-          } catch (error) {
-            // Hide typing indicator and send error
-            webviewView.webview.postMessage({ type: 'hideTyping' });
-            webviewView.webview.postMessage({
+            break;
+          }
+
+          case 'sendMessage': {
+            const text = String(msg.text || '').trim();
+            if (!text) {
+              return;
+            }
+            console.log('[Extension Host] [AEP] User message:', text);
+            // Update local state
+            this._messages.push({ role: 'user', content: text });
+
+            // Show thinking state
+            this.postToWebview({ type: 'botThinking', value: true });
+
+            await this.callNaviBackend(text);
+            break;
+          }
+
+          case 'modelChanged': {
+            const label = String(msg.value || '').trim();
+            if (!label) return;
+            this._currentModel = label;
+            console.log('[Extension Host] [AEP] Model changed to:', label);
+            this.postToWebview({
               type: 'botMessage',
-              text: `⚠️ **Backend Error**: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              text: `Model switched to **${label}** (demo-only selector for now).`
             });
+            break;
           }
-          break;
-        }
 
-        case 'modelChanged': {
-          const label = String(msg.value || '').trim();
-          if (!label) {
-            return;
-          }
-          console.log('[AEP] Model changed:', label);
-          webviewView.webview.postMessage({
-            type: 'botMessage',
-            text: `Switched model to **${label}** (demo-only selector for now).`,
-          });
-          break;
-        }
-
-        case 'modeChanged': {
-          const label = String(msg.value || '').trim();
-          if (!label) {
-            return;
-          }
-          console.log('[AEP] Mode changed:', label);
-          webviewView.webview.postMessage({
-            type: 'botMessage',
-            text: `Mode updated to **${label}** (demo-only for now).`,
-          });
-          break;
-        }
-
-        case 'attachTypeSelected': {
-          const type = String(msg.value || '').trim();
-          if (!type) {
-            return;
-          }
-          console.log('[AEP] Attach type selected:', type);
-          vscode.window.showInformationMessage(
-            `Attachment flow for "${type}" is not wired yet – this will open the real picker soon.`,
-          );
-          break;
-        }
-
-        case 'buttonAction': {
-          const action = msg.action;
-          console.log('[AEP] Button action:', action);
-
-          if (action === 'newChat') {
-            // Clear chat + send fresh welcome
-            webviewView.webview.postMessage({ type: 'clearChat' });
-            webviewView.webview.postMessage({
+          case 'modeChanged': {
+            const label = String(msg.value || '').trim();
+            if (!label) return;
+            this._currentMode = label;
+            console.log('[Extension Host] [AEP] Mode changed to:', label);
+            this.postToWebview({
               type: 'botMessage',
-              text: 'New chat started! How can I help you?',
+              text: `Mode updated to **${label}** (demo-only for now).`
             });
-          } else if (action === 'connectors') {
+            break;
+          }
+
+          case 'newChat': {
+            // Clear current conversation state (so backend can start fresh)
+            this._conversationId = generateConversationId();
+            this._messages = [];
+
+            // Tell the webview to reset its UI
+            this.postToWebview({
+              type: 'resetChat',
+            });
+            break;
+          }
+
+          case 'attachClicked': {
+            // For now just show that the wiring works.
+            // Later we can open a real file/folder pick flow.
             vscode.window.showInformationMessage(
-              'NAVI Connectors – MCP servers & repo tools coming soon.',
+              'Attachment flow is not implemented yet – coming soon in a future release.'
             );
-          } else if (action === 'settings') {
-            vscode.commands.executeCommand(
-              'workbench.action.openSettings',
-              '@ext:navralabs.aep-professional aep.naviBackendUrl',
-            );
+            break;
           }
-          break;
-        }
 
-        default:
-          console.warn('[AEP] Unknown message type from webview:', msg);
+          case 'pickAttachment': {
+            // Open file picker for attachments
+            const uris = await vscode.window.showOpenDialog({
+              canSelectMany: true,
+              openLabel: 'Attach to NAVI chat',
+              filters: {
+                'Code & Text': ['ts', 'tsx', 'js', 'jsx', 'java', 'py', 'cs', 'go', 'rb', 'kt', 'c', 'cpp', 'h', 'sql', 'yml', 'yaml', 'json', 'md', 'txt'],
+                'All Files': ['*'],
+              },
+            });
+
+            if (!uris || uris.length === 0) {
+              this.postToWebview({ type: 'attachmentsCanceled' });
+              return;
+            }
+
+            this.postToWebview({
+              type: 'attachmentsSelected',
+              files: uris.map((u) => ({
+                path: u.fsPath,
+                name: vscode.workspace.asRelativePath(u.fsPath),
+              })),
+            });
+            break;
+          }
+
+          case 'commandSelected': {
+            // Map the menu item -> suggested prompt
+            const cmd = String(msg.command || '');
+            let prompt = '';
+
+            switch (cmd) {
+              case 'explain-code':
+                prompt =
+                  'Explain this code step-by-step, including what it does, time/space complexity, and any potential bugs or edge cases:';
+                break;
+              case 'refactor-code':
+                prompt =
+                  'Refactor this code for readability and maintainability, without changing behaviour:';
+                break;
+              case 'add-tests':
+                prompt =
+                  'Generate unit tests for this code. Include edge cases and failure paths:';
+                break;
+              case 'review-diff':
+                prompt =
+                  'Do a code review: highlight bugs, smells, and design/style issues, and suggest improvements:';
+                break;
+              case 'document-code':
+                prompt =
+                  'Add great documentation for this code: docstrings, comments where helpful, and a short summary of behaviour and constraints:';
+                break;
+              default:
+                // Fallback – just echo the command id
+                prompt = `Run NAVI action: ${cmd}`;
+            }
+
+            this.postToWebview({
+              type: 'insertCommandPrompt',
+              prompt,
+            });
+            break;
+          }
+
+          case 'attachTypeSelected': {
+            const type = String(msg.value || '').trim();
+            if (!type) return;
+            vscode.window.showInformationMessage(
+              `Attachment flow for "${type}" is not wired yet – this will open the real picker in a later PR.`
+            );
+            break;
+          }
+
+          default:
+            console.warn('[Extension Host] [AEP] Unknown message from webview:', msg);
+        }
+      } catch (err) {
+        console.error('[Extension Host] [AEP] Error handling webview message:', err);
+        this.postToWebview({
+          type: 'error',
+          text: '⚠️ Unexpected error in NAVI extension. Check developer tools for more details.'
+        });
       }
     });
+
+    // Welcome message will be sent when panel sends 'ready'
+  }
+
+  // --- Core: call NAVI backend ------------------------------------------------
+
+  private async callNaviBackend(latestUserText: string): Promise<void> {
+    if (!this._view) {
+      return;
+    }
+
+    const payload: NaviChatRequest = {
+      id: this._conversationId,
+      model: this._currentModel,
+      mode: this._currentMode,
+      messages: this._messages,
+      // PR1: we keep stream=false by default for reliability.
+      // You can flip this to true once your backend supports SSE.
+      stream: false
+    };
+
+    let response: Response;
+    try {
+      console.log('[Extension Host] [AEP] Calling NAVI backend', NAVI_BACKEND_URL, payload);
+
+      response = await fetch(NAVI_BACKEND_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (error: any) {
+      console.error('[Extension Host] [AEP] NAVI backend unreachable:', error);
+      this.postToWebview({ type: 'botThinking', value: false });
+      this.postToWebview({
+        type: 'error',
+        text: `⚠️ NAVI backend error: ${(error && error.message) || 'fetch failed'}`
+      });
+      return;
+    }
+
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+    // Non-2xx: show a clean error bubble, no empty reply above it.
+    if (!response.ok) {
+      console.error(
+        '[Extension Host] [AEP] NAVI backend non-OK response:',
+        response.status,
+        response.statusText
+      );
+      this.postToWebview({
+        type: 'error',
+        text: `⚠️ NAVI backend error: HTTP ${response.status} ${response.statusText || ''}`.trim()
+      });
+      return;
+    }
+
+    try {
+      if (contentType.includes('application/json')) {
+        // 🚀 Normal JSON reply (recommended for PR1)
+        const json = (await response.json()) as NaviChatResponseJson;
+        const reply = (json.reply || '').trim();
+
+        if (!reply) {
+          console.warn('[Extension Host] [AEP] Empty reply from NAVI backend JSON.');
+          this.postToWebview({
+            type: 'error',
+            text: '⚠️ NAVI backend returned an empty reply.'
+          });
+          return;
+        }
+
+        this._messages.push({ role: 'assistant', content: reply });
+        this.postToWebview({ type: 'botMessage', text: reply });
+        return;
+      }
+
+      if (contentType.includes('text/event-stream')) {
+        // ⚡ Streaming path (SSE) – we still send a single final botMessage for now
+        const fullText = await this.readSseStream(response);
+        const reply = fullText.trim();
+
+        if (!reply) {
+          this.postToWebview({
+            type: 'error',
+            text: '⚠️ NAVI backend returned an empty streamed reply.'
+          });
+          return;
+        }
+
+        this._messages.push({ role: 'assistant', content: reply });
+        this.postToWebview({ type: 'botMessage', text: reply });
+        return;
+      }
+
+      // Fallback: treat as plain text
+      const text = (await response.text()).trim();
+      if (!text) {
+        this.postToWebview({
+          type: 'error',
+          text: '⚠️ NAVI backend returned an empty reply (unknown content-type).'
+        });
+        return;
+      }
+      this._messages.push({ role: 'assistant', content: text });
+      this.postToWebview({ type: 'botMessage', text });
+    } catch (err) {
+      console.error('[Extension Host] [AEP] Error handling NAVI backend response:', err);
+      this.postToWebview({
+        type: 'error',
+        text: '⚠️ Error while processing response from NAVI backend.'
+      });
+    }
+  }
+
+  // --- SSE reader (streaming support baked in for later) ----------------------
+
+  /**
+   * Reads a text/event-stream response and returns concatenated text.
+   * For PR1 we **do not** stream partial chunks into the UI yet, to keep
+   * the panel logic simple and avoid duplicated bubbles.
+   */
+  private async readSseStream(response: Response): Promise<string> {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      console.warn('[Extension Host] [AEP] SSE response had no body.');
+      return '';
+    }
+
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let accumulated = '';
+
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        // Process line by line
+        while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, newlineIndex).trim();
+          buffer = buffer.slice(newlineIndex + 1);
+
+          if (!line || !line.startsWith('data:')) {
+            continue;
+          }
+
+          const data = line.slice('data:'.length).trim();
+          if (!data) continue;
+
+          if (data === '[DONE]') {
+            // End of stream
+            return accumulated;
+          }
+
+          let chunk = data;
+          // If backend wraps data as JSON { delta: "..." }, unpack it
+          try {
+            const parsed = JSON.parse(data);
+            if (typeof parsed.delta === 'string') {
+              chunk = parsed.delta;
+            } else if (typeof parsed.reply === 'string') {
+              chunk = parsed.reply;
+            }
+          } catch {
+            // If not JSON, treat as raw text
+          }
+
+          accumulated += chunk;
+        }
+      }
+    } catch (err: any) {
+      // In PR1 we just log SSE errors and let the caller decide what to show
+      console.error('[Extension Host] [AEP] Error while reading SSE stream:', err);
+    }
+
+    return accumulated;
+  }
+
+  // --- Helpers ---------------------------------------------------------------
+
+  private postToWebview(message: any) {
+    if (!this._view) return;
+    this._view.webview.postMessage(message);
+  }
+
+  private startNewChat() {
+    // Reset conversation state, keep current model/mode
+    this._conversationId = generateConversationId();
+    this._messages = [];
+
+    this.postToWebview({ type: 'clearChat' });
+    this.postToWebview({
+      type: 'botMessage',
+      text: "New chat started! How can I help you?"
+    });
+  }
+
+  private getWebviewHtml(webview: vscode.Webview): string {
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.js')
+    );
+    const styleUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.css')
+    );
+    const naviLogoUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this._extensionUri, 'media', 'mascot-navi-fox.svg')
+    );
+
+    const nonce = getNonce();
+
+    return /* html */ `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src 'unsafe-inline' ${webview.cspSource
+      }; script-src 'nonce-${nonce}';"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="${styleUri}" rel="stylesheet" />
+    <title>AEP: NAVI Assistant</title>
+  </head>
+  <body>
+    <div id="root" data-mascot-src="${naviLogoUri}"></div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+  </body>
+</html>`;
   }
 }
 
-// ---------- Extension activation ----------
-
-export function activate(context: vscode.ExtensionContext) {
-  console.log('[AEP] NAVI extension activating…');
-
-  const provider = new NaviWebviewProvider(context.extensionUri);
-
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
-      NaviWebviewProvider.viewType,
-      provider,
-    ),
-  );
-
-  // Command palette entry to focus the NAVI view
-  const openCommand = vscode.commands.registerCommand('aep.openNavi', () => {
-    vscode.commands.executeCommand('aep.chatView.focus');
-  });
-
-  context.subscriptions.push(openCommand);
+// Simple conversation id – you can switch to UUID later
+function generateConversationId(): string {
+  return `navi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function deactivate() {
-  console.log('[AEP] NAVI extension deactivated');
-}
-
-// ---------- HTML for webview ----------
-
-function getWebviewContent(
-  webview: vscode.Webview,
-  extensionUri: vscode.Uri,
-): string {
-  const nonce = getNonce();
-
-  const scriptUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'media', 'panel.js'),
-  );
-  const styleUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'media', 'panel.css'),
-  );
-  const mascotUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'media', 'mascot-navi-fox.svg'),
-  );
-
-  const cspSource = webview.cspSource;
-
-  return /* html */ `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta
-    http-equiv="Content-Security-Policy"
-    content="default-src 'none'; style-src ${cspSource}; img-src ${cspSource} data:; script-src 'nonce-${nonce}';"
-  />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link href="${styleUri}" rel="stylesheet" />
-  <title>NAVI Assistant</title>
-</head>
-<body>
-  <div id="root" data-mascot-src="${mascotUri}"></div>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
-}
-
-function getNonce(): string {
+function getNonce() {
   let text = '';
   const possible =
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';

@@ -1,5 +1,5 @@
 // media/panel.js
-// NAVI chat panel with streaming support
+// NAVI chat panel with streaming + quick actions
 
 (function () {
   // ---------------------------------------------------------------------------
@@ -9,7 +9,7 @@
     try {
       const api = acquireVsCodeApi();
       if (typeof window !== 'undefined') {
-        window.vscode = api; // expose globally for footer wiring
+        window.vscode = api;
       }
       return api;
     } catch (err) {
@@ -20,7 +20,16 @@
 
   const root = document.getElementById('root');
 
-  // Streaming state
+  // Command menu drag state (for wand menu)
+  let commandMenuEl = null;
+  let commandMenuHasUserPosition = false;
+  const commandMenuDragState = {
+    dragging: false,
+    offsetX: 0,
+    offsetY: 0,
+  };
+
+  // Streaming / thinking state
   const state = {
     streamingMessageId: null,
     streamingBubble: null,
@@ -38,13 +47,12 @@
     hideThinkingMessage();
 
     const bubble = document.createElement('div');
-    bubble.className = 'navi-message navi-message-thinking';
+    bubble.className = 'navi-message-thinking';
     bubble.dataset.kind = 'thinking';
-    bubble.textContent = 'NAVI is thinking...';
+    bubble.textContent = 'NAVI is thinking…';
 
     messagesEl.appendChild(bubble);
     thinkingMessageEl = bubble;
-
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
@@ -56,7 +64,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Build UI
+  // Build shell UI
   // ---------------------------------------------------------------------------
   root.innerHTML = `
     <div class="navi-shell">
@@ -82,7 +90,6 @@
               <!-- Fox head -->
               <g>
                 <path d="M22 5 L36 16 33 34 22 39 11 34 8 16Z" fill="url(#naviFoxGrad)"/>
-                
                 <!-- ears -->
                 <g transform="translate(12,14)">
                   <path d="M0 3 L6 -1 4 6 Z" fill="#fff" opacity="0.95"/>
@@ -90,7 +97,6 @@
                 <g transform="translate(26,14)">
                   <path d="M6 3 L0 -1 2 6 Z" fill="#fff" opacity="0.95"/>
                 </g>
-                
                 <!-- eyes + nose -->
                 <ellipse cx="18" cy="24" rx="1.6" ry="1.6" fill="#0F172A"/>
                 <ellipse cx="26" cy="24" rx="1.6" ry="1.6" fill="#0F172A"/>
@@ -144,25 +150,25 @@
           <button class="navi-pill" id="navi-mode-pill" type="button">Mode: Agent (full access)</button>
         </div>
 
-        <!-- Compact command menu overlay -->
+        <!-- Command menu overlay, anchored near footer -->
         <div id="navi-command-menu" class="navi-command-menu navi-command-menu-hidden">
-          <button class="navi-command-item" type="button" data-command-id="explain-code">
+          <button class="navi-command-item" data-command-id="explain-code">
             <div class="navi-command-title">Explain code</div>
             <div class="navi-command-subtitle">High-level and line-by-line explanation</div>
           </button>
-          <button class="navi-command-item" type="button" data-command-id="refactor-code">
+          <button class="navi-command-item" data-command-id="refactor-code">
             <div class="navi-command-title">Refactor for readability</div>
             <div class="navi-command-subtitle">Cleaner, more idiomatic version</div>
           </button>
-          <button class="navi-command-item" type="button" data-command-id="add-tests">
+          <button class="navi-command-item" data-command-id="add-tests">
             <div class="navi-command-title">Generate tests</div>
             <div class="navi-command-subtitle">Unit tests for the selected code or function</div>
           </button>
-          <button class="navi-command-item" type="button" data-command-id="review-diff">
+          <button class="navi-command-item" data-command-id="review-diff">
             <div class="navi-command-title">Code review</div>
             <div class="navi-command-subtitle">Bugs, smells, and style issues</div>
           </button>
-          <button class="navi-command-item" type="button" data-command-id="document-code">
+          <button class="navi-command-item" data-command-id="document-code">
             <div class="navi-command-title">Document this code</div>
             <div class="navi-command-subtitle">Comments and docstrings</div>
           </button>
@@ -187,19 +193,21 @@
       justify-content: center;
       box-shadow: 0 0 18px rgba(129, 140, 248, 0.6);
     `;
+
     logoSvg.style.cssText = `
       width: 32px;
       height: 32px;
       display: block;
       border-radius: 10px;
     `;
+
     console.log('[NAVI] Fox logo embedded successfully');
   } else {
     console.warn('[NAVI] Logo container or SVG not found');
   }
 
   // ---------------------------------------------------------------------------
-  // Message helpers
+  // DOM references
   // ---------------------------------------------------------------------------
   const messagesEl = document.getElementById('navi-messages');
   const formEl = document.getElementById('navi-form');
@@ -207,6 +215,9 @@
   const modelPill = document.getElementById('navi-model-pill');
   const modePill = document.getElementById('navi-mode-pill');
 
+  // ---------------------------------------------------------------------------
+  // Rendering helpers
+  // ---------------------------------------------------------------------------
   function renderTextSegments(text, container) {
     const lines = String(text).split('\n');
     container.innerHTML = '';
@@ -258,29 +269,117 @@
     flushCodeBlock();
   }
 
+  // Message action toolbar for each bubble
+  function createMessageActions(role, text) {
+    const safe = String(text || '');
+    if (!safe.trim()) return null;
+
+    const actions = document.createElement('div');
+    actions.className = 'navi-msg-actions';
+
+    function makeBtn(label, title) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'navi-msg-action-btn';
+      btn.textContent = label;
+      if (title) btn.title = title;
+      return btn;
+    }
+
+    // Copy (both user + bot)
+    const copyBtn = makeBtn('Copy', 'Copy to clipboard');
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(safe).catch((err) =>
+          console.warn('[NAVI] clipboard write failed:', err)
+        );
+      } else if (vscode) {
+        vscode.postMessage({ type: 'copyToClipboard', text: safe });
+      }
+    });
+    actions.appendChild(copyBtn);
+
+    if (role === 'user') {
+      // Edit user message (put back into input)
+      const editBtn = makeBtn('Edit', 'Edit this prompt');
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (inputEl) {
+          inputEl.value = safe;
+          inputEl.focus();
+        }
+      });
+      actions.appendChild(editBtn);
+
+      // Reuse message (re-send after editing)
+      const reuseBtn = makeBtn('Use again', 'Reuse this prompt');
+      reuseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (inputEl) {
+          inputEl.value = safe;
+          inputEl.focus();
+        }
+      });
+      actions.appendChild(reuseBtn);
+    } else {
+      // Bot bubble actions
+      const insertBtn = makeBtn('Insert', 'Insert into a file');
+      insertBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (vscode) {
+          vscode.postMessage({
+            type: 'insertIntoFile',
+            text: safe,
+          });
+        }
+      });
+      actions.appendChild(insertBtn);
+
+      const useBtn = makeBtn('Use as prompt', 'Send as a follow-up prompt');
+      useBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (inputEl) {
+          inputEl.value = safe;
+          inputEl.focus();
+        }
+      });
+      actions.appendChild(useBtn);
+    }
+
+    return actions;
+  }
+
   function appendMessage(text, role, options = {}) {
-    const safeText = String(text || '');
-    if (!safeText.trim()) {
-      console.warn('[NAVI] Ignoring empty message for role:', role);
-      return;
+    const safeText = String(text ?? '');
+    const allowEmpty = !!options.allowEmpty;
+
+    if (!safeText.trim() && !allowEmpty) {
+      return null;
     }
 
     const wrapper = document.createElement('div');
     wrapper.className =
-      role === 'user'
-        ? 'navi-msg-row navi-msg-row-user'
-        : 'navi-msg-row navi-msg-row-bot';
+      role === 'user' ? 'navi-msg-row navi-msg-row-user' : 'navi-msg-row navi-msg-row-bot';
 
     const bubble = document.createElement('div');
     bubble.className =
-      role === 'user'
-        ? 'navi-bubble navi-bubble-user'
-        : 'navi-bubble navi-bubble-bot';
+      role === 'user' ? 'navi-bubble navi-bubble-user' : 'navi-bubble navi-bubble-bot';
 
     if (options.muted) bubble.classList.add('navi-bubble-muted');
 
+    // Content
     renderTextSegments(safeText, bubble);
     wrapper.appendChild(bubble);
+
+    // Hover actions (only when there is visible text)
+    if (safeText.trim()) {
+      const actions = createMessageActions(role, safeText);
+      if (actions) {
+        wrapper.appendChild(actions);
+      }
+    }
+
     messagesEl.appendChild(wrapper);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
@@ -305,7 +404,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Form & header events
+  // Form events
   // ---------------------------------------------------------------------------
   formEl.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -313,7 +412,9 @@
     if (!text) return;
 
     appendMessage(text, 'user');
-    vscode?.postMessage({ type: 'sendMessage', text });
+    if (vscode) {
+      vscode.postMessage({ type: 'sendMessage', text });
+    }
     inputEl.value = '';
     inputEl.focus();
     showThinkingMessage();
@@ -326,30 +427,36 @@
     }
   });
 
-  root.querySelectorAll('.navi-icon-btn[data-action]').forEach((btn) => {
+  // ---------------------------------------------------------------------------
+  // Header buttons
+  // ---------------------------------------------------------------------------
+  root.querySelectorAll('.navi-header .navi-icon-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const action = btn.getAttribute('data-action');
-      if (!action) return;
+      if (!action || !vscode) return;
 
       if (action === 'newChat') {
-        vscode?.postMessage({ type: 'newChat' });
+        vscode.postMessage({ type: 'newChat' });
       } else if (action === 'connectors') {
-        vscode?.postMessage({ type: 'openConnectors' });
+        vscode.postMessage({ type: 'openConnectors' });
       } else if (action === 'settings') {
-        vscode?.postMessage({ type: 'openSettings' });
+        vscode.postMessage({ type: 'openSettings' });
       }
     });
   });
 
+  // Model/mode pills → extension-side pickers
   modelPill.addEventListener('click', () => {
-    vscode?.postMessage({
+    if (!vscode) return;
+    vscode.postMessage({
       type: 'modelPickerRequested',
       options: ['ChatGPT 5.1', 'gpt-4.2', 'o3-mini'],
     });
   });
 
   modePill.addEventListener('click', () => {
-    vscode?.postMessage({
+    if (!vscode) return;
+    vscode.postMessage({
       type: 'modePickerRequested',
       options: ['Agent (full access)', 'Chat only', 'Read-only explorer'],
     });
@@ -384,20 +491,22 @@
         hideThinkingMessage();
         state.streamingMessageId = msg.messageId;
         state.streamingText = '';
-        const { bubble } = appendMessage('', 'bot');
-        state.streamingBubble = bubble;
+        const created = appendMessage('', 'bot', { allowEmpty: true });
+        state.streamingBubble = created ? created.bubble : null;
         break;
       }
 
       case 'botStreamDelta': {
         if (!msg.messageId || msg.messageId !== state.streamingMessageId) return;
         if (!state.streamingBubble) {
-          const { bubble: newBubble } = appendMessage('', 'bot');
-          state.streamingBubble = newBubble;
+          const created = appendMessage('', 'bot', { allowEmpty: true });
+          state.streamingBubble = created ? created.bubble : null;
         }
         state.streamingText += msg.text || '';
-        renderTextSegments(state.streamingText, state.streamingBubble);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        if (state.streamingBubble) {
+          renderTextSegments(state.streamingText, state.streamingBubble);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
         break;
       }
 
@@ -409,9 +518,7 @@
         break;
 
       case 'insertCommandPrompt': {
-        const input =
-          document.querySelector('#navi-input') ||
-          document.querySelector('.navi-input');
+        const input = document.querySelector('#navi-input') || document.querySelector('.navi-input');
         if (input) {
           input.value = msg.prompt || '';
           input.focus();
@@ -421,10 +528,7 @@
 
       case 'resetChat': {
         clearChat();
-        appendMessage(
-          'New chat started! How can I help you today?',
-          'bot'
-        );
+        appendMessage('New chat started! How can I help you today?', 'bot');
         break;
       }
 
@@ -449,7 +553,7 @@
       }
 
       case 'attachmentsCanceled':
-        // ignore quietly
+        // currently no-op
         break;
 
       default:
@@ -457,195 +561,186 @@
     }
   });
 
-  // Tell extension we're ready
-  vscode?.postMessage({ type: 'ready' });
-})();
+  // ---------------------------------------------------------------------------
+  // Footer wiring: wand menu + attachments
+  // ---------------------------------------------------------------------------
+  (function setupFooter() {
+    const vscodeApi = vscode || (typeof window !== 'undefined' && window.vscode) || null;
+    console.log('[NAVI] Footer wiring: vscodeApi present?', !!vscodeApi);
 
-// ---------------------------------------------------------------------------
-// Footer wiring: attach button + wand command menu
-// ---------------------------------------------------------------------------
-window.addEventListener('DOMContentLoaded', () => {
-  const vscodeApi =
-    (typeof window !== 'undefined' && window.vscode) || null;
+    const attachBtn = document.getElementById('navi-attach-btn');
+    const actionsBtn = document.getElementById('navi-actions-btn');
+    commandMenuEl = document.getElementById('navi-command-menu');
 
-  console.log('[NAVI] Footer wiring: vscodeApi present?', !!vscodeApi);
+    console.log(
+      '[NAVI] Footer wiring:',
+      'attachBtn', !!attachBtn,
+      'actionsBtn', !!actionsBtn,
+      'commandMenu', !!commandMenuEl
+    );
 
-  const attachBtn = document.getElementById('navi-attach-btn');
-  const actionsBtn = document.getElementById('navi-actions-btn');
-  const menu = document.getElementById('navi-command-menu');
-  const inputEl =
-    document.getElementById('navi-input') ||
-    document.querySelector('.navi-input');
+    function openCommandMenu(anchorButton) {
+      if (!commandMenuEl) return;
 
-  console.log(
-    '[NAVI] Footer wiring:',
-    'attachBtn', !!attachBtn,
-    'actionsBtn', !!actionsBtn,
-    'menu', !!menu
-  );
+      if (!commandMenuHasUserPosition && anchorButton) {
+        const anchorRect = anchorButton.getBoundingClientRect();
+        const webviewRect = document.body.getBoundingClientRect();
 
-  if (!attachBtn || !actionsBtn || !menu) {
-    return;
-  }
+        const menuWidth = commandMenuEl.offsetWidth || 360;
+        const menuHeight = commandMenuEl.offsetHeight || 260;
 
-  // Small mapping so command clicks *do* something immediately
-  const COMMAND_PROMPTS = {
-    'explain-code':
-      'Explain this code. Provide both a high-level summary and a line-by-line explanation.',
-    'refactor-code':
-      'Refactor this code for readability and maintainability. Keep behaviour the same.',
-    'add-tests':
-      'Generate unit tests for this code, including edge cases and failure paths.',
-    'review-diff':
-      'Review this code for bugs, code smells, and style issues. Suggest concrete fixes.',
-    'document-code':
-      'Add comments and docstrings to this code and explain any non-obvious logic.',
-  };
+        const preferredLeft = anchorRect.left - webviewRect.left - menuWidth * 0.25;
+        const preferredBottom = webviewRect.bottom - anchorRect.top + 12;
 
-  // --- Command menu show/hide ----------------------------------------------
+        commandMenuEl.style.left = `${Math.max(24, preferredLeft)}px`;
+        commandMenuEl.style.bottom = `${preferredBottom}px`;
+        commandMenuEl.style.top = 'auto';
+        commandMenuEl.style.transform = 'none';
+      }
 
-  function openCommandMenu(anchorButton) {
-    const rect = anchorButton.getBoundingClientRect();
-    const bodyRect = document.body.getBoundingClientRect();
+      commandMenuEl.classList.remove('navi-command-menu-hidden');
+      commandMenuEl.classList.add('navi-command-menu-visible');
+    }
 
-    const menuWidth = menu.offsetWidth || 360;
-    const left =
-      rect.left - bodyRect.left - menuWidth * 0.15;
+    function closeCommandMenu() {
+      if (!commandMenuEl) return;
+      commandMenuEl.classList.remove('navi-command-menu-visible');
+      commandMenuEl.classList.add('navi-command-menu-hidden');
+    }
 
-    const bottom =
-      bodyRect.bottom - rect.top + 12;
+    function toggleCommandMenu(anchorButton) {
+      if (!commandMenuEl) return;
+      if (commandMenuEl.classList.contains('navi-command-menu-visible')) {
+        closeCommandMenu();
+      } else {
+        openCommandMenu(anchorButton);
+      }
+    }
 
-    menu.style.left = `${Math.max(24, left)}px`;
-    menu.style.bottom = `${bottom}px`;
-    menu.style.top = 'auto'; // just in case
+    // Drag handlers
+    function onCommandMenuDragStart(e) {
+      if (!commandMenuEl) return;
 
-    menu.classList.remove('navi-command-menu-hidden');
-    menu.classList.add('navi-command-menu-visible');
+      commandMenuDragState.dragging = true;
+      const rect = commandMenuEl.getBoundingClientRect();
+      commandMenuDragState.offsetX = e.clientX - rect.left;
+      commandMenuDragState.offsetY = e.clientY - rect.top;
 
-    console.log('[NAVI] Command menu opened');
-  }
+      commandMenuHasUserPosition = true;
+      commandMenuEl.style.transform = 'none';
+    }
 
-  function closeCommandMenu() {
-    if (!menu.classList.contains('navi-command-menu-visible')) return;
-    menu.classList.remove('navi-command-menu-visible');
-    menu.classList.add('navi-command-menu-hidden');
-    console.log('[NAVI] Command menu closed');
-  }
+    function onCommandMenuDragMove(e) {
+      if (!commandMenuEl || !commandMenuDragState.dragging) return;
 
-  function toggleCommandMenu(anchorButton) {
-    if (menu.classList.contains('navi-command-menu-visible')) {
+      const webviewRect = document.body.getBoundingClientRect();
+      let left = e.clientX - commandMenuDragState.offsetX - webviewRect.left;
+      let top = e.clientY - commandMenuDragState.offsetY - webviewRect.top;
+
+      const maxLeft = webviewRect.width - commandMenuEl.offsetWidth - 16;
+      const maxTop = webviewRect.height - commandMenuEl.offsetHeight - 16;
+
+      left = Math.min(Math.max(16, left), Math.max(16, maxLeft));
+      top = Math.min(Math.max(16, top), Math.max(16, maxTop));
+
+      commandMenuEl.style.bottom = 'auto';
+      commandMenuEl.style.left = `${left}px`;
+      commandMenuEl.style.top = `${top}px`;
+    }
+
+    function onCommandMenuDragEnd() {
+      commandMenuDragState.dragging = false;
+    }
+
+    if (commandMenuEl) {
+      commandMenuEl.addEventListener('mousedown', onCommandMenuDragStart);
+      window.addEventListener('mousemove', onCommandMenuDragMove);
+      window.addEventListener('mouseup', onCommandMenuDragEnd);
       closeCommandMenu();
-    } else {
-      openCommandMenu(anchorButton);
-    }
-  }
-
-  // --- Attachment chip (no OS picker yet) ---------------------------------
-
-  function showAttachmentInfoChip() {
-    const footer = document.querySelector('.navi-footer');
-    if (!footer) return;
-
-    let chip = footer.querySelector('.navi-attachment-chip');
-    if (!chip) {
-      chip = document.createElement('div');
-      chip.className = 'navi-attachment-chip';
-      chip.innerHTML = `
-        <span class="navi-attachment-icon">📎</span>
-        <span>Attachment flow is not implemented yet – coming soon.</span>
-      `;
-      footer.insertBefore(chip, footer.firstChild);
-    }
-  }
-
-  attachBtn.addEventListener('click', (event) => {
-    event.stopPropagation();
-    console.log('[NAVI] Attach button clicked');
-    showAttachmentInfoChip();
-  });
-
-  // --- Wand button ---------------------------------------------------------
-
-  actionsBtn.addEventListener('click', (event) => {
-    event.stopPropagation();
-    console.log('[NAVI] Actions button clicked');
-    toggleCommandMenu(actionsBtn);
-  });
-
-  // --- Command menu item clicks -------------------------------------------
-
-  const ITEM_SELECTOR = '.navi-command-item';
-
-  menu.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!target) return;
-
-    const item = target.closest
-      ? target.closest(ITEM_SELECTOR)
-      : null;
-    if (!item) return;
-
-    event.stopPropagation();
-
-    const id =
-      item.dataset.commandId ||
-      item.getAttribute('data-command-id') ||
-      '';
-
-    console.log('[NAVI] Command selected:', id);
-
-    // Fill input with a helpful prompt immediately
-    const prompt = COMMAND_PROMPTS[id];
-    if (prompt && inputEl) {
-      inputEl.value = prompt;
-      inputEl.focus();
     }
 
-    // Notify extension if it wants to react
-    if (id && vscodeApi) {
-      vscodeApi.postMessage({
-        type: 'commandSelected',
-        command: id,
+    // Attach button → currently just trigger toast / not-implemented flow,
+    // handled by the extension. No OS file picker here.
+    if (attachBtn && vscodeApi) {
+      attachBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        console.log('[NAVI] Attach button clicked');
+        vscodeApi.postMessage({ type: 'pickAttachment' });
       });
     }
 
-    closeCommandMenu();
-  });
-
-  // Keyboard support: Enter / Space on focused item
-  menu.addEventListener('keydown', (event) => {
-    const target = event.target;
-    if (!target) return;
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-
-    const item = target.closest
-      ? target.closest(ITEM_SELECTOR)
-      : null;
-    if (!item) return;
-
-    event.preventDefault();
-    item.click();
-  });
-
-  // Click outside closes the menu
-  document.addEventListener('click', (event) => {
-    if (!menu.classList.contains('navi-command-menu-visible')) return;
-    const target = event.target;
-    if (!target) return;
-
-    if (menu.contains(target) || actionsBtn.contains(target)) {
-      return;
+    // Wand button → command menu
+    if (actionsBtn && commandMenuEl) {
+      actionsBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        console.log('[NAVI] Actions button clicked');
+        toggleCommandMenu(actionsBtn);
+      });
     }
-    closeCommandMenu();
-  });
 
-  // ESC closes menu
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
+    // Command menu items (delegated)
+    if (commandMenuEl && vscodeApi) {
+      const ITEM_SELECTOR = '.navi-command-item';
+
+      const items = Array.from(commandMenuEl.querySelectorAll(ITEM_SELECTOR));
+      console.log('[NAVI] Command menu items found:', items.length);
+
+      commandMenuEl.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!target) return;
+        const item = target.closest ? target.closest(ITEM_SELECTOR) : null;
+        if (!item) return;
+
+        event.stopPropagation();
+        const id =
+          item.dataset.commandId || item.getAttribute('data-command-id') || '';
+
+        console.log('[NAVI] Command selected:', id);
+
+        if (id) {
+          vscodeApi.postMessage({
+            type: 'commandSelected',
+            command: id,
+          });
+        }
+
+        closeCommandMenu();
+      });
+
+      commandMenuEl.addEventListener('keydown', (event) => {
+        const target = event.target;
+        if (!target) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          const item = target.closest ? target.closest(ITEM_SELECTOR) : null;
+          if (!item) return;
+          event.preventDefault();
+          item.click();
+        }
+      });
+    }
+
+    // Click outside → close menu
+    document.addEventListener('click', (event) => {
+      if (!commandMenuEl) return;
+      if (!commandMenuEl.classList.contains('navi-command-menu-visible')) return;
+      const target = event.target;
+      if (!target) return;
+      if (commandMenuEl.contains(target) || actionsBtn?.contains(target)) return;
       closeCommandMenu();
-    }
-  });
+    });
 
-  // Ensure menu starts hidden
-  closeCommandMenu();
-});
+    // ESC closes menu
+    document.addEventListener('keydown', (event) => {
+      if (!commandMenuEl) return;
+      if (!commandMenuEl.classList.contains('navi-command-menu-visible')) return;
+      if (event.key === 'Escape') {
+        closeCommandMenu();
+      }
+    });
+  })();
+
+  // Tell extension we're ready
+  if (vscode) {
+    vscode.postMessage({ type: 'ready' });
+  }
+})();

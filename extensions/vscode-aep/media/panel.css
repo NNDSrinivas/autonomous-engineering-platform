@@ -234,11 +234,9 @@ body {
 
 /* NAVI bubble – darker flat card (professional tool aesthetic) */
 .navi-bubble-bot {
-  background: radial-gradient(
-    circle at 0% 0%,
-    #020617 0%,
-    #0f172a 100%
-  );
+  background: radial-gradient(circle at 0% 0%,
+      #020617 0%,
+      #0f172a 100%);
   color: rgba(241, 245, 249, 0.94);
   padding: 16px 18px;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -653,47 +651,75 @@ body {
 /* Actions button (✨) styles – already overridden above */
 
 /* ----------------------------------------- */
-/* Message hover toolbar (Copy / Insert / Use again) */
-/* CSS hover control - floats above bubble */
+/* Message hover toolbar (Option A: pure CSS hover, no flicker) */
 /* ----------------------------------------- */
 
-.navi-msg-actions {
+/* Shared wrapper for bubble + toolbar (hover region) */
+.navi-msg-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Toolbar container */
+.navi-msg-toolbar {
   position: absolute;
-  top: -32px;         /* float above bubble */
-  right: 18px;
+  top: -30px;
+  right: 8px;
+
   display: flex;
   gap: 6px;
-  z-index: 10;
+
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transform: translateY(2px);
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
 }
 
-/* Show toolbar on message row hover */
-.navi-msg-row:hover .navi-msg-actions {
+/* Show toolbar when the wrapper is hovered or focused */
+.navi-msg-wrapper:hover .navi-msg-toolbar,
+.navi-msg-wrapper:focus-within .navi-msg-toolbar {
   opacity: 1;
   pointer-events: auto;
+  transform: translateY(0);
 }
 
-/* Buttons inside the toolbar */
-.navi-msg-action-btn {
-  border: 1px solid rgba(148, 163, 184, 0.6);
-  background: rgba(15, 23, 42, 0.96);
-  color: #e5e7eb;
-  border-radius: 999px;
+/* Individual toolbar buttons (Option A style) */
+.navi-msg-toolbar-btn {
   padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.98);
+  color: #e5e7eb;
   font-size: 11px;
+  font-weight: 500;
+
   cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s ease,
-              border-color 0.15s ease,
-              box-shadow 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.9);
+  transition:
+    background 120ms ease-out,
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out,
+    transform 80ms ease-out;
 }
 
-.navi-msg-action-btn:hover {
-  background: #02061f;
+.navi-msg-toolbar-btn:hover,
+.navi-msg-toolbar-btn:focus-visible {
   border-color: #a855f7;
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.9);
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.75);
+  background: #02061f;
+  outline: none;
+  transform: translateY(-0.5px);
+}
+
+.navi-msg-toolbar-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.75);
 }
 
 /* Attachment chip */

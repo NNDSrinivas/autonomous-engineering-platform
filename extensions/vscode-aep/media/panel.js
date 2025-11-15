@@ -278,6 +278,69 @@
     flushCodeBlock();
   }
 
+  function createMessageToolbar(role, text) {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'navi-msg-toolbar';
+
+    function makeBtn(label, title) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'navi-msg-toolbar-btn';
+      btn.textContent = label;
+      btn.title = title;
+      return btn;
+    }
+
+    // Copy (both user + bot)
+    const copyBtn = makeBtn('Copy', 'Copy to clipboard');
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).catch(err =>
+          console.warn('[NAVI] clipboard write failed:', err)
+        );
+      } else if (vscode) {
+        vscode.postMessage({ type: 'copyToClipboard', text });
+      }
+    });
+    toolbar.appendChild(copyBtn);
+
+    if (role === 'user') {
+      // Edit user message
+      const editBtn = makeBtn('Edit', 'Edit this prompt');
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (inputEl) {
+          inputEl.value = text;
+          inputEl.focus();
+        }
+      });
+      toolbar.appendChild(editBtn);
+    } else {
+      // Bot bubble actions
+      const insertBtn = makeBtn('Insert', 'Insert into a file');
+      insertBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (vscode) {
+          vscode.postMessage({ type: 'insertIntoFile', text });
+        }
+      });
+      toolbar.appendChild(insertBtn);
+
+      const useBtn = makeBtn('Use as prompt', 'Send as a follow-up');
+      useBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (inputEl) {
+          inputEl.value = text;
+          inputEl.focus();
+        }
+      });
+      toolbar.appendChild(useBtn);
+    }
+
+    return toolbar;
+  }
+
   function appendMessage(text, role, options = {}) {
     const safeText = String(text || '');
     if (!safeText.trim()) {
@@ -288,13 +351,23 @@
     const wrapper = document.createElement('div');
     wrapper.className = role === 'user' ? 'navi-msg-row navi-msg-row-user' : 'navi-msg-row navi-msg-row-bot';
 
+    // Shared wrapper for bubble + toolbar (hover region)
+    const bubbleWrap = document.createElement('div');
+    bubbleWrap.className = 'navi-msg-wrapper';
+
     const bubble = document.createElement('div');
     bubble.className = role === 'user' ? 'navi-bubble navi-bubble-user' : 'navi-bubble navi-bubble-bot';
 
     if (options.muted) bubble.classList.add('navi-bubble-muted');
 
     renderTextSegments(safeText, bubble);
-    wrapper.appendChild(bubble);
+
+    // Add toolbar (pure CSS hover, no JS show/hide)
+    const toolbar = createMessageToolbar(role, safeText);
+    bubbleWrap.appendChild(toolbar);
+    bubbleWrap.appendChild(bubble);
+
+    wrapper.appendChild(bubbleWrap);
     messagesEl.appendChild(wrapper);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 

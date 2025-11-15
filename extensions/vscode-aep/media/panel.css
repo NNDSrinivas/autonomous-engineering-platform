@@ -837,3 +837,45 @@ body {
   content: "📎";
   opacity: 0.9;
 }
+
+/* Message actions toolbar (hover) */
+
+.navi-msg-actions {
+  position: absolute;
+  top: -6px;
+  right: 4px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.95);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+}
+
+.navi-msg-row:hover .navi-msg-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.navi-msg-action-btn {
+  background: transparent;
+  border: none;
+  color: #e5e7eb;
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+
+.navi-msg-action-btn:hover {
+  background: rgba(79, 70, 229, 0.7);
+  color: #ffffff;
+}

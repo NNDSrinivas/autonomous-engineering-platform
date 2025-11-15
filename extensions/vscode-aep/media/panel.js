@@ -233,56 +233,76 @@ let commandMenuDragState = {
   const inputEl = document.getElementById('navi-input');
   const attachmentsBanner = document.getElementById('navi-attachments-banner');
 
-  // Rendering helpers --------------------------------------------------------
-  function renderTextSegments(text, container) {
-    const lines = String(text).split('\n');
-    container.innerHTML = '';
+  // Markdown rendering (enhanced for PR-3) ------------------------------------
+  function renderMarkdown(text) {
+    if (!text) return '';
 
-    let inCodeBlock = false;
-    let codeBuffer = [];
+    let html = text;
 
-    const flushCodeBlock = () => {
-      if (!codeBuffer.length) return;
-      const pre = document.createElement('pre');
-      pre.className = 'navi-code-block';
-      pre.textContent = codeBuffer.join('\n');
-      container.appendChild(pre);
-      codeBuffer = [];
-    };
-
-    lines.forEach((line, idx) => {
-      if (line.trim().startsWith('```')) {
-        if (inCodeBlock) {
-          flushCodeBlock();
-          inCodeBlock = false;
-        } else {
-          inCodeBlock = true;
-        }
-        return;
-      }
-
-      if (inCodeBlock) {
-        codeBuffer.push(line);
-        return;
-      }
-
-      if (line.startsWith('> ')) {
-        const quote = document.createElement('div');
-        quote.className = 'navi-line-quote';
-        quote.textContent = line.slice(2);
-        container.appendChild(quote);
-      } else if (line.trim().length > 0) {
-        const p = document.createElement('div');
-        p.textContent = line;
-        container.appendChild(p);
-      }
-
-      if (idx < lines.length - 1 && !inCodeBlock) {
-        container.appendChild(document.createElement('br'));
-      }
+    // Code fences ```lang\ncode\n```
+    html = html.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
+      const safeLang = lang ? ` language-${lang}` : '';
+      const escapedCode = (code || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      return `<pre class="navi-code-block"><code class="navi-code-content${safeLang}">${escapedCode}</code></pre>`;
     });
 
-    flushCodeBlock();
+    // Inline code `code`
+    html = html.replace(/`([^`]+)`/g, '<code class="navi-inline-code">$1</code>');
+
+    // Bold / italic
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+    // Headings
+    html = html.replace(/^### (.*)$/gm, '<h3 class="navi-heading-3">$1</h3>');
+    html = html.replace(/^## (.*)$/gm, '<h2 class="navi-heading-2">$1</h2>');
+    html = html.replace(/^# (.*)$/gm, '<h1 class="navi-heading-1">$1</h1>');
+
+    // Lists (basic support)
+    html = html.replace(/^[*-] (.*)$/gm, '<li class="navi-list-item">$1</li>');
+    html = html.replace(/(<li.*<\/li>\n?)+/g, (match) => {
+      return `<ul class="navi-list">${match}</ul>`;
+    });
+
+    // Numbered lists
+    html = html.replace(/^\d+\. (.*)$/gm, '<li class="navi-list-item">$1</li>');
+
+    // Blockquotes
+    html = html.replace(/^> (.*)$/gm, '<blockquote class="navi-blockquote">$1</blockquote>');
+
+    // Paragraphs (preserve line breaks but create paragraph blocks)
+    const blocks = html.split(/\n\n+/);
+    html = blocks
+      .map((block) => {
+        const trimmed = block.trim();
+        if (!trimmed) return '';
+        // Don't wrap if already a block element
+        if (/^<(h[1-3]|pre|ul|ol|blockquote|li)/.test(trimmed)) {
+          return trimmed;
+        }
+        // Convert single line breaks to <br>
+        return `<p class="navi-paragraph">${trimmed.replace(/\n/g, '<br>')}</p>`;
+      })
+      .join('\n');
+
+    return html;
+  }
+
+  // Rendering helpers --------------------------------------------------------
+  function renderTextSegments(text, container) {
+    if (!container) return;
+    
+    const safeText = String(text || '');
+    if (!safeText.trim()) {
+      container.innerHTML = '';
+      return;
+    }
+
+    // Use markdown rendering for all content
+    container.innerHTML = renderMarkdown(safeText);
   }
 
   // appendMessage with stable toolbar ---------------------------------------

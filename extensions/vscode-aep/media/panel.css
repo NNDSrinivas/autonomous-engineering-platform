@@ -198,21 +198,128 @@ body {
   font-size: 12px;
 }
 
-/* Code blocks */
+/* MARKDOWN CONTENT STYLING (PR-3) ----------------------------- */
 
-.navi-code-block {
-  margin: 6px 0;
-  padding: 8px 10px;
-  background: #020617;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.7);
+/* Paragraphs */
+.navi-bubble p,
+.navi-bubble .navi-paragraph {
+  margin: 0 0 8px 0;
+}
+
+.navi-bubble p:last-child,
+.navi-bubble .navi-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+/* Headings */
+.navi-bubble h1,
+.navi-bubble .navi-heading-1 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 12px 0 8px 0;
+  color: #f9fafb;
+}
+
+.navi-bubble h2,
+.navi-bubble .navi-heading-2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 10px 0 6px 0;
+  color: #f3f4f6;
+}
+
+.navi-bubble h3,
+.navi-bubble .navi-heading-3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 8px 0 4px 0;
+  color: #e5e7eb;
+}
+
+.navi-bubble h1:first-child,
+.navi-bubble h2:first-child,
+.navi-bubble h3:first-child {
+  margin-top: 0;
+}
+
+/* Lists */
+.navi-bubble ul,
+.navi-bubble .navi-list {
+  margin: 8px 0 8px 1.2em;
+  padding-left: 0.8em;
+  list-style-type: disc;
+}
+
+.navi-bubble ol {
+  margin: 8px 0 8px 1.2em;
+  padding-left: 0.8em;
+  list-style-type: decimal;
+}
+
+.navi-bubble li,
+.navi-bubble .navi-list-item {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+/* Inline code */
+.navi-bubble code,
+.navi-bubble .navi-inline-code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
     monospace;
   font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-width: 100%;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(245, 245, 255, 0.08);
+  color: #e0e7ff;
+}
+
+/* Code blocks */
+.navi-code-block {
+  margin: 10px 0;
+  padding: 0;
+  background: #050713;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  max-height: 400px;
+  overflow: auto;
   box-sizing: border-box;
+}
+
+.navi-code-block code,
+.navi-code-content {
+  display: block;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  color: #e5e7eb;
+  background: transparent;
+}
+
+/* Blockquotes */
+.navi-bubble blockquote,
+.navi-bubble .navi-blockquote {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-left: 3px solid #6b7280;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 4px;
+  font-style: italic;
+  color: #d1d5db;
+}
+
+/* Bold & Italic */
+.navi-bubble strong {
+  font-weight: 600;
+  color: #f9fafb;
+}
+
+.navi-bubble em {
+  font-style: italic;
+  color: #e5e7eb;
 }
 
 /* Thinking bubble */

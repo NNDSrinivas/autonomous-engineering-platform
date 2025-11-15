@@ -383,6 +383,29 @@ body {
   font-size: 13px;
 }
 
+/* Attachment toast (auto-hide banner) --------------------- */
+
+.navi-attach-toast {
+  position: absolute;
+  bottom: 72px;                 /* above input row */
+  left: 24px;
+  max-width: 420px;
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 999px;
+  background: rgba(17, 19, 32, 0.96);
+  border: 1px solid rgba(148, 153, 255, 0.55);
+  color: #d3d6ff;
+  display: none;
+  z-index: 45;
+}
+
+.navi-attach-toast--visible {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Bottom pills ------------------------------------------- */
 
 .navi-bottom-row {
@@ -403,112 +426,92 @@ body {
   align-items: center;
 }
 
+/* pills themselves */
+.navi-pill {
+  position: relative;
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-size: 12px;
+  background: rgba(14, 16, 28, 0.9);
+  border: 1px solid rgba(148, 153, 255, 0.5);
+  cursor: pointer;
+  transition: box-shadow 120ms ease-out, border-color 120ms ease-out,
+              background-color 120ms ease-out;
+}
+
+.navi-pill:hover {
+  border-color: rgba(191, 154, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(191, 154, 255, 0.5),
+              0 0 22px rgba(191, 154, 255, 0.35);
+  background: radial-gradient(circle at top,
+    rgba(191, 154, 255, 0.2),
+    rgba(14, 16, 28, 0.98)
+  );
+}
+
 /* Model / Mode pill containers */
 .navi-model-pill,
 .navi-mode-pill {
-  position: relative;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  padding: 4px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: #040712;
-  cursor: pointer;
-  font-size: 11px;
   color: #d1d5db;
-  transition:
-    border-color 0.15s ease-out,
-    box-shadow 0.15s ease-out;
-}
-
-.navi-model-pill:hover,
-.navi-mode-pill:hover {
-  border-color: var(--navi-accent);
-  box-shadow: 0 0 12px var(--navi-glow);
 }
 
 /* Model / Mode pill dropdown */
 .navi-pill-menu {
   position: absolute;
-  bottom: calc(100% + 8px);          /* opens ABOVE the pill */
+  bottom: calc(100% + 8px);        /* open upwards */
   left: 0;
-  min-width: 220px;
+  min-width: 180px;
   padding: 6px 0;
   border-radius: 12px;
-
-  /* NAVI color palette */
-  background: #111423;               /* deep navy surface */
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.7);
-
-  color: #f5f4ff;
-  font-size: 12px;
-  z-index: 40;
-
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(4px);
-  transition: opacity 0.16s ease-out, transform 0.16s ease-out;
+  background: #111320;
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.8);
+  display: none;
+  z-index: 50;
 }
 
+/* align the model menu with its pill; mode menu can reuse the same class */
 .navi-pill-menu--open {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
+  display: block;
 }
 
+/* items */
 .navi-pill-menu-item {
-  padding: 6px 12px;
+  padding: 6px 14px;
+  font-size: 12px;
+  line-height: 1.4;
   cursor: pointer;
   white-space: nowrap;
+  color: #f5f4ff;
 }
 
 .navi-pill-menu-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(191, 154, 255, 0.16);
 }
 
 /* COMMAND MENU (wand) ------------------------------------ */
 
 .navi-command-menu {
   position: absolute;
+  bottom: 72px;                 /* tweak as needed */
+  left: 88px;
+  width: 320px;
+  max-width: calc(100% - 32px);
+  background: #0f1013;
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  padding: 12px 14px;
+  display: none;                /* default hidden */
   z-index: 40;
-  bottom: 80px;
-  right: 72px;
-  width: min(420px, calc(100% - 96px));
-  max-height: 380px;
-  padding: 18px 20px 20px;
-  border-radius: 32px;
-
-  background:
-    radial-gradient(120% 200% at 0% 0%, rgba(140, 96, 255, 0.45), transparent 65%),
-    radial-gradient(120% 200% at 100% 100%, rgba(255, 72, 160, 0.35), transparent 65%),
-    rgba(8, 10, 26, 0.96);
-
-  box-shadow:
-    0 28px 80px rgba(0, 0, 0, 0.75),
-    0 0 0 1px rgba(255, 255, 255, 0.04);
-
-  backdrop-filter: blur(26px);
-  -webkit-backdrop-filter: blur(26px);
-
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(4px);
-  transition:
-    opacity 120ms ease-out,
-    transform 160ms ease-out;
 }
 
 .navi-command-menu-visible {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
+  display: block;
 }
 
 .navi-command-menu-hidden {
-  opacity: 0;
-  pointer-events: none;
+  display: none;
 }
 
 .navi-command-item {
@@ -566,31 +569,23 @@ body {
   position: relative;
 }
 
-/* Toolbar container */
+/* toolbar hidden by default */
 .navi-msg-toolbar {
   position: absolute;
-  top: -32px;               /* sits above the message bubble */
-  right: 24px;
-
+  top: -34px;               /* above the bubble */
+  right: 16px;
   display: flex;
   gap: 8px;
-
   opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
   transform: translateY(2px);
-  transition: opacity 0.14s ease-out,
-              transform 0.14s ease-out,
-              visibility 0.14s;
-  z-index: 30; /* above bubbles, below header */
+  z-index: 30;              /* above bubble, below header */
 }
 
-/* Show toolbar when row is hovered OR when buttons are focused */
-.navi-msg-row:hover .navi-msg-toolbar,
-.navi-msg-toolbar:focus-within {
+/* show while row is hovered (including toolbar area) */
+.navi-msg-row.navi-msg-row--hover .navi-msg-toolbar {
   opacity: 1;
-  visibility: visible;
   pointer-events: auto;
   transform: translateY(0);
 }

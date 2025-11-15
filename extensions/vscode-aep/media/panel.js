@@ -122,6 +122,11 @@ let commandMenuDragState = {
       </main>
 
       <footer class="navi-footer">
+        <div class="navi-attach-toast">
+          <span class="navi-attach-toast-icon">📎</span>
+          <span class="navi-attach-toast-text">Attachment flow is not implemented yet – coming soon.</span>
+        </div>
+
         <div id="navi-attachments-banner" class="navi-attachments-banner navi-attachments-banner-hidden">
           <span class="navi-attachments-icon">📎</span>
           <span class="navi-attachments-text">Attachment flow is not implemented yet – coming soon.</span>
@@ -328,6 +333,15 @@ let commandMenuDragState = {
 
     wrapper.appendChild(toolbar);
 
+    // Stable hover behaviour for toolbar
+    wrapper.addEventListener('mouseenter', () => {
+      wrapper.classList.add('navi-msg-row--hover');
+    });
+
+    wrapper.addEventListener('mouseleave', () => {
+      wrapper.classList.remove('navi-msg-row--hover');
+    });
+
     messagesEl.appendChild(wrapper);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
@@ -398,92 +412,71 @@ let commandMenuDragState = {
   });
 
   // Model / Mode pills with custom dropdown menus ---------------------------
-  let openPickerKind = null; // 'model' | 'mode' | null
-
-  function togglePillMenu(kind) {
-    const modelMenu = document.querySelector('.navi-model-menu');
-    const modeMenu  = document.querySelector('.navi-mode-menu');
-
-    const isSame = openPickerKind === kind;
-
-    // close all
-    modelMenu?.classList.remove('navi-pill-menu--open');
-    modeMenu?.classList.remove('navi-pill-menu--open');
-    openPickerKind = null;
-
-    // reopen if user clicked a *different* pill
-    if (!isSame) {
-      if (kind === 'model') {
-        modelMenu?.classList.add('navi-pill-menu--open');
-      } else {
-        modeMenu?.classList.add('navi-pill-menu--open');
-      }
-      openPickerKind = kind;
-    }
-  }
-
   const modelPill = document.getElementById('modelPill');
   const modePill = document.getElementById('modePill');
+  const modelMenu = document.querySelector('.navi-model-menu');
+  const modeMenu = document.querySelector('.navi-mode-menu');
 
-  if (modelPill) {
-    modelPill.addEventListener('click', (e) => {
-      e.stopPropagation();
-      togglePillMenu('model');
-    });
-
-    // Handle menu item clicks
-    const modelMenu = modelPill.querySelector('.navi-model-menu');
-    if (modelMenu) {
-      modelMenu.addEventListener('click', (e) => {
-        const item = e.target.closest('.navi-pill-menu-item');
-        if (item) {
-          e.stopPropagation();
-          const value = item.dataset.value;
-          modelPill.querySelector('span').textContent = `Model: ${value}`;
-          if (vscode) {
-            vscode.postMessage({
-              type: 'modelSelected',
-              value: value,
-            });
-          }
-          togglePillMenu('model'); // close
-        }
-      });
-    }
+  function closeAllPillMenus() {
+    modelMenu?.classList.remove('navi-pill-menu--open');
+    modeMenu?.classList.remove('navi-pill-menu--open');
   }
 
-  if (modePill) {
-    modePill.addEventListener('click', (e) => {
+  if (modelPill && modelMenu) {
+    modelPill.addEventListener('click', (e) => {
       e.stopPropagation();
-      togglePillMenu('mode');
+      const willOpen = !modelMenu.classList.contains('navi-pill-menu--open');
+      closeAllPillMenus();
+      if (willOpen) modelMenu.classList.add('navi-pill-menu--open');
     });
 
     // Handle menu item clicks
-    const modeMenu = modePill.querySelector('.navi-mode-menu');
-    if (modeMenu) {
-      modeMenu.addEventListener('click', (e) => {
-        const item = e.target.closest('.navi-pill-menu-item');
-        if (item) {
-          e.stopPropagation();
-          const value = item.dataset.value;
-          modePill.querySelector('span').textContent = `Mode: ${value}`;
-          if (vscode) {
-            vscode.postMessage({
-              type: 'modeSelected',
-              value: value,
-            });
-          }
-          togglePillMenu('mode'); // close
+    modelMenu.addEventListener('click', (e) => {
+      const item = e.target.closest('.navi-pill-menu-item');
+      if (item) {
+        e.stopPropagation();
+        const value = item.dataset.value;
+        modelPill.querySelector('span').textContent = `Model: ${value}`;
+        if (vscode) {
+          vscode.postMessage({
+            type: 'modelSelected',
+            value: value,
+          });
         }
-      });
-    }
+        closeAllPillMenus();
+      }
+    });
+  }
+
+  if (modePill && modeMenu) {
+    modePill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willOpen = !modeMenu.classList.contains('navi-pill-menu--open');
+      closeAllPillMenus();
+      if (willOpen) modeMenu.classList.add('navi-pill-menu--open');
+    });
+
+    // Handle menu item clicks
+    modeMenu.addEventListener('click', (e) => {
+      const item = e.target.closest('.navi-pill-menu-item');
+      if (item) {
+        e.stopPropagation();
+        const value = item.dataset.value;
+        modePill.querySelector('span').textContent = `Mode: ${value}`;
+        if (vscode) {
+          vscode.postMessage({
+            type: 'modeSelected',
+            value: value,
+          });
+        }
+        closeAllPillMenus();
+      }
+    });
   }
 
   // Click anywhere else to close
-  window.addEventListener('click', () => {
-    const openMenus = document.querySelectorAll('.navi-pill-menu--open');
-    openMenus.forEach(m => m.classList.remove('navi-pill-menu--open'));
-    openPickerKind = null;
+  document.addEventListener('click', () => {
+    closeAllPillMenus();
   });
 
   // Messages from extension ---------------------------------------------------
@@ -748,12 +741,85 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Wand button – toggle command palette
-  if (actionsBtn && commandMenuEl) {
-    actionsBtn.addEventListener('click', (event) => {
+  // Attachment toast functionality
+  const attachToast = document.querySelector('.navi-attach-toast');
+  if (attachBtn && attachToast) {
+    attachBtn.addEventListener('click', (event) => {
+      event.preventDefault();
       event.stopPropagation();
-      console.log('[NAVI] Actions button clicked');
-      toggleCommandMenu(actionsBtn);
+      console.log('[NAVI] Attach button clicked');
+
+      // Request attachment picker from extension
+      if (vscodeApi) {
+        vscodeApi.postMessage({ type: 'attachBtnClicked' });
+      }
+
+      // Show toast
+      attachToast.classList.add('navi-attach-toast--visible');
+
+      // Auto-hide after 3s
+      clearTimeout(window._naviAttachToastTimer);
+      window._naviAttachToastTimer = setTimeout(() => {
+        attachToast.classList.remove('navi-attach-toast--visible');
+      }, 3000);
+    });
+
+    // Clicking anywhere outside hides the toast
+    document.addEventListener('click', (event) => {
+      const isOnToast = event.target.closest('.navi-attach-toast');
+      const isOnAttach = event.target.closest('#navi-attach-btn');
+      if (!isOnToast && !isOnAttach) {
+        attachToast.classList.remove('navi-attach-toast--visible');
+      }
+    });
+  }
+
+  // ---- WAND / COMMAND MENU ----
+  const wandBtn = actionsBtn;
+  const commandMenu = commandMenuEl;
+  let isCommandMenuOpen = false;
+
+  function openCommandMenu() {
+    if (!commandMenu) return;
+    isCommandMenuOpen = true;
+    commandMenu.classList.remove('navi-command-menu-hidden');
+    commandMenu.classList.add('navi-command-menu-visible');
+  }
+
+  function closeCommandMenu() {
+    if (!commandMenu) return;
+    isCommandMenuOpen = false;
+    commandMenu.classList.remove('navi-command-menu-visible');
+    commandMenu.classList.add('navi-command-menu-hidden');
+  }
+
+  function toggleCommandMenu() {
+    if (!commandMenu) return;
+    if (isCommandMenuOpen) {
+      closeCommandMenu();
+    } else {
+      openCommandMenu();
+    }
+  }
+
+  // Wand button click handler
+  if (wandBtn && commandMenu) {
+    wandBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      console.log('[NAVI] Wand button clicked');
+      toggleCommandMenu();
+    });
+
+    // clicking inside the menu should not close it
+    commandMenu.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+
+    // clicking anywhere else closes it
+    document.addEventListener('click', () => {
+      if (isCommandMenuOpen) {
+        closeCommandMenu();
+      }
     });
   }
 
@@ -799,22 +865,10 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Click outside → close command menu
-  document.addEventListener('click', (event) => {
-    if (!commandMenuEl) return;
-    if (!commandMenuEl.classList.contains('navi-command-menu-visible')) return;
-
-    const target = event.target;
-    if (!target) return;
-
-    if (commandMenuEl.contains(target) || actionsBtn?.contains(target)) return;
-    closeCommandMenu();
-  });
-
   // ESC closes command menu
   document.addEventListener('keydown', (event) => {
-    if (!commandMenuEl) return;
-    if (!commandMenuEl.classList.contains('navi-command-menu-visible')) return;
+    if (!commandMenu) return;
+    if (!isCommandMenuOpen) return;
     if (event.key === 'Escape') {
       closeCommandMenu();
     }

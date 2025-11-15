@@ -73,18 +73,24 @@ body {
 }
 
 @keyframes naviLogoIdle {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: rotate(0deg) translateY(0);
   }
+
   20% {
     transform: rotate(-2.5deg) translateY(-0.5px);
   }
+
   40% {
     transform: rotate(1.5deg) translateY(0.5px);
   }
+
   60% {
     transform: rotate(-1deg) translateY(-0.5px);
   }
+
   80% {
     transform: rotate(1deg) translateY(0.5px);
   }
@@ -94,24 +100,31 @@ body {
   0% {
     box-shadow: 0 0 0 0 rgba(129, 140, 248, 0.7);
   }
+
   70% {
     box-shadow: 0 0 0 8px rgba(129, 140, 248, 0);
   }
+
   100% {
     box-shadow: 0 0 0 0 rgba(129, 140, 248, 0);
   }
 }
 
 @keyframes naviLogoCelebrate {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: rotate(0deg);
   }
+
   25% {
     transform: rotate(-8deg);
   }
+
   50% {
     transform: rotate(6deg);
   }
+
   75% {
     transform: rotate(-4deg);
   }
@@ -182,7 +195,8 @@ body {
 
 .navi-msg-row {
   display: flex;
-  position: relative; /* for toolbars */
+  position: relative;
+  /* for toolbars */
 }
 
 .navi-msg-row-user {
@@ -316,10 +330,14 @@ body {
 }
 
 @keyframes naviTypingBounce {
-  0%, 60%, 100% {
+
+  0%,
+  60%,
+  100% {
     transform: translateY(0);
     opacity: 0.4;
   }
+
   30% {
     transform: translateY(-3px);
     opacity: 1;
@@ -506,10 +524,14 @@ body {
 }
 
 @keyframes navi-typing-bounce {
-  0%, 80%, 100% {
+
+  0%,
+  80%,
+  100% {
     transform: translateY(0);
     opacity: 0.3;
   }
+
   40% {
     transform: translateY(-3px);
     opacity: 1;
@@ -644,37 +666,32 @@ body {
 /* Actions button (✨) styles – already overridden above */
 
 /* ----------------------------------------- */
-/* Message hover toolbar (Copy / Insert / …) */
+/* Message hover toolbar (Copy / Insert / Use again) */
+/* Let the extension control visibility; we only style. */
 /* ----------------------------------------- */
 
 .navi-msg-actions {
   position: absolute;
-  top: -32px;
-  right: 20px;
+  top: 8px;          /* inside the bubble, not floating above */
+  right: 18px;
   display: flex;
   gap: 6px;
-  opacity: 0;
-  transform: translateY(4px);
-  pointer-events: none;
-  transition: opacity 120ms ease-out, transform 120ms ease-out;
+  z-index: 10;       /* stay above bubble background */
 }
 
-.navi-msg-row:hover .navi-msg-actions {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
+/* Buttons inside the toolbar */
 .navi-msg-action-btn {
   border: 1px solid rgba(148, 163, 184, 0.6);
-  background: rgba(15, 23, 42, 0.98);
+  background: rgba(15, 23, 42, 0.96);
   color: #e5e7eb;
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background 0.15s ease,
+              border-color 0.15s ease,
+              box-shadow 0.15s ease;
 }
 
 .navi-msg-action-btn:hover {

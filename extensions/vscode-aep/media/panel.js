@@ -364,7 +364,7 @@ let commandMenuDragState = {
       // Clear existing content and re-render
       editingMessageBubble.innerHTML = '';
       renderTextSegments(text, editingMessageBubble);
-      
+
       // Re-add toolbar if it was in a user message
       if (editingMessageBubble.classList.contains('navi-bubble-user')) {
         const toolbar = document.createElement('div');
@@ -384,7 +384,7 @@ let commandMenuDragState = {
         });
         editingMessageBubble.appendChild(toolbar);
       }
-      
+
       // Exit edit mode
       editingMessageBubble = null;
     } else {
@@ -530,7 +530,7 @@ let commandMenuDragState = {
           inputEl.value = text;
           inputEl.focus();
           inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
-          
+
           // Next send should UPDATE this bubble
           const messageRow = button.closest('.navi-msg-row');
           editingMessageBubble = messageRow ? messageRow.querySelector('.navi-bubble') : null;
@@ -542,7 +542,7 @@ let commandMenuDragState = {
           inputEl.value = text;
           inputEl.focus();
           inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
-          
+
           // Next send should create a NEW message (not edit)
           editingMessageBubble = null;
           console.log('[NAVI] Use as prompt: will create new message');

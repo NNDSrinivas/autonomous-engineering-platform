@@ -14,13 +14,20 @@ body {
   overflow: hidden;
 }
 
+:root {
+  --navi-accent: #a855f7;
+  --navi-glow: rgba(168, 85, 247, 0.9);
+}
+
+/* SHELL ---------------------------------------------------- */
+
 .navi-shell {
   display: flex;
   flex-direction: column;
   height: 100vh;
 }
 
-/* HEADER */
+/* HEADER --------------------------------------------------- */
 
 .navi-header {
   display: flex;
@@ -30,105 +37,12 @@ body {
   background: #020617;
   border-bottom: 1px solid rgba(148, 163, 184, 0.35);
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.9);
-  z-index: 20;
-  position: relative;
 }
 
 .navi-brand {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.navi-logo-wrap {
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  padding: 2px;
-  background: radial-gradient(circle at 0% 0%, #f97316 0, #ec4899 40%, #6366f1 100%);
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.9),
-    0 0 18px rgba(129, 140, 248, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.navi-logo-inline svg {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: #020617;
-  display: block;
-  animation: naviLogoIdle 6s ease-in-out infinite;
-  transform-origin: 50% 60%;
-}
-
-.navi-logo-inline svg.navi-logo-thinking {
-  animation:
-    naviLogoIdle 6s ease-in-out infinite,
-    naviLogoPulse 2s ease-out infinite;
-}
-
-.navi-logo-inline svg.navi-logo-celebrate {
-  animation: naviLogoCelebrate 0.6s ease-out 1;
-}
-
-@keyframes naviLogoIdle {
-  0%,
-  100% {
-    transform: rotate(0deg) translateY(0);
-  }
-
-  20% {
-    transform: rotate(-2.5deg) translateY(-0.5px);
-  }
-
-  40% {
-    transform: rotate(1.5deg) translateY(0.5px);
-  }
-
-  60% {
-    transform: rotate(-1deg) translateY(-0.5px);
-  }
-
-  80% {
-    transform: rotate(1deg) translateY(0.5px);
-  }
-}
-
-@keyframes naviLogoPulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0.7);
-  }
-
-  70% {
-    box-shadow: 0 0 0 8px rgba(129, 140, 248, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0);
-  }
-}
-
-@keyframes naviLogoCelebrate {
-
-  0%,
-  100% {
-    transform: rotate(0deg);
-  }
-
-  25% {
-    transform: rotate(-8deg);
-  }
-
-  50% {
-    transform: rotate(6deg);
-  }
-
-  75% {
-    transform: rotate(-4deg);
-  }
 }
 
 .navi-title-block {
@@ -154,46 +68,30 @@ body {
   gap: 8px;
 }
 
-/* === SHARED SMALL BUTTON STYLES (header icons, attach, etc.) === */
-
-:root {
-  --navi-accent: #a855f7;
-  --navi-glow: rgba(168, 85, 247, 0.9);
-}
-
-/* Base shapes for ALL small buttons */
-.navi-icon-btn,
-.navi-attach-btn {
-  outline: none;
+.navi-icon-btn {
+  width: 32px;
+  height: 32px;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.8);
   background: #020617;
-  box-shadow: none;
+  color: #e5e7eb;
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  font-size: 15px;
   transition:
     border-color 0.18s ease-out,
     box-shadow 0.18s ease-out,
-    background 0.18s ease-out,
-    transform 0.12s ease-out;
-  color: #e5e7eb;
-  cursor: pointer;
+    background 0.18s ease-out;
 }
 
-/* Header icon sizes */
-.navi-header .navi-icon-btn {
-  width: 32px;
-  height: 32px;
+.navi-icon-btn span {
+  color: inherit;
 }
 
-/* Attach button slightly bigger */
-.navi-attach-btn {
-  width: 40px;
-  height: 40px;
-}
+/* GLOW for small buttons & pills */
 
-/* Shared hover + focus glow – same for BOTH header and footer buttons */
 .navi-icon-btn:hover,
 .navi-icon-btn:focus,
 .navi-icon-btn:focus-visible,
@@ -208,20 +106,7 @@ body {
   background: #02061f;
 }
 
-/* Remove default VS Code orange focus ring inside the webview */
-.navi-icon-btn:focus-visible,
-.navi-attach-btn:focus-visible,
-.navi-pill:focus-visible {
-  outline: none;
-}
-
-/* icon glyph */
-.navi-icon-btn span {
-  color: inherit;
-  font-size: 14px;
-}
-
-/* MAIN CHAT AREA */
+/* MAIN ----------------------------------------------------- */
 
 .navi-main {
   flex: 1;
@@ -237,9 +122,28 @@ body {
   gap: 10px;
 }
 
+.navi-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.navi-messages::-webkit-scrollbar-track {
+  background: #020617;
+}
+
+.navi-messages::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
+
+.navi-messages::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* ROWS & BUBBLES ------------------------------------------ */
+
 .navi-msg-row {
   display: flex;
-  position: relative; /* make row the positioning context for the toolbar */
+  position: relative; /* for toolbar */
 }
 
 .navi-msg-row-user {
@@ -252,14 +156,15 @@ body {
 
 .navi-bubble {
   max-width: 82%;
-  padding: 14px 18px;
-  border-radius: 18px;
+  padding: 10px 14px;
+  border-radius: 14px;
   line-height: 1.4;
   word-wrap: break-word;
   font-size: 13px;
 }
 
-/* User bubble – violet chip */
+/* User bubble – violet gradient */
+
 .navi-bubble-user {
   background: radial-gradient(circle at 0% 0%, #4338ca 0, #312e81 40%, #111827 100%);
   color: #e5e7eb;
@@ -267,16 +172,14 @@ body {
   box-shadow: 0 6px 18px rgba(55, 48, 163, 0.7);
 }
 
-/* NAVI bubble – tool-like card with subtle gradient */
+/* NAVI bubble – darker card */
+
 .navi-bubble-bot {
-  background:
-    radial-gradient(140% 220% at 0% 0%, rgba(79, 70, 229, 0.32), transparent 60%),
-    radial-gradient(160% 260% at 100% 100%, rgba(236, 72, 153, 0.22), transparent 65%),
-    #020617;
+  background: radial-gradient(circle at 0% 0%, #111827 0, #020617 50%, #020617 100%);
   color: #e5e7eb;
   border-left: 3px solid #a855f7;
-  border-radius: 14px 18px 18px 14px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.95);
+  border-radius: 10px 14px 14px 10px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.95);
 }
 
 /* Quoted lines */
@@ -308,62 +211,22 @@ body {
   box-sizing: border-box;
 }
 
-.navi-code-block code {
-  font-family: inherit;
+/* Thinking bubble */
+
+.navi-message-thinking {
+  align-self: flex-start;
+  max-width: 60%;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(124, 77, 255, 0.15);
+  color: #c9c6ff;
+  font-size: 13px;
+  font-style: italic;
 }
 
-/* Typing indicator */
-
-.navi-bubble-typing {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding-right: 12px;
-}
-
-.navi-typing-label {
-  font-size: 11px;
-  color: #9ca3af;
-}
-
-.navi-typing-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.navi-typing-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #a5b4fc;
-  opacity: 0.5;
-  animation: naviTypingBounce 1s infinite ease-in-out;
-}
-
-.navi-typing-dot:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.navi-typing-dot:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-@keyframes naviTypingBounce {
-  0%,
-  60%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.4;
-  }
-
-  30% {
-    transform: translateY(-3px);
-    opacity: 1;
-  }
-}
-
-/* FOOTER */
+/* FOOTER --------------------------------------------------- */
 
 .navi-footer {
   position: relative;
@@ -371,7 +234,6 @@ body {
   background: #020617;
   border-top: 1px solid rgba(148, 163, 184, 0.35);
   box-shadow: 0 -8px 18px rgba(15, 23, 42, 0.95);
-  z-index: 10;
 }
 
 .navi-form {
@@ -379,6 +241,35 @@ body {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.navi-attach-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  background: #020617;
+  color: #d1d5db;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.navi-actions-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(139, 92, 246, 0.6);
+  background: #020617;
+  color: #d8b4fe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
 }
 
 .navi-input {
@@ -425,7 +316,39 @@ body {
   opacity: 0.96;
 }
 
-/* Bottom pills */
+/* Attachments banner (placeholder) ------------------------ */
+
+.navi-attachments-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5e7eb;
+  font-size: 11px;
+  margin-bottom: 8px;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
+}
+
+.navi-attachments-banner-visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.navi-attachments-banner-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Bottom pills ------------------------------------------- */
 
 .navi-bottom-row {
   display: flex;
@@ -445,73 +368,15 @@ body {
   align-items: center;
 }
 
-/* Scrollbar */
+/* COMMAND MENU (wand) ------------------------------------ */
 
-.navi-messages::-webkit-scrollbar {
-  width: 6px;
-}
-
-.navi-messages::-webkit-scrollbar-track {
-  background: #020617;
-}
-
-.navi-messages::-webkit-scrollbar-thumb {
-  background: #4b5563;
-  border-radius: 3px;
-}
-
-.navi-messages::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
-}
-
-/* In-panel dropdown menus for Model / Mode */
-.navi-dropdown {
-  min-width: 180px;
-  max-width: 220px;
-  background: #020617;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.8);
-  box-shadow:
-    0 12px 30px rgba(15, 23, 42, 0.95),
-    0 0 0 1px rgba(15, 23, 42, 0.9);
-  padding: 4px;
-  z-index: 60;
-  position: absolute;
-}
-
-.navi-dropdown-item {
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: #e5e7eb;
-  font-size: 12px;
-  padding: 8px 12px;
-  text-align: left;
-  border-radius: 7px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.navi-dropdown-item:hover {
-  background: rgba(129, 140, 248, 0.22);
-  color: #ffffff;
-}
-
-/* PR-2: Quick command palette styles  */
-
-/* ---------- Command menu ---------- */
-
-#navi-command-menu {
+.navi-command-menu {
   position: absolute;
   z-index: 40;
-
-  /* default position: just above the input bar, roughly aligned with the wand */
   bottom: 80px;
   right: 72px;
-
   width: min(420px, calc(100% - 96px));
-  max-height: 420px;
-
+  max-height: 380px;
   padding: 18px 20px 20px;
   border-radius: 32px;
 
@@ -535,13 +400,13 @@ body {
     transform 160ms ease-out;
 }
 
-#navi-command-menu.navi-command-menu-visible {
+.navi-command-menu-visible {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
 }
 
-#navi-command-menu.navi-command-menu-hidden {
+.navi-command-menu-hidden {
   opacity: 0;
   pointer-events: none;
 }
@@ -594,152 +459,50 @@ body {
   opacity: 0.7;
 }
 
-/* Thinking bubble */
-.navi-message-thinking {
-  align-self: flex-start;
-  max-width: 60%;
-  margin-top: 8px;
-  margin-bottom: 8px;
-  padding: 8px 12px;
-  border-radius: 14px;
-  background: rgba(124, 77, 255, 0.15);
-  color: #c9c6ff;
-  font-size: 13px;
-  font-style: italic;
-}
+/* MESSAGE TOOLBAR (copy / edit / reuse) ------------------ */
 
-/* Actions button (✨) styles */
-.navi-actions-btn {
-  /* base button look matches .navi-attach-btn / header icons */
-  background: #020617;
-  color: #d8b4fe;
-  border: 1px solid rgba(139, 92, 246, 0.6);
-  border-radius: 10px;
-  cursor: pointer;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  width: 40px;
-  height: 40px;
-  font-size: 16px;
-  margin-right: 8px;
-
-  transition:
-    border-color 0.18s ease-out,
-    box-shadow 0.18s ease-out,
-    background 0.18s ease-out,
-    transform 0.12s ease-out;
-}
-
-.navi-actions-btn:hover {
-  background: #02061f;
-  border-color: var(--navi-accent);
-  box-shadow: 0 0 18px var(--navi-glow);
-  transform: translateY(-1px);
-}
-
-.navi-actions-btn:active {
-  transform: translateY(0);
-}
-
-/* NAVI typing indicator --------------------------------------- */
-
-.navi-bubble-typing {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  opacity: 0.9;
-}
-
-.navi-typing-label {
-  font-size: 12px;
-  color: #e5e7eb;
-}
-
-.navi-typing-dots {
-  display: inline-flex;
-  gap: 4px;
-}
-
-.navi-typing-dots span {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(196, 181, 253, 0.9);
-  opacity: 0.3;
-  animation: navi-typing-bounce 1.2s infinite ease-in-out;
-}
-
-.navi-typing-dots span:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.navi-typing-dots span:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-@keyframes navi-typing-bounce {
-
-  0%,
-  80%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.3;
-  }
-
-  40% {
-    transform: translateY(-3px);
-    opacity: 1;
-  }
-}
-
-/* MESSAGE TOOLBAR (copy / insert / use as prompt, etc.) */
-
-/* Toolbar that appears when hovering a message bubble */
 .navi-msg-toolbar {
   position: absolute;
-  top: -32px;       /* float just above the bubble */
-  right: 8px;
-  display: inline-flex;
-  gap: 6px;
-
+  right: 32px;
+  top: -30px;
+  display: flex;
+  gap: 8px;
   opacity: 0;
   pointer-events: none;
-
-  z-index: 30;      /* above header + other chrome */
-
-  transition: opacity 0.12s ease-out, transform 0.12s ease-out;
-  transform: translateY(2px);
+  transform: translateY(4px);
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+  z-index: 30;
 }
 
-.navi-msg-row:hover .navi-msg-toolbar {
+.navi-msg-toolbar-visible {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
 }
 
-/* Individual toolbar buttons */
 .navi-msg-toolbar-btn {
   border-radius: 999px;
-  padding: 4px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.85);
   background: rgba(15, 23, 42, 0.96);
   color: #e5e7eb;
   font-size: 11px;
+  padding: 4px 10px;
   cursor: pointer;
   white-space: nowrap;
   transition:
-    background 0.12s ease-out,
-    border-color 0.12s ease-out,
-    box-shadow 0.12s ease-out,
+    border-color 0.18s ease-out,
+    box-shadow 0.18s ease-out,
+    background 0.18s ease-out,
     transform 0.08s ease-out;
 }
 
 .navi-msg-toolbar-btn:hover {
-  background: rgba(79, 70, 229, 0.95);
-  border-color: rgba(191, 219, 254, 0.9);
-  box-shadow: 0 0 16px rgba(129, 140, 248, 0.9);
-  transform: translateY(-1px);
+  border-color: var(--navi-accent);
+  box-shadow: 0 0 18px var(--navi-glow);
+  background: #02061f;
+  transform: translateY(-0.5px);
 }
+
+/* END ----------------------------------------------------- */

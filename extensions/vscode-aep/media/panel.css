@@ -395,6 +395,30 @@ body {
   align-items: center;
 }
 
+/* Select pills (Model/Mode dropdowns) -------------------- */
+
+.navi-pill-select {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.96);
+  color: #e5e7eb;
+  font-size: 12px;
+  padding: 6px 12px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  outline: none;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease-out,
+    box-shadow 0.15s ease-out;
+}
+
+.navi-pill-select:focus {
+  border-color: var(--navi-accent);
+  box-shadow: 0 0 12px var(--navi-glow);
+}
+
 /* COMMAND MENU (wand) ------------------------------------ */
 
 .navi-command-menu {

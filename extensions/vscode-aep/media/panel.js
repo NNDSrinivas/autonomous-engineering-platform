@@ -147,8 +147,17 @@ let commandMenuDragState = {
         </form>
 
         <div class="navi-bottom-row">
-          <button class="navi-pill" id="navi-model-pill" type="button">Model: ChatGPT 5.1</button>
-          <button class="navi-pill" id="navi-mode-pill" type="button">Mode: Agent (full access)</button>
+          <select id="modelSelect" class="navi-pill navi-pill-select">
+            <option>ChatGPT 5.1</option>
+            <option>gpt-4.2</option>
+            <option>o3-mini</option>
+          </select>
+
+          <select id="modeSelect" class="navi-pill navi-pill-select">
+            <option>Agent (full access)</option>
+            <option>Chat only</option>
+            <option>Read-only explorer</option>
+          </select>
         </div>
 
         <div id="navi-command-menu" class="navi-command-menu navi-command-menu-hidden">
@@ -208,8 +217,6 @@ let commandMenuDragState = {
   const messagesEl = document.getElementById('navi-messages');
   const formEl = document.getElementById('navi-form');
   const inputEl = document.getElementById('navi-input');
-  const modelPill = document.getElementById('navi-model-pill');
-  const modePill = document.getElementById('navi-mode-pill');
   const attachmentsBanner = document.getElementById('navi-attachments-banner');
 
   // Rendering helpers --------------------------------------------------------
@@ -384,22 +391,29 @@ let commandMenuDragState = {
     });
   });
 
-  // Model / Mode pills – just notify extension --------------------------------
-  modelPill.addEventListener('click', () => {
-    if (!vscode) return;
-    vscode.postMessage({
-      type: 'modelPickerRequested',
-      options: ['ChatGPT 5.1', 'gpt-4.2', 'o3-mini'],
-    });
-  });
+  // Model / Mode selects – send selection changes to extension ---------------
+  const modelSelect = document.getElementById('modelSelect');
+  const modeSelect = document.getElementById('modeSelect');
 
-  modePill.addEventListener('click', () => {
-    if (!vscode) return;
-    vscode.postMessage({
-      type: 'modePickerRequested',
-      options: ['Agent (full access)', 'Chat only', 'Read-only explorer'],
+  if (modelSelect) {
+    modelSelect.addEventListener('change', () => {
+      if (!vscode) return;
+      vscode.postMessage({
+        type: 'modelSelected',
+        value: modelSelect.value,
+      });
     });
-  });
+  }
+
+  if (modeSelect) {
+    modeSelect.addEventListener('change', () => {
+      if (!vscode) return;
+      vscode.postMessage({
+        type: 'modeSelected',
+        value: modeSelect.value,
+      });
+    });
+  }
 
   // Messages from extension ---------------------------------------------------
   window.addEventListener('message', (event) => {

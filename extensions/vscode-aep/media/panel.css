@@ -658,14 +658,17 @@ body {
 .navi-msg-wrapper {
   position: relative;
   display: inline-flex;
-  padding-top: 36px;  /* space for toolbar above */
-  margin-top: -36px;  /* compensate so bubbles don't shift */
+  padding-top: 36px;
+  /* space for toolbar above */
+  margin-top: -36px;
+  /* compensate so bubbles don't shift */
 }
 
 /* Toolbar container */
 .navi-msg-toolbar {
   position: absolute;
-  top: 0;  /* now positioned within padded space */
+  top: 0;
+  /* now positioned within padded space */
   right: 8px;
 
   display: flex;
@@ -673,11 +676,9 @@ body {
   padding: 4px 6px;
   border-radius: 999px;
 
-  background: radial-gradient(
-    circle at 0% 0%,
-    rgba(15, 23, 42, 0.98),
-    rgba(17, 24, 39, 0.98)
-  );
+  background: radial-gradient(circle at 0% 0%,
+      rgba(15, 23, 42, 0.98),
+      rgba(17, 24, 39, 0.98));
   box-shadow:
     0 10px 24px rgba(0, 0, 0, 0.75),
     0 0 0 1px rgba(148, 163, 184, 0.45);
@@ -688,7 +689,8 @@ body {
   transition:
     opacity 120ms ease-out,
     transform 120ms ease-out;
-  z-index: 10;  /* ensure toolbar is above everything */
+  z-index: 10;
+  /* ensure toolbar is above everything */
 }
 
 /* Show toolbar when the wrapper is hovered or focused */

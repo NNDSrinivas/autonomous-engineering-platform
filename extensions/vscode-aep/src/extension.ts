@@ -149,7 +149,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
           case 'pickAttachment': {
             console.log('[Extension Host] [AEP] Webview requested attachment picker');
-            
+
             // Open file picker for attachments
             const uris = await vscode.window.showOpenDialog({
               openLabel: 'Attach to NAVI chat',
@@ -280,7 +280,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // Read backend URL from configuration with fallback
       const config = vscode.workspace.getConfiguration('aep');
       const backendUrl = config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787/api/chat';
-      
+
       console.log('[Extension Host] [AEP] Calling NAVI backend', backendUrl, payload);
 
       response = await fetch(backendUrl, {

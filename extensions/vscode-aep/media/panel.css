@@ -239,6 +239,7 @@ body {
 
 .navi-msg-row {
   display: flex;
+  position: relative; /* make row the positioning context for the toolbar */
 }
 
 .navi-msg-row-user {
@@ -609,9 +610,38 @@ body {
 
 /* Actions button (✨) styles */
 .navi-actions-btn {
-  background: #0f172a;
+  /* base button look matches .navi-attach-btn / header icons */
+  background: #020617;
   color: #d8b4fe;
-  border: 1px solid rgba(139, 92, 246, 0.3);
+  border: 1px solid rgba(139, 92, 246, 0.6);
+  border-radius: 10px;
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
+  margin-right: 8px;
+
+  transition:
+    border-color 0.18s ease-out,
+    box-shadow 0.18s ease-out,
+    background 0.18s ease-out,
+    transform 0.12s ease-out;
+}
+
+.navi-actions-btn:hover {
+  background: #02061f;
+  border-color: var(--navi-accent);
+  box-shadow: 0 0 18px var(--navi-glow);
+  transform: translateY(-1px);
+}
+
+.navi-actions-btn:active {
+  transform: translateY(0);
 }
 
 /* NAVI typing indicator --------------------------------------- */
@@ -667,32 +697,49 @@ body {
 
 /* MESSAGE TOOLBAR (copy / insert / use as prompt, etc.) */
 
+/* Toolbar that appears when hovering a message bubble */
 .navi-msg-toolbar {
   position: absolute;
+  top: -32px;       /* float just above the bubble */
+  right: 8px;
   display: inline-flex;
-  gap: 8px;
-  padding: 4px 6px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.96);
-  border: 1px solid rgba(148, 163, 184, 0.75);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
-  transform: translateY(-50%);
-  z-index: 50; /* keep ABOVE header so first-message toolbar is never hidden */
+  gap: 6px;
+
+  opacity: 0;
+  pointer-events: none;
+
+  z-index: 30;      /* above header + other chrome */
+
+  transition: opacity 0.12s ease-out, transform 0.12s ease-out;
+  transform: translateY(2px);
 }
 
-/* Toolbar buttons */
+.navi-msg-row:hover .navi-msg-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/* Individual toolbar buttons */
 .navi-msg-toolbar-btn {
-  border: none;
-  background: transparent;
+  border-radius: 999px;
+  padding: 4px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.96);
   color: #e5e7eb;
   font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 999px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+  transition:
+    background 0.12s ease-out,
+    border-color 0.12s ease-out,
+    box-shadow 0.12s ease-out,
+    transform 0.08s ease-out;
 }
 
 .navi-msg-toolbar-btn:hover {
-  background: rgba(129, 140, 248, 0.25);
-  color: #ffffff;
+  background: rgba(79, 70, 229, 0.95);
+  border-color: rgba(191, 219, 254, 0.9);
+  box-shadow: 0 0 16px rgba(129, 140, 248, 0.9);
+  transform: translateY(-1px);
 }

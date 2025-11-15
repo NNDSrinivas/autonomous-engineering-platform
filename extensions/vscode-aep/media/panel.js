@@ -1,5 +1,5 @@
 // media/panel.js
-// NAVI chat panel with streaming + quick actions
+// NAVI chat panel with streaming support
 
 (function () {
   // ---------------------------------------------------------------------------
@@ -9,6 +9,7 @@
     try {
       const api = acquireVsCodeApi();
       if (typeof window !== 'undefined') {
+        // expose globally so later modules (footer, etc.) can reuse it
         window.vscode = api;
       }
       return api;
@@ -19,8 +20,14 @@
   })();
 
   const root = document.getElementById('root');
+  if (!root) {
+    console.error('[NAVI] Root element #root not found');
+    return;
+  }
 
-  // Command menu drag state (for wand menu)
+  // ---------------------------------------------------------------------------
+  // Command menu shared state (wand)
+  // ---------------------------------------------------------------------------
   let commandMenuEl = null;
   let commandMenuHasUserPosition = false;
   const commandMenuDragState = {
@@ -29,7 +36,9 @@
     offsetY: 0,
   };
 
-  // Streaming / thinking state
+  // ---------------------------------------------------------------------------
+  // Streaming + thinking state
+  // ---------------------------------------------------------------------------
   const state = {
     streamingMessageId: null,
     streamingBubble: null,
@@ -37,7 +46,6 @@
     thinking: false,
   };
 
-  // Thinking message helpers
   let thinkingMessageEl = null;
 
   function showThinkingMessage() {
@@ -47,12 +55,13 @@
     hideThinkingMessage();
 
     const bubble = document.createElement('div');
-    bubble.className = 'navi-message-thinking';
+    bubble.className = 'navi-message navi-message-thinking';
     bubble.dataset.kind = 'thinking';
     bubble.textContent = 'NAVI is thinking…';
 
     messagesEl.appendChild(bubble);
     thinkingMessageEl = bubble;
+
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
@@ -64,7 +73,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Build shell UI
+  // Shell markup
   // ---------------------------------------------------------------------------
   root.innerHTML = `
     <div class="navi-shell">
@@ -78,26 +87,18 @@
                   <stop offset="100%" stop-color="#FF5E7E"/>
                 </linearGradient>
               </defs>
-              
-              <!-- Background circle -->
               <circle cx="22" cy="22" r="20" fill="#020617"/>
-              
-              <!-- Tail (behind head) -->
               <g transform="translate(33,29)">
                 <path d="M0 0 C7 0 9 7 3 10 C-1 12 -2 7 0 0 Z" fill="url(#naviFoxGrad)" opacity="0.85"/>
               </g>
-              
-              <!-- Fox head -->
               <g>
                 <path d="M22 5 L36 16 33 34 22 39 11 34 8 16Z" fill="url(#naviFoxGrad)"/>
-                <!-- ears -->
                 <g transform="translate(12,14)">
                   <path d="M0 3 L6 -1 4 6 Z" fill="#fff" opacity="0.95"/>
                 </g>
                 <g transform="translate(26,14)">
                   <path d="M6 3 L0 -1 2 6 Z" fill="#fff" opacity="0.95"/>
                 </g>
-                <!-- eyes + nose -->
                 <ellipse cx="18" cy="24" rx="1.6" ry="1.6" fill="#0F172A"/>
                 <ellipse cx="26" cy="24" rx="1.6" ry="1.6" fill="#0F172A"/>
                 <rect x="20.3" y="26.5" width="3.4" height="1.2" rx="0.6" fill="#0F172A" opacity="0.75"/>
@@ -150,7 +151,6 @@
           <button class="navi-pill" id="navi-mode-pill" type="button">Mode: Agent (full access)</button>
         </div>
 
-        <!-- Command menu overlay, anchored near footer -->
         <div id="navi-command-menu" class="navi-command-menu navi-command-menu-hidden">
           <button class="navi-command-item" data-command-id="explain-code">
             <div class="navi-command-title">Explain code</div>
@@ -177,12 +177,9 @@
     </div>
   `;
 
-  // ---------------------------------------------------------------------------
-  // Logo styling
-  // ---------------------------------------------------------------------------
+  // NAVI logo styling
   const logoContainer = root.querySelector('.navi-logo-container');
   const logoSvg = root.querySelector('.navi-logo-svg');
-
   if (logoContainer && logoSvg) {
     logoContainer.style.cssText = `
       width: 34px;
@@ -193,21 +190,19 @@
       justify-content: center;
       box-shadow: 0 0 18px rgba(129, 140, 248, 0.6);
     `;
-
     logoSvg.style.cssText = `
       width: 32px;
       height: 32px;
       display: block;
       border-radius: 10px;
     `;
-
     console.log('[NAVI] Fox logo embedded successfully');
   } else {
     console.warn('[NAVI] Logo container or SVG not found');
   }
 
   // ---------------------------------------------------------------------------
-  // DOM references
+  // Chat message rendering
   // ---------------------------------------------------------------------------
   const messagesEl = document.getElementById('navi-messages');
   const formEl = document.getElementById('navi-form');
@@ -215,9 +210,6 @@
   const modelPill = document.getElementById('navi-model-pill');
   const modePill = document.getElementById('navi-mode-pill');
 
-  // ---------------------------------------------------------------------------
-  // Rendering helpers
-  // ---------------------------------------------------------------------------
   function renderTextSegments(text, container) {
     const lines = String(text).split('\n');
     container.innerHTML = '';
@@ -269,7 +261,6 @@
     flushCodeBlock();
   }
 
-  // Message action toolbar for each bubble
   function createMessageActions(role, text) {
     const safe = String(text || '');
     if (!safe.trim()) return null;
@@ -351,16 +342,17 @@
   }
 
   function appendMessage(text, role, options = {}) {
-    const safeText = String(text ?? '');
-    const allowEmpty = !!options.allowEmpty;
-
-    if (!safeText.trim() && !allowEmpty) {
-      return null;
+    const safeText = String(text || '');
+    if (!safeText.trim()) {
+      console.warn('[NAVI] Ignoring empty message for role:', role);
+      return;
     }
 
     const wrapper = document.createElement('div');
     wrapper.className =
-      role === 'user' ? 'navi-msg-row navi-msg-row-user' : 'navi-msg-row navi-msg-row-bot';
+      role === 'user'
+        ? 'navi-msg-row navi-msg-row-user'
+        : 'navi-msg-row navi-msg-row-bot';
 
     const bubble = document.createElement('div');
     bubble.className =
@@ -368,7 +360,6 @@
 
     if (options.muted) bubble.classList.add('navi-bubble-muted');
 
-    // Content
     renderTextSegments(safeText, bubble);
     wrapper.appendChild(bubble);
 
@@ -404,7 +395,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Form events
+  // Form + input events
   // ---------------------------------------------------------------------------
   formEl.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -412,9 +403,7 @@
     if (!text) return;
 
     appendMessage(text, 'user');
-    if (vscode) {
-      vscode.postMessage({ type: 'sendMessage', text });
-    }
+    vscode?.postMessage({ type: 'sendMessage', text });
     inputEl.value = '';
     inputEl.focus();
     showThinkingMessage();
@@ -427,10 +416,8 @@
     }
   });
 
-  // ---------------------------------------------------------------------------
   // Header buttons
-  // ---------------------------------------------------------------------------
-  root.querySelectorAll('.navi-header .navi-icon-btn').forEach((btn) => {
+  root.querySelectorAll('.navi-icon-btn[data-action]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const action = btn.getAttribute('data-action');
       if (!action || !vscode) return;
@@ -445,25 +432,23 @@
     });
   });
 
-  // Model/mode pills → extension-side pickers
+  // Model / Mode pickers
   modelPill.addEventListener('click', () => {
-    if (!vscode) return;
-    vscode.postMessage({
+    vscode?.postMessage({
       type: 'modelPickerRequested',
       options: ['ChatGPT 5.1', 'gpt-4.2', 'o3-mini'],
     });
   });
 
   modePill.addEventListener('click', () => {
-    if (!vscode) return;
-    vscode.postMessage({
+    vscode?.postMessage({
       type: 'modePickerRequested',
       options: ['Agent (full access)', 'Chat only', 'Read-only explorer'],
     });
   });
 
   // ---------------------------------------------------------------------------
-  // Messages from extension
+  // Messages from extension host
   // ---------------------------------------------------------------------------
   window.addEventListener('message', (event) => {
     const msg = event.data;
@@ -491,24 +476,21 @@
         hideThinkingMessage();
         state.streamingMessageId = msg.messageId;
         state.streamingText = '';
-        const created = appendMessage('', 'bot', { allowEmpty: true });
-        state.streamingBubble = created ? created.bubble : null;
+        const { bubble } = appendMessage('', 'bot', { allowEmpty: true });
+        state.streamingBubble = bubble;
         break;
       }
 
-      case 'botStreamDelta': {
+      case 'botStreamDelta':
         if (!msg.messageId || msg.messageId !== state.streamingMessageId) return;
         if (!state.streamingBubble) {
-          const created = appendMessage('', 'bot', { allowEmpty: true });
-          state.streamingBubble = created ? created.bubble : null;
+          const { bubble: newBubble } = appendMessage('', 'bot', { allowEmpty: true });
+          state.streamingBubble = newBubble;
         }
         state.streamingText += msg.text || '';
-        if (state.streamingBubble) {
-          renderTextSegments(state.streamingText, state.streamingBubble);
-          messagesEl.scrollTop = messagesEl.scrollHeight;
-        }
+        renderTextSegments(state.streamingText, state.streamingBubble);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
         break;
-      }
 
       case 'botStreamEnd':
         if (msg.messageId === state.streamingMessageId) {
@@ -518,7 +500,9 @@
         break;
 
       case 'insertCommandPrompt': {
-        const input = document.querySelector('#navi-input') || document.querySelector('.navi-input');
+        const input =
+          document.querySelector('#navi-input') ||
+          document.querySelector('.navi-input');
         if (input) {
           input.value = msg.prompt || '';
           input.focus();
@@ -526,11 +510,10 @@
         break;
       }
 
-      case 'resetChat': {
+      case 'resetChat':
         clearChat();
         appendMessage('New chat started! How can I help you today?', 'bot');
         break;
-      }
 
       case 'attachmentsSelected': {
         const files = msg.files || [];
@@ -553,7 +536,7 @@
       }
 
       case 'attachmentsCanceled':
-        // currently no-op
+        // no-op for now
         break;
 
       default:
@@ -562,21 +545,24 @@
   });
 
   // ---------------------------------------------------------------------------
-  // Footer wiring: wand menu + attachments
+  // Footer wiring (attach button + wand menu) – inside same IIFE
   // ---------------------------------------------------------------------------
-  (function setupFooter() {
-    const vscodeApi = vscode || (typeof window !== 'undefined' && window.vscode) || null;
+  function initFooter() {
+    const vscodeApi = vscode || (typeof window !== 'undefined' && window.vscode);
     console.log('[NAVI] Footer wiring: vscodeApi present?', !!vscodeApi);
+
+    if (!vscodeApi) return;
 
     const attachBtn = document.getElementById('navi-attach-btn');
     const actionsBtn = document.getElementById('navi-actions-btn');
-    commandMenuEl = document.getElementById('navi-command-menu');
+    const menu = document.getElementById('navi-command-menu');
+    commandMenuEl = menu;
 
     console.log(
       '[NAVI] Footer wiring:',
       'attachBtn', !!attachBtn,
       'actionsBtn', !!actionsBtn,
-      'commandMenu', !!commandMenuEl
+      'menu', !!menu
     );
 
     function openCommandMenu(anchorButton) {
@@ -589,8 +575,10 @@
         const menuWidth = commandMenuEl.offsetWidth || 360;
         const menuHeight = commandMenuEl.offsetHeight || 260;
 
-        const preferredLeft = anchorRect.left - webviewRect.left - menuWidth * 0.25;
-        const preferredBottom = webviewRect.bottom - anchorRect.top + 12;
+        const preferredLeft =
+          anchorRect.left - webviewRect.left - menuWidth * 0.25;
+        const preferredBottom =
+          webviewRect.bottom - anchorRect.top + 16;
 
         commandMenuEl.style.left = `${Math.max(24, preferredLeft)}px`;
         commandMenuEl.style.bottom = `${preferredBottom}px`;
@@ -617,7 +605,6 @@
       }
     }
 
-    // Drag handlers
     function onCommandMenuDragStart(e) {
       if (!commandMenuEl) return;
 
@@ -649,6 +636,7 @@
     }
 
     function onCommandMenuDragEnd() {
+      if (!commandMenuEl) return;
       commandMenuDragState.dragging = false;
     }
 
@@ -656,12 +644,13 @@
       commandMenuEl.addEventListener('mousedown', onCommandMenuDragStart);
       window.addEventListener('mousemove', onCommandMenuDragMove);
       window.addEventListener('mouseup', onCommandMenuDragEnd);
-      closeCommandMenu();
     }
 
-    // Attach button → currently just trigger toast / not-implemented flow,
-    // handled by the extension. No OS file picker here.
-    if (attachBtn && vscodeApi) {
+    // start hidden
+    closeCommandMenu();
+
+    // Attach button – currently just shows "coming soon" chip via host
+    if (attachBtn) {
       attachBtn.addEventListener('click', (event) => {
         event.stopPropagation();
         console.log('[NAVI] Attach button clicked');
@@ -669,7 +658,7 @@
       });
     }
 
-    // Wand button → command menu
+    // Wand button
     if (actionsBtn && commandMenuEl) {
       actionsBtn.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -678,22 +667,26 @@
       });
     }
 
-    // Command menu items (delegated)
-    if (commandMenuEl && vscodeApi) {
-      const ITEM_SELECTOR = '.navi-command-item';
-
-      const items = Array.from(commandMenuEl.querySelectorAll(ITEM_SELECTOR));
+    // Command menu items
+    if (menu) {
+      const items = Array.from(menu.querySelectorAll('.navi-command-item'));
       console.log('[NAVI] Command menu items found:', items.length);
 
-      commandMenuEl.addEventListener('click', (event) => {
+      const ITEM_SELECTOR = '.navi-command-item';
+
+      menu.addEventListener('click', (event) => {
         const target = event.target;
         if (!target) return;
+
         const item = target.closest ? target.closest(ITEM_SELECTOR) : null;
         if (!item) return;
 
         event.stopPropagation();
+
         const id =
-          item.dataset.commandId || item.getAttribute('data-command-id') || '';
+          item.dataset.commandId ||
+          item.getAttribute('data-command-id') ||
+          '';
 
         console.log('[NAVI] Command selected:', id);
 
@@ -707,40 +700,62 @@
         closeCommandMenu();
       });
 
-      commandMenuEl.addEventListener('keydown', (event) => {
+      menu.addEventListener('keydown', (event) => {
         const target = event.target;
         if (!target) return;
-        if (event.key === 'Enter' || event.key === ' ') {
-          const item = target.closest ? target.closest(ITEM_SELECTOR) : null;
-          if (!item) return;
-          event.preventDefault();
-          item.click();
-        }
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+
+        const item = target.closest
+          ? target.closest(ITEM_SELECTOR)
+          : null;
+        if (!item) return;
+
+        event.preventDefault();
+        item.click();
       });
     }
 
-    // Click outside → close menu
+    // Click outside to close
     document.addEventListener('click', (event) => {
-      if (!commandMenuEl) return;
-      if (!commandMenuEl.classList.contains('navi-command-menu-visible')) return;
+      if (
+        !commandMenuEl ||
+        !commandMenuEl.classList.contains('navi-command-menu-visible')
+      ) {
+        return;
+      }
+
       const target = event.target;
       if (!target) return;
-      if (commandMenuEl.contains(target) || actionsBtn?.contains(target)) return;
+
+      if (
+        commandMenuEl.contains(target) ||
+        actionsBtn?.contains(target)
+      ) {
+        return;
+      }
+
       closeCommandMenu();
     });
 
     // ESC closes menu
     document.addEventListener('keydown', (event) => {
-      if (!commandMenuEl) return;
-      if (!commandMenuEl.classList.contains('navi-command-menu-visible')) return;
-      if (event.key === 'Escape') {
+      if (
+        event.key === 'Escape' &&
+        commandMenuEl &&
+        commandMenuEl.classList.contains('navi-command-menu-visible')
+      ) {
         closeCommandMenu();
       }
     });
-  })();
+  }
+
+  // Initialise footer once DOM is ready
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initFooter, { once: true });
+  } else {
+    initFooter();
+  }
 
   // Tell extension we're ready
-  if (vscode) {
-    vscode.postMessage({ type: 'ready' });
-  }
+  vscode?.postMessage({ type: 'ready' });
 })();

@@ -208,21 +208,20 @@ body {
 }
 
 /* ----------------------------------------- */
-/*  Bubbles – Option C: subtle glow panels   */
+/*  Bubbles – Option A: professional tool-like */
 /* ----------------------------------------- */
 
 .navi-bubble {
   max-width: 82%;
   padding: 10px 14px;
-  border-radius: 18px;
+  border-radius: 14px;
   line-height: 1.4;
   word-wrap: break-word;
   font-size: 13px;
   position: relative;
-  overflow: hidden;
 }
 
-/* User bubble – flat dark chip with soft glow */
+/* User bubble – keep gradient pill (brand element) */
 .navi-bubble-user {
   background: radial-gradient(circle at 0% 0%, rgba(79, 70, 229, 0.35), rgba(15, 23, 42, 0.96));
   color: #e5e7eb;
@@ -233,30 +232,18 @@ body {
     0 0 55px rgba(129, 140, 248, 0.35);
 }
 
-/* NAVI bubble – dark glass panel with edge glow */
+/* NAVI bubble – darker flat card (professional tool aesthetic) */
 .navi-bubble-bot {
-  background: rgba(8, 10, 26, 0.98);
-  color: #e5e7eb;
-  border-radius: 18px;
-  border: 1px solid rgba(129, 140, 248, 0.6);
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.95),
-    0 22px 50px rgba(15, 23, 42, 0.98),
-    0 0 70px rgba(236, 72, 153, 0.26);
-}
-
-.navi-bubble-bot::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  background:
-    radial-gradient(circle at 0% 0%, rgba(129, 140, 248, 0.45), transparent 60%),
-    radial-gradient(circle at 100% 100%, rgba(236, 72, 153, 0.35), transparent 60%);
-  opacity: 0.6;
-  mix-blend-mode: screen;
-  filter: blur(14px);
-  z-index: -1;
+  background: radial-gradient(
+    circle at 0% 0%,
+    #020617 0%,
+    #0f172a 100%
+  );
+  color: rgba(241, 245, 249, 0.94);
+  padding: 16px 18px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  max-width: 90%;
 }
 
 /* Quoted lines */
@@ -667,16 +654,25 @@ body {
 
 /* ----------------------------------------- */
 /* Message hover toolbar (Copy / Insert / Use again) */
-/* Let the extension control visibility; we only style. */
+/* CSS hover control - floats above bubble */
 /* ----------------------------------------- */
 
 .navi-msg-actions {
   position: absolute;
-  top: 8px;          /* inside the bubble, not floating above */
+  top: -32px;         /* float above bubble */
   right: 18px;
   display: flex;
   gap: 6px;
-  z-index: 10;       /* stay above bubble background */
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+/* Show toolbar on message row hover */
+.navi-msg-row:hover .navi-msg-actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Buttons inside the toolbar */

@@ -195,7 +195,8 @@ body {
 }
 
 .navi-msg-row {
-  position: relative; /* establishes positioning context for hover toolbar */
+  position: relative;
+  /* establishes positioning context for hover toolbar */
   display: flex;
 }
 
@@ -209,11 +210,11 @@ body {
 
 .navi-bubble {
   max-width: 82%;
-  padding: 10px 14px;
-  border-radius: 14px;
-  line-height: 1.4;
+  padding: 18px 24px;
+  border-radius: 22px;
+  line-height: 1.55;
   word-wrap: break-word;
-  font-size: 13px;
+  font-size: 14.5px;
 }
 
 /* User bubble – AEP violet chip */
@@ -225,26 +226,44 @@ body {
   box-shadow: 0 6px 18px rgba(55, 48, 163, 0.7);
 }
 
-/* NAVI bubble – tool-like card with violet accent bar */
+/* NAVI bubble – soft lavender glass with premium look */
 
 .navi-bubble-bot {
-  background: #020617;
-  color: #e5e7eb;
-  border-left: 3px solid #a855f7;
-  border-radius: 10px 14px 14px 10px;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.95);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.22),
+    rgba(234, 234, 255, 0.18)
+  );
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 22px;
+  padding: 18px 24px;
+  color: #1e1e2f;
+  font-size: 14.5px;
+  line-height: 1.55;
+  box-shadow: 0 4px 25px rgba(150, 120, 255, 0.2);
+}
+
+/* Ensure text readability inside bot bubble */
+
+.navi-bubble-bot p,
+.navi-bubble-bot li,
+.navi-bubble-bot span {
+  color: #1e1e2f;
 }
 
 /* Quoted lines */
 
 .navi-line-quote {
-  background: rgba(15, 23, 42, 0.9);
+  background: rgba(30, 30, 47, 0.08);
   padding: 8px 10px;
   margin: 4px 0;
   border-radius: 8px;
-  border-left: 3px solid #6b7280;
+  border-left: 3px solid rgba(150, 120, 255, 0.5);
   font-style: italic;
   font-size: 12px;
+  color: #1e1e2f;
 }
 
 /* Code blocks */
@@ -252,9 +271,9 @@ body {
 .navi-code-block {
   margin: 6px 0;
   padding: 8px 10px;
-  background: #020617;
+  background: rgba(30, 30, 47, 0.12);
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.7);
+  border: 1px solid rgba(150, 120, 255, 0.3);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
     monospace;
   font-size: 12px;
@@ -262,6 +281,7 @@ body {
   word-break: break-word;
   max-width: 100%;
   box-sizing: border-box;
+  color: #1e1e2f;
 }
 
 .navi-code-block code {
@@ -843,14 +863,14 @@ body {
 
 .navi-msg-actions {
   position: absolute;
-  top: 6px;
-  right: 12px;
+  top: 8px;
+  right: 14px;
   display: flex;
-  gap: 8px;
+  gap: 12px;
   opacity: 0;
   pointer-events: none;
   z-index: 10;
-  transition: opacity 0.15s ease-out;
+  transition: opacity 0.18s ease-in-out;
 }
 
 .navi-msg-row:hover .navi-msg-actions {
@@ -859,17 +879,17 @@ body {
 }
 
 .navi-msg-action-btn {
-  background: transparent;
-  border: none;
-  color: #e5e7eb;
-  font-size: 10px;
-  padding: 3px 7px;
-  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: #1c1c2f;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background 120ms ease-out, color 120ms ease-out;
+  transition: background 0.15s ease;
 }
 
 .navi-msg-action-btn:hover {
-  background: rgba(79, 70, 229, 0.7);
-  color: #ffffff;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1c1c2f;
 }

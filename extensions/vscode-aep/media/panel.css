@@ -574,45 +574,50 @@ body {
   position: relative;
 }
 
-/* toolbar hidden by default */
-.navi-msg-toolbar {
-  position: absolute;
-  top: -34px;               /* above the bubble */
-  right: 16px;
-  display: flex;
-  gap: 8px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease-out, transform 120ms ease-out;
-  transform: translateY(2px);
-  z-index: 30;              /* above bubble, below header */
+/* Message row container */
+.navi-msg-row {
+  position: relative;
 }
 
-/* show while row is hovered (including toolbar area) */
-.navi-msg-row.navi-msg-row--hover .navi-msg-toolbar {
+/* Toolbar inside bubble */
+.navi-msg-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+  font-size: 11px;
+  
+  /* Static positioning inside bubble */
+  position: static;
+  transform: none;
+  
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+/* Show toolbar when hovering the message row */
+.navi-msg-row:hover .navi-msg-toolbar {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
 }
 
 /* Individual toolbar buttons */
 .navi-msg-toolbar-btn {
   border-radius: 999px;
-  padding: 4px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(3, 6, 23, 0.95);
+  padding: 2px 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
   color: #f5f4ff;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out,
-    background 0.15s ease-out, transform 0.08s ease-out;
+  transition: background 120ms ease-out;
 }
 
 .navi-msg-toolbar-btn:hover {
-  background: rgba(139, 92, 246, 0.25);
-  border-color: rgba(139, 92, 246, 0.9);
-  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 /* DROPDOWN (Model/Mode pickers) --------------------------- */

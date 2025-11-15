@@ -301,7 +301,6 @@ let commandMenuDragState = {
     if (options.muted) bubble.classList.add('navi-bubble-muted');
 
     renderTextSegments(safeText, bubble);
-    wrapper.appendChild(bubble);
 
     // --- message toolbar (Copy / Edit / Use as prompt) ---
     const toolbar = document.createElement('div');
@@ -331,16 +330,9 @@ let commandMenuDragState = {
       toolbar.appendChild(btn);
     });
 
-    wrapper.appendChild(toolbar);
-
-    // Stable hover behaviour for toolbar
-    wrapper.addEventListener('mouseenter', () => {
-      wrapper.classList.add('navi-msg-row--hover');
-    });
-
-    wrapper.addEventListener('mouseleave', () => {
-      wrapper.classList.remove('navi-msg-row--hover');
-    });
+    // Add toolbar INSIDE bubble, not wrapper
+    bubble.appendChild(toolbar);
+    wrapper.appendChild(bubble);
 
     messagesEl.appendChild(wrapper);
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -631,6 +623,32 @@ window.addEventListener('DOMContentLoaded', () => {
 
   commandMenuEl = menu;
 
+  // ---- WAND / COMMAND MENU STATE (must be declared before use) ----
+  let isCommandMenuOpen = false;
+
+  function openCommandMenu() {
+    if (!commandMenuEl) return;
+    isCommandMenuOpen = true;
+    commandMenuEl.classList.remove('navi-command-menu-hidden');
+    commandMenuEl.classList.add('navi-command-menu-visible');
+  }
+
+  function closeCommandMenu() {
+    if (!commandMenuEl) return;
+    isCommandMenuOpen = false;
+    commandMenuEl.classList.remove('navi-command-menu-visible');
+    commandMenuEl.classList.add('navi-command-menu-hidden');
+  }
+
+  function toggleCommandMenu() {
+    if (!commandMenuEl) return;
+    if (isCommandMenuOpen) {
+      closeCommandMenu();
+    } else {
+      openCommandMenu();
+    }
+  }
+
   console.log(
     '[NAVI] Footer wiring:',
     'attachBtn', !!attachBtn,
@@ -639,7 +657,7 @@ window.addEventListener('DOMContentLoaded', () => {
   );
 
   // --- Command menu helpers -------------------------------------------------
-  function openCommandMenu(anchorButton) {
+  function openCommandMenu_legacy(anchorButton) {
     if (!commandMenuEl) return;
 
     if (!commandMenuHasUserPosition && anchorButton) {
@@ -719,7 +737,7 @@ window.addEventListener('DOMContentLoaded', () => {
     commandMenuEl.addEventListener('mousedown', onCommandMenuDragStart);
     window.addEventListener('mousemove', onCommandMenuDragMove);
     window.addEventListener('mouseup', onCommandMenuDragEnd);
-    closeCommandMenu();
+    // closeCommandMenu(); // Removed - state is already initialized to false above
   }
 
   // + Attach button - request attachment picker from extension
@@ -787,32 +805,8 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ---- WAND / COMMAND MENU ----
+  // ---- WAND BUTTON WIRING ----
   const wandBtn = actionsBtn;
-  let isCommandMenuOpen = false;
-
-  function openCommandMenu() {
-    if (!commandMenuEl) return;
-    isCommandMenuOpen = true;
-    commandMenuEl.classList.remove('navi-command-menu-hidden');
-    commandMenuEl.classList.add('navi-command-menu-visible');
-  }
-
-  function closeCommandMenu() {
-    if (!commandMenuEl) return;
-    isCommandMenuOpen = false;
-    commandMenuEl.classList.remove('navi-command-menu-visible');
-    commandMenuEl.classList.add('navi-command-menu-hidden');
-  }
-
-  function toggleCommandMenu() {
-    if (!commandMenuEl) return;
-    if (isCommandMenuOpen) {
-      closeCommandMenu();
-    } else {
-      openCommandMenu();
-    }
-  }
 
   // Wand button click handler
   if (wandBtn && commandMenuEl) {

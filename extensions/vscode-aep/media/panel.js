@@ -286,6 +286,36 @@
 
     renderTextSegments(safeText, bubble);
     wrapper.appendChild(bubble);
+
+    // --- message toolbar (Copy / Edit / Use as prompt) ---
+    const toolbar = document.createElement('div');
+    toolbar.className = 'navi-msg-toolbar';
+
+    const actions = [
+      { id: 'copy', label: 'Copy' },
+      { id: 'edit', label: 'Edit' },
+      { id: 'reuse', label: 'Use as prompt' },
+    ];
+
+    actions.forEach(({ id, label }) => {
+      const btn = document.createElement('button');
+      btn.className = 'navi-msg-toolbar-btn';
+      btn.textContent = label;
+      btn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        vscode.postMessage({
+          type: 'messageToolbarAction',
+          action: id,
+          role,
+          text: safeText,
+        });
+      });
+      toolbar.appendChild(btn);
+    });
+
+    wrapper.appendChild(toolbar);
+    // --- end toolbar ---
+
     messagesEl.appendChild(wrapper);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
@@ -441,6 +471,26 @@
 
       case 'attachmentsCanceled':
         // optional: quietly ignore for now
+        break;
+
+      case 'pickerClosed':
+        // Picker was dismissed - handled by DOMContentLoaded listener
+        break;
+
+      case 'modelChanged':
+        // Update model pill text when selection made
+        if (msg.label) {
+          const pill = document.getElementById('navi-model-pill');
+          if (pill) pill.textContent = `Model: ${msg.label}`;
+        }
+        break;
+
+      case 'modeChanged':
+        // Update mode pill text when selection made
+        if (msg.label) {
+          const pill = document.getElementById('navi-mode-pill');
+          if (pill) pill.textContent = `Mode: ${msg.label}`;
+        }
         break;
 
       default:
@@ -674,126 +724,58 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ---------- Model / Mode pill dropdowns ----------
+  // ---------- Model / Mode pill pickers (VS Code QuickPick) ----------
 
-  let activeDropdown = null;
+  // Track what's currently open so clicking the *other* pill works on first click
+  let openPickerKind = null;
 
-  function closeDropdown() {
-    if (activeDropdown && activeDropdown.parentElement) {
-      activeDropdown.parentElement.removeChild(activeDropdown);
+  function requestPicker(kind) {
+    if (!vscodeApi) return;
+
+    if (kind === openPickerKind) {
+      // Same pill → treat as toggle: close picker
+      vscodeApi.postMessage({ type: 'closePicker' });
+      openPickerKind = null;
+      return;
     }
-    activeDropdown = null;
-  }
 
-  function openDropdown(anchorEl, items, kind) {
-    closeDropdown();
+    // If another picker was open, we still immediately request the new one
+    openPickerKind = kind;
 
-    const dropdown = document.createElement('div');
-    dropdown.className = 'navi-dropdown';
-
-    items.forEach((item) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'navi-dropdown-item';
-      btn.textContent = item.label;
-      btn.dataset.value = item.value;
-      btn.addEventListener('click', (event) => {
-        event.stopPropagation();
-
-        if (kind === 'model' && anchorEl) {
-          anchorEl.textContent = `Model: ${item.label}`;
-          vscodeApi.postMessage({
-            type: 'modelChanged',
-            value: item.value,
-          });
-        } else if (kind === 'mode' && anchorEl) {
-          anchorEl.textContent = `Mode: ${item.label}`;
-          vscodeApi.postMessage({
-            type: 'modeChanged',
-            value: item.value,
-          });
-        }
-
-        closeDropdown();
+    if (kind === 'model') {
+      vscodeApi.postMessage({
+        type: 'modelPickerRequested',
+        options: ['ChatGPT 5.1', 'gpt-4.2', 'o3-mini']
       });
-
-      dropdown.appendChild(btn);
-    });
-
-    document.body.appendChild(dropdown);
-    activeDropdown = dropdown;
-
-    // Position below the pill
-    const rect = anchorEl.getBoundingClientRect();
-    const bodyRect = document.body.getBoundingClientRect();
-
-    const top = rect.bottom - bodyRect.top + 8;
-    const left = rect.left - bodyRect.left;
-
-    dropdown.style.top = `${top}px`;
-    dropdown.style.left = `${left}px`;
+    } else if (kind === 'mode') {
+      vscodeApi.postMessage({
+        type: 'modePickerRequested',
+        options: ['Agent (full access)', 'Chat only', 'Read-only explorer']
+      });
+    }
   }
 
   if (modelPill) {
-    modelPill.addEventListener('click', (event) => {
-      event.stopPropagation();
-
-      const items = [
-        { label: 'ChatGPT 5.1', value: 'chatgpt-5.1' },
-        { label: 'gpt-4.2', value: 'gpt-4.2' },
-        { label: 'o3-mini', value: 'o3-mini' },
-      ];
-
-      if (activeDropdown) {
-        // Same pill → toggle close/open
-        closeDropdown();
-      } else {
-        openDropdown(modelPill, items, 'model');
-      }
+    modelPill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      requestPicker('model');
     });
   }
 
   if (modePill) {
-    modePill.addEventListener('click', (event) => {
-      event.stopPropagation();
-
-      const items = [
-        { label: 'Agent (full access)', value: 'agent-full' },
-        { label: 'Chat only', value: 'chat-only' },
-        { label: 'Read-only explorer', value: 'read-only' },
-      ];
-
-      if (activeDropdown) {
-        closeDropdown();
-      } else {
-        openDropdown(modePill, items, 'mode');
-      }
+    modePill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      requestPicker('mode');
     });
   }
 
-  // Click outside dropdown → close
-  document.addEventListener('click', (event) => {
-    if (!activeDropdown) return;
+  // Listen for picker state changes from extension
+  window.addEventListener('message', (event) => {
+    const msg = event.data;
+    if (!msg || typeof msg !== 'object') return;
 
-    const target = event.target;
-    if (!target) return;
-
-    if (
-      activeDropdown.contains(target) ||
-      modelPill?.contains(target) ||
-      modePill?.contains(target)
-    ) {
-      return;
-    }
-
-    closeDropdown();
-  });
-
-  // ESC closes dropdown
-  document.addEventListener('keydown', (event) => {
-    if (!activeDropdown) return;
-    if (event.key === 'Escape') {
-      closeDropdown();
+    if (msg.type === 'pickerClosed') {
+      openPickerKind = null;
     }
   });
 });

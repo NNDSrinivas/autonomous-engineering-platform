@@ -484,10 +484,15 @@ body {
   cursor: pointer;
   white-space: nowrap;
   color: #f5f4ff;
+  border-radius: 6px;
+  margin: 2px 4px;
+  transition: background 120ms ease-out, color 120ms ease-out;
 }
 
-.navi-pill-menu-item:hover {
-  background: rgba(191, 154, 255, 0.16);
+.navi-pill-menu-item:hover,
+.navi-pill-menu-item--active {
+  background: linear-gradient(90deg, rgba(139, 92, 246, 0.9), rgba(236, 72, 153, 0.9));
+  color: #ffffff;
 }
 
 /* COMMAND MENU (wand) ------------------------------------ */

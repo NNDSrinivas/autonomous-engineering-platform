@@ -747,12 +747,12 @@ window.addEventListener('DOMContentLoaded', () => {
     attachBtn.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      console.log('[NAVI] Attach button clicked');
+      console.log('[NAVI] Attach button clicked - showing coming soon message');
 
-      // Request attachment picker from extension
-      if (vscodeApi) {
-        vscodeApi.postMessage({ type: 'attachBtnClicked' });
-      }
+      // Don't call extension - just show the "coming soon" message
+      // if (vscodeApi) {
+      //   vscodeApi.postMessage({ type: 'attachBtnClicked' });
+      // }
 
       // Show toast
       attachToast.classList.add('navi-attach-toast--visible');
@@ -770,31 +770,43 @@ window.addEventListener('DOMContentLoaded', () => {
       const isOnAttach = event.target.closest('#navi-attach-btn');
       if (!isOnToast && !isOnAttach) {
         attachToast.classList.remove('navi-attach-toast--visible');
+        if (window._naviAttachToastTimer) {
+          clearTimeout(window._naviAttachToastTimer);
+        }
+      }
+    });
+
+    // ESC key hides the toast
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && attachToast.classList.contains('navi-attach-toast--visible')) {
+        attachToast.classList.remove('navi-attach-toast--visible');
+        if (window._naviAttachToastTimer) {
+          clearTimeout(window._naviAttachToastTimer);
+        }
       }
     });
   }
 
   // ---- WAND / COMMAND MENU ----
   const wandBtn = actionsBtn;
-  const commandMenu = commandMenuEl;
   let isCommandMenuOpen = false;
 
   function openCommandMenu() {
-    if (!commandMenu) return;
+    if (!commandMenuEl) return;
     isCommandMenuOpen = true;
-    commandMenu.classList.remove('navi-command-menu-hidden');
-    commandMenu.classList.add('navi-command-menu-visible');
+    commandMenuEl.classList.remove('navi-command-menu-hidden');
+    commandMenuEl.classList.add('navi-command-menu-visible');
   }
 
   function closeCommandMenu() {
-    if (!commandMenu) return;
+    if (!commandMenuEl) return;
     isCommandMenuOpen = false;
-    commandMenu.classList.remove('navi-command-menu-visible');
-    commandMenu.classList.add('navi-command-menu-hidden');
+    commandMenuEl.classList.remove('navi-command-menu-visible');
+    commandMenuEl.classList.add('navi-command-menu-hidden');
   }
 
   function toggleCommandMenu() {
-    if (!commandMenu) return;
+    if (!commandMenuEl) return;
     if (isCommandMenuOpen) {
       closeCommandMenu();
     } else {
@@ -803,7 +815,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   // Wand button click handler
-  if (wandBtn && commandMenu) {
+  if (wandBtn && commandMenuEl) {
     wandBtn.addEventListener('click', (event) => {
       event.stopPropagation();
       console.log('[NAVI] Wand button clicked');
@@ -811,7 +823,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     // clicking inside the menu should not close it
-    commandMenu.addEventListener('click', (event) => {
+    commandMenuEl.addEventListener('click', (event) => {
       event.stopPropagation();
     });
 

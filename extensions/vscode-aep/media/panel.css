@@ -217,53 +217,49 @@ body {
   font-size: 14.5px;
 }
 
-/* User bubble – AEP violet chip */
+/* User bubble – NAVI gradient glass chip */
 
 .navi-bubble-user {
-  background: radial-gradient(circle at 0% 0%, #4338ca 0, #312e81 40%, #111827 100%);
-  color: #e5e7eb;
-  border: 1px solid rgba(165, 180, 252, 0.9);
-  box-shadow: 0 6px 18px rgba(55, 48, 163, 0.7);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(129, 140, 248, 0.35), transparent 55%),
+    linear-gradient(135deg, #4f46e5, #ec4899);
+  color: #f9fafb;
+  border: 1px solid rgba(248, 250, 252, 0.18);
+  box-shadow:
+    0 14px 40px rgba(88, 28, 135, 0.85),
+    0 0 0 1px rgba(15, 23, 42, 0.9);
 }
 
-/* NAVI bubble – soft lavender glass with premium look */
+/* NAVI (assistant) bubble – darker glass with violet accent */
 
 .navi-bubble-bot {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.22),
-    rgba(234, 234, 255, 0.18)
-  );
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 22px;
-  padding: 18px 24px;
-  color: #1e1e2f;
-  font-size: 14.5px;
-  line-height: 1.55;
-  box-shadow: 0 4px 25px rgba(150, 120, 255, 0.2);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(129, 140, 248, 0.25), transparent 60%),
+    radial-gradient(circle at 100% 100%, rgba(236, 72, 153, 0.18), transparent 60%),
+    rgba(6, 10, 24, 0.98);
+  color: #e5e7eb;
+  border-left: 3px solid #a855f7;
+  border-top: 1px solid rgba(148, 163, 184, 0.6);
+  border-right: 1px solid rgba(15, 23, 42, 0.9);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.9);
+  box-shadow:
+    0 14px 40px rgba(15, 23, 42, 0.95),
+    0 0 0 1px rgba(15, 23, 42, 0.9);
 }
 
-/* Ensure text readability inside bot bubble */
-
-.navi-bubble-bot p,
-.navi-bubble-bot li,
-.navi-bubble-bot span {
-  color: #1e1e2f;
-}
+/* Remove old text color overrides - no longer needed */
 
 /* Quoted lines */
 
 .navi-line-quote {
-  background: rgba(30, 30, 47, 0.08);
+  background: rgba(15, 23, 42, 0.9);
   padding: 8px 10px;
   margin: 4px 0;
   border-radius: 8px;
-  border-left: 3px solid rgba(150, 120, 255, 0.5);
+  border-left: 3px solid #a855f7;
   font-style: italic;
   font-size: 12px;
-  color: #1e1e2f;
+  color: #d1d5db;
 }
 
 /* Code blocks */
@@ -271,9 +267,9 @@ body {
 .navi-code-block {
   margin: 6px 0;
   padding: 8px 10px;
-  background: rgba(30, 30, 47, 0.12);
+  background: rgba(2, 6, 23, 0.95);
   border-radius: 10px;
-  border: 1px solid rgba(150, 120, 255, 0.3);
+  border: 1px solid rgba(148, 163, 184, 0.5);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
     monospace;
   font-size: 12px;
@@ -281,7 +277,7 @@ body {
   word-break: break-word;
   max-width: 100%;
   box-sizing: border-box;
-  color: #1e1e2f;
+  color: #e5e7eb;
 }
 
 .navi-code-block code {
@@ -864,12 +860,21 @@ body {
 .navi-msg-actions {
   position: absolute;
   top: 8px;
-  right: 14px;
-  display: flex;
-  gap: 12px;
+  right: 18px;
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.95),
+    0 0 0 1px rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
   opacity: 0;
   pointer-events: none;
-  z-index: 10;
+  z-index: 60;
   transition: opacity 0.18s ease-in-out;
 }
 
@@ -879,17 +884,37 @@ body {
 }
 
 .navi-msg-action-btn {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  color: #1c1c2f;
-  font-size: 12px;
-  padding: 3px 8px;
-  border-radius: 8px;
+  border: none;
+  border-radius: 999px;
+  padding: 4px 10px 5px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5e7eb;
   cursor: pointer;
-  transition: background 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.15s ease-out,
+    color 0.15s ease-out,
+    box-shadow 0.15s ease-out,
+    transform 0.08s ease-out;
 }
 
-.navi-msg-action-btn:hover {
-  background: rgba(255, 255, 255, 0.95);
-  color: #1c1c2f;
+.navi-msg-action-btn:hover,
+.navi-msg-action-btn:focus-visible {
+  background: linear-gradient(135deg, #4f46e5, #ec4899);
+  color: #f9fafb;
+  box-shadow:
+    0 10px 28px rgba(79, 70, 229, 0.7),
+    0 0 0 1px rgba(248, 250, 252, 0.18);
+  outline: none;
+  transform: translateY(-0.5px);
+}
+
+.navi-msg-action-btn:active {
+  transform: translateY(1px) scale(0.97);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.9);
 }

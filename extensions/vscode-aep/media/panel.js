@@ -38,6 +38,9 @@ let commandMenuDragState = {
     thinking: false,
   };
 
+  // Track which message bubble is being edited (null = not editing)
+  let editingMessageBubble = null;
+
   let thinkingMessageEl = null;
 
   function showThinkingMessage() {
@@ -355,7 +358,41 @@ let commandMenuDragState = {
     const text = inputEl.value.trim();
     if (!text) return;
 
-    appendMessage(text, 'user');
+    if (editingMessageBubble) {
+      // Update existing message bubble (Edit mode)
+      console.log('[NAVI] Updating existing message');
+      // Clear existing content and re-render
+      editingMessageBubble.innerHTML = '';
+      renderTextSegments(text, editingMessageBubble);
+      
+      // Re-add toolbar if it was in a user message
+      if (editingMessageBubble.classList.contains('navi-bubble-user')) {
+        const toolbar = document.createElement('div');
+        toolbar.className = 'navi-msg-toolbar';
+        const actions = [
+          { id: 'copy', label: 'Copy' },
+          { id: 'edit', label: 'Edit' },
+          { id: 'use-as-prompt', label: 'Use as prompt' },
+        ];
+        actions.forEach(({ id, label }) => {
+          const btn = document.createElement('button');
+          btn.className = 'navi-msg-toolbar-btn';
+          btn.textContent = label;
+          btn.dataset.action = id;
+          btn.dataset.messageText = text;
+          toolbar.appendChild(btn);
+        });
+        editingMessageBubble.appendChild(toolbar);
+      }
+      
+      // Exit edit mode
+      editingMessageBubble = null;
+    } else {
+      // Create new user message (normal send or Use as prompt)
+      console.log('[NAVI] Creating new message');
+      appendMessage(text, 'user');
+    }
+
     if (vscode) {
       vscode.postMessage({ type: 'sendMessage', text });
     }
@@ -483,7 +520,6 @@ let commandMenuDragState = {
           try {
             await navigator.clipboard.writeText(text);
             console.log('[NAVI] Copied message to clipboard');
-            // Optional: show a brief "Copied!" feedback
           } catch (err) {
             console.error('[NAVI] Failed to copy message', err);
           }
@@ -493,8 +529,12 @@ let commandMenuDragState = {
         case 'edit': {
           inputEl.value = text;
           inputEl.focus();
-          // Place cursor at end
           inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+          
+          // Next send should UPDATE this bubble
+          const messageRow = button.closest('.navi-msg-row');
+          editingMessageBubble = messageRow ? messageRow.querySelector('.navi-bubble') : null;
+          console.log('[NAVI] Edit mode: will update existing message');
           break;
         }
 
@@ -502,7 +542,10 @@ let commandMenuDragState = {
           inputEl.value = text;
           inputEl.focus();
           inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
-          // For now just prefills; user can edit and press Enter
+          
+          // Next send should create a NEW message (not edit)
+          editingMessageBubble = null;
+          console.log('[NAVI] Use as prompt: will create new message');
           break;
         }
 

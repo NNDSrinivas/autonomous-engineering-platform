@@ -156,7 +156,8 @@ body {
 }
 
 .navi-bubble {
-  max-width: 70%;               /* assistant default max-width */
+  max-width: 70%;
+  /* assistant default max-width */
   padding: 10px 14px;
   border-radius: 14px;
   line-height: 1.4;
@@ -167,7 +168,8 @@ body {
 /* User bubble – violet gradient */
 
 .navi-bubble-user {
-  max-width: 50% !important;    /* user bubbles narrower */
+  max-width: 50% !important;
+  /* user bubbles narrower */
   background: radial-gradient(circle at 0% 0%, #4338ca 0, #312e81 40%, #111827 100%);
   color: #e5e7eb;
   border: 1px solid rgba(165, 180, 252, 0.9);
@@ -502,7 +504,8 @@ body {
 
 .navi-command-menu {
   position: absolute;
-  bottom: 72px;                 /* above the input bar */
+  bottom: 72px;
+  /* above the input bar */
   left: 88px;
   width: 320px;
   max-width: calc(100% - 32px);
@@ -511,12 +514,14 @@ body {
   box-shadow: 0 16px 45px rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(12px);
   padding: 12px 14px;
-  display: none;                /* hidden by default */
+  display: none;
+  /* hidden by default */
   z-index: 40;
 }
 
 .navi-command-menu-visible {
-  display: block !important;    /* ensure it shows */
+  display: block !important;
+  /* ensure it shows */
 }
 
 .navi-command-menu-hidden {

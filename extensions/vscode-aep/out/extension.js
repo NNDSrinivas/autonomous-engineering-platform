@@ -4,7 +4,6 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 // src/extension.ts
 const vscode = require("vscode");
-const path = require("path");
 function activate(context) {
     const provider = new NaviWebviewProvider(context.extensionUri, context);
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(
@@ -94,47 +93,63 @@ class NaviWebviewProvider {
                         vscode.window.showInformationMessage('Attachment flow is not implemented yet – coming soon in a future release.');
                         break;
                     }
-                    case 'pickAttachment': {
-                        console.log('[Extension Host] [AEP] Webview requested attachment picker');
-                        // Open file picker for attachments
-                        const uris = await vscode.window.showOpenDialog({
-                            openLabel: 'Attach to NAVI chat',
-                            canSelectMany: true,
-                            canSelectFiles: true,
-                            canSelectFolders: false,
-                            filters: {
-                                'Code & Text': ['ts', 'tsx', 'js', 'jsx', 'java', 'cs', 'py', 'go', 'rb', 'php', 'cpp', 'c', 'h', 'json', 'yml', 'yaml', 'md', 'txt'],
-                                'All Files': ['*']
-                            }
-                        });
-                        if (!uris || uris.length === 0) {
-                            console.log('[Extension Host] [AEP] Attachment picker canceled');
-                            this.postToWebview({ type: 'attachmentsCanceled' });
-                            return;
-                        }
-                        // Map to lightweight metadata objects the webview can render as chips
-                        const files = await Promise.all(uris.map(async (uri) => {
-                            let size = 0;
-                            try {
-                                const stat = await vscode.workspace.fs.stat(uri);
-                                size = stat.size ?? 0;
-                            }
-                            catch {
-                                // ignore stat failures, size stays 0
-                            }
-                            return {
-                                name: path.basename(uri.fsPath),
-                                uri: uri.toString(),
-                                size
-                            };
-                        }));
-                        console.log('[Extension Host] [AEP] Selected attachments:', files);
-                        this.postToWebview({
-                            type: 'attachmentsSelected',
-                            files
-                        });
+                    case 'pickAttachment':
+                    case 'attachBtnClicked': {
+                        console.log('[Extension Host] [AEP] Attachment button clicked - showing not implemented message');
+                        // For now, just tell the webview this is not implemented yet.
+                        this.postToWebview({ type: 'attachmentNotImplemented' });
                         break;
                     }
+                    /* Keep the old attachment handling code commented out for future implementation
+                    case 'pickAttachment_FUTURE': {
+                      console.log('[Extension Host] [AEP] Webview requested attachment picker');
+          
+                      // Open file picker for attachments
+                      const uris = await vscode.window.showOpenDialog({
+                        openLabel: 'Attach to NAVI chat',
+                        canSelectMany: true,
+                        canSelectFiles: true,
+                        canSelectFolders: false,
+                        filters: {
+                          'Code & Text': ['ts', 'tsx', 'js', 'jsx', 'java', 'cs', 'py', 'go', 'rb', 'php', 'cpp', 'c', 'h', 'json', 'yml', 'yaml', 'md', 'txt'],
+                          'All Files': ['*']
+                        }
+                      });
+          
+                      if (!uris || uris.length === 0) {
+                        console.log('[Extension Host] [AEP] Attachment picker canceled');
+                        this.postToWebview({ type: 'attachmentsCanceled' });
+                        return;
+                      }
+          
+                      // Map to lightweight metadata objects the webview can render as chips
+                      const files = await Promise.all(
+                        uris.map(async (uri) => {
+                          let size = 0;
+                          try {
+                            const stat = await vscode.workspace.fs.stat(uri);
+                            size = stat.size ?? 0;
+                          } catch {
+                            // ignore stat failures, size stays 0
+                          }
+          
+                          return {
+                            name: path.basename(uri.fsPath),
+                            uri: uri.toString(),
+                            size
+                          };
+                        })
+                      );
+          
+                      console.log('[Extension Host] [AEP] Selected attachments:', files);
+          
+                      this.postToWebview({
+                        type: 'attachmentsSelected',
+                        files
+                      });
+                      break;
+                    }
+                    */
                     case 'commandSelected': {
                         // Map the menu item -> suggested prompt
                         const cmd = String(msg.command || '');

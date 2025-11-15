@@ -147,17 +147,23 @@ let commandMenuDragState = {
         </form>
 
         <div class="navi-bottom-row">
-          <select id="modelSelect" class="navi-pill navi-pill-select">
-            <option>ChatGPT 5.1</option>
-            <option>gpt-4.2</option>
-            <option>o3-mini</option>
-          </select>
+          <div class="navi-model-pill navi-pill" id="modelPill">
+            <span>Model: ChatGPT 5.1</span>
+            <div class="navi-pill-menu navi-model-menu">
+              <div class="navi-pill-menu-item" data-value="ChatGPT 5.1">ChatGPT 5.1</div>
+              <div class="navi-pill-menu-item" data-value="gpt-4.2">gpt-4.2</div>
+              <div class="navi-pill-menu-item" data-value="o3-mini">o3-mini</div>
+            </div>
+          </div>
 
-          <select id="modeSelect" class="navi-pill navi-pill-select">
-            <option>Agent (full access)</option>
-            <option>Chat only</option>
-            <option>Read-only explorer</option>
-          </select>
+          <div class="navi-mode-pill navi-pill" id="modePill">
+            <span>Mode: Agent (full access)</span>
+            <div class="navi-pill-menu navi-mode-menu">
+              <div class="navi-pill-menu-item" data-value="Agent (full access)">Agent (full access)</div>
+              <div class="navi-pill-menu-item" data-value="Chat only">Chat only</div>
+              <div class="navi-pill-menu-item" data-value="Read-only explorer">Read-only explorer</div>
+            </div>
+          </div>
         </div>
 
         <div id="navi-command-menu" class="navi-command-menu navi-command-menu-hidden">
@@ -391,29 +397,94 @@ let commandMenuDragState = {
     });
   });
 
-  // Model / Mode selects – send selection changes to extension ---------------
-  const modelSelect = document.getElementById('modelSelect');
-  const modeSelect = document.getElementById('modeSelect');
+  // Model / Mode pills with custom dropdown menus ---------------------------
+  let openPickerKind = null; // 'model' | 'mode' | null
 
-  if (modelSelect) {
-    modelSelect.addEventListener('change', () => {
-      if (!vscode) return;
-      vscode.postMessage({
-        type: 'modelSelected',
-        value: modelSelect.value,
-      });
-    });
+  function togglePillMenu(kind) {
+    const modelMenu = document.querySelector('.navi-model-menu');
+    const modeMenu  = document.querySelector('.navi-mode-menu');
+
+    const isSame = openPickerKind === kind;
+
+    // close all
+    modelMenu?.classList.remove('navi-pill-menu--open');
+    modeMenu?.classList.remove('navi-pill-menu--open');
+    openPickerKind = null;
+
+    // reopen if user clicked a *different* pill
+    if (!isSame) {
+      if (kind === 'model') {
+        modelMenu?.classList.add('navi-pill-menu--open');
+      } else {
+        modeMenu?.classList.add('navi-pill-menu--open');
+      }
+      openPickerKind = kind;
+    }
   }
 
-  if (modeSelect) {
-    modeSelect.addEventListener('change', () => {
-      if (!vscode) return;
-      vscode.postMessage({
-        type: 'modeSelected',
-        value: modeSelect.value,
-      });
+  const modelPill = document.getElementById('modelPill');
+  const modePill = document.getElementById('modePill');
+
+  if (modelPill) {
+    modelPill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePillMenu('model');
     });
+
+    // Handle menu item clicks
+    const modelMenu = modelPill.querySelector('.navi-model-menu');
+    if (modelMenu) {
+      modelMenu.addEventListener('click', (e) => {
+        const item = e.target.closest('.navi-pill-menu-item');
+        if (item) {
+          e.stopPropagation();
+          const value = item.dataset.value;
+          modelPill.querySelector('span').textContent = `Model: ${value}`;
+          if (vscode) {
+            vscode.postMessage({
+              type: 'modelSelected',
+              value: value,
+            });
+          }
+          togglePillMenu('model'); // close
+        }
+      });
+    }
   }
+
+  if (modePill) {
+    modePill.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePillMenu('mode');
+    });
+
+    // Handle menu item clicks
+    const modeMenu = modePill.querySelector('.navi-mode-menu');
+    if (modeMenu) {
+      modeMenu.addEventListener('click', (e) => {
+        const item = e.target.closest('.navi-pill-menu-item');
+        if (item) {
+          e.stopPropagation();
+          const value = item.dataset.value;
+          modePill.querySelector('span').textContent = `Mode: ${value}`;
+          if (vscode) {
+            vscode.postMessage({
+              type: 'modeSelected',
+              value: value,
+            });
+          }
+          togglePillMenu('mode'); // close
+        }
+      });
+    }
+  }
+
+  // Click anywhere else to close
+  window.addEventListener('click', () => {
+    const openMenus = document.querySelectorAll('.navi-pill-menu--open');
+    openMenus.forEach(m => m.classList.remove('navi-pill-menu--open'));
+    openPickerKind = null;
+  });
 
   // Messages from extension ---------------------------------------------------
   window.addEventListener('message', (event) => {
@@ -510,6 +581,50 @@ let commandMenuDragState = {
 window.addEventListener('DOMContentLoaded', () => {
   const vscodeApi = (typeof window !== 'undefined' && window.vscode) || null;
   console.log('[NAVI] Footer wiring: vscodeApi present?', !!vscodeApi);
+
+  // Attachment hint (banner) helpers -----------------------------------------
+  let attachmentHintEl = null;
+  let attachmentHintTimeout = null;
+
+  function showAttachmentHint(message) {
+    const footer = document.querySelector('.navi-footer');
+    if (!footer) return;
+
+    if (!attachmentHintEl) {
+      attachmentHintEl = document.createElement('div');
+      attachmentHintEl.className = 'navi-attach-hint';
+
+      const icon = document.createElement('span');
+      icon.className = 'navi-attach-hint-icon';
+      icon.textContent = '📎';
+
+      const text = document.createElement('span');
+      text.className = 'navi-attach-hint-text';
+
+      attachmentHintEl.appendChild(icon);
+      attachmentHintEl.appendChild(text);
+
+      footer.insertBefore(attachmentHintEl, footer.firstChild);
+    }
+
+    attachmentHintEl.querySelector('.navi-attach-hint-text').textContent = message;
+    attachmentHintEl.classList.add('navi-attach-hint--visible');
+
+    if (attachmentHintTimeout) clearTimeout(attachmentHintTimeout);
+    attachmentHintTimeout = setTimeout(() => {
+      attachmentHintEl.classList.remove('navi-attach-hint--visible');
+    }, 4000);
+  }
+
+  // Close hint when clicking elsewhere
+  window.addEventListener('click', (event) => {
+    if (!attachmentHintEl) return;
+    const isOnHint   = event.target.closest('.navi-attach-hint');
+    const isOnAttach = event.target.closest('#navi-attach-btn');
+    if (!isOnHint && !isOnAttach) {
+      attachmentHintEl.classList.remove('navi-attach-hint--visible');
+    }
+  }, true);
 
   if (!vscodeApi) {
     console.warn('[NAVI] vscode API instance not found – footer wiring disabled.');
@@ -614,31 +729,24 @@ window.addEventListener('DOMContentLoaded', () => {
     closeCommandMenu();
   }
 
-  // Helper: show simple "attachments coming soon" chip
-  function showAttachmentStub() {
-    const footer = document.querySelector('.navi-footer');
-    if (!footer) return;
-
-    // Remove any previous chip
-    const oldChip = footer.querySelector('.navi-attachment-chip');
-    if (oldChip) oldChip.remove();
-
-    const chip = document.createElement('div');
-    chip.className = 'navi-attachment-chip';
-    chip.textContent = '📎 Attachment flow is not implemented yet – coming soon.';
-    footer.insertBefore(chip, footer.firstChild);
-  }
-
-  // + Attach button - for now just show stub, no OS picker
+  // + Attach button - request attachment picker from extension
   if (attachBtn) {
     attachBtn.addEventListener('click', (event) => {
       event.stopPropagation();
-      console.log('[NAVI] Attach button clicked (stub only)');
-      showAttachmentStub();
-      // IMPORTANT: do NOT call pickAttachment here until the real flow exists
-      // vscodeApi.postMessage({ type: 'pickAttachment' });
+      console.log('[NAVI] Attach button clicked');
+      if (vscodeApi) {
+        vscodeApi.postMessage({ type: 'attachBtnClicked' });
+      }
     });
   }
+
+  // Listen for attachmentNotImplemented message from extension
+  window.addEventListener('message', (event) => {
+    const msg = event.data;
+    if (msg && msg.type === 'attachmentNotImplemented') {
+      showAttachmentHint('Attachment flow is not implemented yet – coming soon.');
+    }
+  });
 
   // Wand button – toggle command palette
   if (actionsBtn && commandMenuEl) {

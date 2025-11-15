@@ -73,24 +73,18 @@ body {
 }
 
 @keyframes naviLogoIdle {
-
-  0%,
-  100% {
+  0%, 100% {
     transform: rotate(0deg) translateY(0);
   }
-
   20% {
     transform: rotate(-2.5deg) translateY(-0.5px);
   }
-
   40% {
     transform: rotate(1.5deg) translateY(0.5px);
   }
-
   60% {
     transform: rotate(-1deg) translateY(-0.5px);
   }
-
   80% {
     transform: rotate(1deg) translateY(0.5px);
   }
@@ -100,31 +94,24 @@ body {
   0% {
     box-shadow: 0 0 0 0 rgba(129, 140, 248, 0.7);
   }
-
   70% {
     box-shadow: 0 0 0 8px rgba(129, 140, 248, 0);
   }
-
   100% {
     box-shadow: 0 0 0 0 rgba(129, 140, 248, 0);
   }
 }
 
 @keyframes naviLogoCelebrate {
-
-  0%,
-  100% {
+  0%, 100% {
     transform: rotate(0deg);
   }
-
   25% {
     transform: rotate(-8deg);
   }
-
   50% {
     transform: rotate(6deg);
   }
-
   75% {
     transform: rotate(-4deg);
   }
@@ -169,7 +156,6 @@ body {
 }
 
 .navi-icon-btn[data-action="mcp"] {
-  /* make MCP / plug stand out a bit more even idle */
   background: rgba(76, 29, 149, 0.45);
   border-color: rgba(192, 132, 252, 0.9);
 }
@@ -195,9 +181,8 @@ body {
 }
 
 .navi-msg-row {
-  position: relative;
-  /* establishes positioning context for hover toolbar */
   display: flex;
+  position: relative; /* for toolbars */
 }
 
 .navi-msg-row-user {
@@ -208,46 +193,57 @@ body {
   justify-content: flex-start;
 }
 
+/* ----------------------------------------- */
+/*  Bubbles – Option C: subtle glow panels   */
+/* ----------------------------------------- */
+
 .navi-bubble {
   max-width: 82%;
-  padding: 18px 24px;
-  border-radius: 22px;
-  line-height: 1.55;
+  padding: 10px 14px;
+  border-radius: 18px;
+  line-height: 1.4;
   word-wrap: break-word;
-  font-size: 14.5px;
+  font-size: 13px;
+  position: relative;
+  overflow: hidden;
 }
 
-/* User bubble – NAVI gradient glass chip */
-
+/* User bubble – flat dark chip with soft glow */
 .navi-bubble-user {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(129, 140, 248, 0.35), transparent 55%),
-    linear-gradient(135deg, #4f46e5, #ec4899);
-  color: #f9fafb;
-  border: 1px solid rgba(248, 250, 252, 0.18);
-  box-shadow:
-    0 14px 40px rgba(88, 28, 135, 0.85),
-    0 0 0 1px rgba(15, 23, 42, 0.9);
-}
-
-/* NAVI (assistant) bubble – darker glass with violet accent */
-
-.navi-bubble-bot {
-  background:
-    radial-gradient(circle at 0% 0%, rgba(129, 140, 248, 0.25), transparent 60%),
-    radial-gradient(circle at 100% 100%, rgba(236, 72, 153, 0.18), transparent 60%),
-    rgba(6, 10, 24, 0.98);
+  background: radial-gradient(circle at 0% 0%, rgba(79, 70, 229, 0.35), rgba(15, 23, 42, 0.96));
   color: #e5e7eb;
-  border-left: 3px solid #a855f7;
-  border-top: 1px solid rgba(148, 163, 184, 0.6);
-  border-right: 1px solid rgba(15, 23, 42, 0.9);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(165, 180, 252, 0.6);
   box-shadow:
-    0 14px 40px rgba(15, 23, 42, 0.95),
-    0 0 0 1px rgba(15, 23, 42, 0.9);
+    0 0 0 1px rgba(15, 23, 42, 0.95),
+    0 18px 40px rgba(15, 23, 42, 0.95),
+    0 0 55px rgba(129, 140, 248, 0.35);
 }
 
-/* Remove old text color overrides - no longer needed */
+/* NAVI bubble – dark glass panel with edge glow */
+.navi-bubble-bot {
+  background: rgba(8, 10, 26, 0.98);
+  color: #e5e7eb;
+  border-radius: 18px;
+  border: 1px solid rgba(129, 140, 248, 0.6);
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.95),
+    0 22px 50px rgba(15, 23, 42, 0.98),
+    0 0 70px rgba(236, 72, 153, 0.26);
+}
+
+.navi-bubble-bot::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(129, 140, 248, 0.45), transparent 60%),
+    radial-gradient(circle at 100% 100%, rgba(236, 72, 153, 0.35), transparent 60%);
+  opacity: 0.6;
+  mix-blend-mode: screen;
+  filter: blur(14px);
+  z-index: -1;
+}
 
 /* Quoted lines */
 
@@ -256,10 +252,9 @@ body {
   padding: 8px 10px;
   margin: 4px 0;
   border-radius: 8px;
-  border-left: 3px solid #a855f7;
+  border-left: 3px solid #6b7280;
   font-style: italic;
   font-size: 12px;
-  color: #d1d5db;
 }
 
 /* Code blocks */
@@ -267,9 +262,9 @@ body {
 .navi-code-block {
   margin: 6px 0;
   padding: 8px 10px;
-  background: rgba(2, 6, 23, 0.95);
+  background: #020617;
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.7);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
     monospace;
   font-size: 12px;
@@ -277,7 +272,6 @@ body {
   word-break: break-word;
   max-width: 100%;
   box-sizing: border-box;
-  color: #e5e7eb;
 }
 
 .navi-code-block code {
@@ -322,14 +316,10 @@ body {
 }
 
 @keyframes naviTypingBounce {
-
-  0%,
-  60%,
-  100% {
+  0%, 60%, 100% {
     transform: translateY(0);
     opacity: 0.4;
   }
-
   30% {
     transform: translateY(-3px);
     opacity: 1;
@@ -353,26 +343,38 @@ body {
   margin-bottom: 10px;
 }
 
-.navi-attach-btn {
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid rgba(148, 163, 184, 0.6);
+/* Attach + wand base buttons */
+
+.navi-attach-btn,
+.navi-actions-btn {
+  background: #020617;
+  border: 1px solid rgba(148, 163, 184, 0.8);
   color: #d1d5db;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   font-size: 18px;
-  font-weight: bold;
   transition: all 0.18s ease-out;
 }
 
-.navi-attach-btn:hover {
-  background: rgba(55, 65, 81, 0.95);
+.navi-actions-btn {
+  font-size: 16px;
+}
+
+/* Shared hover/focus glow */
+.navi-attach-btn:hover,
+.navi-attach-btn:focus,
+.navi-attach-btn:focus-visible,
+.navi-actions-btn:hover,
+.navi-actions-btn:focus,
+.navi-actions-btn:focus-visible {
   border-color: #a855f7;
-  box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 18px rgba(168, 85, 247, 0.9);
+  background: #02061f;
 }
 
 .navi-input {
@@ -439,68 +441,12 @@ body {
   align-items: center;
 }
 
-/* === NAVI shapes + unified glow === */
-
-:root {
-  --navi-accent: #a855f7;
-  /* magenta border */
-  --navi-glow: rgba(168, 85, 247, 0.9);
-  /* magenta glow */
-}
-
-/* SHAPES --------------------------------------------------- */
-
-/* Model / Mode pills: fully pill-shaped */
-.navi-pill {
-  border-radius: 999px;
-}
-
-/* Square-ish buttons: header icons and attach button */
-.navi-icon-btn,
-.navi-attach-btn {
-  outline: none;
-  box-shadow: none;
-  border-radius: 10px;
-  /* ⬅️ back to rounded square */
-  border: 1px solid rgba(148, 163, 184, 0.8);
-  background: #020617;
-  transition:
-    border-color 0.18s ease-out,
-    box-shadow 0.18s ease-out,
-    background 0.18s ease-out;
-}
-
-/* Keep sizes sensible */
-.navi-icon-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.navi-attach-btn {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* GLOW ----------------------------------------------------- */
-
-/* One shared glow so colors match perfectly */
-.navi-icon-btn:hover,
-.navi-icon-btn:focus,
-.navi-icon-btn:focus-visible,
-.navi-attach-btn:hover,
-.navi-attach-btn:focus,
-.navi-attach-btn:focus-visible,
+/* Shared pill hover */
 .navi-pill:hover,
 .navi-pill:focus,
 .navi-pill:focus-visible {
-  border-color: var(--navi-accent) !important;
-  box-shadow: 0 0 16px var(--navi-glow) !important;
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 18px rgba(168, 85, 247, 0.9) !important;
   background: #02061f;
 }
 
@@ -523,88 +469,7 @@ body {
   background: #6b7280;
 }
 
-/* Consolidated header icon buttons styles moved to unified section below */
-
-.navi-icon-btn span {
-  color: inherit;
-  font-size: 14px;
-}
-
-/* In-panel dropdown menus for Model / Mode */
-.navi-dropdown {
-  min-width: 180px;
-  max-width: 220px;
-  background: #020617;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.8);
-  box-shadow:
-    0 12px 30px rgba(15, 23, 42, 0.95),
-    0 0 0 1px rgba(15, 23, 42, 0.9);
-  padding: 4px;
-  z-index: 9999;
-  position: fixed;
-}
-
-.navi-dropdown-item {
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: #e5e7eb;
-  font-size: 12px;
-  padding: 8px 12px;
-  text-align: left;
-  border-radius: 7px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.navi-dropdown-item:hover {
-  background: rgba(129, 140, 248, 0.22);
-  color: #ffffff;
-}
-
-/* === FINAL: Unified NAVI button glow === */
-
-/* Base shapes for ALL small buttons */
-.navi-icon-btn,
-.navi-attach-btn {
-  outline: none;
-  border-radius: 10px;
-  /* rounded square */
-  border: 1px solid rgba(148, 163, 184, 0.8);
-  background: #020617;
-  box-shadow: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    border-color 0.18s ease-out,
-    box-shadow 0.18s ease-out,
-    background 0.18s ease-out;
-}
-
-/* Size differences if you want them */
-.navi-attach-btn {
-  width: 40px;
-  height: 40px;
-}
-
-/* Shared hover + focus glow – same for BOTH plus buttons */
-.navi-icon-btn:hover,
-.navi-icon-btn:focus,
-.navi-icon-btn:focus-visible,
-.navi-attach-btn:hover,
-.navi-attach-btn:focus,
-.navi-attach-btn:focus-visible,
-.navi-pill:hover,
-.navi-pill:focus,
-.navi-pill:focus-visible {
-  border-color: var(--navi-accent) !important;
-  box-shadow: 0 0 18px var(--navi-glow) !important;
-  background: #02061f;
-}
-
-/* NAVI typing indicator --------------------------------------- */
+/* NAVI typing indicator (duplicate-safe) */
 
 .navi-bubble-typing {
   display: inline-flex;
@@ -641,14 +506,10 @@ body {
 }
 
 @keyframes navi-typing-bounce {
-
-  0%,
-  80%,
-  100% {
+  0%, 80%, 100% {
     transform: translateY(0);
     opacity: 0.3;
   }
-
   40% {
     transform: translateY(-3px);
     opacity: 1;
@@ -665,15 +526,14 @@ body {
   position: absolute;
   z-index: 40;
 
-  /* default position: just above the input bar, roughly aligned with the wand */
-  bottom: 72px;
+  bottom: 80px;
   right: 72px;
 
-  width: min(360px, calc(100% - 96px));
-  max-height: 320px;
+  width: min(420px, calc(100% - 96px));
+  max-height: 380px;
 
-  padding: 14px 16px 16px;
-  border-radius: 24px;
+  padding: 16px 18px 18px;
+  border-radius: 28px;
 
   background:
     radial-gradient(120% 200% at 0% 0%, rgba(140, 96, 255, 0.45), transparent 65%),
@@ -681,7 +541,7 @@ body {
     rgba(8, 10, 26, 0.96);
 
   box-shadow:
-    0 24px 60px rgba(0, 0, 0, 0.75),
+    0 28px 80px rgba(0, 0, 0, 0.75),
     0 0 0 1px rgba(255, 255, 255, 0.04);
 
   backdrop-filter: blur(26px);
@@ -709,23 +569,23 @@ body {
 .navi-command-list {
   list-style: none;
   margin: 0;
-  padding: 6px;
+  padding: 8px;
 }
 
 /* menu items */
 .navi-command-item {
   width: 100%;
   text-align: left;
-  border-radius: 16px;
-  padding: 9px 12px;
-  margin-bottom: 6px;
+  border-radius: 20px;
+  padding: 12px 16px 11px;
+  margin-bottom: 8px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   background: rgba(16, 19, 44, 0.96);
   color: #f9fbff;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   transition:
     background 120ms ease-out,
     border-color 120ms ease-out,
@@ -738,10 +598,10 @@ body {
 }
 
 .navi-command-item:hover {
-  background: radial-gradient(120% 200% at 0% 0%, rgba(151, 111, 255, 0.40), rgba(16, 19, 44, 0.96));
+  background: radial-gradient(120% 200% at 0% 0%, rgba(151, 111, 255, 0.45), rgba(16, 19, 44, 0.96));
   border-color: rgba(187, 151, 255, 0.7);
   box-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.8),
+    0 18px 40px rgba(0, 0, 0, 0.8),
     0 0 0 1px rgba(255, 255, 255, 0.04);
   transform: translateY(-1px);
 }
@@ -752,12 +612,12 @@ body {
 }
 
 .navi-command-title {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .navi-command-subtitle {
-  font-size: 10.5px;
+  font-size: 12px;
   opacity: 0.7;
 }
 
@@ -775,146 +635,68 @@ body {
   margin-bottom: 8px;
   padding: 8px 12px;
   border-radius: 14px;
-  background: rgba(124, 77, 255, 0.15);
-  color: #c9c6ff;
+  background: rgba(124, 77, 255, 0.18);
+  color: #e5e7eb;
   font-size: 13px;
   font-style: italic;
 }
 
-/* Actions button (✨) styles */
-.navi-actions-btn {
-  background: #0f172a;
-  color: #d8b4fe;
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  border-radius: 8px;
-  padding: 8px 10px;
-  margin-right: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 36px;
-  height: 36px;
-}
+/* Actions button (✨) styles – already overridden above */
 
-.navi-actions-btn:hover {
-  background: #1e1b4b;
-  border-color: rgba(167, 139, 250, 0.6);
-  box-shadow: 0 0 12px rgba(167, 139, 250, 0.3);
-  transform: scale(1.05);
-}
+/* ----------------------------------------- */
+/* Message hover toolbar (Copy / Insert / …) */
+/* ----------------------------------------- */
 
-.navi-actions-btn:active {
-  transform: scale(0.95);
-}
-
-/* Toast for temporary attachment notice */
-
-.navi-toast {
+.navi-msg-actions {
   position: absolute;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
-  padding: 6px 14px;
-  border-radius: 999px;
-  font-size: 12px;
-  background: rgba(15, 23, 42, 0.96);
-  color: #e5e7eb;
-  border: 1px solid rgba(148, 163, 184, 0.8);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.8);
+  top: -32px;
+  right: 20px;
+  display: flex;
+  gap: 6px;
   opacity: 0;
+  transform: translateY(4px);
   pointer-events: none;
   transition: opacity 120ms ease-out, transform 120ms ease-out;
 }
 
-.navi-toast-visible {
+.navi-msg-row:hover .navi-msg-actions {
   opacity: 1;
-  transform: translate(-50%, -4px);
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
-/* Inline attachment chip used for the temporary "coming soon" message */
+.navi-msg-action-btn {
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(15, 23, 42, 0.98);
+  color: #e5e7eb;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
 
+.navi-msg-action-btn:hover {
+  background: #02061f;
+  border-color: #a855f7;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.9);
+}
+
+/* Attachment chip */
 .navi-attachment-chip {
   display: inline-flex;
   align-items: center;
-  max-width: 260px;
+  gap: 4px;
   padding: 4px 10px;
-  margin-bottom: 6px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.96);
+  background: rgba(15, 23, 42, 0.95);
   border: 1px solid rgba(148, 163, 184, 0.75);
   color: #e5e7eb;
   font-size: 11px;
-  gap: 6px;
 }
 
 .navi-attachment-chip::before {
   content: "📎";
   opacity: 0.9;
-}
-
-/* Message actions toolbar (hover) */
-
-.navi-msg-actions {
-  position: absolute;
-  top: 8px;
-  right: 18px;
-  display: inline-flex;
-  gap: 6px;
-  padding: 4px 6px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.7);
-  box-shadow:
-    0 12px 30px rgba(15, 23, 42, 0.95),
-    0 0 0 1px rgba(15, 23, 42, 0.9);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  opacity: 0;
-  pointer-events: none;
-  z-index: 60;
-  transition: opacity 0.18s ease-in-out;
-}
-
-.navi-msg-row:hover .navi-msg-actions {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.navi-msg-action-btn {
-  border: none;
-  border-radius: 999px;
-  padding: 4px 10px 5px;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  background: rgba(15, 23, 42, 0.95);
-  color: #e5e7eb;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition:
-    background 0.15s ease-out,
-    color 0.15s ease-out,
-    box-shadow 0.15s ease-out,
-    transform 0.08s ease-out;
-}
-
-.navi-msg-action-btn:hover,
-.navi-msg-action-btn:focus-visible {
-  background: linear-gradient(135deg, #4f46e5, #ec4899);
-  color: #f9fafb;
-  box-shadow:
-    0 10px 28px rgba(79, 70, 229, 0.7),
-    0 0 0 1px rgba(248, 250, 252, 0.18);
-  outline: none;
-  transform: translateY(-0.5px);
-}
-
-.navi-msg-action-btn:active {
-  transform: translateY(1px) scale(0.97);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.9);
 }

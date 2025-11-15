@@ -33,10 +33,10 @@ class NaviWebviewProvider {
             try {
                 switch (msg.type) {
                     case 'ready': {
-                        // Panel is ready, send initial welcome message
+                        // Panel is ready, send initial welcome message with markdown
                         this.postToWebview({
                             type: 'botMessage',
-                            text: "Hello! I'm NAVI, your autonomous engineering assistant. How can I help you today?"
+                            text: "Hello! I'm **NAVI**, your autonomous engineering assistant.\n\nI can help you with:\n\n- Code explanations and reviews\n- Refactoring and testing\n- Documentation generation\n- Engineering workflow automation\n\nHow can I help you today?"
                         });
                         break;
                     }
@@ -61,7 +61,7 @@ class NaviWebviewProvider {
                         console.log('[Extension Host] [AEP] Model changed to:', label);
                         this.postToWebview({
                             type: 'botMessage',
-                            text: `Model switched to **${label}** (demo-only selector for now).`
+                            text: `✓ Model switched to **${label}**\n\n*Note: Model selection is currently for demo purposes. Full model routing will be available in a future release.*`
                         });
                         break;
                     }
@@ -73,7 +73,7 @@ class NaviWebviewProvider {
                         console.log('[Extension Host] [AEP] Mode changed to:', label);
                         this.postToWebview({
                             type: 'botMessage',
-                            text: `Mode updated to **${label}** (demo-only for now).`
+                            text: `✓ Mode updated to **${label}**\n\n*Different modes will provide varying levels of access and capabilities in future releases.*`
                         });
                         break;
                     }
@@ -380,7 +380,7 @@ class NaviWebviewProvider {
         this.postToWebview({ type: 'clearChat' });
         this.postToWebview({
             type: 'botMessage',
-            text: "New chat started! How can I help you?"
+            text: "🔄 **New chat started!**\n\nHow can I help you today?"
         });
     }
     getWebviewHtml(webview) {

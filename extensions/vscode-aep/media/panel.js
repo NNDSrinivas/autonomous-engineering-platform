@@ -309,24 +309,16 @@ let commandMenuDragState = {
     const actions = [
       { id: 'copy', label: 'Copy' },
       { id: 'edit', label: 'Edit' },
-      { id: 'reuse', label: 'Use as prompt' },
+      { id: 'use-as-prompt', label: 'Use as prompt' },
     ];
 
     actions.forEach(({ id, label }) => {
       const btn = document.createElement('button');
       btn.className = 'navi-msg-toolbar-btn';
       btn.textContent = label;
-      btn.addEventListener('click', (event) => {
-        event.stopPropagation();
-        if (vscode) {
-          vscode.postMessage({
-            type: 'messageToolbarAction',
-            action: id,
-            role,
-            text: safeText,
-          });
-        }
-      });
+      btn.dataset.action = id;
+      // Store the message text in the button's data for easy access
+      btn.dataset.messageText = safeText;
       toolbar.appendChild(btn);
     });
 
@@ -470,6 +462,55 @@ let commandMenuDragState = {
   document.addEventListener('click', () => {
     closeAllPillMenus();
   });
+
+  // ---------------------------------------------------------------------------
+  // Message toolbar actions: Copy / Edit / Use as prompt
+  // ---------------------------------------------------------------------------
+  if (messagesEl && inputEl) {
+    messagesEl.addEventListener('click', async (event) => {
+      const button = event.target.closest('.navi-msg-toolbar-btn');
+      if (!button) return;
+
+      event.stopPropagation();
+      
+      const action = button.dataset.action;
+      const text = button.dataset.messageText;
+      
+      if (!action || !text) return;
+
+      switch (action) {
+        case 'copy': {
+          try {
+            await navigator.clipboard.writeText(text);
+            console.log('[NAVI] Copied message to clipboard');
+            // Optional: show a brief "Copied!" feedback
+          } catch (err) {
+            console.error('[NAVI] Failed to copy message', err);
+          }
+          break;
+        }
+
+        case 'edit': {
+          inputEl.value = text;
+          inputEl.focus();
+          // Place cursor at end
+          inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+          break;
+        }
+
+        case 'use-as-prompt': {
+          inputEl.value = text;
+          inputEl.focus();
+          inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+          // For now just prefills; user can edit and press Enter
+          break;
+        }
+
+        default:
+          break;
+      }
+    });
+  }
 
   // Messages from extension ---------------------------------------------------
   window.addEventListener('message', (event) => {

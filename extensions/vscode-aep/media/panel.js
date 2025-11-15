@@ -472,10 +472,10 @@ let commandMenuDragState = {
       if (!button) return;
 
       event.stopPropagation();
-      
+
       const action = button.dataset.action;
       const text = button.dataset.messageText;
-      
+
       if (!action || !text) return;
 
       switch (action) {
@@ -645,7 +645,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // Close hint when clicking elsewhere
   window.addEventListener('click', (event) => {
     if (!attachmentHintEl) return;
-    const isOnHint   = event.target.closest('.navi-attach-hint');
+    const isOnHint = event.target.closest('.navi-attach-hint');
     const isOnAttach = event.target.closest('#navi-attach-btn');
     if (!isOnHint && !isOnAttach) {
       attachmentHintEl.classList.remove('navi-attach-hint--visible');

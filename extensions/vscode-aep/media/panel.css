@@ -143,7 +143,8 @@ body {
 
 .navi-msg-row {
   display: flex;
-  position: relative; /* for toolbar */
+  position: relative;
+  /* for toolbar */
 }
 
 .navi-msg-row-user {
@@ -155,7 +156,7 @@ body {
 }
 
 .navi-bubble {
-  max-width: 82%;
+  max-width: 70%;               /* assistant default max-width */
   padding: 10px 14px;
   border-radius: 14px;
   line-height: 1.4;
@@ -166,6 +167,7 @@ body {
 /* User bubble – violet gradient */
 
 .navi-bubble-user {
+  max-width: 50% !important;    /* user bubbles narrower */
   background: radial-gradient(circle at 0% 0%, #4338ca 0, #312e81 40%, #111827 100%);
   color: #e5e7eb;
   border: 1px solid rgba(165, 180, 252, 0.9);
@@ -370,7 +372,7 @@ body {
   pointer-events: none;
   transform: translateY(3px);
   transition: opacity 0.18s ease-out,
-              transform 0.18s ease-out;
+    transform 0.18s ease-out;
 }
 
 .navi-attach-hint--visible {
@@ -387,7 +389,8 @@ body {
 
 .navi-attach-toast {
   position: absolute;
-  bottom: 72px;                 /* above input row */
+  bottom: 72px;
+  /* above input row */
   left: 24px;
   max-width: 420px;
   padding: 6px 14px;
@@ -436,17 +439,16 @@ body {
   border: 1px solid rgba(148, 153, 255, 0.5);
   cursor: pointer;
   transition: box-shadow 120ms ease-out, border-color 120ms ease-out,
-              background-color 120ms ease-out;
+    background-color 120ms ease-out;
 }
 
 .navi-pill:hover {
   border-color: rgba(191, 154, 255, 0.9);
   box-shadow: 0 0 0 1px rgba(191, 154, 255, 0.5),
-              0 0 22px rgba(191, 154, 255, 0.35);
+    0 0 22px rgba(191, 154, 255, 0.35);
   background: radial-gradient(circle at top,
-    rgba(191, 154, 255, 0.2),
-    rgba(14, 16, 28, 0.98)
-  );
+      rgba(191, 154, 255, 0.2),
+      rgba(14, 16, 28, 0.98));
 }
 
 /* Model / Mode pill containers */
@@ -460,7 +462,8 @@ body {
 /* Model / Mode pill dropdown */
 .navi-pill-menu {
   position: absolute;
-  bottom: calc(100% + 8px);        /* open upwards */
+  bottom: calc(100% + 8px);
+  /* open upwards */
   left: 0;
   min-width: 180px;
   padding: 6px 0;
@@ -499,24 +502,25 @@ body {
 
 .navi-command-menu {
   position: absolute;
-  bottom: 72px;                 /* tweak as needed */
+  bottom: 72px;                 /* above the input bar */
   left: 88px;
   width: 320px;
   max-width: calc(100% - 32px);
-  background: #0f1013;
+  background: rgba(10, 10, 20, 0.96);
   border-radius: 16px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(12px);
   padding: 12px 14px;
-  display: none;                /* default hidden */
+  display: none;                /* hidden by default */
   z-index: 40;
 }
 
 .navi-command-menu-visible {
-  display: block;
+  display: block !important;    /* ensure it shows */
 }
 
 .navi-command-menu-hidden {
-  display: none;
+  display: none !important;
 }
 
 .navi-command-item {
@@ -586,11 +590,11 @@ body {
   justify-content: flex-end;
   margin-top: 0.5rem;
   font-size: 11px;
-  
+
   /* Static positioning inside bubble */
   position: static;
   transform: none;
-  
+
   opacity: 0;
   pointer-events: none;
   transition: opacity 120ms ease-out;

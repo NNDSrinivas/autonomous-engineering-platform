@@ -147,7 +147,16 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             break;
           }
 
-          case 'pickAttachment': {
+          case 'pickAttachment':
+          case 'attachBtnClicked': {
+            console.log('[Extension Host] [AEP] Attachment button clicked - showing not implemented message');
+            // For now, just tell the webview this is not implemented yet.
+            this.postToWebview({ type: 'attachmentNotImplemented' });
+            break;
+          }
+
+          /* Keep the old attachment handling code commented out for future implementation
+          case 'pickAttachment_FUTURE': {
             console.log('[Extension Host] [AEP] Webview requested attachment picker');
 
             // Open file picker for attachments
@@ -195,6 +204,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             });
             break;
           }
+          */
 
           case 'commandSelected': {
             // Map the menu item -> suggested prompt

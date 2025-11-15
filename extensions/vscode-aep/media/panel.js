@@ -315,17 +315,6 @@ let commandMenuDragState = {
 
     wrapper.appendChild(toolbar);
 
-    // show/hide via JS to avoid flicker
-    wrapper.addEventListener('mouseenter', () => {
-      toolbar.classList.add('navi-msg-toolbar-visible');
-    });
-
-    wrapper.addEventListener('mouseleave', (event) => {
-      const related = event.relatedTarget;
-      if (related && wrapper.contains(related)) return;
-      toolbar.classList.remove('navi-msg-toolbar-visible');
-    });
-
     messagesEl.appendChild(wrapper);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
@@ -361,6 +350,14 @@ let commandMenuDragState = {
     }
     inputEl.value = '';
     inputEl.focus();
+
+    // If stub chip is visible, clear it once the user sends something
+    const footer = document.querySelector('.navi-footer');
+    if (footer) {
+      const chip = footer.querySelector('.navi-attachment-chip');
+      if (chip) chip.remove();
+    }
+
     showThinkingMessage();
   });
 
@@ -603,20 +600,29 @@ window.addEventListener('DOMContentLoaded', () => {
     closeCommandMenu();
   }
 
-  // Attach button – open VS Code picker (but show "coming soon" banner)
+  // Helper: show simple "attachments coming soon" chip
+  function showAttachmentStub() {
+    const footer = document.querySelector('.navi-footer');
+    if (!footer) return;
+
+    // Remove any previous chip
+    const oldChip = footer.querySelector('.navi-attachment-chip');
+    if (oldChip) oldChip.remove();
+
+    const chip = document.createElement('div');
+    chip.className = 'navi-attachment-chip';
+    chip.textContent = '📎 Attachment flow is not implemented yet – coming soon.';
+    footer.insertBefore(chip, footer.firstChild);
+  }
+
+  // + Attach button - for now just show stub, no OS picker
   if (attachBtn) {
     attachBtn.addEventListener('click', (event) => {
       event.stopPropagation();
-      console.log('[NAVI] Attach button clicked');
-
-      // tell VS Code to open context picker
-      vscodeApi.postMessage({ type: 'pickAttachment' });
-
-      // show banner explaining current limitation
-      if (attachmentsBanner) {
-        attachmentsBanner.classList.remove('navi-attachments-banner-hidden');
-        attachmentsBanner.classList.add('navi-attachments-banner-visible');
-      }
+      console.log('[NAVI] Attach button clicked (stub only)');
+      showAttachmentStub();
+      // IMPORTANT: do NOT call pickAttachment here until the real flow exists
+      // vscodeApi.postMessage({ type: 'pickAttachment' });
     });
   }
 

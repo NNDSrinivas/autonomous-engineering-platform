@@ -195,7 +195,10 @@ body {
 }
 
 .navi-msg-row {
+  position: relative;
+  /* establishes positioning context for hover toolbar */
   display: flex;
+  z-index: 1;
 }
 
 .navi-msg-row-user {
@@ -842,20 +845,22 @@ body {
 
 .navi-msg-actions {
   position: absolute;
-  top: -6px;
-  right: 4px;
+  top: 8px;
+  right: 8px;
   display: inline-flex;
   gap: 4px;
   padding: 2px 4px;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.92);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.95);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(2px);
+  transform: translateY(-2px);
   transition:
     opacity 120ms ease-out,
     transform 120ms ease-out;
+  z-index: 10;
+  /* above bubble content */
 }
 
 .navi-msg-row:hover .navi-msg-actions {

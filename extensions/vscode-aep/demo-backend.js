@@ -42,12 +42,12 @@ app.use(express.json());
 // Worker to process messages from queue
 async function processQueue() {
     if (isProcessing || messageQueue.length === 0) return;
-    
+
     isProcessing = true;
-    
+
     while (messageQueue.length > 0) {
-        const { req, res, message } = messageQueue.shift();
-        
+        const { res, message } = messageQueue.shift();
+
         try {
             console.log(`[Demo Backend] Received: ${message}`);
 
@@ -62,24 +62,24 @@ async function processQueue() {
             const reply = responses[Math.floor(Math.random() * responses.length)];
 
             // Simulate some processing time
-            await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 1200)); // 0.8-2s delay
-            
+            await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 300)); // 0.5-0.8s delay
+
             res.json({ reply });
         } catch (error) {
             console.error('[Demo Backend] Error processing message:', error);
             res.status(500).json({ error: 'Internal server error' });
         }
     }
-    
+
     isProcessing = false;
 }
 
 // Simple chat endpoint for testing
 app.post('/api/chat', (req, res) => {
     const { message } = req.body;
-    
+
     // Add to queue and start processing
-    messageQueue.push({ req, res, message });
+    messageQueue.push({ res, message });
     processQueue();
 });
 

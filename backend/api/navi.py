@@ -1,76 +1,80 @@
 """
 NAVI Chat API - Autonomous Engineering Assistant for VS Code Extension
-Handles file attachments, context-aware responses, and agent actions
+PR-6A/B/C: Complete agent implementation with OpenAI, diffs, multi-file ops
 """
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional, Literal
+from typing import List, Optional, Literal
 import logging
+import json
+import os
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/navi", tags=["navi"])
 
+# ============================================================================
+# OPENAI CLIENT (PR-6B)
+# ============================================================================
+
+try:
+    from openai import AsyncOpenAI
+
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+    OPENAI_ENABLED = bool(openai_client)
+except ImportError:
+    openai_client = None
+    OPENAI_ENABLED = False
+    logger.warning("OpenAI not installed. Install with: pip install openai")
+
 
 # ============================================================================
-# REQUEST / RESPONSE MODELS
+# REQUEST / RESPONSE MODELS (PR-6A: Enhanced Schema)
 # ============================================================================
 
 
 class Attachment(BaseModel):
     """File attachment from VS Code workspace"""
 
-    kind: Literal["selection", "file"] = "file"
     path: str
     content: str
     language: Optional[str] = None
 
 
-class Message(BaseModel):
-    """Chat message"""
+class AgentAction(BaseModel):
+    """Agent-proposed action (PR-6A: Multi-action schema)"""
 
-    role: Literal["user", "assistant", "system"]
-    content: str
+    type: Literal["editFile", "createFile", "runCommand"]
+    filePath: Optional[str] = None
+    diff: Optional[str] = None  # Unified diff for editFile
+    content: Optional[str] = None  # Full content for createFile
+    command: Optional[str] = None  # Shell command for runCommand
+    description: Optional[str] = None
 
 
 class NaviChatRequest(BaseModel):
     """Request from VS Code extension"""
 
-    id: str  # conversation ID
+    message: str
     model: str = Field(default="gpt-4", description="Model ID to use")
     mode: str = Field(
         default="chat", description="Mode: chat, agent-full, agent-limited"
     )
-    messages: List[Message] = Field(default_factory=list)
-    attachments: Optional[List[Attachment]] = Field(
-        default=None, description="PR-5: Attached files from workspace"
-    )
-    stream: bool = False
-
-
-class AgentAction(BaseModel):
-    """Agent-proposed action (PR-6)"""
-
-    type: Literal["replaceFile", "editFile", "createFile"]
-    filePath: str
-    description: str
-    newContent: Optional[str] = None  # for replaceFile
-    diff: Optional[str] = None  # for editFile
+    attachments: List[Attachment] = Field(default_factory=list)
 
 
 class NaviChatResponse(BaseModel):
     """Response to VS Code extension"""
 
-    reply: str
-    usage: Optional[Dict[str, int]] = None
-    actions: Optional[List[AgentAction]] = Field(
-        default=None, description="PR-6: Proposed agent actions"
-    )
+    role: str = "assistant"
+    content: str
+    actions: Optional[List[AgentAction]] = None
 
 
 # ============================================================================
-# MAIN ENDPOINT
+# MAIN ENDPOINT (PR-6B)
 # ============================================================================
 
 
@@ -79,46 +83,42 @@ async def navi_chat(request: NaviChatRequest) -> NaviChatResponse:
     """
     Handle NAVI chat from VS Code extension
 
-    PR-5: Uses attachments to build file context
-    PR-6: Returns agent actions when in agent mode
+    PR-5B: Uses attachments to build file context
+    PR-6A/B: Returns agent actions (editFile, createFile, runCommand)
+    PR-6C: Supports unified diffs for clean edits
     """
     try:
         logger.info(
-            f"[NAVI] Request - conversation: {request.id}, model: {request.model}, "
-            f"mode: {request.mode}, messages: {len(request.messages)}, "
-            f"attachments: {len(request.attachments) if request.attachments else 0}"
+            f"[NAVI] Request - model: {request.model}, mode: {request.mode}, "
+            f"message: {request.message[:100]}, attachments: {len(request.attachments)}"
         )
 
-        # Build system prompt with file context (PR-5)
+        # Build system prompt with file context and agent instructions
         system_prompt = _build_system_prompt(request)
 
-        # Build messages array for LLM
-        llm_messages = [{"role": "system", "content": system_prompt}]
+        # Build messages for LLM
+        messages = [{"role": "system", "content": system_prompt}]
 
-        # Add file context as separate system message if attachments exist
-        if request.attachments and len(request.attachments) > 0:
+        # Add file context if attachments exist
+        if request.attachments:
             files_context = _build_files_context(request.attachments)
-            llm_messages.append({"role": "system", "content": files_context})
+            messages.append({"role": "system", "content": files_context})
 
-        # Add conversation history
-        for msg in request.messages:
-            llm_messages.append({"role": msg.role, "content": msg.content})
+        # Add user message
+        messages.append({"role": "user", "content": request.message})
 
-        # Call LLM (mocked for now - you'll replace with actual LLM call)
-        assistant_reply, actions = await _call_llm(
-            llm_messages, request.model, request.mode
-        )
+        # Call LLM (OpenAI or mock)
+        if OPENAI_ENABLED and openai_client:
+            content, actions = await _call_openai(messages, request.model, request.mode)
+        else:
+            content, actions = _mock_response(request)
 
         logger.info(
-            f"[NAVI] Response - reply length: {len(assistant_reply)}, "
+            f"[NAVI] Response - content length: {len(content)}, "
             f"actions: {len(actions) if actions else 0}"
         )
 
-        return NaviChatResponse(
-            reply=assistant_reply,
-            usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-            actions=actions,
-        )
+        return NaviChatResponse(role="assistant", content=content, actions=actions)
 
     except Exception as e:
         logger.error(f"[NAVI] Error: {e}", exc_info=True)
@@ -126,160 +126,266 @@ async def navi_chat(request: NaviChatRequest) -> NaviChatResponse:
 
 
 # ============================================================================
-# HELPER FUNCTIONS
+# OPENAI INTEGRATION (PR-6B)
+# ============================================================================
+
+
+async def _call_openai(
+    messages: List[dict], model: str, mode: str
+) -> tuple[str, Optional[List[AgentAction]]]:
+    """
+    Call OpenAI with JSON mode for structured responses
+    """
+    if not openai_client:
+        raise RuntimeError("OpenAI client not initialized")
+
+    # Map model IDs to actual OpenAI models
+    model_map = {
+        "gpt-5.1": "gpt-4o",
+        "gpt-4.2": "gpt-4-turbo-preview",
+        "gpt-4": "gpt-4-turbo-preview",
+        "gpt-3.5": "gpt-3.5-turbo",
+    }
+    actual_model = model_map.get(model, "gpt-4-turbo-preview")
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model=actual_model,
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.7,
+            max_tokens=4000,
+        )
+
+        content_str = response.choices[0].message.content or "{}"
+        data = json.loads(content_str)
+
+        content = data.get("content", "")
+        actions_data = data.get("actions", [])
+
+        # Parse actions
+        actions = None
+        if actions_data and isinstance(actions_data, list):
+            actions = [AgentAction(**action) for action in actions_data]
+
+        return content, actions
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse OpenAI JSON response: {e}")
+        # Fallback: treat entire response as content
+        return response.choices[0].message.content or "Error parsing response", None
+    except Exception as e:
+        logger.error(f"OpenAI API error: {e}")
+        raise
+
+
+# ============================================================================
+# PROMPT BUILDING (PR-5B/6A)
 # ============================================================================
 
 
 def _build_system_prompt(request: NaviChatRequest) -> str:
-    """Build system prompt based on mode and attachments (PR-5)"""
+    """Build system prompt with agent instructions"""
 
-    base_prompt = """You are NAVI, an autonomous engineering assistant running INSIDE VS Code.
+    prompt_parts = [
+        "You are NAVI, an autonomous engineering assistant running INSIDE VS Code.",
+        "",
+        "You help developers with:",
+        "- Code explanations and reviews",
+        "- Debugging and error analysis",
+        "- Refactoring and optimization",
+        "- Test generation and documentation",
+        "",
+    ]
 
-You help developers with:
-- Code explanations and reviews
-- Debugging and error analysis
-- Refactoring and optimization
-- Test generation
-- Documentation
-
-"""
-
-    # Add attachment awareness
-    if request.attachments and len(request.attachments) > 0:
-        base_prompt += f"""The user has attached {len(request.attachments)} file(s) from their workspace.
-You MUST use ONLY these attached files to answer questions about their code.
-Be specific and reference actual code from the attachments.
-
-"""
+    # Attachment context
+    if request.attachments:
+        prompt_parts.append(
+            f"The user has attached {len(request.attachments)} file(s) from their workspace."
+        )
+        prompt_parts.append(
+            "You MUST use these files to answer questions about their code."
+        )
+        prompt_parts.append(
+            "Be specific and reference actual code from the attachments."
+        )
+        prompt_parts.append("")
     else:
-        base_prompt += """The user has not attached any files yet.
-If they ask about specific code, politely ask them to attach the relevant file using the attachment menu.
+        prompt_parts.append("The user has not attached any files yet.")
+        prompt_parts.append(
+            "If they ask about code, politely ask them to attach the relevant file."
+        )
+        prompt_parts.append("")
 
-"""
-
-    # Add mode-specific instructions (PR-6)
+    # Agent mode instructions
     if request.mode.startswith("agent"):
-        base_prompt += """You are in AGENT MODE. You can propose code changes.
+        prompt_parts.extend(
+            [
+                "⚡ YOU ARE IN AGENT MODE ⚡",
+                "",
+                "You can propose code changes by returning a JSON response with this schema:",
+                "",
+                "{",
+                '  "content": "Natural language explanation of what you will do",',
+                '  "actions": [',
+                "    {",
+                '      "type": "editFile",',
+                '      "filePath": "src/example.ts",',
+                '      "description": "Fix null pointer bug",',
+                '      "diff": "@@ -10,3 +10,5 @@\\n-  return value\\n+  return value || defaultValue"',
+                "    },",
+                "    {",
+                '      "type": "createFile",',
+                '      "filePath": "src/utils/logger.ts",',
+                '      "description": "Add logging utility",',
+                '      "content": "export function log(msg: string) { ... }"',
+                "    },",
+                "    {",
+                '      "type": "runCommand",',
+                '      "command": "npm install lodash",',
+                '      "description": "Install lodash dependency"',
+                "    }",
+                "  ]",
+                "}",
+                "",
+                "IMPORTANT RULES:",
+                "- Always return VALID JSON with 'content' and optional 'actions' keys",
+                "- 'content' explains what you're doing in natural language",
+                "- 'actions' is an array of proposed operations",
+                "- For editFile: provide unified diff format (git diff style)",
+                "- For createFile: provide complete file content",
+                "- For runCommand: provide shell command to execute",
+                "- NEVER execute actions automatically - only propose them",
+                "- Keep changes minimal and safe",
+                "- Only modify files that were attached or explicitly mentioned",
+                "",
+            ]
+        )
+    else:
+        prompt_parts.append("You are in CHAT mode. Provide helpful explanations.")
+        prompt_parts.append(
+            "You cannot propose code changes in this mode. If user wants edits, suggest switching to Agent mode."
+        )
+        prompt_parts.append("")
 
-When you want to modify code, respond with:
-1. A natural language explanation of what you'll do
-2. An "actions" array with proposed edits
+    # JSON output requirement
+    prompt_parts.extend(
+        [
+            "RESPONSE FORMAT:",
+            "Always respond with valid JSON:",
+            '{ "content": "your explanation here", "actions": [...] }',
+            "",
+        ]
+    )
 
-Action format:
-{
-  "type": "replaceFile",
-  "filePath": "relative/path/from/workspace",
-  "description": "Short human-friendly summary",
-  "newContent": "Full updated file contents"
-}
-
-RULES:
-- Always explain what you're doing in natural language first
-- Keep changes minimal and safe
-- Never perform destructive actions without user approval
-- Only modify files that were attached or explicitly mentioned
-"""
-
-    return base_prompt.strip()
+    return "\n".join(prompt_parts)
 
 
 def _build_files_context(attachments: List[Attachment]) -> str:
-    """Build formatted file context from attachments (PR-5)"""
+    """Build formatted file context"""
 
-    context_parts = ["Here are the attached files from the VS Code workspace:\n"]
+    context_parts = ["📁 ATTACHED WORKSPACE FILES:", ""]
 
     for idx, att in enumerate(attachments[:5], 1):  # Limit to 5 files
         language = att.language or "unknown"
-        content = att.content[:8000]  # Token limit guard
+        content = att.content[:12000]  # Token limit
 
-        context_parts.append(
-            f"""
---- File {idx}: {att.path} ({language}) ---
-{content}
----
-"""
+        context_parts.extend(
+            [
+                "═══════════════════════════════════════════════════",
+                f"FILE {idx}: {att.path}",
+                f"Language: {language}",
+                "═══════════════════════════════════════════════════",
+                content,
+                "",
+            ]
         )
 
     return "\n".join(context_parts)
 
 
-async def _call_llm(
-    messages: List[Dict[str, str]], model: str, mode: str
-) -> tuple[str, Optional[List[AgentAction]]]:
-    """
-    Call LLM and parse response
+# ============================================================================
+# MOCK RESPONSE (Fallback when OpenAI not available)
+# ============================================================================
 
-    TODO: Replace this mock with actual OpenAI/Anthropic/etc. call
-    """
 
-    # MOCK IMPLEMENTATION - Replace with actual LLM call
-    # Example with OpenAI:
-    # from openai import AsyncOpenAI
-    # client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    # response = await client.chat.completions.create(
-    #     model=model,
-    #     messages=messages,
-    # )
-    # assistant_text = response.choices[0].message.content
+def _mock_response(request: NaviChatRequest) -> tuple[str, Optional[List[AgentAction]]]:
+    """Generate mock response for testing"""
 
-    # For now, generate a mock response based on context
-    user_message = next(
-        (m["content"] for m in reversed(messages) if m["role"] == "user"), ""
-    )
+    has_attachments = bool(request.attachments)
+    message_lower = request.message.lower()
 
-    has_attachments = any(
-        "attached files" in m["content"].lower()
-        for m in messages
-        if m["role"] == "system"
-    )
-
-    # Mock response logic
     if has_attachments:
-        if "debug" in user_message.lower() or "bug" in user_message.lower():
-            reply = """I can see the attached file. Let me analyze it for potential issues.
+        if "debug" in message_lower or "bug" in message_lower or "fix" in message_lower:
+            content = """I can see the attached file. Let me analyze it for issues.
 
-Looking at the code, I notice a few things that could be improved:
+Looking at the code, I've identified a few potential problems:
 
-1. **Missing error handling** - The function doesn't catch potential exceptions
-2. **Type safety** - Some parameters lack proper type annotations
-3. **Edge cases** - No validation for empty inputs
+1. **Missing error handling** - The function doesn't catch exceptions
+2. **Type safety issues** - Some parameters lack proper type annotations  
+3. **Edge case handling** - No validation for empty or null inputs
 
-Would you like me to propose fixes for these issues?"""
+In Agent mode, I could propose specific fixes. Would you like me to make these changes?"""
 
-            # In agent mode, propose an action
+            # Mock action in agent mode
             actions = None
-            if mode.startswith("agent"):
+            if request.mode.startswith("agent") and request.attachments:
+                first_file = request.attachments[0].path
                 actions = [
                     AgentAction(
-                        type="replaceFile",
-                        filePath="example.ts",  # Would extract from attachment
-                        description="Add error handling and type safety improvements",
-                        newContent="// Mock improved code\n// In production, this would be the actual fixed code",
+                        type="editFile",
+                        filePath=first_file,
+                        description="Add error handling and type safety",
+                        diff="""@@ -1,5 +1,10 @@
+-function process(data) {
++function process(data: string | null): string {
++  if (!data) {
++    throw new Error('Data is required');
++  }
++  
++  try {
+     return data.toUpperCase();
++  } catch (err) {
++    console.error('Processing failed:', err);
++    return '';
++  }
+ }""",
                     )
                 ]
-        else:
-            reply = """I can see your attached file. It looks like you're working on [description based on file content].
 
-What specific aspect would you like me to help with?
-- Code review and suggestions
-- Debugging specific behavior
-- Refactoring for better structure
-- Adding tests"""
-            actions = None
+            return content, actions
+
+        else:
+            content = f"""I can see your attached file: `{request.attachments[0].path}`
+
+What would you like me to help with?
+
+- 🔍 **Code review** - I can analyze for bugs, performance, or best practices
+- 🔧 **Debugging** - Help find and fix specific issues
+- ♻️ **Refactoring** - Improve code structure and readability
+- ✅ **Testing** - Generate test cases
+
+Just let me know what you need!"""
+            return content, None
+
     else:
-        reply = """Hello! I'm **NAVI**, your autonomous engineering assistant.
+        content = """Hello! I'm **NAVI**, your autonomous engineering assistant.
 
 I can help you with code-related tasks, but I need to see your code first.
 
-Please use the **📎 attachment button** to attach:
-- **Selection** - specific code you've highlighted
-- **Current File** - the entire file you're viewing
-- **Pick File...** - any file from your workspace
+**Please attach a file:**
+- 📌 **Selection** - Highlight code and attach selected text
+- 📄 **Current File** - Attach the entire file you're viewing  
+- 📂 **Pick File...** - Choose any file from your workspace
 
-Once you attach a file, I can provide concrete help with debugging, refactoring, reviews, and more!"""
-        actions = None
+Once you attach code, I can:
+- Review and suggest improvements
+- Debug issues and propose fixes
+- Refactor for better structure
+- Generate tests and documentation
 
-    return reply, actions
+What would you like to work on?"""
+        return content, None
 
 
 # ============================================================================
@@ -290,4 +396,9 @@ Once you attach a file, I can provide concrete help with debugging, refactoring,
 @router.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "ok", "service": "navi", "version": "0.1.0"}
+    return {
+        "status": "ok",
+        "service": "navi",
+        "version": "1.0.0",
+        "openai_enabled": OPENAI_ENABLED,
+    }

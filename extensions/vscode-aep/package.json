@@ -56,7 +56,9 @@
     "demo-backend": "node demo-backend.js"
   },
   "dependencies": {
+    "@types/diff": "^8.0.0",
     "cors": "^2.8.5",
+    "diff": "^8.0.2",
     "express": "^4.21.2"
   },
   "devDependencies": {

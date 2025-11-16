@@ -5,6 +5,7 @@ exports.deactivate = deactivate;
 // src/extension.ts
 const vscode = require("vscode");
 const path = require("path");
+const diffUtils_1 = require("./diffUtils");
 // PR-4: Storage keys for persistent model/mode selection
 const STORAGE_KEYS = {
     modelId: 'aep.navi.modelId',
@@ -573,8 +574,7 @@ class NaviWebviewProvider {
         // Apply diff to get new content
         let newContent;
         try {
-            const { applyUnifiedDiff } = await Promise.resolve().then(() => require('./diffUtils'));
-            newContent = applyUnifiedDiff(original, diff);
+            newContent = (0, diffUtils_1.applyUnifiedDiff)(original, diff);
         }
         catch (error) {
             vscode.window.showErrorMessage(`Failed to apply diff: ${error.message}`);

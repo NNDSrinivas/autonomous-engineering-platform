@@ -31,18 +31,24 @@ const app = express();
 const PORT = 8787;
 
 // Simple message queue to serialize /api/chat responses and prevent out-of-order delivery
-let messageQueue = Promise.resolve();
+// Using a proper queue instead of an ever-growing promise chain to prevent memory leaks
+const messageQueue = [];
+let isProcessing = false;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Simple chat endpoint for testing
-app.post('/api/chat', (req, res) => {
-    messageQueue = messageQueue.then(() =>
-        new Promise(resolve => {
-            const { message } = req.body;
-
+// Worker to process messages from queue
+async function processQueue() {
+    if (isProcessing || messageQueue.length === 0) return;
+    
+    isProcessing = true;
+    
+    while (messageQueue.length > 0) {
+        const { req, res, message } = messageQueue.shift();
+        
+        try {
             console.log(`[Demo Backend] Received: ${message}`);
 
             // Simple demo responses
@@ -56,12 +62,25 @@ app.post('/api/chat', (req, res) => {
             const reply = responses[Math.floor(Math.random() * responses.length)];
 
             // Simulate some processing time
-            setTimeout(() => {
-                res.json({ reply });
-                resolve();
-            }, 800 + Math.random() * 1200); // 0.8-2s delay
-        })
-    );
+            await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 1200)); // 0.8-2s delay
+            
+            res.json({ reply });
+        } catch (error) {
+            console.error('[Demo Backend] Error processing message:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    }
+    
+    isProcessing = false;
+}
+
+// Simple chat endpoint for testing
+app.post('/api/chat', (req, res) => {
+    const { message } = req.body;
+    
+    // Add to queue and start processing
+    messageQueue.push({ req, res, message });
+    processQueue();
 });
 
 // Health check endpoint

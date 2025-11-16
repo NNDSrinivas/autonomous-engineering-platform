@@ -6,7 +6,6 @@ retrieving memories for profile, workspace, task, and interaction contexts.
 Uses pgvector for semantic search with OpenAI embeddings.
 """
 
-from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from openai import AsyncOpenAI
@@ -20,14 +19,16 @@ logger = structlog.get_logger(__name__)
 openai_client = AsyncOpenAI()
 
 
-async def generate_embedding(text: str, model: str = "text-embedding-3-large") -> List[float]:
+async def generate_embedding(
+    text: str, model: str = "text-embedding-3-large"
+) -> List[float]:
     """
     Generate OpenAI embedding for text.
-    
+
     Args:
         text: Text to embed
         model: OpenAI embedding model
-        
+
     Returns:
         List of floats representing the embedding vector
     """
@@ -38,7 +39,9 @@ async def generate_embedding(text: str, model: str = "text-embedding-3-large") -
         )
         return response.data[0].embedding
     except Exception as e:
-        logger.error("Failed to generate embedding", error=str(e), text_length=len(text))
+        logger.error(
+            "Failed to generate embedding", error=str(e), text_length=len(text)
+        )
         raise
 
 
@@ -54,7 +57,7 @@ async def store_memory(
 ) -> int:
     """
     Store a memory in the navi_memory table.
-    
+
     Args:
         db: Database session
         user_id: User identifier
@@ -64,20 +67,20 @@ async def store_memory(
         title: Optional human-readable title
         tags: Optional metadata dictionary
         importance: Importance score 1-5 (default: 3)
-        
+
     Returns:
         ID of the created memory
     """
     try:
         # Generate embedding
         embedding = await generate_embedding(content)
-        
+
         # Convert embedding to PostgreSQL vector format
         embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
-        
+
         # Prepare metadata
         meta_json = tags or {}
-        
+
         # Insert memory
         result = db.execute(
             text("""
@@ -96,26 +99,31 @@ async def store_memory(
                 "embedding_vec": embedding_str,
                 "meta_json": str(meta_json),
                 "importance": importance,
-            }
+            },
         )
-        
-        memory_id = result.fetchone()[0]
+
+        row = result.fetchone()
+        if not row:
+            raise RuntimeError("Failed to insert memory: no ID returned")
+        memory_id = row[0]
         db.commit()
-        
+
         logger.info(
             "Stored NAVI memory",
             memory_id=memory_id,
             user_id=user_id,
             category=category,
             scope=scope,
-            importance=importance
+            importance=importance,
         )
-        
+
         return memory_id
-        
+
     except Exception as e:
         db.rollback()
-        logger.error("Failed to store memory", error=str(e), user_id=user_id, category=category)
+        logger.error(
+            "Failed to store memory", error=str(e), user_id=user_id, category=category
+        )
         raise
 
 
@@ -129,7 +137,7 @@ async def search_memory(
 ) -> List[Dict[str, Any]]:
     """
     Semantic search for memories using cosine similarity.
-    
+
     Args:
         db: Database session
         user_id: User identifier
@@ -137,7 +145,7 @@ async def search_memory(
         categories: Optional list of categories to filter (e.g., ["task", "workspace"])
         limit: Maximum number of results
         min_importance: Minimum importance score to include
-        
+
     Returns:
         List of memory dictionaries with similarity scores
     """
@@ -145,13 +153,13 @@ async def search_memory(
         # Generate embedding for query
         query_embedding = await generate_embedding(query)
         query_embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-        
+
         # Build category filter
         category_filter = ""
         if categories:
             category_list = "','".join(categories)
             category_filter = f"AND category IN ('{category_list}')"
-        
+
         # Search using pgvector cosine similarity
         result = db.execute(
             text(f"""
@@ -179,35 +187,37 @@ async def search_memory(
                 "query_vec": query_embedding_str,
                 "min_importance": min_importance,
                 "limit": limit,
-            }
+            },
         )
-        
+
         memories = []
         for row in result:
-            memories.append({
-                "id": row[0],
-                "user_id": row[1],
-                "category": row[2],
-                "scope": row[3],
-                "title": row[4],
-                "content": row[5],
-                "meta": row[6],
-                "importance": row[7],
-                "created_at": row[8].isoformat() if row[8] else None,
-                "updated_at": row[9].isoformat() if row[9] else None,
-                "similarity": float(row[10]),
-            })
-        
+            memories.append(
+                {
+                    "id": row[0],
+                    "user_id": row[1],
+                    "category": row[2],
+                    "scope": row[3],
+                    "title": row[4],
+                    "content": row[5],
+                    "meta": row[6],
+                    "importance": row[7],
+                    "created_at": row[8].isoformat() if row[8] else None,
+                    "updated_at": row[9].isoformat() if row[9] else None,
+                    "similarity": float(row[10]),
+                }
+            )
+
         logger.info(
             "Searched NAVI memory",
             user_id=user_id,
             query_length=len(query),
             categories=categories,
-            results=len(memories)
+            results=len(memories),
         )
-        
+
         return memories
-        
+
     except Exception as e:
         logger.error("Failed to search memory", error=str(e), user_id=user_id)
         raise
@@ -221,13 +231,13 @@ async def get_recent_memories(
 ) -> List[Dict[str, Any]]:
     """
     Get recent memories ordered by creation time.
-    
+
     Args:
         db: Database session
         user_id: User identifier
         category: Optional category filter
         limit: Maximum number of results
-        
+
     Returns:
         List of memory dictionaries
     """
@@ -235,14 +245,14 @@ async def get_recent_memories(
         category_filter = ""
         if category:
             category_filter = "AND category = :category"
-        
+
         query_params = {
             "user_id": user_id,
             "limit": limit,
         }
         if category:
             query_params["category"] = category
-        
+
         result = db.execute(
             text(f"""
                 SELECT 
@@ -254,33 +264,35 @@ async def get_recent_memories(
                 ORDER BY created_at DESC
                 LIMIT :limit
             """),
-            query_params
+            query_params,
         )
-        
+
         memories = []
         for row in result:
-            memories.append({
-                "id": row[0],
-                "user_id": row[1],
-                "category": row[2],
-                "scope": row[3],
-                "title": row[4],
-                "content": row[5],
-                "meta": row[6],
-                "importance": row[7],
-                "created_at": row[8].isoformat() if row[8] else None,
-                "updated_at": row[9].isoformat() if row[9] else None,
-            })
-        
+            memories.append(
+                {
+                    "id": row[0],
+                    "user_id": row[1],
+                    "category": row[2],
+                    "scope": row[3],
+                    "title": row[4],
+                    "content": row[5],
+                    "meta": row[6],
+                    "importance": row[7],
+                    "created_at": row[8].isoformat() if row[8] else None,
+                    "updated_at": row[9].isoformat() if row[9] else None,
+                }
+            )
+
         logger.info(
             "Retrieved recent memories",
             user_id=user_id,
             category=category,
-            results=len(memories)
+            results=len(memories),
         )
-        
+
         return memories
-        
+
     except Exception as e:
         logger.error("Failed to get recent memories", error=str(e), user_id=user_id)
         raise
@@ -289,12 +301,12 @@ async def get_recent_memories(
 async def delete_memory(db: Session, memory_id: int, user_id: str) -> bool:
     """
     Delete a memory (with user_id verification).
-    
+
     Args:
         db: Database session
         memory_id: Memory ID to delete
         user_id: User identifier (for authorization)
-        
+
     Returns:
         True if deleted, False if not found or unauthorized
     """
@@ -305,19 +317,21 @@ async def delete_memory(db: Session, memory_id: int, user_id: str) -> bool:
                 WHERE id = :memory_id AND user_id = :user_id
                 RETURNING id
             """),
-            {"memory_id": memory_id, "user_id": user_id}
+            {"memory_id": memory_id, "user_id": user_id},
         )
-        
+
         deleted = result.fetchone() is not None
         db.commit()
-        
+
         if deleted:
             logger.info("Deleted memory", memory_id=memory_id, user_id=user_id)
         else:
-            logger.warning("Memory not found or unauthorized", memory_id=memory_id, user_id=user_id)
-        
+            logger.warning(
+                "Memory not found or unauthorized", memory_id=memory_id, user_id=user_id
+            )
+
         return deleted
-        
+
     except Exception as e:
         db.rollback()
         logger.error("Failed to delete memory", error=str(e), memory_id=memory_id)

@@ -17,7 +17,7 @@ logger = structlog.get_logger(__name__)
 class ConfluenceClient:
     """
     Confluence REST API client for AEP NAVI memory integration.
-    
+
     Uses email + API token auth (basic auth with Atlassian API token).
     """
 
@@ -27,9 +27,9 @@ class ConfluenceClient:
         email: Optional[str] = None,
         api_token: Optional[str] = None,
     ):
-        self.base_url = (
-            base_url or os.getenv("AEP_CONFLUENCE_BASE_URL", "")
-        ).rstrip("/")
+        self.base_url = (base_url or os.getenv("AEP_CONFLUENCE_BASE_URL", "")).rstrip(
+            "/"
+        )
         self.email = email or os.getenv("AEP_CONFLUENCE_EMAIL", "")
         self.api_token = api_token or os.getenv("AEP_CONFLUENCE_API_TOKEN", "")
 
@@ -44,10 +44,12 @@ class ConfluenceClient:
             headers={"Accept": "application/json"},
             timeout=30.0,
         )
-        
+
         logger.info("ConfluenceClient initialized", base_url=self.base_url)
 
-    async def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _get(
+        self, path: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Make authenticated GET request to Confluence API"""
         url = f"{self.base_url}{path}"
         try:
@@ -59,7 +61,7 @@ class ConfluenceClient:
                 "Confluence API error",
                 url=url,
                 status=e.response.status_code,
-                error=e.response.text[:200]
+                error=e.response.text[:200],
             )
             raise RuntimeError(
                 f"Confluence GET {url} failed: {e.response.status_code} {e.response.text[:200]}"
@@ -75,16 +77,16 @@ class ConfluenceClient:
     ) -> List[Dict[str, Any]]:
         """
         Fetch pages in a given Confluence space with content body.
-        
+
         Args:
             space_key: Confluence space key (e.g., "ENG", "DOCS")
             limit: Maximum number of pages to fetch
-            
+
         Returns:
             List of page dictionaries with content
         """
         logger.info("Fetching Confluence pages", space_key=space_key, limit=limit)
-        
+
         data = await self._get(
             "/rest/api/content",
             params={
@@ -94,19 +96,19 @@ class ConfluenceClient:
                 "expand": "body.storage,version,space",
             },
         )
-        
+
         pages = data.get("results", [])
         logger.info(f"Fetched {len(pages)} Confluence pages from space {space_key}")
-        
+
         return pages
 
     async def get_page(self, page_id: str) -> Dict[str, Any]:
         """
         Fetch a single Confluence page by ID.
-        
+
         Args:
             page_id: Confluence page ID
-            
+
         Returns:
             Page dictionary with full content
         """
@@ -123,16 +125,16 @@ class ConfluenceClient:
     ) -> List[Dict[str, Any]]:
         """
         Search Confluence pages using CQL (Confluence Query Language).
-        
+
         Args:
             cql: CQL query string (e.g., "type=page AND space=ENG")
             limit: Maximum number of results
-            
+
         Returns:
             List of matching page dictionaries
         """
         logger.info("Searching Confluence pages", cql=cql, limit=limit)
-        
+
         data = await self._get(
             "/rest/api/content/search",
             params={
@@ -141,23 +143,23 @@ class ConfluenceClient:
                 "expand": "body.storage,version,space",
             },
         )
-        
+
         results = data.get("results", [])
         logger.info(f"Found {len(results)} pages matching CQL query")
-        
+
         return results
 
     @staticmethod
     def html_to_text(html: str) -> str:
         """
         Convert Confluence HTML/XHTML content to plain text.
-        
+
         This is a simple implementation - for production, consider using
         a proper HTML parser like BeautifulSoup.
-        
+
         Args:
             html: HTML content from Confluence
-            
+
         Returns:
             Plain text version
         """

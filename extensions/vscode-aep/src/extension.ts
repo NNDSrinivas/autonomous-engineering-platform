@@ -19,21 +19,18 @@ interface NaviChatRequest {
 }
 
 interface AgentAction {
-  type: 'replaceFile' | 'editFile' | 'createFile';
-  filePath: string;
-  description: string;
-  newContent?: string;
-  diff?: string;
+  type: 'editFile' | 'createFile' | 'runCommand';
+  filePath?: string;
+  description?: string;
+  content?: string;  // For createFile
+  diff?: string;     // For editFile
+  command?: string;  // For runCommand
 }
 
 interface NaviChatResponseJson {
-  reply?: string;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
-  actions?: AgentAction[]; // PR-6: Agent-proposed actions
+  role: string;
+  content: string;
+  actions?: AgentAction[]; // PR-6C: Agent-proposed actions
 }
 
 // PR-4: Storage keys for persistent model/mode selection
@@ -355,16 +352,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const payload: NaviChatRequest = {
-      id: this._conversationId,
+    // PR-6B: New simplified request format
+    const payload = {
+      message: latestUserText,
       model: modelId || this._currentModelId,
       mode: modeId || this._currentModeId,
-      messages: this._messages,
-      // PR-5: Include attachments in payload if present
-      attachments: attachments && attachments.length > 0 ? attachments : undefined,
-      // PR1: we keep stream=false by default for reliability.
-      // You can flip this to true once your backend supports SSE.
-      stream: false
+      attachments: attachments && attachments.length > 0 ? attachments : []
     };
 
     let response: Response;
@@ -411,38 +404,36 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
     try {
       if (contentType.includes('application/json')) {
-        // 🚀 Normal JSON reply (recommended for PR1)
+        // PR-6B: Handle new response format
         const json = (await response.json()) as NaviChatResponseJson;
-        const reply = (json.reply || '').trim();
+        const content = (json.content || '').trim();
 
-        if (!reply) {
-          console.warn('[Extension Host] [AEP] Empty reply from NAVI backend JSON.');
+        if (!content) {
+          console.warn('[Extension Host] [AEP] Empty content from NAVI backend.');
           this.postToWebview({
             type: 'error',
-            text: '⚠️ NAVI backend returned an empty reply.'
+            text: '⚠️ NAVI backend returned empty content.'
           });
           return;
         }
 
-        this._messages.push({ role: 'assistant', content: reply });
+        this._messages.push({ role: 'assistant', content: content });
         
-        // PR-6: Handle agent actions if present
+        // PR-6C: Handle agent actions if present
         const messageId = `msg-${Date.now()}`;
         if (json.actions && json.actions.length > 0) {
           this._agentActions.set(messageId, { actions: json.actions });
           this.postToWebview({ 
             type: 'botMessage', 
-            text: reply,
+            text: content,
             messageId: messageId,
             actions: json.actions
           });
         } else {
-          this.postToWebview({ type: 'botMessage', text: reply });
+          this.postToWebview({ type: 'botMessage', text: content });
         }
         return;
-      }
-
-      if (contentType.includes('text/event-stream')) {
+      }      if (contentType.includes('text/event-stream')) {
         // ⚡ Streaming path (SSE) – we still send a single final botMessage for now
         const fullText = await this.readSseStream(response);
         const reply = fullText.trim();
@@ -629,7 +620,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  // PR-6: Apply agent-proposed edit
+  // PR-6C: Apply agent-proposed edit with diff view support
   private async handleApplyAgentEdit(msg: { messageId: string; actionIndex: number }): Promise<void> {
     const { messageId, actionIndex } = msg;
     const agentState = this._agentActions.get(messageId);
@@ -646,66 +637,119 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     try {
-      console.log('[Extension Host] [AEP] Applying agent edit:', action);
+      console.log('[Extension Host] [AEP] Applying agent action:', action);
 
-      // Get workspace folder and resolve relative path
+      // Get workspace folder for resolving relative paths
       const workspaceFolders = vscode.workspace.workspaceFolders;
       if (!workspaceFolders || workspaceFolders.length === 0) {
         throw new Error('No workspace folder open');
       }
 
       const workspaceRoot = workspaceFolders[0].uri;
-      const fileUri = vscode.Uri.joinPath(workspaceRoot, action.filePath);
 
-      if (action.type === 'replaceFile' && action.newContent) {
-        // Simple replace: overwrite entire file content
-        const edit = new vscode.WorkspaceEdit();
+      // Handle different action types
+      if (action.type === 'editFile' && action.filePath && action.diff) {
+        // PR-6C: Show diff preview for editFile
+        await this.showDiffPreviewAndApply(workspaceRoot, action.filePath, action.diff);
         
-        // Try to open existing file, or create new one
-        let document: vscode.TextDocument;
-        try {
-          document = await vscode.workspace.openTextDocument(fileUri);
-        } catch {
-          // File doesn't exist, create it
-          await vscode.workspace.fs.writeFile(fileUri, Buffer.from('', 'utf-8'));
-          document = await vscode.workspace.openTextDocument(fileUri);
-        }
-
-        const fullRange = new vscode.Range(
-          document.positionAt(0),
-          document.positionAt(document.getText().length)
-        );
-
-        edit.replace(fileUri, fullRange, action.newContent);
-        await vscode.workspace.applyEdit(edit);
-        await document.save();
-
-        vscode.window.showInformationMessage(`✅ Applied edit to ${action.filePath}`);
-        
-        // Optionally open the file
-        await vscode.window.showTextDocument(document, { preview: false });
-
-      } else if (action.type === 'editFile' && action.diff) {
-        // TODO: Apply unified diff (more complex, can implement later)
-        vscode.window.showWarningMessage('Diff-based edits not yet supported. Use replaceFile for now.');
-        
-      } else if (action.type === 'createFile' && action.newContent) {
+      } else if (action.type === 'createFile' && action.filePath && action.content) {
         // Create new file
-        await vscode.workspace.fs.writeFile(fileUri, Buffer.from(action.newContent, 'utf-8'));
+        const fileUri = vscode.Uri.joinPath(workspaceRoot, action.filePath);
+        await vscode.workspace.fs.writeFile(fileUri, Buffer.from(action.content, 'utf-8'));
         vscode.window.showInformationMessage(`✅ Created ${action.filePath}`);
         
         // Open the new file
         const document = await vscode.workspace.openTextDocument(fileUri);
         await vscode.window.showTextDocument(document, { preview: false });
+        
+      } else if (action.type === 'runCommand' && action.command) {
+        // PR-6C: Run terminal command
+        const terminal = vscode.window.createTerminal('NAVI Agent');
+        terminal.show();
+        terminal.sendText(action.command);
+        vscode.window.showInformationMessage(`🔧 Running: ${action.command}`);
+        
+      } else {
+        vscode.window.showWarningMessage(`Unknown or incomplete action type: ${action.type}`);
       }
 
     } catch (err: any) {
-      console.error('[Extension Host] [AEP] Error applying agent edit:', err);
-      vscode.window.showErrorMessage(`Failed to apply edit: ${err.message}`);
+      console.error('[Extension Host] [AEP] Error applying agent action:', err);
+      vscode.window.showErrorMessage(`Failed to apply action: ${err.message}`);
     }
   }
 
-  private getWebviewHtml(webview: vscode.Webview): string {
+  // PR-6C: Show diff preview and apply on confirmation
+  private async showDiffPreviewAndApply(
+    workspaceRoot: vscode.Uri,
+    filePath: string,
+    diff: string
+  ): Promise<void> {
+    const fileUri = vscode.Uri.joinPath(workspaceRoot, filePath);
+    
+    // Read original file
+    let originalDoc: vscode.TextDocument;
+    try {
+      originalDoc = await vscode.workspace.openTextDocument(fileUri);
+    } catch {
+      vscode.window.showErrorMessage(`File not found: ${filePath}`);
+      return;
+    }
+
+    const original = originalDoc.getText();
+    
+    // Apply diff to get new content
+    let newContent: string;
+    try {
+      const { applyUnifiedDiff } = await import('./diffUtils');
+      newContent = applyUnifiedDiff(original, diff);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`Failed to apply diff: ${error.message}`);
+      return;
+    }
+
+    // Create temp file with new content for preview
+    const fileName = path.basename(filePath);
+    const tempUri = vscode.Uri.parse(`untitled:${fileName} (NAVI Proposed)`);
+    
+    const tempDoc = await vscode.workspace.openTextDocument(tempUri);
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(tempUri, new vscode.Position(0, 0), newContent);
+    await vscode.workspace.applyEdit(edit);
+
+    // Show diff view
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      fileUri,
+      tempUri,
+      `NAVI: ${fileName} (Original ↔ Proposed)`
+    );
+
+    // Ask user to confirm
+    const choice = await vscode.window.showInformationMessage(
+      `Apply proposed changes to ${fileName}?`,
+      { modal: true },
+      'Apply',
+      'Cancel'
+    );
+
+    if (choice === 'Apply') {
+      // Apply the changes
+      const fullRange = new vscode.Range(
+        originalDoc.positionAt(0),
+        originalDoc.positionAt(original.length)
+      );
+
+      const finalEdit = new vscode.WorkspaceEdit();
+      finalEdit.replace(fileUri, fullRange, newContent);
+      await vscode.workspace.applyEdit(finalEdit);
+      await originalDoc.save();
+
+      vscode.window.showInformationMessage(`✅ Applied changes to ${fileName}`);
+    } else {
+      vscode.window.showInformationMessage('Changes discarded');
+    }
+  }  private getWebviewHtml(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.js')
     );

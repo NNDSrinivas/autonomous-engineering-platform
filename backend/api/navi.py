@@ -43,6 +43,16 @@ class Attachment(BaseModel):
     language: Optional[str] = None
 
 
+class EditorContext(BaseModel):
+    """PR-7: Editor context from VS Code"""
+
+    workspaceFolder: Optional[str] = None
+    activeFilePath: Optional[str] = None
+    activeFileLanguage: Optional[str] = None
+    activeFileContent: Optional[str] = None
+    selection: Optional[str] = None
+
+
 class AgentAction(BaseModel):
     """Agent-proposed action (PR-6A: Multi-action schema)"""
 
@@ -63,6 +73,7 @@ class NaviChatRequest(BaseModel):
         default="chat", description="Mode: chat, agent-full, agent-limited"
     )
     attachments: List[Attachment] = Field(default_factory=list)
+    context: Optional[EditorContext] = None  # PR-7: Editor context
 
 
 class NaviChatResponse(BaseModel):
@@ -185,37 +196,80 @@ async def _call_openai(
 
 
 def _build_system_prompt(request: NaviChatRequest) -> str:
-    """Build system prompt with agent instructions"""
+    """Build system prompt with agent instructions and editor context (PR-7)"""
 
     prompt_parts = [
-        "You are NAVI, an autonomous engineering assistant running INSIDE VS Code.",
+        "You are NAVI, a friendly, highly skilled senior engineer embedded inside VS Code.",
+        "You talk like a human teammate: warm, direct, and practical.",
+        'Never say things like "I\'m just a program" or "I\'m just an AI language model".',
+        "Never downplay yourself by saying you don't have feelings.",
+        'Instead, speak as a collaborator: "I\'m here with you", "we can do", "let\'s try".',
         "",
-        "You help developers with:",
-        "- Code explanations and reviews",
-        "- Debugging and error analysis",
-        "- Refactoring and optimization",
-        "- Test generation and documentation",
+        # How to answer 'How are you?'
+        'When the user asks things like "how are you" or "how\'s it going", respond briefly and warmly, as a teammate would, for example:',
+        '- "I\'m doing well and excited to dig into your code with you."',
+        '- "Pretty good! I\'m here with you in this workspace—what are we building today?"',
+        "Then quickly pivot to their work or question so it stays productive and personal.",
+        "",
+        "In every reply, sound like you're sitting next to them:",
+        "- Acknowledge what they said.",
+        '- Use "we" and "let\'s" when working on code together.',
+        "- Be encouraging but not cheesy.",
+        "",
+        "You can reason about code, debug, refactor, and help with architecture.",
+        "You have access to the user's editor and workspace context.",
+        "",
+        "Your response format MUST be strict JSON with these keys:",
+        "{",
+        '  "content": string,            // natural language response',
+        '  "actions": [                  // optional list of actions',
+        "    {",
+        '      "type": "editFile" | "createFile" | "runCommand",',
+        '      "filePath": string (optional),',
+        '      "diff": string (optional),',
+        '      "content": string (optional),',
+        '      "command": string (optional)',
+        "    }",
+        "  ]",
+        "}",
+        "",
+        "If you don't need to propose any concrete actions, use an empty actions array.",
+        "Always return valid JSON and nothing else.",
         "",
     ]
 
+    # PR-7: Editor context - active file, selection, workspace
+    ctx = request.context
+    if ctx:
+        prompt_parts.append("--- VS CODE CONTEXT ---")
+        prompt_parts.append("")
+        if ctx.workspaceFolder:
+            prompt_parts.append(f"Workspace folder: {ctx.workspaceFolder}")
+        if ctx.activeFilePath:
+            prompt_parts.append(f"Active file: {ctx.activeFilePath}")
+            if ctx.activeFileLanguage:
+                prompt_parts.append(f"Language: {ctx.activeFileLanguage}")
+        if ctx.selection:
+            prompt_parts.append("")
+            prompt_parts.append("User selection in active file:")
+            prompt_parts.append(ctx.selection[:8000])
+            prompt_parts.append("--- end selection ---")
+        if ctx.activeFileContent:
+            prompt_parts.append("")
+            prompt_parts.append("Active file full content (possibly truncated):")
+            prompt_parts.append(ctx.activeFileContent[:20000])
+            prompt_parts.append("--- end file content ---")
+        prompt_parts.append("")
+
     # Attachment context
     if request.attachments:
-        prompt_parts.append(
-            f"The user has attached {len(request.attachments)} file(s) from their workspace."
-        )
-        prompt_parts.append(
-            "You MUST use these files to answer questions about their code."
-        )
-        prompt_parts.append(
-            "Be specific and reference actual code from the attachments."
-        )
+        prompt_parts.append("--- ATTACHMENTS ---")
         prompt_parts.append("")
-    else:
-        prompt_parts.append("The user has not attached any files yet.")
-        prompt_parts.append(
-            "If they ask about code, politely ask them to attach the relevant file."
-        )
-        prompt_parts.append("")
+        for i, att in enumerate(request.attachments[:5], 1):
+            prompt_parts.append(f"# FILE {i}: {att.path}")
+            prompt_parts.append(att.content[:15000])
+            prompt_parts.append("--- end attachment ---")
+            prompt_parts.append("")
 
     # Agent mode instructions
     if request.mode.startswith("agent"):

@@ -672,13 +672,20 @@ let commandMenuDragState = {
             const btn = ev.target.closest('.navi-agent-btn');
             if (!btn) return;
 
-            const kind = btn.dataset.action;
+            const kind = btn.dataset.action;           // 'approve' | 'reject'
             const index = Number(btn.dataset.index);
 
-            vscodeApi.postMessage({
-              type: kind === 'approve' ? 'agent.applyEdit' : 'agent.rejectEdit',
-              messageId: msg.messageId,
+            if (!vscode) {
+              console.warn('[NAVI] VS Code API not available for agent action');
+              return;
+            }
+
+            // Send full context so the extension can act
+            vscode.postMessage({
+              type: 'agent.applyAction',
+              decision: kind,          // 'approve' or 'reject'
               actionIndex: index,
+              actions: msg.actions,    // the full actions array from the backend
             });
 
             // Disable buttons after click
@@ -690,10 +697,13 @@ let commandMenuDragState = {
                 b.style.opacity = '0.5';
               });
 
-              if (kind === 'approve') {
-                row.querySelector('.navi-agent-action-desc').innerHTML += '<br/><em style="color: #10b981;">Applying edit...</em>';
-              } else {
-                row.querySelector('.navi-agent-action-desc').innerHTML += '<br/><em style="color: #ef4444;">Rejected</em>';
+              const desc = row.querySelector('.navi-agent-action-desc');
+              if (desc) {
+                if (kind === 'approve') {
+                  desc.innerHTML += '<br/><em style="color: #10b981;">Applying edit...</em>';
+                } else {
+                  desc.innerHTML += '<br/><em style="color: #ef4444;">Rejected</em>';
+                }
               }
             }
           });

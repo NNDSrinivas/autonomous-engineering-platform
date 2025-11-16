@@ -17,8 +17,8 @@
       "properties": {
         "aep.navi.backendUrl": {
           "type": "string",
-          "default": "http://127.0.0.1:8787/api/chat",
-          "description": "Backend URL for NAVI Assistant API calls (full endpoint URL including /api/chat)"
+          "default": "http://127.0.0.1:8787/api/navi/chat",
+          "description": "Backend URL for NAVI Assistant API calls (full endpoint URL including /api/navi/chat)"
         }
       }
     },

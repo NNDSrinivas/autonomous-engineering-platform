@@ -647,19 +647,72 @@ class NaviWebviewProvider {
         terminal.sendText(command);
         vscode.window.showInformationMessage(`🚀 Running: ${command}`);
     }
+    // ---- editFile with diff view & apply (PR-10) -------------------------------
     async applyEditFileAction(action) {
-        // Get workspace folder for resolving relative paths
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
-            throw new Error('No workspace folder open');
+        // Backend contract: editFile provides either:
+        // - filePath + content (full new file text)   ✅
+        // - optionally diff (for explanation), but we don't parse it
+        const filePath = action.filePath;
+        const newContent = action.content;
+        if (!newContent) {
+            vscode.window.showWarningMessage('NAVI: editFile action is missing "content"; nothing to apply.');
+            return;
         }
-        const workspaceRoot = workspaceFolders[0].uri;
-        if (action.filePath && action.diff) {
-            // Use existing diff preview logic
-            await this.showDiffPreviewAndApply(workspaceRoot, action.filePath, action.diff);
+        // Resolve target document: use filePath if present, otherwise active editor
+        let targetDoc;
+        if (filePath) {
+            const uri = vscode.Uri.file(filePath);
+            try {
+                targetDoc = await vscode.workspace.openTextDocument(uri);
+            }
+            catch {
+                vscode.window.showWarningMessage(`NAVI: Target file "${filePath}" does not exist.`);
+                return;
+            }
         }
         else {
-            throw new Error('Edit action requires filePath and diff');
+            targetDoc = vscode.window.activeTextEditor?.document;
+            if (!targetDoc) {
+                vscode.window.showWarningMessage('NAVI: No active file to apply edit to.');
+                return;
+            }
+        }
+        const originalText = targetDoc.getText();
+        const languageId = targetDoc.languageId;
+        // Create a virtual doc for the new content and show a diff
+        const newDoc = await vscode.workspace.openTextDocument({
+            language: languageId,
+            content: newContent,
+        });
+        const title = `NAVI proposed edit: ${targetDoc.fileName.split(/[\\/]/).pop()}`;
+        await vscode.commands.executeCommand('vscode.diff', targetDoc.uri, newDoc.uri, title);
+        // Ask user if we should apply the changes to the real file now
+        const choice = await vscode.window.showQuickPick([
+            { label: '✅ Apply edit to file', id: 'apply' },
+            { label: '👁️ Keep diff only', id: 'keep' },
+            { label: '❌ Cancel', id: 'cancel' },
+        ], {
+            placeHolder: 'NAVI has proposed an edit. Do you want to apply it to the real file?',
+        });
+        if (!choice || choice.id === 'cancel' || choice.id === 'keep') {
+            if (choice?.id === 'keep') {
+                this.postBotStatus('Diff view kept open for your review.');
+            }
+            return;
+        }
+        if (choice.id === 'apply') {
+            const edit = new vscode.WorkspaceEdit();
+            const fullRange = new vscode.Range(targetDoc.positionAt(0), targetDoc.positionAt(originalText.length));
+            edit.replace(targetDoc.uri, fullRange, newContent);
+            const success = await vscode.workspace.applyEdit(edit);
+            if (success) {
+                await targetDoc.save();
+                vscode.window.setStatusBarMessage('✅ NAVI: Edit applied.', 3000);
+                this.postBotStatus(`✅ Edit applied to ${targetDoc.fileName.split(/[\\/]/).pop()}`);
+            }
+            else {
+                vscode.window.showErrorMessage('NAVI: Failed to apply edit.');
+            }
         }
     }
     // PR-6C: Apply agent-proposed edit with diff view support

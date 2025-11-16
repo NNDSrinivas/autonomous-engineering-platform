@@ -1,4 +1,20 @@
-# main.py - Sample FastAPI backend for NAVI with streaming support
+# navi-backend.py - Standalone sample FastAPI backend for NAVI extension
+# 
+# NOTE: This is a reference implementation for testing the extension standalone.
+# The actual production backend is located at: backend/api/navi.py
+#
+# This sample backend provides:
+# - Mock responses for testing without OpenAI API
+# - Streaming support demonstration
+# - Context-aware response examples
+#
+# To use this sample backend:
+#   python extensions/vscode-aep/navi-backend.py
+#
+# For production, use the main backend:
+#   cd /path/to/project
+#   uvicorn backend.api.main:app --reload --port 8787
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,7 +56,8 @@ SYSTEM_PROMPT = """You are NAVI, an autonomous engineering assistant living insi
 - Use markdown for lists and code, with triple backticks for code blocks.
 """
 
-
+# NOTE: This sample backend serves /api/chat endpoint
+# Production backend serves /api/navi/chat endpoint
 @app.post("/api/chat")
 async def chat(request: Request):
     stream_flag = request.query_params.get("stream")
@@ -254,13 +271,20 @@ What can I help you with?"""
 async def health():
     return {
         "status": "healthy",
-        "backend": "NAVI FastAPI Backend",
+        "backend": "NAVI Sample Backend (Standalone)",
         "version": "1.0.0",
-        "features": ["streaming", "context_aware", "vs_code_integration"],
+        "features": ["streaming", "context_aware", "vs_code_integration", "mock_responses"],
+        "note": "This is a sample backend. Production backend is at backend/api/navi.py"
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-
+    
+    print("🦊 Starting NAVI Sample Backend...")
+    print("📍 This is a standalone test backend for the NAVI extension")
+    print("🔗 Production backend: backend/api/navi.py")
+    print("🌐 Server running at: http://127.0.0.1:8787")
+    print("")
+    
     uvicorn.run(app, host="127.0.0.1", port=8787)

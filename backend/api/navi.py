@@ -120,7 +120,9 @@ async def navi_chat(request: NaviChatRequest) -> NaviChatResponse:
 
         # Call LLM (OpenAI or mock)
         if OPENAI_ENABLED and openai_client:
-            content, actions = await _call_openai(messages, request.model, request.mode)
+            content, actions = await _call_openai(
+                messages, request.model, request.mode, request
+            )
         else:
             content, actions = _mock_response(request)
 
@@ -137,15 +139,237 @@ async def navi_chat(request: NaviChatRequest) -> NaviChatResponse:
 
 
 # ============================================================================
+# PR-8: HELLO WORLD / SAMPLE PROGRAM HELPERS
+# ============================================================================
+
+
+def _infer_language(request: NaviChatRequest) -> str:
+    """
+    Guess the target language for a sample/hello-world request.
+
+    Priority:
+    1. Active editor language (context.activeFileLanguage)
+    2. First attachment language
+    3. Fallback to 'javascript'
+    """
+    ctx = request.context
+    if ctx and ctx.activeFileLanguage:
+        return ctx.activeFileLanguage.lower()
+
+    if request.attachments:
+        lang = request.attachments[0].language
+        if lang:
+            return lang.lower()
+
+    return "javascript"
+
+
+def _hello_world_template(lang: str) -> dict:
+    """
+    Return {filename, content} for a full Hello World PROGRAM in the given language.
+    """
+    lang_lower = (lang or "").lower()
+
+    # Python -------------------------------------------------------------------
+    if lang_lower in {"python", "py"}:
+        return {
+            "filename": "hello_world.py",
+            "content": (
+                "# A simple Hello World program in Python\n\n"
+                "def main():\n"
+                '    print("Hello, World!")\n\n'
+                'if __name__ == "__main__":\n'
+                "    main()\n"
+            ),
+        }
+
+    # JavaScript / TypeScript --------------------------------------------------
+    if lang_lower in {
+        "javascript",
+        "javascriptreact",
+        "js",
+        "typescript",
+        "typescriptreact",
+        "ts",
+    }:
+        return {
+            "filename": "helloWorld.js",
+            "content": (
+                "// A simple Hello World program in JavaScript\n"
+                "function main() {\n"
+                '  console.log("Hello, World!");\n'
+                "}\n\n"
+                "main();\n"
+            ),
+        }
+
+    # Java ---------------------------------------------------------------------
+    if lang_lower in {"java"}:
+        return {
+            "filename": "HelloWorld.java",
+            "content": (
+                "// A simple Hello World program in Java\n"
+                "public class HelloWorld {\n"
+                "    public static void main(String[] args) {\n"
+                '        System.out.println("Hello, World!");\n'
+                "    }\n"
+                "}\n"
+            ),
+        }
+
+    # C ------------------------------------------------------------------------
+    if lang_lower in {"c"}:
+        return {
+            "filename": "hello_world.c",
+            "content": (
+                "/* A simple Hello World program in C */\n"
+                "#include <stdio.h>\n\n"
+                "int main(void) {\n"
+                '    printf("Hello, World!\\n");\n'
+                "    return 0;\n"
+                "}\n"
+            ),
+        }
+
+    # C++ ----------------------------------------------------------------------
+    if lang_lower in {"cpp", "c++", "cxx"}:
+        return {
+            "filename": "hello_world.cpp",
+            "content": (
+                "// A simple Hello World program in C++\n"
+                "#include <iostream>\n\n"
+                "int main() {\n"
+                '    std::cout << "Hello, World!" << std::endl;\n'
+                "    return 0;\n"
+                "}\n"
+            ),
+        }
+
+    # Go -----------------------------------------------------------------------
+    if lang_lower in {"go", "golang"}:
+        return {
+            "filename": "hello_world.go",
+            "content": (
+                "// A simple Hello World program in Go\n"
+                "package main\n\n"
+                'import "fmt"\n\n'
+                "func main() {\n"
+                '    fmt.Println("Hello, World!")\n'
+                "}\n"
+            ),
+        }
+
+    # Rust ---------------------------------------------------------------------
+    if lang_lower in {"rust", "rs"}:
+        return {
+            "filename": "hello_world.rs",
+            "content": (
+                "// A simple Hello World program in Rust\n"
+                "fn main() {\n"
+                '    println!("Hello, World!");\n'
+                "}\n"
+            ),
+        }
+
+    # Default: JavaScript ------------------------------------------------------
+    return {
+        "filename": "helloWorld.js",
+        "content": (
+            "// A simple Hello World program in JavaScript\n"
+            "function main() {\n"
+            '  console.log("Hello, World!");\n'
+            "}\n\n"
+            "main();\n"
+        ),
+    }
+
+
+def _looks_like_hello_world_request(message: str) -> bool:
+    """
+    Lightweight heuristic to detect hello-world / sample-program asks.
+    """
+    if not message:
+        return False
+
+    m = message.lower()
+    keywords = [
+        "hello world",
+        "hello-world",
+        "helloworld",
+        "sample program",
+        "example program",
+        "create a sample",
+        "create sample",
+        "create an example",
+        "simple program",
+        "basic program",
+    ]
+    return any(k in m for k in keywords)
+
+
+def _strengthen_sample_program(request: NaviChatRequest, data: dict) -> dict:
+    """
+    If the user is clearly asking for a Hello World / sample program,
+    make sure the first createFile action contains a full canonical program
+    (not just a one-line print/console.log).
+    """
+    if not _looks_like_hello_world_request(request.message or ""):
+        return data
+
+    lang = _infer_language(request)
+    template = _hello_world_template(lang)
+    filename = template["filename"]
+    program = template["content"]
+
+    # Ensure we have an actions list
+    actions = data.get("actions") or []
+
+    # Try to find an existing createFile action to upgrade
+    target_action = None
+    for act in actions:
+        if isinstance(act, dict) and act.get("type") == "createFile":
+            target_action = act
+            break
+
+    if target_action is None:
+        # No createFile action present; inject one
+        target_action = {"type": "createFile"}
+        actions.append(target_action)
+
+    # Upgrade the action with our canonical program
+    if not target_action.get("filePath"):
+        target_action["filePath"] = filename
+
+    existing_content = (target_action.get("content") or "").strip()
+    # Only upgrade if content is missing or trivial (single line)
+    if not existing_content or len(existing_content.splitlines()) < 2:
+        target_action["content"] = program
+
+    data["actions"] = actions
+
+    # Also make sure the natural-language content explains what we created
+    content = data.get("content") or ""
+    if "Hello, World" not in content and "Hello World" not in content:
+        lang_display = lang.title() if lang != "javascript" else "JavaScript"
+        data["content"] = (
+            f"Let's create a simple Hello World program in {lang_display}. "
+            f"I'll add a complete, runnable example in {target_action['filePath']}."
+        )
+
+    return data
+
+
+# ============================================================================
 # OPENAI INTEGRATION (PR-6B)
 # ============================================================================
 
 
 async def _call_openai(
-    messages: List[dict], model: str, mode: str
+    messages: List[dict], model: str, mode: str, request: NaviChatRequest
 ) -> tuple[str, Optional[List[AgentAction]]]:
     """
     Call OpenAI with JSON mode for structured responses
+    PR-8: Now takes request param to strengthen sample programs
     """
     if not openai_client:
         raise RuntimeError("OpenAI client not initialized")
@@ -170,6 +394,9 @@ async def _call_openai(
 
         content_str = response.choices[0].message.content or "{}"
         data = json.loads(content_str)
+
+        # PR-8: Upgrade Hello World / sample-program actions
+        data = _strengthen_sample_program(request, data)
 
         content = data.get("content", "")
         actions_data = data.get("actions", [])
@@ -210,6 +437,13 @@ def _build_system_prompt(request: NaviChatRequest) -> str:
         '- "I\'m doing well and excited to dig into your code with you."',
         '- "Pretty good! I\'m here with you in this workspace—what are we building today?"',
         "Then quickly pivot to their work or question so it stays productive and personal.",
+        "",
+        # PR-8: Hello World / Sample Program guidance
+        'When the user asks for a "hello world" or "sample program":',
+        "- Prefer to create a full, canonical program for the current language (not just a one-line print).",
+        "- Include an entry point (main function or equivalent) where it makes sense.",
+        "- Use the createFile action with the complete program content.",
+        "- Choose appropriate filename based on language conventions.",
         "",
         "In every reply, sound like you're sitting next to them:",
         "- Acknowledge what they said.",

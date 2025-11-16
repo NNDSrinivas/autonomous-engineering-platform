@@ -638,7 +638,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   // PR-7: Apply agent action from new unified message format
   private async handleAgentApplyAction(message: any): Promise<void> {
     const { decision, actionIndex, actions } = message;
-    
+
     if (decision !== 'approve') {
       // For now we don't need to do anything on reject
       console.log('[Extension Host] [AEP] User rejected action');
@@ -779,7 +779,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     await vscode.window.showTextDocument(doc);
 
     vscode.window.setStatusBarMessage(`✅ NAVI: Created ${relPath}`, 3000);
-    
+
     this.postBotStatus(`✅ Done! I've created \`${relPath}\` at ${fileUri.fsPath}`);
   }
 
@@ -796,11 +796,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private async applyRunCommandAction(action: any): Promise<void> {
     const command = action.command;
     if (!command) return;
-    
+
     const terminal = vscode.window.createTerminal('NAVI Agent');
     terminal.show();
     terminal.sendText(command);
-    
+
     vscode.window.showInformationMessage(`🚀 Running: ${command}`);
   }
 
@@ -812,7 +812,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     const workspaceRoot = workspaceFolders[0].uri;
-    
+
     if (action.filePath && action.diff) {
       // Use existing diff preview logic
       await this.showDiffPreviewAndApply(workspaceRoot, action.filePath, action.diff);

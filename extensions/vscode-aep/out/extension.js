@@ -98,8 +98,13 @@ class NaviWebviewProvider {
                         await this.handleAttachmentRequest(webviewView.webview, msg.kind);
                         break;
                     }
+                    case 'agent.applyAction': {
+                        // PR-7: Apply agent-proposed action (create/edit/run)
+                        await this.handleAgentApplyAction(msg);
+                        break;
+                    }
                     case 'agent.applyEdit': {
-                        // PR-6: Apply agent-proposed edit
+                        // PR-6: Apply agent-proposed edit (legacy support)
                         await this.handleApplyAgentEdit(msg);
                         break;
                     }
@@ -505,6 +510,85 @@ class NaviWebviewProvider {
         catch (err) {
             console.error('[Extension Host] [AEP] Error reading attachment:', err);
             vscode.window.showErrorMessage('Failed to read file for attachment.');
+        }
+    }
+    // PR-7: Apply agent action from new unified message format
+    async handleAgentApplyAction(message) {
+        const { decision, actionIndex, actions } = message;
+        if (decision !== 'approve') {
+            // For now we don't need to do anything on reject
+            console.log('[Extension Host] [AEP] User rejected action');
+            return;
+        }
+        if (!actions || actionIndex == null || actionIndex < 0 || actionIndex >= actions.length) {
+            console.warn('[Extension Host] [AEP] Invalid action data:', { actionIndex, actionsLength: actions?.length });
+            return;
+        }
+        const action = actions[actionIndex];
+        if (!action || !action.type) {
+            console.warn('[Extension Host] [AEP] Invalid action object:', action);
+            return;
+        }
+        try {
+            console.log('[Extension Host] [AEP] Applying agent action:', action);
+            // 1) Create new file
+            if (action.type === 'createFile') {
+                await this.applyCreateFileAction(action);
+                return;
+            }
+            // 2) Edit existing file with diff
+            if (action.type === 'editFile') {
+                await this.applyEditFileAction(action);
+                return;
+            }
+            // 3) Run terminal command
+            if (action.type === 'runCommand') {
+                await this.applyRunCommandAction(action);
+                return;
+            }
+            console.warn('[Extension Host] [AEP] Unknown action type:', action.type);
+        }
+        catch (error) {
+            console.error('[Extension Host] [AEP] Error applying action:', error);
+            vscode.window.showErrorMessage(`Failed to apply action: ${error.message}`);
+        }
+    }
+    async applyCreateFileAction(action) {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+        if (!root) {
+            vscode.window.showErrorMessage('NAVI: No workspace folder open – can\'t create file.');
+            return;
+        }
+        const relPath = action.filePath || 'hello_world.py';
+        const fileUri = vscode.Uri.joinPath(root, relPath);
+        const content = action.content ?? '# Hello, World! created by NAVI\nprint("Hello, World!")\n';
+        await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf8'));
+        const doc = await vscode.workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(doc);
+        vscode.window.showInformationMessage(`✅ Created ${relPath}`);
+    }
+    async applyRunCommandAction(action) {
+        const command = action.command;
+        if (!command)
+            return;
+        const terminal = vscode.window.createTerminal('NAVI Agent');
+        terminal.show();
+        terminal.sendText(command);
+        vscode.window.showInformationMessage(`🚀 Running: ${command}`);
+    }
+    async applyEditFileAction(action) {
+        // Get workspace folder for resolving relative paths
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            throw new Error('No workspace folder open');
+        }
+        const workspaceRoot = workspaceFolders[0].uri;
+        if (action.filePath && action.diff) {
+            // Use existing diff preview logic
+            await this.showDiffPreviewAndApply(workspaceRoot, action.filePath, action.diff);
+        }
+        else {
+            throw new Error('Edit action requires filePath and diff');
         }
     }
     // PR-6C: Apply agent-proposed edit with diff view support

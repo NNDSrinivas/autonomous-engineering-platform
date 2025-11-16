@@ -1,40 +1,76 @@
-<svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-label="NAVI fox">
-  <defs>
-    <linearGradient id="p" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF8A3D"/>
-      <stop offset="100%" stop-color="#FF5E7E"/>
-    </linearGradient>
+<svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-label="NAVI fox"><svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" aria-label="NAVI fox">
 
-    <style>
-      /* ---------- Base motions ---------- */
-      @keyframes nod {0%{transform:rotate(0)}50%{transform:rotate(-2.5deg)}100%{transform:rotate(0)}}
-      @keyframes blink {0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
-      @keyframes pulse {
-        0%{r:22; opacity:.55}
-        70%{r:28; opacity:0}
-        100%{r:28; opacity:0}
-      }
-      /* one-shot celebration cues */
-      @keyframes earFlick {0%{transform:rotate(0)}40%{transform:rotate(-12deg)}80%{transform:rotate(10deg)}100%{transform:rotate(0)}}
-      @keyframes tailWave {0%{transform:rotate(0)}50%{transform:rotate(12deg)}100%{transform:rotate(0)}}
+  <defs>  <defs>
 
-      /* ---------- Targets ---------- */
-      #head{transform-origin:22px 22px; animation:nod 5s ease-in-out infinite}
-      .eye{animation:blink 6s ease-in-out infinite; transform-origin:50% 50%}
-      .pulse-ring{fill:none; stroke:url(#p); stroke-width:2.4; opacity:0}
+    <linearGradient id="p" x1="0%" y1="0%" x2="100%" y2="100%">    <linearGradient id="p" x1="0%" y1="0%" x2="100%" y2="100%">
 
-      /* states set from the host (add/remove on the <svg> tag) */
-      svg.thinking .pulse-ring{animation:pulse 2s ease-out infinite}
-      svg.celebrate #earL, svg.celebrate #earR{animation:earFlick .65s ease-out 1}
-      svg.celebrate #tail{animation:tailWave .7s ease-out 1}
-    </style>
+      <stop offset="0%" stop-color="#FF8A3D"/>      <stop offset="0%" stop-color="#FF8A3D"/>
+
+      <stop offset="100%" stop-color="#FF5E7E"/>      <stop offset="100%" stop-color="#FF5E7E"/>
+
+    </linearGradient>    </linearGradient>
+
   </defs>
 
-  <!-- shows only while .thinking is present -->
-  <circle class="pulse-ring" cx="22" cy="22" r="22"/>
+    <style>
 
-  <!-- Tail (behind head) -->
-  <g id="tail" transform="translate(33,29)">
+  <!-- dark rounded square so it's visible on the activity bar -->      /* ---------- Base motions ---------- */
+
+  <rect x="2" y="2" width="40" height="40" rx="11" fill="#020617"/>      @keyframes nod {0%{transform:rotate(0)}50%{transform:rotate(-2.5deg)}100%{transform:rotate(0)}}
+
+      @keyframes blink {0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+
+  <!-- outer glow border (subtle, VS Code will still tint) -->      @keyframes pulse {
+
+  <rect x="2.5" y="2.5" width="39" height="39" rx="11" fill="none" stroke="#6366F1" stroke-width="1.2"/>        0%{r:22; opacity:.55}
+
+        70%{r:28; opacity:0}
+
+  <!-- Tail -->        100%{r:28; opacity:0}
+
+  <g transform="translate(31,28)">      }
+
+    <path d="M0 0 C7 0 9 7 3 10 C-1 12 -2 7 0 0 Z" fill="url(#p)" opacity=".9"/>      /* one-shot celebration cues */
+
+  </g>      @keyframes earFlick {0%{transform:rotate(0)}40%{transform:rotate(-12deg)}80%{transform:rotate(10deg)}100%{transform:rotate(0)}}
+
+      @keyframes tailWave {0%{transform:rotate(0)}50%{transform:rotate(12deg)}100%{transform:rotate(0)}}
+
+  <!-- Head -->
+
+  <g>      /* ---------- Targets ---------- */
+
+    <path d="M22 6 L35 16 32 32 22 37 12 32 9 16Z" fill="url(#p)"/>      #head{transform-origin:22px 22px; animation:nod 5s ease-in-out infinite}
+
+      .eye{animation:blink 6s ease-in-out infinite; transform-origin:50% 50%}
+
+    <!-- ears -->      .pulse-ring{fill:none; stroke:url(#p); stroke-width:2.4; opacity:0}
+
+    <g transform="translate(13,15)">
+
+      <path d="M0 3 L6 -1 4 6 Z" fill="#fff" opacity=".95"/>      /* states set from the host (add/remove on the <svg> tag) */
+
+    </g>      svg.thinking .pulse-ring{animation:pulse 2s ease-out infinite}
+
+    <g transform="translate(25,15)">      svg.celebrate #earL, svg.celebrate #earR{animation:earFlick .65s ease-out 1}
+
+      <path d="M6 3 L0 -1 2 6 Z" fill="#fff" opacity=".95"/>      svg.celebrate #tail{animation:tailWave .7s ease-out 1}
+
+    </g>    </style>
+
+  </defs>
+
+    <!-- eyes + nose -->
+
+    <ellipse cx="18" cy="24" rx="1.5" ry="1.5" fill="#020617"/>  <!-- shows only while .thinking is present -->
+
+    <ellipse cx="26" cy="24" rx="1.5" ry="1.5" fill="#020617"/>  <circle class="pulse-ring" cx="22" cy="22" r="22"/>
+
+    <rect x="20.3" y="26.5" width="3.4" height="1.2" rx=".6" fill="#020617" opacity=".8"/>
+
+  </g>  <!-- Tail (behind head) -->
+
+</svg>  <g id="tail" transform="translate(33,29)">
     <path d="M0 0 C7 0 9 7 3 10 C-1 12 -2 7 0 0 Z" fill="url(#p)" opacity=".85"/>
   </g>
 

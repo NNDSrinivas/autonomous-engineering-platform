@@ -1,0 +1,30 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Bold stylized A for AEP -->
+  <g transform="translate(3 2)">
+    <!-- Outer A -->
+    <path
+      d="M2 18 L8 0.8 C8.2 0.2 8.8 0.2 9 0.8 L15 18"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <!-- Crossbar -->
+    <path
+      d="M4.5 11 H12.5"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+    />
+    <!-- Subtle tech notch on right leg -->
+    <path
+      d="M10.2 6.2 L12 9.8"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+    />
+  </g>
+</svg>

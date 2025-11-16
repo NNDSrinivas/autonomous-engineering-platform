@@ -12,6 +12,16 @@
   "main": "./out/extension.js",
   "icon": "media/aep-icon-256.png",
   "contributes": {
+    "configuration": {
+      "title": "NAVI Assistant",
+      "properties": {
+        "aep.navi.backendUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8787/api/navi/chat",
+          "description": "Backend URL for NAVI Assistant API calls (full endpoint URL including /api/navi/chat)"
+        }
+      }
+    },
     "commands": [
       {
         "command": "aep.openNavi",
@@ -23,7 +33,7 @@
         {
           "id": "aep",
           "title": "AEP",
-          "icon": "media/mascot-navi-fox.svg"
+          "icon": "media/aep-activitybar.svg"
         }
       ]
     },
@@ -42,12 +52,19 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts",
+    "demo-backend": "node demo-backend.js"
+  },
+  "dependencies": {
+    "@types/diff": "^8.0.0",
+    "diff": "^8.0.2"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
     "@types/node": "^20.0.0",
-    "typescript": "^5.4.0",
-    "eslint": "^9.0.0"
+    "@types/vscode": "^1.85.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.4.0"
   }
 }

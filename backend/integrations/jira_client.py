@@ -16,7 +16,7 @@ logger = structlog.get_logger(__name__)
 class JiraClient:
     """
     Jira REST API client for AEP NAVI memory integration.
-    
+
     Uses email + API token auth (basic auth with Atlassian API token).
     """
 
@@ -41,10 +41,12 @@ class JiraClient:
             headers={"Accept": "application/json"},
             timeout=30.0,
         )
-        
+
         logger.info("JiraClient initialized", base_url=self.base_url)
 
-    async def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _get(
+        self, path: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Make authenticated GET request to Jira API"""
         url = f"{self.base_url}{path}"
         try:
@@ -56,7 +58,7 @@ class JiraClient:
                 "Jira API error",
                 url=url,
                 status=e.response.status_code,
-                error=e.response.text[:200]
+                error=e.response.text[:200],
             )
             raise RuntimeError(
                 f"Jira GET {url} failed: {e.response.status_code} {e.response.text[:200]}"
@@ -72,11 +74,11 @@ class JiraClient:
     ) -> List[Dict[str, Any]]:
         """
         Fetch issues assigned to the current Jira user or via custom JQL.
-        
+
         Args:
             jql: Custom JQL query (default: assigned to current user, not done)
             max_results: Maximum number of issues to return
-            
+
         Returns:
             List of issue dictionaries with fields
         """
@@ -84,9 +86,9 @@ class JiraClient:
             jql
             or "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
         )
-        
+
         logger.info("Fetching Jira issues", jql=jql, max_results=max_results)
-        
+
         data = await self._get(
             "/rest/api/3/search",
             params={
@@ -95,19 +97,19 @@ class JiraClient:
                 "fields": "summary,description,status,assignee,priority,issuetype,created,updated",
             },
         )
-        
+
         issues = data.get("issues", [])
         logger.info(f"Fetched {len(issues)} Jira issues")
-        
+
         return issues
 
     async def get_issue(self, key: str) -> Dict[str, Any]:
         """
         Fetch a single issue by key, e.g. ABC-123.
-        
+
         Args:
             key: Jira issue key (e.g., "ENG-102")
-            
+
         Returns:
             Issue dictionary with all fields
         """
@@ -121,11 +123,11 @@ class JiraClient:
     ) -> List[Dict[str, Any]]:
         """
         Fetch issues for a specific project.
-        
+
         Args:
             project_key: Jira project key (e.g., "ENG")
             max_results: Maximum number of issues
-            
+
         Returns:
             List of issue dictionaries
         """

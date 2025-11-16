@@ -155,21 +155,21 @@ let commandMenuDragState = {
         </form>
 
         <div class="navi-bottom-row">
-          <div class="navi-model-pill navi-pill" id="modelPill">
+          <div class="navi-model-pill navi-pill" id="modelPill" data-model-id="gpt-5.1">
             <span>Model: ChatGPT 5.1</span>
             <div class="navi-pill-menu navi-model-menu">
-              <div class="navi-pill-menu-item" data-value="ChatGPT 5.1">ChatGPT 5.1</div>
-              <div class="navi-pill-menu-item" data-value="gpt-4.2">gpt-4.2</div>
-              <div class="navi-pill-menu-item" data-value="o3-mini">o3-mini</div>
+              <div class="navi-pill-menu-item" data-model-id="gpt-5.1" data-model-label="ChatGPT 5.1">ChatGPT 5.1</div>
+              <div class="navi-pill-menu-item" data-model-id="gpt-4.2" data-model-label="gpt-4.2">gpt-4.2</div>
+              <div class="navi-pill-menu-item" data-model-id="o3-mini" data-model-label="o3-mini">o3-mini</div>
             </div>
           </div>
 
-          <div class="navi-mode-pill navi-pill" id="modePill">
+          <div class="navi-mode-pill navi-pill" id="modePill" data-mode-id="agent-full">
             <span>Mode: Agent (full access)</span>
             <div class="navi-pill-menu navi-mode-menu">
-              <div class="navi-pill-menu-item" data-value="Agent (full access)">Agent (full access)</div>
-              <div class="navi-pill-menu-item" data-value="Chat only">Chat only</div>
-              <div class="navi-pill-menu-item" data-value="Read-only explorer">Read-only explorer</div>
+              <div class="navi-pill-menu-item" data-mode-id="agent-full" data-mode-label="Agent (full access)">Agent (full access)</div>
+              <div class="navi-pill-menu-item" data-mode-id="chat-only" data-mode-label="Chat only">Chat only</div>
+              <div class="navi-pill-menu-item" data-mode-id="read-only" data-mode-label="Read-only explorer">Read-only explorer</div>
             </div>
           </div>
         </div>
@@ -414,7 +414,18 @@ let commandMenuDragState = {
     }
 
     if (vscode) {
-      vscode.postMessage({ type: 'sendMessage', text });
+      // Get current model and mode IDs from pills
+      const modelPillEl = document.getElementById('modelPill');
+      const modePillEl = document.getElementById('modePill');
+      const modelId = modelPillEl?.dataset.modelId;
+      const modeId = modePillEl?.dataset.modeId;
+      
+      vscode.postMessage({ 
+        type: 'sendMessage', 
+        text,
+        modelId,
+        modeId
+      });
     }
     inputEl.value = '';
     inputEl.focus();
@@ -476,12 +487,18 @@ let commandMenuDragState = {
       const item = e.target.closest('.navi-pill-menu-item');
       if (item) {
         e.stopPropagation();
-        const value = item.dataset.value;
-        modelPill.querySelector('span').textContent = `Model: ${value}`;
+        const modelId = item.dataset.modelId;
+        const modelLabel = item.dataset.modelLabel || item.textContent.trim();
+        
+        // Update pill display and data
+        modelPill.dataset.modelId = modelId;
+        modelPill.querySelector('span').textContent = `Model: ${modelLabel}`;
+        
         if (vscode) {
           vscode.postMessage({
-            type: 'modelSelected',
-            value: value,
+            type: 'setModel',
+            modelId,
+            modelLabel,
           });
         }
         closeAllPillMenus();
@@ -502,12 +519,18 @@ let commandMenuDragState = {
       const item = e.target.closest('.navi-pill-menu-item');
       if (item) {
         e.stopPropagation();
-        const value = item.dataset.value;
-        modePill.querySelector('span').textContent = `Mode: ${value}`;
+        const modeId = item.dataset.modeId;
+        const modeLabel = item.dataset.modeLabel || item.textContent.trim();
+        
+        // Update pill display and data
+        modePill.dataset.modeId = modeId;
+        modePill.querySelector('span').textContent = `Mode: ${modeLabel}`;
+        
         if (vscode) {
           vscode.postMessage({
-            type: 'modeSelected',
-            value: value,
+            type: 'setMode',
+            modeId,
+            modeLabel,
           });
         }
         closeAllPillMenus();
@@ -652,6 +675,23 @@ let commandMenuDragState = {
       case 'attachmentsCanceled':
         // No-op for now
         break;
+
+      case 'hydrateState': {
+        // Restore model and mode from saved state (PR-4)
+        const modelPillEl = document.getElementById('modelPill');
+        const modePillEl = document.getElementById('modePill');
+        
+        if (msg.modelId && msg.modelLabel && modelPillEl) {
+          modelPillEl.dataset.modelId = msg.modelId;
+          modelPillEl.querySelector('span').textContent = `Model: ${msg.modelLabel}`;
+        }
+        
+        if (msg.modeId && msg.modeLabel && modePillEl) {
+          modePillEl.dataset.modeId = msg.modeId;
+          modePillEl.querySelector('span').textContent = `Mode: ${msg.modeLabel}`;
+        }
+        break;
+      }
 
       default:
         console.log('[AEP] Unknown message in webview:', msg);

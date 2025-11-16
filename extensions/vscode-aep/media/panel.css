@@ -269,7 +269,7 @@ body {
 }
 
 /* Remove margin-bottom on the last block element to prevent extra blank line */
-.navi-bubble > :last-child,
+.navi-bubble> :last-child,
 .navi-bubble p:last-child,
 .navi-bubble ul:last-child,
 .navi-bubble ol:last-child,
@@ -800,6 +800,7 @@ body {
     opacity: 0;
     transform: translateY(4px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);

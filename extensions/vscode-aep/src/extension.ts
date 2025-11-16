@@ -418,13 +418,13 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         this._messages.push({ role: 'assistant', content: content });
-        
+
         // PR-6C: Handle agent actions if present
         const messageId = `msg-${Date.now()}`;
         if (json.actions && json.actions.length > 0) {
           this._agentActions.set(messageId, { actions: json.actions });
-          this.postToWebview({ 
-            type: 'botMessage', 
+          this.postToWebview({
+            type: 'botMessage',
             text: content,
             messageId: messageId,
             actions: json.actions
@@ -433,7 +433,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           this.postToWebview({ type: 'botMessage', text: content });
         }
         return;
-      }      if (contentType.includes('text/event-stream')) {
+      } if (contentType.includes('text/event-stream')) {
         // ⚡ Streaming path (SSE) – we still send a single final botMessage for now
         const fullText = await this.readSseStream(response);
         const reply = fullText.trim();
@@ -624,7 +624,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private async handleApplyAgentEdit(msg: { messageId: string; actionIndex: number }): Promise<void> {
     const { messageId, actionIndex } = msg;
     const agentState = this._agentActions.get(messageId);
-    
+
     if (!agentState) {
       console.warn('[Extension Host] [AEP] No agent actions found for message:', messageId);
       return;
@@ -651,24 +651,24 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       if (action.type === 'editFile' && action.filePath && action.diff) {
         // PR-6C: Show diff preview for editFile
         await this.showDiffPreviewAndApply(workspaceRoot, action.filePath, action.diff);
-        
+
       } else if (action.type === 'createFile' && action.filePath && action.content) {
         // Create new file
         const fileUri = vscode.Uri.joinPath(workspaceRoot, action.filePath);
         await vscode.workspace.fs.writeFile(fileUri, Buffer.from(action.content, 'utf-8'));
         vscode.window.showInformationMessage(`✅ Created ${action.filePath}`);
-        
+
         // Open the new file
         const document = await vscode.workspace.openTextDocument(fileUri);
         await vscode.window.showTextDocument(document, { preview: false });
-        
+
       } else if (action.type === 'runCommand' && action.command) {
         // PR-6C: Run terminal command
         const terminal = vscode.window.createTerminal('NAVI Agent');
         terminal.show();
         terminal.sendText(action.command);
         vscode.window.showInformationMessage(`🔧 Running: ${action.command}`);
-        
+
       } else {
         vscode.window.showWarningMessage(`Unknown or incomplete action type: ${action.type}`);
       }
@@ -686,7 +686,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     diff: string
   ): Promise<void> {
     const fileUri = vscode.Uri.joinPath(workspaceRoot, filePath);
-    
+
     // Read original file
     let originalDoc: vscode.TextDocument;
     try {
@@ -697,7 +697,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     const original = originalDoc.getText();
-    
+
     // Apply diff to get new content
     let newContent: string;
     try {
@@ -711,7 +711,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     // Create temp file with new content for preview
     const fileName = path.basename(filePath);
     const tempUri = vscode.Uri.parse(`untitled:${fileName} (NAVI Proposed)`);
-    
+
     const tempDoc = await vscode.workspace.openTextDocument(tempUri);
     const edit = new vscode.WorkspaceEdit();
     edit.insert(tempUri, new vscode.Position(0, 0), newContent);
@@ -749,7 +749,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     } else {
       vscode.window.showInformationMessage('Changes discarded');
     }
-  }  private getWebviewHtml(webview: vscode.Webview): string {
+  } private getWebviewHtml(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.js')
     );

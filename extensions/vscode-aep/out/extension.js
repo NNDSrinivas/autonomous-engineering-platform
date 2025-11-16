@@ -80,12 +80,19 @@ class NaviWebviewProvider {
                         // PR-4: Use modelId and modeId from the message (coming from pills)
                         const modelId = msg.modelId || this._currentModelId;
                         const modeId = msg.modeId || this._currentModeId;
-                        console.log('[Extension Host] [AEP] User message:', text, 'model:', modelId, 'mode:', modeId);
+                        // PR-5: Extract attachments if present
+                        const attachments = msg.attachments || [];
+                        console.log('[Extension Host] [AEP] User message:', text, 'model:', modelId, 'mode:', modeId, 'attachments:', attachments.length);
                         // Update local state
                         this._messages.push({ role: 'user', content: text });
                         // Show thinking state
                         this.postToWebview({ type: 'botThinking', value: true });
-                        await this.callNaviBackend(text, modelId, modeId);
+                        await this.callNaviBackend(text, modelId, modeId, attachments);
+                        break;
+                    }
+                    case 'requestAttachment': {
+                        // PR-5: Handle file attachment requests
+                        await this.handleAttachmentRequest(webviewView.webview, msg.kind);
                         break;
                     }
                     case 'setModel': {
@@ -242,7 +249,7 @@ class NaviWebviewProvider {
         // Welcome message will be sent when panel sends 'ready'
     }
     // --- Core: call NAVI backend ------------------------------------------------
-    async callNaviBackend(latestUserText, modelId, modeId) {
+    async callNaviBackend(latestUserText, modelId, modeId, attachments) {
         if (!this._view) {
             return;
         }
@@ -251,6 +258,8 @@ class NaviWebviewProvider {
             model: modelId || this._currentModelId,
             mode: modeId || this._currentModeId,
             messages: this._messages,
+            // PR-5: Include attachments in payload if present
+            attachments: attachments && attachments.length > 0 ? attachments : undefined,
             // PR1: we keep stream=false by default for reliability.
             // You can flip this to true once your backend supports SSE.
             stream: false
@@ -417,6 +426,64 @@ class NaviWebviewProvider {
             type: 'botMessage',
             text: "🔄 **New chat started!**\n\nHow can I help you today?"
         });
+    }
+    // PR-5: Handle attachment requests from the webview
+    async handleAttachmentRequest(webview, kind) {
+        const editor = vscode.window.activeTextEditor;
+        try {
+            if (kind === 'selection' && editor && !editor.selection.isEmpty) {
+                // Read selected text
+                const selectedText = editor.document.getText(editor.selection);
+                const filePath = editor.document.uri.fsPath;
+                this.postToWebview({
+                    type: 'addAttachment',
+                    attachment: {
+                        kind: 'selection',
+                        path: filePath,
+                        content: selectedText,
+                    },
+                });
+            }
+            else if (kind === 'current-file' && editor) {
+                // Read entire active file
+                const content = editor.document.getText();
+                const filePath = editor.document.uri.fsPath;
+                this.postToWebview({
+                    type: 'addAttachment',
+                    attachment: {
+                        kind: 'file',
+                        path: filePath,
+                        content: content,
+                    },
+                });
+            }
+            else if (kind === 'pick-file') {
+                // Show file picker
+                const uris = await vscode.window.showOpenDialog({
+                    canSelectFiles: true,
+                    canSelectFolders: false,
+                    canSelectMany: false,
+                    openLabel: 'Attach File',
+                });
+                if (uris && uris.length > 0) {
+                    const uri = uris[0];
+                    const content = await vscode.workspace.fs.readFile(uri);
+                    const textContent = new TextDecoder('utf-8').decode(content);
+                    this.postToWebview({
+                        type: 'addAttachment',
+                        attachment: {
+                            kind: 'file',
+                            path: uri.fsPath,
+                            content: textContent,
+                        },
+                    });
+                }
+            }
+        }
+        catch (err) {
+            console.error('[Extension Host] [AEP] Error reading attachment:', err);
+            vscode.window.showErrorMessage('Failed to read file for attachment.');
+        }
     }
     getWebviewHtml(webview) {
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.js'));

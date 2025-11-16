@@ -174,6 +174,8 @@ let commandMenuDragState = {
           </div>
         </div>
 
+        <div class="navi-attachments-preview"></div>
+
         <div id="navi-command-menu" class="navi-command-menu navi-command-menu-hidden">
           <button class="navi-command-item" data-command-id="explain-code">
             <div class="navi-command-title">Explain code</div>
@@ -195,6 +197,12 @@ let commandMenuDragState = {
             <div class="navi-command-title">Document this code</div>
             <div class="navi-command-subtitle">Comments and docstrings</div>
           </button>
+        </div>
+
+        <div class="navi-attachment-menu">
+          <div class="navi-menu-item" data-attach="selection">Attach Selection</div>
+          <div class="navi-menu-item" data-attach="current-file">Attach Current File</div>
+          <div class="navi-menu-item" data-attach="pick-file">Pick File…</div>
         </div>
       </footer>
     </div>
@@ -372,6 +380,10 @@ let commandMenuDragState = {
     }
   }
 
+  // Attachment state (PR-5)
+  let pendingAttachments = [];
+  const attachmentsPreviewEl = document.querySelector('.navi-attachments-preview');
+
   // Form events --------------------------------------------------------------
   formEl.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -419,16 +431,23 @@ let commandMenuDragState = {
       const modePillEl = document.getElementById('modePill');
       const modelId = modelPillEl?.dataset.modelId;
       const modeId = modePillEl?.dataset.modeId;
-      
-      vscode.postMessage({ 
-        type: 'sendMessage', 
+
+      vscode.postMessage({
+        type: 'sendMessage',
         text,
         modelId,
-        modeId
+        modeId,
+        attachments: pendingAttachments  // PR-5: include attachments
       });
     }
     inputEl.value = '';
     inputEl.focus();
+
+    // PR-5: Clear attachments after sending
+    pendingAttachments = [];
+    if (attachmentsPreviewEl) {
+      attachmentsPreviewEl.innerHTML = '';
+    }
 
     // If stub chip is visible, clear it once the user sends something
     const footer = document.querySelector('.navi-footer');
@@ -489,11 +508,11 @@ let commandMenuDragState = {
         e.stopPropagation();
         const modelId = item.dataset.modelId;
         const modelLabel = item.dataset.modelLabel || item.textContent.trim();
-        
+
         // Update pill display and data
         modelPill.dataset.modelId = modelId;
         modelPill.querySelector('span').textContent = `Model: ${modelLabel}`;
-        
+
         if (vscode) {
           vscode.postMessage({
             type: 'setModel',
@@ -521,11 +540,11 @@ let commandMenuDragState = {
         e.stopPropagation();
         const modeId = item.dataset.modeId;
         const modeLabel = item.dataset.modeLabel || item.textContent.trim();
-        
+
         // Update pill display and data
         modePill.dataset.modeId = modeId;
         modePill.querySelector('span').textContent = `Mode: ${modeLabel}`;
-        
+
         if (vscode) {
           vscode.postMessage({
             type: 'setMode',
@@ -680,15 +699,31 @@ let commandMenuDragState = {
         // Restore model and mode from saved state (PR-4)
         const modelPillEl = document.getElementById('modelPill');
         const modePillEl = document.getElementById('modePill');
-        
+
         if (msg.modelId && msg.modelLabel && modelPillEl) {
           modelPillEl.dataset.modelId = msg.modelId;
           modelPillEl.querySelector('span').textContent = `Model: ${msg.modelLabel}`;
         }
-        
+
         if (msg.modeId && msg.modeLabel && modePillEl) {
           modePillEl.dataset.modeId = msg.modeId;
           modePillEl.querySelector('span').textContent = `Mode: ${msg.modeLabel}`;
+        }
+        break;
+      }
+
+      case 'addAttachment': {
+        // PR-5: Add attachment to pending list
+        if (msg.attachment) {
+          pendingAttachments.push(msg.attachment);
+          // Render preview
+          if (attachmentsPreviewEl) {
+            const chip = document.createElement('div');
+            chip.className = 'navi-attachment-chip';
+            const filename = msg.attachment.path.split('/').pop() || msg.attachment.path;
+            chip.textContent = filename;
+            attachmentsPreviewEl.appendChild(chip);
+          }
         }
         break;
       }
@@ -884,67 +919,49 @@ window.addEventListener('DOMContentLoaded', () => {
     // closeCommandMenu(); // Removed - state is already initialized to false above
   }
 
-  // + Attach button - request attachment picker from extension
-  if (attachBtn) {
-    attachBtn.addEventListener('click', (event) => {
-      event.stopPropagation();
-      console.log('[NAVI] Attach button clicked');
-      if (vscodeApi) {
-        vscodeApi.postMessage({ type: 'attachBtnClicked' });
-      }
-    });
+  // PR-5: Attachment menu handling
+  const attachmentMenu = document.querySelector('.navi-attachment-menu');
+  let isAttachmentMenuOpen = false;
+
+  function toggleAttachmentMenu() {
+    if (!attachmentMenu) return;
+    isAttachmentMenuOpen = !isAttachmentMenuOpen;
+    if (isAttachmentMenuOpen) {
+      attachmentMenu.classList.add('navi-menu--open');
+    } else {
+      attachmentMenu.classList.remove('navi-menu--open');
+    }
   }
 
-  // Listen for attachmentNotImplemented message from extension
-  window.addEventListener('message', (event) => {
-    const msg = event.data;
-    if (msg && msg.type === 'attachmentNotImplemented') {
-      showAttachmentHint('Attachment flow is not implemented yet – coming soon.');
-    }
-  });
-
-  // Attachment toast functionality
-  const attachToast = document.querySelector('.navi-attach-toast');
-  if (attachBtn && attachToast) {
+  if (attachBtn && attachmentMenu) {
     attachBtn.addEventListener('click', (event) => {
-      event.preventDefault();
       event.stopPropagation();
-      console.log('[NAVI] Attach button clicked - showing coming soon message');
-
-      // Don't call extension - just show the "coming soon" message
-      // if (vscodeApi) {
-      //   vscodeApi.postMessage({ type: 'attachBtnClicked' });
-      // }
-
-      // Show toast
-      attachToast.classList.add('navi-attach-toast--visible');
-
-      // Auto-hide after 3s
-      clearTimeout(window._naviAttachToastTimer);
-      window._naviAttachToastTimer = setTimeout(() => {
-        attachToast.classList.remove('navi-attach-toast--visible');
-      }, 3000);
+      console.log('[NAVI] Attach button clicked - showing menu');
+      toggleAttachmentMenu();
     });
 
-    // Clicking anywhere outside hides the toast
-    document.addEventListener('click', (event) => {
-      const isOnToast = event.target.closest('.navi-attach-toast');
-      const isOnAttach = event.target.closest('#navi-attach-btn');
-      if (!isOnToast && !isOnAttach) {
-        attachToast.classList.remove('navi-attach-toast--visible');
-        if (window._naviAttachToastTimer) {
-          clearTimeout(window._naviAttachToastTimer);
-        }
+    attachmentMenu.addEventListener('click', (event) => {
+      const item = event.target.closest('[data-attach]');
+      if (!item) return;
+
+      const kind = item.dataset.attach;
+      console.log('[NAVI] Attachment type selected:', kind);
+      attachmentMenu.classList.remove('navi-menu--open');
+      isAttachmentMenuOpen = false;
+
+      if (vscodeApi) {
+        vscodeApi.postMessage({
+          type: 'requestAttachment',
+          kind, // "selection" | "current-file" | "pick-file"
+        });
       }
     });
 
-    // ESC key hides the toast
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && attachToast.classList.contains('navi-attach-toast--visible')) {
-        attachToast.classList.remove('navi-attach-toast--visible');
-        if (window._naviAttachToastTimer) {
-          clearTimeout(window._naviAttachToastTimer);
-        }
+    // Close menu when clicking outside
+    document.addEventListener('click', (event) => {
+      if (!attachmentMenu.contains(event.target) && !attachBtn.contains(event.target)) {
+        attachmentMenu.classList.remove('navi-menu--open');
+        isAttachmentMenuOpen = false;
       }
     });
   }

@@ -253,56 +253,39 @@ let commandMenuDragState = {
   function renderMarkdown(text) {
     if (!text) return '';
 
-    let html = text;
+    // First, escape ALL HTML to prevent XSS
+    let html = escapeHtml(text);
 
+    // Now apply markdown transformations on the escaped text
     // Code fences ```lang\ncode\n```
     html = html.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
-      const safeLang = lang ? ` language-${escapeHtml(lang)}` : '';
-      const escapedCode = escapeHtml(code || '');
-      return `<pre class="navi-code-block"><code class="navi-code-content${safeLang}">${escapedCode}</code></pre>`;
+      const safeLang = lang ? ` language-${lang}` : '';
+      return `<pre class="navi-code-block"><code class="navi-code-content${safeLang}">${code}</code></pre>`;
     });
 
-    // Inline code `code` - escape HTML in captured content
-    html = html.replace(/`([^`]+)`/g, (match, code) => {
-      return `<code class="navi-inline-code">${escapeHtml(code)}</code>`;
-    });
+    // Inline code `code`
+    html = html.replace(/`([^`]+)`/g, '<code class="navi-inline-code">$1</code>');
 
-    // Bold / italic - escape HTML in captured content
-    html = html.replace(/\*\*([^*]+)\*\*/g, (match, text) => {
-      return `<strong>${escapeHtml(text)}</strong>`;
-    });
-    html = html.replace(/\*([^*]+)\*/g, (match, text) => {
-      return `<em>${escapeHtml(text)}</em>`;
-    });
+    // Bold / italic
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
-    // Headings - escape HTML in captured content
-    html = html.replace(/^### (.*)$/gm, (match, text) => {
-      return `<h3 class="navi-heading-3">${escapeHtml(text)}</h3>`;
-    });
-    html = html.replace(/^## (.*)$/gm, (match, text) => {
-      return `<h2 class="navi-heading-2">${escapeHtml(text)}</h2>`;
-    });
-    html = html.replace(/^# (.*)$/gm, (match, text) => {
-      return `<h1 class="navi-heading-1">${escapeHtml(text)}</h1>`;
-    });
+    // Headings
+    html = html.replace(/^### (.*)$/gm, '<h3 class="navi-heading-3">$1</h3>');
+    html = html.replace(/^## (.*)$/gm, '<h2 class="navi-heading-2">$1</h2>');
+    html = html.replace(/^# (.*)$/gm, '<h1 class="navi-heading-1">$1</h1>');
 
-    // Lists (basic support) - escape HTML in captured content
-    html = html.replace(/^[*-] (.*)$/gm, (match, text) => {
-      return `<li class="navi-list-item">${escapeHtml(text)}</li>`;
-    });
+    // Lists (basic support)
+    html = html.replace(/^[*-] (.*)$/gm, '<li class="navi-list-item">$1</li>');
     html = html.replace(/(<li.*<\/li>\n?)+/g, (match) => {
       return `<ul class="navi-list">${match}</ul>`;
     });
 
-    // Numbered lists - escape HTML in captured content
-    html = html.replace(/^\d+\. (.*)$/gm, (match, text) => {
-      return `<li class="navi-list-item">${escapeHtml(text)}</li>`;
-    });
+    // Numbered lists
+    html = html.replace(/^\d+\. (.*)$/gm, '<li class="navi-list-item">$1</li>');
 
-    // Blockquotes - escape HTML in captured content
-    html = html.replace(/^> (.*)$/gm, (match, text) => {
-      return `<blockquote class="navi-blockquote">${escapeHtml(text)}</blockquote>`;
-    });
+    // Blockquotes
+    html = html.replace(/^&gt; (.*)$/gm, '<blockquote class="navi-blockquote">$1</blockquote>');
 
     // Paragraphs (preserve line breaks but create paragraph blocks)
     const blocks = html.split(/\n\n+/);

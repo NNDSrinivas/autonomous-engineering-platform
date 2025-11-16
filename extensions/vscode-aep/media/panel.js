@@ -5,6 +5,7 @@
 // Shared state for command menu (wand)
 // ---------------------------------------------------------------------------
 let commandMenuEl = null;
+let isCommandMenuOpen = false;
 let commandMenuHasUserPosition = false;
 let commandMenuDragState = {
   dragging: false,
@@ -863,8 +864,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   commandMenuEl = menu;
 
-  // ---- WAND / COMMAND MENU STATE (must be declared before use) ----
-  let isCommandMenuOpen = false;
+  // ---- WAND / COMMAND MENU FUNCTIONS ----
 
   function openCommandMenu() {
     if (!commandMenuEl) return;
@@ -1095,7 +1095,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // ESC closes command menu
   document.addEventListener('keydown', (event) => {
-    if (!commandMenu) return;
+    if (!commandMenuEl) return;
     if (!isCommandMenuOpen) return;
     if (event.key === 'Escape') {
       closeCommandMenu();

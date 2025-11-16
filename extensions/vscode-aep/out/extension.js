@@ -4,6 +4,22 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 // src/extension.ts
 const vscode = require("vscode");
+// PR-4: Storage keys for persistent model/mode selection
+const STORAGE_KEYS = {
+    modelId: 'aep.navi.modelId',
+    modelLabel: 'aep.navi.modelLabel',
+    modeId: 'aep.navi.modeId',
+    modeLabel: 'aep.navi.modeLabel',
+};
+// Defaults if nothing stored yet
+const DEFAULT_MODEL = {
+    id: 'gpt-5.1',
+    label: 'ChatGPT 5.1',
+};
+const DEFAULT_MODE = {
+    id: 'agent-full',
+    label: 'Agent (full access)',
+};
 function activate(context) {
     const provider = new NaviWebviewProvider(context.extensionUri, context);
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(
@@ -16,11 +32,18 @@ function deactivate() {
 class NaviWebviewProvider {
     constructor(extensionUri, context) {
         this._messages = [];
-        this._currentModel = 'ChatGPT 5.1';
-        this._currentMode = 'Agent (full access)';
+        this._currentModelId = DEFAULT_MODEL.id;
+        this._currentModelLabel = DEFAULT_MODEL.label;
+        this._currentModeId = DEFAULT_MODE.id;
+        this._currentModeLabel = DEFAULT_MODE.label;
         this._extensionUri = extensionUri;
         this._context = context;
         this._conversationId = generateConversationId();
+        // PR-4: Load persisted model/mode from storage
+        this._currentModelId = context.globalState.get(STORAGE_KEYS.modelId) ?? DEFAULT_MODEL.id;
+        this._currentModelLabel = context.globalState.get(STORAGE_KEYS.modelLabel) ?? DEFAULT_MODEL.label;
+        this._currentModeId = context.globalState.get(STORAGE_KEYS.modeId) ?? DEFAULT_MODE.id;
+        this._currentModeLabel = context.globalState.get(STORAGE_KEYS.modeLabel) ?? DEFAULT_MODE.label;
     }
     resolveWebviewView(webviewView, _context, _token) {
         this._view = webviewView;
@@ -29,11 +52,20 @@ class NaviWebviewProvider {
             localResourceRoots: [this._extensionUri]
         };
         webviewView.webview.html = this.getWebviewHtml(webviewView.webview);
+        // PR-4: Hydrate model/mode state from storage after webview loads
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             try {
                 switch (msg.type) {
                     case 'ready': {
-                        // Panel is ready, send initial welcome message with markdown
+                        // Send hydration message first
+                        this.postToWebview({
+                            type: 'hydrateState',
+                            modelId: this._currentModelId,
+                            modelLabel: this._currentModelLabel,
+                            modeId: this._currentModeId,
+                            modeLabel: this._currentModeLabel,
+                        });
+                        // Then send welcome message
                         this.postToWebview({
                             type: 'botMessage',
                             text: "Hello! I'm **NAVI**, your autonomous engineering assistant.\n\nI can help you with:\n\n- Code explanations and reviews\n- Refactoring and testing\n- Documentation generation\n- Engineering workflow automation\n\nHow can I help you today?"
@@ -45,36 +77,39 @@ class NaviWebviewProvider {
                         if (!text) {
                             return;
                         }
-                        console.log('[Extension Host] [AEP] User message:', text);
+                        // PR-4: Use modelId and modeId from the message (coming from pills)
+                        const modelId = msg.modelId || this._currentModelId;
+                        const modeId = msg.modeId || this._currentModeId;
+                        console.log('[Extension Host] [AEP] User message:', text, 'model:', modelId, 'mode:', modeId);
                         // Update local state
                         this._messages.push({ role: 'user', content: text });
                         // Show thinking state
                         this.postToWebview({ type: 'botThinking', value: true });
-                        await this.callNaviBackend(text);
+                        await this.callNaviBackend(text, modelId, modeId);
                         break;
                     }
-                    case 'modelChanged': {
-                        const label = String(msg.value || '').trim();
-                        if (!label)
+                    case 'setModel': {
+                        // PR-4: Persist model selection
+                        const { modelId, modelLabel } = msg;
+                        if (!modelId || !modelLabel)
                             return;
-                        this._currentModel = label;
-                        console.log('[Extension Host] [AEP] Model changed to:', label);
-                        this.postToWebview({
-                            type: 'botMessage',
-                            text: `✓ Model switched to **${label}**\n\n*Note: Model selection is currently for demo purposes. Full model routing will be available in a future release.*`
-                        });
+                        this._currentModelId = modelId;
+                        this._currentModelLabel = modelLabel;
+                        this._context.globalState.update(STORAGE_KEYS.modelId, modelId);
+                        this._context.globalState.update(STORAGE_KEYS.modelLabel, modelLabel);
+                        console.log('[Extension Host] [AEP] Model changed to:', modelId, modelLabel);
                         break;
                     }
-                    case 'modeChanged': {
-                        const label = String(msg.value || '').trim();
-                        if (!label)
+                    case 'setMode': {
+                        // PR-4: Persist mode selection
+                        const { modeId, modeLabel } = msg;
+                        if (!modeId || !modeLabel)
                             return;
-                        this._currentMode = label;
-                        console.log('[Extension Host] [AEP] Mode changed to:', label);
-                        this.postToWebview({
-                            type: 'botMessage',
-                            text: `✓ Mode updated to **${label}**\n\n*Different modes will provide varying levels of access and capabilities in future releases.*`
-                        });
+                        this._currentModeId = modeId;
+                        this._currentModeLabel = modeLabel;
+                        this._context.globalState.update(STORAGE_KEYS.modeId, modeId);
+                        this._context.globalState.update(STORAGE_KEYS.modeLabel, modeLabel);
+                        console.log('[Extension Host] [AEP] Mode changed to:', modeId, modeLabel);
                         break;
                     }
                     case 'newChat': {
@@ -207,14 +242,14 @@ class NaviWebviewProvider {
         // Welcome message will be sent when panel sends 'ready'
     }
     // --- Core: call NAVI backend ------------------------------------------------
-    async callNaviBackend(latestUserText) {
+    async callNaviBackend(latestUserText, modelId, modeId) {
         if (!this._view) {
             return;
         }
         const payload = {
             id: this._conversationId,
-            model: this._currentModel,
-            mode: this._currentMode,
+            model: modelId || this._currentModelId,
+            mode: modeId || this._currentModeId,
             messages: this._messages,
             // PR1: we keep stream=false by default for reliability.
             // You can flip this to true once your backend supports SSE.

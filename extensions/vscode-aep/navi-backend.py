@@ -1,5 +1,5 @@
 # navi-backend.py - Standalone sample FastAPI backend for NAVI extension
-# 
+#
 # NOTE: This is a reference implementation for testing the extension standalone.
 # The actual production backend is located at: backend/api/navi.py
 #
@@ -55,6 +55,7 @@ SYSTEM_PROMPT = """You are NAVI, an autonomous engineering assistant living insi
 - When the user asks you to read files / run commands, answer conceptually for now.
 - Use markdown for lists and code, with triple backticks for code blocks.
 """
+
 
 # NOTE: This sample backend serves /api/chat endpoint
 # Production backend serves /api/navi/chat endpoint
@@ -204,7 +205,7 @@ I can see you're in the **{workspace_root.get("name", "workspace")}** workspace.
 What can I help you build today?"""
 
     elif "create" in message or "make" in message or "build" in message:
-        return f"""I'd love to help you create something! 
+        return """I'd love to help you create something! 
 
 **What I can build**:
 • **New files** - Components, modules, configurations
@@ -222,7 +223,7 @@ What can I help you build today?"""
 What would you like to create?"""
 
     elif "help" in message:
-        return f"""I'm NAVI, your VS Code AI assistant! Here's what I can do:
+        return """I'm NAVI, your VS Code AI assistant! Here's what I can do:
 
 **🔍 Code Analysis**
 • Understand and explain code
@@ -273,18 +274,23 @@ async def health():
         "status": "healthy",
         "backend": "NAVI Sample Backend (Standalone)",
         "version": "1.0.0",
-        "features": ["streaming", "context_aware", "vs_code_integration", "mock_responses"],
-        "note": "This is a sample backend. Production backend is at backend/api/navi.py"
+        "features": [
+            "streaming",
+            "context_aware",
+            "vs_code_integration",
+            "mock_responses",
+        ],
+        "note": "This is a sample backend. Production backend is at backend/api/navi.py",
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     print("🦊 Starting NAVI Sample Backend...")
     print("📍 This is a standalone test backend for the NAVI extension")
     print("🔗 Production backend: backend/api/navi.py")
     print("🌐 Server running at: http://127.0.0.1:8787")
     print("")
-    
+
     uvicorn.run(app, host="127.0.0.1", port=8787)

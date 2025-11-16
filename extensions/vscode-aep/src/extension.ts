@@ -18,6 +18,14 @@ interface NaviChatRequest {
   attachments?: any[]; // PR-5: Optional array of file attachments
 }
 
+interface AgentAction {
+  type: 'replaceFile' | 'editFile' | 'createFile';
+  filePath: string;
+  description: string;
+  newContent?: string;
+  diff?: string;
+}
+
 interface NaviChatResponseJson {
   reply?: string;
   usage?: {
@@ -25,7 +33,7 @@ interface NaviChatResponseJson {
     completion_tokens?: number;
     total_tokens?: number;
   };
-  // You can extend this later (tool calls, traces, etc.)
+  actions?: AgentAction[]; // PR-6: Agent-proposed actions
 }
 
 // PR-4: Storage keys for persistent model/mode selection
@@ -71,6 +79,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   // Conversation state
   private _conversationId: string;
   private _messages: NaviMessage[] = [];
+  private _agentActions = new Map<string, { actions: AgentAction[] }>(); // PR-6: Track agent actions
   private _currentModelId: string = DEFAULT_MODEL.id;
   private _currentModelLabel: string = DEFAULT_MODEL.label;
   private _currentModeId: string = DEFAULT_MODE.id;
@@ -152,6 +161,18 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           case 'requestAttachment': {
             // PR-5: Handle file attachment requests
             await this.handleAttachmentRequest(webviewView.webview, msg.kind);
+            break;
+          }
+
+          case 'agent.applyEdit': {
+            // PR-6: Apply agent-proposed edit
+            await this.handleApplyAgentEdit(msg);
+            break;
+          }
+
+          case 'agent.rejectEdit': {
+            // PR-6: User rejected agent edit (no-op for now, could log or notify)
+            console.log('[Extension Host] [AEP] User rejected agent edit:', msg);
             break;
           }
 
@@ -350,7 +371,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     try {
       // Read backend URL from configuration with fallback
       const config = vscode.workspace.getConfiguration('aep');
-      const backendUrl = config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787/api/chat';
+      const backendUrl = config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787/api/navi/chat';
 
       console.log('[Extension Host] [AEP] Calling NAVI backend', backendUrl, payload);
 
@@ -404,7 +425,20 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         this._messages.push({ role: 'assistant', content: reply });
-        this.postToWebview({ type: 'botMessage', text: reply });
+        
+        // PR-6: Handle agent actions if present
+        const messageId = `msg-${Date.now()}`;
+        if (json.actions && json.actions.length > 0) {
+          this._agentActions.set(messageId, { actions: json.actions });
+          this.postToWebview({ 
+            type: 'botMessage', 
+            text: reply,
+            messageId: messageId,
+            actions: json.actions
+          });
+        } else {
+          this.postToWebview({ type: 'botMessage', text: reply });
+        }
         return;
       }
 
@@ -592,6 +626,82 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     } catch (err) {
       console.error('[Extension Host] [AEP] Error reading attachment:', err);
       vscode.window.showErrorMessage('Failed to read file for attachment.');
+    }
+  }
+
+  // PR-6: Apply agent-proposed edit
+  private async handleApplyAgentEdit(msg: { messageId: string; actionIndex: number }): Promise<void> {
+    const { messageId, actionIndex } = msg;
+    const agentState = this._agentActions.get(messageId);
+    
+    if (!agentState) {
+      console.warn('[Extension Host] [AEP] No agent actions found for message:', messageId);
+      return;
+    }
+
+    const action = agentState.actions[actionIndex];
+    if (!action) {
+      console.warn('[Extension Host] [AEP] Invalid action index:', actionIndex);
+      return;
+    }
+
+    try {
+      console.log('[Extension Host] [AEP] Applying agent edit:', action);
+
+      // Get workspace folder and resolve relative path
+      const workspaceFolders = vscode.workspace.workspaceFolders;
+      if (!workspaceFolders || workspaceFolders.length === 0) {
+        throw new Error('No workspace folder open');
+      }
+
+      const workspaceRoot = workspaceFolders[0].uri;
+      const fileUri = vscode.Uri.joinPath(workspaceRoot, action.filePath);
+
+      if (action.type === 'replaceFile' && action.newContent) {
+        // Simple replace: overwrite entire file content
+        const edit = new vscode.WorkspaceEdit();
+        
+        // Try to open existing file, or create new one
+        let document: vscode.TextDocument;
+        try {
+          document = await vscode.workspace.openTextDocument(fileUri);
+        } catch {
+          // File doesn't exist, create it
+          await vscode.workspace.fs.writeFile(fileUri, Buffer.from('', 'utf-8'));
+          document = await vscode.workspace.openTextDocument(fileUri);
+        }
+
+        const fullRange = new vscode.Range(
+          document.positionAt(0),
+          document.positionAt(document.getText().length)
+        );
+
+        edit.replace(fileUri, fullRange, action.newContent);
+        await vscode.workspace.applyEdit(edit);
+        await document.save();
+
+        vscode.window.showInformationMessage(`✅ Applied edit to ${action.filePath}`);
+        
+        // Optionally open the file
+        await vscode.window.showTextDocument(document, { preview: false });
+
+      } else if (action.type === 'editFile' && action.diff) {
+        // TODO: Apply unified diff (more complex, can implement later)
+        vscode.window.showWarningMessage('Diff-based edits not yet supported. Use replaceFile for now.');
+        
+      } else if (action.type === 'createFile' && action.newContent) {
+        // Create new file
+        await vscode.workspace.fs.writeFile(fileUri, Buffer.from(action.newContent, 'utf-8'));
+        vscode.window.showInformationMessage(`✅ Created ${action.filePath}`);
+        
+        // Open the new file
+        const document = await vscode.workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(document, { preview: false });
+      }
+
+    } catch (err: any) {
+      console.error('[Extension Host] [AEP] Error applying agent edit:', err);
+      vscode.window.showErrorMessage(`Failed to apply edit: ${err.message}`);
     }
   }
 

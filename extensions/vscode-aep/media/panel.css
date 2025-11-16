@@ -793,6 +793,65 @@ body {
   color: #f9fafb;
 }
 
+/* ATTACHMENT MENU & CHIPS (PR-5) -------------------------- */
+
+.navi-attachment-menu {
+  position: absolute;
+  bottom: 56px;
+  left: 8px;
+  min-width: 200px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(10, 10, 20, 0.96);
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
+  z-index: 25;
+}
+
+.navi-attachment-menu.navi-menu--open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.navi-menu-item {
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #e5e7eb;
+  transition: background 120ms ease-out;
+}
+
+.navi-menu-item:hover {
+  background: rgba(168, 85, 247, 0.2);
+  color: #f9fafb;
+}
+
+.navi-attachments-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+  min-height: 0;
+}
+
+.navi-attachment-chip {
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #e0e7ff;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* ANIMATIONS ----------------------------------------------- */
 
 @keyframes navi-bubble-in {

@@ -4,6 +4,7 @@ Autonomous Engineering Intelligence Platform - Legacy Demo Application.
 This is a legacy demo application for showcasing basic AI capabilities.
 For production use, please use the modern backend at backend.api.main.
 """
+
 import json
 import logging
 import os
@@ -59,6 +60,7 @@ class FallbackChatCompletionMessageParam(TypedDict, total=False):
 
     This mirrors OpenAI's actual ChatCompletionMessageParam structure.
     """
+
     role: Literal["system", "user", "assistant", "tool"]
     content: Union[str, List[Any], None]
     name: str
@@ -70,6 +72,7 @@ class FallbackChatCompletionMessageParam(TypedDict, total=False):
 # Import OpenAI for real AI capabilities
 try:
     from openai import OpenAI
+
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     OPENAI_AVAILABLE = True
     logger.info("✅ OpenAI GPT-4 client initialized successfully")
@@ -110,12 +113,14 @@ app.add_middleware(
 
 class QuestionRequest(BaseModel):
     """Request model for AI question answering."""
+
     question: str
     context: Optional[Dict[str, Any]] = None
 
 
 class CodeAnalysisRequest(BaseModel):
     """Request model for AI code analysis."""
+
     code: str
     language: str = "python"
     analysis_type: str = "general"
@@ -123,6 +128,7 @@ class CodeAnalysisRequest(BaseModel):
 
 class TeamMember(BaseModel):
     """Model representing a team member."""
+
     id: str
     name: str
     role: str
@@ -144,14 +150,10 @@ def get_ai_response(prompt: str, system_prompt: Optional[str] = None) -> str:
         messages.append({"role": "user", "content": prompt})
 
         response = client.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-            max_tokens=1000,
-            temperature=0.7
+            model="gpt-4", messages=messages, max_tokens=1000, temperature=0.7
         )
 
-        return (response.choices[0].message.content or
-                "No response generated")
+        return response.choices[0].message.content or "No response generated"
     except (ImportError, ValueError, TypeError, AttributeError) as e:
         logger.error("OpenAI API error: %s", e)
         return "Error generating AI response. Please try again later."
@@ -238,8 +240,11 @@ async def ask_question(request: QuestionRequest):
         )
 
         # Enhance the question with context
-        context_str = (json.dumps(context, indent=2) if context
-                      else "No additional context provided")
+        context_str = (
+            json.dumps(context, indent=2)
+            if context
+            else "No additional context provided"
+        )
         enhanced_prompt = (
             f"Question: {question}\n\n"
             f"Context: {context_str}\n\n"
@@ -265,8 +270,7 @@ async def ask_question(request: QuestionRequest):
     except Exception as e:
         logger.error("Error in ask_question: %s", e)
         raise HTTPException(
-            status_code=500,
-            detail="Error processing question. Please try again later."
+            status_code=500, detail="Error processing question. Please try again later."
         ) from e
 
 
@@ -326,8 +330,9 @@ async def analyze_code(request: CodeAnalysisRequest):
                 "quality_score": 7,
                 "issues": ["Unable to parse detailed analysis"],
                 "suggestions": ["Review code structure and add comments"],
-                "summary": (ai_response[:200] + "..."
-                           if len(ai_response) > 200 else ai_response),
+                "summary": (
+                    ai_response[:200] + "..." if len(ai_response) > 200 else ai_response
+                ),
             }
 
         return {
@@ -341,8 +346,7 @@ async def analyze_code(request: CodeAnalysisRequest):
     except Exception as e:
         logger.error("Error in analyze_code: %s", e)
         raise HTTPException(
-            status_code=500,
-            detail="Error analyzing code. Please try again later."
+            status_code=500, detail="Error analyzing code. Please try again later."
         ) from e
 
 
@@ -379,9 +383,7 @@ async def get_team_analytics():
                 if "```json" in ai_insights_response:
                     json_start = ai_insights_response.find("```json") + 7
                     json_end = ai_insights_response.find("```", json_start)
-                    json_str = ai_insights_response[
-                        json_start:json_end
-                    ].strip()
+                    json_str = ai_insights_response[json_start:json_end].strip()
                 else:
                     json_str = ai_insights_response
 
@@ -418,8 +420,7 @@ async def get_team_analytics():
     except Exception as e:
         logger.error("Error in team_analytics: %s", e)
         raise HTTPException(
-            status_code=500,
-            detail="Error getting analytics. Please try again later."
+            status_code=500, detail="Error getting analytics. Please try again later."
         ) from e
 
 
@@ -456,7 +457,7 @@ async def get_me():
         "name": "Demo User",
         "sub": "demo-user-id",
         "org": "org-dev",
-        "roles": ["user", "developer"]
+        "roles": ["user", "developer"],
     }
 
 
@@ -471,7 +472,7 @@ async def get_my_jira_issues():
             "status": "In Progress",
             "assignee": "demo@aep.dev",
             "priority": "High",
-            "type": "Task"
+            "type": "Task",
         },
         {
             "id": "AEP-124",
@@ -480,8 +481,8 @@ async def get_my_jira_issues():
             "status": "Done",
             "assignee": "demo@aep.dev",
             "priority": "Medium",
-            "type": "Story"
-        }
+            "type": "Story",
+        },
     ]
 
 
@@ -493,10 +494,12 @@ async def chat_endpoint(request: dict):
 
     # Simulate a chat response
     return {
-        "response": (f"I received your {chat_type}: '{message}'. "
-                    "This is a demo response from the AEP backend."),
+        "response": (
+            f"I received your {chat_type}: '{message}'. "
+            "This is a demo response from the AEP backend."
+        ),
         "type": "success",
-        "timestamp": "2025-11-09T23:40:00Z"
+        "timestamp": "2025-11-09T23:40:00Z",
     }
 
 
@@ -517,36 +520,42 @@ async def propose_plan(request: dict):
             ),
             "type": "analysis",
             "estimated_time": "30 minutes",
-            "status": "pending"
+            "status": "pending",
         },
         {
             "id": 2,
             "title": "Design New UI Components",
-            "description": ("Create modern, professional UI components using "
-                          "CSS Grid and Flexbox with proper accessibility "
-                          "features."),
+            "description": (
+                "Create modern, professional UI components using "
+                "CSS Grid and Flexbox with proper accessibility "
+                "features."
+            ),
             "type": "design",
             "estimated_time": "2 hours",
-            "status": "pending"
+            "status": "pending",
         },
         {
             "id": 3,
             "title": "Implement Professional Styling",
-            "description": ("Apply the new design system with consistent "
-                          "spacing, typography, and color scheme."),
+            "description": (
+                "Apply the new design system with consistent "
+                "spacing, typography, and color scheme."
+            ),
             "type": "implementation",
             "estimated_time": "3 hours",
-            "status": "pending"
+            "status": "pending",
         },
         {
             "id": 4,
             "title": "Test and Validate",
-            "description": ("Test the new UI across different scenarios and "
-                          "validate accessibility compliance."),
+            "description": (
+                "Test the new UI across different scenarios and "
+                "validate accessibility compliance."
+            ),
             "type": "testing",
             "estimated_time": "1 hour",
-            "status": "pending"
-        }
+            "status": "pending",
+        },
     ]
 
 
@@ -563,14 +572,11 @@ if __name__ == "__main__":
     print("")
     print("Legacy demo will start in 3 seconds...")
 
-
-
     time.sleep(3)
 
     print("🚀 Starting Legacy Demo Application...")
     print("🤖 AI Model: GPT-4")
-    API_STATUS = ("✅ Configured" if os.getenv("OPENAI_API_KEY")
-                  else "❌ Missing")
+    API_STATUS = "✅ Configured" if os.getenv("OPENAI_API_KEY") else "❌ Missing"
     print("🔑 API Key Status:", API_STATUS)
     print("🌐 Server: http://localhost:8000")
     print("📖 Docs: http://localhost:8000/docs")

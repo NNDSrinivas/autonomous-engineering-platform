@@ -1,0 +1,756 @@
+/* NAVI Assistant – AEP dark theme */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #020617;
+  color: #e8e8e8;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.navi-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* HEADER */
+
+.navi-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: #020617;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.9);
+}
+
+.navi-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.navi-logo-wrap {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  padding: 2px;
+  background: radial-gradient(circle at 0% 0%, #f97316 0, #ec4899 40%, #6366f1 100%);
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.9),
+    0 0 18px rgba(129, 140, 248, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navi-logo-inline svg {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #020617;
+  display: block;
+  animation: naviLogoIdle 6s ease-in-out infinite;
+  transform-origin: 50% 60%;
+}
+
+.navi-logo-inline svg.navi-logo-thinking {
+  animation:
+    naviLogoIdle 6s ease-in-out infinite,
+    naviLogoPulse 2s ease-out infinite;
+}
+
+.navi-logo-inline svg.navi-logo-celebrate {
+  animation: naviLogoCelebrate 0.6s ease-out 1;
+}
+
+@keyframes naviLogoIdle {
+
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+
+  20% {
+    transform: rotate(-2.5deg) translateY(-0.5px);
+  }
+
+  40% {
+    transform: rotate(1.5deg) translateY(0.5px);
+  }
+
+  60% {
+    transform: rotate(-1deg) translateY(-0.5px);
+  }
+
+  80% {
+    transform: rotate(1deg) translateY(0.5px);
+  }
+}
+
+@keyframes naviLogoPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0.7);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px rgba(129, 140, 248, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(129, 140, 248, 0);
+  }
+}
+
+@keyframes naviLogoCelebrate {
+
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  25% {
+    transform: rotate(-8deg);
+  }
+
+  50% {
+    transform: rotate(6deg);
+  }
+
+  75% {
+    transform: rotate(-4deg);
+  }
+}
+
+.navi-title-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.navi-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f9fafb;
+  margin: 0;
+}
+
+.navi-subtitle {
+  font-size: 11px;
+  color: #9ca3af;
+  margin: 2px 0 0 0;
+}
+
+.navi-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.navi-icon-btn {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.85);
+  color: #e5e7eb;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 15px;
+  transition: all 0.18s ease-out;
+}
+
+.navi-icon-btn[data-action="mcp"] {
+  background: rgba(76, 29, 149, 0.45);
+  border-color: rgba(192, 132, 252, 0.9);
+}
+
+.navi-icon-btn span {
+  color: inherit;
+}
+
+/* MAIN CHAT AREA */
+
+.navi-main {
+  flex: 1;
+  overflow: hidden;
+}
+
+.navi-messages {
+  height: 100%;
+  padding: 14px 16px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.navi-msg-row {
+  display: flex;
+  position: relative;
+  /* for toolbars */
+}
+
+.navi-msg-row-user {
+  justify-content: flex-end;
+}
+
+.navi-msg-row-bot {
+  justify-content: flex-start;
+}
+
+/* ----------------------------------------- */
+/*  Bubbles – Option A: professional tool-like */
+/* ----------------------------------------- */
+
+.navi-bubble {
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  line-height: 1.4;
+  word-wrap: break-word;
+  font-size: 13px;
+  position: relative;
+}
+
+/* User bubble – keep gradient pill (brand element) */
+.navi-bubble-user {
+  background: radial-gradient(circle at 0% 0%, rgba(79, 70, 229, 0.35), rgba(15, 23, 42, 0.96));
+  color: #e5e7eb;
+  border: 1px solid rgba(165, 180, 252, 0.6);
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.95),
+    0 18px 40px rgba(15, 23, 42, 0.95),
+    0 0 55px rgba(129, 140, 248, 0.35);
+}
+
+/* NAVI bubble – darker flat card (professional tool aesthetic) */
+.navi-bubble-bot {
+  background: radial-gradient(circle at 0% 0%,
+      #020617 0%,
+      #0f172a 100%);
+  color: rgba(241, 245, 249, 0.94);
+  padding: 16px 18px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  max-width: 90%;
+}
+
+/* Quoted lines */
+
+.navi-line-quote {
+  background: rgba(15, 23, 42, 0.9);
+  padding: 8px 10px;
+  margin: 4px 0;
+  border-radius: 8px;
+  border-left: 3px solid #6b7280;
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Code blocks */
+
+.navi-code-block {
+  margin: 6px 0;
+  padding: 8px 10px;
+  background: #020617;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.navi-code-block code {
+  font-family: inherit;
+}
+
+/* Typing indicator */
+
+.navi-bubble-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+}
+
+.navi-typing-label {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.navi-typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.navi-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #a5b4fc;
+  opacity: 0.5;
+  animation: naviTypingBounce 1s infinite ease-in-out;
+}
+
+.navi-typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.navi-typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes naviTypingBounce {
+
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+/* FOOTER */
+
+.navi-footer {
+  position: relative;
+  padding: 14px 16px 16px;
+  background: #020617;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 -8px 18px rgba(15, 23, 42, 0.95);
+}
+
+.navi-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* Attach + wand base buttons */
+
+.navi-attach-btn,
+.navi-actions-btn {
+  background: #020617;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  color: #d1d5db;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.18s ease-out;
+}
+
+.navi-actions-btn {
+  font-size: 16px;
+}
+
+/* Shared hover/focus glow */
+.navi-attach-btn:hover,
+.navi-attach-btn:focus,
+.navi-attach-btn:focus-visible,
+.navi-actions-btn:hover,
+.navi-actions-btn:focus,
+.navi-actions-btn:focus-visible {
+  border-color: #a855f7;
+  box-shadow: 0 0 18px rgba(168, 85, 247, 0.9);
+  background: #02061f;
+}
+
+.navi-input {
+  flex: 1;
+  background: #020617;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  color: #e5e7eb;
+  padding: 11px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  outline: none;
+}
+
+.navi-input:focus {
+  border-color: #a855f7;
+  box-shadow:
+    0 0 0 1px rgba(168, 85, 247, 0.9),
+    0 0 16px rgba(129, 140, 248, 0.7);
+}
+
+.navi-input::placeholder {
+  color: #6b7280;
+}
+
+.navi-send-btn {
+  background: radial-gradient(circle at 0% 0%, #6366f1 0, #7c3aed 50%, #ec4899 100%);
+  border: none;
+  color: white;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, opacity 0.12s ease-out;
+  box-shadow: 0 6px 18px rgba(91, 33, 182, 0.9);
+}
+
+.navi-send-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(91, 33, 182, 0.95);
+  opacity: 0.96;
+}
+
+/* Bottom pills */
+
+.navi-bottom-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.navi-pill {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  color: #d1d5db;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Shared pill hover */
+.navi-pill:hover,
+.navi-pill:focus,
+.navi-pill:focus-visible {
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 18px rgba(168, 85, 247, 0.9) !important;
+  background: #02061f;
+}
+
+/* Scrollbar */
+
+.navi-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.navi-messages::-webkit-scrollbar-track {
+  background: #020617;
+}
+
+.navi-messages::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
+
+.navi-messages::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* NAVI typing indicator (duplicate-safe) */
+
+.navi-bubble-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.9;
+}
+
+.navi-typing-label {
+  font-size: 12px;
+  color: #e5e7eb;
+}
+
+.navi-typing-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.navi-typing-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(196, 181, 253, 0.9);
+  opacity: 0.3;
+  animation: navi-typing-bounce 1.2s infinite ease-in-out;
+}
+
+.navi-typing-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.navi-typing-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes navi-typing-bounce {
+
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.3;
+  }
+
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+/* ========================================== */
+/* PR-2: Quick command palette styles        */
+/* ========================================== */
+
+/* ---------- Command menu ---------- */
+
+#navi-command-menu {
+  position: absolute;
+  z-index: 40;
+
+  bottom: 80px;
+  right: 72px;
+
+  width: min(420px, calc(100% - 96px));
+  max-height: 380px;
+
+  padding: 16px 18px 18px;
+  border-radius: 28px;
+
+  background:
+    radial-gradient(120% 200% at 0% 0%, rgba(140, 96, 255, 0.45), transparent 65%),
+    radial-gradient(120% 200% at 100% 100%, rgba(255, 72, 160, 0.35), transparent 65%),
+    rgba(8, 10, 26, 0.96);
+
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition:
+    opacity 120ms ease-out,
+    transform 160ms ease-out;
+}
+
+#navi-command-menu.navi-command-menu-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+#navi-command-menu.navi-command-menu-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.navi-command-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+}
+
+/* menu items */
+.navi-command-item {
+  width: 100%;
+  text-align: left;
+  border-radius: 20px;
+  padding: 12px 16px 11px;
+  margin-bottom: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(16, 19, 44, 0.96);
+  color: #f9fbff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition:
+    background 120ms ease-out,
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out,
+    transform 80ms ease-out;
+}
+
+.navi-command-item:last-child {
+  margin-bottom: 0;
+}
+
+.navi-command-item:hover {
+  background: radial-gradient(120% 200% at 0% 0%, rgba(151, 111, 255, 0.45), rgba(16, 19, 44, 0.96));
+  border-color: rgba(187, 151, 255, 0.7);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  transform: translateY(-1px);
+}
+
+.navi-command-item:active {
+  transform: translateY(1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.75);
+}
+
+.navi-command-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.navi-command-subtitle {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.navi-command-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+
+/* Thinking bubble */
+.navi-message-thinking {
+  align-self: flex-start;
+  max-width: 60%;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(124, 77, 255, 0.18);
+  color: #e5e7eb;
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Actions button (✨) styles – already overridden above */
+
+/* ----------------------------------------- */
+/* Message hover toolbar (Option A: pure CSS hover, no flicker) */
+/* ----------------------------------------- */
+
+/* Shared wrapper for bubble + toolbar (hover region) */
+.navi-msg-wrapper {
+  position: relative;
+  display: inline-flex;
+  padding-top: 36px;
+  /* space for toolbar above */
+  margin-top: -36px;
+  /* compensate so bubbles don't shift */
+}
+
+/* Toolbar container */
+.navi-msg-toolbar {
+  position: absolute;
+  top: 0;
+  /* now positioned within padded space */
+  right: 8px;
+
+  display: flex;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 999px;
+
+  background: radial-gradient(circle at 0% 0%,
+      rgba(15, 23, 42, 0.98),
+      rgba(17, 24, 39, 0.98));
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(148, 163, 184, 0.45);
+
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+  z-index: 10;
+  /* ensure toolbar is above everything */
+}
+
+/* Show toolbar when the wrapper is hovered or focused */
+.navi-msg-wrapper:hover .navi-msg-toolbar,
+.navi-msg-wrapper:focus-within .navi-msg-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/* Individual toolbar buttons (Option A style) */
+.navi-msg-toolbar-btn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5e7eb;
+  font-size: 11px;
+  font-weight: 500;
+
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  transition:
+    background 140ms ease-out,
+    border-color 140ms ease-out,
+    box-shadow 140ms ease-out,
+    transform 80ms ease-out;
+}
+
+.navi-msg-toolbar-btn:hover,
+.navi-msg-toolbar-btn:focus-visible {
+  border-color: rgba(168, 85, 247, 0.9);
+  box-shadow: 0 0 14px rgba(168, 85, 247, 0.75);
+  background: #02061f;
+  outline: none;
+  transform: translateY(-0.5px);
+}
+
+.navi-msg-toolbar-btn:active {
+  transform: translateY(0.5px) scale(0.98);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+}
+
+/* Attachment chip */
+.navi-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.75);
+  color: #e5e7eb;
+  font-size: 11px;
+}
+
+.navi-attachment-chip::before {
+  content: "📎";
+  opacity: 0.9;
+}

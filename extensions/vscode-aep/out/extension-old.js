@@ -3,109 +3,184 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = require("vscode");
-const nonce_1 = require("./nonce");
-function activate(context) {
-    console.log("🚀 AEP Extension activated");
-    const provider = new AepChatViewProvider(context);
-    context.subscriptions.push(vscode.window.registerWebviewViewProvider("aep.chatView", provider, { webviewOptions: { retainContextWhenHidden: true } }));
-    context.subscriptions.push(vscode.commands.registerCommand("aep.openPanel", () => {
-        vscode.commands.executeCommand("workbench.view.extension.aep");
-    }));
-}
-class AepChatViewProvider {
-    constructor(context) {
-        this.context = context;
+class NaviWebviewProvider {
+    constructor(_extensionUri) {
+        this._extensionUri = _extensionUri;
     }
-    resolveWebviewView(webviewView) {
+    resolveWebviewView(webviewView, _context, _token) {
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [
-                this.context.extensionUri,
-                vscode.Uri.joinPath(this.context.extensionUri, "media")
-            ]
+            localResourceRoots: [this._extensionUri],
         };
-        webviewView.webview.html = this.getHtml(webviewView.webview);
-        // Handle messages
+        webviewView.webview.html = getWebviewContent(webviewView.webview, this._extensionUri);
         webviewView.webview.onDidReceiveMessage(async (msg) => {
-            if (msg.type === "sendMessage") {
-                webviewView.webview.postMessage({
-                    type: "botResponse",
-                    text: `NAVI Received: ${msg.text}`
-                });
+            switch (msg.type) {
+                case 'ready': {
+                    const hasHistory = !!msg.hasHistory;
+                    if (!hasHistory) {
+                        webviewView.webview.postMessage({
+                            type: 'botMessage',
+                            text: `Hello! I'm NAVI, your autonomous engineering assistant. How can I help you today?`,
+                        });
+                    }
+                    break;
+                }
+                case 'sendMessage': {
+                    const text = String(msg.text || '').trim();
+                    if (!text)
+                        return;
+                    console.log('[AEP] User message:', text);
+                    this.callNaviBackend(text, webviewView);
+                    break;
+                }
+                case 'newChat': {
+                    webviewView.webview.postMessage({ type: 'clearChat' });
+                    webviewView.webview.postMessage({
+                        type: 'botMessage',
+                        text: 'New chat started! How can I help you?',
+                    });
+                    break;
+                }
+                case 'openMcp': {
+                    vscode.window.showInformationMessage('MCP servers & connectors configuration will live here (coming soon).');
+                    break;
+                }
+                case 'openSettings': {
+                    vscode.window.showInformationMessage('NAVI settings: configuration panel coming soon!');
+                    break;
+                }
+                case 'modelChanged': {
+                    const label = String(msg.value || '').trim();
+                    if (!label)
+                        return;
+                    webviewView.webview.postMessage({
+                        type: 'botMessage',
+                        text: `Switched model to **${label}** (demo-only selector for now).`,
+                    });
+                    break;
+                }
+                case 'modeChanged': {
+                    const label = String(msg.value || '').trim();
+                    if (!label)
+                        return;
+                    webviewView.webview.postMessage({
+                        type: 'botMessage',
+                        text: `Mode updated to **${label}** (demo-only for now).`,
+                    });
+                    break;
+                }
+                case 'attachTypeSelected': {
+                    const type = String(msg.value || '').trim();
+                    if (!type)
+                        return;
+                    vscode.window.showInformationMessage(`Attachment flow for "${type}" is not wired yet – this will open the real picker later.`);
+                    break;
+                }
+                default:
+                    console.warn('[AEP] Unknown message type:', msg?.type);
             }
         });
     }
-    getHtml(webview) {
-        const nonce = (0, nonce_1.getNonce)();
-        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "panel.js"));
-        const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "panel.css"));
-        const mascotUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "mascot-navi-fox.svg"));
-        return /* html */ `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta http-equiv="Content-Security-Policy"
-              content="default-src 'none';
-                       img-src ${webview.cspSource} https:;
-                       script-src 'nonce-${nonce}';
-                       style-src ${webview.cspSource} 'unsafe-inline';
-                       font-src ${webview.cspSource};
-                       connect-src https:;
-              ">
-        <link rel="stylesheet" href="${styleUri}">
-        <title>NAVI</title>
-      </head>
-
-      <body>
-        <div id="app">
-
-          <header class="header">
-            <img src="${mascotUri}" class="logo" />
-            <div class="header-title">NAVI — Autonomous Engineering Assistant</div>
-
-            <div class="header-icons">
-              <button class="icon-btn" data-tip="New Chat">🗎</button>
-              <button class="icon-btn" data-tip="Connectors">🔌</button>
-              <button class="icon-btn" data-tip="Settings">⚙️</button>
-            </div>
-          </header>
-
-          <div id="chat-container"></div>
-
-          <footer class="footer">
-            <div class="footer-controls">
-              <select id="modelSelect">
-                <option>ChatGPT 5.1</option>
-                <option>GPT-4.1</option>
-                <option>Claude 3.7</option>
-                <option>Gemini 2.0 Flash</option>
-                <option>Local Model (LM Studio)</option>
-                <option>Bring Your Own Key...</option>
-              </select>
-
-              <select id="modeSelect">
-                <option>General</option>
-                <option>Code</option>
-                <option>Debug</option>
-                <option>Explain</option>
-              </select>
-            </div>
-
-            <div class="input-row">
-              <button id="addAttachment">+</button>
-              <input id="chatInput" placeholder="Ask NAVI anything…" />
-              <button id="sendBtn">➤</button>
-            </div>
-          </footer>
-
-        </div>
-
-        <script nonce="${nonce}" src="${scriptUri}"></script>
-      </body>
-      </html>
-    `;
+    async callNaviBackend(message, webviewView) {
+        try {
+            // Show typing indicator
+            webviewView.webview.postMessage({ type: 'showTyping' });
+            // Get backend URL from configuration
+            const config = vscode.workspace.getConfiguration('aep');
+            const backendUrl = config.get('naviBackendUrl', 'http://localhost:8000');
+            // Validate backend URL
+            let parsedUrl;
+            try {
+                parsedUrl = new URL(`${backendUrl}/api/chat`);
+                // Only allow http and https protocols
+                if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                    throw new Error('Backend URL must use http or https protocol');
+                }
+            }
+            catch (err) {
+                throw new Error(`Invalid backend URL: ${backendUrl}`);
+            }
+            console.log('[AEP] Calling NAVI backend:', parsedUrl.toString());
+            // Set up timeout for request
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+            try {
+                // Make HTTP request to backend
+                const response = await fetch(parsedUrl.toString(), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message }),
+                    signal: controller.signal,
+                });
+                if (!response.ok) {
+                    throw new Error(`Backend responded with ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                const reply = data.reply || 'No response received from backend';
+                // Hide typing indicator and send response
+                webviewView.webview.postMessage({ type: 'hideTyping' });
+                webviewView.webview.postMessage({
+                    type: 'botMessage',
+                    text: reply,
+                });
+            }
+            catch (fetchError) {
+                clearTimeout(timeoutId);
+                throw fetchError;
+            }
+        }
+        catch (error) {
+            console.error('[AEP] Backend call failed:', error);
+            // Hide typing indicator and send error
+            webviewView.webview.postMessage({ type: 'hideTyping' });
+            webviewView.webview.postMessage({
+                type: 'botMessage',
+                text: `⚠️ **Backend Error**: ${error instanceof Error ? error.message : 'Unknown error'}\n\nMake sure your NAVI backend is running at the configured URL (check VS Code Settings → AEP → NAVI Backend URL).`,
+            });
+        }
     }
 }
-function deactivate() { }
+NaviWebviewProvider.viewType = 'aep.chatView';
+function activate(context) {
+    console.log('[AEP] NAVI extension activating…');
+    const provider = new NaviWebviewProvider(context.extensionUri);
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider(NaviWebviewProvider.viewType, provider));
+    const openCommand = vscode.commands.registerCommand('aep.openNavi', () => {
+        vscode.commands.executeCommand('aep.chatView.focus');
+    });
+    context.subscriptions.push(openCommand);
+}
+function getWebviewContent(webview, extensionUri) {
+    const nonce = getNonce();
+    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'panel.js'));
+    const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'panel.css'));
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'; img-src ${webview.cspSource} data:;">
+  <link href="${styleUri}" rel="stylesheet" />
+  <title>NAVI Assistant</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>`;
+}
+function getNonce() {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 32; i++) {
+        text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
+}
+function deactivate() {
+    console.log('[AEP] NAVI extension deactivated');
+}
 //# sourceMappingURL=extension-old.js.map

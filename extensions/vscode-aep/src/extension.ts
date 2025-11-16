@@ -354,6 +354,39 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     // Welcome message will be sent when panel sends 'ready'
   }
 
+  // --- PR-7: Gather editor context for backend ------------------------------
+
+  private getEditorContext() {
+    const editor = vscode.window.activeTextEditor;
+    const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+      ? vscode.workspace.workspaceFolders[0].uri.fsPath
+      : undefined;
+
+    if (!editor) {
+      return { workspaceFolder };
+    }
+
+    const doc = editor.document;
+    const selection = editor.selection;
+    const hasSelection = selection && !selection.isEmpty;
+    const selectionText = hasSelection ? doc.getText(selection) : undefined;
+
+    // Limit content size so we don't blow up the prompt
+    let content = doc.getText();
+    const MAX_CONTENT = 20000;
+    if (content.length > MAX_CONTENT) {
+      content = content.slice(0, MAX_CONTENT);
+    }
+
+    return {
+      workspaceFolder,
+      activeFilePath: doc.uri.fsPath,
+      activeFileLanguage: doc.languageId,
+      activeFileContent: content,
+      selection: selectionText,
+    };
+  }
+
   // --- Core: call NAVI backend ------------------------------------------------
 
   private async callNaviBackend(latestUserText: string, modelId?: string, modeId?: string, attachments?: any[]): Promise<void> {
@@ -361,12 +394,16 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    // PR-6B: New simplified request format
+    // PR-7: Gather editor context
+    const context = this.getEditorContext();
+
+    // PR-6B: New simplified request format + PR-7: context
     const payload = {
       message: latestUserText,
       model: modelId || this._currentModelId,
       mode: modeId || this._currentModeId,
-      attachments: attachments && attachments.length > 0 ? attachments : []
+      attachments: attachments && attachments.length > 0 ? attachments : [],
+      context // PR-7: Send editor context
     };
 
     let response: Response;

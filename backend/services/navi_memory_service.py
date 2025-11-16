@@ -83,13 +83,15 @@ async def store_memory(
 
         # Insert memory
         result = db.execute(
-            text("""
+            text(
+                """
                 INSERT INTO navi_memory 
                 (user_id, category, scope, title, content, embedding_vec, meta_json, importance, created_at, updated_at)
                 VALUES 
                 (:user_id, :category, :scope, :title, :content, :embedding_vec::vector, :meta_json::json, :importance, now(), now())
                 RETURNING id
-            """),
+            """
+            ),
             {
                 "user_id": user_id,
                 "category": category,
@@ -162,7 +164,8 @@ async def search_memory(
 
         # Search using pgvector cosine similarity
         result = db.execute(
-            text(f"""
+            text(
+                f"""
                 SELECT 
                     id,
                     user_id,
@@ -181,7 +184,8 @@ async def search_memory(
                   {category_filter}
                 ORDER BY embedding_vec <=> :query_vec::vector
                 LIMIT :limit
-            """),
+            """
+            ),
             {
                 "user_id": user_id,
                 "query_vec": query_embedding_str,
@@ -254,7 +258,8 @@ async def get_recent_memories(
             query_params["category"] = category
 
         result = db.execute(
-            text(f"""
+            text(
+                f"""
                 SELECT 
                     id, user_id, category, scope, title, content, 
                     meta_json, importance, created_at, updated_at
@@ -263,7 +268,8 @@ async def get_recent_memories(
                   {category_filter}
                 ORDER BY created_at DESC
                 LIMIT :limit
-            """),
+            """
+            ),
             query_params,
         )
 
@@ -312,11 +318,13 @@ async def delete_memory(db: Session, memory_id: int, user_id: str) -> bool:
     """
     try:
         result = db.execute(
-            text("""
+            text(
+                """
                 DELETE FROM navi_memory
                 WHERE id = :memory_id AND user_id = :user_id
                 RETURNING id
-            """),
+            """
+            ),
             {"memory_id": memory_id, "user_id": user_id},
         )
 

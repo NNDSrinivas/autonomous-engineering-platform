@@ -9,13 +9,21 @@ interface NaviMessage {
   content: string;
 }
 
+// PR-5: File attachment interface for type safety
+interface FileAttachment {
+  kind: 'selection' | 'currentFile' | 'pickedFile';
+  path: string;
+  language?: string;
+  content: string;
+}
+
 interface NaviChatRequest {
   id: string;
   model: string;
   mode: string;
   messages: NaviMessage[];
   stream: boolean;
-  attachments?: any[]; // PR-5: Optional array of file attachments
+  attachments?: FileAttachment[]; // PR-5: Strongly-typed file attachments
 }
 
 interface AgentAction {

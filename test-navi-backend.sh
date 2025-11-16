@@ -1,5 +1,23 @@
 #!/bin/bash
-# Test NAVI backend health and OpenAI connectivity
+#
+# NAVI Backend Health Check Script
+# 
+# Purpose:
+#   Tests the NAVI FastAPI backend for health status, OpenAI configuration,
+#   and basic chat endpoint functionality.
+#
+# Requirements:
+#   - curl (for HTTP requests)
+#   - Backend running on http://127.0.0.1:8787
+#   - Optional: OPENAI_API_KEY environment variable for real responses
+#
+# Usage:
+#   chmod +x test-navi-backend.sh
+#   ./test-navi-backend.sh
+#
+# Exit codes:
+#   0 - All tests passed
+#   1 - Backend not reachable or tests failed
 
 echo "🔍 Testing NAVI Backend..."
 echo ""

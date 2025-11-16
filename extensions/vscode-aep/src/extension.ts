@@ -1,6 +1,7 @@
 // src/extension.ts
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { applyUnifiedDiff } from './diffUtils';
 
 type Role = 'user' | 'assistant' | 'system';
 
@@ -709,7 +710,6 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     // Apply diff to get new content
     let newContent: string;
     try {
-      const { applyUnifiedDiff } = await import('./diffUtils');
       newContent = applyUnifiedDiff(original, diff);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to apply diff: ${error.message}`);

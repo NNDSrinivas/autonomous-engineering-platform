@@ -44,6 +44,13 @@ let commandMenuDragState = {
 
   let thinkingMessageEl = null;
 
+  // HTML escaping function to prevent XSS
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   function showThinkingMessage() {
     const messagesEl = document.getElementById('navi-messages');
     if (!messagesEl) return;
@@ -642,11 +649,16 @@ let commandMenuDragState = {
             row.className = 'navi-agent-action-row';
 
             const filename = action.filePath.split('/').pop() || action.filePath;
+            
+            // Escape user-provided values to prevent XSS
+            const escapedFilename = escapeHtml(filename);
+            const escapedDescription = escapeHtml(action.description || 'No description');
+            const actionTypeLabel = action.type === 'createFile' ? 'new file' : 'edit';
 
             row.innerHTML = `
               <div class="navi-agent-action-desc">
-                <strong>💡 Proposed ${action.type === 'createFile' ? 'new file' : 'edit'}</strong> in <code>${filename}</code>
-                <div class="navi-agent-action-detail">${action.description || 'No description'}</div>
+                <strong>💡 Proposed ${actionTypeLabel}</strong> in <code>${escapedFilename}</code>
+                <div class="navi-agent-action-detail">${escapedDescription}</div>
               </div>
               <div class="navi-agent-action-buttons">
                 <button class="navi-agent-btn navi-agent-btn-approve" data-action="approve" data-index="${idx}">✅ Approve</button>
@@ -895,47 +907,6 @@ window.addEventListener('DOMContentLoaded', () => {
     'actionsBtn', !!actionsBtn,
     'menu', !!menu
   );
-
-  // --- Command menu helpers -------------------------------------------------
-  function openCommandMenu_legacy(anchorButton) {
-    if (!commandMenuEl) return;
-
-    if (!commandMenuHasUserPosition && anchorButton) {
-      const anchorRect = anchorButton.getBoundingClientRect();
-      const webviewRect = document.body.getBoundingClientRect();
-
-      const menuWidth = commandMenuEl.offsetWidth || 360;
-      const menuHeight = commandMenuEl.offsetHeight || 260;
-
-      const preferredLeft =
-        anchorRect.left - webviewRect.left - menuWidth * 0.25;
-      const preferredBottom =
-        webviewRect.bottom - anchorRect.top + 16;
-
-      commandMenuEl.style.left = `${Math.max(24, preferredLeft)}px`;
-      commandMenuEl.style.bottom = `${preferredBottom}px`;
-      commandMenuEl.style.top = 'auto';
-      commandMenuEl.style.transform = 'none';
-    }
-
-    commandMenuEl.classList.remove('navi-command-menu-hidden');
-    commandMenuEl.classList.add('navi-command-menu-visible');
-  }
-
-  function closeCommandMenu() {
-    if (!commandMenuEl) return;
-    commandMenuEl.classList.remove('navi-command-menu-visible');
-    commandMenuEl.classList.add('navi-command-menu-hidden');
-  }
-
-  function toggleCommandMenu(anchorButton) {
-    if (!commandMenuEl) return;
-    if (commandMenuEl.classList.contains('navi-command-menu-visible')) {
-      closeCommandMenu();
-    } else {
-      openCommandMenu(anchorButton);
-    }
-  }
 
   // Drag handlers (optional but nice) ----------------------------------------
   function onCommandMenuDragStart(e) {

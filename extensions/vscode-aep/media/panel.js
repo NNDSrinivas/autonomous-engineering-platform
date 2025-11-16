@@ -623,13 +623,74 @@ let commandMenuDragState = {
     if (!msg || typeof msg !== 'object') return;
 
     switch (msg.type) {
-      case 'botMessage':
+      case 'botMessage': {
         hideThinkingMessage();
         state.streamingBubble = null;
         state.streamingMessageId = null;
         state.streamingText = '';
-        appendMessage(msg.text, 'bot');
+        
+        const { bubble } = appendMessage(msg.text, 'bot');
+        
+        // PR-6: Show agent actions if present
+        if (msg.actions && msg.actions.length > 0) {
+          const actionsContainer = document.createElement('div');
+          actionsContainer.className = 'navi-agent-actions';
+          
+          msg.actions.forEach((action, idx) => {
+            const row = document.createElement('div');
+            row.className = 'navi-agent-action-row';
+            
+            const filename = action.filePath.split('/').pop() || action.filePath;
+            
+            row.innerHTML = `
+              <div class="navi-agent-action-desc">
+                <strong>💡 Proposed ${action.type === 'createFile' ? 'new file' : 'edit'}</strong> in <code>${filename}</code>
+                <div class="navi-agent-action-detail">${action.description || 'No description'}</div>
+              </div>
+              <div class="navi-agent-action-buttons">
+                <button class="navi-agent-btn navi-agent-btn-approve" data-action="approve" data-index="${idx}">✅ Approve</button>
+                <button class="navi-agent-btn navi-agent-btn-reject" data-action="reject" data-index="${idx}">❌ Reject</button>
+              </div>
+            `;
+            
+            actionsContainer.appendChild(row);
+          });
+          
+          // Add click handler
+          actionsContainer.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('.navi-agent-btn');
+            if (!btn) return;
+            
+            const kind = btn.dataset.action;
+            const index = Number(btn.dataset.index);
+            
+            vscodeApi.postMessage({
+              type: kind === 'approve' ? 'agent.applyEdit' : 'agent.rejectEdit',
+              messageId: msg.messageId,
+              actionIndex: index,
+            });
+            
+            // Disable buttons after click
+            const row = btn.closest('.navi-agent-action-row');
+            if (row) {
+              const buttons = row.querySelectorAll('.navi-agent-btn');
+              buttons.forEach(b => {
+                b.disabled = true;
+                b.style.opacity = '0.5';
+              });
+              
+              if (kind === 'approve') {
+                row.querySelector('.navi-agent-action-desc').innerHTML += '<br/><em style="color: #10b981;">Applying edit...</em>';
+              } else {
+                row.querySelector('.navi-agent-action-desc').innerHTML += '<br/><em style="color: #ef4444;">Rejected</em>';
+              }
+            }
+          });
+          
+          bubble.appendChild(actionsContainer);
+        }
         break;
+      }
 
       case 'clearChat':
         clearChat();

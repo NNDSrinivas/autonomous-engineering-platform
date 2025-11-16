@@ -838,6 +838,13 @@ def _build_system_prompt(request: NaviChatRequest) -> str:
         '  "I can scaffold this in JavaScript, Python, or Java. Which do you prefer?"',
         "- Wait for the user to answer before proposing actions.",
         "",
+        # PR-10: File editing workflow
+        "When you propose file edits, you MUST use editFile actions correctly:",
+        "- For editFile, ALWAYS include 'content' containing the FULL updated file text after your changes.",
+        "- You may also include a 'diff' field (unified diff) for explanation, but the extension will apply 'content'.",
+        "- Set 'filePath' to the absolute or workspace-relative path if you know it; otherwise leave it out and the active file will be used.",
+        "- Examples: 'migrate this file to TypeScript', 'add logging to all functions', 'fix this bug'",
+        "",
         "In every reply, sound like you're sitting next to them:",
         "- Acknowledge what they said.",
         '- Use "we" and "let\'s" when working on code together.',

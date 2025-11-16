@@ -119,7 +119,7 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .navi-messages::-webkit-scrollbar {
@@ -149,6 +149,7 @@ body {
 
 .navi-msg-row-user {
   justify-content: flex-end;
+  align-items: flex-start;
 }
 
 .navi-msg-row-bot {
@@ -159,21 +160,30 @@ body {
   max-width: 70%;
   /* assistant default max-width */
   padding: 10px 14px;
-  border-radius: 14px;
+  border-radius: 18px;
   line-height: 1.4;
   word-wrap: break-word;
   font-size: 13px;
+  box-shadow:
+    0 18px 38px rgba(0, 0, 0, 0.65),
+    0 0 18px rgba(154, 119, 255, 0.18);
+  animation: navi-bubble-in 160ms ease-out;
 }
 
 /* User bubble – violet gradient */
 
 .navi-bubble-user {
-  max-width: 50% !important;
+  max-width: 42% !important;
   /* user bubbles narrower */
-  background: radial-gradient(circle at 0% 0%, #4338ca 0, #312e81 40%, #111827 100%);
+  padding: 6px 12px;
+  line-height: 1.3;
+  display: inline-block;
+  background: radial-gradient(circle at top left, #7a4bff, #4334ff);
   color: #e5e7eb;
   border: 1px solid rgba(165, 180, 252, 0.9);
-  box-shadow: 0 6px 18px rgba(55, 48, 163, 0.7);
+  box-shadow:
+    0 6px 18px rgba(55, 48, 163, 0.7),
+    0 0 18px rgba(154, 119, 255, 0.18);
 }
 
 /* NAVI bubble – darker card */
@@ -183,7 +193,9 @@ body {
   color: #e5e7eb;
   border-left: 3px solid #a855f7;
   border-radius: 10px 14px 14px 10px;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.95);
+  box-shadow:
+    0 8px 18px rgba(15, 23, 42, 0.95),
+    0 0 18px rgba(154, 119, 255, 0.15);
 }
 
 /* Quoted lines */
@@ -203,7 +215,7 @@ body {
 /* Paragraphs */
 .navi-bubble p,
 .navi-bubble .navi-paragraph {
-  margin: 0 0 8px 0;
+  margin: 0 0 6px 0;
 }
 
 .navi-bubble p:last-child,
@@ -245,15 +257,25 @@ body {
 /* Lists */
 .navi-bubble ul,
 .navi-bubble .navi-list {
-  margin: 8px 0 8px 1.2em;
+  margin: 0 0 6px 1.2em;
   padding-left: 0.8em;
   list-style-type: disc;
 }
 
 .navi-bubble ol {
-  margin: 8px 0 8px 1.2em;
+  margin: 0 0 6px 1.2em;
   padding-left: 0.8em;
   list-style-type: decimal;
+}
+
+/* Remove margin-bottom on the last block element to prevent extra blank line */
+.navi-bubble > :last-child,
+.navi-bubble p:last-child,
+.navi-bubble ul:last-child,
+.navi-bubble ol:last-child,
+.navi-bubble blockquote:last-child,
+.navi-bubble pre:last-child {
+  margin-bottom: 0 !important;
 }
 
 .navi-bubble li,
@@ -769,6 +791,19 @@ body {
 .navi-dropdown-item:hover {
   background: rgba(168, 85, 247, 0.2);
   color: #f9fafb;
+}
+
+/* ANIMATIONS ----------------------------------------------- */
+
+@keyframes navi-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* END ----------------------------------------------------- */

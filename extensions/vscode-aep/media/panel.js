@@ -294,7 +294,7 @@ let commandMenuDragState = {
   // Rendering helpers --------------------------------------------------------
   function renderTextSegments(text, container) {
     if (!container) return;
-    
+
     const safeText = String(text || '');
     if (!safeText.trim()) {
       container.innerHTML = '';

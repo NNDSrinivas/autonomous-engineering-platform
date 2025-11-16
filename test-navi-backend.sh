@@ -29,7 +29,7 @@ echo "Response: $HEALTH"
 echo ""
 
 # Check if OpenAI is enabled
-OPENAI_ENABLED=$(echo $HEALTH | grep -o '"openai_enabled":[^,}]*' | cut -d':' -f2)
+OPENAI_ENABLED=$(echo "$HEALTH" | grep -o '"openai_enabled":[^,}]*' | cut -d':' -f2)
 echo "2. OpenAI Status:"
 if [ "$OPENAI_ENABLED" = "true" ]; then
     echo "   ✅ OpenAI ENABLED - Real LLM responses active"

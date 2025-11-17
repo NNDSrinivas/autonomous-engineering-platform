@@ -73,6 +73,8 @@ class NaviWebviewProvider {
                             type: 'botMessage',
                             text: "Hello! I'm **NAVI**, your autonomous engineering assistant.\n\nI can help you with:\n\n- Code explanations and reviews\n- Refactoring and testing\n- Documentation generation\n- Engineering workflow automation\n\nHow can I help you today?"
                         });
+                        // Trigger background Jira sync (non-blocking)
+                        this.triggerBackgroundJiraSync();
                         break;
                     }
                     case 'sendMessage': {
@@ -279,6 +281,41 @@ class NaviWebviewProvider {
         // Welcome message will be sent when panel sends 'ready'
     }
     // --- Jira task brief handlers ----------------------------------------------
+    async triggerBackgroundJiraSync() {
+        // Non-blocking background sync of Jira tasks
+        const config = vscode.workspace.getConfiguration('aep');
+        const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8787';
+        const userId = config.get('navi.userId') || 'srinivas@example.com';
+        const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
+        const syncUrl = `${cleanBaseUrl}/api/org/sync/jira`;
+        console.log('[Extension Host] [AEP] Triggering background Jira sync...');
+        // Fire and forget - don't await
+        fetch(syncUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                max_issues: 20
+            })
+        })
+            .then(async (response) => {
+            if (response.ok) {
+                const data = await response.json();
+                console.log('[Extension Host] [AEP] Jira sync completed:', data);
+                // Show subtle notification
+                if (data.total > 0) {
+                    vscode.window.showInformationMessage(`NAVI: Synced ${data.total} Jira tasks`);
+                }
+            }
+            else {
+                console.log('[Extension Host] [AEP] Jira sync failed:', response.status);
+            }
+        })
+            .catch((error) => {
+            // Silent fail - sync is optional, don't disrupt user
+            console.log('[Extension Host] [AEP] Jira sync error (non-critical):', error.message);
+        });
+    }
     async handleJiraTaskBriefCommand() {
         if (!this._view) {
             return;

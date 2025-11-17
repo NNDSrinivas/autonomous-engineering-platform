@@ -7,7 +7,7 @@ Create Date: 2025-11-16 12:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+from sqlalchemy.dialects.postgresql import VECTOR
 
 # revision identifiers, used by Alembic.
 revision = '0018_navi_memory'
@@ -30,9 +30,9 @@ def upgrade():
                   comment='Human-readable title for the memory'),
         sa.Column('content', sa.Text(), nullable=False,
                   comment='Memory content (human-readable)'),
-        sa.Column('embedding_vec', postgresql.VECTOR(1536), nullable=True,
+        sa.Column('embedding_vec', VECTOR(1536), nullable=True,
                   comment='OpenAI embedding for semantic search'),
-        sa.Column('meta_json', postgresql.JSON(astext_type=sa.Text()), nullable=True,
+        sa.Column('meta_json', sa.JSON(), nullable=True,
                   comment='Additional metadata: tags, source, etc.'),
         sa.Column('importance', sa.Integer(), nullable=False, server_default='3',
                   comment='Importance score 1-5 for retrieval prioritization'),

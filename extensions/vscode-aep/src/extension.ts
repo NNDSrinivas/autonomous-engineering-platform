@@ -304,6 +304,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             let prompt = '';
 
             switch (cmd) {
+              case 'jira-task-brief':
+                // Fetch Jira tasks from backend
+                await this.handleJiraTaskBriefCommand();
+                return;
               case 'explain-code':
                 prompt =
                   'Explain this code step-by-step, including what it does, time/space complexity, and any potential bugs or edge cases:';
@@ -345,6 +349,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             break;
           }
 
+          case 'jiraTaskSelected': {
+            // User selected a Jira task - fetch full brief
+            const jiraKey = String(msg.jiraKey || '').trim();
+            if (!jiraKey) return;
+            await this.handleJiraTaskSelected(jiraKey);
+            break;
+          }
+
           default:
             console.warn('[Extension Host] [AEP] Unknown message from webview:', msg);
         }
@@ -358,6 +370,109 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     });
 
     // Welcome message will be sent when panel sends 'ready'
+  }
+
+  // --- Jira task brief handlers ----------------------------------------------
+
+  private async handleJiraTaskBriefCommand(): Promise<void> {
+    if (!this._view) {
+      return;
+    }
+
+    try {
+      const config = vscode.workspace.getConfiguration('aep');
+      const baseUrl = config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787';
+      const userId = config.get<string>('navi.userId') || 'srinivas@example.com';
+
+      // Remove /api/navi/chat suffix if present
+      const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
+      const url = `${cleanBaseUrl}/api/navi/jira-tasks?user_id=${encodeURIComponent(userId)}&limit=20`;
+
+      console.log('[Extension Host] [AEP] Fetching Jira tasks from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        vscode.window.showErrorMessage(
+          `NAVI: Failed to load Jira tasks (${response.status})`
+        );
+        return;
+      }
+
+      const data = await response.json();
+
+      // Send tasks to webview
+      this.postToWebview({
+        type: 'showJiraTasks',
+        tasks: (data as any).tasks || []
+      });
+    } catch (error: any) {
+      console.error('[Extension Host] [AEP] Error fetching Jira tasks:', error);
+      vscode.window.showErrorMessage('NAVI: Error loading Jira tasks');
+    }
+  }
+
+  private async handleJiraTaskSelected(jiraKey: string): Promise<void> {
+    if (!this._view) {
+      return;
+    }
+
+    try {
+      const config = vscode.workspace.getConfiguration('aep');
+      const baseUrl = config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787';
+      const userId = config.get<string>('navi.userId') || 'srinivas@example.com';
+
+      // Remove /api/navi/chat suffix if present
+      const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
+      const url = `${cleanBaseUrl}/api/navi/task-brief`;
+
+      console.log('[Extension Host] [AEP] Fetching task brief for:', jiraKey);
+
+      // Show thinking state
+      this.postToWebview({ type: 'botThinking', value: true });
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          jira_key: jiraKey
+        })
+      });
+
+      if (!response.ok) {
+        vscode.window.showErrorMessage(
+          `NAVI: Failed to load brief for ${jiraKey} (${response.status})`
+        );
+        this.postToWebview({ type: 'botThinking', value: false });
+        return;
+      }
+
+      const data = await response.json();
+
+      // Extract the brief markdown from the sections
+      const briefMd = (data as any).sections?.[0]?.content || (data as any).summary || 'No brief content available';
+
+      // Send as a bot message
+      this.postToWebview({
+        type: 'botMessage',
+        text: briefMd,
+        actions: []
+      });
+
+      this.postToWebview({ type: 'botThinking', value: false });
+    } catch (error: any) {
+      console.error('[Extension Host] [AEP] Error fetching task brief:', error);
+      vscode.window.showErrorMessage('NAVI: Error fetching task brief');
+      this.postToWebview({ type: 'botThinking', value: false });
+    }
   }
 
   // --- Core: call NAVI backend ------------------------------------------------
@@ -645,7 +760,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    if (!actions || actionIndex == null || actionIndex < 0 || actionIndex >= actions.length) {
+    if (!actions || actionIndex == null || !Number.isInteger(actionIndex) || actionIndex < 0 || actionIndex >= actions.length) {
       console.warn('[Extension Host] [AEP] Invalid action data:', { actionIndex, actionsLength: actions?.length });
       return;
     }
@@ -685,7 +800,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   private async applyCreateFileAction(action: any): Promise<void> {
-    const fileName: string = action.filePath || 'sample.js';
+    const fileName: string = action.filePath ?? 'sample.js';
     const content: string = action.content ?? '// Sample generated by NAVI\nconsole.log("Hello, World!");\n';
 
     const folders = vscode.workspace.workspaceFolders;
@@ -763,7 +878,26 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   private async createFileUnderRoot(root: vscode.Uri, relPath: string, content: string): Promise<void> {
+    // Security: Validate path to prevent traversal attacks
+    const path = require('path');
+    if (path.isAbsolute(relPath)) {
+      vscode.window.showErrorMessage('NAVI: Cannot create file with absolute path');
+      return;
+    }
+    if (relPath.split(/[\\\\/]/).includes('..')) {
+      vscode.window.showErrorMessage('NAVI: Cannot create file with path traversal (..)');
+      return;
+    }
+
     const fileUri = vscode.Uri.joinPath(root, relPath);
+    const resolvedPath = fileUri.fsPath;
+    const rootPath = root.fsPath;
+
+    // Ensure the resolved path is within the workspace root
+    if (!resolvedPath.startsWith(rootPath)) {
+      vscode.window.showErrorMessage('NAVI: Cannot create file outside workspace');
+      return;
+    }
 
     // Ensure parent folders exist (best effort)
     const dir = vscode.Uri.joinPath(fileUri, '..');
@@ -796,6 +930,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private async applyRunCommandAction(action: any): Promise<void> {
     const command = action.command;
     if (!command) return;
+
+    // Security: Show command and ask for confirmation before executing
+    const confirmed = await vscode.window.showWarningMessage(
+      `NAVI wants to run the following command:\\n\\n${command}\\n\\nAre you sure?`,
+      { modal: true },
+      'Run Command'
+    );
+    if (confirmed !== 'Run Command') return;
 
     const terminal = vscode.window.createTerminal('NAVI Agent');
     terminal.show();

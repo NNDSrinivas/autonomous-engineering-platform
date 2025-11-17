@@ -74,3 +74,5 @@ python-jose[cryptography]>=3.3.0
 # Optional: Legacy scripts (backfill_pgvector.py uses psycopg2)
 psycopg2-binary>=2.9.0
 boto3>=1.28.0
+slack_sdk==3.27.1  # Slack Web API client
+msal==1.28.0  # Microsoft Authentication Library for Graph API

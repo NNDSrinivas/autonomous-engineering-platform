@@ -213,7 +213,10 @@ async def get_search_stats(user_id: str, db: Session = Depends(get_db)):
         by_category = {row[0]: row[1] for row in category_result}
 
         logger.info(
-            "Retrieved memory stats", user_id=user_id, total=total, by_category=by_category
+            "Retrieved memory stats",
+            user_id=user_id,
+            total=total,
+            by_category=by_category,
         )
 
         return SearchStatsResponse(
@@ -222,9 +225,7 @@ async def get_search_stats(user_id: str, db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error("Failed to get memory stats", error=str(e), user_id=user_id)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get stats: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
 
 
 @router.get("/search/health")

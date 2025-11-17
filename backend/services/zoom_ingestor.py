@@ -8,7 +8,7 @@ detects Jira ticket references, and stores as NAVI memory entries.
 import re
 import os
 from datetime import date
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 from openai import AsyncOpenAI
@@ -19,8 +19,22 @@ from backend.services.navi_memory_service import store_memory
 
 logger = structlog.get_logger(__name__)
 
-# Initialize OpenAI client
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Global OpenAI client (lazy-initialized)
+_openai_client: Optional[AsyncOpenAI] = None
+
+
+def _get_openai_client() -> AsyncOpenAI:
+    """Get or initialize OpenAI client lazily."""
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY environment variable must be set for summarization"
+            )
+        _openai_client = AsyncOpenAI(api_key=api_key)
+    return _openai_client
+
 
 JIRA_KEY_RE = re.compile(r"\b[A-Z]{2,10}-\d+\b")  # LAB-158, ENG-102, etc.
 
@@ -77,7 +91,8 @@ Transcript:
 Return only the summary, no section headings.
 """
 
-    response = await client.chat.completions.create(
+    openai_client = _get_openai_client()
+    response = await openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=500,

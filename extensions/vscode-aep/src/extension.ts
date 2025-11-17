@@ -884,7 +884,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       vscode.window.showErrorMessage('NAVI: Cannot create file with absolute path');
       return;
     }
-    if (relPath.split(/[\\\\/]/).includes('..')) {
+    if (relPath.split(/[/\\]/).includes('..')) {
       vscode.window.showErrorMessage('NAVI: Cannot create file with path traversal (..)');
       return;
     }

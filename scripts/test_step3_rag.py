@@ -10,9 +10,8 @@ This script verifies:
 """
 
 import asyncio
+
 import httpx
-import json
-from typing import List, Dict, Any
 
 
 BASE_URL = "http://localhost:8787"
@@ -22,7 +21,7 @@ TEST_USER_ID = "test-user-step3"
 async def test_search_endpoint():
     """Test the unified search endpoint"""
     print("\n=== Test 1: Search Endpoint ===")
-    
+
     async with httpx.AsyncClient() as client:
         # Test search
         response = await client.post(
@@ -35,13 +34,13 @@ async def test_search_endpoint():
                 "min_importance": 0.3,
             },
         )
-        
+
         print(f"Status: {response.status_code}")
-        
+
         if response.status_code == 200:
             data = response.json()
             print(f"✓ Found {data['total']} results")
-            
+
             if data["results"]:
                 print("\nTop Result:")
                 result = data["results"][0]
@@ -57,15 +56,15 @@ async def test_search_endpoint():
 async def test_search_stats():
     """Test the search stats endpoint"""
     print("\n=== Test 2: Search Stats ===")
-    
+
     async with httpx.AsyncClient() as client:
         response = await client.get(
             f"{BASE_URL}/api/navi/search/stats",
             params={"user_id": TEST_USER_ID},
         )
-        
+
         print(f"Status: {response.status_code}")
-        
+
         if response.status_code == 200:
             data = response.json()
             print("✓ Memory counts:")
@@ -79,12 +78,12 @@ async def test_search_stats():
 async def test_search_health():
     """Test the search health endpoint"""
     print("\n=== Test 3: Search Health ===")
-    
+
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{BASE_URL}/api/navi/search/health")
-        
+
         print(f"Status: {response.status_code}")
-        
+
         if response.status_code == 200:
             data = response.json()
             print(f"✓ Status: {data['status']}")
@@ -97,7 +96,7 @@ async def test_search_health():
 async def test_navi_with_memory():
     """Test NAVI chat with memory context"""
     print("\n=== Test 4: NAVI Chat with Memory Context ===")
-    
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(
             f"{BASE_URL}/api/navi/chat",
@@ -107,14 +106,14 @@ async def test_navi_with_memory():
                 "mode": "chat",
             },
         )
-        
+
         print(f"Status: {response.status_code}")
-        
+
         if response.status_code == 200:
             data = response.json()
             print(f"✓ Response length: {len(data['content'])}")
             print(f"\nNAVI: {data['content'][:300]}...")
-            
+
             if data.get("actions"):
                 print(f"\nActions: {len(data['actions'])}")
         else:
@@ -124,8 +123,8 @@ async def test_navi_with_memory():
 async def create_test_memory():
     """Create test memory for demo purposes"""
     print("\n=== Setup: Creating Test Memory ===")
-    
-    async with httpx.AsyncClient() as client:
+
+    async with httpx.AsyncClient() as _:  # noqa: F841
         # Simulate a Confluence sync that would create memory
         test_memories = [
             {
@@ -145,7 +144,7 @@ async def create_test_memory():
                 "metadata": {"source": "jira", "issue_key": "LAB-158"},
             },
         ]
-        
+
         print(f"✓ Test memories prepared: {len(test_memories)} items")
         print("  (Note: In production, these would be created via org sync endpoints)")
 
@@ -155,17 +154,17 @@ async def main():
     print("=" * 60)
     print("Step 3: Unified RAG Search System - Test Suite")
     print("=" * 60)
-    
+
     try:
         # Setup
         await create_test_memory()
-        
+
         # Run tests
         await test_search_endpoint()
         await test_search_stats()
         await test_search_health()
         await test_navi_with_memory()
-        
+
         print("\n" + "=" * 60)
         print("Test suite completed!")
         print("=" * 60)
@@ -175,7 +174,7 @@ async def main():
         print("   POST /api/org/sync/jira")
         print("2. Test search with real data")
         print("3. Ask NAVI questions that require memory context")
-        
+
     except httpx.ConnectError:
         print("\n✗ Error: Cannot connect to backend")
         print(f"  Ensure server is running at {BASE_URL}")

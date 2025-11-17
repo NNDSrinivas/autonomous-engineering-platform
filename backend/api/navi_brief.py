@@ -41,7 +41,9 @@ class TaskBriefRequest(BaseModel):
 
     user_id: str = Field(..., description="User identifier")
     jira_key: str = Field(..., description="Jira ticket key (e.g. LAB-158)")
-    model: str = Field(default="gpt-4o-mini", description="Model to use for summarization")
+    model: str = Field(
+        default="gpt-4o-mini", description="Model to use for summarization"
+    )
 
 
 class TaskBriefSection(BaseModel):
@@ -56,8 +58,12 @@ class TaskBriefResponse(BaseModel):
 
     jira_key: str = Field(..., description="Jira ticket key")
     summary: str = Field(..., description="High-level summary")
-    sections: List[TaskBriefSection] = Field(..., description="Structured brief sections")
-    sources: List[str] = Field(..., description="Data sources used (Jira, Confluence, Slack, Teams, Zoom)")
+    sections: List[TaskBriefSection] = Field(
+        ..., description="Structured brief sections"
+    )
+    sources: List[str] = Field(
+        ..., description="Data sources used (Jira, Confluence, Slack, Teams, Zoom)"
+    )
 
 
 class JiraTaskItem(BaseModel):
@@ -90,15 +96,15 @@ def list_jira_tasks(
 ) -> JiraTaskListResponse:
     """
     List Jira tasks NAVI knows about for this user.
-    
+
     Returns tasks from NAVI's memory (not live Jira), so it works offline.
     Tasks are populated via /api/org/sync/jira endpoint.
-    
+
     Args:
         user_id: User identifier (query parameter)
         limit: Maximum number of tasks to return (default 20)
         db: Database session (injected)
-    
+
     Returns:
         List of Jira tasks with keys, titles, statuses
     """
@@ -326,5 +332,7 @@ async def task_brief_status():
     return {
         "status": "ok" if OPENAI_ENABLED else "degraded",
         "openai_enabled": OPENAI_ENABLED,
-        "message": "Task brief service ready" if OPENAI_ENABLED else "OpenAI not configured",
+        "message": (
+            "Task brief service ready" if OPENAI_ENABLED else "OpenAI not configured"
+        ),
     }

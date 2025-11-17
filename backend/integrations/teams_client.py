@@ -20,12 +20,12 @@ GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 class TeamsClient:
     """
     Microsoft Teams client via Microsoft Graph API.
-    
+
     Supports:
     - Listing teams
     - Listing channels in a team
     - Fetching channel messages
-    
+
     Requires Azure AD app with permissions:
     - ChannelMessage.Read.All
     - Group.Read.All
@@ -63,41 +63,45 @@ class TeamsClient:
 
         result = app.acquire_token_for_client(scopes=GRAPH_SCOPE)
         if "access_token" not in result:
-            error_desc = result.get('error_description', 'Unknown error')
+            error_desc = result.get("error_description", "Unknown error")
             logger.error("MSAL token acquisition failed", error=error_desc)
             raise RuntimeError(f"MSAL token error: {error_desc}")
-        
+
         # After checking key exists, direct access is safe
         self._token = str(result["access_token"])
         logger.debug("Acquired Microsoft Graph access token")
         return self._token
 
-    def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _get(
+        self, path: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Make authenticated GET request to Microsoft Graph."""
         token = self._acquire_token()
         url = f"{GRAPH_BASE}{path}"
-        
+
         resp = requests.get(
             url,
             headers={"Authorization": f"Bearer {token}"},
             params=params or {},
         )
-        
+
         if not resp.ok:
-            logger.error("Graph API request failed",
-                        url=url,
-                        status_code=resp.status_code,
-                        error=resp.text[:300])
+            logger.error(
+                "Graph API request failed",
+                url=url,
+                status_code=resp.status_code,
+                error=resp.text[:300],
+            )
             raise RuntimeError(
                 f"Graph GET {url} failed: {resp.status_code} {resp.text[:300]}"
             )
-        
+
         return resp.json()
 
     def list_teams(self) -> List[Dict[str, Any]]:
         """
         List all teams the app has access to.
-        
+
         Returns:
             List of team dictionaries with id, displayName, etc.
         """
@@ -109,10 +113,10 @@ class TeamsClient:
     def list_channels(self, team_id: str) -> List[Dict[str, Any]]:
         """
         List channels in a team.
-        
+
         Args:
             team_id: Microsoft Teams team ID
-            
+
         Returns:
             List of channel dictionaries
         """
@@ -124,10 +128,10 @@ class TeamsClient:
     def get_team_by_display_name(self, name: str) -> Optional[Dict[str, Any]]:
         """
         Find team by displayName.
-        
+
         Args:
             name: Team display name
-            
+
         Returns:
             Team dictionary or None if not found
         """
@@ -141,17 +145,15 @@ class TeamsClient:
         return None
 
     def get_channel_by_display_name(
-        self, 
-        team_id: str, 
-        name: str
+        self, team_id: str, name: str
     ) -> Optional[Dict[str, Any]]:
         """
         Find channel by displayName within a team.
-        
+
         Args:
             team_id: Team ID
             name: Channel display name
-            
+
         Returns:
             Channel dictionary or None if not found
         """
@@ -159,9 +161,7 @@ class TeamsClient:
         name_lower = name.lower()
         for c in chans:
             if (c.get("displayName") or "").lower() == name_lower:
-                logger.debug("Found channel by name", 
-                           name=name, 
-                           channel_id=c.get("id"))
+                logger.debug("Found channel by name", name=name, channel_id=c.get("id"))
                 return c
         logger.warning("Channel not found", team_id=team_id, name=name)
         return None
@@ -174,35 +174,39 @@ class TeamsClient:
     ) -> List[Dict[str, Any]]:
         """
         Fetch messages from a Teams channel.
-        
+
         Args:
             team_id: Team ID
             channel_id: Channel ID
             limit: Maximum number of messages to fetch
-            
+
         Returns:
             List of message dictionaries
         """
         messages: List[Dict[str, Any]] = []
         path = f"/teams/{team_id}/channels/{channel_id}/messages"
-        
+
         try:
             data = self._get(path, params={"$top": min(limit, 50)})
             messages.extend(data.get("value", []))
-            
-            logger.info("Fetched Teams channel messages",
-                       team_id=team_id,
-                       channel_id=channel_id,
-                       count=len(messages))
-            
+
+            logger.info(
+                "Fetched Teams channel messages",
+                team_id=team_id,
+                channel_id=channel_id,
+                count=len(messages),
+            )
+
             # NOTE: For simplicity, we don't follow @odata.nextLink here.
             # Can be extended for deeper history if needed.
-            
+
         except Exception as e:
-            logger.error("Failed to fetch channel messages",
-                        team_id=team_id,
-                        channel_id=channel_id,
-                        error=str(e))
+            logger.error(
+                "Failed to fetch channel messages",
+                team_id=team_id,
+                channel_id=channel_id,
+                error=str(e),
+            )
             raise
-        
+
         return messages

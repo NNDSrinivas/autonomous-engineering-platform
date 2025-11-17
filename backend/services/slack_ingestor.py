@@ -32,19 +32,19 @@ JIRA_KEY_RE = re.compile(r"\b[A-Z]{2,10}-\d+\b")
 def _clean_slack_text(text: str) -> str:
     """
     Remove Slack markup from text.
-    
+
     - Removes user mentions: <@U0382ACD1> → ""
     - Removes links: <http://example.com> → ""
     - Unescapes HTML entities: &amp; → &
-    
+
     Args:
         text: Raw Slack message text
-        
+
     Returns:
         Cleaned text suitable for LLM processing
     """
-    text = re.sub(r"<@([A-Z0-9]+)>", "", text)     # remove mentions
-    text = re.sub(r"<[^>]+>", "", text)            # remove links
+    text = re.sub(r"<@([A-Z0-9]+)>", "", text)  # remove mentions
+    text = re.sub(r"<[^>]+>", "", text)  # remove links
     text = re.sub(r"&amp;", "&", text)
     text = re.sub(r"&lt;", "<", text)
     text = re.sub(r"&gt;", ">", text)
@@ -54,17 +54,17 @@ def _clean_slack_text(text: str) -> str:
 async def _summarize_thread(messages: List[Dict[str, Any]]) -> str:
     """
     Summarize a Slack thread using OpenAI.
-    
+
     Focuses on:
     - Engineering decisions
     - Issues raised
     - Jira references
     - Action items
     - Conclusions
-    
+
     Args:
         messages: List of Slack message dictionaries
-        
+
     Returns:
         Concise summary suitable for memory storage
     """
@@ -100,7 +100,7 @@ Return only the summary, no bullet labels unless needed."""
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
-            temperature=0.3
+            temperature=0.3,
         )
         content = response.choices[0].message.content
         return content.strip() if content else ""
@@ -111,15 +111,11 @@ Return only the summary, no bullet labels unless needed."""
 
 
 async def ingest_slack(
-    db: Session,
-    *,
-    user_id: str,
-    channels: List[str],
-    limit: int = 200
+    db: Session, *, user_id: str, channels: List[str], limit: int = 200
 ) -> List[str]:
     """
     Ingest Slack messages from specified channels into NAVI memory.
-    
+
     Process:
     1. Fetch messages from each channel
     2. Group by thread
@@ -127,21 +123,20 @@ async def ingest_slack(
     4. Summarize with LLM
     5. Detect Jira keys
     6. Store in navi_memory with embeddings
-    
+
     Args:
         db: Database session
         user_id: User identifier
         channels: List of channel names (e.g., ["eng-backend", "specimen-collection"])
         limit: Maximum messages per channel
-        
+
     Returns:
         List of processed channel IDs
     """
-    logger.info("Starting Slack ingestion",
-                user_id=user_id,
-                channels=channels,
-                limit=limit)
-    
+    logger.info(
+        "Starting Slack ingestion", user_id=user_id, channels=channels, limit=limit
+    )
+
     sc = SlackClient()
 
     # Map channel names to IDs
@@ -171,18 +166,21 @@ async def ingest_slack(
                 # Skip bot messages and system messages
                 if m.get("subtype") in ["bot_message", "channel_join", "channel_leave"]:
                     continue
-                    
+
                 ts = m.get("thread_ts") or m.get("ts")
                 threads.setdefault(ts, []).append(m)
 
-            logger.info("Grouped messages into threads",
-                       channel=chan,
-                       thread_count=len(threads))
+            logger.info(
+                "Grouped messages into threads", channel=chan, thread_count=len(threads)
+            )
 
             for thread_ts, thread_msgs in threads.items():
                 try:
                     # Fetch full thread if replies exist
-                    if len(thread_msgs) == 1 and thread_msgs[0].get("reply_count", 0) > 0:
+                    if (
+                        len(thread_msgs) == 1
+                        and thread_msgs[0].get("reply_count", 0) > 0
+                    ):
                         thread_msgs = sc.fetch_thread_replies(channel_id, thread_ts)
 
                     # Create summary
@@ -211,29 +209,33 @@ async def ingest_slack(
                             "jira_keys": list(jira_keys),
                             "thread_ts": thread_ts,
                         },
-                        importance=4
+                        importance=4,
                     )
 
-                    logger.debug("Stored Slack thread in memory",
-                                channel=chan,
-                                scope=scope,
-                                jira_keys=list(jira_keys))
-                    
+                    logger.debug(
+                        "Stored Slack thread in memory",
+                        channel=chan,
+                        scope=scope,
+                        jira_keys=list(jira_keys),
+                    )
+
                 except Exception as e:
-                    logger.error("Failed to process Slack thread",
-                                channel=chan,
-                                thread_ts=thread_ts,
-                                error=str(e))
+                    logger.error(
+                        "Failed to process Slack thread",
+                        channel=chan,
+                        thread_ts=thread_ts,
+                        error=str(e),
+                    )
                     continue
 
         except Exception as e:
-            logger.error("Failed to process Slack channel",
-                        channel=chan,
-                        error=str(e))
+            logger.error("Failed to process Slack channel", channel=chan, error=str(e))
             continue
 
-    logger.info("Slack ingestion complete",
-                user_id=user_id,
-                processed_count=len(processed_channels))
-    
+    logger.info(
+        "Slack ingestion complete",
+        user_id=user_id,
+        processed_count=len(processed_channels),
+    )
+
     return processed_channels

@@ -14,7 +14,7 @@ import os
 
 from ..core.db import get_db
 from ..services.navi_memory_service import search_memory
-from ..services.citation_formatter import format_context_for_llm
+from ..services.citation_formatter import format_citations_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ async def navi_chat(
                 min_importance=0.3,
             )
             if memories:
-                memory_context = format_context_for_llm(request.message, memories)
+                memory_context = format_citations_for_llm(memories)
                 logger.info(
                     f"[NAVI] Retrieved {len(memories)} memory items for context"
                 )

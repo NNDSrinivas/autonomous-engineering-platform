@@ -20,8 +20,21 @@ load_dotenv()
 
 logger = structlog.get_logger(__name__)
 
-# Initialize OpenAI client for embeddings
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Global OpenAI client (lazy-initialized)
+_openai_client: Optional[AsyncOpenAI] = None
+
+
+def _get_openai_client() -> AsyncOpenAI:
+    """Get or initialize OpenAI client lazily."""
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY environment variable must be set for embedding generation"
+            )
+        _openai_client = AsyncOpenAI(api_key=api_key)
+    return _openai_client
 
 
 async def generate_embedding(
@@ -38,7 +51,8 @@ async def generate_embedding(
         List of floats representing the embedding vector
     """
     try:
-        response = await openai_client.embeddings.create(
+        client = _get_openai_client()
+        response = await client.embeddings.create(
             input=text,
             model=model,
         )

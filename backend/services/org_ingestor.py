@@ -40,38 +40,37 @@ def _get_openai_client() -> AsyncOpenAI:
     return _openai_client
 
 
-async def summarize_for_memory(title: str, raw_text: str, max_tokens: int = 512) -> str:
+async def summarize_for_memory(title: str, raw_text: str, max_tokens: int = 200) -> str:
     """
     Use LLM to condense Jira/Confluence content into a compact memory-friendly summary.
+
+    OPTIMIZATION: Reduced max_tokens from 512 to 200 for faster responses.
 
     Args:
         title: Title of the content
         raw_text: Raw text content
-        max_tokens: Maximum tokens for summary
+        max_tokens: Maximum tokens for summary (default: 200 for speed)
 
     Returns:
         Condensed summary suitable for memory storage
     """
-    prompt = f"""You are NAVI's memory compression assistant.
+    # OPTIMIZATION: Shorter, more direct prompt
+    prompt = f"""Summarize this Jira task in 2-3 sentences:
 
-Summarize the following content into a concise, developer-friendly note that
-captures the key requirements, decisions, and implementation hints.
+{title}
 
-Title: {title}
+{raw_text[:1000]}
 
-Content:
-{raw_text[:6000]}
-
-Return just the summary, no bullet labels unless needed.
-"""
+Focus on: what needs to be done and current status."""
 
     try:
         client = _get_openai_client()
         completion = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o-mini",  # Fast model
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-            temperature=0.3,
+            max_tokens=max_tokens,  # Reduced for speed
+            temperature=0.1,  # Lower temperature = faster
+            timeout=10.0,  # 10 second timeout
         )
 
         summary = completion.choices[0].message.content.strip()

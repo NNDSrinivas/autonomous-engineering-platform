@@ -8,7 +8,15 @@ Create Date: 2025-11-16 12:00:00.000000
 
 from alembic import op
 import sqlalchemy as sa
-from pgvector.sqlalchemy import Vector
+from typing import Any
+
+try:
+    from pgvector.sqlalchemy import Vector  # type: ignore
+
+    HAS_PGVECTOR = True
+except ImportError:
+    Vector = None  # type: ignore
+    HAS_PGVECTOR = False
 
 # revision identifiers, used by Alembic.
 revision = "0018_navi_memory"
@@ -19,6 +27,16 @@ depends_on = None
 
 def upgrade():
     """Create navi_memory table for NAVI conversational memory"""
+    # Detect database dialect
+    conn = op.get_bind()
+    is_postgres = conn.dialect.name == "postgresql"
+
+    # Use Vector type for PostgreSQL, TEXT for SQLite/others
+    if is_postgres and HAS_PGVECTOR and Vector is not None:
+        embedding_type: Any = Vector(1536)
+    else:
+        embedding_type = sa.Text()
+
     op.create_table(
         "navi_memory",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -49,7 +67,7 @@ def upgrade():
         ),
         sa.Column(
             "embedding_vec",
-            Vector(1536),
+            embedding_type,
             nullable=True,
             comment="OpenAI embedding for semantic search",
         ),
@@ -87,19 +105,24 @@ def upgrade():
     op.create_index("idx_navi_memory_scope", "navi_memory", ["user_id", "scope"])
     op.create_index("idx_navi_memory_importance", "navi_memory", ["importance"])
 
-    # pgvector HNSW index for fast semantic search
-    op.execute(
+    # pgvector HNSW index for fast semantic search (PostgreSQL only)
+    if is_postgres and HAS_PGVECTOR:
+        op.execute(
+            """
+            CREATE INDEX idx_navi_memory_embedding 
+            ON navi_memory 
+            USING hnsw (embedding_vec vector_cosine_ops)
         """
-        CREATE INDEX idx_navi_memory_embedding 
-        ON navi_memory 
-        USING hnsw (embedding_vec vector_cosine_ops)
-    """
-    )
+        )
 
 
 def downgrade():
     """Drop navi_memory table"""
-    op.drop_index("idx_navi_memory_embedding", "navi_memory")
+    conn = op.get_bind()
+    is_postgres = conn.dialect.name == "postgresql"
+
+    if is_postgres and HAS_PGVECTOR:
+        op.drop_index("idx_navi_memory_embedding", "navi_memory")
     op.drop_index("idx_navi_memory_importance", "navi_memory")
     op.drop_index("idx_navi_memory_scope", "navi_memory")
     op.drop_index("idx_navi_memory_category", "navi_memory")

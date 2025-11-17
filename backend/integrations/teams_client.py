@@ -67,8 +67,11 @@ class TeamsClient:
             logger.error("MSAL token acquisition failed", error=error_desc)
             raise RuntimeError(f"MSAL token error: {error_desc}")
 
-        # After checking key exists, direct access is safe
-        self._token = str(result["access_token"])
+        # Type assertion: result is Dict[str, Any], access_token is present after check
+        access_token = result["access_token"]
+        if not isinstance(access_token, str):
+            raise RuntimeError(f"Unexpected access_token type: {type(access_token)}")
+        self._token = access_token
         logger.debug("Acquired Microsoft Graph access token")
         return self._token
 

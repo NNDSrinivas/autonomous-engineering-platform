@@ -90,7 +90,7 @@ class JiraClient:
         logger.info("Fetching Jira issues", jql=jql, max_results=max_results)
 
         data = await self._get(
-            "/rest/api/3/search",
+            "/rest/api/3/search/jql",
             params={
                 "jql": jql,
                 "maxResults": max_results,

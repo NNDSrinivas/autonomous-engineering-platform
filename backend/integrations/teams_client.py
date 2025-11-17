@@ -63,7 +63,11 @@ class TeamsClient:
 
         result = app.acquire_token_for_client(scopes=GRAPH_SCOPE)
         if result is None or "access_token" not in result:
-            error_desc = result.get("error_description", "Unknown error") if result else "No result returned"
+            error_desc = (
+                result.get("error_description", "Unknown error")
+                if result
+                else "No result returned"
+            )
             logger.error("MSAL token acquisition failed", error=error_desc)
             raise RuntimeError(f"MSAL token error: {error_desc}")
 

@@ -708,11 +708,14 @@ class NaviWebviewProvider {
     async createFileUnderRoot(root, relPath, content) {
         // Security: Validate path to prevent traversal attacks
         const path = require('path');
-        if (path.isAbsolute(relPath)) {
+        // Normalize path and check for absolute paths
+        const normalizedPath = path.normalize(relPath);
+        if (path.isAbsolute(normalizedPath)) {
             vscode.window.showErrorMessage('NAVI: Cannot create file with absolute path');
             return;
         }
-        if (relPath.split(/[/\\]/).includes('..')) {
+        // Check for path traversal attempts (including encoded variants)
+        if (normalizedPath.includes('..') || /\%2e\%2e|\.\./.test(relPath)) {
             vscode.window.showErrorMessage('NAVI: Cannot create file with path traversal (..)');
             return;
         }
@@ -752,8 +755,10 @@ class NaviWebviewProvider {
         const command = action.command;
         if (!command)
             return;
-        // Security: Show command and ask for confirmation before executing
-        const confirmed = await vscode.window.showWarningMessage(`NAVI wants to run the following command:\\n\\n${command}\\n\\nAre you sure?`, { modal: true }, 'Run Command');
+        // Security: Sanitize, truncate, and show command for confirmation before executing
+        const sanitizedCommand = command.replace(/[\r\n]/g, ' ').substring(0, 200);
+        const displayCommand = command.length > 200 ? sanitizedCommand + '...' : sanitizedCommand;
+        const confirmed = await vscode.window.showWarningMessage(`NAVI wants to run the following command:\\n\\n${displayCommand}\\n\\nAre you sure?`, { modal: true }, 'Run Command');
         if (confirmed !== 'Run Command')
             return;
         const terminal = vscode.window.createTerminal('NAVI Agent');

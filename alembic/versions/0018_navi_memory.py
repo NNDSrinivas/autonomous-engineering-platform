@@ -37,6 +37,11 @@ def upgrade():
     else:
         embedding_type = sa.Text()
 
+    # Use appropriate timestamp defaults per dialect
+    timestamp_default = (
+        sa.text("now()") if is_postgres else sa.text("CURRENT_TIMESTAMP")
+    )
+
     op.create_table(
         "navi_memory",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -87,13 +92,13 @@ def upgrade():
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=timestamp_default,
             nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=timestamp_default,
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),

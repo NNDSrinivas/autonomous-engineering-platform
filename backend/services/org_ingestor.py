@@ -6,8 +6,10 @@ into NAVI's conversational memory system.
 Uses LLM to compress and summarize content for efficient memory storage.
 """
 
+import os
 from typing import List, Dict, Any, Optional
 
+from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 import structlog
@@ -16,10 +18,13 @@ from backend.integrations.jira_client import JiraClient
 from backend.integrations.confluence_client import ConfluenceClient
 from backend.services.navi_memory_service import store_memory
 
+# Load environment variables
+load_dotenv()
+
 logger = structlog.get_logger(__name__)
 
 # Initialize OpenAI for summarization
-openai_client = AsyncOpenAI()
+openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 async def summarize_for_memory(title: str, raw_text: str, max_tokens: int = 512) -> str:
@@ -100,6 +105,7 @@ async def ingest_jira_for_user(
         for issue in issues:
             try:
                 key = issue.get("key")
+                # Defensive: handle both missing and explicitly None 'fields' from Jira API
                 fields = issue.get("fields", {}) or {}
                 summary = fields.get("summary", "").strip()
                 description = fields.get("description", "")

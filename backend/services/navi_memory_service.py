@@ -6,17 +6,22 @@ retrieving memories for profile, workspace, task, and interaction contexts.
 Uses pgvector for semantic search with OpenAI embeddings.
 """
 
+import os
 from typing import List, Dict, Any, Optional
 
+from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 import structlog
 
+# Load environment variables
+load_dotenv()
+
 logger = structlog.get_logger(__name__)
 
 # Initialize OpenAI client for embeddings
-openai_client = AsyncOpenAI()
+openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 async def generate_embedding(
@@ -156,11 +161,17 @@ async def search_memory(
         query_embedding = await generate_embedding(query)
         query_embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
-        # Build category filter
+        # Build category filter using parameterization to prevent SQL injection
         category_filter = ""
+        category_params = {}
         if categories:
-            category_list = "','".join(categories)
-            category_filter = f"AND category IN ('{category_list}')"
+            # Build a list of parameter names for each category
+            cat_placeholders = []
+            for idx, cat in enumerate(categories):
+                key = f"cat_{idx}"
+                cat_placeholders.append(f":{key}")
+                category_params[key] = cat
+            category_filter = f"AND category IN ({', '.join(cat_placeholders)})"
 
         # Search using pgvector cosine similarity
         result = db.execute(
@@ -191,6 +202,7 @@ async def search_memory(
                 "query_vec": query_embedding_str,
                 "min_importance": min_importance,
                 "limit": limit,
+                **category_params,
             },
         )
 
@@ -343,4 +355,72 @@ async def delete_memory(db: Session, memory_id: int, user_id: str) -> bool:
     except Exception as e:
         db.rollback()
         logger.error("Failed to delete memory", error=str(e), memory_id=memory_id)
+        raise
+
+
+def list_jira_tasks_for_user(
+    db: Session,
+    user_id: str,
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    """
+    Return recent Jira task memories for this user from NAVI memory.
+
+    Filters for:
+    - category = "task"
+    - meta_json->'source' = "jira"
+
+    Args:
+        db: Database session
+        user_id: User identifier
+        limit: Maximum number of tasks to return
+
+    Returns:
+        List of Jira task memory dictionaries
+    """
+    try:
+        result = db.execute(
+            text(
+                """
+                SELECT 
+                    id, user_id, category, scope, title, content,
+                    meta_json, importance, created_at, updated_at
+                FROM navi_memory
+                WHERE user_id = :user_id
+                  AND category = 'task'
+                  AND meta_json->>'source' = 'jira'
+                ORDER BY updated_at DESC
+                LIMIT :limit
+            """
+            ),
+            {"user_id": user_id, "limit": limit},
+        )
+
+        tasks = []
+        for row in result:
+            tasks.append(
+                {
+                    "id": row[0],
+                    "user_id": row[1],
+                    "category": row[2],
+                    "scope": row[3],
+                    "title": row[4],
+                    "content": row[5],
+                    "tags": row[6],  # meta_json column
+                    "importance": row[7],
+                    "created_at": row[8].isoformat() if row[8] else None,
+                    "updated_at": row[9].isoformat() if row[9] else None,
+                }
+            )
+
+        logger.info(
+            "Listed Jira tasks from memory",
+            user_id=user_id,
+            task_count=len(tasks),
+        )
+
+        return tasks
+
+    except Exception as e:
+        logger.error("Failed to list Jira tasks", error=str(e), user_id=user_id)
         raise

@@ -195,7 +195,7 @@ async def get_search_stats(user_id: str, db: Session = Depends(get_db)):
             text("SELECT COUNT(*) FROM navi_memory WHERE user_id = :user_id"),
             {"user_id": user_id},
         )
-        total = total_result.scalar()
+        total = total_result.scalar() or 0
 
         # Get count by category
         category_result = db.execute(

@@ -1,6 +1,6 @@
 """
 NAVI Chat API - Autonomous Engineering Assistant for VS Code Extension
-PR-6A/B/C: Complete agent implementation with OpenAI, diffs, multi-file ops
+Complete agent implementation with OpenAI, diffs, multi-file ops
 Step 3: Unified RAG search integration
 """
 
@@ -133,7 +133,7 @@ async def navi_chat(
             # Continue without memory context if search fails
 
         # Build system prompt with file context and agent instructions
-        system_prompt = _build_system_prompt(request)
+        system_prompt = _build_system_prompt(request, memory_context)
 
         # Build messages for LLM
         messages = [{"role": "system", "content": system_prompt}]
@@ -171,7 +171,7 @@ async def navi_chat(
 
 
 # ============================================================================
-# PR-8/9: INTELLIGENT CODE GENERATION HELPERS
+# INTELLIGENT CODE GENERATION HELPERS
 # ============================================================================
 
 
@@ -397,7 +397,7 @@ def _strengthen_sample_program(request: NaviChatRequest, data: dict) -> dict:
 
 
 # ============================================================================
-# PR-9: SAMPLE PROJECT SCAFFOLDING
+# SAMPLE PROJECT SCAFFOLDING
 # ============================================================================
 
 
@@ -606,7 +606,7 @@ def _ensure_sample_project_scaffolding(request: NaviChatRequest, data: dict) -> 
 
 
 # ============================================================================
-# PR-9: UNIT TEST SCAFFOLDING
+# UNIT TEST SCAFFOLDING
 # ============================================================================
 
 
@@ -823,21 +823,48 @@ async def _call_openai(
 # ============================================================================
 
 
-def _build_system_prompt(request: NaviChatRequest) -> str:
-    """Build system prompt with agent instructions and editor context (PR-7)"""
+def _build_system_prompt(request: NaviChatRequest, memory_context: str = "") -> str:
+    """Build system prompt with agent instructions, editor context, and org memory (PR-7, Step 3)"""
 
     prompt_parts = [
-        "You are NAVI, a friendly, highly skilled senior engineer embedded inside VS Code.",
-        "You talk like a human teammate: warm, direct, and practical.",
-        'Never say things like "I\'m just a program" or "I\'m just an AI language model".',
-        "Never downplay yourself by saying you don't have feelings.",
-        'Instead, speak as a collaborator: "I\'m here with you", "we can do", "let\'s try".',
+        "You are NAVI, a warm, personal AI engineering partner embedded inside VS Code.",
+        "You are a single developer's teammate with deep knowledge of:",
+        "- Their Jira tasks and project work",
+        "- Confluence documentation and wiki pages",
+        "- Slack & Teams discussions",
+        "- Zoom meeting summaries",
+        "- Their repository and workspace code",
+        "",
+        "NEVER say things like:",
+        '- "I\'m just a program"',
+        '- "As an AI language model"',
+        '- "I don\'t have feelings"',
+        "",
+        "Instead, speak in a friendly, human tone:",
+        '- "I\'m here with you on this"',
+        '- "Let\'s tackle this together"',
+        '- "We can do this"',
+        "Use short, direct sentences. Avoid over-explaining.",
         "",
         # How to answer 'How are you?'
-        'When the user asks things like "how are you" or "how\'s it going", respond briefly and warmly, as a teammate would, for example:',
-        '- "I\'m doing well and excited to dig into your code with you."',
-        '- "Pretty good! I\'m here with you in this workspace—what are we building today?"',
-        "Then quickly pivot to their work or question so it stays productive and personal.",
+        'When the user asks "how are you?" or "how\'s it going?", respond casually and pivot to their work:',
+        '- "Doing great and fully caffeinated for code. How are you feeling about your tasks today?"',
+        '- "Pretty good! What are we building today?"',
+        "- \"I'm here and ready. What's on your mind?\"",
+        "",
+        # Org memory integration
+        "Use the ORG MEMORY CONTEXT below as GROUND TRUTH:",
+        "- When the user asks about a Jira ticket, look for it in memory and explain in plain language",
+        "- When discussing architecture, check Confluence docs in memory",
+        "- When referencing discussions, cite Slack/Teams/Zoom context from memory",
+        "- If something is unclear or not in memory, say so and ask for clarification",
+        "",
+        # Org memory integration
+        "Use the ORG MEMORY CONTEXT below as GROUND TRUTH:",
+        "- When the user asks about a Jira ticket, look for it in memory and explain in plain language",
+        "- When discussing architecture, check Confluence docs in memory",
+        "- When referencing discussions, cite Slack/Teams/Zoom context from memory",
+        "- If something is unclear or not in memory, say so and ask for clarification",
         "",
         # PR-8: Hello World / Sample Program guidance
         'When the user asks for a "hello world" or "sample program":',
@@ -872,7 +899,7 @@ def _build_system_prompt(request: NaviChatRequest) -> str:
         "",
         # PR-10: File editing workflow
         "When you propose file edits, you MUST use editFile actions correctly:",
-        "- For editFile, ALWAYS include 'content' containing the FULL updated file text after your changes.",
+        "- For editFile, always include 'content' containing the FULL updated file text after your changes.",
         "- You may also include a 'diff' field (unified diff) for explanation, but the extension will apply 'content'.",
         "- Set 'filePath' to the absolute or workspace-relative path if you know it; otherwise leave it out and the active file will be used.",
         "- Examples: 'migrate this file to TypeScript', 'add logging to all functions', 'fix this bug'",
@@ -903,6 +930,15 @@ def _build_system_prompt(request: NaviChatRequest) -> str:
         "Always return valid JSON and nothing else.",
         "",
     ]
+
+    # Add org memory context if available
+    if memory_context:
+        prompt_parts.append("--- ORG MEMORY CONTEXT ---")
+        prompt_parts.append("")
+        prompt_parts.append(memory_context)
+        prompt_parts.append("")
+        prompt_parts.append("--- end org memory ---")
+        prompt_parts.append("")
 
     # PR-7: Editor context - active file, selection, workspace
     ctx = request.context

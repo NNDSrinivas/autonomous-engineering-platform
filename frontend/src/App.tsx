@@ -4,6 +4,7 @@ import { MemoryGraphPage } from './pages/MemoryGraphPage'
 import { PlansListPage } from './pages/PlansListPage'
 import { PlanView } from './pages/PlanView'
 import ConciergePage from './pages/ConciergePage'
+import { NaviSearchPage } from './pages/NaviSearchPage'
 
 function HomePage() {
   return (
@@ -17,27 +18,35 @@ function HomePage() {
             <h2 className="text-xl font-semibold mb-3 text-white">Available Features</h2>
             <ul className="space-y-3">
               <li>
-                <Link 
-                  to="/concierge" 
+                <Link
+                  to="/concierge"
                   className="block bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
                 >
                   🌟 Task Concierge
                 </Link>
               </li>
               <li>
-                <Link 
-                  to="/memory/graph" 
+                <Link
+                  to="/memory/graph"
                   className="block bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
                 >
                   📊 Memory Graph Explorer
                 </Link>
               </li>
               <li>
-                <Link 
-                  to="/plans" 
+                <Link
+                  to="/plans"
                   className="block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
                 >
                   📋 Live Plan Mode
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/navi/search"
+                  className="block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                >
+                  🔍 NAVI RAG Search
                 </Link>
               </li>
             </ul>
@@ -50,7 +59,7 @@ function HomePage() {
 
 function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
-  
+
   // Don't show nav on home page
   if (location.pathname === '/') {
     return <>{children}</>
@@ -65,17 +74,23 @@ function Layout({ children }: { children: React.ReactNode }) {
               🤖 AEP
             </Link>
             <div className="flex space-x-6">
-              <Link 
-                to="/memory/graph" 
+              <Link
+                to="/memory/graph"
                 className="text-gray-700 hover:text-purple-600 font-medium transition-colors"
               >
                 Memory Graph
               </Link>
-              <Link 
-                to="/plans" 
+              <Link
+                to="/plans"
                 className="text-gray-700 hover:text-indigo-600 font-medium transition-colors"
               >
                 📋 Plans
+              </Link>
+              <Link
+                to="/navi/search"
+                className="text-gray-700 hover:text-blue-600 font-medium transition-colors"
+              >
+                🔍 NAVI Search
               </Link>
             </div>
           </div>
@@ -95,6 +110,7 @@ function App() {
         <Route path="/memory/graph" element={<MemoryGraphPage />} />
         <Route path="/plans" element={<PlansListPage />} />
         <Route path="/plan/:id" element={<PlanView />} />
+        <Route path="/navi/search" element={<NaviSearchPage />} />
       </Routes>
     </Layout>
   )

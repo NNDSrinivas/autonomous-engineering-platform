@@ -15,29 +15,42 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing_extensions import Literal, TypedDict
+
+# Load environment variables FIRST, before any other imports
+load_dotenv()
+
+from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
+from typing_extensions import Literal, TypedDict  # noqa: E402
 
 # Local imports
-from backend.api.routers.agent_planning import (
+from backend.api.routers.agent_planning import (  # noqa: E402
     router as agent_planning_router,
 )
-from backend.api.routers.ai_codegen import (
+from backend.api.routers.ai_codegen import (  # noqa: E402
     router as ai_codegen_router,
 )
-from backend.api.routers.ai_feedback import (
+from backend.api.routers.ai_feedback import (  # noqa: E402
     router as ai_feedback_router,
 )
-from backend.api.routers.autonomous_coding import (
+from backend.api.routers.autonomous_coding import (  # noqa: E402
     router as autonomous_coding_router,
 )
-from backend.api.routers.jira_integration import (
+from backend.api.routers.jira_integration import (  # noqa: E402
     router as jira_integration_router,
 )
-from backend.api.routers.oauth_device import (
+from backend.api.routers.oauth_device import (  # noqa: E402
     router as oauth_device_router,
+)
+from backend.api.navi_search import (  # noqa: E402
+    router as navi_search_router,
+)
+from backend.api.navi_brief import (  # noqa: E402
+    router as navi_brief_router,
+)
+from backend.api.org_sync import (  # noqa: E402
+    router as org_sync_router,
 )
 
 # Add project root to path
@@ -49,9 +62,6 @@ if TYPE_CHECKING:
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
 
 
 class FallbackChatCompletionMessageParam(TypedDict, total=False):
@@ -100,6 +110,9 @@ app.include_router(jira_integration_router, prefix="/api")
 app.include_router(agent_planning_router, prefix="/api")
 app.include_router(ai_codegen_router, prefix="/api")
 app.include_router(ai_feedback_router, prefix="/api")
+app.include_router(navi_search_router)  # Step 3: NAVI RAG Search
+app.include_router(navi_brief_router)  # Step 4: NAVI Task Brief (org-aware context)
+app.include_router(org_sync_router)  # Step 3+4: Org memory sync (Jira/Confluence/Slack/Teams/Zoom)
 
 # CORS middleware
 app.add_middleware(

@@ -1,14 +1,20 @@
 """
 NAVI Chat API - Autonomous Engineering Assistant for VS Code Extension
 PR-6A/B/C: Complete agent implementation with OpenAI, diffs, multi-file ops
+Step 3: Unified RAG search integration
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
+from sqlalchemy.orm import Session
 import logging
 import json
 import os
+
+from ..core.db import get_db
+from ..services.navi_memory_service import search_memory
+from ..services.citation_formatter import format_context_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -90,13 +96,16 @@ class NaviChatResponse(BaseModel):
 
 
 @router.post("/chat", response_model=NaviChatResponse)
-async def navi_chat(request: NaviChatRequest) -> NaviChatResponse:
+async def navi_chat(
+    request: NaviChatRequest, db: Session = Depends(get_db)
+) -> NaviChatResponse:
     """
     Handle NAVI chat from VS Code extension
 
     PR-5B: Uses attachments to build file context
     PR-6A/B: Returns agent actions (editFile, createFile, runCommand)
     PR-6C: Supports unified diffs for clean edits
+    Step 3: Retrieves relevant memory context via RAG search
     """
     try:
         logger.info(
@@ -104,11 +113,34 @@ async def navi_chat(request: NaviChatRequest) -> NaviChatResponse:
             f"message: {request.message[:100]}, attachments: {len(request.attachments)}"
         )
 
+        # Step 3: Retrieve relevant memory context (RAG)
+        memory_context = ""
+        try:
+            memories = await search_memory(
+                db=db,
+                query=request.message,
+                categories=["profile", "workspace", "task", "interaction"],
+                limit=8,
+                min_importance=0.3,
+            )
+            if memories:
+                memory_context = format_context_for_llm(request.message, memories)
+                logger.info(
+                    f"[NAVI] Retrieved {len(memories)} memory items for context"
+                )
+        except Exception as mem_err:
+            logger.warning(f"[NAVI] Memory search failed: {mem_err}")
+            # Continue without memory context if search fails
+
         # Build system prompt with file context and agent instructions
         system_prompt = _build_system_prompt(request)
 
         # Build messages for LLM
         messages = [{"role": "system", "content": system_prompt}]
+
+        # Step 3: Add memory context if available
+        if memory_context:
+            messages.append({"role": "system", "content": memory_context})
 
         # Add file context if attachments exist
         if request.attachments:

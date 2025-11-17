@@ -697,7 +697,11 @@ let commandMenuDragState = {
                 });
                 const desc = row.querySelector('.navi-agent-action-desc');
                 if (desc) {
-                  desc.innerHTML += '<br/><em style="color: #ef4444;">Error: VS Code API unavailable</em>';
+                  const errorMsg = document.createElement('em');
+                  errorMsg.style.color = '#ef4444';
+                  errorMsg.textContent = 'Error: VS Code API unavailable';
+                  desc.appendChild(document.createElement('br'));
+                  desc.appendChild(errorMsg);
                 }
               }
               return;

@@ -78,7 +78,9 @@ class ZoomClient:
         self._token = token
         return token
 
-    def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _get(
+        self, path: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Make authenticated GET request to Zoom API"""
         token = self._get_access_token()
         url = f"{self.base_url}{path}"

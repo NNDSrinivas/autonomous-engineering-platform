@@ -73,7 +73,9 @@ class SlackSyncRequest(BaseModel):
 class SlackSyncResponse(BaseModel):
     """Response from Slack sync operation"""
 
-    processed_channel_ids: List[str] = Field(..., description="List of processed channel IDs")
+    processed_channel_ids: List[str] = Field(
+        ..., description="List of processed channel IDs"
+    )
     total: int = Field(..., description="Total channels processed")
     user_id: str = Field(..., description="User identifier")
 
@@ -83,14 +85,18 @@ class TeamsSyncRequest(BaseModel):
 
     user_id: str = Field(..., description="User identifier")
     team_names: List[str] = Field(..., description="List of Teams team names to sync")
-    channels: Optional[List[str]] = Field(None, description="Optional list of channel names to filter")
+    channels: Optional[List[str]] = Field(
+        None, description="Optional list of channel names to filter"
+    )
     limit: int = Field(50, ge=1, le=200, description="Maximum messages per channel")
 
 
 class TeamsSyncResponse(BaseModel):
     """Response from Teams sync operation"""
 
-    processed_channel_keys: List[str] = Field(..., description="List of 'team:channel' keys processed")
+    processed_channel_keys: List[str] = Field(
+        ..., description="List of 'team:channel' keys processed"
+    )
     total: int = Field(..., description="Total channels processed")
     user_id: str = Field(..., description="User identifier")
 
@@ -99,16 +105,27 @@ class ZoomSyncRequest(BaseModel):
     """Request to sync Zoom meeting transcripts into NAVI memory"""
 
     user_id: str = Field(..., description="User identifier")
-    zoom_user: Optional[str] = Field(None, description="Zoom user ID or email; uses AEP_ZOOM_USER_EMAIL if not provided")
-    from_date: date = Field(..., description="Start date for meeting recordings (YYYY-MM-DD)")
-    to_date: date = Field(..., description="End date for meeting recordings (YYYY-MM-DD)")
-    max_meetings: int = Field(20, ge=1, le=100, description="Maximum meetings to process")
+    zoom_user: Optional[str] = Field(
+        None,
+        description="Zoom user ID or email; uses AEP_ZOOM_USER_EMAIL if not provided",
+    )
+    from_date: date = Field(
+        ..., description="Start date for meeting recordings (YYYY-MM-DD)"
+    )
+    to_date: date = Field(
+        ..., description="End date for meeting recordings (YYYY-MM-DD)"
+    )
+    max_meetings: int = Field(
+        20, ge=1, le=100, description="Maximum meetings to process"
+    )
 
 
 class ZoomSyncResponse(BaseModel):
     """Response from Zoom sync operation"""
 
-    processed_meeting_ids: List[str] = Field(..., description="List of meeting IDs processed")
+    processed_meeting_ids: List[str] = Field(
+        ..., description="List of meeting IDs processed"
+    )
     total: int = Field(..., description="Total meetings processed")
     user_id: str = Field(..., description="User identifier")
 

@@ -32,19 +32,19 @@ JIRA_KEY_RE = re.compile(r"\b[A-Z]{2,10}-\d+\b")
 def _clean_teams_text(text: str) -> str:
     """
     Remove Teams markup from text.
-    
+
     - Removes @mention tags: <at>user</at> → ""
     - Removes HTML tags
     - Unescapes HTML entities
-    
+
     Args:
         text: Raw Teams message content (HTML)
-        
+
     Returns:
         Cleaned text suitable for LLM processing
     """
-    text = re.sub(r"<at>.*?</at>", "", text)   # remove @mention tags
-    text = re.sub(r"<[^>]+>", " ", text)       # remove HTML tags
+    text = re.sub(r"<at>.*?</at>", "", text)  # remove @mention tags
+    text = re.sub(r"<[^>]+>", " ", text)  # remove HTML tags
     text = re.sub(r"&nbsp;", " ", text)
     text = re.sub(r"&amp;", "&", text)
     text = re.sub(r"&lt;", "<", text)
@@ -56,36 +56,34 @@ def _clean_teams_text(text: str) -> str:
 async def _summarize_teams_messages(messages: List[Dict[str, Any]]) -> str:
     """
     Summarize a batch of Teams messages using OpenAI.
-    
+
     Focuses on:
     - Engineering decisions
     - Technical issues and debugging
     - Jira references
     - Action items and blockers
-    
+
     Args:
         messages: List of Teams message dictionaries
-        
+
     Returns:
         Concise summary suitable for memory storage
     """
     body_lines = []
-    
+
     for m in messages:
         from_info = m.get("from", {}) or {}
         user_info = from_info.get("user", {}) or {}
         app_info = from_info.get("application", {}) or {}
-        
+
         user_name = (
-            user_info.get("displayName") or
-            app_info.get("displayName") or
-            "unknown"
+            user_info.get("displayName") or app_info.get("displayName") or "unknown"
         )
-        
+
         body_info = m.get("body", {}) or {}
         content = body_info.get("content", "") or ""
         text = _clean_teams_text(content)
-        
+
         if text:
             body_lines.append(f"[{user_name}] {text}")
 
@@ -135,7 +133,7 @@ async def ingest_teams(
 ) -> List[str]:
     """
     Ingest Teams messages from specified teams and channels into NAVI memory.
-    
+
     Process:
     1. Find teams by displayName
     2. Fetch channels (all or filtered)
@@ -143,22 +141,21 @@ async def ingest_teams(
     4. Summarize with LLM
     5. Detect Jira keys
     6. Store in navi_memory with embeddings
-    
+
     Args:
         db: Database session
         user_id: User identifier
         team_names: List of team displayNames (e.g., ["Engineering", "Platform"])
         channels_per_team: Optional list of channel names to filter
         limit: Maximum messages per channel
-        
+
     Returns:
         List of processed "team:channel" keys
     """
-    logger.info("Starting Teams ingestion",
-                user_id=user_id,
-                team_names=team_names,
-                limit=limit)
-    
+    logger.info(
+        "Starting Teams ingestion", user_id=user_id, team_names=team_names, limit=limit
+    )
+
     tc = TeamsClient()
     processed_channel_keys: List[str] = []
 
@@ -190,9 +187,11 @@ async def ingest_teams(
             else:
                 selected_channels = channels
 
-            logger.info("Processing Teams channels",
-                       team=tname,
-                       channel_count=len(selected_channels))
+            logger.info(
+                "Processing Teams channels",
+                team=tname,
+                channel_count=len(selected_channels),
+            )
 
             for chan in selected_channels:
                 try:
@@ -201,15 +200,15 @@ async def ingest_teams(
                     if not chan_id:
                         continue
 
-                    logger.info("Fetching Teams messages",
-                               team=tname,
-                               channel=chan_name)
+                    logger.info(
+                        "Fetching Teams messages", team=tname, channel=chan_name
+                    )
 
                     msgs = tc.fetch_channel_messages(team_id, chan_id, limit=limit)
                     if not msgs:
-                        logger.debug("No messages in channel",
-                                    team=tname,
-                                    channel=chan_name)
+                        logger.debug(
+                            "No messages in channel", team=tname, channel=chan_name
+                        )
                         continue
 
                     # Summarize messages
@@ -245,27 +244,31 @@ async def ingest_teams(
                     )
 
                     processed_channel_keys.append(f"{tname}:{chan_name}")
-                    logger.debug("Stored Teams thread in memory",
-                                team=tname,
-                                channel=chan_name,
-                                scope=scope,
-                                jira_keys=list(jira_keys))
-                    
+                    logger.debug(
+                        "Stored Teams thread in memory",
+                        team=tname,
+                        channel=chan_name,
+                        scope=scope,
+                        jira_keys=list(jira_keys),
+                    )
+
                 except Exception as e:
-                    logger.error("Failed to process Teams channel",
-                                team=tname,
-                                channel=chan.get("displayName"),
-                                error=str(e))
+                    logger.error(
+                        "Failed to process Teams channel",
+                        team=tname,
+                        channel=chan.get("displayName"),
+                        error=str(e),
+                    )
                     continue
 
         except Exception as e:
-            logger.error("Failed to process Teams team",
-                        team=tname,
-                        error=str(e))
+            logger.error("Failed to process Teams team", team=tname, error=str(e))
             continue
 
-    logger.info("Teams ingestion complete",
-                user_id=user_id,
-                processed_count=len(processed_channel_keys))
-    
+    logger.info(
+        "Teams ingestion complete",
+        user_id=user_id,
+        processed_count=len(processed_channel_keys),
+    )
+
     return processed_channel_keys

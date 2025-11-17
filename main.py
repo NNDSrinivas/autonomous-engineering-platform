@@ -112,7 +112,9 @@ app.include_router(ai_codegen_router, prefix="/api")
 app.include_router(ai_feedback_router, prefix="/api")
 app.include_router(navi_search_router)  # Step 3: NAVI RAG Search
 app.include_router(navi_brief_router)  # Step 4: NAVI Task Brief (org-aware context)
-app.include_router(org_sync_router)  # Step 3+4: Org memory sync (Jira/Confluence/Slack/Teams/Zoom)
+app.include_router(
+    org_sync_router
+)  # Step 3+4: Org memory sync (Jira/Confluence/Slack/Teams/Zoom)
 
 # CORS middleware
 app.add_middleware(

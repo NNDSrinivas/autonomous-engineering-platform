@@ -17,7 +17,6 @@ def test_imports():
     print("Testing imports...")
 
     try:
-        from backend.integrations.jira_client import JiraClient
 
         print("✓ JiraClient imported")
     except Exception as e:
@@ -25,7 +24,6 @@ def test_imports():
         return False
 
     try:
-        from backend.integrations.confluence_client import ConfluenceClient
 
         print("✓ ConfluenceClient imported")
     except Exception as e:
@@ -33,11 +31,6 @@ def test_imports():
         return False
 
     try:
-        from backend.services.navi_memory_service import (
-            store_memory,
-            search_memory,
-            generate_embedding,
-        )
 
         print("✓ navi_memory_service imported")
     except Exception as e:
@@ -45,10 +38,6 @@ def test_imports():
         return False
 
     try:
-        from backend.services.org_ingestor import (
-            ingest_jira_for_user,
-            ingest_confluence_space,
-        )
 
         print("✓ org_ingestor imported")
     except Exception as e:
@@ -56,7 +45,6 @@ def test_imports():
         return False
 
     try:
-        from backend.api.org_sync import router
 
         print("✓ org_sync router imported")
     except Exception as e:

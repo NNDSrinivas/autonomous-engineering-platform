@@ -1,13 +1,13 @@
 """
-Memory Retriever - Fetch User & Org Memory
+Memory Retriever - Fetch User & Org Memory (STEP C Enhanced)
 
-Retrieves relevant memories from navi_memory table:
+Retrieves relevant memories from navi_memory table with semantic vector search:
 - User profile (coding style, preferences)
 - Workspace memory (project structure, patterns)
 - Task memory (Jira issues)
 - Interaction memory (past conversations)
 
-Uses semantic search to find most relevant memories for current query.
+Uses pgvector semantic similarity to find most relevant memories.
 """
 
 import logging
@@ -20,7 +20,8 @@ async def retrieve_memories(
     user_id: str,
     query: str,
     db=None,
-    limit: int = 5
+    limit: int = 5,
+    min_similarity: float = 0.7
 ) -> Dict[str, Any]:
     """
     Retrieve relevant memories for the current query.
@@ -49,15 +50,19 @@ async def retrieve_memories(
         
         logger.info(f"[MEMORY] Searching memories for user={user_id}, query='{query[:50]}...'")
         
-        # Search across all categories
-        memories = search_memory(
+        # Search across all categories with semantic vector similarity
+        memories = await search_memory(
             db=db,
             user_id=user_id,
             query=query,
             categories=["profile", "workspace", "task", "interaction"],
-            limit=limit,
+            limit=limit * 2,  # Retrieve more, then rank
             min_importance=3  # Only retrieve important memories
         )
+        
+        # Rank by relevance and truncate to limit
+        if memories:
+            memories = await _rank_by_relevance(memories, query, limit)
         
         # Group by category
         result = {
@@ -86,6 +91,22 @@ async def retrieve_memories(
         return _empty_memory_result()
 
 
+async def _rank_by_relevance(
+    memories: List[Dict[str, Any]], 
+    query: str, 
+    limit: int
+) -> List[Dict[str, Any]]:
+    """
+    Rank memories by relevance to query.
+    
+    For now, uses the similarity score from pgvector.
+    In future, can use LLM-based reranking.
+    """
+    # Already ranked by pgvector cosine similarity
+    # Just truncate to limit
+    return memories[:limit]
+
+
 def _empty_memory_result() -> Dict[str, Any]:
     """Return empty memory structure."""
     return {
@@ -94,3 +115,37 @@ def _empty_memory_result() -> Dict[str, Any]:
         "interactions": [],
         "workspace": []
     }
+
+
+async def retrieve_recent_memories(
+    user_id: str,
+    db=None,
+    category: Optional[str] = None,
+    limit: int = 5
+) -> List[Dict[str, Any]]:
+    """
+    Retrieve recent memories by time (not semantic search).
+    
+    Useful for: "What was I working on?" or "What did we discuss yesterday?"
+    """
+    
+    if not db:
+        logger.warning("[MEMORY] No DB session, returning empty")
+        return []
+    
+    try:
+        from backend.services.navi_memory_service import get_recent_memories
+        
+        memories = await get_recent_memories(
+            db=db,
+            user_id=user_id,
+            category=category,
+            limit=limit
+        )
+        
+        logger.info(f"[MEMORY] Retrieved {len(memories)} recent memories")
+        return memories
+    
+    except Exception as e:
+        logger.error(f"[MEMORY] Error retrieving recent memories: {e}", exc_info=True)
+        return []

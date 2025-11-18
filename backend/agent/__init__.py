@@ -22,6 +22,10 @@ from .context_builder import build_context
 from .intent_classifier import classify_intent
 from .planner import generate_plan
 from .tool_executor import execute_tool
+from .rag import retrieve_rag_context, format_rag_context_for_llm
+from .memory_retriever import retrieve_memories, retrieve_recent_memories
+from .org_retriever import retrieve_org_context
+from .workspace_retriever import retrieve_workspace_context
 
 __all__ = [
     "run_agent_loop",
@@ -34,5 +38,11 @@ __all__ = [
     "classify_intent",
     "generate_plan",
     "execute_tool",
+    "retrieve_rag_context",
+    "format_rag_context_for_llm",
+    "retrieve_memories",
+    "retrieve_recent_memories",
+    "retrieve_org_context",
+    "retrieve_workspace_context",
 ]
 

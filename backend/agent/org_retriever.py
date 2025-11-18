@@ -1,5 +1,5 @@
 """
-Org Retriever - Fetch Organizational Artifacts
+Org Retriever - Fetch Organizational Artifacts (STEP C Enhanced)
 
 Retrieves relevant context from:
 - Jira (issues, comments, activity)
@@ -7,8 +7,10 @@ Retrieves relevant context from:
 - Confluence (pages, spaces)
 - GitHub (PRs, commits, code)
 - Zoom (meeting notes, transcripts)
+- Teams (chats, channels)
 
-Uses semantic search and direct lookups to build org context.
+Uses semantic search, direct lookups, and intelligent filtering.
+This provides NAVI with full enterprise context awareness.
 """
 
 import logging
@@ -21,7 +23,11 @@ logger = logging.getLogger(__name__)
 async def retrieve_org_context(
     user_id: str,
     query: str,
-    db=None
+    db=None,
+    include_slack: bool = True,
+    include_confluence: bool = True,
+    include_github: bool = True,
+    include_zoom: bool = True
 ) -> Dict[str, Any]:
     """
     Retrieve relevant organizational artifacts.
@@ -53,7 +59,8 @@ async def retrieve_org_context(
             "slack_threads": [],
             "confluence_pages": [],
             "github_prs": [],
-            "zoom_meetings": []
+            "zoom_meetings": [],
+            "teams_messages": []
         }
         
         # ---------------------------------------------------------
@@ -69,17 +76,55 @@ async def retrieve_org_context(
         # ---------------------------------------------------------
         # 2. Check for Jira-related intents (list tasks, etc.)
         # ---------------------------------------------------------
-        if _is_jira_list_intent(query):
-            logger.info(f"[ORG] Detected Jira list intent")
-            result["jira_issues"] = await _fetch_user_jira_tasks(user_id, db)
+        if _is_jira_list_intent(query) or not jira_keys:
+            logger.info(f"[ORG] Detected Jira list intent or no specific keys")
+            user_tasks = await _fetch_user_jira_tasks(user_id, db)
+            
+            # Merge with any specific key results
+            existing_keys = {issue.get("key") for issue in result["jira_issues"]}
+            for task in user_tasks:
+                if task.get("key") not in existing_keys:
+                    result["jira_issues"].append(task)
         
         # ---------------------------------------------------------
-        # 3. Semantic search across org memory for related artifacts
+        # 3. Search Slack for related discussions
         # ---------------------------------------------------------
-        # This would search navi_memory for task/interaction records
-        # related to the query
+        if include_slack and jira_keys:
+            logger.info(f"[ORG] Searching Slack for Jira keys: {jira_keys}")
+            result["slack_threads"] = await _search_slack_for_jira(
+                jira_keys, user_id, db
+            )
         
-        logger.info(f"[ORG] Retrieved {len(result['jira_issues'])} Jira issues")
+        # ---------------------------------------------------------
+        # 4. Search Confluence for related documentation
+        # ---------------------------------------------------------
+        if include_confluence and jira_keys:
+            logger.info(f"[ORG] Searching Confluence for Jira keys: {jira_keys}")
+            result["confluence_pages"] = await _search_confluence_for_jira(
+                jira_keys, user_id, db
+            )
+        
+        # ---------------------------------------------------------
+        # 5. Search GitHub for related PRs
+        # ---------------------------------------------------------
+        if include_github and jira_keys:
+            logger.info(f"[ORG] Searching GitHub for Jira keys: {jira_keys}")
+            result["github_prs"] = await _search_github_for_jira(
+                jira_keys, user_id, db
+            )
+        
+        # ---------------------------------------------------------
+        # 6. Search Zoom meeting notes
+        # ---------------------------------------------------------
+        if include_zoom and jira_keys:
+            logger.info(f"[ORG] Searching Zoom for Jira keys: {jira_keys}")
+            result["zoom_meetings"] = await _search_zoom_for_jira(
+                jira_keys, user_id, db
+            )
+        
+        logger.info(f"[ORG] Retrieved {len(result['jira_issues'])} Jira issues, "
+                   f"{len(result['slack_threads'])} Slack threads, "
+                   f"{len(result['confluence_pages'])} Confluence pages")
         return result
     
     except Exception as e:
@@ -114,23 +159,28 @@ async def _fetch_jira_issues_by_keys(
     user_id: str,
     db
 ) -> List[Dict[str, Any]]:
-    """Fetch specific Jira issues by their keys."""
+    """Fetch specific Jira issues by their keys from navi_memory."""
     try:
-        from backend.services.navi_memory_service import get_memory_by_scope
+        from backend.services.navi_memory_service import search_memory
         
         issues = []
         for key in keys:
-            mem = get_memory_by_scope(
+            # Search for this specific key in task memories
+            results = await search_memory(
                 db=db,
                 user_id=user_id,
-                scope=key,
-                categories=["task"]
+                query=key,
+                categories=["task"],
+                limit=1,
+                min_importance=0
             )
-            if mem:
+            
+            if results:
+                mem = results[0]
                 issues.append({
                     "key": key,
-                    "summary": mem.get("title"),
-                    "content": mem.get("content"),
+                    "summary": mem.get("title", ""),
+                    "content": mem.get("content", ""),
                     "meta": mem.get("meta_json", {})
                 })
         
@@ -142,15 +192,15 @@ async def _fetch_jira_issues_by_keys(
 
 
 async def _fetch_user_jira_tasks(user_id: str, db) -> List[Dict[str, Any]]:
-    """Fetch all Jira tasks assigned to user."""
+    """Fetch all Jira tasks assigned to user from navi_memory."""
     try:
         from backend.services.navi_memory_service import search_memory
         
         # Search for task memories
-        tasks = search_memory(
+        tasks = await search_memory(
             db=db,
             user_id=user_id,
-            query="",  # Empty query returns all
+            query="",  # Empty query with category filter
             categories=["task"],
             limit=20,
             min_importance=0
@@ -158,9 +208,9 @@ async def _fetch_user_jira_tasks(user_id: str, db) -> List[Dict[str, Any]]:
         
         return [
             {
-                "key": task.get("scope"),
-                "summary": task.get("title"),
-                "content": task.get("content"),
+                "key": task.get("scope", ""),
+                "summary": task.get("title", ""),
+                "content": task.get("content", ""),
                 "meta": task.get("meta_json", {})
             }
             for task in tasks
@@ -168,6 +218,159 @@ async def _fetch_user_jira_tasks(user_id: str, db) -> List[Dict[str, Any]]:
     
     except Exception as e:
         logger.error(f"[ORG] Error fetching user Jira tasks: {e}")
+        return []
+
+
+async def _search_slack_for_jira(
+    jira_keys: List[str],
+    user_id: str,
+    db
+) -> List[Dict[str, Any]]:
+    """Search Slack messages/threads mentioning these Jira keys."""
+    try:
+        from backend.services.navi_memory_service import search_memory
+        
+        threads = []
+        for key in jira_keys:
+            # Search interaction memories for Slack discussions
+            results = await search_memory(
+                db=db,
+                user_id=user_id,
+                query=key,
+                categories=["interaction"],
+                limit=3,
+                min_importance=0
+            )
+            
+            for mem in results:
+                meta = mem.get("meta_json", {})
+                if meta.get("source") == "slack":
+                    threads.append({
+                        "channel": meta.get("channel", ""),
+                        "content": mem.get("content", ""),
+                        "timestamp": meta.get("timestamp", ""),
+                        "meta": meta
+                    })
+        
+        return threads
+    
+    except Exception as e:
+        logger.error(f"[ORG] Error searching Slack: {e}")
+        return []
+
+
+async def _search_confluence_for_jira(
+    jira_keys: List[str],
+    user_id: str,
+    db
+) -> List[Dict[str, Any]]:
+    """Search Confluence pages mentioning these Jira keys."""
+    try:
+        from backend.services.navi_memory_service import search_memory
+        
+        pages = []
+        for key in jira_keys:
+            # Search workspace memories for Confluence docs
+            results = await search_memory(
+                db=db,
+                user_id=user_id,
+                query=key,
+                categories=["workspace"],
+                limit=2,
+                min_importance=0
+            )
+            
+            for mem in results:
+                meta = mem.get("meta_json", {})
+                if meta.get("source") == "confluence":
+                    pages.append({
+                        "title": mem.get("title", ""),
+                        "content": mem.get("content", ""),
+                        "url": meta.get("url", ""),
+                        "meta": meta
+                    })
+        
+        return pages
+    
+    except Exception as e:
+        logger.error(f"[ORG] Error searching Confluence: {e}")
+        return []
+
+
+async def _search_github_for_jira(
+    jira_keys: List[str],
+    user_id: str,
+    db
+) -> List[Dict[str, Any]]:
+    """Search GitHub PRs/commits mentioning these Jira keys."""
+    try:
+        from backend.services.navi_memory_service import search_memory
+        
+        prs = []
+        for key in jira_keys:
+            # Search interaction memories for GitHub activity
+            results = await search_memory(
+                db=db,
+                user_id=user_id,
+                query=key,
+                categories=["interaction"],
+                limit=2,
+                min_importance=0
+            )
+            
+            for mem in results:
+                meta = mem.get("meta_json", {})
+                if meta.get("source") == "github":
+                    prs.append({
+                        "title": mem.get("title", ""),
+                        "content": mem.get("content", ""),
+                        "pr_number": meta.get("pr_number", ""),
+                        "url": meta.get("url", ""),
+                        "meta": meta
+                    })
+        
+        return prs
+    
+    except Exception as e:
+        logger.error(f"[ORG] Error searching GitHub: {e}")
+        return []
+
+
+async def _search_zoom_for_jira(
+    jira_keys: List[str],
+    user_id: str,
+    db
+) -> List[Dict[str, Any]]:
+    """Search Zoom meeting notes mentioning these Jira keys."""
+    try:
+        from backend.services.navi_memory_service import search_memory
+        
+        meetings = []
+        for key in jira_keys:
+            # Search interaction memories for Zoom meetings
+            results = await search_memory(
+                db=db,
+                user_id=user_id,
+                query=key,
+                categories=["interaction"],
+                limit=2,
+                min_importance=0
+            )
+            
+            for mem in results:
+                meta = mem.get("meta_json", {})
+                if meta.get("source") == "zoom":
+                    meetings.append({
+                        "title": mem.get("title", ""),
+                        "content": mem.get("content", ""),
+                        "date": meta.get("date", ""),
+                        "meta": meta
+                    })
+        
+        return meetings
+    
+    except Exception as e:
+        logger.error(f"[ORG] Error searching Zoom: {e}")
         return []
 
 

@@ -28,11 +28,19 @@ from .state_manager import (
 from .context_builder import build_context
 from .intent_classifier import classify_intent, extract_jira_keys, extract_file_references
 from .planner import generate_plan, is_read_only_plan, requires_user_approval, format_plan_for_approval
-from .tool_executor import execute_tool
+from .tool_executor import execute_tool, get_available_tools, is_write_operation
 from .rag import retrieve_rag_context, format_rag_context_for_llm
 from .memory_retriever import retrieve_memories, retrieve_recent_memories
 from .org_retriever import retrieve_org_context
 from .workspace_retriever import retrieve_workspace_context
+
+# Import all tools
+from .tools import (
+    read_file, create_file, edit_file, apply_diff, search_repo,
+    run_command,
+    jira_fetch_issue, jira_comment, jira_transition,
+    github_create_branch, github_create_pr
+)
 
 __all__ = [
     "run_agent_loop",
@@ -57,11 +65,25 @@ __all__ = [
     "requires_user_approval",
     "format_plan_for_approval",
     "execute_tool",
+    "get_available_tools",
+    "is_write_operation",
     "retrieve_rag_context",
     "format_rag_context_for_llm",
     "retrieve_memories",
     "retrieve_recent_memories",
     "retrieve_org_context",
     "retrieve_workspace_context",
+    # Tools
+    "read_file",
+    "create_file",
+    "edit_file",
+    "apply_diff",
+    "search_repo",
+    "run_command",
+    "jira_fetch_issue",
+    "jira_comment",
+    "jira_transition",
+    "github_create_branch",
+    "github_create_pr",
 ]
 

@@ -50,6 +50,10 @@ async def call_llm(
         )
         
         answer = response.choices[0].message.content
+        if answer is None:
+            logger.warning("[LLM] Received None response from API")
+            return "I couldn't generate a response. Please try again."
+        
         logger.info(f"[LLM] Generated response: {len(answer)} chars")
         return answer
     

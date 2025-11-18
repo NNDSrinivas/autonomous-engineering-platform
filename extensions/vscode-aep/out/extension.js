@@ -19,7 +19,7 @@ const DEFAULT_MODEL = {
     label: 'ChatGPT 5.1',
 };
 const DEFAULT_MODE = {
-    id: 'agent-full',
+    id: 'chat-only',
     label: 'Agent (full access)',
 };
 function activate(context) {
@@ -464,11 +464,16 @@ class NaviWebviewProvider {
                         type: 'botMessage',
                         text: content,
                         messageId: messageId,
-                        actions: json.actions
+                        actions: json.actions,
+                        agentRun: json.agentRun // STEP K: Pass agent run data
                     });
                 }
                 else {
-                    this.postToWebview({ type: 'botMessage', text: content });
+                    this.postToWebview({
+                        type: 'botMessage',
+                        text: content,
+                        agentRun: json.agentRun // STEP K: Pass agent run data even without actions
+                    });
                 }
                 return;
             }

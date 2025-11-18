@@ -40,7 +40,7 @@ interface NaviChatResponseJson {
   role: string;
   content: string;
   actions?: AgentAction[]; // PR-6C: Agent-proposed actions
-  // agentRun intentionally ignored until real multi-step agent is implemented
+  agentRun?: any; // Present only when real multi-step agent ran
 }
 
 // PR-4: Storage keys for persistent model/mode selection
@@ -402,7 +402,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         if (response.ok) {
           const data = await response.json();
           console.log('[Extension Host] [AEP] Jira sync completed:', data);
-          
+
           // Show subtle notification
           if ((data as any).total > 0) {
             vscode.window.showInformationMessage(
@@ -602,12 +602,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             type: 'botMessage',
             text: content,
             messageId: messageId,
-            actions: json.actions
+            actions: json.actions,
+            agentRun: json.agentRun || null
           });
         } else {
-          this.postToWebview({ 
-            type: 'botMessage', 
-            text: content
+          this.postToWebview({
+            type: 'botMessage',
+            text: content,
+            agentRun: json.agentRun || null
           });
         }
         return;

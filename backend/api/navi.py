@@ -17,6 +17,7 @@ from ..services.navi_memory_service import search_memory
 from ..services.citation_formatter import format_citations_for_llm
 from ..agent.orchestrator import NaviAgentContext
 from ..agent.agent_types import AgentRunSummary
+from ..agent.intent import detect_org_intent
 
 logger = logging.getLogger(__name__)
 
@@ -119,37 +120,48 @@ async def navi_chat(
 
         # STEP K: Agent-full mode with orchestrator and Org Brain
         if request.mode == "agent-full":
-            logger.info("[NAVI] Using agent orchestrator with Org Brain integration")
-            
-            # Build workspace context from request
-            workspace_context = {}
-            if request.context:
-                workspace_context = {
-                    "rootPath": request.context.workspaceFolder,
-                    "activeFile": request.context.activeFilePath,
-                    "language": request.context.activeFileLanguage,
-                    "selection": request.context.selection,
-                }
-            
-            # Create agent context and run orchestrator
-            agent_context = NaviAgentContext(
-                db=db,
-                org_id="demo-org",  # TODO: Get from auth context
-                user_id="demo-user",  # TODO: Get from auth context
-                workspace=workspace_context
-            )
-            
-            result = await agent_context.build_run(
-                user_message=request.message,
-                mode=request.mode
-            )
-            
-            return NaviChatResponse(
-                role="assistant",
-                content=result["assistant_text"],
-                actions=result.get("file_actions"),
-                agentRun=result["agent_run"].model_dump()
-            )
+            # Gate orchestrator: only for org-aware/tool-like intents or attachments
+            intent = detect_org_intent(request.message)
+            has_attachments = bool(request.attachments)
+            should_run_agent = bool(intent.org_aware or has_attachments)
+
+            if should_run_agent:
+                logger.info(
+                    "[NAVI] Agent path: orchestrator enabled",
+                )
+
+                # Build workspace context from request
+                workspace_context = {}
+                if request.context:
+                    workspace_context = {
+                        "rootPath": request.context.workspaceFolder,
+                        "activeFile": request.context.activeFilePath,
+                        "language": request.context.activeFileLanguage,
+                        "selection": request.context.selection,
+                    }
+
+                # Create agent context and run orchestrator
+                agent_context = NaviAgentContext(
+                    db=db,
+                    org_id="demo-org",  # TODO: Get from auth context
+                    user_id="demo-user",  # TODO: Get from auth context
+                    workspace=workspace_context,
+                )
+
+                result = await agent_context.build_run(
+                    user_message=request.message, mode=request.mode
+                )
+
+                return NaviChatResponse(
+                    role="assistant",
+                    content=result["assistant_text"],
+                    actions=result.get("file_actions"),
+                    agentRun=result["agent_run"].model_dump(),
+                )
+            else:
+                logger.info(
+                    "[NAVI] Fast path: agent disabled for non-org/tool intent"
+                )
 
         # Step 3: Retrieve relevant memory context (RAG) for non-agent modes
         memory_context = ""

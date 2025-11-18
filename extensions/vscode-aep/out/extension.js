@@ -464,13 +464,15 @@ class NaviWebviewProvider {
                         type: 'botMessage',
                         text: content,
                         messageId: messageId,
-                        actions: json.actions
+                        actions: json.actions,
+                        agentRun: json.agentRun || null
                     });
                 }
                 else {
                     this.postToWebview({
                         type: 'botMessage',
-                        text: content
+                        text: content,
+                        agentRun: json.agentRun || null
                     });
                 }
                 return;

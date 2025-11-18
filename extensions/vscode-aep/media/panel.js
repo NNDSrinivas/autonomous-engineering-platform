@@ -628,10 +628,75 @@ let commandMenuDragState = {
     });
   }
 
-  // Agent Run UI intentionally disabled until real multi-step agent is implemented.
-  // Keeping a no-op placeholder to preserve future hook points without rendering anything.
-  function renderAgentRunCard(_agentRun) {
-    return null;
+  // Minimal Agent Run UI (A + C): header strip + collapsible steps
+  function renderAgentRun(agentRun) {
+    if (!agentRun || !agentRun.steps || !agentRun.steps.length) return null;
+
+    const container = document.createElement('div');
+    container.className = 'navi-agent-run';
+
+    const header = document.createElement('div');
+    header.className = 'navi-agent-run-header';
+
+    const title = document.createElement('div');
+    title.className = 'navi-agent-run-title';
+    title.textContent = 'Agent run';
+
+    const meta = document.createElement('div');
+    meta.className = 'navi-agent-run-meta';
+    const dur = agentRun.duration_ms ?? agentRun.durationMs;
+    meta.textContent = dur ? `${dur} ms` : '';
+
+    const toggle = document.createElement('button');
+    toggle.className = 'navi-agent-run-toggle';
+    toggle.type = 'button';
+    toggle.textContent = 'Details';
+
+    header.appendChild(title);
+    header.appendChild(meta);
+    header.appendChild(toggle);
+
+    const body = document.createElement('div');
+    body.className = 'navi-agent-run-body navi-agent-run-body--collapsed';
+
+    (agentRun.steps || []).forEach((step) => {
+      const row = document.createElement('div');
+      row.className = 'navi-agent-run-step';
+
+      const statusDot = document.createElement('span');
+      statusDot.className = `navi-agent-run-step-status status-${step.status || 'completed'}`;
+
+      const label = document.createElement('span');
+      label.className = 'navi-agent-run-step-label';
+      label.textContent = step.label || step.id || 'Step';
+
+      const head = document.createElement('div');
+      head.appendChild(statusDot);
+      head.appendChild(label);
+      body.appendChild(head);
+
+      if (step.detail) {
+        const detail = document.createElement('div');
+        detail.className = 'navi-agent-run-step-detail';
+        detail.textContent = step.detail;
+        body.appendChild(detail);
+      }
+    });
+
+    toggle.addEventListener('click', () => {
+      const isCollapsed = body.classList.contains('navi-agent-run-body--collapsed');
+      if (isCollapsed) {
+        body.classList.remove('navi-agent-run-body--collapsed');
+        toggle.textContent = 'Hide details';
+      } else {
+        body.classList.add('navi-agent-run-body--collapsed');
+        toggle.textContent = 'Details';
+      }
+    });
+
+    container.appendChild(header);
+    container.appendChild(body);
+    return container;
   }
 
   // Messages from extension ---------------------------------------------------
@@ -746,7 +811,15 @@ let commandMenuDragState = {
           bubble.appendChild(actionsContainer);
         }
 
-        // Agent Run UI disabled: ignore any agentRun data from backend
+        // If backend sent a real agentRun, render minimal A + C UI
+        if (msg.agentRun) {
+          const agentRunEl = renderAgentRun(msg.agentRun);
+          if (agentRunEl && bubble && bubble.parentElement) {
+            // Attach under the message bubble within same wrapper
+            const wrapper = bubble.parentElement;
+            wrapper.appendChild(agentRunEl);
+          }
+        }
 
         break;
       }

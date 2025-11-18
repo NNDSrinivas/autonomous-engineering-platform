@@ -1051,4 +1051,80 @@ body {
   font-style: italic;
 }
 
-/* Agent Run UI styles removed: will be reintroduced with real agent execution */
+/* Minimal Agent Run UI (A + C) */
+.navi-agent-run {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  font-size: 11px;
+}
+
+.navi-agent-run-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.navi-agent-run-title {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  opacity: 0.9;
+}
+
+.navi-agent-run-meta {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.navi-agent-run-toggle {
+  border: none;
+  background: transparent;
+  color: #a5b4fc;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.navi-agent-run-body {
+  margin-top: 4px;
+}
+
+.navi-agent-run-body--collapsed {
+  display: none;
+}
+
+.navi-agent-run-step {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.navi-agent-run-step-status {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.navi-agent-run-step-label {
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.navi-agent-run-step-detail {
+  font-size: 10px;
+  opacity: 0.7;
+  padding-left: 13px;
+}
+
+.status-completed { background: #22c55e; }
+.status-skipped   { background: #fde68a; }
+.status-error     { background: #f97373; }

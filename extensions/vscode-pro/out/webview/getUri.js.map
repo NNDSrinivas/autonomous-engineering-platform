@@ -1,0 +1,1 @@
+{"version":3,"file":"getUri.js","sourceRoot":"","sources":["../../src/webview/getUri.ts"],"names":[],"mappings":";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;AAEA,wBAEC;AAJD,+CAAiC;AAEjC,SAAgB,MAAM,CAAC,OAAuB,EAAE,YAAwB,EAAE,QAAkB;IACxF,OAAO,OAAO,CAAC,YAAY,CAAC,MAAM,CAAC,GAAG,CAAC,QAAQ,CAAC,YAAY,EAAE,GAAG,QAAQ,CAAC,CAAC,CAAC;AAChF,CAAC"}

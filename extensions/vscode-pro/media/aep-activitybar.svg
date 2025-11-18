@@ -1,0 +1,6 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Simple "A" glyph for activity bar -->
+  <path d="M8 2L12 14H10L9.2 11.5H6.8L6 14H4L8 2ZM8.8 9.5L8 7L7.2 9.5H8.8Z" fill="currentColor"/>
+  <!-- Small accent dot -->
+  <circle cx="13" cy="3" r="1.5" fill="#7c7cff"/>
+</svg>

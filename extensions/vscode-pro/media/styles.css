@@ -1,0 +1,216 @@
+/* media/styles.css */
+
+/* ---- Theme tokens (adaptive) ---- */
+:root {
+    --bg: transparent;
+    --panel: color-mix(in oklab, canvas 85%, #0c0d0e 15%);
+    --panelElev: color-mix(in oklab, canvas 80%, #0c0d0e 20%);
+    --border: color-mix(in oklab, canvas 70%, #666 30%);
+    --text: color-mix(in oklab, canvastext 92%, #ddd 8%);
+    --muted: color-mix(in oklab, canvastext 60%, #999 40%);
+    --primary: #6ea8fe;
+    --primaryText: #0b1220;
+    --glow1: #3d5afe33;
+    --glow2: #00d4ff29;
+    --glow3: #b388ff22;
+}
+
+/* ---- Page ---- */
+body {
+    margin: 0;
+    font: 13px/1.5 var(--vscode-font-family, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto);
+    color: var(--text);
+    background: var(--bg);
+    overflow-x: hidden;
+}
+
+/* Aurora backdrop (no layout shift) */
+.aurora::before,
+.aurora::after {
+    content: "";
+    position: fixed;
+    inset: -20% -10% auto -10%;
+    height: 55vh;
+    background:
+        radial-gradient(45% 60% at 10% 30%, var(--glow1), transparent 60%),
+        radial-gradient(45% 60% at 80% 25%, var(--glow2), transparent 60%),
+        radial-gradient(35% 50% at 60% 80%, var(--glow3), transparent 55%);
+    filter: blur(40px) saturate(120%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.aurora::after {
+    inset: auto -15% -25% -15%;
+    height: 45vh;
+    filter: blur(48px) saturate(120%);
+}
+
+/* ---- Sticky toolbar ---- */
+.toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    background: color-mix(in oklab, canvas 70%, #0c0d10 30% / 55%);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 12px;
+}
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding-inline: 4px;
+}
+
+.brand img {
+    opacity: 0.85
+}
+
+.brand .dot {
+    opacity: 0.5
+}
+
+.brand .org {
+    opacity: 0.9
+}
+
+.toolbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    /* wrap instead of forcing horizontal drag */
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-start;
+    min-width: 0;
+}
+
+/* ---- Chips ---- */
+.chip {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: 120ms ease;
+}
+
+.chip:hover {
+    border-color: color-mix(in oklab, var(--border), #fff 30%);
+}
+
+.chip.primary {
+    background: var(--primary);
+    color: var(--primaryText);
+    border-color: transparent;
+}
+
+.chip.ghost {
+    background: color-mix(in oklab, var(--panel), canvas 20%);
+}
+
+/* Select chip */
+.select select {
+    appearance: none;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    padding-right: 18px;
+}
+
+/* ---- Layout ---- */
+.container {
+    position: relative;
+    z-index: 1;
+    padding: 16px 16px 28px;
+    display: grid;
+    gap: 16px;
+}
+
+.card {
+    background: var(--panelElev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+/* Two-column grid below chat on wide screens */
+.grid {
+    display: grid;
+    gap: 16px;
+}
+
+@media (min-width: 920px) {
+    .grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* ---- Chat ---- */
+.chat h3 {
+    margin: 0 0 8px;
+}
+
+.chatlog {
+    height: 160px;
+    overflow: auto;
+    background: color-mix(in oklab, var(--panelElev), canvas 6%);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.msg {
+    margin-bottom: 8px
+}
+
+.msg .role {
+    opacity: .65;
+    margin-right: 6px
+}
+
+.composer {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 8px;
+}
+
+#chatInput {
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    background: color-mix(in oklab, var(--panel), canvas 10%);
+    color: var(--text);
+}
+
+/* Lists / pills */
+.pills {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.list {
+    margin: 8px 0 0;
+    padding-left: 16px;
+}
+
+.list li {
+    margin: 4px 0;
+}

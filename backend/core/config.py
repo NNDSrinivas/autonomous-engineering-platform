@@ -146,6 +146,12 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-3.5-turbo"
 
+    # Jira Integration Configuration
+    aep_jira_base_url: Optional[str] = None
+    aep_jira_email: Optional[str] = None
+    aep_jira_api_token: Optional[str] = None
+    aep_jira_jql_assigned_to_me: str = "assignee = currentUser() ORDER BY updated DESC"
+
     # Platform Configuration
     debug: bool = False
     environment: str = "development"

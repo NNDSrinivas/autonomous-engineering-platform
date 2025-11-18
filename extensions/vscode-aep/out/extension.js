@@ -464,15 +464,13 @@ class NaviWebviewProvider {
                         type: 'botMessage',
                         text: content,
                         messageId: messageId,
-                        actions: json.actions,
-                        agentRun: json.agentRun // STEP K: Pass agent run data
+                        actions: json.actions
                     });
                 }
                 else {
                     this.postToWebview({
                         type: 'botMessage',
-                        text: content,
-                        agentRun: json.agentRun // STEP K: Pass agent run data even without actions
+                        text: content
                     });
                 }
                 return;

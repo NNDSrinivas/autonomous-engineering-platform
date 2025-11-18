@@ -40,7 +40,7 @@ interface NaviChatResponseJson {
   role: string;
   content: string;
   actions?: AgentAction[]; // PR-6C: Agent-proposed actions
-  agentRun?: any; // STEP K: Agent run summary with steps
+  // agentRun intentionally ignored until real multi-step agent is implemented
 }
 
 // PR-4: Storage keys for persistent model/mode selection
@@ -602,14 +602,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             type: 'botMessage',
             text: content,
             messageId: messageId,
-            actions: json.actions,
-            agentRun: json.agentRun  // STEP K: Pass agent run data
+            actions: json.actions
           });
         } else {
           this.postToWebview({ 
             type: 'botMessage', 
-            text: content,
-            agentRun: json.agentRun  // STEP K: Pass agent run data even without actions
+            text: content
           });
         }
         return;

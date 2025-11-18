@@ -101,6 +101,53 @@ for intent_type, details in INTENT_DESCRIPTIONS.items():
 
 
 # ==============================================================================
+# JIRA INTENT DETECTION GUIDE
+# ==============================================================================
+
+JIRA_INTENT_GUIDE = """
+
+🎯 JIRA INTENT DETECTION (Critical Priority)
+
+Your job is to ALWAYS detect Jira-related requests, even if vague.
+
+**1. jira_query** (Read-only Jira information):
+    - "tell me about SCRUM-1"
+    - "what's in this ticket?"
+    - "what is the status of ENG-54?"
+    - "give me more information about this task"
+    - "what is this story about?"
+    - "explain this issue"
+    - "summarize the ticket"
+    - "what's the acceptance criteria?"
+    - "who's assigned to this?"
+    
+**2. jira_execution** (Write operations or workflow actions):
+    - "start working on SCRUM-1"
+    - "implement this"
+    - "move this ticket to in-progress"
+    - "add a comment"
+    - "generate code for this jira"
+    - "show next step"
+    - "mark as done"
+    - "transition to review"
+    - "update the description"
+    - "complete this task"
+
+**CRITICAL RULES FOR JIRA DETECTION**:
+
+1. If user mentions ANY Jira key (SCRUM-123, ENG-54, etc.) → likely jira_query or jira_execution
+2. If user says "this task", "the ticket", "this issue" AND user_state has active_jira → Jira intent
+3. If user says "implement", "start working", "code this" with Jira context → jira_execution
+4. If user asks "what", "explain", "tell me" about Jira → jira_query
+5. Words like "move", "transition", "comment", "update", "mark", "close" → jira_execution
+
+**NEVER miss Jira intents** - they are HIGH priority for the platform.
+"""
+
+INTENT_SYSTEM_PROMPT += JIRA_INTENT_GUIDE
+
+
+# ==============================================================================
 # QUICK PATTERN-BASED DETECTION (Before LLM)
 # ==============================================================================
 

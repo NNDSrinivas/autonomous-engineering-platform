@@ -130,6 +130,7 @@ let commandMenuDragState = {
 
       <main class="navi-main">
         <div id="navi-messages" class="navi-messages"></div>
+        <div id="navi-jira-tasks" class="navi-jira-tasks navi-jira-tasks-hidden"></div>
       </main>
 
       <footer class="navi-footer">
@@ -185,6 +186,10 @@ let commandMenuDragState = {
         <div class="navi-attachments-preview"></div>
 
         <div id="navi-command-menu" class="navi-command-menu navi-command-menu-hidden">
+          <button class="navi-command-item" data-command-id="jira-task-brief">
+            <div class="navi-command-title">Work on a Jira task</div>
+            <div class="navi-command-subtitle">Pick a Jira ticket and get a full brief</div>
+          </button>
           <button class="navi-command-item" data-command-id="explain-code">
             <div class="navi-command-title">Explain code</div>
             <div class="navi-command-subtitle">High-level and line-by-line explanation</div>
@@ -675,10 +680,39 @@ let commandMenuDragState = {
             const kind = btn.dataset.action;
             const index = Number(btn.dataset.index);
 
-            vscodeApi.postMessage({
-              type: kind === 'approve' ? 'agent.applyEdit' : 'agent.rejectEdit',
-              messageId: msg.messageId,
+            // Validate action kind
+            if (kind !== 'approve' && kind !== 'reject') {
+              console.warn('[NAVI] Unexpected action kind:', kind);
+              return;
+            }
+
+            if (!vscode) {
+              console.warn('[NAVI] VS Code API not available for agent action');
+              const row = btn.closest('.navi-agent-action-row');
+              if (row) {
+                const buttons = row.querySelectorAll('.navi-agent-btn');
+                buttons.forEach(b => {
+                  b.disabled = true;
+                  b.style.opacity = '0.5';
+                });
+                const desc = row.querySelector('.navi-agent-action-desc');
+                if (desc) {
+                  const errorMsg = document.createElement('em');
+                  errorMsg.style.color = '#ef4444';
+                  errorMsg.textContent = 'Error: VS Code API unavailable';
+                  desc.appendChild(document.createElement('br'));
+                  desc.appendChild(errorMsg);
+                }
+              }
+              return;
+            }
+
+            // Send full context so the extension can act
+            vscode.postMessage({
+              type: 'agent.applyAction',
+              decision: kind,          // 'approve' or 'reject'
               actionIndex: index,
+              actions: msg.actions,    // the full actions array from the backend
             });
 
             // Disable buttons after click
@@ -690,10 +724,15 @@ let commandMenuDragState = {
                 b.style.opacity = '0.5';
               });
 
-              if (kind === 'approve') {
-                row.querySelector('.navi-agent-action-desc').innerHTML += '<br/><em style="color: #10b981;">Applying edit...</em>';
+              const desc = row.querySelector('.navi-agent-action-desc');
+              if (desc) {
+                if (kind === 'approve') {
+                  desc.innerHTML += '<br/><em style="color: #10b981;">Applying edit...</em>';
+                } else {
+                  desc.innerHTML += '<br/><em style="color: #ef4444;">Rejected</em>';
+                }
               } else {
-                row.querySelector('.navi-agent-action-desc').innerHTML += '<br/><em style="color: #ef4444;">Rejected</em>';
+                console.warn('[NAVI] Could not find action description element');
               }
             }
           });
@@ -797,6 +836,71 @@ let commandMenuDragState = {
             attachmentsPreviewEl.appendChild(chip);
           }
         }
+        break;
+      }
+
+      case 'showJiraTasks': {
+        const container = document.getElementById('navi-jira-tasks');
+        if (!container) break;
+
+        const tasks = msg.tasks || [];
+        if (!tasks.length) {
+          container.innerHTML = `
+            <div class="navi-jira-tasks-empty">
+              No Jira tasks found in NAVI's memory yet.
+              Try running the Jira sync or check your user_id.
+            </div>
+          `;
+        } else {
+          const itemsHtml = tasks
+            .map(
+              (t) => `
+                <button class="navi-jira-task-item" data-jira-key="${escapeHtml(t.jira_key)}">
+                  <div class="navi-jira-task-title">${escapeHtml(t.jira_key)} — ${escapeHtml(t.title)}</div>
+                  <div class="navi-jira-task-meta">
+                    <span class="navi-jira-task-status">${escapeHtml(t.status)}</span>
+                    <span class="navi-jira-task-updated">Updated: ${escapeHtml(t.updated_at || '')}</span>
+                  </div>
+                </button>
+              `
+            )
+            .join('');
+
+          container.innerHTML = `
+            <div class="navi-jira-tasks-header">
+              <div class="navi-jira-tasks-title">Select a Jira task to get a full brief</div>
+              <button class="navi-jira-tasks-close">✕</button>
+            </div>
+            <div class="navi-jira-tasks-list">
+              ${itemsHtml}
+            </div>
+          `;
+        }
+
+        container.classList.remove('navi-jira-tasks-hidden');
+
+        // Click handlers: select task or close
+        container.addEventListener('click', (ev) => {
+          const closeBtn = ev.target.closest('.navi-jira-tasks-close');
+          if (closeBtn) {
+            container.classList.add('navi-jira-tasks-hidden');
+            return;
+          }
+
+          const item = ev.target.closest('.navi-jira-task-item');
+          if (!item) return;
+
+          const jiraKey = item.dataset.jiraKey;
+          if (!jiraKey || !vscode) return;
+
+          vscode.postMessage({
+            type: 'jiraTaskSelected',
+            jiraKey,
+          });
+
+          // Hide list once a task is selected
+          container.classList.add('navi-jira-tasks-hidden');
+        }, { once: true });
         break;
       }
 

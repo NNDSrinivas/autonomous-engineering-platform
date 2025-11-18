@@ -73,6 +73,8 @@ class NaviWebviewProvider {
                             type: 'botMessage',
                             text: "Hello! I'm **NAVI**, your autonomous engineering assistant.\n\nI can help you with:\n\n- Code explanations and reviews\n- Refactoring and testing\n- Documentation generation\n- Engineering workflow automation\n\nHow can I help you today?"
                         });
+                        // Trigger background Jira sync (non-blocking)
+                        this.triggerBackgroundJiraSync();
                         break;
                     }
                     case 'sendMessage': {
@@ -98,8 +100,13 @@ class NaviWebviewProvider {
                         await this.handleAttachmentRequest(webviewView.webview, msg.kind);
                         break;
                     }
+                    case 'agent.applyAction': {
+                        // PR-7: Apply agent-proposed action (create/edit/run)
+                        await this.handleAgentApplyAction(msg);
+                        break;
+                    }
                     case 'agent.applyEdit': {
-                        // PR-6: Apply agent-proposed edit
+                        // PR-6: Apply agent-proposed edit (legacy support)
                         await this.handleApplyAgentEdit(msg);
                         break;
                     }
@@ -210,6 +217,10 @@ class NaviWebviewProvider {
                         const cmd = String(msg.command || '');
                         let prompt = '';
                         switch (cmd) {
+                            case 'jira-task-brief':
+                                // Fetch Jira tasks from backend
+                                await this.handleJiraTaskBriefCommand();
+                                return;
                             case 'explain-code':
                                 prompt =
                                     'Explain this code step-by-step, including what it does, time/space complexity, and any potential bugs or edge cases:';
@@ -247,6 +258,14 @@ class NaviWebviewProvider {
                         vscode.window.showInformationMessage(`Attachment flow for "${type}" is not wired yet – this will open the real picker in a later PR.`);
                         break;
                     }
+                    case 'jiraTaskSelected': {
+                        // User selected a Jira task - fetch full brief
+                        const jiraKey = String(msg.jiraKey || '').trim();
+                        if (!jiraKey)
+                            return;
+                        await this.handleJiraTaskSelected(jiraKey);
+                        break;
+                    }
                     default:
                         console.warn('[Extension Host] [AEP] Unknown message from webview:', msg);
                 }
@@ -260,6 +279,122 @@ class NaviWebviewProvider {
             }
         });
         // Welcome message will be sent when panel sends 'ready'
+    }
+    // --- Jira task brief handlers ----------------------------------------------
+    async triggerBackgroundJiraSync() {
+        // Non-blocking background sync of Jira tasks
+        const config = vscode.workspace.getConfiguration('aep');
+        const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8787';
+        const userId = config.get('navi.userId') || 'srinivas@example.com';
+        const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
+        const syncUrl = `${cleanBaseUrl}/api/org/sync/jira`;
+        console.log('[Extension Host] [AEP] Triggering background Jira sync...');
+        // Fire and forget - don't await
+        fetch(syncUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                max_issues: 20
+            })
+        })
+            .then(async (response) => {
+            if (response.ok) {
+                const data = await response.json();
+                console.log('[Extension Host] [AEP] Jira sync completed:', data);
+                // Show subtle notification
+                if (data.total > 0) {
+                    vscode.window.showInformationMessage(`NAVI: Synced ${data.total} Jira tasks`);
+                }
+            }
+            else {
+                console.log('[Extension Host] [AEP] Jira sync failed:', response.status);
+            }
+        })
+            .catch((error) => {
+            // Silent fail - sync is optional, don't disrupt user
+            console.log('[Extension Host] [AEP] Jira sync error (non-critical):', error.message);
+        });
+    }
+    async handleJiraTaskBriefCommand() {
+        if (!this._view) {
+            return;
+        }
+        try {
+            const config = vscode.workspace.getConfiguration('aep');
+            const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8787';
+            const userId = config.get('navi.userId') || 'srinivas@example.com';
+            // Remove /api/navi/chat suffix if present
+            const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
+            const url = `${cleanBaseUrl}/api/navi/jira-tasks?user_id=${encodeURIComponent(userId)}&limit=20`;
+            console.log('[Extension Host] [AEP] Fetching Jira tasks from:', url);
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (!response.ok) {
+                vscode.window.showErrorMessage(`NAVI: Failed to load Jira tasks (${response.status})`);
+                return;
+            }
+            const data = await response.json();
+            // Send tasks to webview
+            this.postToWebview({
+                type: 'showJiraTasks',
+                tasks: data.tasks || []
+            });
+        }
+        catch (error) {
+            console.error('[Extension Host] [AEP] Error fetching Jira tasks:', error);
+            vscode.window.showErrorMessage('NAVI: Error loading Jira tasks');
+        }
+    }
+    async handleJiraTaskSelected(jiraKey) {
+        if (!this._view) {
+            return;
+        }
+        try {
+            const config = vscode.workspace.getConfiguration('aep');
+            const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8787';
+            const userId = config.get('navi.userId') || 'srinivas@example.com';
+            // Remove /api/navi/chat suffix if present
+            const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
+            const url = `${cleanBaseUrl}/api/navi/task-brief`;
+            console.log('[Extension Host] [AEP] Fetching task brief for:', jiraKey);
+            // Show thinking state
+            this.postToWebview({ type: 'botThinking', value: true });
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    user_id: userId,
+                    jira_key: jiraKey
+                })
+            });
+            if (!response.ok) {
+                vscode.window.showErrorMessage(`NAVI: Failed to load brief for ${jiraKey} (${response.status})`);
+                this.postToWebview({ type: 'botThinking', value: false });
+                return;
+            }
+            const data = await response.json();
+            // Extract the brief markdown from the sections
+            const briefMd = data.sections?.[0]?.content || data.summary || 'No brief content available';
+            // Send as a bot message
+            this.postToWebview({
+                type: 'botMessage',
+                text: briefMd,
+                actions: []
+            });
+            this.postToWebview({ type: 'botThinking', value: false });
+        }
+        catch (error) {
+            console.error('[Extension Host] [AEP] Error fetching task brief:', error);
+            vscode.window.showErrorMessage('NAVI: Error fetching task brief');
+            this.postToWebview({ type: 'botThinking', value: false });
+        }
     }
     // --- Core: call NAVI backend ------------------------------------------------
     async callNaviBackend(latestUserText, modelId, modeId, attachments) {
@@ -505,6 +640,235 @@ class NaviWebviewProvider {
         catch (err) {
             console.error('[Extension Host] [AEP] Error reading attachment:', err);
             vscode.window.showErrorMessage('Failed to read file for attachment.');
+        }
+    }
+    // PR-7: Apply agent action from new unified message format
+    async handleAgentApplyAction(message) {
+        const { decision, actionIndex, actions } = message;
+        if (decision !== 'approve') {
+            // For now we don't need to do anything on reject
+            console.log('[Extension Host] [AEP] User rejected action');
+            return;
+        }
+        if (!actions || actionIndex == null || !Number.isInteger(actionIndex) || actionIndex < 0 || actionIndex >= actions.length) {
+            console.warn('[Extension Host] [AEP] Invalid action data:', { actionIndex, actionsLength: actions?.length });
+            return;
+        }
+        const action = actions[actionIndex];
+        if (!action || !action.type) {
+            console.warn('[Extension Host] [AEP] Invalid action object:', action);
+            return;
+        }
+        try {
+            console.log('[Extension Host] [AEP] Applying agent action:', action);
+            // 1) Create new file
+            if (action.type === 'createFile') {
+                await this.applyCreateFileAction(action);
+                return;
+            }
+            // 2) Edit existing file with diff
+            if (action.type === 'editFile') {
+                await this.applyEditFileAction(action);
+                return;
+            }
+            // 3) Run terminal command
+            if (action.type === 'runCommand') {
+                await this.applyRunCommandAction(action);
+                return;
+            }
+            console.warn('[Extension Host] [AEP] Unknown action type:', action.type);
+        }
+        catch (error) {
+            console.error('[Extension Host] [AEP] Error applying action:', error);
+            vscode.window.showErrorMessage(`Failed to apply action: ${error.message}`);
+        }
+    }
+    async applyCreateFileAction(action) {
+        const fileName = action.filePath ?? 'sample.js';
+        const content = action.content ?? '// Sample generated by NAVI\nconsole.log("Hello, World!");\n';
+        const folders = vscode.workspace.workspaceFolders;
+        const editor = vscode.window.activeTextEditor;
+        // 1) Best case: have a workspace folder → create under that root
+        if (folders && folders.length > 0) {
+            const root = folders[0].uri;
+            await this.createFileUnderRoot(root, fileName, content);
+            return;
+        }
+        // 2) No workspace, but we DO have a saved active file → ask to use its folder
+        if (editor && !editor.document.isUntitled) {
+            this.postBotStatus("I don't see a workspace folder open. I can still create the sample file if you tell me where it should live.");
+            const choice = await vscode.window.showQuickPick([
+                {
+                    label: '$(file) Create next to current file',
+                    description: editor.document.uri.fsPath,
+                    id: 'here',
+                },
+                {
+                    label: '$(folder) Choose another folder…',
+                    id: 'pick',
+                },
+                {
+                    label: '$(x) Cancel',
+                    id: 'cancel',
+                },
+            ], {
+                placeHolder: 'Where should I create the sample file?',
+                title: 'NAVI - Create Sample File',
+            });
+            if (!choice || choice.id === 'cancel') {
+                this.postBotStatus('No problem! Let me know if you need anything else.');
+                return;
+            }
+            if (choice.id === 'here') {
+                const dir = vscode.Uri.joinPath(editor.document.uri, '..');
+                await this.createFileUnderRoot(dir, fileName, content);
+                return;
+            }
+            // fall through to folder picker below
+        }
+        // 3) No workspace AND no saved active file → let user pick any folder
+        this.postBotStatus("I don't see a workspace folder open. Please pick a folder where I should create the sample file.");
+        const picked = await vscode.window.showOpenDialog({
+            canSelectFolders: true,
+            canSelectFiles: false,
+            canSelectMany: false,
+            openLabel: 'Use this folder for the sample file',
+            title: 'NAVI - Choose Folder for Sample File',
+        });
+        if (!picked || picked.length === 0) {
+            this.postBotStatus('No problem! Let me know if you need anything else.');
+            return;
+        }
+        const targetRoot = picked[0];
+        await this.createFileUnderRoot(targetRoot, fileName, content);
+    }
+    async createFileUnderRoot(root, relPath, content) {
+        // Security: Validate path to prevent traversal attacks
+        const path = require('path');
+        // Normalize path and check for absolute paths
+        const normalizedPath = path.normalize(relPath);
+        if (path.isAbsolute(normalizedPath)) {
+            vscode.window.showErrorMessage('NAVI: Cannot create file with absolute path');
+            return;
+        }
+        // Check for path traversal attempts (including encoded variants)
+        if (normalizedPath.includes('..') || /\%2e\%2e|\.\./.test(relPath)) {
+            vscode.window.showErrorMessage('NAVI: Cannot create file with path traversal (..)');
+            return;
+        }
+        const fileUri = vscode.Uri.joinPath(root, relPath);
+        const resolvedPath = fileUri.fsPath;
+        const rootPath = root.fsPath;
+        // Ensure the resolved path is within the workspace root
+        if (!resolvedPath.startsWith(rootPath)) {
+            vscode.window.showErrorMessage('NAVI: Cannot create file outside workspace');
+            return;
+        }
+        // Ensure parent folders exist (best effort)
+        const dir = vscode.Uri.joinPath(fileUri, '..');
+        try {
+            await vscode.workspace.fs.createDirectory(dir);
+        }
+        catch {
+            // ignore if it already exists
+        }
+        await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf8'));
+        const doc = await vscode.workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(doc);
+        vscode.window.setStatusBarMessage(`✅ NAVI: Created ${relPath}`, 3000);
+        this.postBotStatus(`✅ Done! I've created \`${relPath}\` at ${fileUri.fsPath}`);
+    }
+    postBotStatus(text) {
+        if (!this._view)
+            return;
+        this._view.webview.postMessage({
+            type: 'botMessage',
+            text,
+            actions: [],
+            messageId: new Date().toISOString(),
+        });
+    }
+    async applyRunCommandAction(action) {
+        const command = action.command;
+        if (!command)
+            return;
+        // Security: Sanitize, truncate, and show command for confirmation before executing
+        const sanitizedCommand = command.replace(/[\r\n]/g, ' ').substring(0, 200);
+        const displayCommand = command.length > 200 ? sanitizedCommand + '...' : sanitizedCommand;
+        const confirmed = await vscode.window.showWarningMessage(`NAVI wants to run the following command:\\n\\n${displayCommand}\\n\\nAre you sure?`, { modal: true }, 'Run Command');
+        if (confirmed !== 'Run Command')
+            return;
+        const terminal = vscode.window.createTerminal('NAVI Agent');
+        terminal.show();
+        terminal.sendText(command);
+        vscode.window.showInformationMessage(`🚀 Running: ${command}`);
+    }
+    // ---- editFile with diff view & apply (PR-10) -------------------------------
+    async applyEditFileAction(action) {
+        // Backend contract: editFile provides either:
+        // - filePath + content (full new file text)   ✅
+        // - optionally diff (for explanation), but we don't parse it
+        const filePath = action.filePath;
+        const newContent = action.content;
+        if (!newContent) {
+            vscode.window.showWarningMessage('NAVI: editFile action is missing "content"; nothing to apply.');
+            return;
+        }
+        // Resolve target document: use filePath if present, otherwise active editor
+        let targetDoc;
+        if (filePath) {
+            const uri = vscode.Uri.file(filePath);
+            try {
+                targetDoc = await vscode.workspace.openTextDocument(uri);
+            }
+            catch {
+                vscode.window.showWarningMessage(`NAVI: Target file "${filePath}" does not exist.`);
+                return;
+            }
+        }
+        else {
+            targetDoc = vscode.window.activeTextEditor?.document;
+            if (!targetDoc) {
+                vscode.window.showWarningMessage('NAVI: No active file to apply edit to.');
+                return;
+            }
+        }
+        const originalText = targetDoc.getText();
+        const languageId = targetDoc.languageId;
+        // Create a virtual doc for the new content and show a diff
+        const newDoc = await vscode.workspace.openTextDocument({
+            language: languageId,
+            content: newContent,
+        });
+        const title = `NAVI proposed edit: ${targetDoc.fileName.split(/[\\/]/).pop()}`;
+        await vscode.commands.executeCommand('vscode.diff', targetDoc.uri, newDoc.uri, title);
+        // Ask user if we should apply the changes to the real file now
+        const choice = await vscode.window.showQuickPick([
+            { label: '✅ Apply edit to file', id: 'apply' },
+            { label: '👁️ Keep diff only', id: 'keep' },
+            { label: '❌ Cancel', id: 'cancel' },
+        ], {
+            placeHolder: 'NAVI has proposed an edit. Do you want to apply it to the real file?',
+        });
+        if (!choice || choice.id === 'cancel' || choice.id === 'keep') {
+            if (choice?.id === 'keep') {
+                this.postBotStatus('Diff view kept open for your review.');
+            }
+            return;
+        }
+        if (choice.id === 'apply') {
+            const edit = new vscode.WorkspaceEdit();
+            const fullRange = new vscode.Range(targetDoc.positionAt(0), targetDoc.positionAt(originalText.length));
+            edit.replace(targetDoc.uri, fullRange, newContent);
+            const success = await vscode.workspace.applyEdit(edit);
+            if (success) {
+                await targetDoc.save();
+                vscode.window.setStatusBarMessage('✅ NAVI: Edit applied.', 3000);
+                this.postBotStatus(`✅ Edit applied to ${targetDoc.fileName.split(/[\\/]/).pop()}`);
+            }
+            else {
+                vscode.window.showErrorMessage('NAVI: Failed to apply edit.');
+            }
         }
     }
     // PR-6C: Apply agent-proposed edit with diff view support

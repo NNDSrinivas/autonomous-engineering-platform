@@ -41,6 +41,8 @@ from .routers.policy import router as policy_router
 from .change import router as change_router
 from .chat import router as chat_router
 from .navi import router as navi_router  # PR-5B/PR-6: NAVI extension endpoint
+from .org_sync import router as org_sync_router  # Step 2: Jira/Confluence memory sync
+from .navi_search import router as navi_search_router  # Step 3: Unified RAG search
 from ..search.router import router as search_router
 from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
@@ -137,6 +139,8 @@ app.include_router(policy_router)
 app.include_router(change_router)
 app.include_router(chat_router)  # Enhanced conversational interface
 app.include_router(navi_router)  # PR-5B/PR-6: NAVI VS Code extension
+app.include_router(org_sync_router)  # Step 2: Jira/Confluence memory integration
+app.include_router(navi_search_router)  # Step 3: Unified RAG search
 app.include_router(search_router)
 app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")

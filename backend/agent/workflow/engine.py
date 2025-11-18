@@ -6,7 +6,7 @@ This is the "conductor" that coordinates all autonomous workflow execution.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from .state import WorkflowState, WorkflowStatus
 from .steps import (
@@ -61,8 +61,8 @@ async def run_workflow_step(
         if step == "analysis":
             result = await step_analysis(
                 state=state,
-                issue=state.issue,
-                enriched_context=state.enriched_context,
+                issue=state.issue if state.issue is not None else {},
+                enriched_context=state.enriched_context if state.enriched_context is not None else {},
                 workspace_context=context.get("workspace_context")
             )
         

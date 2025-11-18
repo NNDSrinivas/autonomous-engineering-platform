@@ -8,7 +8,7 @@ This is the "action layer" that actually modifies Jira state.
 import logging
 from typing import Dict, Any, Optional
 
-from backend.integrations.jira_client import get_jira_client
+from backend.integrations.jira_client import JiraClient
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ async def start_jira_work(user_id: str, issue_id: str) -> Dict[str, Any]:
     try:
         logger.info(f"User {user_id} starting work on {issue_id}")
         
-        jira = get_jira_client(user_id)
+        jira = JiraClient()
         
         # Try to transition to In Progress
         try:
@@ -99,7 +99,7 @@ async def complete_jira_work(
     try:
         logger.info(f"User {user_id} completing work on {issue_id}")
         
-        jira = get_jira_client(user_id)
+        jira = JiraClient()
         
         # Try to transition to Done
         try:
@@ -160,7 +160,7 @@ async def add_jira_comment(
     try:
         logger.info(f"Adding comment to {issue_id} from {user_id}")
         
-        jira = get_jira_client(user_id)
+        jira = JiraClient()
         await jira.add_comment(issue_id, comment)
         
         return {
@@ -201,7 +201,7 @@ async def transition_jira(
     try:
         logger.info(f"Transitioning {issue_id} to {target_status} for {user_id}")
         
-        jira = get_jira_client(user_id)
+        jira = JiraClient()
         await jira.transition_issue(issue_id, target_status)
         
         # Add comment if provided
@@ -250,7 +250,7 @@ async def update_jira_description(
     try:
         logger.info(f"Updating description for {issue_id}")
         
-        jira = get_jira_client(user_id)
+        jira = JiraClient()
         await jira.update_issue(issue_id, {"description": new_description})
         
         return {

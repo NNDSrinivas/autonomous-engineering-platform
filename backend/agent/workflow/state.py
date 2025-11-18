@@ -7,7 +7,7 @@ This is the "brain state" that remembers where NAVI is in a multi-step workflow.
 
 import logging
 from enum import Enum
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ class WorkflowState:
         
         # Execution history
         self.step_history: List[Dict[str, Any]] = []
-        self.errors: List[str] = []
+        self.errors: List[Union[str, Dict[str, Any]]] = []  # Can store string or dict errors
         
         # Approval tracking
         self.pending_approval: Optional[Dict[str, Any]] = None

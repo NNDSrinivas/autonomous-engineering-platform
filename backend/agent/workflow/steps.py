@@ -15,7 +15,7 @@ from backend.agent.tools.apply_diff import apply_diff
 from backend.agent.tools.run_command import run_command
 from backend.agent.tools.github_tools import github_create_branch, github_create_pr
 from backend.agent.jira_engine.executor import transition_jira, add_jira_comment
-from backend.llm.llm import call_llm
+from backend.llm.router import complete_chat as call_llm
 
 logger = logging.getLogger(__name__)
 
@@ -209,16 +209,15 @@ Use proper unified diff format starting with --- and +++.
 """
             
             try:
-                llm_response = await call_llm(
-                    messages=[
-                        {"role": "system", "content": "You are a code modification assistant. Generate precise unified diffs."},
-                        {"role": "user", "content": diff_prompt}
-                    ],
+                system_msg = "You are a code modification assistant. Generate precise unified diffs."
+                llm_response = call_llm(
+                    system=system_msg,
+                    user=diff_prompt,
                     model="gpt-4o",
                     temperature=0.2
                 )
                 
-                diff_text = llm_response.get("content", "")
+                diff_text = llm_response  # complete_chat returns string directly
                 
                 diffs.append({
                     "file": file_path,

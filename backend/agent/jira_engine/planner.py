@@ -8,7 +8,7 @@ This is the "senior architect brain" that proposes complete solutions.
 import logging
 from typing import Dict, Any, Optional
 
-from backend.llm.llm import call_llm
+from backend.llm.router import complete_chat as call_llm
 
 logger = logging.getLogger(__name__)
 

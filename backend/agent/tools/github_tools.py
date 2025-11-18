@@ -33,9 +33,9 @@ async def github_create_branch(user_id: str, branch_name: str, base_branch: str 
     logger.info(f"[TOOL:github_branch] user={user_id}, branch={branch_name}, base={base_branch}")
     
     try:
-        from backend.integrations.github_client import get_github_client
+        from backend.integrations.github.service import GitHubService
         
-        gh_client = await get_github_client()
+        import os; gh_client = GitHubService(token=os.getenv("GITHUB_TOKEN", ""))
         if not gh_client:
             return {
                 "success": False,
@@ -92,9 +92,9 @@ async def github_create_pr(
     logger.info(f"[TOOL:github_pr] user={user_id}, branch={branch}, title={title}")
     
     try:
-        from backend.integrations.github_client import get_github_client
+        from backend.integrations.github.service import GitHubService
         
-        gh_client = await get_github_client()
+        import os; gh_client = GitHubService(token=os.getenv("GITHUB_TOKEN", ""))
         if not gh_client:
             return {
                 "success": False,

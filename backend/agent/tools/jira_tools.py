@@ -33,10 +33,10 @@ async def jira_fetch_issue(user_id: str, issue_key: str) -> Dict[str, Any]:
     
     try:
         # Import Jira client
-        from backend.integrations.jira_client import get_jira_client
+        from backend.integrations.jira_client import JiraClient
         
         # Get issue
-        jira_client = await get_jira_client()
+        jira_client = JiraClient()
         if not jira_client:
             return {
                 "success": False,
@@ -99,9 +99,9 @@ async def jira_comment(user_id: str, issue_key: str, comment: str) -> Dict[str, 
     logger.info(f"[TOOL:jira_comment] user={user_id}, issue={issue_key}")
     
     try:
-        from backend.integrations.jira_client import get_jira_client
+        from backend.integrations.jira_client import JiraClient
         
-        jira_client = await get_jira_client()
+        jira_client = JiraClient()
         if not jira_client:
             return {
                 "success": False,
@@ -147,9 +147,9 @@ async def jira_transition(user_id: str, issue_key: str, status: str) -> Dict[str
     logger.info(f"[TOOL:jira_transition] user={user_id}, issue={issue_key}, status={status}")
     
     try:
-        from backend.integrations.jira_client import get_jira_client
+        from backend.integrations.jira_client import JiraClient
         
-        jira_client = await get_jira_client()
+        jira_client = JiraClient()
         if not jira_client:
             return {
                 "success": False,

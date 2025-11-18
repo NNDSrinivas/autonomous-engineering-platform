@@ -7,7 +7,7 @@ This is a write operation with strict sandboxing (requires user approval).
 
 import subprocess
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ BLOCKED_COMMANDS = {
 async def run_command(
     user_id: str,
     command: str,
-    cwd: str = None,
+    cwd: Optional[str] = None,
     timeout: int = 30
 ) -> Dict[str, Any]:
     """

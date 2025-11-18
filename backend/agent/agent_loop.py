@@ -75,7 +75,10 @@ async def run_agent_loop(
         if message.strip().lower() in ("yes", "sure", "okay", "ok", "go ahead", "yes please", "please"):
             if previous_state and previous_state.get("pending_action"):
                 logger.info(f"[AGENT] Affirmative detected, executing pending action")
-                return await execute_tool(user_id, previous_state["pending_action"], db=db)
+                pending = previous_state["pending_action"]
+                tool_name = pending if isinstance(pending, str) else pending.get("tool", "")
+                tool_args = {} if isinstance(pending, str) else pending.get("args", {})
+                return await execute_tool(user_id, tool_name, tool_args, db=db)
             
             # If no pending action, treat as continuation
             message = f"(user agrees to continue previous task) {message}"
@@ -167,7 +170,7 @@ async def run_agent_loop(
         # ---------------------------------------------------------
         if plan["type"] == "execute_tool":
             logger.info(f"[AGENT] Executing tool immediately")
-            result = await execute_tool(user_id, plan["tool"], db=db)
+            result = await execute_tool(user_id, plan["tool"], plan.get("args", {}), db=db)
             clear_user_state(user_id)
             return result
         

@@ -24,7 +24,7 @@ from backend.agent.intent_schema import (
     AFFIRMATIVE_PATTERNS,
     ENTITY_HINTS
 )
-from backend.llm.llm import call_llm
+from backend.llm.router import complete_chat as call_llm
 
 logger = logging.getLogger(__name__)
 
@@ -247,9 +247,9 @@ Return ONLY valid JSON matching the schema.
 """
     
     try:
-        response = await call_llm(
-            system_prompt=INTENT_SYSTEM_PROMPT,
-            user_prompt=llm_prompt,
+        response = call_llm(
+            system=INTENT_SYSTEM_PROMPT,
+            user=llm_prompt,
             model="gpt-4o",  # Use latest model for best reasoning
             temperature=0.1  # Low temperature for consistent classification
         )

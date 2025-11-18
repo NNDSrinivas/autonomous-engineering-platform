@@ -7,7 +7,7 @@ This is a read-only operation (no approval needed).
 
 import os
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import re
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ TEXT_EXTENSIONS = {
 async def search_repo(
     user_id: str,
     query: str,
-    workspace_root: str = None,
+    workspace_root: Optional[str] = None,
     max_results: int = 50,
     case_sensitive: bool = False,
     regex: bool = False

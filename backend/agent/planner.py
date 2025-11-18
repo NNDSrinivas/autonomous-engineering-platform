@@ -21,7 +21,7 @@ import json
 import logging
 from typing import Dict, Any, Optional, List
 
-from backend.llm.llm import call_llm
+from backend.llm.router import complete_chat as call_llm
 
 logger = logging.getLogger(__name__)
 
@@ -200,11 +200,11 @@ Return ONLY valid JSON matching the schema.
 """
     
     try:
-        response = await call_llm(
-            system_prompt=PLAN_SYSTEM_PROMPT,
-            user_prompt=llm_prompt,
+        response = call_llm(
+            system=PLAN_SYSTEM_PROMPT,
+            user=llm_prompt,
             model="gpt-4o",  # Use latest model for best planning
-            temperature=0.2  # Low temperature for consistent planning
+            temperature=0.2  # Low temperature for structured planning
         )
         
         # Parse LLM response as JSON

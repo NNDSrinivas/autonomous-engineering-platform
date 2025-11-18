@@ -9,13 +9,13 @@ This is a write operation (requires user approval).
 
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import difflib
 
 logger = logging.getLogger(__name__)
 
 
-async def apply_diff(user_id: str, path: str, diff: str, old_content: str = None) -> Dict[str, Any]:
+async def apply_diff(user_id: str, path: str, diff: str, old_content: Optional[str] = None) -> Dict[str, Any]:
     """
     Apply unified diff to file.
     

@@ -7,12 +7,12 @@ This is a read-only operation (no approval needed).
 
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
-async def read_file(user_id: str, path: str, start_line: int = None, end_line: int = None) -> Dict[str, Any]:
+async def read_file(user_id: str, path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> Dict[str, Any]:
     """
     Read file contents from workspace.
     

@@ -262,14 +262,15 @@ async def get_memory_stats(
         Dictionary of memory statistics
     """
     
+    stats = {
+        "total_memories": 0,
+        "by_type": {},
+        "avg_importance": 0.0,
+        "oldest_memory": None,
+        "most_accessed": None
+    }
+    
     try:
-        stats = {
-            "total_memories": 0,
-            "by_type": {},
-            "avg_importance": 0.0,
-            "oldest_memory": None,
-            "most_accessed": None
-        }
         
         # Count total memories
         # query = "SELECT COUNT(*) FROM navi_memory"

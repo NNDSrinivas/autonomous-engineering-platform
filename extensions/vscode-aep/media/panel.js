@@ -628,6 +628,53 @@ let commandMenuDragState = {
     });
   }
 
+  // Helper: Render Copilot-style Agent Run Card -------------------------------
+  function renderAgentRunCard(agentRun) {
+    if (!agentRun || !agentRun.steps || !agentRun.steps.length) {
+      return null;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'navi-agent-run-card';
+
+    const header = document.createElement('div');
+    header.className = 'navi-agent-run-header';
+    header.innerHTML = `
+      <div class="navi-agent-run-title">Agent run</div>
+      <div class="navi-agent-run-status">${agentRun.status || 'completed'}</div>
+    `;
+
+    const list = document.createElement('ul');
+    list.className = 'navi-agent-run-steps';
+
+    agentRun.steps.forEach((step) => {
+      const li = document.createElement('li');
+      li.className = 'navi-agent-run-step';
+
+      let statusIcon = '⏳';
+      if (step.status === 'done') statusIcon = '✅';
+      else if (step.status === 'running') statusIcon = '🟣';
+      else if (step.status === 'blocked') statusIcon = '⚠️';
+
+      const escapedLabel = escapeHtml(step.label);
+      const escapedDetail = step.detail ? escapeHtml(step.detail) : '';
+
+      li.innerHTML = `
+        <span class="navi-agent-run-step-icon">${statusIcon}</span>
+        <div class="navi-agent-run-step-body">
+          <div class="navi-agent-run-step-label">${escapedLabel}</div>
+          ${step.detail ? `<div class="navi-agent-run-step-detail">${escapedDetail}</div>` : ''}
+        </div>
+      `;
+
+      list.appendChild(li);
+    });
+
+    card.appendChild(header);
+    card.appendChild(list);
+    return card;
+  }
+
   // Messages from extension ---------------------------------------------------
   window.addEventListener('message', (event) => {
     const msg = event.data;
@@ -739,6 +786,15 @@ let commandMenuDragState = {
 
           bubble.appendChild(actionsContainer);
         }
+
+        // STEP K: Agent Run card (Copilot-style)
+        if (msg.agentRun) {
+          const runCard = renderAgentRunCard(msg.agentRun);
+          if (runCard) {
+            bubble.appendChild(runCard);
+          }
+        }
+
         break;
       }
 

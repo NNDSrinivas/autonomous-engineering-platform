@@ -15,6 +15,8 @@ import os
 from ..core.db import get_db
 from ..services.navi_memory_service import search_memory
 from ..services.citation_formatter import format_citations_for_llm
+from ..agent.orchestrator import NaviAgentContext
+from ..agent.agent_types import AgentRunSummary
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +90,7 @@ class NaviChatResponse(BaseModel):
     role: str = "assistant"
     content: str
     actions: Optional[List[AgentAction]] = None
+    agentRun: Optional[dict] = Field(None, description="Agent run summary for Copilot-style UI")
 
 
 # ============================================================================
@@ -106,6 +109,7 @@ async def navi_chat(
     PR-6A/B: Returns agent actions (editFile, createFile, runCommand)
     PR-6C: Supports unified diffs for clean edits
     Step 3: Retrieves relevant memory context via RAG search
+    Step K: Agent orchestrator with Org Brain integration and Copilot-style UI
     """
     try:
         logger.info(
@@ -113,7 +117,41 @@ async def navi_chat(
             f"message: {request.message[:100]}, attachments: {len(request.attachments)}"
         )
 
-        # Step 3: Retrieve relevant memory context (RAG)
+        # STEP K: Agent-full mode with orchestrator and Org Brain
+        if request.mode == "agent-full":
+            logger.info("[NAVI] Using agent orchestrator with Org Brain integration")
+            
+            # Build workspace context from request
+            workspace_context = {}
+            if request.context:
+                workspace_context = {
+                    "rootPath": request.context.workspaceFolder,
+                    "activeFile": request.context.activeFilePath,
+                    "language": request.context.activeFileLanguage,
+                    "selection": request.context.selection,
+                }
+            
+            # Create agent context and run orchestrator
+            agent_context = NaviAgentContext(
+                db=db,
+                org_id="demo-org",  # TODO: Get from auth context
+                user_id="demo-user",  # TODO: Get from auth context
+                workspace=workspace_context
+            )
+            
+            result = await agent_context.build_run(
+                user_message=request.message,
+                mode=request.mode
+            )
+            
+            return NaviChatResponse(
+                role="assistant",
+                content=result["assistant_text"],
+                actions=result.get("file_actions"),
+                agentRun=result["agent_run"].model_dump()
+            )
+
+        # Step 3: Retrieve relevant memory context (RAG) for non-agent modes
         memory_context = ""
         try:
             memories = await search_memory(

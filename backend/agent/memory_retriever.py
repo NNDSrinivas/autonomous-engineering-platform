@@ -149,3 +149,32 @@ async def retrieve_recent_memories(
     except Exception as e:
         logger.error(f"[MEMORY] Error retrieving recent memories: {e}", exc_info=True)
         return []
+
+
+# ---------------------------------------------------------------------------
+# UNIFIED MEMORY RETRIEVAL (B1 + B2 + B3)
+# ---------------------------------------------------------------------------
+
+async def retrieve_unified_memories(
+    user_id: str,
+    query: str,
+    db=None,
+) -> Dict[str, Any]:
+    """
+    Enhanced memory retrieval that pulls from multiple sources:
+    - Jira tasks/issues
+    - Slack/Teams messages  
+    - Meeting summaries
+    - Wiki/Confluence docs
+    - Code search results
+    - Build/CI status
+    - Prior NAVI conversations
+    
+    Falls back gracefully if sources aren't available.
+    """
+    try:
+        from backend.agent.unified_memory_retriever import retrieve_unified_memories
+        return await retrieve_unified_memories(user_id, query, db)
+    except ImportError:
+        logger.warning("[MEMORY] Unified memory retriever not available, using fallback")
+        return await retrieve_memories(user_id, query, db)

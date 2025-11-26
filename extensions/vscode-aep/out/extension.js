@@ -6,6 +6,7 @@ exports.deactivate = deactivate;
 const vscode = require("vscode");
 const path = require("path");
 const diffUtils_1 = require("./diffUtils");
+const connectorsPanel_1 = require("./connectorsPanel");
 // PR-4: Storage keys for persistent model/mode selection
 const STORAGE_KEYS = {
     modelId: 'aep.navi.modelId',
@@ -27,6 +28,11 @@ function activate(context) {
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(
     // Make sure this matches the view id in package.json
     'aep.chatView', provider));
+    context.subscriptions.push(vscode.commands.registerCommand('aep.attachSelection', async () => {
+        await provider.attachSelectionCommand();
+    }), vscode.commands.registerCommand('aep.attachCurrentFile', async () => {
+        await provider.attachCurrentFileCommand();
+    }));
 }
 function deactivate() {
     // nothing yet
@@ -39,6 +45,8 @@ class NaviWebviewProvider {
         this._currentModelLabel = DEFAULT_MODEL.label;
         this._currentModeId = DEFAULT_MODE.id;
         this._currentModeLabel = DEFAULT_MODE.label;
+        // Attachment state
+        this._attachments = [];
         this._extensionUri = extensionUri;
         this._context = context;
         this._conversationId = generateConversationId();
@@ -47,6 +55,21 @@ class NaviWebviewProvider {
         this._currentModelLabel = context.globalState.get(STORAGE_KEYS.modelLabel) ?? DEFAULT_MODEL.label;
         this._currentModeId = context.globalState.get(STORAGE_KEYS.modeId) ?? DEFAULT_MODE.id;
         this._currentModeLabel = context.globalState.get(STORAGE_KEYS.modeLabel) ?? DEFAULT_MODE.label;
+    }
+    getBackendBaseUrl() {
+        const config = vscode.workspace.getConfiguration('aep');
+        const raw = (config.get('navi.backendUrl') || 'http://127.0.0.1:8787/api/navi/chat').trim();
+        // Turn http://127.0.0.1:8001/api/navi/chat → http://127.0.0.1:8001
+        try {
+            const url = new URL(raw);
+            url.pathname = url.pathname.replace(/\/api\/navi\/chat\/?$/, '');
+            url.search = '';
+            url.hash = '';
+            return url.toString().replace(/\/$/, '');
+        }
+        catch {
+            return 'http://127.0.0.1:8001';
+        }
     }
     resolveWebviewView(webviewView, _context, _token) {
         this._view = webviewView;
@@ -57,8 +80,21 @@ class NaviWebviewProvider {
         webviewView.webview.html = this.getWebviewHtml(webviewView.webview);
         // PR-4: Hydrate model/mode state from storage after webview loads
         webviewView.webview.onDidReceiveMessage(async (msg) => {
+            console.log('[AEP] Extension received message:', msg.type);
             try {
                 switch (msg.type) {
+                    case 'openExternal': {
+                        const url = String(msg.url || '').trim();
+                        if (!url)
+                            return;
+                        try {
+                            await vscode.env.openExternal(vscode.Uri.parse(url));
+                        }
+                        catch (e) {
+                            vscode.window.showErrorMessage('Failed to open external URL');
+                        }
+                        break;
+                    }
                     case 'ready': {
                         // Send hydration message first
                         this.postToWebview({
@@ -73,8 +109,7 @@ class NaviWebviewProvider {
                             type: 'botMessage',
                             text: "Hello! I'm **NAVI**, your autonomous engineering assistant.\n\nI can help you with:\n\n- Code explanations and reviews\n- Refactoring and testing\n- Documentation generation\n- Engineering workflow automation\n\nHow can I help you today?"
                         });
-                        // Trigger background Jira sync (non-blocking)
-                        this.triggerBackgroundJiraSync();
+                        // NOTE: Removed automatic Jira sync - now only triggered when user explicitly asks about Jira tasks
                         break;
                     }
                     case 'sendMessage': {
@@ -85,24 +120,32 @@ class NaviWebviewProvider {
                         // PR-4: Use modelId and modeId from the message (coming from pills)
                         const modelId = msg.modelId || this._currentModelId;
                         const modeId = msg.modeId || this._currentModeId;
-                        // PR-5: Extract attachments if present
-                        const attachments = msg.attachments || [];
+                        // PR-5: Use extension's internal attachments (the authoritative source)
+                        const attachments = this.getCurrentAttachments();
                         console.log('[Extension Host] [AEP] User message:', text, 'model:', modelId, 'mode:', modeId, 'attachments:', attachments.length);
+                        console.log('[Extension Host] [AEP] About to process message with smart routing:', text);
                         // Update local state
                         this._messages.push({ role: 'user', content: text });
                         // Show thinking state
                         this.postToWebview({ type: 'botThinking', value: true });
-                        await this.callNaviBackend(text, modelId, modeId, attachments);
+                        console.log('[Extension Host] [AEP] Using smart intent-based routing...');
+                        await this.handleSmartRouting(text, modelId, modeId, attachments);
+                        console.log('[Extension Host] [AEP] Smart routing completed');
                         break;
                     }
                     case 'requestAttachment': {
-                        // PR-5: Handle file attachment requests
                         await this.handleAttachmentRequest(webviewView.webview, msg.kind);
                         break;
                     }
                     case 'agent.applyAction': {
                         // PR-7: Apply agent-proposed action (create/edit/run)
                         await this.handleAgentApplyAction(msg);
+                        break;
+                    }
+                    case 'agent.applyWorkspacePlan': {
+                        // New: Apply a full workspace plan (array of AgentAction)
+                        const actions = Array.isArray(msg.actions) ? msg.actions : [];
+                        await this.applyWorkspacePlan(actions);
                         break;
                     }
                     case 'agent.applyEdit': {
@@ -143,6 +186,7 @@ class NaviWebviewProvider {
                         // Clear current conversation state (so backend can start fresh)
                         this._conversationId = generateConversationId();
                         this._messages = [];
+                        this.clearAttachments();
                         // Tell the webview to reset its UI
                         this.postToWebview({
                             type: 'resetChat',
@@ -266,6 +310,214 @@ class NaviWebviewProvider {
                         await this.handleJiraTaskSelected(jiraKey);
                         break;
                     }
+                    case 'showToast': {
+                        // Display toast notification from webview
+                        const message = String(msg.message || '').trim();
+                        const level = String(msg.level || 'info');
+                        if (!message)
+                            return;
+                        switch (level) {
+                            case 'error':
+                                vscode.window.showErrorMessage(`NAVI: ${message}`);
+                                break;
+                            case 'warning':
+                                vscode.window.showWarningMessage(`NAVI: ${message}`);
+                                break;
+                            default:
+                                vscode.window.showInformationMessage(`NAVI: ${message}`);
+                        }
+                        break;
+                    }
+                    case 'openConnectors': {
+                        console.log('[AEP] openConnectors message received');
+                        try {
+                            // Open the Connectors Hub
+                            const config = vscode.workspace.getConfiguration('aep');
+                            const backendUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8001';
+                            const cleanBaseUrl = backendUrl.replace(/\/api\/navi\/chat$/, '');
+                            console.log('[AEP] Opening ConnectorsPanel with baseUrl:', cleanBaseUrl);
+                            connectorsPanel_1.ConnectorsPanel.createOrShow(this._extensionUri, cleanBaseUrl, this._context);
+                            console.log('[AEP] ConnectorsPanel.createOrShow completed');
+                        }
+                        catch (err) {
+                            console.error('[AEP] Error opening ConnectorsPanel:', err);
+                            vscode.window.showErrorMessage(`Failed to open Connectors: ${err}`);
+                        }
+                        break;
+                    }
+                    case 'connectors.getStatus': {
+                        // Proxy connector status request to backend
+                        try {
+                            const baseUrl = this.getBackendBaseUrl();
+                            const response = await fetch(`${baseUrl}/api/connectors/status`);
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            }
+                            const data = await response.json();
+                            this.postToWebview({ type: 'connectors.status', data });
+                        }
+                        catch (err) {
+                            console.error('[Extension Host] [AEP] Connectors status error:', err);
+                            this.postToWebview({
+                                type: 'connectors.statusError',
+                                error: err?.message || String(err),
+                            });
+                        }
+                        break;
+                    }
+                    case 'connectors.jiraConnect': {
+                        // Proxy Jira connection request to backend
+                        try {
+                            const baseUrl = this.getBackendBaseUrl();
+                            const endpoint = `${baseUrl}/api/connectors/jira/connect`;
+                            console.log('[AEP] Jira connect - Backend base URL:', baseUrl);
+                            console.log('[AEP] Jira connect - Full endpoint:', endpoint);
+                            console.log('[AEP] Jira connect - Request payload:', {
+                                base_url: msg.baseUrl,
+                                email: msg.email || undefined,
+                                api_token: msg.apiToken ? '***' : undefined
+                            });
+                            const response = await fetch(endpoint, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    base_url: msg.baseUrl,
+                                    email: msg.email || undefined,
+                                    api_token: msg.apiToken,
+                                }),
+                            });
+                            console.log('[AEP] Jira connect - Response status:', response.status);
+                            if (!response.ok) {
+                                const errorText = await response.text().catch(() => '');
+                                console.error('[AEP] Jira connect - Error response:', errorText);
+                                throw new Error(errorText || `HTTP ${response.status}: ${response.statusText}`);
+                            }
+                            const data = await response.json();
+                            console.log('[AEP] Jira connect - Success response:', data);
+                            // Send proper result message
+                            this.postToWebview({
+                                type: 'connectors.jiraConnect.result',
+                                ok: true,
+                                provider: 'jira',
+                                status: data.status || 'connected',
+                                data
+                            });
+                        }
+                        catch (err) {
+                            console.error('[Extension Host] [AEP] Jira connect error:', err);
+                            console.error('[AEP] Error stack:', err.stack);
+                            // Send proper error result message
+                            this.postToWebview({
+                                type: 'connectors.jiraConnect.result',
+                                ok: false,
+                                provider: 'jira',
+                                error: err?.message || String(err),
+                            });
+                            // Also show a user-friendly error message
+                            vscode.window.showErrorMessage(`NAVI: Jira connection failed: ${err?.message || 'fetch failed'}. Check that backend is running on http://127.0.0.1:8001`);
+                        }
+                        break;
+                    }
+                    case 'connectors.close': {
+                        console.log('[AEP] Connectors close message received');
+                        // Hide the connectors modal in the webview
+                        this.postToWebview({
+                            type: 'connectors.hide'
+                        });
+                        break;
+                    }
+                    case 'connectors.jiraSyncNow': {
+                        try {
+                            const baseUrl = this.getBackendBaseUrl();
+                            const endpoint = `${baseUrl}/api/org/sync/jira`;
+                            console.log('[AEP] Jira sync-now – calling enhanced endpoint', endpoint);
+                            const response = await fetch(endpoint, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    user_id: 'default_user',
+                                    max_issues: 20
+                                })
+                            });
+                            if (!response.ok) {
+                                const errorText = await response.text().catch(() => '');
+                                console.error('[AEP] Jira sync-now failed', response.status, errorText);
+                                vscode.window.showErrorMessage(`NAVI: Jira sync failed (${response.status}). Check backend logs.`);
+                                this.postToWebview({
+                                    type: 'connectors.jiraSyncResult',
+                                    ok: false,
+                                    error: `HTTP ${response.status}`,
+                                });
+                                return;
+                            }
+                            const data = await response.json();
+                            console.log('[AEP] Jira sync-now success', data);
+                            const syncedCount = data.total ?? data.processed_keys?.length ?? 0;
+                            vscode.window.showInformationMessage(`NAVI: Jira sync complete – ${syncedCount} issues synced at ${new Date().toLocaleTimeString()}`);
+                            this.postToWebview({
+                                type: 'connectors.jiraSyncResult',
+                                ok: true,
+                                synced: syncedCount,
+                                snapshot_ts: data.snapshot_ts,
+                                processed_keys: data.processed_keys ?? []
+                            });
+                        }
+                        catch (err) {
+                            console.error('[AEP] Jira sync-now error', err);
+                            vscode.window.showErrorMessage(`NAVI: Jira sync error – ${err?.message ?? String(err)}`);
+                            this.postToWebview({
+                                type: 'connectors.jiraSyncResult',
+                                ok: false,
+                                error: 'fetch_failed',
+                            });
+                        }
+                        break;
+                    }
+                    case 'aep.intent.classify': {
+                        // Handle intent classification request
+                        const text = String(msg.text || '').trim();
+                        const modelId = msg.modelId || this._currentModelId;
+                        if (!text) {
+                            console.warn('[AEP] Intent classification requested but no text provided');
+                            return;
+                        }
+                        try {
+                            console.log('[AEP] Classifying intent for text:', text, 'with model:', modelId);
+                            // Call FastAPI backend for intent classification
+                            const baseUrl = this.getBackendBaseUrl();
+                            const response = await fetch(`${baseUrl}/api/agent/intent/preview`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    message: text,
+                                    model_id: modelId
+                                })
+                            });
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            }
+                            const result = await response.json();
+                            console.log('[AEP] Intent classification result:', result);
+                            // Send result back to webview
+                            this.postToWebview({
+                                type: 'aep.intent.result',
+                                intent: result.intent || 'Unknown',
+                                confidence: result.confidence || 0.0,
+                                model: result.model || modelId
+                            });
+                        }
+                        catch (err) {
+                            console.error('[AEP] Intent classification failed:', err);
+                            this.postToWebview({
+                                type: 'aep.intent.result',
+                                intent: 'Error',
+                                confidence: 0.0,
+                                model: modelId,
+                                error: String(err)
+                            });
+                        }
+                        break;
+                    }
                     default:
                         console.warn('[Extension Host] [AEP] Unknown message from webview:', msg);
                 }
@@ -280,11 +532,150 @@ class NaviWebviewProvider {
         });
         // Welcome message will be sent when panel sends 'ready'
     }
+    // --- Intent classification and smart routing --------------------------------
+    // --- Intent classification and smart routing --------------------------------
+    async classifyIntent(message) {
+        const text = (message || '').trim();
+        if (!text) {
+            return 'general';
+        }
+        try {
+            const baseUrl = this.getBackendBaseUrl();
+            const endpoint = `${baseUrl}/api/agent/intent/preview`;
+            console.log('[AEP] Calling intent preview endpoint:', endpoint);
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: text,
+                    model_id: this._currentModelId,
+                }),
+            });
+            if (!response.ok) {
+                const body = await response.text().catch(() => '');
+                console.warn('[AEP] Intent preview HTTP error:', response.status, response.statusText, body);
+                return 'general';
+            }
+            const result = await response.json();
+            const family = (result.family || '').toLowerCase();
+            const kind = (result.kind || '').toLowerCase();
+            const confidence = typeof result.confidence === 'number'
+                ? result.confidence
+                : 0;
+            console.log('[AEP] Intent preview result:', { family, kind, confidence });
+            // Map backend families/kinds → NaviIntent union
+            if (family === 'jira') {
+                if (kind === 'list')
+                    return 'jira_list';
+                if (kind === 'priority')
+                    return 'jira_priority';
+                return 'jira_ticket';
+            }
+            if (family === 'workspace') {
+                return 'workspace';
+            }
+            if (family === 'code') {
+                return 'code';
+            }
+            if (family === 'greeting') {
+                return 'greeting';
+            }
+            return 'general';
+        }
+        catch (err) {
+            console.warn('[AEP] Intent classification failed, falling back to general:', err);
+            return 'general';
+        }
+    }
+    async handleSmartRouting(text, modelId, modeId, attachments) {
+        // 1) Classify intent
+        const intent = await this.classifyIntent(text);
+        console.log('[AEP] Detected intent:', intent, 'for message:', text);
+        // We may add attachments automatically (workspace snapshot)
+        let effectiveAttachments = attachments;
+        // 2) If this is a workspace question and there is no context yet,
+        //    build and attach a lightweight workspace snapshot.
+        if (intent === 'workspace' &&
+            (!effectiveAttachments || effectiveAttachments.length === 0)) {
+            console.log('[AEP] Workspace intent with no attachments → auto-attaching snapshot');
+            await this.autoAttachWorkspaceSnapshot();
+            effectiveAttachments = this.getCurrentAttachments();
+        }
+        // 3) Route based on intent
+        try {
+            switch (intent) {
+                case 'jira_list': {
+                    await this.handleJiraListIntent(text);
+                    break;
+                }
+                case 'jira_priority':
+                case 'jira_ticket': {
+                    await this.callNaviBackend(text, modelId, modeId, effectiveAttachments);
+                    break;
+                }
+                case 'greeting':
+                case 'code':
+                case 'workspace':
+                case 'general':
+                case 'other':
+                default: {
+                    await this.callNaviBackend(text, modelId, modeId, effectiveAttachments);
+                    break;
+                }
+            }
+        }
+        catch (err) {
+            console.error('[AEP] Error handling message with intent:', intent, err);
+            this.postToWebview({
+                type: 'botMessage',
+                text: 'Sorry, something went wrong while processing this message.',
+            });
+        }
+    }
+    async handleJiraListIntent(originalMessage) {
+        try {
+            const res = await fetch(`${this.getBackendBaseUrl()}/api/navi/jira-tasks?user_id=default_user&limit=20`);
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+            }
+            const data = await res.json();
+            const assistantText = this.formatJiraTaskListForChat(data, originalMessage);
+            this._messages.push({ role: 'assistant', content: assistantText });
+            this.postToWebview({ type: 'botThinking', value: false });
+            this.postToWebview({ type: 'botMessage', text: assistantText });
+        }
+        catch (err) {
+            console.error('[AEP] Error fetching Jira tasks:', err);
+            await this.callNaviBackend(originalMessage, this._currentModelId, this._currentModeId, this.getCurrentAttachments());
+        }
+    }
+    formatJiraTaskListForChat(data, originalMessage) {
+        if (!data.tasks || data.tasks.length === 0) {
+            return "I don't see any Jira tasks in your synced memory yet. Try running a Jira sync and ask me again.";
+        }
+        const lines = [];
+        lines.push("Here's what I have in your Jira queue right now:\n");
+        for (const t of data.tasks) {
+            const key = t.jira_key || t.scope || 'UNKNOWN';
+            const title = t.title || key;
+            const status = t.status || 'Unknown';
+            const updated = t.updated_at ? new Date(t.updated_at).toLocaleDateString() : 'Unknown';
+            lines.push(`- **${key}** — ${title} — **Status:** ${status} — *Last updated:* ${updated}`);
+        }
+        lines.push("\n---");
+        lines.push("**I can also:**");
+        lines.push("* Explain what a specific ticket is about in simple language");
+        lines.push("* Help you prioritize which ticket to pick next");
+        lines.push("* Break down a ticket into an implementation plan");
+        lines.push("* Pull related context from Slack, Confluence, or meeting notes");
+        lines.push("* Draft a message to your team about progress");
+        return lines.join('\n');
+    }
     // --- Jira task brief handlers ----------------------------------------------
     async triggerBackgroundJiraSync() {
         // Non-blocking background sync of Jira tasks
         const config = vscode.workspace.getConfiguration('aep');
-        const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8787';
+        const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8001';
         const userId = config.get('navi.userId') || 'srinivas@example.com';
         const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
         const syncUrl = `${cleanBaseUrl}/api/org/sync/jira`;
@@ -308,12 +699,14 @@ class NaviWebviewProvider {
                 }
             }
             else {
-                console.log('[Extension Host] [AEP] Jira sync failed:', response.status);
+                const text = await response.text().catch(() => '');
+                console.log('[Extension Host] [AEP] Jira sync failed:', response.status, text);
+                vscode.window.showWarningMessage(`NAVI: Jira sync failed (HTTP ${response.status})`);
             }
         })
             .catch((error) => {
-            // Silent fail - sync is optional, don't disrupt user
             console.log('[Extension Host] [AEP] Jira sync error (non-critical):', error.message);
+            vscode.window.showWarningMessage('NAVI: Jira sync error – backend unreachable or misconfigured');
         });
     }
     async handleJiraTaskBriefCommand() {
@@ -322,7 +715,7 @@ class NaviWebviewProvider {
         }
         try {
             const config = vscode.workspace.getConfiguration('aep');
-            const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8787';
+            const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8001';
             const userId = config.get('navi.userId') || 'srinivas@example.com';
             // Remove /api/navi/chat suffix if present
             const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
@@ -356,7 +749,7 @@ class NaviWebviewProvider {
         }
         try {
             const config = vscode.workspace.getConfiguration('aep');
-            const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8787';
+            const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8001';
             const userId = config.get('navi.userId') || 'srinivas@example.com';
             // Remove /api/navi/chat suffix if present
             const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
@@ -401,19 +794,41 @@ class NaviWebviewProvider {
         if (!this._view) {
             return;
         }
-        // PR-6B: New simplified request format
+        // Merge attachments into the plain-text message for the LLM
+        const messageWithContext = this.buildMessageWithAttachments(latestUserText, attachments);
+        // Get workspace folder as stable project identifier
+        const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
+            ? vscode.workspace.workspaceFolders[0].uri.fsPath
+            : undefined;
         const payload = {
-            message: latestUserText,
+            message: messageWithContext,
             model: modelId || this._currentModelId,
             mode: modeId || this._currentModeId,
-            attachments: attachments && attachments.length > 0 ? attachments : []
+            user_id: 'default_user',
+            workspace_id: workspaceFolder, // 🆕 pass workspace root
+            // Map attachment kinds to match backend expectations
+            attachments: (attachments ?? []).map(att => ({
+                ...att,
+                kind: att.kind === 'currentFile' || att.kind === 'pickedFile' ? 'file' : 'selection'
+            })),
         };
         let response;
         try {
             // Read backend URL from configuration with fallback
             const config = vscode.workspace.getConfiguration('aep');
-            const backendUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8787/api/navi/chat';
-            console.log('[Extension Host] [AEP] Calling NAVI backend', backendUrl, payload);
+            const configValue = config.get('navi.backendUrl');
+            const backendUrl = configValue || 'http://127.0.0.1:8787/api/navi/chat';
+            console.log('[Extension Host] [AEP] Configuration debug:');
+            console.log('[Extension Host] [AEP] - Raw config value:', configValue);
+            console.log('[Extension Host] [AEP] - Final backend URL:', backendUrl);
+            console.log('[Extension Host] [AEP] - Payload:', {
+                ...payload,
+                // don't spam the log with the whole file
+                attachmentsCount: payload.attachments.length,
+                firstAttachmentPath: payload.attachments[0]?.path,
+                firstAttachmentChars: payload.attachments[0]?.content?.length,
+            });
+            console.log('[Extension Host] [AEP] Calling NAVI backend now...');
             response = await fetch(backendUrl, {
                 method: 'POST',
                 headers: {
@@ -424,6 +839,11 @@ class NaviWebviewProvider {
         }
         catch (error) {
             console.error('[Extension Host] [AEP] NAVI backend unreachable:', error);
+            console.error('[Extension Host] [AEP] Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
             this.postToWebview({ type: 'botThinking', value: false });
             this.postToWebview({
                 type: 'error',
@@ -443,9 +863,11 @@ class NaviWebviewProvider {
             return;
         }
         try {
+            console.log('[Extension Host] [AEP] Response received. Status:', response.status, 'Content-Type:', contentType);
             if (contentType.includes('application/json')) {
                 // PR-6B: Handle new response format
                 const json = (await response.json());
+                console.log('[Extension Host] [AEP] JSON response:', json);
                 const content = (json.content || '').trim();
                 if (!content) {
                     console.warn('[Extension Host] [AEP] Empty content from NAVI backend.');
@@ -589,62 +1011,208 @@ class NaviWebviewProvider {
             text: "🔄 **New chat started!**\n\nHow can I help you today?"
         });
     }
+    // --- Attachment Helper Methods ---
+    addAttachment(attachment) {
+        // Simple upsert: dedupe by kind+path+length
+        const key = `${attachment.kind}:${attachment.path}:${attachment.content.length}`;
+        const existingIndex = this._attachments.findIndex(a => `${a.kind}:${a.path}:${a.content.length}` === key);
+        if (existingIndex >= 0) {
+            this._attachments[existingIndex] = attachment;
+        }
+        else {
+            this._attachments.push(attachment);
+        }
+        // Tell the webview so it can render chips (panel already listens for this)
+        this.postToWebview({
+            type: 'addAttachment',
+            attachment,
+        });
+    }
+    /**
+     * Automatically attach a lightweight workspace snapshot to help answer workspace-related questions.
+     * This includes key project files like package.json, README.md, etc.
+     */
+    async autoAttachWorkspaceSnapshot() {
+        console.log('[AEP] Collecting workspace snapshot...');
+        // Get workspace folders
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            console.log('[AEP] No workspace folders found');
+            return;
+        }
+        // Use the first workspace folder
+        const wsRoot = workspaceFolders[0].uri.fsPath;
+        console.log('[AEP] Workspace root:', wsRoot);
+        // Key files that provide project context
+        const keyFiles = [
+            'package.json',
+            'README.md',
+            'readme.md',
+            'pyproject.toml',
+            'requirements.txt',
+            'Cargo.toml',
+            'go.mod',
+            'pom.xml',
+            'build.gradle',
+            '.gitignore',
+        ];
+        let attachedCount = 0;
+        const maxFiles = 5; // Limit to avoid overwhelming the context
+        for (const fileName of keyFiles) {
+            if (attachedCount >= maxFiles)
+                break;
+            try {
+                const filePath = path.join(wsRoot, fileName);
+                const uri = vscode.Uri.file(filePath);
+                // Check if file exists
+                try {
+                    await vscode.workspace.fs.stat(uri);
+                }
+                catch {
+                    continue; // File doesn't exist, skip
+                }
+                // Read file content
+                const fileData = await vscode.workspace.fs.readFile(uri);
+                const content = new TextDecoder().decode(fileData);
+                // Truncate if too large
+                const truncatedContent = this.truncateForAttachment(content, fileName);
+                // Add as attachment
+                this.addAttachment({
+                    kind: 'file',
+                    path: filePath,
+                    content: truncatedContent,
+                });
+                attachedCount++;
+                console.log(`[AEP] Added workspace file: ${fileName}`);
+            }
+            catch (error) {
+                console.warn(`[AEP] Failed to read ${fileName}:`, error);
+            }
+        }
+        if (attachedCount > 0) {
+            console.log(`[AEP] Workspace snapshot complete: ${attachedCount} files attached`);
+        }
+        else {
+            console.log('[AEP] No key workspace files found');
+        }
+    }
+    getCurrentAttachments() {
+        return this._attachments.slice();
+    }
+    clearAttachments() {
+        this._attachments = [];
+        this.postToWebview({ type: 'clearAttachments' });
+    }
+    truncateForAttachment(text, source) {
+        const maxChars = 120000; // ~700–1000 lines is fine
+        if (text.length <= maxChars)
+            return text;
+        vscode.window.showWarningMessage(`NAVI: ${source} is very large; truncating to ${maxChars.toLocaleString()} characters for this request.`);
+        return text.slice(0, maxChars);
+    }
+    showWebviewToast(message, level = 'info') {
+        this.postToWebview({
+            type: 'ephemeralToast',
+            level,
+            text: message,
+        });
+    }
+    // Helper: merge attachments into the plain-text message we send to the backend
+    buildMessageWithAttachments(latestUserText, attachments) {
+        if (!attachments || attachments.length === 0) {
+            return latestUserText;
+        }
+        const chunks = [];
+        chunks.push('I have attached some code context from VS Code below. ' +
+            'Please use that code as the primary context when answering my request.\n');
+        for (const att of attachments) {
+            const fileLabel = att.path ? path.basename(att.path) : '(untitled)';
+            const kindLabel = att.kind === 'selection'
+                ? 'selected code'
+                : att.kind === 'currentFile'
+                    ? 'current file'
+                    : 'attached file';
+            const lang = att.language ?? ''; // ok to be empty
+            const fenceHeader = lang ? `\`\`\`${lang}` : '```';
+            chunks.push(`\n\nFile: \`${fileLabel}\` (${kindLabel})\n` +
+                `${fenceHeader}\n` +
+                `${att.content}\n` +
+                `\`\`\``);
+        }
+        chunks.push('\n\nUser request:\n');
+        chunks.push(latestUserText);
+        return chunks.join('');
+    }
     // PR-5: Handle attachment requests from the webview
     async handleAttachmentRequest(webview, kind) {
         const editor = vscode.window.activeTextEditor;
         try {
-            if (kind === 'selection' && editor && !editor.selection.isEmpty) {
-                // Read selected text
+            // 1) Attach SELECTION
+            if (kind === 'selection') {
+                if (!editor || editor.selection.isEmpty) {
+                    const msg = 'Select some code in the active editor before attaching.';
+                    vscode.window.showInformationMessage(`NAVI: ${msg}`);
+                    // Also show a short-lived toast inside the panel
+                    this.postToWebview({
+                        type: 'toast',
+                        level: 'warning',
+                        message: msg,
+                    });
+                    return;
+                }
                 const selectedText = editor.document.getText(editor.selection);
                 const filePath = editor.document.uri.fsPath;
-                this.postToWebview({
-                    type: 'addAttachment',
-                    attachment: {
-                        kind: 'selection',
-                        path: filePath,
-                        content: selectedText,
-                    },
-                });
+                const language = editor.document.languageId;
+                const attachment = {
+                    kind: 'selection',
+                    path: filePath,
+                    language,
+                    content: selectedText,
+                };
+                // Update internal state + tell panel
+                this.addAttachment(attachment);
+                return;
             }
-            else if (kind === 'current-file' && editor) {
-                // Read entire active file
+            // 2) Attach CURRENT FILE
+            if (kind === 'current-file' && editor) {
                 const content = editor.document.getText();
                 const filePath = editor.document.uri.fsPath;
-                this.postToWebview({
-                    type: 'addAttachment',
-                    attachment: {
-                        kind: 'file',
-                        path: filePath,
-                        content: content,
-                    },
-                });
+                const language = editor.document.languageId;
+                const attachment = {
+                    kind: 'currentFile',
+                    path: filePath,
+                    language,
+                    content,
+                };
+                this.addAttachment(attachment);
+                return;
             }
-            else if (kind === 'pick-file') {
-                // Show file picker
+            // 3) Pick FILE via file picker
+            if (kind === 'pick-file') {
                 const uris = await vscode.window.showOpenDialog({
                     canSelectFiles: true,
                     canSelectFolders: false,
                     canSelectMany: false,
-                    openLabel: 'Attach File',
+                    openLabel: 'Attach File to NAVI',
                 });
-                if (uris && uris.length > 0) {
-                    const uri = uris[0];
-                    const content = await vscode.workspace.fs.readFile(uri);
-                    const textContent = new TextDecoder('utf-8').decode(content);
-                    this.postToWebview({
-                        type: 'addAttachment',
-                        attachment: {
-                            kind: 'file',
-                            path: uri.fsPath,
-                            content: textContent,
-                        },
-                    });
+                if (!uris || uris.length === 0) {
+                    return;
                 }
+                const uri = uris[0];
+                const bytes = await vscode.workspace.fs.readFile(uri);
+                const textContent = new TextDecoder('utf-8').decode(bytes);
+                const attachment = {
+                    kind: 'pickedFile',
+                    path: uri.fsPath,
+                    content: textContent,
+                };
+                this.addAttachment(attachment);
+                return;
             }
         }
         catch (err) {
             console.error('[Extension Host] [AEP] Error reading attachment:', err);
-            vscode.window.showErrorMessage('Failed to read file for attachment.');
+            vscode.window.showErrorMessage('NAVI: Failed to read file for attachment.');
         }
     }
     // PR-7: Apply agent action from new unified message format
@@ -687,6 +1255,43 @@ class NaviWebviewProvider {
             console.error('[Extension Host] [AEP] Error applying action:', error);
             vscode.window.showErrorMessage(`Failed to apply action: ${error.message}`);
         }
+    }
+    // NEW: Apply a full workspace plan (array of AgentAction)
+    async applyWorkspacePlan(actions) {
+        if (!actions || actions.length === 0) {
+            vscode.window.showInformationMessage('NAVI: No workspace actions to apply.');
+            return;
+        }
+        console.log('[Extension Host] [AEP] Applying workspace plan with', actions.length, 'actions');
+        let appliedCount = 0;
+        for (const action of actions) {
+            try {
+                if (!action || !action.type) {
+                    console.warn('[Extension Host] [AEP] Skipping invalid action in workspace plan:', action);
+                    continue;
+                }
+                if (action.type === 'createFile') {
+                    await this.applyCreateFileAction(action);
+                    appliedCount += 1;
+                }
+                else if (action.type === 'editFile') {
+                    await this.applyEditFileAction(action);
+                    appliedCount += 1;
+                }
+                else if (action.type === 'runCommand') {
+                    await this.applyRunCommandAction(action);
+                    appliedCount += 1;
+                }
+                else {
+                    console.warn('[Extension Host] [AEP] Unknown action type in workspace plan:', action.type);
+                }
+            }
+            catch (err) {
+                console.error('[Extension Host] [AEP] Failed to apply action in workspace plan:', err);
+                vscode.window.showErrorMessage(`NAVI: Failed to apply one of the workspace actions: ${err.message ?? String(err)}`);
+            }
+        }
+        this.postBotStatus(`✅ Applied ${appliedCount}/${actions.length} workspace actions.`);
     }
     async applyCreateFileAction(action) {
         const fileName = action.filePath ?? 'sample.js';
@@ -975,9 +1580,16 @@ class NaviWebviewProvider {
     }
     getWebviewHtml(webview) {
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.js'));
+        const connectorsScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'connectorsPanel.js'));
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.css'));
         const naviLogoUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'mascot-navi-fox.svg'));
         const nonce = getNonce();
+        // Determine backend base URL for webview scripts (Connectors, etc.)
+        const cfg = vscode.workspace.getConfiguration('aep');
+        const rawBase = cfg.get('navi.backendUrl') || 'http://127.0.0.1:8001';
+        const backendBaseUrl = rawBase.replace(/\/$/, '');
+        // Generate icons URI for connector icons
+        const iconsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'icons'));
         return /* html */ `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -992,9 +1604,55 @@ class NaviWebviewProvider {
   </head>
   <body>
     <div id="root" data-mascot-src="${naviLogoUri}"></div>
+    <script nonce="${nonce}">
+      window.AEP_CONFIG = {
+        backendBaseUrl: ${JSON.stringify(backendBaseUrl)},
+        iconsUri: ${JSON.stringify(iconsUri.toString())}
+      };
+    </script>
+    <!-- Backdrop -->
+    <div id="aep-connections-backdrop" class="aep-backdrop"></div>
+
+    <!-- Connections Modal -->
+    <div id="aep-connections-modal" class="aep-modal">
+      <div class="aep-modal-header">
+        <div>
+          <h2 class="aep-modal-title">Connections</h2>
+          <p class="aep-modal-subtitle">
+            Connect Jira, Slack, Teams, Zoom, GitHub, Jenkins and more so NAVI can
+            use full organizational context.
+          </p>
+        </div>
+        <button id="aep-connections-close" class="aep-icon-button" title="Close">✕</button>
+      </div>
+
+      <div class="aep-modal-toolbar">
+        <input
+          id="aep-connectors-search"
+          class="aep-input aep-search"
+          placeholder="Search connectors…"
+        />
+        <div id="aep-connectors-filters" class="aep-chip-row"></div>
+      </div>
+
+      <div id="aep-connectors-list" class="aep-connectors-list"></div>
+    </div>
+
     <script nonce="${nonce}" src="${scriptUri}"></script>
+    <script nonce="${nonce}" src="${connectorsScriptUri}"></script>
   </body>
 </html>`;
+    }
+    // --- Command Methods ---
+    async attachSelectionCommand() {
+        if (this._view) {
+            await this.handleAttachmentRequest(this._view.webview, 'selection');
+        }
+    }
+    async attachCurrentFileCommand() {
+        if (this._view) {
+            await this.handleAttachmentRequest(this._view.webview, 'current-file');
+        }
     }
 }
 // Simple conversation id – you can switch to UUID later

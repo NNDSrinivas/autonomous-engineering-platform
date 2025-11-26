@@ -19,11 +19,14 @@ import os
 
 logger = logging.getLogger(__name__)
 
+MAX_CONTENT_CHARS = 8000  # safety cap per file
+
 
 async def retrieve_workspace_context(
     user_id: str,
     workspace_root: Optional[str] = None,
-    include_files: bool = True
+    include_files: bool = True,
+    attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Retrieve workspace context for the user.
@@ -44,10 +47,53 @@ async def retrieve_workspace_context(
         }
     """
     
-    # TODO: This needs integration with VS Code extension
-    # Extension should send workspace context in the request
+    # ---------- 1) VS Code attachment-driven context ----------
+    if attachments:
+        logger.info(f"[WORKSPACE] Using VS Code attachments for user={user_id} ({len(attachments)} attachments)")
+        active_file_path: Optional[str] = None
+        selected_text_chunks: List[str] = []
+        small_files: List[Dict[str, Any]] = []
+        recent_files: List[str] = []
+
+        for att in attachments:
+            kind = att.get("kind")
+            path = att.get("path")
+            content = att.get("content") or ""
+
+            if path:
+                recent_files.append(path)
+
+            # Active file: currentFile / file / pickedFile
+            if not active_file_path and kind in {"currentFile", "file", "pickedFile"}:
+                active_file_path = path
+
+            # Selected text: accumulate all "selection" attachments
+            if kind == "selection" and content:
+                selected_text_chunks.append(content)
+
+            # Small file snapshots for context
+            if include_files and kind in {"currentFile", "file", "pickedFile"} and content:
+                small_files.append(
+                    {
+                        "path": path,
+                        "language": att.get("language"),
+                        "content": content[:MAX_CONTENT_CHARS],
+                        "source": "vscode-attachment",
+                    }
+                )
+
+        return {
+            "active_file": active_file_path,
+            "selected_text": "\n\n".join(selected_text_chunks) if selected_text_chunks else None,
+            "project_root": workspace_root or None,
+            "git_branch": None,  # we don't know this from VS Code yet
+            "recent_files": list(dict.fromkeys(recent_files)),  # de-dupe
+            "file_tree": None,   # could be filled later with a dedicated "list workspace" tool
+            "small_files": small_files if include_files else [],
+        }
     
-    logger.info(f"[WORKSPACE] Retrieving context for user={user_id}")
+    # ---------- 2) Fallback: old behaviour (server filesystem scan) ----------
+    logger.info(f"[WORKSPACE] No VS Code attachments, using filesystem scan for user={user_id}")
     
     context = {
         "active_file": None,

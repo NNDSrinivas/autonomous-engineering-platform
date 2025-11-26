@@ -55,7 +55,7 @@ async def retrieve_rag_context(
         
         memories = await retrieve_memories(user_id, user_message, db=db, limit=5)
         org = await retrieve_org_context(user_id, user_message, db=db)
-        workspace = await retrieve_workspace_context(user_id)
+        workspace = await retrieve_workspace_context(user_id, workspace_root=None, include_files=True, attachments=None)
         
         logger.info(f"[RAG] Retrieved: {len(memories.get('tasks', []))} task memories, "
                    f"{len(org.get('jira_issues', []))} Jira issues, "

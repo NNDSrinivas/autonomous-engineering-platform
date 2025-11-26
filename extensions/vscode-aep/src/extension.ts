@@ -4,6 +4,26 @@ import * as path from 'path';
 import { applyUnifiedDiff } from './diffUtils';
 import { ConnectorsPanel } from './connectorsPanel';
 
+// Perfect Workspace Context Collection
+async function collectWorkspaceContext(): Promise<any> {
+  const editor = vscode.window.activeTextEditor;
+
+  const workspaceFolders = vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) ?? [];
+  const rootFolder = workspaceFolders.length > 0 ? workspaceFolders[0] : null;
+
+  const activeFile = editor?.document?.fileName ?? null;
+  const selectedText = editor?.selection ? editor.document.getText(editor.selection) : null;
+
+  const recentFiles = vscode.workspace.textDocuments.slice(0, 10).map(doc => doc.fileName);
+
+  return {
+    workspace_root: rootFolder,
+    active_file: activeFile,
+    selected_text: selectedText,
+    recent_files: recentFiles,
+  };
+}
+
 type Role = 'user' | 'assistant' | 'system';
 
 interface NaviMessage {
@@ -1042,18 +1062,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       attachments
     );
 
-    // Get workspace folder as stable project identifier
-    const workspaceFolder =
-      vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
-        ? vscode.workspace.workspaceFolders[0].uri.fsPath
-        : undefined;
+    // Perfect Workspace Context Collection
+    const workspaceContext = await collectWorkspaceContext();
 
     const payload = {
       message: messageWithContext,
       model: modelId || this._currentModelId,
       mode: modeId || this._currentModeId,
       user_id: 'default_user',
-      workspace_id: workspaceFolder,  // 🆕 pass workspace root
+      workspace: workspaceContext,  // 🚀 Perfect workspace awareness
       // Map attachment kinds to match backend expectations
       attachments: (attachments ?? []).map(att => ({
         ...att,

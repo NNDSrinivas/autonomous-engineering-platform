@@ -163,7 +163,7 @@ async def _handle_project_overview(
     db,
     started: float,
     attachments: Optional[List[Dict[str, Any]]] = None,
-    workspace_id: Optional[str] = None,
+    workspace: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Smart path for "explain the project / repo" questions.
@@ -191,7 +191,7 @@ async def _handle_project_overview(
             },
             db=db,
             attachments=attachments,
-            workspace_id=workspace_id,
+            workspace=workspace,
         )
         repo_text = json.dumps(repo_result, indent=2, default=str)
         tool_snippets.append(f"REPO_INSPECT_RESULT:\n{repo_text}")
@@ -221,7 +221,7 @@ async def _handle_project_overview(
             },
             db=db,
             attachments=attachments,
-            workspace_id=workspace_id,
+            workspace=workspace,
         )
         files_text = json.dumps(files_result, indent=2, default=str)
         tool_snippets.append(f"KEY_FILES_RESULT:\n{files_text}")
@@ -300,7 +300,7 @@ async def run_agent_loop(
     mode: str = "chat",
     db=None,
     attachments: Optional[List[Dict[str, Any]]] = None,
-    workspace_id: Optional[str] = None,
+    workspace: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Main NAVI agent pipeline.
@@ -361,7 +361,7 @@ async def run_agent_loop(
                 )
                 result = await execute_tool(
                     user_id, tool_name, tool_args, db=db,
-                    attachments=attachments, workspace_id=workspace_id
+                    attachments=attachments, workspace=workspace
                 )
                 elapsed_ms = int((time.monotonic() - started) * 1000)
                 # execute_tool already returns a dict in our design; pass it through
@@ -413,15 +413,15 @@ async def run_agent_loop(
             }
 
         # ---------------------------------------------------------
-        # STAGE 2: Build full context (workspace + org + memory)
+        # STAGE 2: Build perfect workspace context 
         # ---------------------------------------------------------
-        logger.info("[AGENT] Retrieving context...")
-        workspace_ctx = await retrieve_workspace_context(
-            user_id=user_id,
-            workspace_root=workspace_id,
-            include_files=True,
-            attachments=attachments,
-        )
+        logger.info("[AGENT] Retrieving perfect workspace context...")
+        from backend.agent.perfect_workspace_retriever import retrieve_perfect_workspace_context
+        
+        workspace_ctx = {}
+        if workspace:
+            workspace_ctx = await retrieve_perfect_workspace_context(workspace)
+        
         org_ctx = await retrieve_org_context(user_id, message, db=db)
         memory_ctx = await retrieve_memories(user_id, message, db=db)
 
@@ -450,7 +450,7 @@ async def run_agent_loop(
                 db=db,
                 started=started,
                 attachments=attachments,
-                workspace_id=workspace_id,
+                workspace=workspace,
             )
 
         # ---------------------------------------------------------
@@ -560,7 +560,7 @@ async def run_agent_loop(
                 try:
                     result = await execute_tool(
                         user_id, step.tool, step.arguments, db=db,
-                        attachments=attachments, workspace_id=workspace_id
+                        attachments=attachments, workspace=workspace
                     )
                     result_text = json.dumps(result, indent=2, default=str)
                     tool_snippets.append(

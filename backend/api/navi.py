@@ -71,9 +71,9 @@ class ChatRequest(BaseModel):
     )
     # VS Code extension attachments with workspace context
     attachments: Optional[List[FileAttachment]] = None
-    workspace_id: Optional[str] = Field(
+    workspace: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Workspace root path from VS Code for project identification",
+        description="Perfect workspace context from VS Code extension",
     )
     user_id: str = Field(
         default="default_user",
@@ -161,7 +161,7 @@ async def navi_chat(
             request.message[:80],
         )
 
-        # Call the NAVI agent loop with VS Code attachments and workspace ID
+        # Call the NAVI agent loop with perfect workspace context
         agent_result = await run_agent_loop(
             user_id=user_id,
             message=request.message,
@@ -169,7 +169,7 @@ async def navi_chat(
             mode=mode,
             db=db,
             attachments=[a.dict() for a in (request.attachments or [])],
-            workspace_id=request.workspace_id,
+            workspace=request.workspace or {},
         )
 
         # Core reply text

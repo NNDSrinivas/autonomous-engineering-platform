@@ -2,12 +2,39 @@ import base64
 import os
 from typing import Tuple
 
-import boto3
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.fernet import Fernet
+
+# Import boto3 only when needed for production
+try:
+    import boto3
+    HAS_BOTO3 = True
+except ImportError:
+    boto3 = None
+    HAS_BOTO3 = False
 
 
 class TokenEncryptionError(Exception):
     pass
+
+
+def _is_dev_mode() -> bool:
+    """Check if running in development mode."""
+    app_env = os.environ.get("APP_ENV", "dev").lower()
+    return app_env in ["dev", "development", "local"]
+
+
+def _get_dev_key() -> str:
+    """Get or generate a development encryption key for Fernet."""
+    # Use a consistent dev key for development
+    # In production, this should never be used
+    dev_key = os.environ.get("DEV_ENCRYPTION_KEY")
+    if dev_key:
+        return dev_key
+    
+    # Generate a fixed URL-safe base64 key for development (not secure, but consistent)
+    # This is a proper 32-byte key encoded in URL-safe base64 format for Fernet
+    return "Uqktv94Z9tHa5WsVKJVtBsc-QylZWQ4wTg3_sXekPaA="  # Fixed Fernet-compatible key
 
 
 def _encode_parts(parts: Tuple[bytes, ...]) -> str:
@@ -26,13 +53,30 @@ def _decode_parts(payload_b64: str) -> Tuple[bytes, ...]:
 
 def encrypt_token(plaintext_token: str) -> str:
     """Envelope-encrypt a token using AWS KMS to protect the data key and AES-GCM for content.
+    In development mode, uses simple Fernet encryption.
 
     Returns a base64 string safe to store in DB. Format (base64 of):
-    version|encrypted_data_key|nonce|ciphertext
+    version|encrypted_data_key|nonce|ciphertext (production)
+    OR dev|encrypted_token (development)
     """
+    # Development mode: use simple encryption
+    if _is_dev_mode():
+        try:
+            key = _get_dev_key()
+            f = Fernet(key.encode())
+            encrypted = f.encrypt(plaintext_token.encode())
+            # Format: dev|encrypted_token
+            return _encode_parts((b"dev", encrypted))
+        except Exception as e:
+            raise TokenEncryptionError(f"Development encryption failed: {e}") from e
+
+    # Production mode: use AWS KMS
     key_id = os.environ.get("TOKEN_ENCRYPTION_KEY_ID")
     if not key_id:
         raise TokenEncryptionError("TOKEN_ENCRYPTION_KEY_ID is not set")
+    
+    if not HAS_BOTO3:
+        raise TokenEncryptionError("boto3 is required for production encryption but not installed")
 
     kms = boto3.client("kms")
     try:
@@ -58,20 +102,35 @@ def encrypt_token(plaintext_token: str) -> str:
 
 def decrypt_token(encrypted_blob: str) -> str:
     """Decrypt token previously encrypted with encrypt_token.
-
-    Expects the same envelope format and will call KMS.decrypt on the encrypted data key.
+    Handles both development and production encryption formats.
     """
-    key_id = os.environ.get("TOKEN_ENCRYPTION_KEY_ID")
-    if not key_id:
-        raise TokenEncryptionError("TOKEN_ENCRYPTION_KEY_ID is not set")
-
-    kms = boto3.client("kms")
     try:
         parts = _decode_parts(encrypted_blob)
-        # parts: version, encrypted_data_key_b64, nonce_b64, ciphertext_b64
+        
+        # Check if it's a development token
+        if len(parts) == 2 and parts[0] == b"dev":
+            if not _is_dev_mode():
+                raise TokenEncryptionError("Development token used in production mode")
+            
+            key = _get_dev_key()
+            f = Fernet(key.encode())
+            encrypted_token = parts[1]
+            plaintext = f.decrypt(encrypted_token)
+            return plaintext.decode()
+        
+        # Production mode KMS decryption
         if len(parts) != 4:
             raise TokenEncryptionError("unexpected encrypted token parts")
 
+        key_id = os.environ.get("TOKEN_ENCRYPTION_KEY_ID")
+        if not key_id:
+            raise TokenEncryptionError("TOKEN_ENCRYPTION_KEY_ID is not set")
+        
+        if not HAS_BOTO3:
+            raise TokenEncryptionError("boto3 is required for production encryption but not installed")
+
+        kms = boto3.client("kms")
+        
         # version = parts[0]
         encrypted_data_key = base64.b64decode(parts[1])
         nonce = base64.b64decode(parts[2])

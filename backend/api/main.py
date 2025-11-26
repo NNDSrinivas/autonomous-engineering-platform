@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter, Request
@@ -6,18 +8,29 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-# --- Observability imports (PR-28)
-from ..core.obs.obs_logging import configure_json_logging
-from ..core.obs.tracing import init_tracing, instrument_fastapi_app
-from ..core.obs.obs_metrics import metrics_app, PROM_ENABLED
-from ..core.obs.obs_middleware import ObservabilityMiddleware
+# ---- Observability imports ----
+from backend.core.obs.obs_logging import configure_json_logging
 
-# --- Health & Resilience imports (PR-29)
-from ..core.health.router import router as health_router
-from ..core.health.shutdown import on_startup, on_shutdown
-from ..core.resilience.resilience_middleware import ResilienceMiddleware
+# Try to import tracing module, provide no-op implementations if not available
+try:
+    from backend.core.obs.obs_tracing import init_tracing, instrument_fastapi_app
+except (ImportError, ModuleNotFoundError):
+    def init_tracing() -> None:  # type: ignore[unused-ignore]
+        """Fallback no-op if tracing module is absent."""
+        pass
 
-from ..core.settings import settings
+    def instrument_fastapi_app(app: FastAPI) -> None:  # type: ignore[unused-ignore]
+        """Fallback no-op if tracing module is absent."""
+        pass
+
+from backend.core.obs.obs_metrics import metrics_app, PROM_ENABLED
+from backend.core.obs.obs_middleware import ObservabilityMiddleware
+
+from backend.core.health.router import router as health_router
+from backend.core.health.shutdown import on_startup, on_shutdown
+from backend.core.resilience.resilience_middleware import ResilienceMiddleware
+
+from backend.core.settings import settings
 
 # removed unused: setup_logging (using obs logging instead)
 # removed unused: metrics_router (using new /metrics mount)
@@ -43,6 +56,11 @@ from .chat import router as chat_router
 from .navi import router as navi_router  # PR-5B/PR-6: NAVI extension endpoint
 from .org_sync import router as org_sync_router  # Step 2: Jira/Confluence memory sync
 from .navi_search import router as navi_search_router  # Step 3: Unified RAG search
+from .navi_brief import router as navi_brief_router  # Jira tasks + task brief endpoints
+from .navi_intent import router as navi_intent_router  # NAVI intent classification
+from .routes.intent import router as intent_api_router  # LLM-powered intent classification API
+from .routes.providers import router as providers_api_router  # BYOK provider management API
+from .routes.agent import router as agent_api_router  # Complete NAVI agent API
 from ..search.router import router as search_router
 from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
@@ -54,11 +72,14 @@ from .routers.rate_limit_admin import router as rate_limit_admin_router
 
 # VS Code Extension API endpoints
 from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
+from .routers.connectors import router as connectors_router
 from .routers.me import router as me_router
 from .routers.jira_integration import router as jira_integration_router
 from .routers.agent_planning import router as agent_planning_router
 from .routers.ai_codegen import router as ai_codegen_router
 from .routers.ai_feedback import router as ai_feedback_router
+from .events.router import router as events_router  # Universal event ingestion
+from .internal.router import router as internal_router  # System info and diagnostics
 from ..core.realtime_engine import presence as presence_lifecycle
 from ..core.obs.obs_logging import logger
 
@@ -79,7 +100,12 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown: cleanup background services
     presence_lifecycle.stop_cleanup_thread()
-    await on_shutdown()  # PR-29: Graceful shutdown
+    try:
+        result = on_shutdown()  # PR-29: Graceful shutdown
+        if hasattr(result, '__await__'):
+            await result
+    except Exception as e:
+        logger.warning(f"Shutdown warning: {e}")
 
 
 app = FastAPI(title=f"{settings.APP_NAME} - Core API", lifespan=lifespan)
@@ -102,7 +128,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 # RequestIDMiddleware removed - ObservabilityMiddleware provides this functionality
-app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
+# Temporarily disabled for local dev while debugging connector issues
+# app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
 app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 
 # Conditional audit logging (disabled in test/CI environments to prevent DB errors)
@@ -141,12 +168,20 @@ app.include_router(chat_router)  # Enhanced conversational interface
 app.include_router(navi_router)  # PR-5B/PR-6: NAVI VS Code extension
 app.include_router(org_sync_router)  # Step 2: Jira/Confluence memory integration
 app.include_router(navi_search_router)  # Step 3: Unified RAG search
+app.include_router(navi_brief_router)  # NAVI: Jira task list and task brief
+app.include_router(navi_intent_router)  # NAVI: Intent classification for smart routing  
+app.include_router(intent_api_router)  # LLM-powered intent classification API (includes /api/agent/intent prefix)
+app.include_router(providers_api_router)  # BYOK provider management API
+app.include_router(agent_api_router, prefix="/api")  # Complete NAVI agent API
 app.include_router(search_router)
 app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
+app.include_router(events_router, prefix="/api")  # Universal event ingestion
+app.include_router(internal_router, prefix="/api")  # System info and diagnostics
 
 app.include_router(oauth_device_auth0_router)
+app.include_router(connectors_router)
 app.include_router(me_router)
 app.include_router(jira_integration_router)
 app.include_router(agent_planning_router)

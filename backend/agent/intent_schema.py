@@ -1,229 +1,486 @@
 """
-Intent Schema for NAVI Agent
+NAVI Intent Schema v2
+=====================
 
-Defines all possible user intent categories that NAVI can recognize.
-These are UNIVERSAL across all engineering tasks and behaviors.
+This module defines the *canonical contract* between:
 
-This is the foundation of NAVI's decision-making brain.
+- intent_classifier     → decides what the user wants
+- planner               → breaks the intent into a plan
+- tool_executor         → performs concrete actions
+- orchestrator/agent    → runs multi-step autonomous workflows
+
+The goal is to support three layers of capability:
+
+1) Engineering           (code, tests, infra, debugging)
+2) Project Management    (Jira/PRs/release notes/quality gates)
+3) Autonomous Orchestration
+   (multi-step agents, scheduled work, long-running tasks)
+
+Nothing in this module talks to the network, filesystem, DB, etc.
+It is purely data models + enums and should be safe to import
+from anywhere in the backend.
 """
 
-# ==============================================================================
-# INTENT TYPE DEFINITIONS
-# ==============================================================================
+from __future__ import annotations
 
-INTENT_TYPES = {
-    "jira_query",           # User wants to explore/understand a Jira ticket
-    "jira_execution",       # User wants to implement/work on a Jira ticket
-    "code_explain",         # User wants to understand code
-    "code_modify",          # User wants to refactor/fix/optimize code
-    "code_generate",        # User wants to generate new code
-    "repo_navigation",      # User wants to navigate/search workspace
-    "debugging",            # User wants to debug/fix errors
-    "planning",             # User wants architecture/design/steps
-    "documentation",        # User wants to find/read docs
-    "meeting_summary",      # User wants to understand past discussions
-    "task_continue",        # User confirms/continues previous action
-    "workflow_start",       # User initiates multi-step workflow
-    "personal",             # Conversational/personal questions
-    "ambiguous"             # Intent unclear, needs clarification
-}
+from enum import Enum
+from typing import Any, Dict, List, Optional
 
-# ==============================================================================
-# INTENT DESCRIPTIONS (For LLM Prompt)
-# ==============================================================================
+from pydantic import BaseModel, Field
 
-INTENT_DESCRIPTIONS = {
-    "jira_query": {
-        "description": "User wants to explore, understand, or get info about a Jira ticket",
-        "examples": [
-            "open Jira ticket",
-            "tell me more about SCRUM-1",
-            "what's the status of ENG-54?",
-            "summarize this Jira",
-            "find related discussions"
-        ],
-        "entities": ["jira_keys"],
-        "triggers_tools": False
-    },
-    
-    "jira_execution": {
-        "description": "User wants to actively work on/implement a Jira ticket",
-        "examples": [
-            "start working on SCRUM-1",
-            "implement this Jira",
-            "generate code for this task",
-            "create acceptance criteria",
-            "what's the next step?"
-        ],
-        "entities": ["jira_keys", "files"],
-        "triggers_tools": True
-    },
-    
-    "code_explain": {
-        "description": "User wants to understand existing code",
-        "examples": [
-            "explain this file",
-            "what does this function do?",
-            "explain this error",
-            "why is this failing?"
-        ],
-        "entities": ["files", "functions", "errors"],
-        "triggers_tools": False
-    },
-    
-    "code_modify": {
-        "description": "User wants to refactor, fix, or optimize existing code",
-        "examples": [
-            "refactor this",
-            "fix this bug",
-            "optimize this",
-            "migrate this to TypeScript",
-            "add logging"
-        ],
-        "entities": ["files", "functions", "modifications"],
-        "triggers_tools": True
-    },
-    
-    "code_generate": {
-        "description": "User wants to generate new code from scratch",
-        "examples": [
-            "write a hello world",
-            "generate a React component",
-            "create an Express API",
-            "write a unit test for this function"
-        ],
-        "entities": ["language", "framework", "component_type"],
-        "triggers_tools": True
-    },
-    
-    "repo_navigation": {
-        "description": "User wants to navigate, search, or explore the workspace",
-        "examples": [
-            "open this file",
-            "search for usages",
-            "find references",
-            "show me folder structure"
-        ],
-        "entities": ["files", "directories", "symbols"],
-        "triggers_tools": True
-    },
-    
-    "debugging": {
-        "description": "User wants to debug or fix runtime errors",
-        "examples": [
-            "why is this error happening?",
-            "explain the stack trace",
-            "fix the crash"
-        ],
-        "entities": ["errors", "stack_traces", "files"],
-        "triggers_tools": True
-    },
-    
-    "planning": {
-        "description": "User wants architectural design or implementation steps",
-        "examples": [
-            "how should I implement this?",
-            "design a flow",
-            "create an architecture diagram",
-            "what are the steps?"
-        ],
-        "entities": ["features", "requirements"],
-        "triggers_tools": False
-    },
-    
-    "documentation": {
-        "description": "User wants to retrieve documentation or wiki pages",
-        "examples": [
-            "find confluence page for X",
-            "fetch documentation",
-            "is there wiki for this?"
-        ],
-        "entities": ["topics", "pages"],
-        "triggers_tools": True
-    },
-    
-    "meeting_summary": {
-        "description": "User wants to understand past meetings or discussions",
-        "examples": [
-            "what did we discuss last sprint?",
-            "summarize standup",
-            "what was said in the zoom meeting?"
-        ],
-        "entities": ["meetings", "dates", "topics"],
-        "triggers_tools": True
-    },
-    
-    "task_continue": {
-        "description": "User confirms or continues previous action (affirmative responses)",
-        "examples": [
-            "yes",
-            "sure",
-            "go ahead",
-            "do it",
-            "continue",
-            "ok",
-            "please",
-            "sounds good"
-        ],
-        "entities": [],
-        "triggers_tools": True,
-        "requires_state": True
-    },
-    
-    "workflow_start": {
-        "description": "User initiates a multi-step autonomous workflow",
-        "examples": [
-            "help me debug this",
-            "help me finish this Jira",
-            "let's build this feature"
-        ],
-        "entities": ["workflow_type", "target"],
-        "triggers_tools": True
-    },
-    
-    "personal": {
-        "description": "Conversational or personal questions",
-        "examples": [
-            "how are you?",
-            "what do you think?",
-            "give me suggestions"
-        ],
-        "entities": [],
-        "triggers_tools": False
-    },
-    
-    "ambiguous": {
-        "description": "Intent is unclear and needs clarification",
-        "examples": [
-            "fix it",
-            "do that",
-            "the thing"
-        ],
-        "entities": [],
-        "triggers_tools": False,
-        "requires_clarification": True
-    }
-}
 
-# ==============================================================================
-# AFFIRMATIVE PATTERNS (For quick task_continue detection)
-# ==============================================================================
+# ---------------------------------------------------------------------------
+# High-level intent metadata
+# ---------------------------------------------------------------------------
 
-AFFIRMATIVE_PATTERNS = {
-    "yes", "yeah", "yep", "yup", "sure", "ok", "okay",
-    "go ahead", "do it", "continue", "proceed", "please",
-    "sounds good", "looks good", "perfect", "great",
-    "👍", "✓", "✔", "✅"
-}
 
-# ==============================================================================
-# ENTITY EXTRACTION HINTS
-# ==============================================================================
+class IntentFamily(str, Enum):
+    """Broad category of what NAVI is doing."""
+    ENGINEERING = "engineering"
+    PROJECT_MANAGEMENT = "project_management"
+    AUTONOMOUS_ORCHESTRATION = "autonomous_orchestration"
 
-ENTITY_HINTS = {
-    "jira_keys": r"[A-Z]+-\d+",  # SCRUM-123, ENG-45
-    "files": r"\.(py|js|ts|java|go|md|yaml|json)$",
-    "functions": r"def |function |async |class ",
-    "errors": r"Error:|Exception:|Traceback:",
-    "urls": r"https?://[^\s]+"
-}
+
+class IntentKind(str, Enum):
+    """
+    Fine-grained intent type.
+
+    These are the *core verbs* of the NAVI platform and should be stable.
+    If you add new ones, also update:
+      - planner rules
+      - tool routing
+      - UI affordances
+    """
+
+    # --- Repository discovery / understanding --------------------------------
+    INSPECT_REPO = "inspect_repo"              # high-level overview of repo
+    SUMMARIZE_FILE = "summarize_file"          # explain one file
+    SUMMARIZE_DIFF = "summarize_diff"          # explain a patch or diff
+    SEARCH_CODE = "search_code"                # semantic or text search
+
+    # --- Code authoring / refactoring ----------------------------------------
+    MODIFY_CODE = "modify_code"                # edit existing code
+    CREATE_FILE = "create_file"                # add new source/test/config
+    REFACTOR_CODE = "refactor_code"            # structural improvements
+    IMPLEMENT_FEATURE = "implement_feature"    # end-to-end change
+    FIX_BUG = "fix_bug"                        # debug + patch
+    UPDATE_DEPENDENCIES = "update_dependencies"
+    EDIT_INFRA = "edit_infra"                  # Dockerfile, CI, infra-as-code
+
+    # --- Testing / verification ----------------------------------------------
+    RUN_TESTS = "run_tests"
+    GENERATE_TESTS = "generate_tests"
+    RUN_LINT = "run_lint"
+    RUN_BUILD = "run_build"
+    RUN_CUSTOM_COMMAND = "run_custom_command"
+
+    # --- Project management / collaboration ----------------------------------
+    CREATE_TICKET = "create_ticket"            # Jira / GitHub issue, etc.
+    UPDATE_TICKET = "update_ticket"
+    SUMMARIZE_TICKETS = "summarize_tickets"
+    SUMMARIZE_PR = "summarize_pr"
+    REVIEW_PR = "review_pr"
+    GENERATE_RELEASE_NOTES = "generate_release_notes"
+
+    # --- Knowledge & explanation ---------------------------------------------
+    EXPLAIN_CODE = "explain_code"
+    EXPLAIN_ERROR = "explain_error"
+    ARCHITECTURE_OVERVIEW = "architecture_overview"
+    DESIGN_PROPOSAL = "design_proposal"
+
+    # --- Autonomous orchestration --------------------------------------------
+    AUTONOMOUS_SESSION = "autonomous_session"  # multi-step agent run
+    BACKGROUND_WORKFLOW = "background_workflow"
+    SCHEDULED_TASK = "scheduled_task"
+    CONTINUE_SESSION = "continue_session"      # resume previous run
+    CANCEL_WORKFLOW = "cancel_workflow"
+
+    # --- Fallback / meta -----------------------------------------------------
+    UNKNOWN = "unknown"                        # classifier unsure
+
+
+class IntentPriority(str, Enum):
+    """Relative importance – helps orchestration & queueing."""
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class IntentSource(str, Enum):
+    """Where this intent originated from."""
+    CHAT = "chat"              # user message in UI
+    IDE_EVENT = "ide_event"    # VS Code / JetBrains triggers
+    WEBHOOK = "webhook"        # Jira / GitHub / CI hooks
+    SYSTEM = "system"          # internal automation
+    SCHEDULE = "schedule"      # cron / time-based agent
+
+
+class AutonomyMode(str, Enum):
+    """
+    How much NAVI is allowed to do without explicit confirmation.
+
+    The frontend and orchestrator should enforce these semantics.
+    """
+    SINGLE_STEP = "single_step"          # one tool call, then ask
+    ASSISTED = "assisted"                # propose plan, ask before execute
+    AUTONOMOUS_SESSION = "autonomous_session"  # run full plan, show results
+    BATCH = "batch"                      # background, many tasks (dangerous)
+
+
+# ---------------------------------------------------------------------------
+# Shared target / selector models
+# ---------------------------------------------------------------------------
+
+
+class RepoTarget(BaseModel):
+    """
+    Points to a repo NAVI is working in.
+
+    For now we assume a single local repo root, but this model is flexible
+    enough to support multiple roots or remote workspaces later.
+    """
+    repo_id: Optional[str] = Field(
+        default=None,
+        description="Logical ID of the repo (for multi-repo setups).",
+    )
+    root_path: Optional[str] = Field(
+        default=None,
+        description="Absolute path on the NAVI backend host, if known.",
+    )
+
+
+class FileRegion(BaseModel):
+    """Optional sub-portion of a file NAVI should focus on."""
+    start_line: Optional[int] = Field(default=None, ge=1)
+    end_line: Optional[int] = Field(default=None, ge=1)
+    symbol: Optional[str] = Field(
+        default=None,
+        description="Function/class/method name when the region is symbolic.",
+    )
+
+
+class FileSelector(BaseModel):
+    """
+    Describes one or more files NAVI should interact with.
+
+    This is intentionally expressive to support:
+      - single path
+      - globs
+      - language-scoped queries
+    """
+    path: Optional[str] = Field(
+        default=None,
+        description="File path relative to repo root.",
+    )
+    glob: Optional[str] = Field(
+        default=None,
+        description="Glob for multiple files, e.g. 'backend/**/*.py'.",
+    )
+    language: Optional[str] = Field(
+        default=None,
+        description="Preferred language, e.g. 'python', 'typescript'.",
+    )
+    region: Optional[FileRegion] = None
+
+
+class CommandSpec(BaseModel):
+    """
+    Command NAVI should run in the dev environment.
+
+    This powers: tests, builds, linters, migrations, etc.
+    """
+    command: str = Field(
+        ...,
+        description="Shell command to execute (without user secrets).",
+    )
+    cwd: Optional[str] = Field(
+        default=None,
+        description="Working directory (relative to repo root if not absolute).",
+    )
+    env: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Extra environment variables to set.",
+    )
+    timeout_seconds: Optional[int] = Field(
+        default=1800,
+        description="Hard timeout for the command.",
+    )
+
+
+class PatchOperation(BaseModel):
+    """
+    High-level patch description.
+
+    We keep this abstract – planner/tool layer can decide whether to apply
+    a textual diff, AST transform, etc.
+    """
+    description: str = Field(
+        ...,
+        description="Human description of what this patch does.",
+    )
+    target_file: FileSelector
+    # textual patch; can be unified diff, inline patch, etc.
+    patch_text: Optional[str] = Field(
+        default=None,
+        description="Optional textual patch representation.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Intent-specific payloads
+# ---------------------------------------------------------------------------
+
+
+class CodeEditSpec(BaseModel):
+    """Details for MODIFY_CODE / IMPLEMENT_FEATURE / FIX_BUG / REFACTOR_CODE."""
+    goal: str = Field(..., description="What should the code change achieve?")
+    repo: RepoTarget
+    primary_files: List[FileSelector] = Field(
+        default_factory=list,
+        description="Files NAVI should focus on first.",
+    )
+    related_files: List[FileSelector] = Field(
+        default_factory=list,
+        description="Other files likely involved (tests, config, etc.).",
+    )
+    constraints: List[str] = Field(
+        default_factory=list,
+        description="Hard constraints (e.g. 'do not change public APIs').",
+    )
+    allowed_languages: List[str] = Field(default_factory=list)
+    patches: List[PatchOperation] = Field(
+        default_factory=list,
+        description="Optional pre-computed patch suggestions (from planner).",
+    )
+
+
+class TestRunSpec(BaseModel):
+    """Details for RUN_TESTS / RUN_LINT / RUN_BUILD / RUN_CUSTOM_COMMAND."""
+    repo: RepoTarget
+    command: CommandSpec
+    only_if_files_changed: bool = Field(
+        default=False,
+        description="Skip if no relevant files changed in this workflow.",
+    )
+
+
+class TicketInfo(BaseModel):
+    """Generic representation of a Jira / GitHub / etc. ticket."""
+    provider: str = Field(..., description="e.g. 'jira', 'github'")
+    id: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    url: Optional[str] = None
+    extra: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ProjectManagementSpec(BaseModel):
+    """Payload for CREATE_TICKET / UPDATE_TICKET / PR summaries, etc."""
+    tickets: List[TicketInfo] = Field(default_factory=list)
+    repo: Optional[RepoTarget] = None
+    pr_number: Optional[str] = None
+    notes_goal: Optional[str] = Field(
+        default=None,
+        description="What kind of summary/notes we want.",
+    )
+
+
+class WorkflowHints(BaseModel):
+    """
+    Hints for the orchestrator about how aggressive NAVI should be.
+
+    This is where we encode user preferences like:
+      - number of steps
+      - whether to auto-run tests
+      - whether to touch multiple services
+    """
+    autonomy_mode: AutonomyMode = AutonomyMode.ASSISTED
+    max_steps: int = Field(
+        default=12,
+        description="Hard cap on tool steps for this intent.",
+    )
+    max_parallel_tasks: int = Field(
+        default=1,
+        description="How many tasks can run in parallel.",
+    )
+    auto_run_tests: bool = Field(
+        default=True,
+        description="Whether NAVI should automatically run tests when relevant.",
+    )
+    allow_cross_repo_changes: bool = Field(
+        default=False,
+        description="Whether the agent may touch multiple repos/services.",
+    )
+    allow_long_running: bool = Field(
+        default=False,
+        description="If True, workflows may exceed typical UI timeouts and "
+                    "run in the background.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Root Intent model
+# ---------------------------------------------------------------------------
+
+
+class NaviIntent(BaseModel):
+    """
+    Root intent object flowing through the NAVI backend.
+
+    Lifecycle:
+      1) Built by intent_classifier from a user/system message.
+      2) Consumed by planner to generate a concrete plan.
+      3) Passed to tool_executor/orchestrator as context during execution.
+
+    Only one of the *_spec fields is usually populated, depending on kind.
+    """
+
+    # --- identity / metadata -------------------------------------------------
+    id: Optional[str] = Field(
+        default=None,
+        description="Optional stable ID for tracking in logs / DB.",
+    )
+    family: IntentFamily = IntentFamily.ENGINEERING
+    kind: IntentKind = IntentKind.UNKNOWN
+    source: IntentSource = IntentSource.CHAT
+    priority: IntentPriority = IntentPriority.NORMAL
+    confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Classifier confidence in [0, 1].",
+    )
+
+    # raw inputs
+    raw_text: str = Field(
+        ...,
+        description="Original user/system message that produced this intent.",
+    )
+    # structured/query arguments extracted by the classifier (free-form)
+    slots: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Loose slot filling data (e.g. 'service_name', 'env').",
+    )
+
+    # --- specialized payloads -----------------------------------------------
+    code_edit: Optional[CodeEditSpec] = None
+    test_run: Optional[TestRunSpec] = None
+    project_mgmt: Optional[ProjectManagementSpec] = None
+
+    # --- orchestration hints -------------------------------------------------
+    workflow: WorkflowHints = Field(
+        default_factory=WorkflowHints,
+        description="Hints controlling how the orchestrator executes this intent.",
+    )
+
+    # --- misc / extensibility ------------------------------------------------
+    labels: List[str] = Field(
+        default_factory=list,
+        description="Optional labels, e.g. ['jira', 'critical_path'] for routing.",
+    )
+    extra: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Extensible bag for future fields without schema changes.",
+    )
+
+    # --- legacy compatibility fields -----------------------------------------
+    # These are kept for backwards compatibility with existing routes and UI glue.
+    # New code should use the structured fields above (workflow, code_edit, etc.)
+    
+    requires_approval: bool = Field(
+        default=True,
+        description="Whether NAVI should ask before applying changes (legacy field)",
+    )
+    
+    target: Optional[str] = Field(
+        default=None,
+        description="High-level target used by older flows (legacy field)",
+    )
+    
+    parameters: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Free-form parameter bag used in older APIs (legacy field)",
+    )
+    
+    time: Optional[str] = Field(
+        default=None,
+        description="Timestamp field used in some logging/UI code (legacy field)",
+    )
+    
+    model_used: Optional[str] = Field(
+        default=None,
+        description="Model used for classification (telemetry field)",
+    )
+    
+    provider_used: Optional[str] = Field(
+        default=None,
+        description="Provider used for classification (telemetry field)",
+    )
+
+    # ---------------------------------------------------------------------
+    # Convenience helpers (used by planner / executor / UI)
+    # ---------------------------------------------------------------------
+
+    def is_engineering(self) -> bool:
+        return self.family == IntentFamily.ENGINEERING
+
+    def is_project_management(self) -> bool:
+        return self.family == IntentFamily.PROJECT_MANAGEMENT
+
+    def is_autonomous(self) -> bool:
+        return self.family == IntentFamily.AUTONOMOUS_ORCHESTRATION or \
+            self.workflow.autonomy_mode in {
+                AutonomyMode.AUTONOMOUS_SESSION,
+                AutonomyMode.BATCH,
+            }
+
+    def requires_repo(self) -> bool:
+        """True if this intent needs repo context to be meaningful."""
+        if self.code_edit and self.code_edit.repo:
+            return True
+        if self.test_run and self.test_run.repo:
+            return True
+        if self.project_mgmt and self.project_mgmt.repo:
+            return True
+        return self.kind in {
+            IntentKind.INSPECT_REPO,
+            IntentKind.SEARCH_CODE,
+            IntentKind.SUMMARIZE_DIFF,
+            IntentKind.RUN_TESTS,
+            IntentKind.RUN_BUILD,
+            IntentKind.RUN_LINT,
+            IntentKind.EDIT_INFRA,
+            IntentKind.UPDATE_DEPENDENCIES,
+            IntentKind.IMPLEMENT_FEATURE,
+            IntentKind.FIX_BUG,
+        }
+
+    def summary(self) -> str:
+        """Short human-readable summary for logs / UI."""
+        return (
+            f"[{self.kind.value}] "
+            f"family={self.family.value} "
+            f"priority={self.priority.value} "
+            f"conf={self.confidence:.2f}"
+        )
+
+
+__all__ = [
+    "IntentFamily",
+    "IntentKind",
+    "IntentPriority",
+    "IntentSource",
+    "AutonomyMode",
+    "RepoTarget",
+    "FileRegion",
+    "FileSelector",
+    "CommandSpec",
+    "PatchOperation",
+    "CodeEditSpec",
+    "TestRunSpec",
+    "TicketInfo",
+    "ProjectManagementSpec",
+    "WorkflowHints",
+    "NaviIntent",
+]

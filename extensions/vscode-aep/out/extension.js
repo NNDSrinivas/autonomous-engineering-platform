@@ -7,6 +7,21 @@ const vscode = require("vscode");
 const path = require("path");
 const diffUtils_1 = require("./diffUtils");
 const connectorsPanel_1 = require("./connectorsPanel");
+// Perfect Workspace Context Collection
+async function collectWorkspaceContext() {
+    const editor = vscode.window.activeTextEditor;
+    const workspaceFolders = vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) ?? [];
+    const rootFolder = workspaceFolders.length > 0 ? workspaceFolders[0] : null;
+    const activeFile = editor?.document?.fileName ?? null;
+    const selectedText = editor?.selection ? editor.document.getText(editor.selection) : null;
+    const recentFiles = vscode.workspace.textDocuments.slice(0, 10).map(doc => doc.fileName);
+    return {
+        workspace_root: rootFolder,
+        active_file: activeFile,
+        selected_text: selectedText,
+        recent_files: recentFiles,
+    };
+}
 // PR-4: Storage keys for persistent model/mode selection
 const STORAGE_KEYS = {
     modelId: 'aep.navi.modelId',
@@ -796,16 +811,14 @@ class NaviWebviewProvider {
         }
         // Merge attachments into the plain-text message for the LLM
         const messageWithContext = this.buildMessageWithAttachments(latestUserText, attachments);
-        // Get workspace folder as stable project identifier
-        const workspaceFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0
-            ? vscode.workspace.workspaceFolders[0].uri.fsPath
-            : undefined;
+        // Perfect Workspace Context Collection
+        const workspaceContext = await collectWorkspaceContext();
         const payload = {
             message: messageWithContext,
             model: modelId || this._currentModelId,
             mode: modeId || this._currentModeId,
             user_id: 'default_user',
-            workspace_id: workspaceFolder, // 🆕 pass workspace root
+            workspace: workspaceContext, // 🚀 Perfect workspace awareness
             // Map attachment kinds to match backend expectations
             attachments: (attachments ?? []).map(att => ({
                 ...att,

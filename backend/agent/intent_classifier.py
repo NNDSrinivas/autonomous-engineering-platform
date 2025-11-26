@@ -1,358 +1,703 @@
 """
-Intent Classifier for NAVI Agent
+NAVI Intent Classifier v2
+=========================
 
-LLM-driven dynamic intent classification using full RAG context.
-This is the BRAIN that determines what the user wants.
+Light-weight, dependency-free classifier that maps a user message +
+(optional) metadata into a `NaviIntent`.
 
-Unlike scripted chatbots, this uses:
-- Conversation memory
-- Organizational context (Jira/Slack/Confluence/GitHub/Zoom)
-- Workspace files and code
-- User state and preferences
+This is **rule / heuristic based** so it works out-of-the-box without
+calling an LLM, but the public API is designed so you can later swap in
+an LLM-powered implementation without touching the rest of the system.
 
-To dynamically understand ANY user request, even extremely vague ones.
+Public entry points
+-------------------
+
+- `IntentClassifier` class
+- `classify_intent(...)`      → returns `NaviIntent`
+- `detect_intent(...)`        → alias for `classify_intent`
+
+The classifier accepts either a **string** or an object with a
+`.content` attribute (to stay compatible with typical chat message
+types used elsewhere).
 """
 
-import json
-import re
-import logging
-from typing import Dict, Any, Optional, List
+from __future__ import annotations
 
-from backend.agent.intent_schema import (
-    INTENT_TYPES,
-    INTENT_DESCRIPTIONS,
-    AFFIRMATIVE_PATTERNS,
-    ENTITY_HINTS
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, Optional
+
+from .intent_schema import (
+    AutonomyMode,
+    CodeEditSpec,
+    CommandSpec,
+    IntentFamily,
+    IntentKind,
+    IntentPriority,
+    IntentSource,
+    NaviIntent,
+    ProjectManagementSpec,
+    RepoTarget,
+    TestRunSpec,
+    WorkflowHints,
+    FileSelector,
 )
-from backend.llm.router import complete_chat as call_llm
-
-logger = logging.getLogger(__name__)
 
 
-# ==============================================================================
-# INTENT CLASSIFICATION SYSTEM PROMPT
-# ==============================================================================
-
-INTENT_SYSTEM_PROMPT = """
-You are NAVI's intent classification engine.
-
-Your job: Determine the user's TRUE intent given:
-- Full conversation memory
-- Organizational context (Jira/Slack/Confluence/GitHub/Zoom)
-- Workspace files and code structure
-- Current user state (what they're working on)
-- User message
-
-Return ONLY valid JSON with this structure:
-
-{
-  "type": "jira_query|jira_execution|code_explain|code_modify|code_generate|repo_navigation|debugging|planning|documentation|meeting_summary|task_continue|workflow_start|personal|ambiguous",
-  "confidence": 0.0-1.0,
-  "reasoning": "Brief explanation of why you chose this intent",
-  "entities": {
-    "jira_keys": ["SCRUM-123"],
-    "files": ["backend/api/navi.py"],
-    "functions": ["run_agent_loop"],
-    "topics": ["authentication", "RAG"],
-    "modifications": ["refactor", "add logging"]
-  },
-  "clarification_question": "Ask if ambiguous (optional)"
-}
-
-CRITICAL RULES:
-
-1. **Affirmative Responses** (yes/sure/ok/continue):
-   - ALWAYS classify as "task_continue" if user state shows pending action
-   - confidence = 1.0
-
-2. **Context Awareness**:
-   - Use org context to infer implicit Jira IDs
-   - Use workspace context to infer code targets
-   - Use memory to understand user preferences
-   - Use state to understand "this", "that", "the issue"
-
-3. **Vague Messages**:
-   - If truly ambiguous, return type="ambiguous"
-   - Provide 2-3 possible interpretations in clarification_question
-   - Example: "fix it" → ask "Fix what? The current Jira (SCRUM-123), the error in server.py, or something else?"
-
-4. **Entity Extraction**:
-   - Extract ALL relevant entities from message + context
-   - Include implicit references (e.g., "this file" → get from workspace context)
-   - Jira keys from BOTH message AND org context
-
-5. **Confidence Scoring**:
-   - 1.0: Completely clear (affirmatives, explicit commands)
-   - 0.8-0.9: Very clear with minor ambiguity
-   - 0.6-0.7: Moderate clarity, multiple interpretations
-   - <0.6: Ambiguous, needs clarification
-
-6. **Multi-Intent Detection**:
-   - If message contains multiple intents, choose PRIMARY intent
-   - Mention secondary intents in reasoning
-
-INTENT CATALOG:
-"""
-
-# Append intent descriptions to system prompt
-for intent_type, details in INTENT_DESCRIPTIONS.items():
-    INTENT_SYSTEM_PROMPT += f"\n- **{intent_type}**: {details['description']}"
-    INTENT_SYSTEM_PROMPT += f"\n  Examples: {', '.join(details['examples'][:3])}"
+# ---------------------------------------------------------------------------
+# Small helpers
+# ---------------------------------------------------------------------------
 
 
-# ==============================================================================
-# JIRA INTENT DETECTION GUIDE
-# ==============================================================================
-
-JIRA_INTENT_GUIDE = """
-
-🎯 JIRA INTENT DETECTION (Critical Priority)
-
-Your job is to ALWAYS detect Jira-related requests, even if vague.
-
-**1. jira_query** (Read-only Jira information):
-    - "tell me about SCRUM-1"
-    - "what's in this ticket?"
-    - "what is the status of ENG-54?"
-    - "give me more information about this task"
-    - "what is this story about?"
-    - "explain this issue"
-    - "summarize the ticket"
-    - "what's the acceptance criteria?"
-    - "who's assigned to this?"
-    
-**2. jira_execution** (Write operations or workflow actions):
-    - "start working on SCRUM-1"
-    - "implement this"
-    - "move this ticket to in-progress"
-    - "add a comment"
-    - "generate code for this jira"
-    - "show next step"
-    - "mark as done"
-    - "transition to review"
-    - "update the description"
-    - "complete this task"
-
-**CRITICAL RULES FOR JIRA DETECTION**:
-
-1. If user mentions ANY Jira key (SCRUM-123, ENG-54, etc.) → likely jira_query or jira_execution
-2. If user says "this task", "the ticket", "this issue" AND user_state has active_jira → Jira intent
-3. If user says "implement", "start working", "code this" with Jira context → jira_execution
-4. If user asks "what", "explain", "tell me" about Jira → jira_query
-5. Words like "move", "transition", "comment", "update", "mark", "close" → jira_execution
-
-**NEVER miss Jira intents** - they are HIGH priority for the platform.
-"""
-
-INTENT_SYSTEM_PROMPT += JIRA_INTENT_GUIDE
-
-
-# ==============================================================================
-# QUICK PATTERN-BASED DETECTION (Before LLM)
-# ==============================================================================
-
-def quick_intent_check(user_message: str, user_state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _norm_text(message: Any) -> str:
     """
-    Fast pattern-based intent detection for common cases.
-    Avoids LLM call for obvious intents.
-    
-    Returns:
-        Intent dict if matched, None otherwise
+    Normalise the incoming message to a plain string.
+
+    We deliberately accept "anything" here to be forgiving with upstream
+    types (e.g. Pydantic models, chat message objects, etc.).
     """
-    msg_lower = user_message.lower().strip()
-    
-    # 1. Affirmative responses → task_continue
-    if msg_lower in AFFIRMATIVE_PATTERNS:
-        if user_state.get("pending_action"):
-            return {
-                "type": "task_continue",
-                "confidence": 1.0,
-                "reasoning": "Affirmative response with pending action in state",
-                "entities": {},
-                "clarification_question": None
-            }
-    
-    # 2. Single word affirmatives with punctuation
-    if re.match(r'^(yes|yeah|sure|ok|okay|continue|proceed)[!.?]*$', msg_lower):
-        if user_state.get("pending_action"):
-            return {
-                "type": "task_continue",
-                "confidence": 1.0,
-                "reasoning": "Single-word affirmative with pending action",
-                "entities": {},
-                "clarification_question": None
-            }
-    
-    # 3. Extremely short messages without context → ambiguous
-    if len(msg_lower) < 5 and not user_state.get("current_task"):
-        return {
-            "type": "ambiguous",
-            "confidence": 0.9,
-            "reasoning": "Message too short without context",
-            "entities": {},
-            "clarification_question": "Could you provide more details? I'm not sure what you're referring to."
-        }
-    
-    return None
+    if isinstance(message, str):
+        return message
+
+    # Common pattern: ChatMessage(content="...")
+    content = getattr(message, "content", None)
+    if isinstance(content, str):
+        return content
+
+    return str(message)
 
 
-# ==============================================================================
-# LLM-DRIVEN INTENT CLASSIFICATION
-# ==============================================================================
+def _contains_any(text: str, keywords: Iterable[str]) -> bool:
+    return any(k in text for k in keywords)
 
-async def classify_intent(
-    user_message: str,
-    context: Dict[str, Any],
-    user_state: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+
+def _priority_from_text(text: str) -> IntentPriority:
+    if _contains_any(text, ("p0", "sev0", "sev 0", "production down", "outage")):
+        return IntentPriority.CRITICAL
+    if _contains_any(text, ("urgent", "asap", "p1", "sev1", "blocker")):
+        return IntentPriority.HIGH
+    if _contains_any(text, ("low priority", "whenever", "nice to have")):
+        return IntentPriority.LOW
+    return IntentPriority.NORMAL
+
+
+def _autonomy_from_text(text: str) -> AutonomyMode:
+    if _contains_any(
+        text,
+        (
+            "run this in the background",
+            "batch of tasks",
+            "bulk apply",
+            "auto apply everywhere",
+        ),
+    ):
+        return AutonomyMode.BATCH
+
+    if _contains_any(
+        text,
+        (
+            "just do it",
+            "don't ask me",
+            "no confirmation",
+            "fully autonomous",
+            "hands free",
+            "end to end",
+        ),
+    ):
+        return AutonomyMode.AUTONOMOUS_SESSION
+
+    if _contains_any(
+        text,
+        (
+            "just run this once",
+            "one-off",
+            "one time",
+            "single command",
+        ),
+    ):
+        return AutonomyMode.SINGLE_STEP
+
+    # Default: NAVI proposes and the user approves
+    return AutonomyMode.ASSISTED
+
+
+# ---------------------------------------------------------------------------
+# Core classifier
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class IntentClassifierConfig:
     """
-    Classify user intent using full RAG context + LLM reasoning.
-    
-    This is the CORE of NAVI's intelligence. It understands:
-    - Vague messages ("fix this", "continue")
-    - Implicit references ("the Jira", "that file")
-    - Conversational continuity ("yes", "sure")
-    - Multi-step workflows
-    
-    Args:
-        user_message: Raw user input
-        context: Full RAG context (memory + org + workspace)
-        user_state: Current user state (optional)
-    
-    Returns:
-        Intent classification with confidence, entities, reasoning
+    Configuration / defaults for the classifier.
+
+    Nothing here is persisted; it purely controls classification hints.
     """
-    if user_state is None:
-        user_state = {}
-    
-    # Try quick pattern matching first
-    quick_result = quick_intent_check(user_message, user_state)
-    if quick_result:
-        logger.info(f"Quick intent match: {quick_result['type']}")
-        return quick_result
-    
-    # Build LLM prompt with full context
-    llm_prompt = f"""
-USER MESSAGE:
-{user_message}
 
-CURRENT STATE:
-{json.dumps(user_state, indent=2)}
+    default_repo: Optional[RepoTarget] = None
+    default_test_command: str = "pytest"
+    default_lint_command: str = "ruff check ."
+    default_build_command: str = "npm run build"
 
-CONTEXT:
-{json.dumps(context, indent=2)}
 
-Classify the user's intent and extract entities.
-Return ONLY valid JSON matching the schema.
-"""
-    
-    try:
-        response = call_llm(
-            system=INTENT_SYSTEM_PROMPT,
-            user=llm_prompt,
-            model="gpt-4o",  # Use latest model for best reasoning
-            temperature=0.1  # Low temperature for consistent classification
+class IntentClassifier:
+    """
+    Heuristic intent classifier.
+
+    Later you can plug in an LLM here; just keep the `classify()` contract.
+    """
+
+    def __init__(self, config: Optional[IntentClassifierConfig] = None) -> None:
+        self.config = config or IntentClassifierConfig()
+
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+
+    def classify(
+        self,
+        message: Any,
+        *,
+        repo: Optional[RepoTarget] = None,
+        source: IntentSource = IntentSource.CHAT,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> NaviIntent:
+        """
+        Classify an incoming message into a `NaviIntent`.
+
+        Parameters
+        ----------
+        message:
+            User message or object with `.content`.
+        repo:
+            Optional repository context.
+        source:
+            Where the message came from (chat, IDE, webhook, ...).
+        metadata:
+            Optional structured hints. The classifier understands a few
+            special keys, all of which are **optional**:
+
+            - "family": override IntentFamily
+            - "kind": override IntentKind
+            - "priority": override IntentPriority
+            - "autonomy_mode": override AutonomyMode
+            - "files": list of file paths to focus on
+            - "language": primary language (e.g. "python")
+            - "tickets": ticket metadata for project mgmt intents
+        """
+        metadata = metadata or {}
+        raw_text = _norm_text(message)
+        text = raw_text.lower()
+
+        # --- base metadata -------------------------------------------------
+        family = metadata.get("family") or self._infer_family(text)
+        kind = metadata.get("kind") or self._infer_kind(text, family)
+        priority = metadata.get("priority") or _priority_from_text(text)
+        autonomy_mode = metadata.get("autonomy_mode") or _autonomy_from_text(text)
+
+        repo_target = repo or self.config.default_repo
+
+        workflow = WorkflowHints(
+            autonomy_mode=autonomy_mode,
+            max_steps=self._default_max_steps_for_kind(kind),
+            auto_run_tests=self._default_auto_run_tests(kind),
+            allow_cross_repo_changes=_contains_any(
+                text, ("all services", "every repo", "monorepo", "multi repo")
+            ),
+            allow_long_running=_contains_any(
+                text, ("long running", "background", "overnight", "nightly")
+            ),
         )
-        
-        # Parse LLM response as JSON
-        intent_result = json.loads(response)
-        
-        # Validate intent type
-        if intent_result.get("type") not in INTENT_TYPES:
-            intent_result["type"] = "ambiguous"
-            intent_result["confidence"] = 0.3
-            intent_result["reasoning"] = f"Invalid intent type returned: {intent_result.get('type')}"
-        
-        # Ensure all required fields exist
-        intent_result.setdefault("entities", {})
-        intent_result.setdefault("confidence", 0.5)
-        intent_result.setdefault("reasoning", "No reasoning provided")
-        intent_result.setdefault("clarification_question", None)
-        
-        logger.info(f"Classified intent: {intent_result['type']} (confidence: {intent_result['confidence']})")
-        return intent_result
-    
-    except json.JSONDecodeError as e:
-        # LLM returned invalid JSON
-        logger.error(f"Failed to parse LLM response: {e}")
-        return {
-            "type": "ambiguous",
-            "confidence": 0.2,
-            "reasoning": f"Failed to parse LLM response: {str(e)}",
-            "entities": {},
-            "clarification_question": "I'm having trouble understanding. Could you rephrase that?"
+
+        # --- main payloads -------------------------------------------------
+        code_edit = None
+        test_run = None
+        project_mgmt = None
+
+        # Files hint from metadata (e.g. current file in IDE)
+        files_hint = metadata.get("files") or []
+        language_hint = metadata.get("language")
+
+        if isinstance(files_hint, str):
+            files_hint = [files_hint]
+
+        file_selectors = [
+            FileSelector(path=f, language=language_hint) for f in files_hint
+        ]
+
+        if kind in {
+            IntentKind.MODIFY_CODE,
+            IntentKind.CREATE_FILE,
+            IntentKind.REFACTOR_CODE,
+            IntentKind.IMPLEMENT_FEATURE,
+            IntentKind.FIX_BUG,
+            IntentKind.UPDATE_DEPENDENCIES,
+            IntentKind.EDIT_INFRA,
+        }:
+            goal = self._goal_from_text(kind, raw_text)
+            code_edit = CodeEditSpec(
+                goal=goal,
+                repo=repo_target or RepoTarget(),
+                primary_files=file_selectors,
+                allowed_languages=[language_hint] if language_hint else [],
+            )
+
+        if kind in {
+            IntentKind.RUN_TESTS,
+            IntentKind.RUN_LINT,
+            IntentKind.RUN_BUILD,
+            IntentKind.RUN_CUSTOM_COMMAND,
+        }:
+            command = self._command_for_test_like_intent(kind, text, metadata)
+            test_run = TestRunSpec(
+                repo=repo_target or RepoTarget(),
+                command=command,
+                only_if_files_changed=metadata.get("only_if_files_changed", False),
+            )
+
+        if family == IntentFamily.PROJECT_MANAGEMENT:
+            project_mgmt = ProjectManagementSpec(
+                tickets=metadata.get("tickets", []),
+                repo=repo_target,
+                pr_number=metadata.get("pr_number"),
+                notes_goal=metadata.get("notes_goal"),
+            )
+
+        # crude confidence score based on how specific we were
+        confidence = self._confidence_score(kind, raw_text)
+
+        intent = NaviIntent(
+            family=family,
+            kind=kind,
+            source=source,
+            priority=priority,
+            confidence=confidence,
+            raw_text=raw_text,
+            slots={"language": language_hint, **{k: v for k, v in metadata.items() if k not in {"files", "language"}}},
+            code_edit=code_edit,
+            test_run=test_run,
+            project_mgmt=project_mgmt,
+            workflow=workflow,
+        )
+
+        return intent
+
+    # ------------------------------------------------------------------ #
+    # Inference helpers
+    # ------------------------------------------------------------------ #
+
+    def _infer_family(self, text: str) -> IntentFamily:
+        if _contains_any(
+            text,
+            (
+                "jira",
+                "ticket",
+                "story",
+                "issue",
+                "backlog",
+                "sprint",
+                "epic",
+                "release notes",
+                "changelog",
+                "pull request",
+                "pr ",
+                "merge request",
+            ),
+        ):
+            return IntentFamily.PROJECT_MANAGEMENT
+
+        if _contains_any(
+            text,
+            (
+                "run this every",
+                "schedule",
+                "nightly",
+                "cron",
+                "background worker",
+                "long running workflow",
+                "auto apply jobs",
+            ),
+        ):
+            return IntentFamily.AUTONOMOUS_ORCHESTRATION
+
+        return IntentFamily.ENGINEERING
+
+    def _infer_kind(self, text: str, family: IntentFamily) -> IntentKind:
+        # Engineering intents
+        if family == IntentFamily.ENGINEERING:
+            if _contains_any(
+                text,
+                (
+                    "failing test",
+                    "tests are failing",
+                    "fix the bug",
+                    "stack trace",
+                    "exception",
+                    "runtime error",
+                    "compile error",
+                    "fix this bug",
+                ),
+            ):
+                return IntentKind.FIX_BUG
+
+            if "refactor" in text or "clean up" in text or "cleanup" in text:
+                return IntentKind.REFACTOR_CODE
+
+            if _contains_any(
+                text,
+                (
+                    "implement feature",
+                    "add feature",
+                    "new endpoint",
+                    "add api",
+                    "create endpoint",
+                    "support this use case",
+                ),
+            ):
+                return IntentKind.IMPLEMENT_FEATURE
+
+            if _contains_any(
+                text,
+                (
+                    "write tests",
+                    "add tests",
+                    "generate tests",
+                    "unit tests for",
+                    "test coverage",
+                ),
+            ):
+                return IntentKind.GENERATE_TESTS
+
+            if _contains_any(
+                text,
+                (
+                    "run tests",
+                    "execute tests",
+                    "run pytest",
+                    "run unit tests",
+                    "ci tests",
+                ),
+            ):
+                return IntentKind.RUN_TESTS
+
+            if _contains_any(
+                text,
+                (
+                    "run lint",
+                    "lint the code",
+                    "ruff",
+                    "flake8",
+                    "eslint",
+                ),
+            ):
+                return IntentKind.RUN_LINT
+
+            if _contains_any(
+                text,
+                (
+                    "build the project",
+                    "build the app",
+                    "run build",
+                    "webpack build",
+                    "vite build",
+                ),
+            ):
+                return IntentKind.RUN_BUILD
+
+            if _contains_any(
+                text,
+                (
+                    "explain this code",
+                    "what does this code do",
+                    "explain how this works",
+                    "help me understand this function",
+                ),
+            ):
+                return IntentKind.EXPLAIN_CODE
+
+            if _contains_any(
+                text,
+                (
+                    "search the code",
+                    "find usages",
+                    "grep for",
+                    "where is",
+                    "search for",
+                ),
+            ):
+                return IntentKind.SEARCH_CODE
+
+            if _contains_any(
+                text,
+                (
+                    "dockerfile",
+                    "docker-compose",
+                    "helm chart",
+                    "kubernetes",
+                    "infra",
+                    "terraform",
+                ),
+            ):
+                return IntentKind.EDIT_INFRA
+
+            if _contains_any(
+                text,
+                (
+                    "upgrade dependencies",
+                    "bump versions",
+                    "update packages",
+                    "dependency update",
+                    "update requirements.txt",
+                    "update package.json",
+                ),
+            ):
+                return IntentKind.UPDATE_DEPENDENCIES
+
+            if _contains_any(
+                text,
+                (
+                    "summarize this diff",
+                    "summarise this diff",
+                    "explain this diff",
+                    "explain this change",
+                ),
+            ):
+                return IntentKind.SUMMARIZE_DIFF
+
+            if "summarize file" in text or "explain this file" in text:
+                return IntentKind.SUMMARIZE_FILE
+
+            # default engineering intent: inspect repo / context
+            return IntentKind.INSPECT_REPO
+
+        # Project management intents
+        if family == IntentFamily.PROJECT_MANAGEMENT:
+            if _contains_any(
+                text,
+                (
+                    "create ticket",
+                    "open a ticket",
+                    "file a bug",
+                    "new jira",
+                    "new story",
+                    "new issue",
+                ),
+            ):
+                return IntentKind.CREATE_TICKET
+
+            if _contains_any(
+                text,
+                (
+                    "update ticket",
+                    "update the jira",
+                    "move this to",
+                    "transition ticket",
+                ),
+            ):
+                return IntentKind.UPDATE_TICKET
+
+            if _contains_any(
+                text,
+                (
+                    "summarize the sprint",
+                    "summarize tickets",
+                    "ticket summary",
+                    "backlog summary",
+                ),
+            ):
+                return IntentKind.SUMMARIZE_TICKETS
+
+            if _contains_any(
+                text,
+                (
+                    "summarize this pr",
+                    "summarise this pr",
+                    "pr summary",
+                    "review this pr",
+                    "code review",
+                ),
+            ):
+                if "review" in text:
+                    return IntentKind.REVIEW_PR
+                return IntentKind.SUMMARIZE_PR
+
+            if _contains_any(
+                text,
+                (
+                    "release notes",
+                    "changelog",
+                    "what changed in this release",
+                ),
+            ):
+                return IntentKind.GENERATE_RELEASE_NOTES
+
+            return IntentKind.SUMMARIZE_TICKETS
+
+        # Autonomous / orchestration intents
+        if family == IntentFamily.AUTONOMOUS_ORCHESTRATION:
+            if _contains_any(
+                text,
+                (
+                    "continue previous session",
+                    "continue where we left off",
+                    "resume session",
+                ),
+            ):
+                return IntentKind.CONTINUE_SESSION
+
+            if _contains_any(
+                text,
+                (
+                    "cancel workflow",
+                    "stop the agent",
+                    "abort run",
+                ),
+            ):
+                return IntentKind.CANCEL_WORKFLOW
+
+            if _contains_any(
+                text,
+                (
+                    "nightly job",
+                    "run every day",
+                    "run every night",
+                    "schedule this task",
+                ),
+            ):
+                return IntentKind.SCHEDULED_TASK
+
+            if _contains_any(
+                text,
+                (
+                    "background job",
+                    "batch job",
+                    "bulk change",
+                    "mass update",
+                ),
+            ):
+                return IntentKind.BACKGROUND_WORKFLOW
+
+            return IntentKind.AUTONOMOUS_SESSION
+
+        # Fallback
+        return IntentKind.UNKNOWN
+
+    # ------------------------------------------------------------------ #
+
+    def _default_max_steps_for_kind(self, kind: IntentKind) -> int:
+        if kind in {IntentKind.RUN_TESTS, IntentKind.RUN_LINT, IntentKind.RUN_BUILD}:
+            return 4
+        if kind in {
+            IntentKind.FIX_BUG,
+            IntentKind.IMPLEMENT_FEATURE,
+            IntentKind.UPDATE_DEPENDENCIES,
+            IntentKind.EDIT_INFRA,
+        }:
+            return 16
+        if kind in {IntentKind.AUTONOMOUS_SESSION, IntentKind.BACKGROUND_WORKFLOW}:
+            return 32
+        return 8
+
+    def _default_auto_run_tests(self, kind: IntentKind) -> bool:
+        return kind in {
+            IntentKind.FIX_BUG,
+            IntentKind.IMPLEMENT_FEATURE,
+            IntentKind.REFACTOR_CODE,
+            IntentKind.UPDATE_DEPENDENCIES,
         }
-    
-    except Exception as e:
-        # Unexpected error
-        logger.error(f"Intent classification error: {e}")
-        return {
-            "type": "ambiguous",
-            "confidence": 0.1,
-            "reasoning": f"Intent classification error: {str(e)}",
-            "entities": {},
-            "clarification_question": "Something went wrong. Could you try rephrasing your request?"
-        }
+
+    def _command_for_test_like_intent(
+        self,
+        kind: IntentKind,
+        text: str,
+        metadata: Dict[str, Any],
+    ) -> CommandSpec:
+        # Allow explicit override
+        explicit = metadata.get("command")
+        if isinstance(explicit, str):
+            return CommandSpec(command=explicit)
+
+        if kind == IntentKind.RUN_TESTS:
+            return CommandSpec(command=self.config.default_test_command)
+        if kind == IntentKind.RUN_LINT:
+            return CommandSpec(command=self.config.default_lint_command)
+        if kind == IntentKind.RUN_BUILD:
+            return CommandSpec(command=self.config.default_build_command)
+
+        # Generic one-off command – try to grab a shell fragment
+        # e.g. "run `make ci`" → "make ci"
+        import re
+
+        m = re.search(r"`([^`]+)`", text)
+        if m:
+            return CommandSpec(command=m.group(1))
+
+        # last resort: pass the whole message
+        return CommandSpec(command=text.strip() or "echo 'no command specified'")
+
+    def _goal_from_text(self, kind: IntentKind, raw_text: str) -> str:
+        if kind == IntentKind.FIX_BUG:
+            return "Fix the reported bug and ensure all tests pass."
+        if kind == IntentKind.IMPLEMENT_FEATURE:
+            return "Implement the described feature end-to-end."
+        if kind == IntentKind.REFACTOR_CODE:
+            return "Refactor the targeted code for clarity and maintainability."
+        if kind == IntentKind.UPDATE_DEPENDENCIES:
+            return "Update the relevant dependencies safely."
+        if kind == IntentKind.EDIT_INFRA:
+            return "Update infrastructure / deployment configuration as requested."
+        if kind == IntentKind.CREATE_FILE:
+            return "Create the requested file(s) with appropriate implementation."
+        if kind == IntentKind.MODIFY_CODE:
+            return "Apply the requested edits to the codebase."
+        return raw_text
+
+    def _confidence_score(self, kind: IntentKind, raw_text: str) -> float:
+        # Very rough heuristic: more specific kinds get higher confidence.
+        if kind == IntentKind.UNKNOWN:
+            return 0.3
+        if kind in {
+            IntentKind.FIX_BUG,
+            IntentKind.IMPLEMENT_FEATURE,
+            IntentKind.REFACTOR_CODE,
+            IntentKind.RUN_TESTS,
+            IntentKind.RUN_LINT,
+            IntentKind.RUN_BUILD,
+            IntentKind.CREATE_TICKET,
+            IntentKind.REVIEW_PR,
+            IntentKind.GENERATE_RELEASE_NOTES,
+        }:
+            return 0.85
+        return 0.6
 
 
-# ==============================================================================
-# ENTITY EXTRACTION HELPERS
-# ==============================================================================
+# ---------------------------------------------------------------------------
+# Module-level helpers (backwards compatibility)
+# ---------------------------------------------------------------------------
 
-def extract_jira_keys(text: str) -> List[str]:
-    """Extract Jira keys from text (e.g., SCRUM-123, ENG-45)."""
-    pattern = r'\b[A-Z]{2,10}-\d+\b'
-    return list(set(re.findall(pattern, text)))
+_default_classifier = IntentClassifier()
 
 
-def extract_file_references(text: str, workspace_context: Dict[str, Any]) -> List[str]:
-    """Extract file references from text and workspace context."""
-    files = []
-    
-    # Direct file mentions
-    file_pattern = r'\b[\w\/\-\.]+\.(py|js|ts|tsx|jsx|java|go|rs|cpp|c|h|md|yaml|json|xml|sql)\b'
-    files.extend(re.findall(file_pattern, text))
-    
-    # "this file", "current file" → use workspace context
-    if re.search(r'\b(this|current|the)\s+file\b', text.lower()):
-        if workspace_context.get("active_file"):
-            files.append(workspace_context["active_file"])
-    
-    return list(set(files))
-
-
-def enrich_entities_from_context(
-    entities: Dict[str, Any],
-    context: Dict[str, Any],
-    user_state: Dict[str, Any]
-) -> Dict[str, Any]:
+def classify_intent(
+    message: Any,
+    *,
+    repo: Optional[RepoTarget] = None,
+    source: IntentSource = IntentSource.CHAT,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> NaviIntent:
     """
-    Enrich extracted entities with context-aware inference.
-    
-    Examples:
-    - "this Jira" → add current_jira from state
-    - "that file" → add active_file from workspace
-    - "the error" → add last_error from state
-    """
-    enriched = entities.copy()
-    
-    # Infer Jira keys from state/context
-    if user_state.get("current_jira"):
-        enriched.setdefault("jira_keys", []).append(user_state["current_jira"])
-    
-    if context.get("org_context", {}).get("jira_keys"):
-        enriched.setdefault("jira_keys", []).extend(context["org_context"]["jira_keys"])
-    
-    # Infer files from workspace
-    if context.get("workspace_context", {}).get("active_file"):
-        enriched.setdefault("files", []).append(context["workspace_context"]["active_file"])
-    
-    # Deduplicate
-    for key in enriched:
-        if isinstance(enriched[key], list):
-            enriched[key] = list(set(enriched[key]))
-    
-    return enriched
+    Convenience wrapper around `IntentClassifier.classify`.
 
-    matches = re.findall(pattern, text)
-    return list(set(matches))
+    Many existing call sites may already be using a function named
+    `classify_intent`. Keeping this here avoids churn in the rest of the
+    codebase.
+    """
+    return _default_classifier.classify(
+        message,
+        repo=repo,
+        source=source,
+        metadata=metadata,
+    )
+
+
+# Alias used in some older branches / experiments.
+detect_intent = classify_intent

@@ -11,8 +11,20 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize OpenAI client (lazy initialization to avoid startup errors)
+_client: Optional[AsyncOpenAI] = None
+
+def get_openai_client() -> AsyncOpenAI:
+    """Get or initialize OpenAI client with proper error handling."""
+    global _client
+    if _client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OpenAI API key not found. Please set OPENAI_API_KEY environment variable."
+            )
+        _client = AsyncOpenAI(api_key=api_key)
+    return _client
 
 
 async def call_llm(
@@ -39,14 +51,15 @@ async def call_llm(
         system_prompt = _build_system_prompt(context)
         
         # Call OpenAI
+        client = get_openai_client()
         response = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": message}
             ],
-            temperature=0.7,
-            max_tokens=1000
+            temperature=0.6,
+            # Remove max_tokens limit for comprehensive responses
         )
         
         answer = response.choices[0].message.content

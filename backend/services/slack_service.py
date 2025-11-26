@@ -2,91 +2,149 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-try:
-    # Core Slack integration client (reads from DB or Slack API depending on implementation)
-    from backend.core.integrations.slack_client import SlackClient  # type: ignore
-except Exception:  # pragma: no cover
-    SlackClient = None  # type: ignore[misc]
+from backend.integrations.slack_client import SlackClient
+
+logger = logging.getLogger(__name__)
 
 
-def _get_client(db: Optional[Session] = None) -> Optional["SlackClient"]:
+def _get_client() -> Optional[SlackClient]:
     """
-    Helper to construct a SlackClient instance if the integration is available.
-    This is defensive so that NAVI does not crash if Slack is not configured yet.
-    """
-    if SlackClient is None:
-        return None
+    Safe helper to construct a SlackClient instance.
 
+    Returns None if Slack is not configured so that NAVI keeps working
+    even when AEP_SLACK_BOT_TOKEN is missing.
+    """
     try:
-        # Adapt this to however your SlackClient is actually constructed.
-        # Many projects don't need `db` here; it's passed just in case.
         return SlackClient()
-    except Exception:
+    except Exception as e:
+        # Most common case: AEP_SLACK_BOT_TOKEN not set
+        logger.info("SlackClient not available: %s", e)
         return None
 
 
 def search_messages_for_user(
     db: Session,
     user_id: str,
-    limit: int = 20,
+    limit: int = 30,
     include_threads: bool = True,
 ) -> List[Dict[str, Any]]:
     """
     Return recent Slack messages that are relevant for the given user.
 
-    This is intentionally generic: it can be backed either by
-    - direct Slack API calls, or
-    - a DB-backed index populated by slack_ingestor.py.
+    For now this is intentionally simple and safe:
 
-    The contract for each returned item:
+    - Lists all channels the bot can see
+    - Pulls recent messages from each channel
+    - Optionally expands threads
+    - Later we can filter more strictly by user_id or mentions
+
+    Each returned item has the shape:
 
         {
-            "id": str,               # internal ID or Slack ts
-            "channel": str,          # channel name or ID
-            "text": str,             # message text
-            "user": str | None,      # author username
-            "ts": str | None,        # timestamp (Slack ts)
-            "permalink": str | None, # deep link to Slack
+            "id": str,
+            "channel": str,      # channel id
+            "channel_name": str, # human readable name
+            "text": str,
+            "user": str | None,
+            "ts": str | None,
+            "permalink": str | None,
         }
     """
-    client = _get_client(db)
+    client = _get_client()
     if client is None:
         return []
 
+    messages: List[Dict[str, Any]] = []
+
     try:
-        # You will need to adapt this to your actual SlackClient API.
-        # For example, maybe you already have:
-        #   client.search_messages_for_user(user_id=user_id, limit=limit)
-        raw_messages = client.search_messages_for_user(
-            user_id=user_id,
-            limit=limit,
-            include_threads=include_threads,
-        )
-    except AttributeError:
-        # Fallback: if your client has a different API, adapt here.
-        # This keeps NAVI from crashing while we wire it up.
-        return []
-    except Exception:
+        channels = client.list_channels()
+    except Exception as e:
+        logger.warning("Slack: failed to list channels: %s", e, exc_info=True)
         return []
 
-    normalized: List[Dict[str, Any]] = []
-    for msg in raw_messages or []:
-        normalized.append(
-            {
-                "id": str(msg.get("id") or msg.get("ts") or ""),
-                "channel": msg.get("channel") or msg.get("channel_id"),
-                "text": msg.get("text") or "",
-                "user": msg.get("user"),
-                "ts": msg.get("ts"),
-                "permalink": msg.get("permalink") or msg.get("url"),
-            }
-        )
+    # Simple strategy for now:
+    # - Walk channels in order
+    # - Collect messages until we hit the limit
+    for ch in channels:
+        if len(messages) >= limit:
+            break
 
-    return normalized
+        ch_id = ch.get("id")
+        ch_name = ch.get("name") or ch_id
+        if not ch_id:
+            continue
+
+        try:
+            raw_msgs = client.fetch_channel_messages(
+                channel_id=ch_id,
+                limit=min(limit - len(messages), 200),
+            )
+        except Exception as e:
+            logger.warning(
+                "Slack: failed to fetch messages for channel %s: %s",
+                ch_id,
+                e,
+                exc_info=True,
+            )
+            continue
+
+        for m in raw_msgs or []:
+            if len(messages) >= limit:
+                break
+
+            ts = m.get("ts")
+            text = m.get("text") or ""
+            user = m.get("user")
+
+            # Optional: expand threads (we keep it off by default if include_threads is False)
+            if include_threads and m.get("thread_ts") and m.get("thread_ts") == ts:
+                try:
+                    replies = client.fetch_thread_replies(ch_id, m["thread_ts"])
+                except Exception as e:
+                    logger.debug(
+                        "Slack: failed to fetch thread replies for %s in %s: %s",
+                        ts,
+                        ch_id,
+                        e,
+                    )
+                else:
+                    for r in replies[1:]:  # skip parent (already handled)
+                        if len(messages) >= limit:
+                            break
+                        r_ts = r.get("ts")
+                        r_text = r.get("text") or ""
+                        r_user = r.get("user")
+                        messages.append(
+                            {
+                                "id": f"{ch_id}:{r_ts}",
+                                "channel": ch_id,
+                                "channel_name": ch_name,
+                                "text": r_text,
+                                "user": r_user,
+                                "ts": r_ts,
+                                "permalink": _build_permalink(ch_id, r_ts),
+                            }
+                        )
+
+            messages.append(
+                {
+                    "id": f"{ch_id}:{ts}",
+                    "channel": ch_id,
+                    "channel_name": ch_name,
+                    "text": text,
+                    "user": user,
+                    "ts": ts,
+                    "permalink": _build_permalink(ch_id, ts),
+                }
+            )
+
+    logger.info("Slack: collected %d messages for org memory", len(messages))
+    return messages
 
 
 def search_messages(
@@ -99,40 +157,18 @@ def search_messages(
     Search Slack messages by query text (for unified memory retriever).
     This is the function expected by unified_memory_retriever._fetch_slack_memories.
     """
-    client = _get_client(db)
-    if client is None:
-        return []
+    # For now, just delegate to search_messages_for_user since we don't have query-based search
+    # Later we can implement actual query matching
+    return search_messages_for_user(db, user_id, limit, include_threads=True)
 
-    try:
-        # Try to search by query if client supports it
-        if hasattr(client, 'search_messages'):
-            raw_messages = client.search_messages(
-                query=query,
-                user_id=user_id,
-                limit=limit,
-            )
-        else:
-            # Fallback to user messages if no query search
-            raw_messages = client.search_messages_for_user(
-                user_id=user_id,
-                limit=limit,
-            )
-    except AttributeError:
-        return []
-    except Exception:
-        return []
 
-    normalized: List[Dict[str, Any]] = []
-    for msg in raw_messages or []:
-        normalized.append(
-            {
-                "id": str(msg.get("id") or msg.get("ts") or ""),
-                "channel": msg.get("channel") or msg.get("channel_id"),
-                "text": msg.get("text") or "",
-                "user": msg.get("user"),
-                "ts": msg.get("ts"),
-                "permalink": msg.get("permalink") or msg.get("url"),
-            }
-        )
+def _build_permalink(channel_id: str, ts: Optional[str]) -> Optional[str]:
+    """
+    Best-effort permalink builder.
 
-    return normalized
+    This mirrors what your SlackIngestor already uses:
+    https://slack.com/archives/{channel_id}/p{ts_without_dot}
+    """
+    if not channel_id or not ts:
+        return None
+    return f"https://slack.com/archives/{channel_id}/p{ts.replace('.', '')}"

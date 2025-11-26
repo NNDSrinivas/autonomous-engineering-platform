@@ -4,7 +4,7 @@ Pulls cross-system context (Jira, Confluence, Slack, Teams, Zoom) to generate
 structured briefs for engineering tasks.
 """
 
-from typing import List
+from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ import os
 
 from ..core.db import get_db
 from ..services.navi_memory_service import search_memory, list_jira_tasks_for_user
+# from .navi import _ensure_fresh_jira_tasks  # Removed - using new agent architecture
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +75,27 @@ class JiraTaskItem(BaseModel):
     status: str = Field(..., description="Task status (e.g., To Do, In Progress)")
     scope: str = Field(..., description="Scope/project identifier")
     updated_at: str = Field(..., description="Last updated timestamp (ISO format)")
+    url: Optional[str] = Field(
+        None, description="Direct Jira URL for this ticket (if available)"
+    )
+    links: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Related resource links grouped by system, e.g. "
+            "{'confluence': [...], 'slack': [...], 'zoom': [...], 'jenkins': [...]} "
+        ),
+    )
 
 
 class JiraTaskListResponse(BaseModel):
-    """List of Jira tasks from NAVI memory"""
+    """List of Jira tasks from NAVI memory with snapshot tracking"""
 
     tasks: List[JiraTaskItem] = Field(..., description="List of Jira tasks")
     total: int = Field(..., description="Total number of tasks returned")
+    snapshot_ts: Optional[str] = Field(
+        None,
+        description="ISO timestamp of latest Jira sync snapshot (if known)"
+    )
 
 
 # ============================================================================
@@ -89,31 +104,34 @@ class JiraTaskListResponse(BaseModel):
 
 
 @router.get("/jira-tasks", response_model=JiraTaskListResponse)
-def list_jira_tasks(
-    user_id: str,
+async def list_jira_tasks(
+    user_id: str = "default_user",
     limit: int = 20,
     db: Session = Depends(get_db),
 ) -> JiraTaskListResponse:
     """
     List Jira tasks NAVI knows about for this user.
 
-    Returns tasks from NAVI's memory (not live Jira), so it works offline.
-    Tasks are populated via /api/org/sync/jira endpoint.
+    Automatically ensures tasks are fresh (real-time sync if needed), then
+    returns tasks with URLs and related links for clickable references.
 
     Args:
-        user_id: User identifier (query parameter)
+        user_id: User identifier (query parameter, defaults to "default_user")
         limit: Maximum number of tasks to return (default 20)
         db: Database session (injected)
 
     Returns:
-        List of Jira tasks with keys, titles, statuses
+        List of Jira tasks with keys, titles, statuses, URLs, and related links
     """
     try:
         uid = user_id.strip()
         if not uid:
-            raise HTTPException(status_code=400, detail="user_id is required")
+            uid = "default_user"
 
-        logger.info(f"[JIRA-TASKS] Listing tasks for user: {uid}, limit: {limit}")
+        logger.info("[JIRA-TASKS] Listing tasks for user: %s, limit: %s", uid, limit)
+
+        # Ensure Jira tasks are fresh (real-time sync if needed)
+        # await _ensure_fresh_jira_tasks(db, uid)  # Removed - using new agent architecture
 
         rows = list_jira_tasks_for_user(db, uid, limit=limit)
 
@@ -124,7 +142,20 @@ def list_jira_tasks(
             status = tags.get("status") or "Unknown"
             title = m.get("title") or jira_key
             scope = m.get("scope") or ""
-            updated_at = m.get("updated_at") or ""
+
+            updated_at_raw = m.get("updated_at") or ""
+            if hasattr(updated_at_raw, "isoformat"):
+                updated_at = updated_at_raw.isoformat()  # type: ignore
+            else:
+                updated_at = str(updated_at_raw)
+
+            # Extract URL and links from tags
+            url = tags.get("jira_url") or tags.get("url")
+            links = tags.get("links") or {}
+
+            if not jira_key:
+                # Skip memories that don't have any meaningful Jira identifier
+                continue
 
             items.append(
                 JiraTaskItem(
@@ -133,19 +164,130 @@ def list_jira_tasks(
                     status=status,
                     scope=scope,
                     updated_at=updated_at,
+                    url=url,
+                    links=links,
                 )
             )
 
-        logger.info(f"[JIRA-TASKS] Found {len(items)} tasks for {uid}")
+        logger.info("[JIRA-TASKS] Found %d tasks for %s", len(items), uid)
 
-        return JiraTaskListResponse(tasks=items, total=len(items))
+        # Track latest snapshot timestamp from all tasks
+        snapshot_ts: Optional[str] = None
+        for row in rows:
+            tags = row.get("tags") or {}
+            sync_ts = tags.get("synced_at")
+            if sync_ts and (snapshot_ts is None or sync_ts > snapshot_ts):
+                snapshot_ts = sync_ts
+
+        return JiraTaskListResponse(tasks=items, total=len(items), snapshot_ts=snapshot_ts)
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[JIRA-TASKS] Error: {e}", exc_info=True)
+        logger.error("[JIRA-TASKS] Error: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to list Jira tasks: {str(e)}"
+        )
+
+
+@router.get("/jira-tasks/live", response_model=JiraTaskListResponse)
+async def list_jira_tasks_live(
+    user_id: str = "default_user",
+    limit: int = 20,
+    db: Session = Depends(get_db),
+) -> JiraTaskListResponse:
+    """
+    Live Jira view: query Jira API directly, bypassing navi_memory cache.
+    
+    Use this when user specifically asks for "latest", "current", "right now" data.
+    This always returns the most up-to-date information from Jira.
+    """
+    try:
+        uid = user_id.strip() or "default_user"
+        
+        logger.info("[JIRA-LIVE] Fetching live tasks from Jira API for user: %s", uid)
+        
+        # Import here to avoid circular imports
+        from ..integrations.jira_client import JiraClient
+        from ..services.org_ingestor import _get_jira_client_for_user
+        
+        # Get Jira client for this user
+        jira_client = await _get_jira_client_for_user(db, uid)
+        if not jira_client:
+            logger.warning("[JIRA-LIVE] No Jira connection found for user %s", uid)
+            return JiraTaskListResponse(tasks=[], total=0, snapshot_ts=None)
+        
+        # Fetch live data from Jira API
+        async with jira_client as jira:
+            issues = await jira.get_assigned_issues(
+                jql="assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC",
+                max_results=limit
+            )
+        
+        logger.info("[JIRA-LIVE] Fetched %d live issues from Jira", len(issues))
+        
+        # Convert to JiraTaskItem objects
+        items: List[JiraTaskItem] = []
+        for issue in issues:
+            try:
+                key = issue.get("key", "")
+                fields = issue.get("fields", {}) or {}
+                
+                summary = fields.get("summary", "").strip()
+                status_obj = fields.get("status", {}) or {}
+                status = status_obj.get("name", "Unknown")
+                
+                priority_obj = fields.get("priority", {}) or {}
+                priority = priority_obj.get("name", "Medium")
+                
+                assignee_obj = fields.get("assignee", {}) or {}
+                assignee = assignee_obj.get("displayName", "Unassigned")
+                
+                # Build Jira URL
+                jira_url = f"{jira_client.base_url}/browse/{key}"
+                
+                # Use updated timestamp from Jira
+                updated = fields.get("updated", "")
+                created = fields.get("created", "")
+                
+                items.append(
+                    JiraTaskItem(
+                        jira_key=key,
+                        title=summary,
+                        status=status,
+                        scope=key,
+                        updated_at=updated,
+                        url=jira_url,
+                        links={
+                            "confluence": [],
+                            "slack": [],
+                            "zoom": [],
+                            "teams": [],
+                            "gmeet": [],
+                            "jenkins": [],
+                            "devops": [],
+                            "other": []
+                        }
+                    )
+                )
+                
+            except Exception as item_error:
+                logger.warning("[JIRA-LIVE] Failed to process issue %s: %s", 
+                             issue.get("key", "unknown"), item_error)
+                continue
+        
+        logger.info("[JIRA-LIVE] Returning %d live tasks for %s", len(items), uid)
+        # For live endpoint, snapshot_ts is current time since we just fetched
+        from datetime import datetime, timezone
+        current_ts = datetime.now(timezone.utc).isoformat()
+        return JiraTaskListResponse(tasks=items, total=len(items), snapshot_ts=current_ts)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("[JIRA-LIVE] Error fetching live tasks: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch live Jira tasks: {str(e)}"
         )
 
 

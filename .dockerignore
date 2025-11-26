@@ -1,0 +1,151 @@
+# .dockerignore
+
+# Git and version control
+.git
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Python cache and bytecode
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv
+env/
+venv/
+aep-venv/
+ENV/
+env.bak/
+venv.bak/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.cover
+.coverage
+.coverage.*
+htmlcov/
+.nyc_output
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.tox/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node modules and frontend (only if backend doesn't need them)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+frontend/
+web/
+extensions/
+
+# Local development files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+config/development.env
+
+# Database files (for local SQLite)
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.backup
+*.bak
+
+# Documentation that doesn't need to be in container
+docs/
+*.md
+LICENSE
+NOTICE
+CLA.md
+CODE_QUALITY_*.md
+COMPLETE_IMPLEMENTATION_PLAN.md
+COPILOT_*.md
+ENFORCEMENT_PLAYBOOK.md
+FRONTEND_*.md
+IMPLEMENTATION_STATUS_*.md
+NAVI_*.md
+PHASE*.md
+PR-*.md
+PRODUCTION_*.md
+README*.md
+SECURITY.md
+STEP*.md
+TRADEMARK.md
+
+# Scripts not needed in container
+*.sh
+launch-extension.sh
+push_to_github.sh
+start_backend_dev.sh
+
+# Configuration files not needed in runtime
+docker-compose.yml
+Makefile
+playwright.config.ts
+pytest.ini
+alembic.ini
+
+# Test files
+test_*.py
+tests/
+
+# Development data
+data/seed/
+data/*.backup*
+
+# Temporary files
+*.tmp
+*.temp

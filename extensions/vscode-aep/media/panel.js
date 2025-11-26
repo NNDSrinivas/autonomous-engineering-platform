@@ -2,16 +2,54 @@
 // NAVI chat panel with streaming + quick actions + message toolbar
 
 // ---------------------------------------------------------------------------
-// Shared state for command menu (wand)
+// Shared state for menus (unified to prevent overlapping)
 // ---------------------------------------------------------------------------
 let commandMenuEl = null;
-let isCommandMenuOpen = false;
+let openMenu = null; // 'actions' | 'attach' | null
 let commandMenuHasUserPosition = false;
 let commandMenuDragState = {
   dragging: false,
   offsetX: 0,
   offsetY: 0,
 };
+
+// --- Attachments state -------------------------------------------------------
+let currentAttachments = [];
+
+// --- Ephemeral toast (short-lived banner above input) ------------------------
+
+let naviToastTimeoutId = null;
+
+function showEphemeralToast(message, level = 'info') {
+  // Try to anchor near the chat input, fall back to body
+  const root =
+    document.querySelector('.aep-chat-input-row') ||
+    document.getElementById('root') ||
+    document.body;
+
+  let el = document.getElementById('navi-ephemeral-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'navi-ephemeral-toast';
+    el.className = 'navi-ephemeral-toast';
+    root.appendChild(el);
+  }
+
+  el.textContent = message;
+  el.setAttribute('data-level', level);
+
+  el.classList.add('visible');
+
+  if (naviToastTimeoutId) {
+    clearTimeout(naviToastTimeoutId);
+  }
+
+  naviToastTimeoutId = setTimeout(() => {
+    el.classList.remove('visible');
+  }, 3500); // 3.5s then fade
+}
+
+
 
 // ---------------------------------------------------------------------------
 // Main webview bootstrap (UI + streaming + basic wiring)
@@ -29,6 +67,49 @@ let commandMenuDragState = {
       return null;
     }
   })();
+
+  // NAVI Intent Classification functionality
+  function getSelectedModel() {
+    const modelSelect = document.getElementById('navi-model-select');
+    if (!modelSelect) {
+      return 'smart-auto';
+    }
+    return modelSelect.value || 'smart-auto';
+  }
+
+  function sendIntentClassification(text) {
+    if (!text.trim() || !vscode) return;
+
+    vscode.postMessage({
+      type: 'aep.intent.classify',
+      text: text,
+      model: getSelectedModel()
+    });
+  }
+
+  function displayIntentResult(message) {
+    const intentResultEl = document.getElementById('navi-intent-result');
+    if (!intentResultEl) return;
+
+    if (!message.ok) {
+      intentResultEl.innerHTML = `❌ Intent error: ${message.error || 'Unknown error'}`;
+      intentResultEl.className = 'navi-intent-pill show';
+      return;
+    }
+
+    const data = message.data || {};
+    const intent = data.intent || {};
+
+    const family = intent.family || 'UNKNOWN';
+    const kind = intent.kind || 'UNKNOWN';
+    const confidence = intent.confidence || 0;
+    const modelUsed = intent.model_used || intent.provider_used || 'smart-auto';
+
+    intentResultEl.innerHTML =
+      `🧠 <strong>${family}</strong> / ${kind} ` +
+      `(${Math.round(confidence * 100)}% confidence) · model: <code>${modelUsed}</code>`;
+    intentResultEl.className = 'navi-intent-pill show';
+  }
 
   const root = document.getElementById('root');
 
@@ -139,9 +220,8 @@ let commandMenuDragState = {
           <span class="navi-attach-toast-text">Attachment flow is not implemented yet – coming soon.</span>
         </div>
 
-        <div id="navi-attachments-banner" class="navi-attachments-banner navi-attachments-banner-hidden">
-          <span class="navi-attachments-icon">📎</span>
-          <span class="navi-attachments-text">Attachment flow is not implemented yet – coming soon.</span>
+        <div id="navi-attachments-container" class="navi-attachments-container">
+          <!-- Attachment pills will be dynamically added here -->
         </div>
 
         <form id="navi-form" class="navi-form">
@@ -164,12 +244,15 @@ let commandMenuDragState = {
         </form>
 
         <div class="navi-bottom-row">
-          <div class="navi-model-pill navi-pill" id="modelPill" data-model-id="gpt-5.1">
-            <span>Model: ChatGPT 5.1</span>
+          <div class="navi-model-pill navi-pill" id="modelPill" data-model-id="smart-auto">
+            <span>Model: Smart Auto (recommended)</span>
             <div class="navi-pill-menu navi-model-menu">
-              <div class="navi-pill-menu-item" data-model-id="gpt-5.1" data-model-label="ChatGPT 5.1">ChatGPT 5.1</div>
-              <div class="navi-pill-menu-item" data-model-id="gpt-4.2" data-model-label="gpt-4.2">gpt-4.2</div>
-              <div class="navi-pill-menu-item" data-model-id="o3-mini" data-model-label="o3-mini">o3-mini</div>
+              <div class="navi-pill-menu-item" data-model-id="smart-auto" data-model-label="Smart Auto (recommended)">Smart Auto (recommended)</div>
+              <div class="navi-pill-menu-item" data-model-id="openai:gpt-4o" data-model-label="GPT-4o (OpenAI)">GPT-4o (OpenAI)</div>
+              <div class="navi-pill-menu-item" data-model-id="openai:gpt-4o-mini" data-model-label="GPT-4o Mini (OpenAI)">GPT-4o Mini (OpenAI)</div>
+              <div class="navi-pill-menu-item" data-model-id="anthropic:claude-3-5-sonnet-20241022" data-model-label="Claude 3.5 Sonnet">Claude 3.5 Sonnet</div>
+              <div class="navi-pill-menu-item" data-model-id="anthropic:claude-3-5-haiku-20241022" data-model-label="Claude 3.5 Haiku">Claude 3.5 Haiku</div>
+              <div class="navi-pill-menu-item" data-model-id="google:gemini-2.0-flash-exp" data-model-label="Gemini 2.0 Flash">Gemini 2.0 Flash</div>
             </div>
           </div>
 
@@ -183,7 +266,11 @@ let commandMenuDragState = {
           </div>
         </div>
 
-        <div class="navi-attachments-preview"></div>
+
+
+        <div id="navi-intent-result" class="navi-intent-pill">
+          <!-- Intent classification results will appear here -->
+        </div>
 
         <div id="navi-command-menu" class="navi-command-menu navi-command-menu-hidden">
           <button class="navi-command-item" data-command-id="jira-task-brief">
@@ -247,6 +334,87 @@ let commandMenuDragState = {
   } else {
     console.warn('[NAVI] Logo container or SVG not found');
   }
+
+  // Add attachment styles
+  const attachmentStyles = document.createElement('style');
+  attachmentStyles.textContent = `
+    .navi-attachments-container {
+      margin-bottom: 12px;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    
+    .navi-attachment-pill {
+      background: rgba(5, 7, 22, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+    }
+    
+    .navi-attachment-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 11px;
+    }
+    
+    .navi-attachment-label {
+      font-weight: 600;
+      color: #F9F5FF;
+      white-space: nowrap;
+    }
+    
+    .navi-attachment-path {
+      color: #9CA3AF;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-family: ui-monospace, Menlo, Monaco, 'Courier New', monospace;
+    }
+    
+    .navi-attachment-remove {
+      background: transparent;
+      border: none;
+      color: #9CA3AF;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1;
+    }
+    
+    .navi-attachment-remove:hover {
+      background: rgba(239, 68, 68, 0.1);
+      color: #EF4444;
+    }
+    
+    .navi-attachment-content {
+      margin: 0;
+    }
+    
+    .navi-attachment-code {
+      margin: 0;
+      padding: 8px 10px;
+      background: rgba(2, 3, 12, 0.8);
+      border-radius: 8px;
+      font-family: ui-monospace, Menlo, Monaco, 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.4;
+      max-height: 120px;
+      overflow: auto;
+      white-space: pre;
+      color: #E5E7EB;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    .navi-attachment-code code {
+      display: block;
+    }
+  `;
+  document.head.appendChild(attachmentStyles);
 
   // DOM references -----------------------------------------------------------
   const messagesEl = document.getElementById('navi-messages');
@@ -393,7 +561,83 @@ let commandMenuDragState = {
 
   // Attachment state (PR-5)
   let pendingAttachments = [];
-  const attachmentsPreviewEl = document.querySelector('.navi-attachments-preview');
+  const attachmentsContainer = document.getElementById('navi-attachments-container');
+
+  // Helper function to generate unique attachment ID
+  function generateAttachmentId() {
+    return `att-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  // Helper function to get file extension for syntax highlighting
+  function getFileExtension(filePath) {
+    return filePath.split('.').pop()?.toLowerCase() || 'txt';
+  }
+
+  // Helper function to get language name from extension
+  function getLanguageFromExtension(ext) {
+    const languageMap = {
+      'js': 'javascript', 'ts': 'typescript', 'py': 'python', 'java': 'java',
+      'cpp': 'cpp', 'c': 'c', 'cs': 'csharp', 'php': 'php', 'rb': 'ruby',
+      'go': 'go', 'rs': 'rust', 'sh': 'bash', 'yml': 'yaml', 'yaml': 'yaml',
+      'json': 'json', 'xml': 'xml', 'html': 'html', 'css': 'css', 'scss': 'scss',
+      'md': 'markdown', 'sql': 'sql', 'jsx': 'javascript', 'tsx': 'typescript'
+    };
+    return languageMap[ext] || 'text';
+  }
+
+  // Function to remove attachment by ID (globally accessible)
+  window.removeAttachment = function (attachmentId) {
+    pendingAttachments = pendingAttachments.filter(att => att.id !== attachmentId);
+    renderAttachments();
+  };
+
+  // Function to render all attachments
+  function renderAttachments() {
+    if (!attachmentsContainer) return;
+
+    if (pendingAttachments.length === 0) {
+      attachmentsContainer.innerHTML = '';
+      attachmentsContainer.style.display = 'none';
+      return;
+    }
+
+    attachmentsContainer.style.display = 'block';
+    attachmentsContainer.innerHTML = pendingAttachments.map(attachment => {
+      const filename = attachment.path.split(/[\\\/]/).pop() || attachment.path;
+      const ext = getFileExtension(attachment.path);
+      const language = getLanguageFromExtension(ext);
+      const lineCount = attachment.content.split('\n').length;
+
+      const kindLabel = {
+        'selection': '📝 Selected code',
+        'currentFile': '📄 Current file',
+        'file': '📁 File'
+      }[attachment.kind] || '📎 Attachment';
+
+      // Truncate content for preview (first 5 lines)
+      const lines = attachment.content.split('\n');
+      const previewLines = lines.slice(0, 5);
+      const hasMore = lines.length > 5;
+      const preview = previewLines.join('\n') + (hasMore ? '\n...' : '');
+
+      return `
+        <div class="navi-attachment-pill" data-attachment-id="${attachment.id}">
+          <div class="navi-attachment-header">
+            <span class="navi-attachment-label">${kindLabel}</span>
+            <span class="navi-attachment-path" title="${attachment.path}">
+              ${filename} · ${lineCount} line${lineCount !== 1 ? 's' : ''}
+            </span>
+            <button class="navi-attachment-remove" onclick="removeAttachment('${attachment.id}')" title="Remove attachment">
+              ✕
+            </button>
+          </div>
+          <div class="navi-attachment-content">
+            <pre class="navi-attachment-code language-${language}"><code>${escapeHtml(preview)}</code></pre>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
 
   // Form events --------------------------------------------------------------
   formEl.addEventListener('submit', (e) => {
@@ -433,7 +677,39 @@ let commandMenuDragState = {
     } else {
       // Create new user message (normal send or Use as prompt)
       console.log('[NAVI] Creating new message');
-      appendMessage(text, 'user');
+      const { bubble } = appendMessage(text, 'user');
+
+      // Add attachments to the user message if any exist
+      if (currentAttachments.length > 0) {
+        const attachmentsList = document.createElement('div');
+        attachmentsList.className = 'navi-message-attachments';
+
+        currentAttachments.forEach(attachment => {
+          const attachmentEl = document.createElement('div');
+          attachmentEl.className = 'navi-message-attachment';
+
+          const filename = attachment.path ? attachment.path.split('/').pop() : 'Unknown file';
+          const lines = attachment.content ? attachment.content.split('\n').length : 0;
+
+          attachmentEl.innerHTML = `
+            <div class="navi-attachment-icon">📎</div>
+            <div class="navi-attachment-info">
+              <div class="navi-attachment-name">${filename}</div>
+              <div class="navi-attachment-meta">${lines} lines • ${attachment.language || 'text'}</div>
+            </div>
+          `;
+
+          attachmentsList.appendChild(attachmentEl);
+        });
+
+        // Insert attachments before the toolbar
+        const toolbar = bubble.querySelector('.navi-msg-toolbar');
+        if (toolbar) {
+          bubble.insertBefore(attachmentsList, toolbar);
+        } else {
+          bubble.appendChild(attachmentsList);
+        }
+      }
     }
 
     if (vscode) {
@@ -448,17 +724,18 @@ let commandMenuDragState = {
         text,
         modelId,
         modeId,
-        attachments: pendingAttachments  // PR-5: include attachments
+        attachments: currentAttachments  // PR-5: include attachments
+      });
+
+      // Trigger intent classification for the user input
+      vscode.postMessage({
+        type: 'aep.intent.classify',
+        text,
+        modelId
       });
     }
     inputEl.value = '';
     inputEl.focus();
-
-    // PR-5: Clear attachments after sending
-    pendingAttachments = [];
-    if (attachmentsPreviewEl) {
-      attachmentsPreviewEl.innerHTML = '';
-    }
 
     // If stub chip is visible, clear it once the user sends something
     const footer = document.querySelector('.navi-footer');
@@ -486,7 +763,12 @@ let commandMenuDragState = {
       if (action === 'newChat') {
         vscode.postMessage({ type: 'newChat' });
       } else if (action === 'connectors') {
-        vscode.postMessage({ type: 'openConnectors' });
+        if (typeof window !== 'undefined' && window.AEPConnections && typeof window.AEPConnections.open === 'function') {
+          window.AEPConnections.open();
+        } else if (vscode) {
+          // Fallback (legacy): let host know
+          vscode.postMessage({ type: 'openConnectors' });
+        }
       } else if (action === 'settings') {
         vscode.postMessage({ type: 'openSettings' });
       }
@@ -628,10 +910,11 @@ let commandMenuDragState = {
     });
   }
 
-  // Minimal Agent Run UI (A + C): header strip + collapsible steps
+  // Minimal Workspace Plan UI (A + C): header strip + collapsible steps
   function renderAgentRun(agentRun) {
     if (!agentRun || !agentRun.steps || !agentRun.steps.length) return null;
 
+    const steps = agentRun.steps || [];
     const container = document.createElement('div');
     container.className = 'navi-agent-run';
 
@@ -640,12 +923,19 @@ let commandMenuDragState = {
 
     const title = document.createElement('div');
     title.className = 'navi-agent-run-title';
-    title.textContent = 'Agent run';
+    title.textContent = 'Workspace plan';
 
     const meta = document.createElement('div');
     meta.className = 'navi-agent-run-meta';
     const dur = agentRun.duration_ms ?? agentRun.durationMs;
-    meta.textContent = dur ? `${dur} ms` : '';
+    const parts = [];
+    if (steps.length) {
+      parts.push(`${steps.length} step${steps.length === 1 ? '' : 's'}`);
+    }
+    if (dur) {
+      parts.push(`${dur} ms`);
+    }
+    meta.textContent = parts.join(' • ');
 
     const toggle = document.createElement('button');
     toggle.className = 'navi-agent-run-toggle';
@@ -659,16 +949,17 @@ let commandMenuDragState = {
     const body = document.createElement('div');
     body.className = 'navi-agent-run-body navi-agent-run-body--collapsed';
 
-    (agentRun.steps || []).forEach((step) => {
+    steps.forEach((step, index) => {
       const row = document.createElement('div');
       row.className = 'navi-agent-run-step';
 
       const statusDot = document.createElement('span');
-      statusDot.className = `navi-agent-run-step-status status-${step.status || 'completed'}`;
+      statusDot.className = `navi-agent-run-step-status status-${step.status || 'planned'}`;
 
       const label = document.createElement('span');
       label.className = 'navi-agent-run-step-label';
-      label.textContent = step.label || step.id || 'Step';
+      const idx = index + 1;
+      label.textContent = `${idx}. ${step.label || step.id || 'Step'}`;
 
       const head = document.createElement('div');
       head.appendChild(statusDot);
@@ -699,6 +990,16 @@ let commandMenuDragState = {
     return container;
   }
 
+  // Helper: determine if an action is a code-changing patch
+  function isPatchAction(action) {
+    if (!action || typeof action !== 'object') return false;
+    if (action.type === 'code.apply_patch') return true;
+    if (typeof action.patch === 'string' && action.patch.trim().length > 0) return true;
+    if (action.mutatesWorkspace === true) return true;
+    if (action.safe === false) return true;
+    return false;
+  }
+
   // Messages from extension ---------------------------------------------------
   window.addEventListener('message', (event) => {
     const msg = event.data;
@@ -713,8 +1014,8 @@ let commandMenuDragState = {
 
         const { bubble } = appendMessage(msg.text, 'bot');
 
-        // PR-6: Show agent actions if present
-        if (msg.actions && msg.actions.length > 0) {
+        // Workspace plan / actions UI ----------------------------------------
+        if (msg.actions && Array.isArray(msg.actions) && msg.actions.length > 0) {
           const actionsContainer = document.createElement('div');
           actionsContainer.className = 'navi-agent-actions';
 
@@ -722,38 +1023,69 @@ let commandMenuDragState = {
             const row = document.createElement('div');
             row.className = 'navi-agent-action-row';
 
-            const filename = action.filePath.split('/').pop() || action.filePath;
+            const isPatch = isPatchAction(action);
+            const stepIndex = idx + 1;
+            const titleText =
+              action.title ||
+              action.label ||
+              action.description ||
+              (isPatch ? 'Apply code change' : 'Workspace step');
 
-            // Escape user-provided values to prevent XSS
-            const escapedFilename = escapeHtml(filename);
-            const escapedDescription = escapeHtml(action.description || 'No description');
-            const actionTypeLabel = action.type === 'createFile' ? 'new file' : 'edit';
+            const filePath = action.filePath || action.path || '';
+            const escapedTitle = escapeHtml(titleText);
+            const escapedDesc = escapeHtml(action.description || action.detail || '');
+            const escapedFile = filePath ? escapeHtml(filePath) : '';
+
+            const safetyLabel = isPatch ? 'CHANGES CODE' : 'SAFE · reads workspace';
+            const safetyClass = isPatch ? 'navi-agent-badge-danger' : 'navi-agent-badge-safe';
 
             row.innerHTML = `
               <div class="navi-agent-action-desc">
-                <strong>💡 Proposed ${actionTypeLabel}</strong> in <code>${escapedFilename}</code>
-                <div class="navi-agent-action-detail">${escapedDescription}</div>
+                <div class="navi-agent-action-title">
+                  <span class="navi-agent-step-index">Step ${stepIndex}</span>
+                  <span class="navi-agent-step-title-text">${escapedTitle}</span>
+                </div>
+                <div class="navi-agent-action-meta">
+                  <span class="navi-agent-badge ${safetyClass}">${safetyLabel}</span>
+                  ${escapedFile
+                ? `<span class="navi-agent-file-path">${escapedFile}</span>`
+                : ''
+              }
+                </div>
+                ${escapedDesc
+                ? `<div class="navi-agent-action-detail">${escapedDesc}</div>`
+                : ''
+              }
               </div>
               <div class="navi-agent-action-buttons">
-                <button class="navi-agent-btn navi-agent-btn-approve" data-action="approve" data-index="${idx}">✅ Approve</button>
-                <button class="navi-agent-btn navi-agent-btn-reject" data-action="reject" data-index="${idx}">❌ Reject</button>
+                ${isPatch
+                ? `
+                      <button class="navi-agent-btn navi-agent-btn-approve" data-command="apply" data-index="${idx}">Apply</button>
+                      <button class="navi-agent-btn" data-command="diff" data-index="${idx}">Diff</button>
+                      <button class="navi-agent-btn" data-command="explain" data-index="${idx}">Explain</button>
+                    `
+                : `
+                      <button class="navi-agent-btn navi-agent-btn-approve" data-command="run" data-index="${idx}">Run step</button>
+                      <button class="navi-agent-btn" data-command="explain" data-index="${idx}">Explain</button>
+                    `
+              }
               </div>
             `;
 
             actionsContainer.appendChild(row);
           });
 
-          // Add click handler
+          // Click handler for Apply / Diff / Explain / Run
           actionsContainer.addEventListener('click', (ev) => {
             const btn = ev.target.closest('.navi-agent-btn');
             if (!btn) return;
 
-            const kind = btn.dataset.action;
+            const command = btn.dataset.command;
             const index = Number(btn.dataset.index);
+            const action = msg.actions[index];
 
-            // Validate action kind
-            if (kind !== 'approve' && kind !== 'reject') {
-              console.warn('[NAVI] Unexpected action kind:', kind);
+            if (!command || !action) {
+              console.warn('[NAVI] Missing command or action for workspace step');
               return;
             }
 
@@ -762,7 +1094,7 @@ let commandMenuDragState = {
               const row = btn.closest('.navi-agent-action-row');
               if (row) {
                 const buttons = row.querySelectorAll('.navi-agent-btn');
-                buttons.forEach(b => {
+                buttons.forEach((b) => {
                   b.disabled = true;
                   b.style.opacity = '0.5';
                 });
@@ -778,32 +1110,35 @@ let commandMenuDragState = {
               return;
             }
 
-            // Send full context so the extension can act
             vscode.postMessage({
               type: 'agent.applyAction',
-              decision: kind,          // 'approve' or 'reject'
+              command,      // 'apply' | 'diff' | 'explain' | 'run'
               actionIndex: index,
-              actions: msg.actions,    // the full actions array from the backend
+              action       // full action object so extension can apply/diff
             });
 
-            // Disable buttons after click
-            const row = btn.closest('.navi-agent-action-row');
-            if (row) {
-              const buttons = row.querySelectorAll('.navi-agent-btn');
-              buttons.forEach(b => {
-                b.disabled = true;
-                b.style.opacity = '0.5';
-              });
+            // Visual feedback for Apply / Run
+            if (command === 'apply' || command === 'run') {
+              const row = btn.closest('.navi-agent-action-row');
+              if (row) {
+                const buttons = row.querySelectorAll('.navi-agent-btn');
+                buttons.forEach((b) => {
+                  b.disabled = true;
+                  b.style.opacity = '0.6';
+                });
 
-              const desc = row.querySelector('.navi-agent-action-desc');
-              if (desc) {
-                if (kind === 'approve') {
-                  desc.innerHTML += '<br/><em style="color: #10b981;">Applying edit...</em>';
-                } else {
-                  desc.innerHTML += '<br/><em style="color: #ef4444;">Rejected</em>';
+                const desc = row.querySelector('.navi-agent-action-desc');
+                if (desc) {
+                  const msgEl = document.createElement('em');
+                  msgEl.style.display = 'block';
+                  msgEl.style.marginTop = '4px';
+                  msgEl.style.color = command === 'apply' ? '#10b981' : '#60a5fa';
+                  msgEl.textContent =
+                    command === 'apply'
+                      ? 'Applying changes…'
+                      : 'Running step…';
+                  desc.appendChild(msgEl);
                 }
-              } else {
-                console.warn('[NAVI] Could not find action description element');
               }
             }
           });
@@ -811,13 +1146,12 @@ let commandMenuDragState = {
           bubble.appendChild(actionsContainer);
         }
 
-        // If backend sent a real agentRun, render minimal A + C UI
+        // If backend sent a real agentRun, render minimal Workspace plan header
         if (msg.agentRun) {
           const agentRunEl = renderAgentRun(msg.agentRun);
-          if (agentRunEl && bubble && bubble.parentElement) {
-            // Attach under the message bubble within same wrapper
-            const wrapper = bubble.parentElement;
-            wrapper.appendChild(agentRunEl);
+          if (agentRunEl && bubble) {
+            // Attach inside the bot bubble to save space
+            bubble.appendChild(agentRunEl);
           }
         }
 
@@ -888,6 +1222,25 @@ let commandMenuDragState = {
         // No-op for now
         break;
 
+      case 'aep.intent.result': {
+        // Display intent classification result
+        const intentResultEl = document.getElementById('navi-intent-result');
+        if (intentResultEl && msg.intent) {
+          const confidence = (msg.confidence * 100).toFixed(1);
+          const model = msg.model || 'Unknown';
+
+          intentResultEl.innerHTML = `
+            <div class="navi-intent-display">
+              <strong>Intent:</strong> ${escapeHtml(msg.intent)} 
+              <span class="navi-intent-confidence">(${confidence}% confidence)</span>
+              <div class="navi-intent-model">Model: ${escapeHtml(model)}</div>
+            </div>
+          `;
+          intentResultEl.style.display = 'block';
+        }
+        break;
+      }
+
       case 'hydrateState': {
         // Restore model and mode from saved state (PR-4)
         const modelPillEl = document.getElementById('modelPill');
@@ -906,18 +1259,37 @@ let commandMenuDragState = {
       }
 
       case 'addAttachment': {
-        // PR-5: Add attachment to pending list
+        // PR-5: Add attachment to pending list with enhanced data
         if (msg.attachment) {
-          pendingAttachments.push(msg.attachment);
-          // Render preview
-          if (attachmentsPreviewEl) {
-            const chip = document.createElement('div');
-            chip.className = 'navi-attachment-chip';
-            const filename = msg.attachment.path.split('/').pop() || msg.attachment.path;
-            chip.textContent = filename;
-            attachmentsPreviewEl.appendChild(chip);
-          }
+          const attachmentWithId = {
+            ...msg.attachment,
+            id: generateAttachmentId()
+          };
+          pendingAttachments.push(attachmentWithId);
+          currentAttachments.push(msg.attachment);
+          renderAttachments();
         }
+        break;
+      }
+
+      case 'toast': {
+        const { message, level } = msg;
+        if (message) {
+          showEphemeralToast(message, level || 'info');
+        }
+        break;
+      }
+
+      case 'error': {
+        // Stop the thinking bubble
+        hideThinkingMessage();
+
+        const text = msg.text || '⚠️ Something went wrong talking to NAVI backend.';
+        // Show as a muted bot message so it's visible in history
+        appendMessage(text, 'bot', { muted: true });
+
+        // Optionally also use the ephemeral toast
+        showEphemeralToast(text, 'error');
         break;
       }
 
@@ -985,6 +1357,20 @@ let commandMenuDragState = {
         }, { once: true });
         break;
       }
+
+      case 'ephemeralToast': {
+        const { text, level } = msg;
+        showEphemeralToast(text || '', level || 'info');
+        break;
+      }
+
+      // Connector messages (handled by ConnectorsPanel, not main panel)
+      case 'connectors.status':
+      case 'connectors.statusError':
+      case 'connectors.jiraConnected':
+      case 'connectors.jiraConnectError':
+        // These are for the ConnectorsPanel webview, ignore in main panel
+        break;
 
       default:
         console.log('[AEP] Unknown message in webview:', msg);
@@ -1060,25 +1446,42 @@ window.addEventListener('DOMContentLoaded', () => {
 
   commandMenuEl = menu;
 
-  // ---- WAND / COMMAND MENU FUNCTIONS ----
+  // ---- UNIFIED MENU MANAGEMENT ----
+
+  function closeAllMenus() {
+    // Close command menu
+    if (commandMenuEl) {
+      commandMenuEl.classList.remove('navi-command-menu-visible');
+      commandMenuEl.classList.add('navi-command-menu-hidden');
+    }
+
+    // Close attachment menu
+    const attachmentMenu = document.querySelector('.navi-attachment-menu');
+    if (attachmentMenu) {
+      attachmentMenu.classList.remove('navi-menu--open');
+    }
+
+    openMenu = null;
+  }
 
   function openCommandMenu() {
     if (!commandMenuEl) return;
-    isCommandMenuOpen = true;
+    closeAllMenus();
+    openMenu = 'actions';
     commandMenuEl.classList.remove('navi-command-menu-hidden');
     commandMenuEl.classList.add('navi-command-menu-visible');
   }
 
   function closeCommandMenu() {
     if (!commandMenuEl) return;
-    isCommandMenuOpen = false;
+    openMenu = null;
     commandMenuEl.classList.remove('navi-command-menu-visible');
     commandMenuEl.classList.add('navi-command-menu-hidden');
   }
 
   function toggleCommandMenu() {
     if (!commandMenuEl) return;
-    if (isCommandMenuOpen) {
+    if (openMenu === 'actions') {
       closeCommandMenu();
     } else {
       openCommandMenu();
@@ -1132,20 +1535,24 @@ window.addEventListener('DOMContentLoaded', () => {
     commandMenuEl.addEventListener('mousedown', onCommandMenuDragStart);
     window.addEventListener('mousemove', onCommandMenuDragMove);
     window.addEventListener('mouseup', onCommandMenuDragEnd);
-    // closeCommandMenu(); // Removed - state is already initialized to false above
   }
 
   // PR-5: Attachment menu handling
   const attachmentMenu = document.querySelector('.navi-attachment-menu');
-  let isAttachmentMenuOpen = false;
+  // Note: using unified openMenu state instead of separate isAttachmentMenuOpen
 
   function toggleAttachmentMenu() {
     if (!attachmentMenu) return;
-    isAttachmentMenuOpen = !isAttachmentMenuOpen;
-    if (isAttachmentMenuOpen) {
-      attachmentMenu.classList.add('navi-menu--open');
-    } else {
+
+    if (openMenu === 'attach') {
+      // Close attachment menu
+      openMenu = null;
       attachmentMenu.classList.remove('navi-menu--open');
+    } else {
+      // Close any other open menu and open attachment menu
+      closeAllMenus();
+      openMenu = 'attach';
+      attachmentMenu.classList.add('navi-menu--open');
     }
   }
 
@@ -1163,7 +1570,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const kind = item.dataset.attach;
       console.log('[NAVI] Attachment type selected:', kind);
       attachmentMenu.classList.remove('navi-menu--open');
-      isAttachmentMenuOpen = false;
+      openMenu = null;
 
       if (vscodeApi) {
         vscodeApi.postMessage({
@@ -1176,14 +1583,139 @@ window.addEventListener('DOMContentLoaded', () => {
     // Close menu when clicking outside
     document.addEventListener('click', (event) => {
       if (!attachmentMenu.contains(event.target) && !attachBtn.contains(event.target)) {
-        attachmentMenu.classList.remove('navi-menu--open');
-        isAttachmentMenuOpen = false;
+        closeAllMenus();
       }
     });
   }
 
   // ---- WAND BUTTON WIRING ----
   const wandBtn = actionsBtn;
+
+  // ---- JIRA TASK PICKER HANDLER ----
+  async function handleWorkOnJiraTask() {
+    try {
+      // Get backend URL from window.AEP_CONFIG
+      const backendBaseUrl = (window.AEP_CONFIG && window.AEP_CONFIG.backendBaseUrl) || 'http://127.0.0.1:8787';
+      const userId = (window.AEP_CONFIG && window.AEP_CONFIG.userId) || 'srinivas@example.com';
+
+      const url = `${backendBaseUrl}/api/navi/jira-tasks?user_id=${encodeURIComponent(userId)}&limit=20`;
+
+      console.log('[NAVI] Fetching Jira tasks from:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        showToast(
+          `Couldn't load Jira tasks from NAVI (HTTP ${response.status}). Make sure Jira is connected and synced.`,
+          'error'
+        );
+        return;
+      }
+
+      const data = await response.json();
+      const tasks = data.tasks || [];
+
+      if (!tasks.length) {
+        showToast(
+          'NAVI didn\'t find any Jira tasks in memory yet. Try running Jira sync or checking your connector in the Connectors Hub.',
+          'info'
+        );
+        return;
+      }
+
+      // Show tasks using the existing showJiraTasks UI
+      const container = document.getElementById('navi-jira-tasks');
+      if (!container) return;
+
+      if (!tasks || tasks.length === 0) {
+        container.innerHTML = `
+          <div class="navi-jira-tasks-empty">
+            No Jira tasks found in NAVI's memory yet.
+          </div>
+        `;
+      } else {
+        const itemsHtml = tasks
+          .map(
+            (t) => `
+              <button class="navi-jira-task-item" data-jira-key="${escapeHtml(t.jira_key || t.key)}">
+                <div class="navi-jira-task-title">${escapeHtml(t.jira_key || t.key)} — ${escapeHtml(t.title || t.summary)}</div>
+                <div class="navi-jira-task-meta">
+                  <span class="navi-jira-task-status">${escapeHtml(t.status)}</span>
+                  <span class="navi-jira-task-updated">Updated: ${escapeHtml(t.updated_at || '')}</span>
+                </div>
+              </button>
+            `
+          )
+          .join('');
+
+        container.innerHTML = `
+          <div class="navi-jira-tasks-header">
+            <div class="navi-jira-tasks-title">Select a Jira task to get a full brief</div>
+            <button class="navi-jira-tasks-close">✕</button>
+          </div>
+          <div class="navi-jira-tasks-list">
+            ${itemsHtml}
+          </div>
+        `;
+      }
+
+      container.classList.remove('navi-jira-tasks-hidden');
+
+      // Click handlers: select task or close
+      container.addEventListener('click', (ev) => {
+        const closeBtn = ev.target.closest('.navi-jira-tasks-close');
+        if (closeBtn) {
+          container.classList.add('navi-jira-tasks-hidden');
+          return;
+        }
+
+        const item = ev.target.closest('.navi-jira-task-item');
+        if (!item) return;
+
+        const jiraKey = item.dataset.jiraKey;
+        if (!jiraKey || !vscodeApi) return;
+
+        vscodeApi.postMessage({
+          type: 'jiraTaskSelected',
+          jiraKey,
+        });
+
+        // Hide list once a task is selected
+        container.classList.add('navi-jira-tasks-hidden');
+      }, { once: true });
+
+    } catch (error) {
+      console.error('[NAVI] Failed to load Jira tasks', error);
+      showToast('Error loading Jira tasks. Check the backend logs.', 'error');
+    }
+  }
+
+  // Simple toast helper
+  function showToast(message, type = 'info') {
+    // Reuse VS Code's showInformationMessage via extension host
+    if (vscodeApi) {
+      vscodeApi.postMessage({
+        type: 'showToast',
+        message,
+        level: type
+      });
+    }
+  }
+
+  // Toast system now uses global showEphemeralToast function
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // ---- WAND BUTTON WIRING ----
 
   // Wand button click handler
   if (wandBtn && commandMenuEl) {
@@ -1198,10 +1730,10 @@ window.addEventListener('DOMContentLoaded', () => {
       event.stopPropagation();
     });
 
-    // clicking anywhere else closes it
-    document.addEventListener('click', () => {
-      if (isCommandMenuOpen) {
-        closeCommandMenu();
+    // clicking anywhere else closes all menus
+    document.addEventListener('click', (event) => {
+      if (openMenu && !commandMenuEl.contains(event.target) && !wandBtn.contains(event.target)) {
+        closeAllMenus();
       }
     });
   }
@@ -1226,6 +1758,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
       console.log('[NAVI] Command selected:', id);
 
+      // Handle "Work on a Jira task" command directly in webview
+      if (id === 'jira-task-brief') {
+        handleWorkOnJiraTask();
+        closeCommandMenu();
+        return;
+      }
+
+      // For other commands, delegate to extension host
       if (id) {
         vscodeApi.postMessage({
           type: 'commandSelected',
@@ -1248,12 +1788,14 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ESC closes command menu
+  // ESC closes any open menu
   document.addEventListener('keydown', (event) => {
-    if (!commandMenuEl) return;
-    if (!isCommandMenuOpen) return;
-    if (event.key === 'Escape') {
-      closeCommandMenu();
+    if (event.key === 'Escape' && openMenu) {
+      closeAllMenus();
     }
   });
+
+  // --- Ephemeral toast just above the input row ------------------------------
+
+
 });

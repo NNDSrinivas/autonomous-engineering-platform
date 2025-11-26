@@ -37,7 +37,7 @@ async def execute_tool(
     args: Dict[str, Any],
     db=None,
     attachments: Optional[List[Dict[str, Any]]] = None,
-    workspace_id: Optional[str] = None,
+    workspace: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
   """
   Main entrypoint – dispatch tool calls by name.
@@ -59,7 +59,7 @@ async def execute_tool(
       **args,
       "user_id": user_id,
       "attachments": attachments,
-      "workspace_id": workspace_id,
+      "workspace": workspace,
     }
     return await _tool_repo_inspect(enriched_args)
 
@@ -119,22 +119,18 @@ async def _tool_repo_inspect(args: Dict[str, Any]) -> Dict[str, Any]:
   from backend.services.llm import call_llm
   
   user_id = args.get("user_id", "default_user")
-  workspace_id = args.get("workspace_id")
+  workspace = args.get("workspace", {})
   attachments = args.get("attachments")
   message = args.get("message", "Explain this repository and its structure.")
   model = args.get("model", "gpt-4o-mini")
   mode = args.get("mode", "agent-full")
   
-  logger.info("[TOOLS] repo.inspect workspace_id=%s attachments=%d", 
-              workspace_id, len(attachments or []))
+  logger.info("[TOOLS] repo.inspect workspace=%s attachments=%d", 
+              workspace, len(attachments or []))
   
-  # Get workspace context (VS Code attachments first, filesystem fallback)
-  workspace_ctx = await retrieve_workspace_context(
-    user_id=user_id,
-    workspace_root=workspace_id,
-    include_files=True,
-    attachments=attachments,
-  )
+  # Get workspace context using perfect workspace retriever
+  from backend.agent.perfect_workspace_retriever import retrieve_perfect_workspace_context
+  workspace_ctx = await retrieve_perfect_workspace_context(workspace)
   
   # Build system context for the LLM
   system_context = (
@@ -188,7 +184,7 @@ async def _tool_repo_inspect(args: Dict[str, Any]) -> Dict[str, Any]:
   return {
     "tool": "repo.inspect",
     "text": reply,
-    "workspace_id": workspace_id,
+    "workspace_root": workspace_ctx.get("workspace_root"),
     "files_count": len(workspace_ctx.get("small_files") or []),
   }
 

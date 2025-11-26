@@ -17,6 +17,8 @@ import structlog
 from backend.integrations.jira_client import JiraClient
 from backend.integrations.confluence_client import ConfluenceClient
 from backend.services.navi_memory_service import store_memory
+from backend.services.jira import JiraService
+from backend.core.crypto import decrypt_token
 
 # Load environment variables
 load_dotenv()
@@ -38,6 +40,33 @@ def _get_openai_client() -> AsyncOpenAI:
             )
         _openai_client = AsyncOpenAI(api_key=api_key)
     return _openai_client
+
+
+async def _get_jira_client_for_user(db: Session, user_id: str) -> Optional[JiraClient]:
+    """Get JiraClient for user - prefer saved connection over env vars."""
+    # First try to get saved connection
+    connection = JiraService.get_connection_for_user(db, user_id)
+    if connection:
+        try:
+            # Decrypt the token (access_token is encrypted)
+            decrypted_token = decrypt_token(connection.access_token)
+            
+            # Create client with saved credentials  
+            # Note: The model doesn't have email field, use env var as fallback
+            email = os.getenv("AEP_JIRA_EMAIL", "")
+            return JiraClient(
+                base_url=connection.cloud_base_url,
+                email=email,
+                api_token=decrypted_token
+            )
+        except Exception as e:
+            logger.warning("Failed to decrypt saved connection", error=str(e))
+    
+    # Fallback to environment variables
+    if all(os.getenv(var) for var in ["AEP_JIRA_BASE_URL", "AEP_JIRA_EMAIL", "AEP_JIRA_API_TOKEN"]):
+        return JiraClient()
+    
+    return None
 
 
 async def summarize_for_memory(title: str, raw_text: str, max_tokens: int = 200) -> str:
@@ -107,8 +136,14 @@ async def ingest_jira_for_user(
     """
     logger.info("Starting Jira ingestion", user_id=user_id, max_issues=max_issues)
 
+    # Get Jira client for this user (prefer saved connection over env vars)
+    jira_client = await _get_jira_client_for_user(db, user_id)
+    if not jira_client:
+        logger.warning("No Jira configuration available for user", user_id=user_id)
+        return []
+
     try:
-        async with JiraClient() as jira:
+        async with jira_client as jira:
             issues = await jira.get_assigned_issues(
                 jql=custom_jql, max_results=max_issues
             )
@@ -138,14 +173,33 @@ async def ingest_jira_for_user(
 
                 assignee_obj = fields.get("assignee", {}) or {}
                 assignee = assignee_obj.get("displayName", "Unassigned")
+                
+                # Extract timestamps and project info
+                created = fields.get("created", "")
+                updated = fields.get("updated", "")
+                
+                project_obj = fields.get("project", {}) or {}
+                project_key = project_obj.get("key", "")
+                project_name = project_obj.get("name", "")
+                
+                issue_type_obj = fields.get("issuetype", {}) or {}
+                issue_type = issue_type_obj.get("name", "Task")
+                
+                reporter_obj = fields.get("reporter", {}) or {}
+                reporter = reporter_obj.get("displayName", "Unknown")
 
-                # Build raw text for summarization
+                # Build raw text for summarization with richer context
                 raw_text = f"""
 Jira issue: {key}
+Project: {project_name} ({project_key})
+Type: {issue_type}
 Summary: {summary}
 Status: {status}
 Priority: {priority}
 Assignee: {assignee}
+Reporter: {reporter}
+Created: {created}
+Updated: {updated}
 
 Description:
 {description_text}
@@ -154,7 +208,10 @@ Description:
                 memory_title = f"[Jira] {key}: {summary}"
                 summary_text = await summarize_for_memory(memory_title, raw_text)
 
-                # Store as NAVI memory (category = task)
+                # Build Jira URL from base_url
+                jira_url = f"{jira_client.base_url}/browse/{key}"
+
+                # Store as NAVI memory (category = task) with rich metadata for smart responses
                 await store_memory(
                     db,
                     user_id=user_id,
@@ -168,6 +225,25 @@ Description:
                         "status": status,
                         "priority": priority,
                         "assignee": assignee,
+                        "created": created,
+                        "updated": updated,
+                        "project_key": project_key,
+                        "project_name": project_name,
+                        "issue_type": issue_type,
+                        "reporter": reporter,
+                        "jira_url": jira_url,
+                        "links": {
+                            # Placeholder for related resource links
+                            # These will be populated by other connectors
+                            "confluence": [],
+                            "slack": [],
+                            "zoom": [],
+                            "teams": [],
+                            "gmeet": [],
+                            "jenkins": [],
+                            "devops": [],
+                            "other": [],
+                        },
                     },
                     importance=5,  # Jira tasks are high importance
                 )

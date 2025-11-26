@@ -26,6 +26,14 @@
       {
         "command": "aep.openNavi",
         "title": "AEP: Open NAVI Assistant"
+      },
+      {
+        "command": "aep.attachSelection",
+        "title": "NAVI: Attach Selected Code"
+      },
+      {
+        "command": "aep.attachCurrentFile",
+        "title": "NAVI: Attach Current File"
       }
     ],
     "viewsContainers": {

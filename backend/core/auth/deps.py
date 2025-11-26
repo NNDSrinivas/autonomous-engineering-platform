@@ -173,6 +173,32 @@ def get_current_user(
         )
 
 
+def get_current_user_optional(
+    x_org_id: Annotated[Optional[str], Header()] = None,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Optional[User]:
+    """
+    Extract current user from request context, returning None if not authenticated.
+    
+    This is useful for endpoints that work with or without authentication.
+    
+    Mode 1 (JWT_ENABLED=true): Parse JWT token from Authorization header
+    Mode 2 (JWT_ENABLED=false): Use DEV_* environment variables (dev shim)
+    
+    Args:
+        x_org_id: Optional organization ID from X-Org-Id header (dev mode only)
+        credentials: Bearer token from Authorization header (JWT mode)
+    
+    Returns:
+        User object with role and context, or None if not authenticated
+    """
+    try:
+        return get_current_user(x_org_id=x_org_id, credentials=credentials)
+    except HTTPException:
+        # Not authenticated - return None instead of raising
+        return None
+
+
 def require_role(minimum_role: Role):
     """
     Dependency factory to enforce minimum role requirement.

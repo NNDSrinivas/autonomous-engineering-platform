@@ -1,0 +1,1 @@
+# Internal API endpoints for monitoring and diagnostics

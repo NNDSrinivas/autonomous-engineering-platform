@@ -18,18 +18,28 @@ class JiraService:
 
     @staticmethod
     def save_connection(
-        db: Session, base_url: str, access_token: str
+        db: Session, base_url: str, access_token: str, user_id: str | None = None, org_id: str | None = None
     ) -> JiraConnection:
         conn = JiraConnection(
             id=JiraService._id(),
             cloud_base_url=base_url,
             access_token=encrypt_token(access_token),
+            user_id=user_id,
+            org_id=org_id,
             scopes=["read"],
         )
         db.add(conn)
         db.commit()
         db.refresh(conn)
         return conn
+
+    @staticmethod
+    def get_connection_for_user(db: Session, user_id: str, org_id: str = None) -> JiraConnection | None:
+        """Get the most recent JiraConnection for a user"""
+        query = db.query(JiraConnection).filter_by(user_id=user_id)
+        if org_id:
+            query = query.filter_by(org_id=org_id)
+        return query.order_by(JiraConnection.id.desc()).first()
 
     @staticmethod
     def set_project_config(

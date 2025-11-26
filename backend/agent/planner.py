@@ -1,321 +1,638 @@
 """
-Autonomous Planner for NAVI Agent
+NAVI Planner v2
+===============
 
-Generates multi-step execution plans based on user intent + full context.
-This is what makes NAVI act like an AGENT, not a chatbot.
+This module converts a `NaviIntent` into a concrete execution plan
+(a sequence of `PlannedStep` objects) that the ToolExecutor can run.
 
-The planner decides:
-- Should NAVI execute a tool action?
-- Should NAVI generate code?
-- Should NAVI propose a diff?
-- Should NAVI ask for approval first?
-- Is this a pure chat response?
-- Is this part of ongoing multi-step workflow?
+Design goals:
+- No external dependencies.
+- Simple, explainable logic, but structured enough to grow later.
+- Uses the shared intent schema (NaviIntent, CodeEditSpec, etc.).
+- Uses the planning types from `backend.agent.orchestrator`.
 
-This is the CORE difference between:
-- Chatbot: "I can help you with that"
-- Agent: *Actually does it*
+The ToolExecutor is expected to understand the following tool IDs
+(you can map them however you like in your implementation):
+
+    - "repo.inspect"          → high-level repo scan / summary
+    - "code.read_files"       → read one or more files
+    - "code.search"           → search within codebase
+    - "code.propose_patch"    → produce concrete diffs for a goal
+    - "code.apply_patch"      → apply patch operations
+    - "tests.run"             → run tests / lint / build commands
+    - "pm.create_ticket"      → create a ticket in Jira / GitHub, etc.
+    - "pm.update_ticket"      → update ticket status / fields
+    - "pm.summarize_tickets"  → summarise a set of tickets
+    - "pm.summarize_pr"       → summarise a PR
+    - "pm.review_pr"          → code review actions
+    - "pm.generate_release_notes" → generate release notes
 """
 
-import json
-import logging
-from typing import Dict, Any, Optional, List
+from __future__ import annotations
 
-from backend.llm.router import complete_chat as call_llm
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
-logger = logging.getLogger(__name__)
-
-
-# ==============================================================================
-# PLANNER SYSTEM PROMPT
-# ==============================================================================
-
-PLAN_SYSTEM_PROMPT = """
-You are NAVI's autonomous planning engine.
-
-Given:
-- User intent classification
-- Full organizational context (Jira/Slack/Confluence/GitHub/Zoom)
-- Workspace files and code structure
-- User state (current task, pending actions)
-
-Your job: Decide WHAT NAVI SHOULD DO.
-
-Return ONLY valid JSON with this structure:
-
-{
-  "action_type": "pure_chat|execute_tool|generate_code|apply_diff|multi_step_workflow",
-  "requires_approval": true|false,
-  "confidence": 0.0-1.0,
-  "reasoning": "Why you chose this plan",
-  "tool_name": "create_file|apply_diff|run_command|search_repo|...",
-  "tool_params": {...},
-  "steps": [
-    {"description": "Step 1", "action": "..."},
-    {"description": "Step 2", "action": "..."}
-  ],
-  "explanation_to_user": "What NAVI will tell the user before executing"
-}
-
-CRITICAL RULES:
-
-1. **Pure Chat Response**:
-   - Use for: jira_query, code_explain, documentation, planning, personal
-   - No tool execution, just conversational answer
-   - action_type = "pure_chat"
-
-2. **Execute Tool**:
-   - Use for: repo_navigation, debugging (with logs), meeting_summary
-   - Single tool execution
-   - action_type = "execute_tool"
-   - Set requires_approval = false for read-only tools
-   - Set requires_approval = true for write operations
-
-3. **Generate Code**:
-   - Use for: code_generate, code_modify
-   - NAVI will generate code and show to user
-   - action_type = "generate_code"
-   - Set requires_approval = true (always ask before applying)
-
-4. **Apply Diff**:
-   - Use for: code_modify with specific file target
-   - NAVI proposes diff, user approves
-   - action_type = "apply_diff"
-   - requires_approval = true (ALWAYS)
-
-5. **Multi-Step Workflow**:
-   - Use for: jira_execution, workflow_start, complex debugging
-   - Break into sequential steps
-   - action_type = "multi_step_workflow"
-   - Each step may require approval
-   - Example for "implement JIRA-123":
-     * Step 1: Understand requirements (pure_chat)
-     * Step 2: Generate code (generate_code, needs approval)
-     * Step 3: Create test file (execute_tool, needs approval)
-     * Step 4: Run tests (execute_tool, no approval)
-
-6. **Task Continue**:
-   - If intent = "task_continue", get pending_action from state
-   - Execute the pending action immediately
-   - action_type = same as pending action
-   - requires_approval = false (already approved)
-
-7. **Confidence Scoring**:
-   - 1.0: Crystal clear, no ambiguity
-   - 0.8-0.9: Very confident, minor details missing
-   - 0.6-0.7: Moderate confidence, may need clarification
-   - <0.6: Low confidence, ask user for clarification
-
-8. **Safety**:
-   - ALWAYS require approval for:
-     * File creation/modification
-     * File deletion
-     * Running terminal commands
-     * API calls with side effects
-   - NO approval needed for:
-     * Reading files
-     * Searching workspace
-     * Fetching Jira/Slack/etc.
-
-AVAILABLE TOOLS:
-- create_file: Create new file
-- apply_diff: Modify existing file
-- delete_file: Delete file
-- run_command: Execute terminal command
-- search_repo: Search workspace
-- open_file: Open file in editor
-- fetch_jira: Get Jira issue details
-- fetch_slack: Get Slack messages
-- fetch_confluence: Get Confluence pages
-"""
+from .intent_schema import (
+    IntentFamily,
+    IntentKind,
+    NaviIntent,
+)
+from .orchestrator import PlannedStep, PlanResult
 
 
-# ==============================================================================
-# PLAN GENERATION
-# ==============================================================================
-
-async def generate_plan(
-    intent: Dict[str, Any],
-    context: Dict[str, Any],
-    user_state: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+@dataclass
+class PlannerConfig:
     """
-    Generate autonomous execution plan based on intent + context.
-    
-    This is the CORE of NAVI's agent behavior.
-    
-    Args:
-        intent: Intent classification result from intent_classifier
-        context: Full RAG context (memory + org + workspace)
-        user_state: Current user state
-    
-    Returns:
-        Execution plan with action_type, tool details, steps, approval requirements
+    Configuration knobs for the planner.
+
+    All fields are optional and default to reasonable values. This is
+    mainly here to give us a place to add flags later (e.g. to enable
+    experimental behaviours).
     """
-    if user_state is None:
-        user_state = {}
-    
-    intent_type = intent.get("type")
-    logger.info(f"[PLANNER] Generating plan for intent: {intent_type}")
-    
-    # Special handling for task_continue
-    if intent_type == "task_continue":
-        pending_action = user_state.get("pending_action")
-        if pending_action:
-            logger.info(f"[PLANNER] Resuming pending action: {pending_action['type']}")
-            return {
-                "action_type": "execute_tool",
-                "requires_approval": False,  # Already approved by user saying "yes"
-                "confidence": 1.0,
-                "reasoning": "User approved pending action",
-                "tool_name": pending_action["type"],
-                "tool_params": pending_action.get("data", {}),
-                "steps": [],
-                "explanation_to_user": f"Executing: {pending_action.get('description', 'pending action')}"
-            }
+
+    # If True, always include an initial repo.inspect step when the
+    # intent requires repo context but doesn't specify files explicitly.
+    always_inspect_repo_first: bool = True
+
+    # If True, automatically append a tests.run step for code-changing
+    # intents (FIX_BUG, IMPLEMENT_FEATURE, etc.) when test_run spec
+    # exists in the NaviIntent.
+    auto_append_tests_for_code_changes: bool = True
+
+
+class SimplePlanner:
+    """
+    A minimal but structured planner for NAVI.
+
+    It converts a `NaviIntent` into a `PlanResult`:
+
+        intent → [PlannedStep, PlannedStep, ...]
+
+    This is intentionally straightforward so we can later:
+      - upgrade step descriptions
+      - plug in an LLM to refine plan text
+      - add parallelism / conditional logic
+
+    For now, plans are always linear and executed in order.
+    """
+
+    def __init__(self, config: Optional[PlannerConfig] = None) -> None:
+        self.config = config or PlannerConfig()
+
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+
+    def plan(self, intent: NaviIntent, context: Dict[str, Any]) -> PlanResult:
+        """
+        Build an execution plan for the given intent.
+
+        Parameters
+        ----------
+        intent:
+            Classified NaviIntent from the IntentClassifier.
+        context:
+            Planner context (state, memory, repo info, etc.) as built by
+            the orchestrator.
+
+        Returns
+        -------
+        PlanResult
+            A sequence of `PlannedStep` objects and an optional summary.
+        """
+        if intent.family == IntentFamily.ENGINEERING:
+            steps, summary = self._plan_engineering(intent, context)
+        elif intent.family == IntentFamily.PROJECT_MANAGEMENT:
+            steps, summary = self._plan_project_management(intent, context)
         else:
-            # No pending action, shouldn't happen
-            logger.warning("[PLANNER] task_continue intent but no pending_action in state")
-            return {
-                "action_type": "pure_chat",
-                "requires_approval": False,
-                "confidence": 0.3,
-                "reasoning": "task_continue with no pending action",
-                "explanation_to_user": "I don't see any pending action to continue. What would you like me to do?"
+            steps, summary = self._plan_autonomous(intent, context)
+
+        return PlanResult(steps=steps, summary=summary)
+
+    # ------------------------------------------------------------------ #
+    # Engineering plans
+    # ------------------------------------------------------------------ #
+
+    def _plan_engineering(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> tuple[List[PlannedStep], str]:
+        kind = intent.kind
+        steps: List[PlannedStep] = []
+
+        # Optional first step: inspect repo if requested / needed
+        if self._should_inspect_repo_first(intent):
+            steps.append(
+                self._step(
+                    "repo.inspect",
+                    "Inspect the repository structure and recent changes.",
+                    arguments={"intent_summary": intent.summary()},
+                )
+            )
+
+        if kind == IntentKind.FIX_BUG:
+            steps.extend(self._plan_fix_bug(intent, context))
+        elif kind == IntentKind.IMPLEMENT_FEATURE:
+            steps.extend(self._plan_implement_feature(intent, context))
+        elif kind == IntentKind.REFACTOR_CODE:
+            steps.extend(self._plan_refactor_code(intent, context))
+        elif kind == IntentKind.UPDATE_DEPENDENCIES:
+            steps.extend(self._plan_update_dependencies(intent, context))
+        elif kind in {
+            IntentKind.RUN_TESTS,
+            IntentKind.GENERATE_TESTS,
+            IntentKind.RUN_LINT,
+            IntentKind.RUN_BUILD,
+        }:
+            steps.extend(self._plan_test_like(intent, context))
+        elif kind == IntentKind.SEARCH_CODE:
+            steps.extend(self._plan_search_code(intent, context))
+        elif kind in {IntentKind.SUMMARIZE_FILE, IntentKind.INSPECT_REPO}:
+            steps.extend(self._plan_summarise_file(intent, context))
+        elif kind == IntentKind.EDIT_INFRA:
+            steps.extend(self._plan_edit_infra(intent, context))
+        else:
+            # Default engineering plan: inspect repo + summarise context
+            steps.append(
+                self._step(
+                    "repo.inspect",
+                    "Inspect the repository and summarise relevant components.",
+                    arguments={"intent_summary": intent.summary()},
+                )
+            )
+
+        # Optionally append tests for code-changing intents
+        if (
+            self.config.auto_append_tests_for_code_changes
+            and intent.test_run is not None
+            and kind
+            in {
+                IntentKind.FIX_BUG,
+                IntentKind.IMPLEMENT_FEATURE,
+                IntentKind.REFACTOR_CODE,
+                IntentKind.UPDATE_DEPENDENCIES,
+                IntentKind.MODIFY_CODE,
+                IntentKind.CREATE_FILE,
             }
-    
-    # Build LLM prompt with full context
-    llm_prompt = f"""
-USER INTENT:
-{json.dumps(intent, indent=2)}
+        ):
+            steps.append(
+                self._step(
+                    "tests.run",
+                    "Run tests to verify the changes.",
+                    arguments={"test_run": intent.test_run.model_dump()},
+                )
+            )
 
-CURRENT STATE:
-{json.dumps(user_state, indent=2)}
+        summary = f"Plan for engineering intent: {intent.summary()}"
+        return steps, summary
 
-CONTEXT:
-{json.dumps(context, indent=2)}
+    def _plan_fix_bug(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> List[PlannedStep]:
+        steps: List[PlannedStep] = []
+        files = (intent.code_edit.primary_files if intent.code_edit else []) or []
 
-Generate an execution plan for this intent.
-Return ONLY valid JSON matching the schema.
-"""
-    
-    try:
-        response = call_llm(
-            system=PLAN_SYSTEM_PROMPT,
-            user=llm_prompt,
-            model="gpt-4o",  # Use latest model for best planning
-            temperature=0.2  # Low temperature for structured planning
+        steps.append(
+            self._step(
+                "code.read_files",
+                "Read the relevant source files to understand the failing area.",
+                arguments={
+                    "files": [f.model_dump() for f in files],
+                    "raw_text": intent.raw_text,
+                },
+            )
         )
-        
-        # Parse LLM response as JSON
-        plan = json.loads(response)
-        
-        # Validate action_type
-        valid_actions = {"pure_chat", "execute_tool", "generate_code", "apply_diff", "multi_step_workflow"}
-        if plan.get("action_type") not in valid_actions:
-            plan["action_type"] = "pure_chat"
-            plan["confidence"] = 0.3
-            plan["reasoning"] = f"Invalid action_type returned: {plan.get('action_type')}"
-        
-        # Ensure required fields exist
-        plan.setdefault("requires_approval", True)  # Default to safe
-        plan.setdefault("confidence", 0.5)
-        plan.setdefault("reasoning", "No reasoning provided")
-        plan.setdefault("steps", [])
-        plan.setdefault("explanation_to_user", "")
-        
-        # Safety check: Enforce approval for write operations
-        if plan["action_type"] in {"execute_tool", "generate_code", "apply_diff"}:
-            tool_name = plan.get("tool_name", "")
-            write_tools = {"create_file", "apply_diff", "delete_file", "run_command"}
-            if tool_name in write_tools and not plan.get("requires_approval"):
-                logger.warning(f"[PLANNER] Forcing approval for write tool: {tool_name}")
-                plan["requires_approval"] = True
-        
-        logger.info(f"[PLANNER] Generated plan: {plan['action_type']} (approval={plan['requires_approval']})")
-        return plan
-    
-    except json.JSONDecodeError as e:
-        # LLM returned invalid JSON
-        logger.error(f"Failed to parse planner response: {e}")
-        return {
-            "action_type": "pure_chat",
-            "requires_approval": False,
-            "confidence": 0.2,
-            "reasoning": f"Failed to parse planner response: {str(e)}",
-            "explanation_to_user": "I'm having trouble planning the next steps. Could you clarify what you'd like me to do?"
-        }
-    
-    except Exception as e:
-        # Unexpected error
-        logger.error(f"Planning error: {e}")
-        return {
-            "action_type": "pure_chat",
-            "requires_approval": False,
-            "confidence": 0.1,
-            "reasoning": f"Planning error: {str(e)}",
-            "explanation_to_user": "Something went wrong while planning. Could you try rephrasing your request?"
-        }
+
+        steps.append(
+            self._step(
+                "code.search",
+                "Search for error messages, stack traces, or related symbols.",
+                arguments={
+                    "query": intent.raw_text,
+                    "scope": "repo",
+                },
+            )
+        )
+
+        steps.append(
+            self._step(
+                "code.propose_patch",
+                "Propose a concrete code patch that fixes the bug.",
+                arguments={
+                    "intent": intent.model_dump(),
+                    "strategy": "bugfix",
+                },
+            )
+        )
+
+        steps.append(
+            self._step(
+                "code.apply_patch",
+                "Apply the patch to the repository (after validation).",
+                arguments={"intent": intent.model_dump()},
+            )
+        )
+
+        return steps
+
+    def _plan_implement_feature(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> List[PlannedStep]:
+        steps: List[PlannedStep] = []
+        files = (intent.code_edit.primary_files if intent.code_edit else []) or []
+
+        steps.append(
+            self._step(
+                "code.read_files",
+                "Read the main files involved in the feature.",
+                arguments={
+                    "files": [f.model_dump() for f in files],
+                    "raw_text": intent.raw_text,
+                },
+            )
+        )
+
+        steps.append(
+            self._step(
+                "code.propose_patch",
+                "Design and propose a patch implementing the requested feature.",
+                arguments={
+                    "intent": intent.model_dump(),
+                    "strategy": "feature",
+                },
+            )
+        )
+
+        steps.append(
+            self._step(
+                "code.apply_patch",
+                "Apply the feature implementation patch.",
+                arguments={"intent": intent.model_dump()},
+            )
+        )
+
+        return steps
+
+    def _plan_refactor_code(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> List[PlannedStep]:
+        steps: List[PlannedStep] = []
+        files = (intent.code_edit.primary_files if intent.code_edit else []) or []
+
+        steps.append(
+            self._step(
+                "code.read_files",
+                "Read the code that needs refactoring.",
+                arguments={"files": [f.model_dump() for f in files]},
+            )
+        )
+
+        steps.append(
+            self._step(
+                "code.propose_patch",
+                "Propose a patch that refactors the code for clarity and maintainability.",
+                arguments={
+                    "intent": intent.model_dump(),
+                    "strategy": "refactor",
+                },
+            )
+        )
+
+        steps.append(
+            self._step(
+                "code.apply_patch",
+                "Apply the refactoring patch.",
+                arguments={"intent": intent.model_dump()},
+            )
+        )
+
+        return steps
+
+    def _plan_update_dependencies(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> List[PlannedStep]:
+        steps: List[PlannedStep] = []
+
+        steps.append(
+            self._step(
+                "code.search",
+                "Locate dependency manifests (e.g. requirements.txt, package.json).",
+                arguments={
+                    "query": "requirements.txt OR pyproject.toml OR package.json",
+                    "scope": "repo",
+                },
+            )
+        )
+
+        steps.append(
+            self._step(
+                "code.propose_patch",
+                "Propose safe dependency version updates.",
+                arguments={
+                    "intent": intent.model_dump(),
+                    "strategy": "deps_update",
+                },
+            )
+        )
+
+        steps.append(
+            self._step(
+                "code.apply_patch",
+                "Apply the dependency update patch.",
+                arguments={"intent": intent.model_dump()},
+            )
+        )
+
+        return steps
+
+    def _plan_test_like(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> List[PlannedStep]:
+        steps: List[PlannedStep] = []
+
+        if intent.test_run is None:
+            # No test_run spec → do a generic command run
+            steps.append(
+                self._step(
+                    "tests.run",
+                    "Run the requested test/build/lint command.",
+                    arguments={
+                        "raw_text": intent.raw_text,
+                        "fallback": True,
+                    },
+                )
+            )
+            return steps
+
+        steps.append(
+            self._step(
+                "tests.run",
+                "Run the configured test/build/lint command.",
+                arguments={"test_run": intent.test_run.model_dump()},
+            )
+        )
+        return steps
+
+    def _plan_search_code(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> List[PlannedStep]:
+        return [
+            self._step(
+                "code.search",
+                "Search the codebase based on the user query.",
+                arguments={
+                    "query": intent.raw_text,
+                    "scope": "repo",
+                },
+            )
+        ]
+
+    def _plan_summarise_file(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> List[PlannedStep]:
+        files = (intent.code_edit.primary_files if intent.code_edit else []) or []
+
+        return [
+            self._step(
+                "code.read_files",
+                "Read the requested file(s) to summarise or explain.",
+                arguments={"files": [f.model_dump() for f in files]},
+            )
+        ]
+
+    def _plan_edit_infra(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> List[PlannedStep]:
+        steps: List[PlannedStep] = []
+
+        steps.append(
+            self._step(
+                "code.search",
+                "Locate infrastructure files (Dockerfile, docker-compose, helm charts, etc.).",
+                arguments={
+                    "query": "Dockerfile OR docker-compose.yml OR helm OR k8s",
+                    "scope": "repo",
+                },
+            )
+        )
+
+        steps.append(
+            self._step(
+                "code.propose_patch",
+                "Propose infrastructure configuration changes.",
+                arguments={
+                    "intent": intent.model_dump(),
+                    "strategy": "infra",
+                },
+            )
+        )
+
+        steps.append(
+            self._step(
+                "code.apply_patch",
+                "Apply the infrastructure patch.",
+                arguments={"intent": intent.model_dump()},
+            )
+        )
+
+        return steps
+
+    # ------------------------------------------------------------------ #
+    # Project management plans
+    # ------------------------------------------------------------------ #
+
+    def _plan_project_management(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> tuple[List[PlannedStep], str]:
+        kind = intent.kind
+        steps: List[PlannedStep] = []
+
+        if kind == IntentKind.CREATE_TICKET:
+            steps.append(
+                self._step(
+                    "pm.create_ticket",
+                    "Create a new ticket based on the request.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: create a new project management ticket."
+        elif kind == IntentKind.UPDATE_TICKET:
+            steps.append(
+                self._step(
+                    "pm.update_ticket",
+                    "Update the existing ticket(s) based on the request.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: update one or more tickets."
+        elif kind == IntentKind.SUMMARIZE_TICKETS:
+            steps.append(
+                self._step(
+                    "pm.summarize_tickets",
+                    "Summarise the relevant tickets (e.g. sprint backlog).",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: summarise tickets."
+        elif kind == IntentKind.SUMMARIZE_PR:
+            steps.append(
+                self._step(
+                    "pm.summarize_pr",
+                    "Summarise the pull request and its impact.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: summarise the pull request."
+        elif kind == IntentKind.REVIEW_PR:
+            steps.append(
+                self._step(
+                    "pm.review_pr",
+                    "Review the pull request and provide feedback.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: perform a pull request review."
+        elif kind == IntentKind.GENERATE_RELEASE_NOTES:
+            steps.append(
+                self._step(
+                    "pm.generate_release_notes",
+                    "Generate release notes based on recent changes.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: generate release notes."
+        else:
+            steps.append(
+                self._step(
+                    "pm.summarize_tickets",
+                    "Summarise project management items related to the request.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: generic project-management summary."
+
+        return steps, summary
+
+    # ------------------------------------------------------------------ #
+    # Autonomous / orchestration plans
+    # ------------------------------------------------------------------ #
+
+    def _plan_autonomous(
+        self,
+        intent: NaviIntent,
+        context: Dict[str, Any],
+    ) -> tuple[List[PlannedStep], str]:
+        kind = intent.kind
+        steps: List[PlannedStep] = []
+
+        if kind == IntentKind.CONTINUE_SESSION:
+            steps.append(
+                self._step(
+                    "orchestrator.resume",
+                    "Resume the previous autonomous session and continue the plan.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: resume previous autonomous session."
+        elif kind == IntentKind.CANCEL_WORKFLOW:
+            steps.append(
+                self._step(
+                    "orchestrator.cancel",
+                    "Cancel the running workflow.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: cancel running workflow."
+        elif kind == IntentKind.SCHEDULED_TASK:
+            steps.append(
+                self._step(
+                    "orchestrator.schedule",
+                    "Schedule the described task as a recurring/background job.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: schedule the requested task."
+        elif kind == IntentKind.BACKGROUND_WORKFLOW:
+            steps.append(
+                self._step(
+                    "orchestrator.start_background",
+                    "Start a background workflow for the requested bulk/batch work.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: run background workflow."
+        else:
+            # Default: run an autonomous session using generic orchestration
+            steps.append(
+                self._step(
+                    "orchestrator.autonomous_session",
+                    "Start an autonomous session and iteratively plan & execute steps.",
+                    arguments={"intent": intent.model_dump()},
+                )
+            )
+            summary = "Plan: run a generic autonomous session."
+
+        return steps, summary
+
+    # ------------------------------------------------------------------ #
+    # Utilities
+    # ------------------------------------------------------------------ #
+
+    def _should_inspect_repo_first(self, intent: NaviIntent) -> bool:
+        if not self.config.always_inspect_repo_first:
+            return False
+        # only for engineering intents that need repo context
+        if not intent.is_engineering():
+            return False
+        return intent.requires_repo()
+
+    _step_counter = 0
+
+    def _step(self, tool: str, description: str, arguments: Dict[str, Any]) -> PlannedStep:
+        """
+        Helper to build a PlannedStep with a unique ID.
+
+        The `tool` string is a logical identifier; the ToolExecutor
+        decides how to route it to actual tools / MCP servers.
+        """
+        self.__class__._step_counter += 1
+        step_id = f"step-{self.__class__._step_counter}"
+        return PlannedStep(
+            id=step_id,
+            description=description,
+            tool=tool,
+            arguments=arguments,
+        )
 
 
-# ==============================================================================
-# HELPER FUNCTIONS
-# ==============================================================================
+# Backwards-compatible alias if older code imports `Planner`
+Planner = SimplePlanner
 
-def is_read_only_plan(plan: Dict[str, Any]) -> bool:
+
+# Backwards-compatible function for existing code
+def generate_plan(intent: NaviIntent, context: Dict[str, Any]) -> PlanResult:
     """
-    Check if plan is read-only (no side effects).
-    
-    Read-only plans don't require approval.
+    Backwards-compatible function wrapper for existing code.
     """
-    if plan["action_type"] == "pure_chat":
-        return True
-    
-    if plan["action_type"] == "execute_tool":
-        read_only_tools = {
-            "search_repo", "open_file", "read_file",
-            "fetch_jira", "fetch_slack", "fetch_confluence",
-            "fetch_github", "fetch_zoom"
-        }
-        return plan.get("tool_name") in read_only_tools
-    
-    return False
-
-
-def requires_user_approval(plan: Dict[str, Any]) -> bool:
-    """
-    Check if plan requires user approval before execution.
-    
-    Always returns True for write operations.
-    """
-    return plan.get("requires_approval", True)
-
-
-def format_plan_for_approval(plan: Dict[str, Any]) -> str:
-    """
-    Format plan as human-readable text for approval prompt.
-    
-    Example output:
-    "I'll create a new file `backend/agent/tools.py` with 150 lines of code. Should I proceed?"
-    """
-    action_type = plan.get("action_type")
-    tool_name = plan.get("tool_name")
-    explanation = plan.get("explanation_to_user", "")
-    
-    if action_type == "execute_tool":
-        return f"{explanation}\n\nShould I proceed?"
-    
-    elif action_type == "generate_code":
-        return f"{explanation}\n\nShould I generate this code?"
-    
-    elif action_type == "apply_diff":
-        return f"{explanation}\n\nShould I apply these changes?"
-    
-    elif action_type == "multi_step_workflow":
-        steps_text = "\n".join([
-            f"{i+1}. {step['description']}"
-            for i, step in enumerate(plan.get("steps", []))
-        ])
-        return f"{explanation}\n\nPlan:\n{steps_text}\n\nShould I proceed with this plan?"
-    
-    return explanation
+    planner = SimplePlanner()
+    return planner.plan(intent, context)

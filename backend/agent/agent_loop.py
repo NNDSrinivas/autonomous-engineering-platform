@@ -21,7 +21,7 @@ from typing import Dict, Any, Optional, List
 from dataclasses import asdict
 
 from backend.agent.context_builder import build_context
-from backend.agent.memory_retriever import retrieve_memories, retrieve_unified_memories
+from backend.agent.memory_retriever import retrieve_memories
 from backend.agent.org_retriever import retrieve_org_context
 from backend.agent.workspace_retriever import retrieve_workspace_context
 from backend.agent.intent_classifier import IntentClassifier
@@ -393,11 +393,11 @@ async def run_agent_loop(
                 attachments=attachments,
             )
             org_ctx = await retrieve_org_context(user_id, message, db=db)
-            memory_ctx = await retrieve_unified_memories(user_id, message, db=db)
+            memory_ctx = await retrieve_memories(user_id, message, db=db)
             full_context = build_context(
                 workspace_ctx,
                 org_ctx,
-                memory_ctx,
+                memory_ctx.to_dict(),
                 previous_state,
                 message,
             )
@@ -423,12 +423,12 @@ async def run_agent_loop(
             workspace_ctx = await retrieve_perfect_workspace_context(workspace)
         
         org_ctx = await retrieve_org_context(user_id, message, db=db)
-        memory_ctx = await retrieve_unified_memories(user_id, message, db=db)
+        memory_ctx = await retrieve_memories(user_id, message, db=db)
 
         full_context = build_context(
             workspace_ctx,
             org_ctx,
-            memory_ctx,
+            memory_ctx.to_dict(),
             previous_state,
             message,
         )

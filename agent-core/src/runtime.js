@@ -13,9 +13,14 @@ async function greet() {
     const part = hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
     let tasks = [];
     try {
-        const r = await fetch(`${(0, env_1.coreApi)()}/api/jira/tasks`);
+        const userId = process.env.DEV_USER_ID || 'default_user';
+        const r = await fetch(`${(0, env_1.coreApi)()}/api/navi/jira-tasks?user_id=${userId}&limit=5`);
         const j = await r.json();
-        tasks = (j.items || []).slice(0, 5).map((t) => ({ key: t.key, title: t.summary, status: t.status }));
+        tasks = (j.tasks || []).slice(0, 5).map((t) => ({
+            key: t.jira_key,
+            title: t.title?.replace(`[Jira] ${t.jira_key}: `, '') || t.jira_key,
+            status: t.status
+        }));
     }
     catch { }
     return { text: `Hello ${name}, Good ${part}! You have ${tasks.length} assigned tasks. Pick one to start:`, tasks };

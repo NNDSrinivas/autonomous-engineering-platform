@@ -150,6 +150,22 @@ def _build_combined_text(context: Dict[str, Any]) -> str:
     # Priority 4: Workspace info (if relevant)
     # ---------------------------------------------------------
     workspace = context.get("workspace", {})
+    
+    # New: filesystem tree snapshot for project overview questions
+    if workspace.get("tree") and workspace.get("kind") == "filesystem":
+        parts.append("## Project Structure\n\n")
+        parts.append(f"Repository: {workspace.get('repo_root', 'Unknown')}\n\n")
+        parts.append("```\n")
+        parts.append(workspace["tree"])
+        parts.append("\n```\n\n")
+        
+        # Include README content if available
+        readme = workspace.get("readme", "")
+        if readme.strip():
+            parts.append("## Project README\n\n")
+            parts.append(readme)
+            parts.append("\n\n")
+    
     if workspace.get("active_file"):
         parts.append(f"## Active File\n\n{workspace['active_file']}\n\n")
     

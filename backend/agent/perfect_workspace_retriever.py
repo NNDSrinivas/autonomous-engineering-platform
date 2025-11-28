@@ -58,11 +58,16 @@ async def retrieve_perfect_workspace_context(
     Merges workspace context coming from VS Code extension
     with backend-side filesystem context.
     """
+    import logging
+    logger = logging.getLogger(__name__)
 
     workspace_root = payload_workspace.get("workspace_root")
     active_file = payload_workspace.get("active_file")
     selected_text = payload_workspace.get("selected_text")
     recent_files = payload_workspace.get("recent_files", [])
+    
+    logger.info(f"[PERFECT-WORKSPACE] workspace_root: {workspace_root}")
+    logger.info(f"[PERFECT-WORKSPACE] payload_workspace: {payload_workspace}")
 
     file_tree = []
     small_files = []

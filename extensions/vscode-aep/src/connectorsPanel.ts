@@ -1,15 +1,18 @@
-// connectorsPanel.ts
-// Webview panel for managing connector integrations (Jira, Slack, Teams, etc.)
+// extensions/vscode-aep/src/connectorsPanel.ts
 
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
 
-function getNonce() {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
+interface ConnectorStatus {
+    id: string;
+    name: string;
+    category: string;
+    status: "connected" | "disconnected" | "error";
+    error?: string;
+}
+
+interface ConnectorStatusPayload {
+    items: ConnectorStatus[];
+    offline?: boolean;
 }
 
 export class ConnectorsPanel {
@@ -20,250 +23,366 @@ export class ConnectorsPanel {
     private readonly _backendBaseUrl: string;
     private _disposables: vscode.Disposable[] = [];
 
-    public static createOrShow(
-        extensionUri: vscode.Uri,
-        backendBaseUrl: string,
-        context: vscode.ExtensionContext
-    ) {
-        const column = vscode.window.activeTextEditor
-            ? vscode.window.activeTextEditor.viewColumn
-            : vscode.ViewColumn.One;
+    public static createOrShow(extensionUri: vscode.Uri) {
+        const column = vscode.ViewColumn.Beside;
 
-        // If we already have a panel, just reveal it
         if (ConnectorsPanel.currentPanel) {
-            console.log('[ConnectorsPanel] Panel already exists, revealing it');
             ConnectorsPanel.currentPanel._panel.reveal(column);
             return;
         }
 
-        console.log('[ConnectorsPanel] Creating new panel with baseUrl:', backendBaseUrl);
         const panel = vscode.window.createWebviewPanel(
-            'aepConnectors',
-            'NAVI — Connectors',
-            vscode.ViewColumn.Two, // Open in second column to avoid overlap
+            "aepConnectors",
+            "Connections",
+            column,
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')],
             }
         );
 
-        console.log('[ConnectorsPanel] Panel created, initializing ConnectorsPanel class');
-        ConnectorsPanel.currentPanel = new ConnectorsPanel(
-            panel,
-            extensionUri,
-            backendBaseUrl
-        );
-        console.log('[ConnectorsPanel] ConnectorsPanel initialization complete');
+        ConnectorsPanel.currentPanel = new ConnectorsPanel(panel, extensionUri);
     }
 
-    private constructor(
-        panel: vscode.WebviewPanel,
-        extensionUri: vscode.Uri,
-        backendBaseUrl: string
-    ) {
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
         this._panel = panel;
         this._extensionUri = extensionUri;
-        this._backendBaseUrl = backendBaseUrl;
+
+        const config = vscode.workspace.getConfiguration("aep");
+        const naviBackendUrl = config.get<string>("navi.backendUrl") || "http://127.0.0.1:8787";
+
+        // Extract the root URL by stripping /api/navi/chat from the NAVI backend URL
+        this._backendBaseUrl = naviBackendUrl.replace(/\/api\/navi\/chat\/?$/, "");
+        console.log("[AEP] ConnectorsPanel initialized with backend URL:", this._backendBaseUrl);
+
+        this._panel.iconPath = vscode.Uri.joinPath(
+            this._extensionUri,
+            "media",
+            "icons",
+            "aep-activitybar.png"
+        );
+
+        this._panel.webview.html = this._getHtmlForWebview(this._panel.webview);
+        this._setWebviewMessageListener(this._panel.webview);
 
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-
-        this._panel.webview.html = this._getHtmlForWebview(
-            this._panel.webview,
-            backendBaseUrl
-        );
-
-        // Handle messages from the webview
-        this._panel.webview.onDidReceiveMessage(
-            async (message) => {
-                switch (message.type) {
-                    case 'closePanel': {
-                        this._panel.dispose();
-                        break;
-                    }
-                    case 'openExternal': {
-                        const url = String(message.url || '').trim();
-                        if (!url) return;
-                        try {
-                            await vscode.env.openExternal(vscode.Uri.parse(url));
-                        } catch (e) {
-                            vscode.window.showErrorMessage('Failed to open external URL');
-                        }
-                        break;
-                    }
-                    case 'showToast': {
-                        const msg = String(message.message || '').trim();
-                        const level = String(message.level || 'info');
-                        if (!msg) return;
-
-                        switch (level) {
-                            case 'error':
-                                vscode.window.showErrorMessage(`NAVI: ${msg}`);
-                                break;
-                            case 'warning':
-                                vscode.window.showWarningMessage(`NAVI: ${msg}`);
-                                break;
-                            default:
-                                vscode.window.showInformationMessage(`NAVI: ${msg}`);
-                        }
-                        break;
-                    }
-                    case 'connectors.getStatus': {
-                        // Proxy connector status request to backend
-                        try {
-                            const response = await fetch(`${this._backendBaseUrl}/api/connectors/status`);
-                            if (!response.ok) {
-                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                            }
-                            const data = await response.json();
-                            this._panel.webview.postMessage({ type: 'connectors.status', data });
-                        } catch (err: any) {
-                            console.error('[ConnectorsPanel] Status error:', err);
-                            this._panel.webview.postMessage({
-                                type: 'connectors.statusError',
-                                error: err?.message || String(err),
-                            });
-                        }
-                        break;
-                    }
-                    case 'connectors.jiraConnect': {
-                        // Proxy Jira connection request to backend
-                        try {
-                            const endpoint = `${this._backendBaseUrl}/api/connectors/jira/connect`;
-
-                            console.log('[ConnectorsPanel] Jira connect - Backend base URL:', backendBaseUrl);
-                            console.log('[ConnectorsPanel] Jira connect - Full endpoint:', endpoint);
-                            console.log('[ConnectorsPanel] Jira connect - Request payload:', {
-                                base_url: message.baseUrl,
-                                email: message.email || undefined,
-                                api_token: message.apiToken ? '***' : undefined
-                            });
-
-                            const response = await fetch(endpoint, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    base_url: message.baseUrl,
-                                    email: message.email || undefined,
-                                    api_token: message.apiToken,
-                                }),
-                            });
-
-                            console.log('[ConnectorsPanel] Jira connect - Response status:', response.status);
-
-                            if (!response.ok) {
-                                const errorText = await response.text().catch(() => '');
-                                console.error('[ConnectorsPanel] Jira connect - Error response:', errorText);
-                                throw new Error(errorText || `HTTP ${response.status}: ${response.statusText}`);
-                            }
-
-                            const data = await response.json() as { status?: string;[key: string]: any };
-                            console.log('[ConnectorsPanel] Jira connect - Success response:', data);
-
-                            // Send proper result message
-                            this._panel.webview.postMessage({
-                                type: 'connectors.jiraConnect.result',
-                                ok: true,
-                                provider: 'jira',
-                                status: data.status || 'connected',
-                                data
-                            });
-                        } catch (err: any) {
-                            console.error('[ConnectorsPanel] Jira connect error:', err);
-                            console.error('[ConnectorsPanel] Error stack:', err.stack);
-
-                            // Send proper error result message
-                            this._panel.webview.postMessage({
-                                type: 'connectors.jiraConnect.result',
-                                ok: false,
-                                provider: 'jira',
-                                error: err?.message || String(err),
-                            });
-                        }
-                        break;
-                    }
-                }
-            },
-            null,
-            this._disposables
-        );
     }
 
     public dispose() {
         ConnectorsPanel.currentPanel = undefined;
 
-        this._panel.dispose();
-
         while (this._disposables.length) {
-            const d = this._disposables.pop();
-            if (d) {
-                d.dispose();
+            const x = this._disposables.pop();
+            if (x) {
+                x.dispose();
             }
+        }
+
+        this._panel.dispose();
+    }
+
+    // -----------------------------------------------------------------------
+    // Webview wiring
+    // -----------------------------------------------------------------------
+
+    private _setWebviewMessageListener(webview: vscode.Webview) {
+        webview.onDidReceiveMessage(
+            async (message) => {
+                switch (message.type) {
+                    case "getStatus":
+                        await this._handleGetStatus();
+                        return;
+                    case "connect":
+                        await this._handleConnect(message.connectorId);
+                        return;
+                    default:
+                        return;
+                }
+            },
+            undefined,
+            this._disposables
+        );
+    }
+
+    private async _handleGetStatus() {
+        const url = `${this._backendBaseUrl}/api/connectors/marketplace/status`;
+        console.log("[AEP] Fetching connector status from:", url);
+
+        try {
+            const res = await fetch(url, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "User-Agent": "VSCode-AEP-Extension/1.0"
+                },
+            });
+
+            console.log("[AEP] Fetch response status:", res.status, res.statusText);
+
+            if (!res.ok) {
+                const errorText = await res.text();
+                console.error("[AEP] Backend error response:", errorText);
+                throw new Error(`HTTP ${res.status}: ${res.statusText} - ${errorText}`);
+            }
+
+            const data = (await res.json()) as ConnectorStatusPayload;
+            console.log("[AEP] Backend response:", data);
+
+            this._panel.webview.postMessage({
+                type: "status",
+                payload: { items: data.items, offline: !!data.offline },
+            });
+        } catch (err: any) {
+            console.error("[AEP] Connector status error:", err?.message || err);
+            console.error("[AEP] Backend URL was:", url);
+            console.error("[AEP] Full error:", err);
+
+            const offlinePayload: ConnectorStatusPayload = {
+                items: [],
+                offline: true,
+            };
+
+            this._panel.webview.postMessage({
+                type: "status",
+                payload: offlinePayload,
+            });
         }
     }
 
-    private _getHtmlForWebview(webview: vscode.Webview, backendBaseUrl: string) {
-        const nonce = getNonce();
+    private async _handleConnect(connectorId: string) {
+        switch (connectorId) {
+            case "jira":
+                await this._connectJira();
+                break;
+            case "slack":
+                await this._connectSlack();
+                break;
+            // you can add github, teams, etc. later here
+            default:
+                vscode.window.showWarningMessage(
+                    `Connector '${connectorId}' is not yet implemented.`
+                );
+                return;
+        }
+
+        // After connecting, refresh status
+        await this._handleGetStatus();
+    }
+
+    private async _connectJira() {
+        const baseUrl = await vscode.window.showInputBox({
+            title: "Jira Cloud base URL",
+            prompt: "Example: https://your-domain.atlassian.net",
+            ignoreFocusOut: true,
+            validateInput: (value) =>
+                value.trim().length === 0 ? "Base URL is required" : undefined,
+        });
+        if (!baseUrl) {
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId: "jira",
+                    ok: false,
+                    error: "User cancelled",
+                },
+            });
+            return;
+        }
+
+        const email = await vscode.window.showInputBox({
+            title: "Jira email",
+            prompt: "Email associated with your Jira account",
+            ignoreFocusOut: true,
+            validateInput: (value) =>
+                value.trim().length === 0 ? "Email is required" : undefined,
+        });
+        if (!email) {
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId: "jira",
+                    ok: false,
+                    error: "User cancelled",
+                },
+            });
+            return;
+        }
+
+        const apiToken = await vscode.window.showInputBox({
+            title: "Jira API token",
+            prompt: "Personal API token (will be sent to your local AEP backend)",
+            password: true,
+            ignoreFocusOut: true,
+            validateInput: (value) =>
+                value.trim().length === 0 ? "API token is required" : undefined,
+        });
+        if (!apiToken) {
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId: "jira",
+                    ok: false,
+                    error: "User cancelled",
+                },
+            });
+            return;
+        }
+
+        const url = `${this._backendBaseUrl}/api/connectors/jira/connect`;
+
+        try {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    base_url: baseUrl,
+                    email,
+                    api_token: apiToken,
+                }),
+            });
+
+            const json = await res.json() as any;
+            const ok = res.ok && json.ok !== false;
+
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId: "jira",
+                    ok,
+                    error: ok ? undefined : json.detail || json.error || "Failed to connect",
+                },
+            });
+
+            if (!ok) {
+                vscode.window.showErrorMessage(
+                    `Failed to connect Jira: ${json.detail || json.error || "Unknown error"}`
+                );
+            }
+        } catch (err: any) {
+            const msg = err?.message || String(err);
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId: "jira",
+                    ok: false,
+                    error: msg,
+                },
+            });
+            vscode.window.showErrorMessage(`Failed to connect Jira: ${msg}`);
+        }
+    }
+
+    private async _connectSlack() {
+        const botToken = await vscode.window.showInputBox({
+            title: "Slack bot token",
+            prompt: "Paste your Slack bot token (xoxb-…)",
+            password: true,
+            ignoreFocusOut: true,
+            validateInput: (value) =>
+                value.trim().length === 0 ? "Bot token is required" : undefined,
+        });
+
+        if (!botToken) {
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId: "slack",
+                    ok: false,
+                    error: "User cancelled",
+                },
+            });
+            return;
+        }
+
+        const url = `${this._backendBaseUrl}/api/connectors/slack/connect`;
+
+        try {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ bot_token: botToken }),
+            });
+
+            const json = await res.json() as any;
+            const ok = res.ok && json.ok !== false;
+
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId: "slack",
+                    ok,
+                    error: ok ? undefined : json.detail || json.error || "Failed to connect",
+                },
+            });
+
+            if (!ok) {
+                vscode.window.showErrorMessage(
+                    `Failed to connect Slack: ${json.detail || json.error || "Unknown error"}`
+                );
+            }
+        } catch (err: any) {
+            const msg = err?.message || String(err);
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId: "slack",
+                    ok: false,
+                    error: msg,
+                },
+            });
+            vscode.window.showErrorMessage(`Failed to connect Slack: ${msg}`);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // HTML + webview assets
+    // -----------------------------------------------------------------------
+
+    private _getHtmlForWebview(webview: vscode.Webview): string {
+        // Add cache busting timestamp
+        const cacheBust = Date.now();
 
         const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'connectorsPanel.js')
+            vscode.Uri.joinPath(this._extensionUri, "media", "connectorsPanel.js")
         );
         const styleUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.css')
+            vscode.Uri.joinPath(this._extensionUri, "media", "panel.css")
         );
-        const iconsUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this._extensionUri, 'media', 'icons')
+        const iconBaseUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, "media", "icons")
         );
+
+        const cspSource = webview.cspSource;
 
         return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; connect-src https: http:;" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link href="${styleUri}" rel="stylesheet" />
-  <title>NAVI Connectors</title>
-  <script nonce="${nonce}">
-    window.AEP_CONFIG = {
-      backendBaseUrl: "${backendBaseUrl}",
-      iconsUri: "${iconsUri}"
-    };
-    window.vscode = acquireVsCodeApi();
-  </script>
+    content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource}; connect-src http://127.0.0.1:8787 http://localhost:8787;">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="${styleUri}?v=${cacheBust}" rel="stylesheet" />
+  <title>Connections</title>
 </head>
-<body style="margin: 0; padding: 0; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground);">
-  <!-- Connectors Hub UI -->
-  <div id="aep-connectors-container" style="display: flex; flex-direction: column; height: 100vh;">
-    <div style="padding: 24px 24px 16px; border-bottom: 1px solid rgba(75, 85, 99, 0.3);">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-        <h2 style="margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em;">Connectors Hub</h2>
-        <button id="aep-connections-close" style="background: transparent; border: none; color: var(--vscode-foreground); cursor: pointer; font-size: 20px; padding: 4px 8px; opacity: 0.7;" title="Close">✕</button>
-      </div>
-      <p style="margin: 0 0 16px 0; font-size: 13px; color: var(--vscode-descriptionForeground); line-height: 1.5;">
-        Connect Jira, Slack, Teams, Zoom, GitHub, Jenkins and more so NAVI can use full organizational context.
-      </p>
+<body class="aep-theme">
+  <div id="root"></div>
 
-      <div class="aep-search-bar" style="position: relative;">
-        <input 
-          type="text" 
-          id="aep-connectors-search" 
-          class="aep-input" 
-          placeholder="Search connectors..." 
-          style="padding-left: 36px;"
-        />
-        <svg style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; opacity: 0.5;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-        </svg>
-      </div>
-
-      <div id="aep-connectors-filters" class="aep-filters" style="margin-top: 16px;"></div>
-    </div>
-
-    <div id="aep-connectors-list" class="aep-connectors-list" style="flex: 1; overflow-y: auto;"></div>
-  </div>
-
-  <script src="${scriptUri}" nonce="${nonce}"></script>
+  <script>
+    window.AEP_CONNECTOR_ICON_BASE = "${iconBaseUri}";
+    console.log("[AEP] Connectors panel loaded, cache bust: ${cacheBust}");
+    console.log("[AEP] Icon base URI:", "${iconBaseUri}");
+    console.log("[AEP] Testing fetch capability...");
+    
+    // Immediate test to see if webview can make requests
+    fetch("http://127.0.0.1:8787/api/connectors/marketplace/status")
+      .then(r => {
+        console.log("[AEP] Immediate fetch test - status:", r.status);
+        return r.json();
+      })
+      .then(data => console.log("[AEP] Immediate fetch test - data:", data))
+      .catch(err => console.error("[AEP] Immediate fetch test - error:", err));
+  </script>
+  <script src="${scriptUri}?v=${cacheBust}"></script>
 </body>
 </html>`;
     }

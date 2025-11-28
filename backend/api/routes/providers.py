@@ -311,6 +311,7 @@ async def validate_provider_configuration(
             provider_id=request.provider_id,
             valid=False,
             error=str(e),
+            test_response=None,
         )
 
 

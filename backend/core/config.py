@@ -175,6 +175,27 @@ class Settings(BaseSettings):
     aep_jwt_ttl_seconds: int = 3600
     aep_jwt_alg: str = "HS256"
 
+    # Organization and Webhook Secrets
+    x_org_id: Optional[str] = None
+    jira_webhook_secret: Optional[str] = None
+    github_webhook_secret: Optional[str] = None
+    slack_signing_secret: Optional[str] = None
+    teams_webhook_secret: Optional[str] = None
+    docs_webhook_secret: Optional[str] = None
+    ci_webhook_secret: Optional[str] = None
+    
+    # Development Authentication
+    dev_user_id: Optional[str] = None
+
+    # Organization ID
+    x_org_id: Optional[str] = None
+
+    # Jira Integration
+    aep_jira_base_url: Optional[str] = None
+    aep_jira_email: Optional[str] = None
+    aep_jira_api_token: Optional[str] = None
+    aep_jira_jql_assigned_to_me: Optional[str] = None
+
     def __init__(self, **values):
         super().__init__(**values)
         # Validate secrets in production

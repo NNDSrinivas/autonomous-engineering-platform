@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional, Protocol
 
 from .intent_schema import NaviIntent
 from .intent_classifier import IntentClassifier
+from .tool_executor import ToolResult, _normalize_tool_result
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,7 @@ class StepResult:
     ok: bool
     output: Any
     error: Optional[str] = None
+    sources: List[Dict[str, Any]] = field(default_factory=list)
 
 
 # ============================================================================
@@ -167,6 +169,7 @@ class NaviOrchestrator:
         source: Optional[str] = "chat",
         api_key: Optional[str] = None,
         org_id: Optional[str] = None,
+        context_packet: Optional[Dict[str, Any]] = None,
     ) -> AgentTurnResult:
 
         # 1. Load session state if enabled
@@ -212,6 +215,8 @@ class NaviOrchestrator:
             "repo": repo,
             "source": source,
             "intent": intent,
+            # Unified, source-linked context for this task/PR (when provided)
+            "context_packet": context_packet,
         }
 
         # 5. Produce plan
@@ -343,6 +348,7 @@ async def run_agent_turn(
     metadata: Optional[Dict[str, Any]] = None,
     state_manager: Optional[StateManager] = None,
     memory_retriever: Optional[MemoryRetriever] = None,
+    context_packet: Optional[Dict[str, Any]] = None,
 ) -> AgentTurnResult:
     """
     Convenience wrapper for backwards compatibility.
@@ -360,4 +366,5 @@ async def run_agent_turn(
         repo=repo,
         source=source,
         metadata=metadata,
+        context_packet=context_packet,
     )

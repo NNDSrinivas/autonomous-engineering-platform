@@ -25,8 +25,9 @@ from backend.agent.memory_retriever import retrieve_memories
 from backend.agent.org_retriever import retrieve_org_context
 from backend.agent.workspace_retriever import retrieve_workspace_context
 from backend.agent.intent_classifier import IntentClassifier
-from backend.agent.planner import SimplePlanner
-from backend.agent.tool_executor import execute_tool
+from backend.ai.intent_llm_classifier import LLMIntentClassifier
+from backend.agent.planner_v3 import PlannerV3
+from backend.agent.tool_executor import execute_tool, execute_tool_with_sources
 from backend.agent.state_manager import (
     get_user_state,
     update_user_state,
@@ -359,15 +360,20 @@ async def run_agent_loop(
                 tool_args = {} if isinstance(pending, str) else pending.get(
                     "args", {}
                 )
-                result = await execute_tool(
+                tool_result = await execute_tool_with_sources(
                     user_id, tool_name, tool_args, db=db,
                     attachments=attachments, workspace=workspace
                 )
                 elapsed_ms = int((time.monotonic() - started) * 1000)
-                # execute_tool already returns a dict in our design; pass it through
-                if isinstance(result, dict):
-                    result.setdefault("duration_ms", elapsed_ms)
-                    return result
+                # Return unified result with sources
+                return {
+                    "reply": tool_result.output.get("text", str(tool_result.output)),
+                    "actions": [],
+                    "sources": tool_result.sources,
+                    "should_stream": False,
+                    "state": {"executed_pending_action": True},
+                    "duration_ms": elapsed_ms,
+                }
                 return {
                     "reply": str(result),
                     "actions": [],
@@ -386,9 +392,10 @@ async def run_agent_loop(
         if normalized_msg in ("hi", "hello", "hey", "hola", "yo", "hi!", "hey!"):
             logger.info("[AGENT] Greeting detected, using direct chat mode")
             # Build minimal/lightweight context for greetings
+            workspace_root = workspace.get("workspace_root") if workspace else None
             workspace_ctx = await retrieve_workspace_context(
                 user_id=user_id,
-                workspace_root=workspace_id,
+                workspace_root=workspace_root,
                 include_files=True,
                 attachments=attachments,
             )
@@ -454,12 +461,26 @@ async def run_agent_loop(
             )
 
         # ---------------------------------------------------------
-        # STAGE 3: Classify the user's intent using NAVI OS v2
+        # STAGE 3: Classify the user's intent using LLM-powered provider-aware classifier
         # ---------------------------------------------------------
         logger.info("[AGENT] Classifying intent...")
-        classifier = IntentClassifier()
-        intent = classifier.classify(message)
-        logger.info("[AGENT] Intent: %s/%s", intent.family.value, intent.kind.value)
+        try:
+            # Use new LLM-powered classifier for provider-aware classification
+            llm_classifier = LLMIntentClassifier()
+            intent = await llm_classifier.classify(
+                message=message,
+                metadata={"user_id": user_id, "workspace": workspace}
+            )
+            logger.info("[AGENT] LLM Intent: %s/%s (provider: %s)", 
+                       intent.family.value if intent.family else "None", 
+                       intent.kind.value if intent.kind else "None",
+                       intent.provider.value if intent.provider else "None")
+        except Exception as e:
+            # Fallback to rule-based classifier if LLM fails
+            logger.warning("[AGENT] LLM classifier failed (%s), using rule-based fallback", e)
+            classifier = IntentClassifier()
+            intent = classifier.classify(message)
+            logger.info("[AGENT] Fallback Intent: %s/%s", intent.family.value, intent.kind.value)
 
         # ---------------------------------------------------------
         # STAGE 4: Handle low confidence intents
@@ -486,11 +507,12 @@ async def run_agent_loop(
             }
 
         # ---------------------------------------------------------
-        # STAGE 5: Generate multi-step plan using NAVI OS v2
+        # STAGE 5: Generate multi-step plan using NAVI OS v3
         # ---------------------------------------------------------
         logger.info("[AGENT] Generating plan...")
-        planner = SimplePlanner()
-        plan = planner.plan(intent, full_context)
+        from backend.agent.planner_v3 import PlannerV3
+        planner = PlannerV3()
+        plan = await planner.plan(intent, full_context)
         logger.info("[AGENT] Plan generated with %d steps", len(plan.steps))
 
         # Prepare shaped actions once so all branches can reuse them
@@ -556,13 +578,19 @@ async def run_agent_loop(
         if plan.steps and all(step.tool in safe_tools for step in plan.steps):
             logger.info("[AGENT] Executing safe tools immediately (LLM will explain)")
             tool_snippets: List[str] = []
+            all_sources: List[Dict[str, Any]] = []
             for step in plan.steps[:3]:  # Limit to first 3 steps
                 try:
-                    result = await execute_tool(
+                    tool_result = await execute_tool_with_sources(
                         user_id, step.tool, step.arguments, db=db,
                         attachments=attachments, workspace=workspace
                     )
-                    result_text = json.dumps(result, indent=2, default=str)
+                    # Collect sources
+                    if tool_result.sources:
+                        all_sources.extend(tool_result.sources)
+                    
+                    # Format output for LLM context
+                    result_text = json.dumps(tool_result.output, indent=2, default=str)
                     tool_snippets.append(
                         f"TOOL {step.tool} (description={step.description!r}):\n{result_text}"
                     )
@@ -586,11 +614,19 @@ async def run_agent_loop(
                 mode=mode,
             )
 
+            # De-duplicate sources by (type, url, name)
+            dedup = {}
+            for s in all_sources:
+                key = (s.get("type"), s.get("url"), s.get("name"))
+                dedup[key] = s
+            all_sources = list(dedup.values())
+
             clear_user_state(user_id)
             elapsed_ms = int((time.monotonic() - started) * 1000)
             return {
                 "reply": answer,
                 "actions": planned_actions,
+                "sources": all_sources,  # Add sources to response
                 "should_stream": True,
                 "state": {"completed": True, "mode": "safe_tools_exec"},
                 "duration_ms": elapsed_ms,

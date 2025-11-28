@@ -27,7 +27,12 @@ from .state_manager import (
 )
 from .context_builder import build_context
 from .intent_classifier import classify_intent
-from .planner import generate_plan
+from .planner_v3 import SimplePlanner
+
+def generate_plan(intent, context):
+    """Backwards-compatible function wrapper."""
+    planner = SimplePlanner()
+    return planner.plan(intent, context)
 from .tool_executor import execute_tool, get_available_tools, is_write_operation
 from .rag import retrieve_rag_context, format_rag_context_for_llm
 from .memory_retriever import retrieve_memories, retrieve_recent_memories
@@ -38,7 +43,7 @@ from .workspace_retriever import retrieve_workspace_context
 from .tools import (
     read_file, create_file, edit_file, apply_diff, search_repo,
     run_command,
-    jira_fetch_issue, jira_comment, jira_transition,
+    list_assigned_issues_for_user,
     github_create_branch, github_create_pr
 )
 
@@ -75,9 +80,7 @@ __all__ = [
     "apply_diff",
     "search_repo",
     "run_command",
-    "jira_fetch_issue",
-    "jira_comment",
-    "jira_transition",
+    "list_assigned_issues_for_user",
     "github_create_branch",
     "github_create_pr",
 ]

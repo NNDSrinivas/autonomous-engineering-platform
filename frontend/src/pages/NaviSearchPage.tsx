@@ -201,7 +201,7 @@ export function NaviSearchPage() {
     }
 
     // Helper function to generate realistic mock responses for demo
-    const generateMockIntent = (message: string, model: string): AgentIntentResponse => {
+    const generateMockIntent = (message: string, _model: string): AgentIntentResponse => {
         const lowerMessage = message.toLowerCase()
 
         // Determine intent based on keywords

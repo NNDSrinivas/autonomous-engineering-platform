@@ -3,14 +3,18 @@
 Provides retrieval-augmented context for LLM prompts
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..core.db import get_db
 from ..context.schemas import ContextPackRequest, ContextPackResponse
 from ..context.retriever import build_context_pack
 from ..context.service import filter_by_policy, fetch_relevant_notes
 from ..telemetry.context_metrics import CTX_LAT_MS, CTX_HITS
+from ..deps import get_current_user
+from backend.core.auth_org import require_org
+from backend.models.conversations import ConversationMessage, ConversationReply
 import time
+from backend.agent.context_packet import build_context_packet  # Agent-facing packet builder
 
 router = APIRouter(prefix="/context", tags=["context"])
 
@@ -33,10 +37,10 @@ def get_context_pack(req: ContextPackRequest, db: Session = Depends(get_db)):
     """
     t0 = time.time()
 
-    # TODO: SECURITY - Hardcoded org_id bypasses tenant isolation
-    # This is MVP code - in production, extract org_id from authenticated user context
-    # to prevent unauthorized access to other organizations' data
-    org_id = "default_org"
+    # Resolve org_id from caller; require it to avoid cross-tenant leakage.
+    if not req.org_id:
+        raise HTTPException(status_code=400, detail="org_id is required for context retrieval")
+    org_id = req.org_id
 
     # Build hybrid context pack
     hits = build_context_pack(
@@ -68,3 +72,34 @@ def get_context_pack(req: ContextPackRequest, db: Session = Depends(get_db)):
         latency_ms=lat,
         total=len(hits),
     )
+
+
+@router.get("/packet/{task_key}")
+async def get_context_packet(
+    task_key: str,
+    db: Session = Depends(get_db),
+    include_related: bool = True,
+    current_user: dict = Depends(get_current_user),
+    org_ctx: dict = Depends(require_org),
+):
+    """
+    Build a unified context packet for a task/PR keyed by `task_key`.
+
+    This is the live, source-linked payload the NAVI agent will consume for
+    planning and approvals. For now it hydrates Jira facts from the ingested
+    cache and leaves hooks for Slack/Teams/Docs/PR/CI hydration.
+    """
+    org_id = org_ctx["org_id"]
+
+    try:
+        packet = await build_context_packet(
+            task_key=task_key,
+            db=db,
+            user_id=current_user.get("user_id"),
+            org_id=org_id,
+            include_related=include_related,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to build context packet: {exc}")
+
+    return packet.to_dict()

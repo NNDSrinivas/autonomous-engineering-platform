@@ -213,6 +213,9 @@ function showEphemeralToast(message, level = 'info') {
         <div id="navi-messages" class="navi-messages"></div>
         <div id="navi-jira-tasks" class="navi-jira-tasks navi-jira-tasks-hidden"></div>
       </main>
+      
+      <!-- Connectors Marketplace Modal -->
+      <div id="aep-connectors-root" class="aep-connectors-root" hidden></div>
 
       <footer class="navi-footer">
         <div class="navi-attach-toast">
@@ -512,6 +515,39 @@ function showEphemeralToast(message, level = 'info') {
 
     renderTextSegments(safeText, bubble);
 
+    // --- sources section (for assistant messages) ---
+    if (role === 'bot' && options.sources && Array.isArray(options.sources) && options.sources.length > 0) {
+      const sourcesEl = document.createElement('div');
+      sourcesEl.className = 'message-sources';
+
+      const label = document.createElement('div');
+      label.className = 'message-sources-label';
+      label.textContent = 'Sources';
+      sourcesEl.appendChild(label);
+
+      const list = document.createElement('div');
+      list.className = 'message-sources-list';
+
+      options.sources.forEach((src) => {
+        if (!src.url) return;
+
+        const link = document.createElement('a');
+        link.className = 'message-source-pill';
+        link.href = src.url;
+        link.target = '_blank';
+        link.rel = 'noreferrer';
+
+        const type = (src.type || src.connector || '').toUpperCase();
+        const name = src.name || src.url;
+
+        link.textContent = type ? `${type} · ${name}` : name;
+        list.appendChild(link);
+      });
+
+      sourcesEl.appendChild(list);
+      bubble.appendChild(sourcesEl);
+    }
+
     // --- message toolbar (Copy / Edit / Use as prompt) ---
     const toolbar = document.createElement('div');
     toolbar.className = 'navi-msg-toolbar';
@@ -763,10 +799,10 @@ function showEphemeralToast(message, level = 'info') {
       if (action === 'newChat') {
         vscode.postMessage({ type: 'newChat' });
       } else if (action === 'connectors') {
-        if (typeof window !== 'undefined' && window.AEPConnections && typeof window.AEPConnections.open === 'function') {
-          window.AEPConnections.open();
+        if (typeof window !== 'undefined' && window.connectorsMarketplace) {
+          window.connectorsMarketplace.toggle();
         } else if (vscode) {
-          // Fallback (legacy): let host know
+          // Fallback: let host know
           vscode.postMessage({ type: 'openConnectors' });
         }
       } else if (action === 'settings') {
@@ -1012,7 +1048,7 @@ function showEphemeralToast(message, level = 'info') {
         state.streamingMessageId = null;
         state.streamingText = '';
 
-        const { bubble } = appendMessage(msg.text, 'bot');
+        const { bubble } = appendMessage(msg.text, 'bot', { sources: msg.sources });
 
         // Workspace plan / actions UI ----------------------------------------
         if (msg.actions && Array.isArray(msg.actions) && msg.actions.length > 0) {
@@ -1797,5 +1833,13 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // --- Ephemeral toast just above the input row ------------------------------
 
+  // --- Initialize Connectors Marketplace -----------------------------------
+  // Load the connectors marketplace after the main UI is ready
+  if (typeof window !== 'undefined' && window.ConnectorsMarketplace) {
+    window.connectorsMarketplace = new window.ConnectorsMarketplace();
+    console.log('[NAVI] Connectors marketplace initialized');
+  } else {
+    console.warn('[NAVI] ConnectorsMarketplace class not available');
+  }
 
 });

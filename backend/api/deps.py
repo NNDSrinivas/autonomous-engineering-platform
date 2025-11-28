@@ -87,6 +87,7 @@ def get_broadcaster() -> Broadcast:
 async def get_current_user(
     authorization: Optional[str] = Header(None),
     x_api_key: Optional[str] = Header(None),
+    x_org_id: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
     """
     Get current authenticated user from request headers.
@@ -114,6 +115,7 @@ async def get_current_user(
         "user_id": user_id,
         "authenticated": True,
         "permissions": ["intent:classify", "models:list", "agent:use"],
+        "org_id": x_org_id or None,
     }
 
 

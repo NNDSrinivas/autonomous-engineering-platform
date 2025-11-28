@@ -78,6 +78,15 @@ class IntentKind(str, Enum):
     CREATE_TICKET = "create_ticket"            # Jira / GitHub issue, etc.
     UPDATE_TICKET = "update_ticket"
     SUMMARIZE_TICKETS = "summarize_tickets"
+    
+    # Cross-app general intents (provider-agnostic)
+    LIST_MY_ITEMS = "list_my_items"           # general: Jira issues, GitHub issues, tasks
+    SUMMARIZE_CHANNEL = "summarize_channel"   # general: Slack, Teams, Discord channels
+    SHOW_ITEM_DETAILS = "show_item_details"   # general: show details of any item (issue, PR, doc)
+    
+    # Provider-specific intents (for backward compatibility)
+    JIRA_LIST_MY_ISSUES = "jira_list_my_issues"  # list Jira issues assigned to user
+    SLACK_SUMMARIZE_CHANNEL = "slack_summarize_channel"  # summarize Slack channel messages
     SUMMARIZE_PR = "summarize_pr"
     REVIEW_PR = "review_pr"
     GENERATE_RELEASE_NOTES = "generate_release_notes"
@@ -87,6 +96,7 @@ class IntentKind(str, Enum):
     EXPLAIN_ERROR = "explain_error"
     ARCHITECTURE_OVERVIEW = "architecture_overview"
     DESIGN_PROPOSAL = "design_proposal"
+    GREET = "greet"                            # simple greeting/hello
 
     # --- Autonomous orchestration --------------------------------------------
     AUTONOMOUS_SESSION = "autonomous_session"  # multi-step agent run
@@ -97,6 +107,17 @@ class IntentKind(str, Enum):
 
     # --- Fallback / meta -----------------------------------------------------
     UNKNOWN = "unknown"                        # classifier unsure
+    
+    # --- Additional core kinds to fix planner errors -----
+    CREATE = "create"                          # generic create operation
+    IMPLEMENT = "implement"                    # generic implementation
+    FIX = "fix"                               # generic fix operation  
+    SEARCH = "search"                         # generic search
+    EXPLAIN = "explain"                       # generic explanation
+    DEPLOY = "deploy"                         # deployment operations
+    SYNC = "sync"                             # synchronization operations
+    CONFIGURE = "configure"                   # configuration operations
+    GENERIC = "generic"                       # fallback generic
 
 
 class IntentPriority(str, Enum):
@@ -105,6 +126,21 @@ class IntentPriority(str, Enum):
     NORMAL = "normal"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class Provider(str, Enum):
+    """External service/app that NAVI integrates with for cross-app workflows."""
+    JIRA = "jira"
+    SLACK = "slack"
+    GITHUB = "github"  
+    TEAMS = "teams"
+    ZOOM = "zoom"
+    CONFLUENCE = "confluence"
+    NOTION = "notion"
+    LINEAR = "linear"
+    ASANA = "asana"
+    JENKINS = "jenkins"
+    GENERIC = "generic"
 
 
 class IntentSource(str, Enum):
@@ -350,6 +386,24 @@ class NaviIntent(BaseModel):
         ge=0.0,
         le=1.0,
         description="Classifier confidence in [0, 1].",
+    )
+
+    # --- cross-app provider context ------------------------------------------
+    provider: Provider = Field(
+        default=Provider.GENERIC,
+        description="External service/app this intent targets (jira, slack, github, etc.)",
+    )
+    object_type: Optional[str] = Field(
+        default=None,
+        description="Type of object being acted upon: 'issue', 'message', 'pr', 'build', 'doc', etc.",
+    )
+    object_id: Optional[str] = Field(
+        default=None,
+        description="Specific ID if mentioned (e.g., 'JIRA-123', 'PR-456', '#general')",
+    )
+    filters: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional filters: status, date range, channel name, assignee, etc.",
     )
 
     # raw inputs

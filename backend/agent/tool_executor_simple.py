@@ -46,11 +46,26 @@ class SimpleToolExecutor(ToolExecutor):
         context: Dict[str, Any],
     ) -> StepResult:
         try:
-            output = {
-                "tool": step.tool,
-                "arguments": step.arguments,
-                "intent_kind": intent.kind.value,
-            }
+            if step.tool == "context.present_packet":
+                packet = context.get("context_packet")
+                if not packet:
+                    return StepResult(
+                        step_id=step.id,
+                        ok=False,
+                        output=None,
+                        error="No context packet provided",
+                    )
+                output = {
+                    "tool": step.tool,
+                    "packet": packet,
+                    "intent_kind": intent.kind.value,
+                }
+            else:
+                output = {
+                    "tool": step.tool,
+                    "arguments": step.arguments,
+                    "intent_kind": intent.kind.value,
+                }
             return StepResult(
                 step_id=step.id,
                 ok=True,

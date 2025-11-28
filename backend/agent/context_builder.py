@@ -178,4 +178,19 @@ def _build_combined_text(context: Dict[str, Any]) -> str:
     if workspace.get("git_branch"):
         parts.append(f"## Git Branch\n\n{workspace['git_branch']}\n\n")
     
+    # Add project information from workspace analysis
+    if workspace.get("project_info"):
+        project = workspace["project_info"]
+        parts.append(f"## Current Project\n\n")
+        parts.append(f"**Project Name**: {project.get('name', 'Unknown')}\n")
+        if project.get('description'):
+            parts.append(f"**Description**: {project['description']}\n")
+        if project.get('language'):
+            parts.append(f"**Language**: {project['language']}\n")
+        if project.get('framework'):
+            parts.append(f"**Framework**: {project['framework']}\n")
+        if project.get('type'):
+            parts.append(f"**Type**: {project['type']}\n")
+        parts.append("\n")
+    
     return "".join(parts)

@@ -20,8 +20,41 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ToolResult:
+    """Normalized result from any tool."""
+    output: Any
+    sources: List[Dict[str, Any]]
+
+
+def _normalize_tool_result(raw: Any) -> ToolResult:
+    """
+    Unify different tool return formats into ToolResult.
+
+    Supported patterns:
+    - dict with {"issues": ..., "sources": [...]}
+    - dict with {"output": ..., "sources": [...]}
+    - anything else → output=raw, sources=[]
+    """
+    if isinstance(raw, dict):
+        sources = raw.get("sources") or []
+        if "output" in raw:
+            output = raw["output"]
+        elif "issues" in raw:
+            # our Jira tool: {"issues": [...], "sources": [...]}
+            output = raw["issues"]
+        else:
+            # generic dict: treat as output
+            output = raw
+        return ToolResult(output=output, sources=sources)
+
+    # default
+    return ToolResult(output=raw, sources=[])
 
 # Where the repo lives on disk.
 # You can override this per machine:
@@ -31,6 +64,30 @@ DEFAULT_WORKSPACE_ROOT = Path(
 ).resolve()
 
 
+async def execute_tool_with_sources(
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    db=None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
+    workspace: Optional[Dict[str, Any]] = None,
+    context_packet: Optional[Dict[str, Any]] = None,
+) -> ToolResult:
+  """
+  New entrypoint that returns normalized ToolResult with sources.
+  """
+  raw_result = await execute_tool(
+      user_id,
+      tool_name,
+      args,
+      db=db,
+      attachments=attachments,
+      workspace=workspace,
+      context_packet=context_packet,
+  )
+  return _normalize_tool_result(raw_result)
+
+
 async def execute_tool(
     user_id: str,
     tool_name: str,
@@ -38,6 +95,7 @@ async def execute_tool(
     db=None,
     attachments: Optional[List[Dict[str, Any]]] = None,
     workspace: Optional[Dict[str, Any]] = None,
+    context_packet: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
   """
   Main entrypoint – dispatch tool calls by name.
@@ -52,14 +110,42 @@ async def execute_tool(
       json.dumps(args, default=str)[:300],
   )
 
+  # Context packet passthrough -------------------------------------------------
+  if tool_name == "context.present_packet":
+    packet = context_packet or args.get("context_packet")
+    if not packet:
+      return {
+          "tool": tool_name,
+          "text": "No context packet available to present.",
+          "sources": [],
+      }
+
+    sources = packet.get("sources") or []
+    return {
+        "tool": tool_name,
+        "text": "Here is the live context packet for this task.",
+        "packet": packet,
+        "sources": sources,
+    }
+
   # Workspace-safe tools ------------------------------------------------------
   if tool_name == "repo.inspect":
     # Enrich args with context for VS Code workspace integration
+    # Basic guard: require workspace_root to avoid inspecting the wrong repo
+    ws = workspace or {}
+    if not ws.get("workspace_root"):
+      return {
+          "tool": "repo.inspect",
+          "text": (
+              "I don’t have your workspace path from the extension. "
+              "Open the folder you want me to inspect in VS Code and retry."
+          ),
+      }
     enriched_args = {
       **args,
       "user_id": user_id,
       "attachments": attachments,
-      "workspace": workspace,
+      "workspace": ws,
     }
     return await _tool_repo_inspect(enriched_args)
 
@@ -68,6 +154,30 @@ async def execute_tool(
 
   if tool_name == "code.search":
     return await _tool_code_search(args)
+
+  # Jira integration tools --------------------------------------------------------
+  if tool_name == "jira.list_assigned_issues_for_user":
+    return await _tool_jira_list_assigned_issues(user_id, args, db)
+  if tool_name == "jira.add_comment":
+    return await _tool_jira_add_comment(user_id, args, db)
+  if tool_name == "jira.transition_issue":
+    return await _tool_jira_transition_issue(user_id, args, db)
+  if tool_name == "jira.assign_issue":
+    return await _tool_jira_assign_issue(user_id, args, db)
+  # GitHub write operations (approval-gated) --------------------------------------
+  if tool_name == "github.comment":
+    return await _tool_github_comment(user_id, args, db)
+  if tool_name == "github.set_label":
+    return await _tool_github_set_label(user_id, args, db)
+  if tool_name == "github.rerun_check":
+    return await _tool_github_rerun_check(user_id, args, db)
+
+  # Slack integration tools -------------------------------------------------------
+  if tool_name == "slack.fetch_recent_channel_messages":
+    return await _tool_slack_fetch_recent_channel_messages(user_id, args, db)
+
+  if tool_name == "slack.search_user_messages":
+    return await _tool_slack_search_user_messages(user_id, args, db)
 
   # Project-management stubs (future expansion) --------------------------------
   if tool_name.startswith("pm."):
@@ -346,6 +456,505 @@ async def _tool_code_search(args: Dict[str, Any]) -> Dict[str, Any]:
   }
 
 
+# ---------------------------------------------------------------------------
+# Jira tools
+# ---------------------------------------------------------------------------
+
+async def _tool_jira_list_assigned_issues(
+    user_id: str,
+    args: Dict[str, Any], 
+    db=None
+) -> Dict[str, Any]:
+    """List Jira issues assigned to the current user"""
+    from backend.agent.tools.jira_tools import list_assigned_issues_for_user
+    from backend.core.db import get_db
+    from sqlalchemy import text
+    
+    try:
+        # Prepare context for the tool
+        context = {
+            "user_id": user_id,
+            "user_name": args.get("assignee") or user_id,
+            "jira_assignee": args.get("assignee"),
+        }
+        org_id = args.get("org_id")
+        
+        max_results = args.get("max_results", 20)
+        local_db = db or next(get_db())
+
+        # Guard: if Jira not connected or no issues ingested for this org, return a clear message
+        count_sql = """
+            SELECT COUNT(*) 
+            FROM jira_issue ji 
+            JOIN jira_connection jc ON jc.id = ji.connection_id
+        """
+        params = {}
+        if org_id:
+            count_sql += " WHERE jc.org_id = :org_id"
+            params["org_id"] = org_id
+        count = local_db.execute(text(count_sql), params).scalar() or 0
+        if count == 0:
+            return {
+                "tool": "jira.list_assigned_issues_for_user",
+                "text": (
+                    "Jira is not connected or no issues are synced for this org. "
+                    "Please connect Jira in the Connectors panel and run a sync."
+                ),
+                "sources": [],
+            }
+        
+        # Call the Jira tool with unified sources output
+        result = await list_assigned_issues_for_user(context, max_results)
+        
+        # Check for errors
+        if "error" in result:
+            return {
+                "tool": "jira.list_assigned_issues_for_user",
+                "text": f"Error retrieving Jira issues: {result['error']}"
+            }
+        
+        issues = result.get("issues", [])
+        sources = result.get("sources", [])
+        
+        # Format for LLM consumption
+        if not issues:
+            return {
+                "tool": "jira.list_assigned_issues_for_user", 
+                "text": f"No Jira issues found assigned to user {user_id}",
+                "sources": sources
+            }
+            
+        # Build a nice summary table
+        issue_lines = []
+        for issue in issues:
+            status = issue.get("status", "Unknown")
+            summary = issue.get("summary", "No summary")
+            issue_key = issue.get("issue_key", "No key")
+            issue_lines.append(f"• **{issue_key}** - {summary}\n  Status: {status}")
+            
+        text_summary = f"Found {len(issues)} Jira issues assigned to you:\n\n" + "\n\n".join(issue_lines)
+        
+        return {
+            "tool": "jira.list_assigned_issues_for_user",
+            "issues": issues,
+            "sources": sources,  # Unified sources for UI
+            "count": len(issues),
+            "text": text_summary
+        }
+        
+    except Exception as e:
+        logger.error("Jira list assigned issues error: %s", e)
+        return {
+            "tool": "jira.list_assigned_issues_for_user",
+            "text": f"Failed to fetch Jira issues: {str(e)}"
+        }
+
+
+async def _tool_jira_add_comment(
+    user_id: str,
+    args: Dict[str, Any],
+    db=None,
+) -> Dict[str, Any]:
+    """Add a comment to a Jira issue."""
+    from backend.services.jira import JiraService
+    from backend.core.db import get_db
+
+    issue_key = args.get("issue_key") or args.get("key")
+    comment = args.get("comment")
+    org_id = args.get("org_id")
+    approved = args.get("approve") is True
+
+    if not issue_key or not comment:
+        return {
+            "tool": "jira.add_comment",
+            "text": "issue_key and comment are required to add a Jira comment.",
+        }
+    if not approved:
+        return {
+            "tool": "jira.add_comment",
+            "text": "Approval required to post a Jira comment. Pass approve=true to proceed.",
+        }
+
+    local_db = db or next(get_db())
+
+    try:
+        await JiraService.add_comment(
+            local_db,
+            issue_key=issue_key,
+            comment=comment,
+            user_id=user_id,
+            org_id=org_id,
+        )
+
+        return {
+            "tool": "jira.add_comment",
+            "text": f"Added comment to {issue_key}",
+            "sources": [
+                {
+                    "name": issue_key,
+                    "type": "jira",
+                    "connector": "jira",
+                }
+            ],
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Jira add_comment error: %s", exc)
+        return {
+            "tool": "jira.add_comment",
+            "text": f"Failed to add comment to {issue_key}: {exc}",
+        }
+
+
+async def _tool_jira_transition_issue(
+    user_id: str,
+    args: Dict[str, Any],
+    db=None,
+) -> Dict[str, Any]:
+    """Transition a Jira issue to a new status."""
+    from backend.services.jira import JiraService
+    from backend.core.db import get_db
+
+    issue_key = args.get("issue_key") or args.get("key")
+    transition_id = args.get("transition_id")
+    org_id = args.get("org_id")
+    approved = args.get("approve") is True
+
+    if not issue_key or not transition_id:
+        return {
+            "tool": "jira.transition_issue",
+            "text": "issue_key and transition_id are required to transition a Jira issue.",
+        }
+    if not approved:
+        return {
+            "tool": "jira.transition_issue",
+            "text": "Approval required to transition a Jira issue. Pass approve=true to proceed.",
+        }
+
+    local_db = db or next(get_db())
+
+    try:
+        await JiraService.transition_issue(
+            local_db,
+            issue_key=issue_key,
+            transition_id=transition_id,
+            user_id=user_id,
+            org_id=org_id,
+        )
+        return {
+            "tool": "jira.transition_issue",
+            "text": f"Transitioned {issue_key} using transition {transition_id}",
+            "sources": [
+                {
+                    "name": issue_key,
+                    "type": "jira",
+                    "connector": "jira",
+                }
+            ],
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Jira transition_issue error: %s", exc)
+        return {
+            "tool": "jira.transition_issue",
+            "text": f"Failed to transition {issue_key}: {exc}",
+        }
+
+
+async def _tool_jira_assign_issue(
+    user_id: str,
+    args: Dict[str, Any],
+    db=None,
+) -> Dict[str, Any]:
+    """Assign a Jira issue to a user."""
+    from backend.services.jira import JiraService
+    from backend.core.db import get_db
+
+    issue_key = args.get("issue_key") or args.get("key")
+    org_id = args.get("org_id")
+    assignee_account_id = args.get("assignee_account_id")
+    assignee_name = args.get("assignee_name")
+    approved = args.get("approve") is True
+
+    if not issue_key:
+        return {
+            "tool": "jira.assign_issue",
+            "text": "issue_key is required to assign a Jira issue.",
+        }
+
+
+# ---------------------------------------------------------------------------
+# GitHub tools (write operations)
+# ---------------------------------------------------------------------------
+
+async def _tool_github_comment(
+    user_id: str,
+    args: Dict[str, Any],
+    db=None,
+) -> Dict[str, Any]:
+    """Add a comment to a GitHub issue or PR."""
+    from backend.integrations.github.service import GitHubService
+    from backend.core.crypto import decrypt_token
+    from backend.core.db import get_db
+    from backend.models.integrations import GhConnection
+
+    repo_full_name = args.get("repo")
+    number = args.get("number")
+    comment = args.get("comment")
+    org_id = args.get("org_id")
+    approved = args.get("approve") is True
+
+    if not (repo_full_name and number and comment):
+        return {"tool": "github.comment", "text": "repo, number, and comment are required"}
+    if not approved:
+        return {"tool": "github.comment", "text": "Approval required. Pass approve=true to proceed."}
+
+    local_db = db or next(get_db())
+    conn_q = local_db.query(GhConnection)
+    if org_id:
+        conn_q = conn_q.filter(GhConnection.org_id == org_id)
+    conn = conn_q.order_by(GhConnection.id.desc()).first()
+    if not conn:
+        return {"tool": "github.comment", "text": "No GitHub connection found"}
+
+    gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
+    try:
+        await gh_client.add_comment(repo_full_name, number, comment)
+        return {
+            "tool": "github.comment",
+            "text": f"Added comment to {repo_full_name}#{number}",
+            "sources": [{"name": f"{repo_full_name}#{number}", "type": "github", "connector": "github"}],
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.error("GitHub comment error: %s", exc)
+        return {"tool": "github.comment", "text": f"Failed to add comment: {exc}"}
+
+
+async def _tool_github_set_label(
+    user_id: str,
+    args: Dict[str, Any],
+    db=None,
+) -> Dict[str, Any]:
+    """Set a label on a GitHub issue/PR."""
+    from backend.integrations.github.service import GitHubService
+    from backend.core.crypto import decrypt_token
+    from backend.core.db import get_db
+    from backend.models.integrations import GhConnection
+
+    repo_full_name = args.get("repo")
+    number = args.get("number")
+    labels = args.get("labels") or []
+    org_id = args.get("org_id")
+    approved = args.get("approve") is True
+
+    if not (repo_full_name and number and labels):
+        return {"tool": "github.set_label", "text": "repo, number, and labels are required"}
+    if not approved:
+        return {"tool": "github.set_label", "text": "Approval required. Pass approve=true to proceed."}
+
+    local_db = db or next(get_db())
+    conn_q = local_db.query(GhConnection)
+    if org_id:
+        conn_q = conn_q.filter(GhConnection.org_id == org_id)
+    conn = conn_q.order_by(GhConnection.id.desc()).first()
+    if not conn:
+        return {"tool": "github.set_label", "text": "No GitHub connection found"}
+
+    gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
+    try:
+        await gh_client.set_labels(repo_full_name, number, labels)
+        return {
+            "tool": "github.set_label",
+            "text": f"Updated labels on {repo_full_name}#{number}: {', '.join(labels)}",
+            "sources": [{"name": f"{repo_full_name}#{number}", "type": "github", "connector": "github"}],
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.error("GitHub set_label error: %s", exc)
+        return {"tool": "github.set_label", "text": f"Failed to set labels: {exc}"}
+
+
+async def _tool_github_rerun_check(
+    user_id: str,
+    args: Dict[str, Any],
+    db=None,
+) -> Dict[str, Any]:
+    """Re-run a GitHub check suite/workflow for a commit/PR."""
+    from backend.integrations.github.service import GitHubService
+    from backend.core.crypto import decrypt_token
+    from backend.core.db import get_db
+    from backend.models.integrations import GhConnection
+
+    repo_full_name = args.get("repo")
+    check_run_id = args.get("check_run_id")
+    org_id = args.get("org_id")
+    approved = args.get("approve") is True
+
+    if not (repo_full_name and check_run_id):
+        return {"tool": "github.rerun_check", "text": "repo and check_run_id are required"}
+    if not approved:
+        return {"tool": "github.rerun_check", "text": "Approval required. Pass approve=true to proceed."}
+
+    local_db = db or next(get_db())
+    conn_q = local_db.query(GhConnection)
+    if org_id:
+        conn_q = conn_q.filter(GhConnection.org_id == org_id)
+    conn = conn_q.order_by(GhConnection.id.desc()).first()
+    if not conn:
+        return {"tool": "github.rerun_check", "text": "No GitHub connection found"}
+
+    gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
+    try:
+        await gh_client.rerun_check_run(repo_full_name, check_run_id)
+        return {
+            "tool": "github.rerun_check",
+            "text": f"Requested rerun for check_run {check_run_id} in {repo_full_name}",
+            "sources": [{"name": f"{repo_full_name}", "type": "github", "connector": "github"}],
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.error("GitHub rerun_check error: %s", exc)
+        return {"tool": "github.rerun_check", "text": f"Failed to rerun check: {exc}"}
+    if not (assignee_account_id or assignee_name):
+        return {
+            "tool": "jira.assign_issue",
+            "text": "assignee_account_id or assignee_name is required to assign a Jira issue.",
+        }
+    if not approved:
+        return {
+            "tool": "jira.assign_issue",
+            "text": "Approval required to assign a Jira issue. Pass approve=true to proceed.",
+        }
+
+    local_db = db or next(get_db())
+
+    try:
+        await JiraService.assign_issue(
+            local_db,
+            issue_key=issue_key,
+            assignee_account_id=assignee_account_id,
+            assignee_name=assignee_name,
+            user_id=user_id,
+            org_id=org_id,
+        )
+        assignee_display = assignee_account_id or assignee_name
+        return {
+            "tool": "jira.assign_issue",
+            "text": f"Assigned {issue_key} to {assignee_display}",
+            "sources": [
+                {
+                    "name": issue_key,
+                    "type": "jira",
+                    "connector": "jira",
+                }
+            ],
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Jira assign_issue error: %s", exc)
+        return {
+            "tool": "jira.assign_issue",
+            "text": f"Failed to assign {issue_key}: {exc}",
+        }
+
+
+# ---------------------------------------------------------------------------
+# Slack tools
+# ---------------------------------------------------------------------------
+
+async def _tool_slack_fetch_recent_channel_messages(
+    user_id: str, 
+    args: Dict[str, Any],
+    db=None
+) -> Dict[str, Any]:
+    """Fetch recent Slack messages from a channel"""
+    from backend.services.slack_service import search_messages_for_user
+    
+    channel_name = args.get("channel_name", "")
+    limit = args.get("limit", 50)
+    
+    try:
+        if db is None:
+            return {
+                "tool": "slack.fetch_recent_channel_messages",
+                "text": "Database connection required for Slack integration"
+            }
+            
+        messages = search_messages_for_user(
+            db=db,
+            user_id=user_id,
+            limit=limit,
+            include_threads=True,
+        )
+        
+        # Simple channel filtering
+        if channel_name and channel_name != "all":
+            channel_name_clean = channel_name.lstrip("#").lower()
+            filtered_messages = []
+            for msg in messages:
+                if channel_name_clean in str(msg.get("channel", "")).lower():
+                    filtered_messages.append(msg)
+            messages = filtered_messages
+        
+        summary = f"Found {len(messages)} recent Slack messages"
+        if channel_name:
+            summary += f" from channel '{channel_name}'"
+            
+        return {
+            "tool": "slack.fetch_recent_channel_messages",
+            "channel_filter": channel_name,
+            "message_count": len(messages),
+            "messages": messages,
+            "text": summary + f":\n\n" + "\n".join([
+                f"• {msg.get('user', 'unknown')}: {msg.get('text', '')[:100]}..." 
+                for msg in messages[:10]
+            ]) if messages else summary + " (no messages found)"
+        }
+    except Exception as e:
+        logger.error("Slack tool error: %s", e)
+        return {
+            "tool": "slack.fetch_recent_channel_messages",
+            "text": f"Failed to fetch Slack messages: {str(e)}"
+        }
+
+
+async def _tool_slack_search_user_messages(
+    user_id: str,
+    args: Dict[str, Any], 
+    db=None
+) -> Dict[str, Any]:
+    """Search for recent Slack messages relevant to the user"""
+    from backend.services.slack_service import search_messages_for_user
+    
+    limit = args.get("limit", 30)
+    
+    try:
+        if db is None:
+            return {
+                "tool": "slack.search_user_messages",
+                "text": "Database connection required for Slack integration"
+            }
+            
+        messages = search_messages_for_user(
+            db=db,
+            user_id=user_id,
+            limit=limit,
+            include_threads=True,
+        )
+        
+        return {
+            "tool": "slack.search_user_messages", 
+            "message_count": len(messages),
+            "messages": messages,
+            "text": f"Retrieved {len(messages)} recent Slack messages for user {user_id}:\n\n" + 
+                    "\n".join([
+                        f"• {msg.get('user', 'unknown')}: {msg.get('text', '')[:100]}..."
+                        for msg in messages[:10]
+                    ]) if messages else f"No recent Slack messages found for user {user_id}"
+        }
+    except Exception as e:
+        logger.error("Slack user search error: %s", e)
+        return {
+            "tool": "slack.search_user_messages",
+            "text": f"Failed to search Slack messages: {str(e)}"
+        }
+
+
 # Legacy compatibility functions that some code might still call
 def get_available_tools() -> Dict[str, str]:
     """Return available tools for legacy compatibility"""
@@ -353,6 +962,9 @@ def get_available_tools() -> Dict[str, str]:
         "repo.inspect": "Inspect repository structure and files",
         "code.read_files": "Read specific files from the repository", 
         "code.search": "Search for patterns in repository files",
+        "jira.list_assigned_issues_for_user": "List Jira issues assigned to current user",
+        "slack.fetch_recent_channel_messages": "Fetch recent messages from Slack channel",
+        "slack.search_user_messages": "Search recent Slack messages for user",
         "pm.create_ticket": "Create project management tickets (stub)",
         "pm.update_ticket": "Update project management tickets (stub)",
     }
@@ -362,4 +974,3 @@ def is_write_operation(tool_name: str) -> bool:
     """Check if a tool performs write operations"""
     write_tools = {"pm.create_ticket", "pm.update_ticket", "code.apply_patch"}
     return tool_name in write_tools
-

@@ -1,672 +1,416 @@
-// connectorsPanel.js
-// Connections hub UI for NAVI webview (VS Code)
+// extensions/vscode-aep/media/connectorsPanel.js
+
+/* global acquireVsCodeApi */
 
 (function () {
-    /** @type {any} */
-    // Use the vscode API that was already acquired in the HTML
-    const vscode = window.vscode;
+  // -------------------------------------------------------------------------
+  // VS Code API – safe single acquisition
+  // -------------------------------------------------------------------------
+  const w = /** @type {any} */ (window);
+  const vscode = w.__aepVscode || acquireVsCodeApi();
+  w.__aepVscode = vscode;
 
-    // ---- 1. Connector metadata ---------------------------------------------
+  const CONNECTORS = [
+    {
+      id: "jira",
+      name: "Jira",
+      vendor: "Atlassian",
+      category: "work_tracking",
+      tags: ["Work tracking"],
+      description: "Issues, epics, and sprints for engineering teams.",
+      status: "not_connected",
+      icon: "jira.svg",
+    },
+    {
+      id: "github_issues",
+      name: "GitHub Issues",
+      vendor: "GitHub",
+      category: "work_tracking",
+      tags: ["Work tracking", "Code & repos"],
+      description: "Track work items directly from your repos.",
+      status: "coming_soon",
+      icon: "github.svg",
+    },
+    {
+      id: "github",
+      name: "GitHub",
+      vendor: "GitHub",
+      category: "code",
+      tags: ["Code & repos", "CI / Pipelines"],
+      description: "Code, PRs, reviews, and CI checks.",
+      status: "not_connected",
+      icon: "github.svg",
+    },
+    {
+      id: "gitlab",
+      name: "GitLab",
+      vendor: "GitLab",
+      category: "code",
+      tags: ["Code & repos", "CI / Pipelines"],
+      description: "Source code, issues, and pipelines.",
+      status: "coming_soon",
+      icon: "gitlab.svg",
+    },
+    {
+      id: "slack",
+      name: "Slack",
+      vendor: "Slack",
+      category: "chat",
+      tags: ["Chat", "Docs / Knowledge"],
+      description: "Channels, threads, and DMs for your org.",
+      status: "not_connected",
+      icon: "slack.svg",
+    },
+    {
+      id: "teams",
+      name: "Microsoft Teams",
+      vendor: "Microsoft",
+      category: "chat",
+      tags: ["Chat", "Meetings"],
+      description: "Teams chats, channels, and meetings.",
+      status: "coming_soon",
+      icon: "teams.svg",
+    },
+    {
+      id: "zoom",
+      name: "Zoom",
+      vendor: "Zoom",
+      category: "meetings",
+      tags: ["Meetings"],
+      description: "Meetings, recordings, and transcripts.",
+      status: "coming_soon",
+      icon: "zoom.svg",
+    },
+    {
+      id: "confluence",
+      name: "Confluence",
+      vendor: "Atlassian",
+      category: "docs",
+      tags: ["Docs / Knowledge"],
+      description: "Design docs, specs, and architecture pages.",
+      status: "coming_soon",
+      icon: "confluence.svg",
+    },
+    {
+      id: "jenkins",
+      name: "Jenkins",
+      vendor: "Jenkins",
+      category: "ci",
+      tags: ["CI / Pipelines"],
+      description: "Builds, pipelines, and deployment status.",
+      status: "coming_soon",
+      icon: "jenkins.svg",
+    },
+  ];
 
-    const CONNECTOR_CATEGORIES = [
-        { id: "all", label: "All" },
-        { id: "pm", label: "Project Management" },
-        { id: "chat", label: "Chat & Collaboration" },
-        { id: "code", label: "Code & Repos" },
-        { id: "ci", label: "CI / DevOps" },
-        { id: "meetings", label: "Meetings" },
-    ];
+  const FILTERS = [
+    { id: "all", label: "All" },
+    { id: "work_tracking", label: "Work tracking" },
+    { id: "code", label: "Code & repos" },
+    { id: "chat", label: "Chat" },
+    { id: "meetings", label: "Meetings" },
+    { id: "ci", label: "CI / Pipelines" },
+    { id: "storage", label: "Storage" },
+    { id: "docs", label: "Docs / Knowledge" },
+    { id: "other", label: "Other" },
+  ];
 
-    /** @type {Array<{
-     *  id: string;
-     *  name: string;
-     *  description: string;
-     *  category: string;
-     *  authType: 'apiKey' | 'oauth';
-     *  icon: string;
-     * }>} */
-    const CONNECTORS = [
-        {
-            id: "jira",
-            name: "Jira",
-            description: "Sync issues, epics, and sprints for task-aware assistance.",
-            category: "pm",
-            authType: "apiKey",
-            icon: "jira.svg",
-        },
-        {
-            id: "slack",
-            name: "Slack",
-            description: "Pull channel history, threads, and decisions from chat.",
-            category: "chat",
-            authType: "oauth",
-            icon: "slack.svg",
-        },
-        {
-            id: "teams",
-            name: "Microsoft Teams",
-            description: "Sync Teams channels and conversations.",
-            category: "chat",
-            authType: "oauth",
-            icon: "teams.svg",
-        },
-        {
-            id: "zoom",
-            name: "Zoom",
-            description: "Ingest meeting transcripts and summaries.",
-            category: "meetings",
-            authType: "oauth",
-            icon: "zoom.svg",
-        },
-        {
-            id: "github",
-            name: "GitHub",
-            description: "Index PRs, code reviews, and repository history.",
-            category: "code",
-            authType: "oauth",
-            icon: "github.svg",
-        },
-        {
-            id: "jenkins",
-            name: "Jenkins / CI",
-            description: "Track builds, pipelines, and deployment history.",
-            category: "ci",
-            authType: "apiKey",
-            icon: "jenkins.svg",
-        },
-        {
-            id: "generic_http",
-            name: "Generic HTTP",
-            description: "Connect any REST service as a custom data source.",
-            category: "code",
-            authType: "apiKey",
-            icon: "http.svg",
-        },
-    ];
+  const state = {
+    search: "",
+    filter: "all",
+    statuses: {}, // { jira: "connected" | "disconnected" | "error" }
+    offline: false,
+  };
 
-    // ---- 2. State ----------------------------------------------------------
+  function qs(sel) {
+    return document.querySelector(sel);
+  }
 
-    const state = {
-        isOpen: false,
-        search: "",
-        activeCategory: "all",
-        // statusMap: { [connectorId]: { status, message, lastSyncedAt } }
-        statusMap: /** @type {Record<string, {status: string, message?: string, lastSyncedAt?: string} | undefined>} */ (
-            {}
-        ),
-        // Which connector is currently showing its inline form
-        expandedFormFor: /** @type {string | null} */ (null),
-        isBusyFor: /** @type {Record<string, boolean>} */ ({}),
-        baseUrl: (typeof window !== 'undefined' && window.AEP_CONFIG && window.AEP_CONFIG.backendBaseUrl) || "http://127.0.0.1:8787",
-    };
+  function createRoot() {
+    const root = document.getElementById("root");
+    root.innerHTML = `
+      <div class="aep-connectors-header">
+        <div>
+          <h2 class="aep-connectors-title">Connections</h2>
+          <p class="aep-connectors-subtitle">
+            Connect Jira, Slack, Teams, Zoom, GitHub, and more so NAVI can use full organizational context.
+          </p>
+        </div>
+      </div>
+      <div class="aep-connectors-controls">
+        <div class="aep-connectors-search-wrap">
+          <span class="aep-connectors-search-icon">🔍</span>
+          <input
+            type="text"
+            placeholder="Search connectors..."
+            class="aep-connectors-search"
+            id="connectors-search"
+          />
+        </div>
+        <div class="aep-connectors-filters" id="connectors-filters"></div>
+      </div>
+      <div class="aep-connectors-status aep-connectors-status--error" id="connectors-offline" style="display: none;">
+        Connectors backend is offline. Using static marketplace list for now.
+      </div>
+      <div class="aep-connectors-list" id="connectors-list"></div>
+    `;
 
-    // ---- 3. DOM helpers ----------------------------------------------------
-
-    function $(selector) {
-        return /** @type {HTMLElement | null} */ (document.querySelector(selector));
-    }
-
-    function createEl(tag, className, children) {
-        const el = document.createElement(tag);
-        if (className) el.className = className;
-        if (Array.isArray(children)) {
-            for (const c of children) {
-                if (typeof c === "string") {
-                    el.appendChild(document.createTextNode(c));
-                } else if (c instanceof Node) {
-                    el.appendChild(c);
-                }
-            }
-        }
-        return el;
-    }
-
-    // ---- 4. Backend helpers (via extension host to avoid CSP) -------------
-
-    function requestConnectorStatus() {
-        if (vscode) {
-            vscode.postMessage({ type: 'connectors.getStatus' });
-        }
-    }
-
-    function refreshAllStatuses() {
-        // Request status via extension host (avoids CSP issues)
-        requestConnectorStatus();
-    }
-
-    // Listen for messages from the extension host
-    window.addEventListener("message", (event) => {
-        const msg = event.data;
-        switch (msg.type) {
-            case 'connectors.hide': {
-                console.log('[ConnectorsPanel] Received hide message from extension');
-                closeConnectionsModal();
-                break;
-            }
-            case 'connectors.jiraSyncResult': {
-                console.log('[ConnectorsPanel] Jira sync result:', msg);
-                if (msg.ok) {
-                    console.log(`[ConnectorsPanel] Sync successful: ${msg.synced_issues} issues`);
-                } else {
-                    console.error('[ConnectorsPanel] Sync failed:', msg.error);
-                }
-                // Re-render to update UI state
-                renderConnectorList();
-                break;
-            }
-            case 'connectors.status': {
-                // msg.data = { connectors: [ { provider, status, last_sync_ts, ... }, ... ] }
-                const connectors = msg.data?.connectors || [];
-                // Don't completely overwrite statusMap - preserve successful connections
-                for (const c of connectors) {
-                    // Only update if we don't have a successful connection already
-                    const currentStatus = state.statusMap[c.provider];
-                    if (!currentStatus || currentStatus.status !== 'connected') {
-                        state.statusMap[c.provider] = {
-                            status: c.status || "disconnected",
-                            message: c.message || "",
-                            lastSyncedAt: c.last_sync_ts || c.last_index_ts,
-                        };
-                    }
-                }
-                renderConnectorList();
-                break;
-            }
-            case 'connectors.statusError': {
-                console.error('[NAVI] Connector status error:', msg.error);
-                // Show error in UI
-                break;
-            }
-            case 'connectors.jiraConnect.result': {
-                // Handle new result message format
-                const { ok, provider, status, error } = msg;
-                state.isBusyFor[provider] = false;
-
-                if (ok) {
-                    // Update status map
-                    state.statusMap[provider] = {
-                        status: status || 'connected',
-                        message: '',
-                        lastSyncedAt: new Date().toISOString(),
-                    };
-                    vscode.postMessage({
-                        type: 'showToast',
-                        message: 'Connected to Jira! Initial sync started.',
-                        level: 'info'
-                    });
-                    // Don't auto-refresh status to avoid overriding successful connection
-                    // User can manually refresh if needed
-                } else {
-                    // Update status map to show error
-                    state.statusMap[provider] = {
-                        status: 'error',
-                        message: error || 'Connection failed',
-                        lastSyncedAt: undefined,
-                    };
-                    vscode.postMessage({
-                        type: 'showToast',
-                        message: `Jira connection failed: ${error || 'Unknown error'}`,
-                        level: 'error'
-                    });
-                }
-                renderConnectorList();
-                break;
-            }
-            // Legacy message handlers for backward compatibility
-            case 'connectors.jiraConnected': {
-                state.isBusyFor['jira'] = false;
-                vscode.postMessage({
-                    type: 'showToast',
-                    message: 'Connected to Jira! Initial sync started.',
-                    level: 'info'
-                });
-                setTimeout(() => requestConnectorStatus(), 3000);
-                break;
-            }
-            case 'connectors.jiraConnectError': {
-                state.isBusyFor['jira'] = false;
-                vscode.postMessage({
-                    type: 'showToast',
-                    message: `Jira connection failed: ${msg.error || 'Unknown error'}`,
-                    level: 'error'
-                });
-                renderConnectorList();
-                break;
-            }
-        }
+    // Filters
+    const filterRow = qs("#connectors-filters");
+    FILTERS.forEach((f) => {
+      const btn = document.createElement("button");
+      btn.className = "aep-connectors-filter-chip";
+      btn.dataset.filterId = f.id;
+      btn.textContent = f.label;
+      if (f.id === state.filter) btn.classList.add("aep-connectors-filter-chip--active");
+      btn.addEventListener("click", () => {
+        state.filter = f.id;
+        updateFilters();
+        renderList();
+      });
+      filterRow.appendChild(btn);
     });
 
-    // ---- 5. Connect flows --------------------------------------------------
+    const searchInput = qs("#connectors-search");
+    searchInput.addEventListener("input", (e) => {
+      state.search = e.target.value.toLowerCase();
+      renderList();
+    });
+  }
 
-    async function handleApiKeyConnect(id) {
-        console.log('[ConnectorsPanel] handleApiKeyConnect called for:', id);
-        const row = document.querySelector(`.aep-connector-row[data-id="${id}"]`);
-        if (!row) {
-            console.error('[ConnectorsPanel] Row not found for:', id);
-            return;
-        }
-
-        const urlInput = /** @type {HTMLInputElement | null} */ (
-            row.querySelector("input[data-field='base_url']")
-        );
-        const emailInput = /** @type {HTMLInputElement | null} */ (
-            row.querySelector("input[data-field='email']")
-        );
-        const tokenInput = /** @type {HTMLInputElement | null} */ (
-            row.querySelector("input[data-field='api_token']")
-        );
-
-        const base_url = urlInput ? urlInput.value.trim() : "";
-        const email = emailInput ? emailInput.value.trim() : "";
-        const api_token = tokenInput ? tokenInput.value.trim() : "";
-
-        console.log('[ConnectorsPanel] Form values:', { base_url, email, api_token: api_token ? '***' : '' });
-
-        if (!base_url || !api_token) {
-            vscode.postMessage({
-                type: 'showToast',
-                message: 'Please provide at least Base URL and API token.',
-                level: 'warning'
-            });
-            return;
-        }
-
-        state.isBusyFor[id] = true;
-        renderConnectorList();
-
-        // Send connect request via extension host (Jira only for now)
-        if (id === 'jira' && vscode) {
-            console.log('[ConnectorsPanel] Sending connectors.jiraConnect message');
-            vscode.postMessage({
-                type: 'connectors.jiraConnect',
-                baseUrl: base_url,
-                email: email || undefined,
-                apiToken: api_token,
-            });
+  function updateFilters() {
+    document
+      .querySelectorAll('.aep-connectors-filter-chip[data-filter-id]')
+      .forEach((el) => {
+        const id = el.getAttribute("data-filter-id");
+        if (id === state.filter) {
+          el.classList.add("aep-connectors-filter-chip--active");
         } else {
-            // Fallback or other connectors (not implemented yet)
-            state.isBusyFor[id] = false;
-            vscode.postMessage({
-                type: 'showToast',
-                message: `Connect flow for ${id} not implemented yet`,
-                level: 'info'
-            });
-            renderConnectorList();
+          el.classList.remove("aep-connectors-filter-chip--active");
         }
+      });
+  }
+
+  function statusFor(id) {
+    return state.statuses[id] || "disconnected";
+  }
+
+  function renderList() {
+    const list = qs("#connectors-list");
+    if (!list) return;
+
+    list.innerHTML = "";
+
+    const offlineBanner = qs("#connectors-offline");
+    offlineBanner.style.display = state.offline ? "block" : "none";
+
+    let items = [...CONNECTORS];
+
+    // Map backend statuses (jira, slack, github, …)
+    items = items.map((c) => {
+      const backendStatus = state.statuses[c.id] || state.statuses[c.id.replace("_issues", "")];
+      let mapped = c.status;
+      if (backendStatus === "connected") {
+        mapped = "connected";
+      } else if (backendStatus === "error") {
+        mapped = "error";
+      } else if (backendStatus === "disconnected") {
+        if (c.status === "coming_soon") {
+          mapped = "coming_soon";
+        } else {
+          mapped = "not_connected";
+        }
+      }
+      return { ...c, status: mapped };
+    });
+
+    // Filter
+    items = items.filter((c) => {
+      if (state.filter === "all") return true;
+      if (state.filter === "work_tracking") return c.category === "work_tracking";
+      if (state.filter === "code") return c.category === "code";
+      if (state.filter === "chat") return c.category === "chat";
+      if (state.filter === "meetings") return c.category === "meetings";
+      if (state.filter === "ci") return c.category === "ci";
+      if (state.filter === "docs") return c.category === "docs";
+      if (state.filter === "storage") return c.category === "storage";
+      if (state.filter === "other") return c.category === "other";
+      return true;
+    });
+
+    // Search
+    if (state.search) {
+      items = items.filter((c) => {
+        const hay = `${c.name} ${c.vendor} ${c.description}`.toLowerCase();
+        return hay.includes(state.search);
+      });
     }
 
-    async function handleOAuthConnect(id) {
-        // OAuth flow - open external URL via extension host
-        try {
-            if (vscode) {
-                vscode.postMessage({
-                    type: "openExternal",
-                    url: `https://api.slack.com/apps`, // Placeholder
-                });
-            }
-            // Refresh status after delay
-            setTimeout(() => requestConnectorStatus(), 4000);
-        } catch (err) {
-            console.error("[NAVI] OAuth start error", id, err);
-            state.statusMap[id] = {
-                status: "error",
-                message: String(err),
-            };
+    const iconBase = window.AEP_CONNECTOR_ICON_BASE || "";
+    console.log("[AEP] Icon base URI:", iconBase);
+    console.log("[AEP] Available on window:", Object.keys(window).filter(k => k.includes('AEP')));
+
+    items.forEach((c) => {
+      const row = document.createElement("div");
+      row.className = "aep-connectors-card";
+
+      const iconUrl = c.icon && iconBase ? `${iconBase}/${c.icon}` : "";
+      console.log(`[AEP] Icon for ${c.name}: ${iconUrl || 'fallback to letter'}`);
+
+      row.innerHTML = `
+        <div class="aep-connectors-card-main">
+          <div class="aep-connectors-icon-circle">
+            ${iconUrl
+          ? `<img src="${iconUrl}" alt="${c.name}" onload="console.log('[AEP] Icon loaded for ${c.name}');" onerror="console.error('[AEP] Icon failed for ${c.name}:', this.src); this.style.display='none'; this.parentElement.innerHTML='${c.name.charAt(0).toUpperCase()}';">`
+          : c.name.charAt(0).toUpperCase()
         }
-    }
+          </div>
+          <div class="aep-connectors-card-text">
+            <div class="aep-connectors-card-title-row">
+              <div class="aep-connectors-card-title">${c.name}</div>
+              ${renderStatusBadge(c)}
+            </div>
+            <div class="aep-connectors-card-desc">${c.description}</div>
+            <div class="aep-connectors-card-meta">${c.vendor}</div>
+          </div>
+        </div>
+        <div class="aep-connectors-card-side">
+          ${renderActionButton(c)}
+        </div>
+      `;
 
-    // ---- 6. Rendering ------------------------------------------------------
-
-    function getFilteredConnectors() {
-        const q = state.search.toLowerCase();
-        const cat = state.activeCategory;
-
-        return CONNECTORS.filter((c) => {
-            const matchesCat = cat === "all" || c.category === cat;
-            const matchesSearch =
-                !q ||
-                c.name.toLowerCase().includes(q) ||
-                c.description.toLowerCase().includes(q);
-            return matchesCat && matchesSearch;
-        });
-    }
-
-    function renderStatusPill(connector) {
-        const status = state.statusMap[connector.id]?.status || "disconnected";
-
-        // Only show pill for connected or error status
-        if (status === "disconnected") {
-            return null;
-        }
-
-        const el = createEl("span", `aep-status-pill aep-status-${status}`, []);
-        const dot = createEl("span", "status-dot", []);
-        const text = status === "connected" ? "Connected" : "Error";
-        el.appendChild(dot);
-        el.appendChild(document.createTextNode(text));
-        return el;
-    }
-
-    function renderConnectorRow(connector) {
-        const row = createEl("div", "aep-connector-row", []);
-        row.dataset.id = connector.id;
-        row.dataset.category = connector.category;
-
-        const header = createEl("div", "aep-connector-header", []);
-
-        // Left side: icon + text
-        const left = createEl("div", "aep-connector-left", []);
-
-        // Icon
-        const iconContainer = createEl("div", "connector-icon", []);
-        const icon = document.createElement("img");
-        const iconsUri = (window.AEP_CONFIG && window.AEP_CONFIG.iconsUri) || './icons';
-        icon.src = `${iconsUri}/${connector.icon}`;
-        icon.alt = connector.name;
-        icon.width = 32;
-        icon.height = 32;
-        iconContainer.appendChild(icon);
-
-        // Text container
-        const textContainer = createEl("div", "connector-text", []);
-        const name = createEl("div", "aep-connector-title", [connector.name]);
-        const desc = createEl("div", "aep-connector-desc", [connector.description]);
-        textContainer.appendChild(name);
-        textContainer.appendChild(desc);
-
-        left.appendChild(iconContainer);
-        left.appendChild(textContainer);
-
-        // Right side: status pill + button
-        const right = createEl("div", "aep-connector-right", []);
-
-        const statusPill = renderStatusPill(connector);
-        if (statusPill) {
-            right.appendChild(statusPill);
-        }
-
-        const status = state.statusMap[connector.id]?.status || "disconnected";
-
-        // For Jira when connected, add an "Update & Test" button first
-        if (connector.id === "jira" && status === "connected") {
-            const syncBtn = createEl(
-                "button",
-                "aep-btn aep-btn-secondary aep-connector-sync",
-                ["Update & Test"]
-            );
-            syncBtn.addEventListener("click", (event) => {
-                event.stopPropagation();
-                console.log('[ConnectorsPanel] Jira sync button clicked');
-                if (vscode) {
-                    vscode.postMessage({ type: 'connectors.jiraSyncNow' });
-                }
-            });
-
-            if (state.isBusyFor[connector.id]) {
-                syncBtn.disabled = true;
-                syncBtn.textContent = "Syncing…";
-            }
-
-            right.appendChild(syncBtn);
-        }
-
-        const btnLabel = status === "connected" ? "Manage" :
-            status === "error" ? "Retry" : "Connect";
-
-        const btn = createEl(
-            "button",
-            "aep-btn aep-btn-primary aep-connector-action",
-            [btnLabel]
-        );
+      const btn = row.querySelector("button[data-connector-id]");
+      if (btn) {
         btn.addEventListener("click", () => {
-            state.expandedFormFor =
-                state.expandedFormFor === connector.id ? null : connector.id;
-            renderConnectorList();
+          const id = btn.getAttribute("data-connector-id");
+          if (!id) return;
+          if (c.status === "coming_soon") return;
+          vscode.postMessage({ type: "connect", connectorId: id });
         });
+      }
 
-        if (state.isBusyFor[connector.id]) {
-            btn.disabled = true;
-            btn.textContent = "Connecting…";
-        }
-
-        right.appendChild(btn);
-
-        header.appendChild(left);
-        header.appendChild(right);
-        row.appendChild(header);
-
-        // Inline form section
-        if (state.expandedFormFor === connector.id) {
-            const formWrapper = createEl("div", "aep-connector-form", []);
-
-            if (connector.authType === "apiKey") {
-                const urlInput = createEl("input", "aep-input", []);
-                urlInput.placeholder = "Base URL (e.g., https://your-domain.atlassian.net)";
-                urlInput.dataset.field = "base_url";
-
-                const emailInput = createEl("input", "aep-input", []);
-                emailInput.placeholder = "Email (optional)";
-                emailInput.dataset.field = "email";
-
-                const tokenInput = createEl("input", "aep-input", []);
-                tokenInput.placeholder = "API token / PAT";
-                tokenInput.type = "password";
-                tokenInput.dataset.field = "api_token";
-
-                const formActions = createEl("div", "aep-form-actions", []);
-                const connectBtn = createEl("button", "aep-btn aep-btn-primary", [
-                    state.statusMap[connector.id]?.status === "connected"
-                        ? "Update & Test"
-                        : "Connect",
-                ]);
-                connectBtn.addEventListener("click", () =>
-                    handleApiKeyConnect(connector.id)
-                );
-
-                formActions.appendChild(connectBtn);
-                formWrapper.appendChild(urlInput);
-                formWrapper.appendChild(emailInput);
-                formWrapper.appendChild(tokenInput);
-                formWrapper.appendChild(formActions);
-            } else if (connector.authType === "oauth") {
-                const info = createEl("p", "aep-oauth-info", [
-                    `You'll be redirected to ${connector.name} to authorize NAVI. We only store the minimal tokens required to read data; NAVI never posts on your behalf without permission.`,
-                ]);
-
-                const btnRow = createEl("div", "aep-form-actions", []);
-                const connectBtn = createEl("button", "aep-btn aep-btn-primary", [
-                    state.statusMap[connector.id]?.status === "connected"
-                        ? "Re-connect"
-                        : "Connect via browser",
-                ]);
-                connectBtn.addEventListener("click", () =>
-                    handleOAuthConnect(connector.id)
-                );
-                btnRow.appendChild(connectBtn);
-
-                formWrapper.appendChild(info);
-                formWrapper.appendChild(btnRow);
-            }
-
-            row.appendChild(formWrapper);
-        }
-
-        return row;
-    }
-
-    function renderConnectorList() {
-        const container = $("#aep-connectors-list");
-        if (!container) return;
-        container.innerHTML = "";
-
-        const connectors = getFilteredConnectors();
-        if (!connectors.length) {
-            container.appendChild(
-                createEl("div", "aep-empty", [
-                    "No connectors match your search. Try a different keyword or category.",
-                ])
-            );
-            return;
-        }
-
-        for (const c of connectors) {
-            container.appendChild(renderConnectorRow(c));
-        }
-    }
-
-    function renderFilters() {
-        console.log('[ConnectorsPanel] Rendering filters');
-        const filterRow = $("#aep-connectors-filters");
-        if (!filterRow) {
-            console.error('[ConnectorsPanel] Filter container not found!');
-            return;
-        }
-        filterRow.innerHTML = "";
-
-        for (const cat of CONNECTOR_CATEGORIES) {
-            const btn = createEl(
-                "button",
-                `aep-chip ${state.activeCategory === cat.id ? "aep-chip-active" : ""}`,
-                [cat.label]
-            );
-            btn.addEventListener("click", () => {
-                console.log('[ConnectorsPanel] Filter clicked:', cat.id);
-                state.activeCategory = cat.id;
-                renderConnectorList();
-                renderFilters();
-            });
-            filterRow.appendChild(btn);
-        }
-        console.log('[ConnectorsPanel] Rendered', CONNECTOR_CATEGORIES.length, 'filter chips');
-    }
-
-    // ---- 7. Modal open/close ----------------------------------------------
-
-    function openConnectionsModal() {
-        const modal = $("#aep-connections-modal");
-        const backdrop = $("#aep-connections-backdrop");
-        if (!modal || !backdrop) return;
-
-        state.isOpen = true;
-        modal.classList.add("aep-modal-open");
-        backdrop.classList.add("aep-backdrop-open");
-        refreshAllStatuses();
-    }
-
-    function closeConnectionsModal() {
-        console.log('[ConnectorsPanel] Closing modal');
-
-        // Check if running in a separate webview panel (ConnectorsPanel class)
-        const modal = $("#aep-connections-modal");
-        const backdrop = $("#aep-connections-backdrop");
-
-        if (!modal || !backdrop) {
-            // We're in a standalone panel (ConnectorsPanel), send close message
-            console.log('[ConnectorsPanel] In standalone panel, sending closePanel message');
-            if (vscode) {
-                vscode.postMessage({ type: 'closePanel' });
-            }
-            return;
-        }
-
-        // Regular modal close (NaviWebviewProvider)
-        console.log('[ConnectorsPanel] In modal mode, closing modal');
-        state.isOpen = false;
-        modal.classList.remove("aep-modal-open");
-        backdrop.classList.remove("aep-backdrop-open");
-
-        // Also notify extension that connectors was closed
-        if (vscode) {
-            vscode.postMessage({ type: 'connectors.close' });
-        }
-    }
-
-    function initConnectionsUI() {
-        console.log('[ConnectorsPanel] Initializing UI');
-
-        // Debug: Log all elements with close-related IDs
-        const allElements = document.querySelectorAll('[id*="close"], [id*="panel"]');
-        console.log('[ConnectorsPanel] Found elements with close/panel IDs:', Array.from(allElements).map(el => ({ id: el.id, tag: el.tagName })));
-
-        // Close button - enhanced detection with multiple fallbacks
-        let closePanelBtn = $("#aep-connections-close") || $("#aep-close-panel") || document.querySelector('[title="Close"]') || document.querySelector('button:contains("✕")');
-        console.log('[ConnectorsPanel] Close button element found:', !!closePanelBtn, closePanelBtn ? closePanelBtn.id : 'none');
-
-        if (closePanelBtn) {
-            console.log('[ConnectorsPanel] Adding click listener to close button');
-            closePanelBtn.addEventListener("click", (event) => {
-                console.log('[ConnectorsPanel] Close button clicked!', event);
-                event.preventDefault();
-                event.stopPropagation();
-                closeConnectionsModal();
-            });
-            console.log('[ConnectorsPanel] Click listener added successfully');
-        } else {
-            console.warn('[ConnectorsPanel] Close button not found - will retry after DOM update');
-            // Retry after a short delay in case DOM hasn't fully loaded
-            setTimeout(() => {
-                closePanelBtn = $("#aep-connections-close") || $("#aep-close-panel") || document.querySelector('[title="Close"]');
-                if (closePanelBtn) {
-                    console.log('[ConnectorsPanel] Close button found on retry');
-                    closePanelBtn.addEventListener("click", (event) => {
-                        console.log('[ConnectorsPanel] Close button clicked (retry)!', event);
-                        event.preventDefault();
-                        event.stopPropagation();
-                        closeConnectionsModal();
-                    });
-                }
-            }, 100);
-        }        // Backdrop click to close
-        const backdrop = $("#aep-connections-backdrop");
-        if (backdrop) {
-            backdrop.addEventListener("click", () => {
-                console.log('[ConnectorsPanel] Backdrop clicked');
-                closeConnectionsModal();
-            });
-        }
-
-        // Escape key to close
-        document.addEventListener("keydown", (event) => {
-            if (event.key === "Escape" && state.isOpen) {
-                console.log('[ConnectorsPanel] Escape key pressed');
-                closeConnectionsModal();
-            }
-        });
-
-        // Search input
-        const searchInput = /** @type {HTMLInputElement | null} */ (
-            $("#aep-connectors-search")
-        );
-        if (searchInput) {
-            searchInput.addEventListener("input", () => {
-                state.search = searchInput.value;
-                renderConnectorList();
-            });
-        }
-
-        renderFilters();
-        renderConnectorList();
-        console.log('[ConnectorsPanel] UI initialization complete');
-    }
-
-    // Expose to other scripts (panel.js)
-    window.AEPConnections = {
-        open: openConnectionsModal,
-        close: closeConnectionsModal,
-        init: initConnectionsUI,
-    };
-
-    // Auto-init when DOM ready - for ConnectorsPanel, it's always visible
-    window.addEventListener("DOMContentLoaded", () => {
-        console.log('[ConnectorsPanel] DOMContentLoaded - initializing');
-        const container = $("#aep-connectors-container");
-        if (container) {
-            console.log('[ConnectorsPanel] Container found, initializing UI');
-            initConnectionsUI();
-            // Request initial status
-            requestConnectorStatus();
-        } else {
-            console.error('[ConnectorsPanel] Container not found!');
-        }
+      list.appendChild(row);
     });
+  }
+
+  function renderStatusBadge(c) {
+    switch (c.status) {
+      case "connected":
+        return `<span class="aep-connectors-pill aep-connectors-pill--connected">Connected</span>`;
+      case "coming_soon":
+        return `<span class="aep-connectors-pill aep-connectors-pill--soon">Coming soon</span>`;
+      case "error":
+        return `<span class="aep-connectors-pill aep-connectors-pill--error">Error</span>`;
+      case "not_connected":
+      default:
+        return `<span class="aep-connectors-pill aep-connectors-pill--disconnected">Not connected</span>`;
+    }
+  }
+
+  function renderActionButton(c) {
+    if (c.status === "coming_soon") {
+      return `<button class="aep-connectors-connect-btn" disabled>Preview</button>`;
+    }
+
+    if (c.status === "connected") {
+      return `<button class="aep-connectors-connect-btn" data-connector-id="${c.id}">Reconnect</button>`;
+    }
+
+    return `<button class="aep-connectors-connect-btn" data-connector-id="${c.id}">Connect</button>`;
+  }
+
+  // -----------------------------------------------------------------------
+  // Messages from extension host
+  // -----------------------------------------------------------------------
+
+  window.addEventListener("message", (event) => {
+    const message = event.data;
+    console.log("[AEP] Received message:", message.type, message.payload);
+    switch (message.type) {
+      case "status": {
+        /** @type {ConnectorStatusPayload} */
+        const payload = message.payload || {};
+        console.log("[AEP] Processing status payload:", payload);
+        const map = {};
+        (payload.items || []).forEach((s) => {
+          map[s.id] = s.status;
+        });
+        state.statuses = map;
+        state.offline = !!payload.offline;
+        console.log("[AEP] Updated state:", { offline: state.offline, statuses: state.statuses });
+        renderList();
+        break;
+      }
+      case "connectResult": {
+        const { connectorId, ok, error } = message.payload || {};
+        if (!ok && error) {
+          showToast(`Failed to connect ${connectorId}: ${error}`);
+        } else if (ok) {
+          showToast(`Connected ${connectorId}`);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  });
+
+  function showToast(text) {
+    const root = document.body;
+    const toast = document.createElement("div");
+    toast.className = "aep-toast";
+    toast.textContent = text;
+    root.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add("aep-toast--visible");
+    }, 10);
+    setTimeout(() => {
+      toast.classList.remove("aep-toast--visible");
+      setTimeout(() => root.removeChild(toast), 200);
+    }, 2500);
+  }
+
+  // Test function to verify webview can make HTTP requests
+  async function testHTTP() {
+    try {
+      console.log("[AEP] Testing direct HTTP access...");
+      const response = await fetch("http://127.0.0.1:8787/api/connectors/marketplace/status");
+      console.log("[AEP] Direct HTTP test result:", response.status, response.statusText);
+      if (response.ok) {
+        const data = await response.json();
+        console.log("[AEP] Direct HTTP success - offline:", data.offline, "items:", data.items?.length);
+        return data;
+      }
+    } catch (error) {
+      console.error("[AEP] Direct HTTP test failed:", error);
+    }
+    return null;
+  }
+
+  // -----------------------------------------------------------------------
+  // Init
+  // -----------------------------------------------------------------------
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    console.log("[AEP] DOM loaded, initializing connectors panel");
+    console.log("[AEP] Icon base available:", !!window.AEP_CONNECTOR_ICON_BASE);
+    console.log("[AEP] Icon base value:", window.AEP_CONNECTOR_ICON_BASE);
+
+    // Test direct HTTP access
+    const directResult = await testHTTP();
+    if (directResult && !directResult.offline) {
+      console.log("[AEP] Direct HTTP works! Using direct backend access.");
+      state.offline = false;
+      const map = {};
+      (directResult.items || []).forEach((s) => {
+        map[s.id] = s.status;
+      });
+      state.statuses = map;
+    }
+
+    createRoot();
+    renderList();
+    console.log("[AEP] Requesting status from extension");
+    vscode.postMessage({ type: "getStatus" });
+  });
 })();

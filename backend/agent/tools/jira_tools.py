@@ -1,175 +1,97 @@
 """
-Jira Tools
+Jira tools for NAVI agent.
 
-Operations for interacting with Jira issues.
-These integrate with existing Jira client.
+Returns ToolResult with sources for clickable links in VS Code extension.
 """
 
+from typing import Any, Dict, List
 import logging
-from typing import Dict, Any
+import structlog
 
 logger = logging.getLogger(__name__)
+jira_logger = structlog.get_logger(__name__)
 
 
-async def jira_fetch_issue(user_id: str, issue_key: str) -> Dict[str, Any]:
+async def list_assigned_issues_for_user(
+    context: Dict[str, Any], 
+    max_results: int = 20
+):
     """
-    Fetch Jira issue details.
+    List Jira issues assigned to the current NAVI user.
     
-    This is a read-only operation (no approval needed).
-    
-    Args:
-        user_id: User ID executing the tool
-        issue_key: Jira issue key (e.g., SCRUM-123)
-    
-    Returns:
-        {
-            "success": bool,
-            "message": str,
-            "issue": Dict with issue details,
-            "error": str (if failure)
-        }
+    Returns ToolResult with clickable Jira issue sources.
     """
-    logger.info(f"[TOOL:jira_fetch] user={user_id}, issue={issue_key}")
-    
+    jira_logger.info(
+        "jira_tools.list_assigned_issues_for_user.start",
+        max_results=max_results,
+    )
+
     try:
-        # Import Jira client
-        from backend.integrations.jira_client import JiraClient
+        from backend.services.jira import JiraService
+        from backend.core.db import get_db
         
-        # Get issue
-        jira_client = JiraClient()
-        if not jira_client:
-            return {
-                "success": False,
-                "message": "❌ Jira not configured",
-                "error": "Jira client not available"
-            }
+        # Get current user info from context
+        current_user_display_name = context.get("jira_assignee") or context.get("user_name")
         
-        issue = await jira_client.get_issue(issue_key)
+        issues: List[Dict[str, Any]] = []
         
-        if not issue:
-            return {
-                "success": False,
-                "message": f"❌ Issue not found: {issue_key}",
-                "error": "Issue not found"
-            }
+        # Use JiraService to get issues from database
+        db = next(get_db())
         
-        # Format response
-        summary = issue.get("fields", {}).get("summary", "No summary")
-        status = issue.get("fields", {}).get("status", {}).get("name", "Unknown")
-        assignee = issue.get("fields", {}).get("assignee", {}).get("displayName", "Unassigned")
-        
-        message = f"""📋 **{issue_key}**: {summary}
-**Status:** {status}
-**Assignee:** {assignee}"""
-        
-        return {
-            "success": True,
-            "message": message,
-            "issue": issue,
-            "issue_key": issue_key
-        }
-    
-    except Exception as e:
-        logger.error(f"[TOOL:jira_fetch] Error: {e}")
-        return {
-            "success": False,
-            "message": f"❌ Error fetching Jira issue: {str(e)}",
-            "error": str(e)
-        }
+        if current_user_display_name:
+            issues = JiraService.list_issues_for_assignee(
+                db, 
+                assignee=current_user_display_name, 
+                limit=max_results
+            )
+        else:
+            # Fallback: get recent issues
+            issues = JiraService.search_issues(db, limit=max_results)
 
-
-async def jira_comment(user_id: str, issue_key: str, comment: str) -> Dict[str, Any]:
-    """
-    Add comment to Jira issue.
-    
-    This is a write operation (requires user approval).
-    
-    Args:
-        user_id: User ID executing the tool
-        issue_key: Jira issue key (e.g., SCRUM-123)
-        comment: Comment text
-    
-    Returns:
-        {
-            "success": bool,
-            "message": str,
-            "error": str (if failure)
-        }
-    """
-    logger.info(f"[TOOL:jira_comment] user={user_id}, issue={issue_key}")
-    
-    try:
-        from backend.integrations.jira_client import JiraClient
-        
-        jira_client = JiraClient()
-        if not jira_client:
-            return {
-                "success": False,
-                "message": "❌ Jira not configured",
-                "error": "Jira client not available"
+        # Build clickable sources for VS Code extension
+        sources = [
+            {
+                "name": f"{issue['issue_key']}: {issue.get('summary', 'No title')[:50]}",
+                "type": "jira", 
+                "connector": "jira",
+                "url": issue["url"],
             }
+            for issue in issues
+            if issue.get("url")
+        ]
         
-        await jira_client.add_comment(issue_key, comment)
+        # Format output for display
+        if issues:
+            output = f"Found {len(issues)} Jira issues assigned to you:\n\n"
+            for issue in issues:
+                output += f"• **{issue['issue_key']}**: {issue.get('summary', 'No title')}\n"
+                output += f"  Status: {issue.get('status', 'Unknown')}\n"
+                if issue.get('url'):
+                    output += f"  Link: {issue['url']}\n"
+                output += "\n"
+        else:
+            output = "No Jira issues found assigned to you."
         
-        return {
-            "success": True,
-            "message": f"💬 Added comment to {issue_key}",
-            "issue_key": issue_key
-        }
-    
-    except Exception as e:
-        logger.error(f"[TOOL:jira_comment] Error: {e}")
-        return {
-            "success": False,
-            "message": f"❌ Error adding comment: {str(e)}",
-            "error": str(e)
-        }
-
-
-async def jira_transition(user_id: str, issue_key: str, status: str) -> Dict[str, Any]:
-    """
-    Transition Jira issue to new status.
-    
-    This is a write operation (requires user approval).
-    
-    Args:
-        user_id: User ID executing the tool
-        issue_key: Jira issue key (e.g., SCRUM-123)
-        status: Target status (e.g., "In Progress", "Done")
-    
-    Returns:
-        {
-            "success": bool,
-            "message": str,
-            "error": str (if failure)
-        }
-    """
-    logger.info(f"[TOOL:jira_transition] user={user_id}, issue={issue_key}, status={status}")
-    
-    try:
-        from backend.integrations.jira_client import JiraClient
+        jira_logger.info(
+            "jira_tools.list_assigned_issues_for_user.done",
+            count=len(issues),
+        )
         
-        jira_client = JiraClient()
-        if not jira_client:
-            return {
-                "success": False,
-                "message": "❌ Jira not configured",
-                "error": "Jira client not available"
-            }
+        # Import ToolResult here to avoid circular imports
+        from backend.agent.tool_executor import ToolResult
         
-        await jira_client.transition_issue(issue_key, status)
+        return ToolResult(
+            output=output,
+            sources=sources
+        )
         
-        return {
-            "success": True,
-            "message": f"🔄 Moved {issue_key} to '{status}'",
-            "issue_key": issue_key,
-            "new_status": status
-        }
-    
-    except Exception as e:
-        logger.error(f"[TOOL:jira_transition] Error: {e}")
-        return {
-            "success": False,
-            "message": f"❌ Error transitioning issue: {str(e)}",
-            "error": str(e)
-        }
+    except Exception as exc:
+        jira_logger.error("jira_tools.list_assigned_issues_for_user.error", error=str(exc))
+        
+        # Import ToolResult here to avoid circular imports
+        from backend.agent.tool_executor import ToolResult
+        
+        return ToolResult(
+            output=f"Error retrieving Jira issues: {str(exc)}",
+            sources=[]
+        )

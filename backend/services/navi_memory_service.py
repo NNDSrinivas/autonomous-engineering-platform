@@ -267,8 +267,8 @@ async def search_memory(
         # Generate embedding for query
         query_embedding = await generate_embedding(query)
         query_embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-
-        params["query_vec"] = query_embedding_str
+        # Inline the vector literal to avoid driver-specific param casting issues
+        query_vec_literal = f"'{query_embedding_str}'::vector"
 
         result = db.execute(
             text(
@@ -284,12 +284,12 @@ async def search_memory(
                     importance,
                     created_at,
                     updated_at,
-                    1 - (embedding_vec <=> :query_vec::vector) as similarity
+                    1 - (embedding_vec <=> {query_vec_literal}) as similarity
                 FROM navi_memory
                 WHERE user_id = :user_id
                   AND importance >= :min_importance
                   {category_filter}
-                ORDER BY embedding_vec <=> :query_vec::vector
+                ORDER BY embedding_vec <=> {query_vec_literal}
                 LIMIT :limit
             """
             ),

@@ -18,16 +18,6 @@ depends_on = None
 
 
 def upgrade():
-    # Drop tables if they exist (handles re-running migration)
-    try:
-        op.drop_table("session_event")
-    except Exception:
-        pass  # Table doesn't exist, continue
-    try:
-        op.drop_table("agent_note")
-    except Exception:
-        pass  # Table doesn't exist, continue
-
     # Create session_event table for episodic memory
     op.create_table(
         "session_event",

@@ -286,6 +286,25 @@ class IntentClassifier:
     # ------------------------------------------------------------------ #
 
     def _infer_family(self, text: str) -> IntentFamily:
+        # Check for simple greetings first (before other classifications)
+        if _contains_any(
+            text,
+            (
+                "hi",
+                "hello",
+                "hey",
+                "good morning",
+                "good afternoon",
+                "good evening",
+                "howdy",
+                "greetings",
+            ),
+        ):
+            # Only if it's a pure greeting with no other intent
+            words = text.strip().split()
+            if len(words) <= 3 and not any(work_word in text for work_word in ["jira", "code", "help", "task", "work", "project"]):
+                return IntentFamily.ENGINEERING  # Will be handled as GREET in kind
+        
         if _contains_any(
             text,
             (
@@ -324,6 +343,25 @@ class IntentClassifier:
     def _infer_kind(self, text: str, family: IntentFamily) -> IntentKind:
         # Engineering intents
         if family == IntentFamily.ENGINEERING:
+            # Check for greetings first
+            if _contains_any(
+                text,
+                (
+                    "hi",
+                    "hello",
+                    "hey",
+                    "good morning",
+                    "good afternoon",
+                    "good evening",
+                    "howdy",
+                    "greetings",
+                ),
+            ):
+                # Only if it's a pure greeting with minimal other words
+                words = text.strip().split()
+                if len(words) <= 3 and not any(work_word in text for work_word in ["jira", "code", "help", "task", "work", "project"]):
+                    return IntentKind.GREET
+            
             if _contains_any(
                 text,
                 (
@@ -471,6 +509,37 @@ class IntentClassifier:
 
         # Project management intents
         if family == IntentFamily.PROJECT_MANAGEMENT:
+            # Check for Jira "my issues" patterns
+            if _contains_any(
+                text,
+                (
+                    "list the jira tasks assigned to me",
+                    "show my jira tickets",
+                    "my jira issues",
+                    "jira tasks assigned to me", 
+                    "list my jira tasks",
+                    "show jira issues assigned to me",
+                    "what jira tickets am i currently on",
+                    "my open jira tickets",
+                ),
+            ):
+                return IntentKind.JIRA_LIST_MY_ISSUES
+
+            # Check for Slack channel summary patterns
+            if _contains_any(
+                text,
+                (
+                    "summarise today's standup channel",
+                    "summarize the standup slack channel",
+                    "what happened in #standup",
+                    "show recent messages from",
+                    "what did i miss in #",
+                    "summarize slack channel",
+                    "slack standup summary",
+                ),
+            ):
+                return IntentKind.SLACK_SUMMARIZE_CHANNEL
+
             if _contains_any(
                 text,
                 (

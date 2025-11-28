@@ -64,6 +64,15 @@ class Settings(BaseSettings):
     # Audit logging configuration
     enable_audit_logging: bool = True
 
+    # Webhook secrets (shared secrets for inbound webhooks)
+    JIRA_WEBHOOK_SECRET: str | None = None
+    GITHUB_WEBHOOK_SECRET: str | None = None
+    SLACK_WEBHOOK_SECRET: str | None = None
+    SLACK_SIGNING_SECRET: str | None = None
+    TEAMS_WEBHOOK_SECRET: str | None = None
+    DOCS_WEBHOOK_SECRET: str | None = None
+    CI_WEBHOOK_SECRET: str | None = None
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Get CORS origins as a list."""

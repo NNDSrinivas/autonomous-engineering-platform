@@ -27,6 +27,7 @@ from ..agent.intent_schema import (
     IntentFamily,
     IntentKind,
     IntentPriority,
+    Provider,
     AutonomyMode,
     RepoTarget,
     WorkflowHints,
@@ -58,8 +59,8 @@ class LLMIntentClassifier:
         *,
         router: Optional[LLMRouter] = None,
         heuristic: Optional[IntentClassifier] = None,
-        model: str = "claude-3.7-opus",
-        provider: str = "anthropic",
+        model: str = "gpt-4o-mini",
+        provider: str = "openai",
         temperature: float = 0.0,
     ):
         self.router = router or LLMRouter()
@@ -113,27 +114,33 @@ class LLMIntentClassifier:
         api_key: Optional[str],
         org_id: Optional[str],
     ) -> LLMResponse:
-
+        """
+        Call the LLM with the structured intent classification prompt.
+        
+        Uses the system prompt to instruct the LLM to return provider-aware
+        JSON classification for cross-app workflows.
+        """
         system_prompt = INTENT_SYSTEM_PROMPT
 
-        user_prompt = json.dumps(
-            {
-                "text": text,
-                "metadata": metadata,
-            },
-            indent=2,
-        )
+        # Build user prompt with message and any workspace context
+        user_prompt = f"User message: {text}"
+        if metadata:
+            user_prompt += f"\n\nWorkspace context: {json.dumps(metadata, indent=2)}"
 
-        return await self.router.run(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            model=self.model,
-            provider=self.provider,
-            api_key=api_key,
-            org_id=org_id,
-            temperature=self.temperature,
-            max_tokens=2048,
-        )
+        try:
+            return await self.router.run(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                model=self.model,
+                provider=self.provider,
+                api_key=api_key,
+                org_id=org_id,
+                temperature=self.temperature,
+                max_tokens=2048,
+            )
+        except Exception as e:
+            logger.error(f"[LLM-Intent] LLM call failed: {e}")
+            raise
 
     # ------------------------------------------------------------------
     # Stage 2 — Parse JSON
@@ -168,6 +175,7 @@ class LLMIntentClassifier:
         kind = _safe_enum(IntentKind, data.get("kind"))
         priority = _safe_enum(IntentPriority, data.get("priority"))
         autonomy = _safe_enum(AutonomyMode, data.get("autonomy_mode"))
+        provider = _safe_enum(Provider, data.get("provider"))
 
         # Ensure minimum fields
         if not family or not kind:
@@ -222,6 +230,11 @@ class LLMIntentClassifier:
             source=data.get("source", "chat"),
             slots=data.get("slots", {}),
             confidence=float(data.get("confidence", 0.85)),
+            # New provider-aware fields
+            provider=provider or Provider.GENERIC,
+            object_type=data.get("object_type"),
+            object_id=data.get("object_id"), 
+            filters=data.get("filters", {}),
             code_edit=code_edit,
             test_run=test_run,
             project_mgmt=project_mgmt,
@@ -253,42 +266,88 @@ def _safe_enum(enum_cls, value: Any):
 # ======================================================================
 
 INTENT_SYSTEM_PROMPT = """
-You are NAVI, the Autonomous Engineering Platform's Intent Classifier.
-Your job is to classify user messages into structured engineering intents.
+You are NAVI's Intent Classifier for cross-app autonomous workflows.
+
+Given a user message, classify it into a JSON object with provider-aware fields that work across Jira, Slack, GitHub, Teams, Zoom, Jenkins, and other services.
 
 YOU MUST ALWAYS RETURN VALID JSON IN THIS EXACT FORMAT:
 
 {
-  "family": "...",
-  "kind": "...",
-  "priority": "...",
-  "autonomy_mode": "...",
-  "confidence": 0.0,
+  "provider": "jira | slack | github | teams | zoom | confluence | notion | linear | asana | jenkins | generic",
+  "family": "ENGINEERING | PROJECT_MANAGEMENT | AUTONOMOUS_ORCHESTRATION",
+  "kind": "LIST_MY_ITEMS | LIST_ITEMS | SUMMARIZE_CHANNEL | SHOW_ITEM_DETAILS | IMPLEMENT | FIX | CREATE | DEPLOY | SYNC | CONFIGURE | SEARCH | EXPLAIN | GENERIC",
+  "object_type": "issue | pr | channel | meeting | pipeline | doc | repo | code | generic | null",
+  "object_id": "specific ID if mentioned (JIRA-123, #standup, PR-456) or null",
+  "filters": {
+    "status": "open/closed/in-progress (if mentioned)",
+    "assignee": "username (if mentioned)",
+    "project": "project key (if mentioned)",
+    "limit": "number (if mentioned)",
+    "timeframe": "today/this week/last 7 days (if mentioned)"
+  },
+  "priority": "normal | high | critical",
+  "autonomy_mode": "assisted",
+  "confidence": 0.8,
   "slots": {},
-  "code_edit": {},
-  "test_run": {},
-  "project_mgmt": {},
   "workflow": {
-    "max_steps": 0,
+    "max_steps": 1,
     "auto_run_tests": false,
     "allow_cross_repo_changes": false,
     "allow_long_running": false
   }
 }
 
-Rules:
-- Do NOT insert text outside JSON.
-- Do NOT add commentary or explanations.
-- Classify precisely.
-- Use the strongest engineering-analysis ability.
-- If message describes code changes → use MODIFY_CODE or IMPLEMENT_FEATURE.
-- If message is about bugs → FIX_BUG.
-- If message asks to run tests → RUN_TESTS.
-- If message asks for JIRA/PR/story → PROJECT_MANAGEMENT family.
-- Use HIGH or CRITICAL priority only when clearly justified.
-- autonomy_mode:
-    - "AUTONOMOUS_SESSION" for "just do it", "don't ask", "fully automate".
-    - "SINGLE_STEP" for one-off commands.
-    - "ASSISTED" for normal interaction.
-    - "BATCH" for bulk and multi-repo changes.
+CLASSIFICATION RULES:
+
+🔹 PROVIDER (which external system):
+- "jira": jira tickets/issues/stories/boards/sprints ("my jira tasks", "jira issues assigned to me")
+- "slack": slack channels/messages/threads/teams ("slack channel", "#standup", "what happened in slack")
+- "github": repos/PRs/issues/actions/releases ("github issues", "my pull requests", "github repo")
+- "teams": microsoft teams channels/meetings/chats ("teams meeting", "teams channel")
+- "zoom": meetings/recordings/participants ("zoom meeting", "zoom recordings")
+- "confluence": pages/spaces/documentation ("confluence page", "wiki", "documentation")
+- "jenkins": builds/pipelines/jobs ("jenkins build", "CI pipeline", "build status")
+- "generic": code/files/general engineering ("refactor code", "debug this", "explain function")
+
+🔹 FAMILY (broad category):
+- "PROJECT_MANAGEMENT": task management, issue tracking, project status (Jira issues, GitHub issues, project boards)
+- "ENGINEERING": code, debugging, testing, builds, development work (code changes, fixes, implementations)
+- "AUTONOMOUS_ORCHESTRATION": multi-step workflows, automation, complex orchestration
+
+🔹 KIND (specific action - use these exact values):
+- "LIST_MY_ITEMS": "list my jira tickets", "show my github issues", "my assigned tasks"
+- "SUMMARIZE_CHANNEL": "summarize slack channel", "what happened in #standup", "teams channel summary"
+- "SHOW_ITEM_DETAILS": "show details of JIRA-123", "explain PR-456", "what is issue XYZ about"
+- "IMPLEMENT": "implement feature", "add functionality", "build this", "create new code"
+- "FIX": "fix bug", "debug error", "resolve issue", "patch problem"
+- "CREATE": "create file", "generate code", "make new component"
+- "EXPLAIN": "explain code", "what does this do", "help me understand"
+- "SEARCH": "find code", "search for", "locate function"
+- "GENERIC": fallback for unclear requests
+
+🔹 OBJECT_TYPE (what kind of object):
+- "issue": Jira issues, GitHub issues, Linear tasks, Asana tasks
+- "pr": Pull requests, merge requests
+- "channel": Slack channels, Teams channels, Discord channels
+- "meeting": Zoom meetings, Teams meetings, calendar events
+- "pipeline": Jenkins builds, CI/CD pipelines, GitHub Actions
+- "doc": Confluence pages, Notion pages, documentation, wikis
+- "repo": Git repositories, codebases
+- "code": Source code, functions, classes, files
+
+EXAMPLES:
+
+"list my jira tasks assigned to me"
+→ {"provider": "jira", "family": "PROJECT_MANAGEMENT", "kind": "LIST_MY_ITEMS", "object_type": "issue", "filters": {"assignee": "me"}}
+
+"summarize what happened in the #standup slack channel today"
+→ {"provider": "slack", "family": "PROJECT_MANAGEMENT", "kind": "SUMMARIZE_CHANNEL", "object_type": "channel", "object_id": "standup", "filters": {"timeframe": "today"}}
+
+"show me my open github pull requests"
+→ {"provider": "github", "family": "ENGINEERING", "kind": "LIST_MY_ITEMS", "object_type": "pr", "filters": {"status": "open", "assignee": "me"}}
+
+"fix the authentication bug in login.js"
+→ {"provider": "generic", "family": "ENGINEERING", "kind": "FIX", "object_type": "code", "filters": {"file": "login.js", "area": "authentication"}}
+
+Return ONLY the JSON object. No explanations or extra text.
 """

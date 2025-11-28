@@ -109,6 +109,7 @@ async def retrieve_workspace_context(
         context["recent_files"] = await _scan_small_files(workspace_root)
         context["git_branch"] = await _get_git_branch(workspace_root)
         context["file_tree"] = await _build_file_tree_summary(workspace_root)
+        context["project_info"] = await _analyze_project_info(workspace_root)
     
     return context
 
@@ -249,3 +250,78 @@ async def _build_file_tree_summary(root: str, max_depth: int = 2) -> Dict[str, A
     except Exception as e:
         logger.error(f"[WORKSPACE] Error building file tree: {e}")
         return {}
+
+
+async def _analyze_project_info(root: str) -> Dict[str, Any]:
+    """
+    Analyze the project to determine its type, name, and description.
+    This helps NAVI understand what project the user is actually working on.
+    """
+    project_info = {
+        "name": os.path.basename(root),
+        "type": "unknown",
+        "description": None,
+        "framework": None,
+        "language": None
+    }
+    
+    try:
+        # Check for common project files and extract info
+        config_files = {
+            "package.json": "nodejs",
+            "pom.xml": "java",
+            "build.gradle": "java", 
+            "requirements.txt": "python",
+            "pyproject.toml": "python",
+            "Cargo.toml": "rust",
+            "go.mod": "go",
+            "composer.json": "php",
+            ".csproj": "csharp"
+        }
+        
+        for config_file, lang in config_files.items():
+            config_path = os.path.join(root, config_file)
+            if os.path.exists(config_path):
+                project_info["language"] = lang
+                
+                # Try to extract project name and description
+                if config_file == "package.json":
+                    try:
+                        import json
+                        with open(config_path, "r", encoding="utf-8") as f:
+                            pkg = json.load(f)
+                            project_info["name"] = pkg.get("name", project_info["name"])
+                            project_info["description"] = pkg.get("description")
+                            project_info["type"] = "nodejs"
+                            if "react" in str(pkg.get("dependencies", {})) or "next" in str(pkg.get("dependencies", {})):
+                                project_info["framework"] = "react"
+                            elif "vue" in str(pkg.get("dependencies", {})):
+                                project_info["framework"] = "vue"
+                            elif "angular" in str(pkg.get("dependencies", {})):
+                                project_info["framework"] = "angular"
+                    except:
+                        pass
+                
+                break
+        
+        # Check for README.md for additional description
+        readme_path = os.path.join(root, "README.md")
+        if os.path.exists(readme_path) and not project_info["description"]:
+            try:
+                with open(readme_path, "r", encoding="utf-8") as f:
+                    readme_content = f.read()[:500]  # First 500 chars
+                    lines = readme_content.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if line and not line.startswith('#') and len(line) > 20:
+                            project_info["description"] = line
+                            break
+            except:
+                pass
+        
+        logger.info(f"[WORKSPACE] Project analysis: {project_info}")
+        
+    except Exception as e:
+        logger.error(f"[WORKSPACE] Error analyzing project: {e}")
+    
+    return project_info

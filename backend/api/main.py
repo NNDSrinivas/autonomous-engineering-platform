@@ -69,6 +69,7 @@ from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
 from .routers.rate_limit_admin import router as rate_limit_admin_router
+from .routers.github_webhook import router as github_webhook_router
 
 # VS Code Extension API endpoints
 from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
@@ -83,6 +84,15 @@ from .internal.router import router as internal_router  # System info and diagno
 from ..core.realtime_engine import presence as presence_lifecycle
 from ..core.obs.obs_logging import logger
 
+from .routers.jira_webhook import router as jira_webhook_router
+from .routers.github_webhook import router as github_webhook_router
+from .routers.slack_webhook import router as slack_webhook_router
+from .routers.teams_webhook import router as teams_webhook_router
+from .routers.docs_webhook import router as docs_webhook_router
+from .routers.ci_webhook import router as ci_webhook_router
+from .routers.debug_info import router as debug_info_router
+from .routers.debug_context import router as debug_context_router
+from .routers.chat_history import router as chat_history_router
 # Auth0 JWT validation routes
 from ..auth.routes import router as auth_routes_router
 
@@ -179,6 +189,15 @@ app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(events_router, prefix="/api")  # Universal event ingestion
 app.include_router(internal_router, prefix="/api")  # System info and diagnostics
+app.include_router(jira_webhook_router)  # Jira webhook ingestion
+app.include_router(github_webhook_router)  # GitHub webhook ingestion
+app.include_router(slack_webhook_router)  # Slack webhook ingestion
+app.include_router(teams_webhook_router)  # Teams webhook ingestion
+app.include_router(docs_webhook_router)  # Docs ingestion webhook
+app.include_router(ci_webhook_router)  # CI ingestion webhook
+app.include_router(debug_info_router)  # Debug context/ingestion info
+app.include_router(chat_history_router)  # Chat history endpoints
+app.include_router(debug_context_router)  # Debug org/user/context info
 
 app.include_router(oauth_device_auth0_router)
 app.include_router(connectors_router)

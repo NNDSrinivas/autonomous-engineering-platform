@@ -17,7 +17,7 @@ from .edit_file import edit_file
 from .apply_diff import apply_diff
 from .search_repo import search_repo
 from .run_command import run_command
-from .jira_tools import jira_comment, jira_transition, jira_fetch_issue
+from .jira_tools import list_assigned_issues_for_user
 from .github_tools import github_create_pr, github_create_branch
 
 __all__ = [
@@ -27,9 +27,7 @@ __all__ = [
     "apply_diff",
     "search_repo",
     "run_command",
-    "jira_comment",
-    "jira_transition",
-    "jira_fetch_issue",
+    "list_assigned_issues_for_user",
     "github_create_pr",
     "github_create_branch",
 ]

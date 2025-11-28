@@ -73,8 +73,8 @@ class NaviWebviewProvider {
     }
     getBackendBaseUrl() {
         const config = vscode.workspace.getConfiguration('aep');
-        const raw = (config.get('navi.backendUrl') || 'http://127.0.0.1:8787/api/navi/chat').trim();
-        // Turn http://127.0.0.1:8001/api/navi/chat → http://127.0.0.1:8001
+        const raw = (config.get('navi.backendUrl') || 'http://127.0.0.1:8000/api/navi/chat').trim();
+        // Turn http://127.0.0.1:8000/api/navi/chat → http://127.0.0.1:8000
         try {
             const url = new URL(raw);
             url.pathname = url.pathname.replace(/\/api\/navi\/chat\/?$/, '');
@@ -83,7 +83,7 @@ class NaviWebviewProvider {
             return url.toString().replace(/\/$/, '');
         }
         catch {
-            return 'http://127.0.0.1:8001';
+            return 'http://127.0.0.1:8000';
         }
     }
     resolveWebviewView(webviewView, _context, _token) {
@@ -348,10 +348,10 @@ class NaviWebviewProvider {
                         try {
                             // Open the Connectors Hub
                             const config = vscode.workspace.getConfiguration('aep');
-                            const backendUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8001';
+                            const backendUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8787';
                             const cleanBaseUrl = backendUrl.replace(/\/api\/navi\/chat$/, '');
                             console.log('[AEP] Opening ConnectorsPanel with baseUrl:', cleanBaseUrl);
-                            connectorsPanel_1.ConnectorsPanel.createOrShow(this._extensionUri, cleanBaseUrl, this._context);
+                            connectorsPanel_1.ConnectorsPanel.createOrShow(this._extensionUri);
                             console.log('[AEP] ConnectorsPanel.createOrShow completed');
                         }
                         catch (err) {
@@ -364,7 +364,9 @@ class NaviWebviewProvider {
                         // Proxy connector status request to backend
                         try {
                             const baseUrl = this.getBackendBaseUrl();
-                            const response = await fetch(`${baseUrl}/api/connectors/status`);
+                            const response = await fetch(`${baseUrl}/api/connectors/status`, {
+                                headers: { 'X-Org-Id': 'org_aep_platform_4538597546e6fec6' }
+                            });
                             if (!response.ok) {
                                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                             }
@@ -394,7 +396,7 @@ class NaviWebviewProvider {
                             });
                             const response = await fetch(endpoint, {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', 'X-Org-Id': 'org_aep_platform_4538597546e6fec6' },
                                 body: JSON.stringify({
                                     base_url: msg.baseUrl,
                                     email: msg.email || undefined,
@@ -429,7 +431,7 @@ class NaviWebviewProvider {
                                 error: err?.message || String(err),
                             });
                             // Also show a user-friendly error message
-                            vscode.window.showErrorMessage(`NAVI: Jira connection failed: ${err?.message || 'fetch failed'}. Check that backend is running on http://127.0.0.1:8001`);
+                            vscode.window.showErrorMessage(`NAVI: Jira connection failed: ${err?.message || 'fetch failed'}. Check that backend is running on http://127.0.0.1:8000`);
                         }
                         break;
                     }
@@ -448,7 +450,7 @@ class NaviWebviewProvider {
                             console.log('[AEP] Jira sync-now – calling enhanced endpoint', endpoint);
                             const response = await fetch(endpoint, {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', 'X-Org-Id': 'org_aep_platform_4538597546e6fec6' },
                                 body: JSON.stringify({
                                     user_id: 'default_user',
                                     max_issues: 20
@@ -690,7 +692,7 @@ class NaviWebviewProvider {
     async triggerBackgroundJiraSync() {
         // Non-blocking background sync of Jira tasks
         const config = vscode.workspace.getConfiguration('aep');
-        const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8001';
+        const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8000';
         const userId = config.get('navi.userId') || 'srinivas@example.com';
         const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
         const syncUrl = `${cleanBaseUrl}/api/org/sync/jira`;
@@ -730,7 +732,7 @@ class NaviWebviewProvider {
         }
         try {
             const config = vscode.workspace.getConfiguration('aep');
-            const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8001';
+            const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8000';
             const userId = config.get('navi.userId') || 'srinivas@example.com';
             // Remove /api/navi/chat suffix if present
             const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
@@ -764,7 +766,7 @@ class NaviWebviewProvider {
         }
         try {
             const config = vscode.workspace.getConfiguration('aep');
-            const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8001';
+            const baseUrl = config.get('navi.backendUrl') || 'http://127.0.0.1:8000';
             const userId = config.get('navi.userId') || 'srinivas@example.com';
             // Remove /api/navi/chat suffix if present
             const cleanBaseUrl = baseUrl.replace(/\/api\/navi\/chat$/, '');
@@ -813,12 +815,15 @@ class NaviWebviewProvider {
         const messageWithContext = this.buildMessageWithAttachments(latestUserText, attachments);
         // Perfect Workspace Context Collection
         const workspaceContext = await collectWorkspaceContext();
+        // NEW: detect workspace root from VS Code
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? undefined;
         const payload = {
             message: messageWithContext,
             model: modelId || this._currentModelId,
             mode: modeId || this._currentModeId,
             user_id: 'default_user',
             workspace: workspaceContext, // 🚀 Perfect workspace awareness
+            workspace_root: workspaceRoot, // NEW: VS Code workspace root path
             // Map attachment kinds to match backend expectations
             attachments: (attachments ?? []).map(att => ({
                 ...att,
@@ -845,7 +850,8 @@ class NaviWebviewProvider {
             response = await fetch(backendUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Org-Id': 'org_aep_platform_4538597546e6fec6'
                 },
                 body: JSON.stringify(payload)
             });
@@ -893,6 +899,7 @@ class NaviWebviewProvider {
                 this._messages.push({ role: 'assistant', content: content });
                 // PR-6C: Handle agent actions if present
                 const messageId = `msg-${Date.now()}`;
+                const sources = json.sources || [];
                 if (json.actions && json.actions.length > 0) {
                     this._agentActions.set(messageId, { actions: json.actions });
                     this.postToWebview({
@@ -900,6 +907,7 @@ class NaviWebviewProvider {
                         text: content,
                         messageId: messageId,
                         actions: json.actions,
+                        sources: sources,
                         agentRun: json.agentRun || null
                     });
                 }
@@ -907,6 +915,7 @@ class NaviWebviewProvider {
                     this.postToWebview({
                         type: 'botMessage',
                         text: content,
+                        sources: sources,
                         agentRun: json.agentRun || null
                     });
                 }
@@ -1599,7 +1608,7 @@ class NaviWebviewProvider {
         const nonce = getNonce();
         // Determine backend base URL for webview scripts (Connectors, etc.)
         const cfg = vscode.workspace.getConfiguration('aep');
-        const rawBase = cfg.get('navi.backendUrl') || 'http://127.0.0.1:8001';
+        const rawBase = cfg.get('navi.backendUrl') || 'http://127.0.0.1:8000';
         const backendBaseUrl = rawBase.replace(/\/$/, '');
         // Generate icons URI for connector icons
         const iconsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'icons'));
@@ -1618,38 +1627,12 @@ class NaviWebviewProvider {
   <body>
     <div id="root" data-mascot-src="${naviLogoUri}"></div>
     <script nonce="${nonce}">
+      window.AEP_BACKEND_BASE_URL = ${JSON.stringify(backendBaseUrl)};
       window.AEP_CONFIG = {
         backendBaseUrl: ${JSON.stringify(backendBaseUrl)},
         iconsUri: ${JSON.stringify(iconsUri.toString())}
       };
     </script>
-    <!-- Backdrop -->
-    <div id="aep-connections-backdrop" class="aep-backdrop"></div>
-
-    <!-- Connections Modal -->
-    <div id="aep-connections-modal" class="aep-modal">
-      <div class="aep-modal-header">
-        <div>
-          <h2 class="aep-modal-title">Connections</h2>
-          <p class="aep-modal-subtitle">
-            Connect Jira, Slack, Teams, Zoom, GitHub, Jenkins and more so NAVI can
-            use full organizational context.
-          </p>
-        </div>
-        <button id="aep-connections-close" class="aep-icon-button" title="Close">✕</button>
-      </div>
-
-      <div class="aep-modal-toolbar">
-        <input
-          id="aep-connectors-search"
-          class="aep-input aep-search"
-          placeholder="Search connectors…"
-        />
-        <div id="aep-connectors-filters" class="aep-chip-row"></div>
-      </div>
-
-      <div id="aep-connectors-list" class="aep-connectors-list"></div>
-    </div>
 
     <script nonce="${nonce}" src="${scriptUri}"></script>
     <script nonce="${nonce}" src="${connectorsScriptUri}"></script>

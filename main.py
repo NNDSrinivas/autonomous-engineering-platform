@@ -43,6 +43,9 @@ from backend.api.routers.jira_integration import (  # noqa: E402
 from backend.api.routers.oauth_device import (  # noqa: E402
     router as oauth_device_router,
 )
+from backend.api.routers.connectors import (  # noqa: E402
+    router as connectors_router,
+)
 from backend.api.navi_search import (  # noqa: E402
     router as navi_search_router,
 )
@@ -54,6 +57,20 @@ from backend.api.navi import (  # noqa: E402
 )
 from backend.api.org_sync import (  # noqa: E402
     router as org_sync_router,
+)
+
+# Webhook routers
+from backend.api.routers.jira_webhook import (  # noqa: E402
+    router as jira_webhook_router,
+)
+from backend.api.routers.github_webhook import (  # noqa: E402
+    router as github_webhook_router,
+)
+from backend.api.routers.slack_webhook import (  # noqa: E402
+    router as slack_webhook_router,
+)
+from backend.api.routers.teams_webhook import (  # noqa: E402
+    router as teams_webhook_router,
 )
 
 # Add project root to path
@@ -109,6 +126,7 @@ app.include_router(autonomous_coding_router, prefix="/api")
 # level (e.g., /oauth/device/start) rather than nesting them under /api
 # (e.g., /api/oauth/device/start) for better OAuth standards compatibility
 app.include_router(oauth_device_router)
+app.include_router(connectors_router)
 app.include_router(jira_integration_router, prefix="/api")
 app.include_router(agent_planning_router, prefix="/api")
 app.include_router(ai_codegen_router, prefix="/api")
@@ -120,13 +138,20 @@ app.include_router(
     org_sync_router
 )  # Step 3+4: Org memory sync (Jira/Confluence/Slack/Teams/Zoom)
 
-# CORS middleware
+# Webhook routers for external integrations
+app.include_router(jira_webhook_router)  # Jira webhook ingestion
+app.include_router(github_webhook_router)  # GitHub webhook ingestion
+app.include_router(slack_webhook_router)  # Slack webhook ingestion
+app.include_router(teams_webhook_router)  # Teams webhook ingestion
+
+# CORS middleware - Allow VS Code webviews and other origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins including vscode-webview://
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_origin_regex=r"^(https?://.*|vscode-webview://.*|file://.*)",
 )
 
 

@@ -33,7 +33,7 @@ def search_messages(
 ) -> List[Dict[str, Any]]:
     """
     Search Teams messages by query text (for unified memory retriever).
-    
+
     Returns normalized message format:
     {
         "id": str,

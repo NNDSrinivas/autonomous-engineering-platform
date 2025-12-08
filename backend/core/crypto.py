@@ -8,6 +8,7 @@ from cryptography.fernet import Fernet
 # Import boto3 only when needed for production
 try:
     import boto3
+
     HAS_BOTO3 = True
 except ImportError:
     boto3 = None
@@ -31,7 +32,7 @@ def _get_dev_key() -> str:
     dev_key = os.environ.get("DEV_ENCRYPTION_KEY")
     if dev_key:
         return dev_key
-    
+
     # Generate a fixed URL-safe base64 key for development (not secure, but consistent)
     # This is a proper 32-byte key encoded in URL-safe base64 format for Fernet
     return "Uqktv94Z9tHa5WsVKJVtBsc-QylZWQ4wTg3_sXekPaA="  # Fixed Fernet-compatible key
@@ -74,9 +75,11 @@ def encrypt_token(plaintext_token: str) -> str:
     key_id = os.environ.get("TOKEN_ENCRYPTION_KEY_ID")
     if not key_id:
         raise TokenEncryptionError("TOKEN_ENCRYPTION_KEY_ID is not set")
-    
+
     if not HAS_BOTO3:
-        raise TokenEncryptionError("boto3 is required for production encryption but not installed")
+        raise TokenEncryptionError(
+            "boto3 is required for production encryption but not installed"
+        )
 
     kms = boto3.client("kms")
     try:
@@ -106,18 +109,18 @@ def decrypt_token(encrypted_blob: str) -> str:
     """
     try:
         parts = _decode_parts(encrypted_blob)
-        
+
         # Check if it's a development token
         if len(parts) == 2 and parts[0] == b"dev":
             if not _is_dev_mode():
                 raise TokenEncryptionError("Development token used in production mode")
-            
+
             key = _get_dev_key()
             f = Fernet(key.encode())
             encrypted_token = parts[1]
             plaintext = f.decrypt(encrypted_token)
             return plaintext.decode()
-        
+
         # Production mode KMS decryption
         if len(parts) != 4:
             raise TokenEncryptionError("unexpected encrypted token parts")
@@ -125,12 +128,14 @@ def decrypt_token(encrypted_blob: str) -> str:
         key_id = os.environ.get("TOKEN_ENCRYPTION_KEY_ID")
         if not key_id:
             raise TokenEncryptionError("TOKEN_ENCRYPTION_KEY_ID is not set")
-        
+
         if not HAS_BOTO3:
-            raise TokenEncryptionError("boto3 is required for production encryption but not installed")
+            raise TokenEncryptionError(
+                "boto3 is required for production encryption but not installed"
+            )
 
         kms = boto3.client("kms")
-        
+
         # version = parts[0]
         encrypted_data_key = base64.b64decode(parts[1])
         nonce = base64.b64decode(parts[2])

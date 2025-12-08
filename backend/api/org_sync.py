@@ -193,12 +193,13 @@ async def sync_jira(req: JiraSyncRequest, db: Session = Depends(get_db)):
         # Add snapshot timestamp to all newly synced memories
         from datetime import datetime, timezone
         from sqlalchemy import text
-        
+
         snapshot_ts = datetime.now(timezone.utc).isoformat()
-        
+
         # Update all newly created Jira memories with sync timestamp
         db.execute(
-            text("""
+            text(
+                """
                 UPDATE navi_memory
                 SET meta_json = JSON_SET(
                     COALESCE(meta_json, '{}'),
@@ -209,8 +210,9 @@ async def sync_jira(req: JiraSyncRequest, db: Session = Depends(get_db)):
                   AND category = 'task'
                   AND CAST(meta_json AS TEXT) LIKE '%\"source\": \"jira\"%'
                   AND updated_at >= datetime('now', '-5 minutes')
-            """),
-            {"user_id": req.user_id.strip(), "synced_at": snapshot_ts}
+            """
+            ),
+            {"user_id": req.user_id.strip(), "synced_at": snapshot_ts},
         )
         db.commit()
 
@@ -219,7 +221,7 @@ async def sync_jira(req: JiraSyncRequest, db: Session = Depends(get_db)):
             total=len(keys),
             user_id=req.user_id,
             snapshot_ts=snapshot_ts,
-            success=True
+            success=True,
         )
 
     except RuntimeError as e:

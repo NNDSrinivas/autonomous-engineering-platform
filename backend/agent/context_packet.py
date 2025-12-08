@@ -89,7 +89,6 @@ async def build_context_packet(
     - Add webhook-driven cache invalidation + on-demand refresh
     """
 
-
     cache_key = f"context_packet:{org_id}:{task_key}" if use_cache and org_id else None
 
     async def _build() -> Dict[str, Any]:
@@ -114,7 +113,10 @@ async def build_context_packet(
                 .first()
             )
         except Exception as exc:  # defensive: avoid breaking the agent on query errors
-            logger.warning("context_packet.jira_lookup_failed", extra={"task_key": task_key, "error": str(exc)})
+            logger.warning(
+                "context_packet.jira_lookup_failed",
+                extra={"task_key": task_key, "error": str(exc)},
+            )
             jira_row = None
 
         if jira_row:
@@ -170,7 +172,9 @@ def invalidate_context_packet_cache(task_key: str, org_id: Optional[str]) -> Non
     if not org_id:
         return
     key = f"context_packet:{org_id}:{task_key}"
-    logger.info("context_packet.invalidate", extra={"task_key": task_key, "org_id": org_id})
+    logger.info(
+        "context_packet.invalidate", extra={"task_key": task_key, "org_id": org_id}
+    )
     try:
         loop = asyncio.get_running_loop()
         loop.create_task(cache_service.del_key(key))
@@ -178,7 +182,10 @@ def invalidate_context_packet_cache(task_key: str, org_id: Optional[str]) -> Non
         try:
             asyncio.run(cache_service.del_key(key))
         except Exception:
-            logger.warning("context_packet.invalidate_failed", extra={"task_key": task_key, "org_id": org_id})
+            logger.warning(
+                "context_packet.invalidate_failed",
+                extra={"task_key": task_key, "org_id": org_id},
+            )
 
 
 def _packet_from_dict(data: Dict[str, Any]) -> ContextPacket:
@@ -247,7 +254,7 @@ def _hydrate_slack_messages(
                     connector="slack",
                     url=None,
                     meta={"channel": r["channel"], "ts": r["message_ts"]},
-            )
+                )
             )
 
 

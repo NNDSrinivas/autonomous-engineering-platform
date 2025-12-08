@@ -52,7 +52,7 @@ async def slack_fetch_recent_channel_messages(
         "channel_filter": channel_name,
         "message_count": len(messages),
         "messages": messages,
-        "summary": f"Found {len(messages)} recent Slack messages"
+        "summary": f"Found {len(messages)} recent Slack messages",
     }
 
 
@@ -81,5 +81,5 @@ async def slack_search_user_messages(
         "user_id": ctx.user_id,
         "message_count": len(messages),
         "messages": messages,
-        "summary": f"Retrieved {len(messages)} recent Slack messages for user {ctx.user_id}"
+        "summary": f"Retrieved {len(messages)} recent Slack messages for user {ctx.user_id}",
     }

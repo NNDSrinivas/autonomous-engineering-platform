@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ToolResult:
     """Normalized result from any tool."""
+
     output: Any
     sources: List[Dict[str, Any]]
 
@@ -56,6 +57,7 @@ def _normalize_tool_result(raw: Any) -> ToolResult:
     # default
     return ToolResult(output=raw, sources=[])
 
+
 # Where the repo lives on disk.
 # You can override this per machine:
 #   export NAVI_WORKSPACE_ROOT=/Users/you/path/to/aep
@@ -73,19 +75,19 @@ async def execute_tool_with_sources(
     workspace: Optional[Dict[str, Any]] = None,
     context_packet: Optional[Dict[str, Any]] = None,
 ) -> ToolResult:
-  """
-  New entrypoint that returns normalized ToolResult with sources.
-  """
-  raw_result = await execute_tool(
-      user_id,
-      tool_name,
-      args,
-      db=db,
-      attachments=attachments,
-      workspace=workspace,
-      context_packet=context_packet,
-  )
-  return _normalize_tool_result(raw_result)
+    """
+    New entrypoint that returns normalized ToolResult with sources.
+    """
+    raw_result = await execute_tool(
+        user_id,
+        tool_name,
+        args,
+        db=db,
+        attachments=attachments,
+        workspace=workspace,
+        context_packet=context_packet,
+    )
+    return _normalize_tool_result(raw_result)
 
 
 async def execute_tool(
@@ -97,378 +99,393 @@ async def execute_tool(
     workspace: Optional[Dict[str, Any]] = None,
     context_packet: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-  """
-  Main entrypoint – dispatch tool calls by name.
+    """
+    Main entrypoint – dispatch tool calls by name.
 
-  Returns a dict that always has a 'tool' key and a 'text' field
-  that can be fed to the LLM.
-  """
-  logger.info(
-      "[TOOLS] execute_tool user=%s tool=%s args=%s",
-      user_id,
-      tool_name,
-      json.dumps(args, default=str)[:300],
-  )
+    Returns a dict that always has a 'tool' key and a 'text' field
+    that can be fed to the LLM.
+    """
+    logger.info(
+        "[TOOLS] execute_tool user=%s tool=%s args=%s",
+        user_id,
+        tool_name,
+        json.dumps(args, default=str)[:300],
+    )
 
-  # Context packet passthrough -------------------------------------------------
-  if tool_name == "context.present_packet":
-    packet = context_packet or args.get("context_packet")
-    if not packet:
-      return {
-          "tool": tool_name,
-          "text": "No context packet available to present.",
-          "sources": [],
-      }
+    # Context packet passthrough -------------------------------------------------
+    if tool_name == "context.present_packet":
+        packet = context_packet or args.get("context_packet")
+        if not packet:
+            return {
+                "tool": tool_name,
+                "text": "No context packet available to present.",
+                "sources": [],
+            }
 
-    sources = packet.get("sources") or []
+        sources = packet.get("sources") or []
+        return {
+            "tool": tool_name,
+            "text": "Here is the live context packet for this task.",
+            "packet": packet,
+            "sources": sources,
+        }
+
+    # Workspace-safe tools ------------------------------------------------------
+    if tool_name == "repo.inspect":
+        # Enrich args with context for VS Code workspace integration
+        # Basic guard: require workspace_root to avoid inspecting the wrong repo
+        ws = workspace or {}
+        if not ws.get("workspace_root"):
+            return {
+                "tool": "repo.inspect",
+                "text": (
+                    "I don’t have your workspace path from the extension. "
+                    "Open the folder you want me to inspect in VS Code and retry."
+                ),
+            }
+        enriched_args = {
+            **args,
+            "user_id": user_id,
+            "attachments": attachments,
+            "workspace": ws,
+        }
+        return await _tool_repo_inspect(enriched_args)
+
+    if tool_name == "code.read_files":
+        return await _tool_code_read_files(args)
+
+    if tool_name == "code.search":
+        return await _tool_code_search(args)
+
+    # Jira integration tools --------------------------------------------------------
+    if tool_name == "jira.list_assigned_issues_for_user":
+        return await _tool_jira_list_assigned_issues(user_id, args, db)
+    if tool_name == "jira.add_comment":
+        return await _tool_jira_add_comment(user_id, args, db)
+    if tool_name == "jira.transition_issue":
+        return await _tool_jira_transition_issue(user_id, args, db)
+    if tool_name == "jira.assign_issue":
+        return await _tool_jira_assign_issue(user_id, args, db)
+    # GitHub write operations (approval-gated) --------------------------------------
+    if tool_name == "github.comment":
+        return await _tool_github_comment(user_id, args, db)
+    if tool_name == "github.set_label":
+        return await _tool_github_set_label(user_id, args, db)
+    if tool_name == "github.rerun_check":
+        return await _tool_github_rerun_check(user_id, args, db)
+
+    # Slack integration tools -------------------------------------------------------
+    # Slack tools not yet implemented
+    # if tool_name == "slack.fetch_recent_channel_messages":
+    #   return await _tool_slack_fetch_recent_channel_messages(user_id, args, db)
+    # if tool_name == "slack.search_user_messages":
+    #   return await _tool_slack_search_user_messages(user_id, args, db)
+
+    # Project-management stubs (future expansion) --------------------------------
+    if tool_name.startswith("pm."):
+        return {
+            "tool": tool_name,
+            "text": (
+                f"pm-tool '{tool_name}' is not fully implemented yet in this build. "
+                "NAVI can still help you reason about tickets and next actions."
+            ),
+        }
+
+    # Fallback – unknown tool ---------------------------------------------------
+    logger.warning("[TOOLS] Unknown tool: %s", tool_name)
     return {
         "tool": tool_name,
-        "text": "Here is the live context packet for this task.",
-        "packet": packet,
-        "sources": sources,
+        "text": f"Tool '{tool_name}' is not implemented in this NAVI build.",
     }
-
-  # Workspace-safe tools ------------------------------------------------------
-  if tool_name == "repo.inspect":
-    # Enrich args with context for VS Code workspace integration
-    # Basic guard: require workspace_root to avoid inspecting the wrong repo
-    ws = workspace or {}
-    if not ws.get("workspace_root"):
-      return {
-          "tool": "repo.inspect",
-          "text": (
-              "I don’t have your workspace path from the extension. "
-              "Open the folder you want me to inspect in VS Code and retry."
-          ),
-      }
-    enriched_args = {
-      **args,
-      "user_id": user_id,
-      "attachments": attachments,
-      "workspace": ws,
-    }
-    return await _tool_repo_inspect(enriched_args)
-
-  if tool_name == "code.read_files":
-    return await _tool_code_read_files(args)
-
-  if tool_name == "code.search":
-    return await _tool_code_search(args)
-
-  # Jira integration tools --------------------------------------------------------
-  if tool_name == "jira.list_assigned_issues_for_user":
-    return await _tool_jira_list_assigned_issues(user_id, args, db)
-  if tool_name == "jira.add_comment":
-    return await _tool_jira_add_comment(user_id, args, db)
-  if tool_name == "jira.transition_issue":
-    return await _tool_jira_transition_issue(user_id, args, db)
-  if tool_name == "jira.assign_issue":
-    return await _tool_jira_assign_issue(user_id, args, db)
-  # GitHub write operations (approval-gated) --------------------------------------
-  if tool_name == "github.comment":
-    return await _tool_github_comment(user_id, args, db)
-  if tool_name == "github.set_label":
-    return await _tool_github_set_label(user_id, args, db)
-  if tool_name == "github.rerun_check":
-    return await _tool_github_rerun_check(user_id, args, db)
-
-  # Slack integration tools -------------------------------------------------------
-  # Slack tools not yet implemented
-  # if tool_name == "slack.fetch_recent_channel_messages":
-  #   return await _tool_slack_fetch_recent_channel_messages(user_id, args, db)
-  # if tool_name == "slack.search_user_messages":
-  #   return await _tool_slack_search_user_messages(user_id, args, db)
-
-  # Project-management stubs (future expansion) --------------------------------
-  if tool_name.startswith("pm."):
-    return {
-        "tool": tool_name,
-        "text": (
-            f"pm-tool '{tool_name}' is not fully implemented yet in this build. "
-            "NAVI can still help you reason about tickets and next actions."
-        ),
-    }
-
-  # Fallback – unknown tool ---------------------------------------------------
-  logger.warning("[TOOLS] Unknown tool: %s", tool_name)
-  return {
-      "tool": tool_name,
-      "text": f"Tool '{tool_name}' is not implemented in this NAVI build.",
-  }
 
 
 # ---------------------------------------------------------------------------
 # Workspace helpers
 # ---------------------------------------------------------------------------
 
+
 def _resolve_root(args: Dict[str, Any]) -> Path:
-  """
-  Decide which workspace root to use for this tool call.
+    """
+    Decide which workspace root to use for this tool call.
 
-  Priority:
-    1) args["root"] if provided
-    2) NAVI_WORKSPACE_ROOT env
-    3) current working directory
-  """
-  root_arg = args.get("root")
-  if root_arg:
-    root = Path(root_arg).expanduser().resolve()
-  else:
-    root = DEFAULT_WORKSPACE_ROOT
+    Priority:
+      1) args["root"] if provided
+      2) NAVI_WORKSPACE_ROOT env
+      3) current working directory
+    """
+    root_arg = args.get("root")
+    if root_arg:
+        root = Path(root_arg).expanduser().resolve()
+    else:
+        root = DEFAULT_WORKSPACE_ROOT
 
-  return root
+    return root
 
 
 async def _tool_repo_inspect(args: Dict[str, Any]) -> Dict[str, Any]:
-  """
-  Safe tool: inspect current repository structure and produce a natural-language overview.
-  
-  Uses VS Code attachments when available, falls back to filesystem scan.
-  """
-  from backend.services.llm import call_llm
-  
-  args.get("user_id", "default_user")
-  workspace = args.get("workspace", {})
-  attachments = args.get("attachments")
-  message = args.get("message", "Explain this repository and its structure.")
-  model = args.get("model", "gpt-4o-mini")
-  mode = args.get("mode", "agent-full")
-  
-  logger.info("[TOOLS] repo.inspect workspace=%s attachments=%d", 
-              workspace, len(attachments or []))
-  
-  # Get workspace context using perfect workspace retriever
-  from backend.agent.perfect_workspace_retriever import retrieve_perfect_workspace_context
-  workspace_ctx = await retrieve_perfect_workspace_context(workspace)
-  
-  # Build system context for the LLM
-  system_context = (
-    "You are NAVI, an autonomous engineering assistant inspecting the user's repo.\n"
-    "You are given:\n"
-    f"- Project root identifier: {workspace_ctx.get('project_root')}\n"
-    f"- Active file: {workspace_ctx.get('active_file')}\n"
-    "- Recent files and a shallow file tree.\n"
-    "- Small file contents when available.\n\n"
-    "Based on this, explain:\n"
-    "1) What this project appears to be about (in plain language).\n"
-    "2) The main components / layers (e.g. api, backend, frontend, infra).\n"
-    "3) How you would onboard: what files to read first, how to run it.\n"
-    "If data is incomplete, be honest, but use whatever structure is visible "
-    "instead of generic boilerplate."
-  )
-  
-  # Build compact context from workspace data
-  tree_lines = []
-  for node in (workspace_ctx.get("file_tree") or []):
-    if isinstance(node, dict):
-      tree_lines.append(f"- {node.get('path', node)}")
-    else:
-      tree_lines.append(f"- {node}")
-  
-  files_blob = "\n".join(
-    f"# {f['path']}\n{f.get('content','')[:2000]}\n"
-    for f in (workspace_ctx.get("small_files") or [])[:5]
-  )
-  
-  context_text = (
-    "FILE TREE (from VS Code attachments):\n"
-    + "\n".join(tree_lines[:20])  # Limit to prevent token overflow
-    + "\n\nSAMPLED FILE CONTENTS:\n"
-    + files_blob
-  )
-  
-  # Use LLM to generate intelligent repository overview
-  try:
-    reply = await call_llm(
-      message=message,
-      context={"combined": system_context + "\n\n" + context_text},
-      model=model,
-      mode=mode,
+    """
+    Safe tool: inspect current repository structure and produce a natural-language overview.
+
+    Uses VS Code attachments when available, falls back to filesystem scan.
+    """
+    from backend.services.llm import call_llm
+
+    args.get("user_id", "default_user")
+    workspace = args.get("workspace", {})
+    attachments = args.get("attachments")
+    message = args.get("message", "Explain this repository and its structure.")
+    model = args.get("model", "gpt-4o-mini")
+    mode = args.get("mode", "agent-full")
+
+    logger.info(
+        "[TOOLS] repo.inspect workspace=%s attachments=%d",
+        workspace,
+        len(attachments or []),
     )
-  except Exception as e:
-    logger.error("[TOOLS] repo.inspect LLM call failed: %s", e)
-    # Fallback to basic structure description
-    reply = f"Repository at {workspace_ctx.get('project_root')}\n\nFiles detected:\n" + "\n".join(tree_lines[:10])
-  
-  return {
-    "tool": "repo.inspect",
-    "text": reply,
-    "workspace_root": workspace_ctx.get("workspace_root"),
-    "files_count": len(workspace_ctx.get("small_files") or []),
-  }
+
+    # Get workspace context using perfect workspace retriever
+    from backend.agent.perfect_workspace_retriever import (
+        retrieve_perfect_workspace_context,
+    )
+
+    workspace_ctx = await retrieve_perfect_workspace_context(workspace)
+
+    # Build system context for the LLM
+    system_context = (
+        "You are NAVI, an autonomous engineering assistant inspecting the user's repo.\n"
+        "You are given:\n"
+        f"- Project root identifier: {workspace_ctx.get('project_root')}\n"
+        f"- Active file: {workspace_ctx.get('active_file')}\n"
+        "- Recent files and a shallow file tree.\n"
+        "- Small file contents when available.\n\n"
+        "Based on this, explain:\n"
+        "1) What this project appears to be about (in plain language).\n"
+        "2) The main components / layers (e.g. api, backend, frontend, infra).\n"
+        "3) How you would onboard: what files to read first, how to run it.\n"
+        "If data is incomplete, be honest, but use whatever structure is visible "
+        "instead of generic boilerplate."
+    )
+
+    # Build compact context from workspace data
+    tree_lines = []
+    for node in workspace_ctx.get("file_tree") or []:
+        if isinstance(node, dict):
+            tree_lines.append(f"- {node.get('path', node)}")
+        else:
+            tree_lines.append(f"- {node}")
+
+    files_blob = "\n".join(
+        f"# {f['path']}\n{f.get('content','')[:2000]}\n"
+        for f in (workspace_ctx.get("small_files") or [])[:5]
+    )
+
+    context_text = (
+        "FILE TREE (from VS Code attachments):\n"
+        + "\n".join(tree_lines[:20])  # Limit to prevent token overflow
+        + "\n\nSAMPLED FILE CONTENTS:\n"
+        + files_blob
+    )
+
+    # Use LLM to generate intelligent repository overview
+    try:
+        reply = await call_llm(
+            message=message,
+            context={"combined": system_context + "\n\n" + context_text},
+            model=model,
+            mode=mode,
+        )
+    except Exception as e:
+        logger.error("[TOOLS] repo.inspect LLM call failed: %s", e)
+        # Fallback to basic structure description
+        reply = (
+            f"Repository at {workspace_ctx.get('project_root')}\n\nFiles detected:\n"
+            + "\n".join(tree_lines[:10])
+        )
+
+    return {
+        "tool": "repo.inspect",
+        "text": reply,
+        "workspace_root": workspace_ctx.get("workspace_root"),
+        "files_count": len(workspace_ctx.get("small_files") or []),
+    }
 
 
 async def _tool_code_read_files(args: Dict[str, Any]) -> Dict[str, Any]:
-  """
-  Read one or more files relative to the workspace root.
+    """
+    Read one or more files relative to the workspace root.
 
-  Args:
-    - files: List[str] of relative paths
-    - max_chars: overall char limit
-  """
-  root = _resolve_root(args)
-  files = args.get("files") or args.get("paths") or []
-  max_chars = int(args.get("max_chars", 120_000))
+    Args:
+      - files: List[str] of relative paths
+      - max_chars: overall char limit
+    """
+    root = _resolve_root(args)
+    files = args.get("files") or args.get("paths") or []
+    max_chars = int(args.get("max_chars", 120_000))
 
-  if isinstance(files, str):
-    files = [files]
+    if isinstance(files, str):
+        files = [files]
 
-  results: List[Dict[str, Any]] = []
-  total = 0
+    results: List[Dict[str, Any]] = []
+    total = 0
 
-  for rel in files:
-    path = (root / rel).resolve()
-    if not str(path).startswith(str(root)):
-      # prevent traversal
-      continue
+    for rel in files:
+        path = (root / rel).resolve()
+        if not str(path).startswith(str(root)):
+            # prevent traversal
+            continue
 
-    if not path.exists() or not path.is_file():
-      results.append(
-          {
-              "path": rel,
-              "error": "not_found",
-          }
-      )
-      continue
+        if not path.exists() or not path.is_file():
+            results.append(
+                {
+                    "path": rel,
+                    "error": "not_found",
+                }
+            )
+            continue
 
-    try:
-      text = path.read_text(encoding="utf-8", errors="ignore")
-    except Exception as e:  # noqa: BLE001
-      results.append(
-          {
-              "path": rel,
-              "error": f"read_error: {e}",
-          }
-      )
-      continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception as e:  # noqa: BLE001
+            results.append(
+                {
+                    "path": rel,
+                    "error": f"read_error: {e}",
+                }
+            )
+            continue
 
-    if total + len(text) > max_chars:
-      # clip last file if needed
-      remaining = max_chars - total
-      if remaining <= 0:
-        break
-      text = text[:remaining] + "\n… (truncated for length)"
-      total = max_chars
-    else:
-      total += len(text)
+        if total + len(text) > max_chars:
+            # clip last file if needed
+            remaining = max_chars - total
+            if remaining <= 0:
+                break
+            text = text[:remaining] + "\n… (truncated for length)"
+            total = max_chars
+        else:
+            total += len(text)
 
-    results.append(
-        {
-            "path": rel,
-            "content": text,
-        }
+        results.append(
+            {
+                "path": rel,
+                "content": text,
+            }
+        )
+
+        if total >= max_chars:
+            break
+
+    combined = []
+    for f in results:
+        if "content" in f:
+            combined.append(f"\n\n# File: {f['path']}\n\n{f['content']}")
+
+    combined_text = (
+        "".join(combined) if combined else "No readable files were returned."
     )
 
-    if total >= max_chars:
-      break
-
-  combined = []
-  for f in results:
-    if "content" in f:
-      combined.append(f"\n\n# File: {f['path']}\n\n{f['content']}")
-
-  combined_text = "".join(combined) if combined else "No readable files were returned."
-
-  return {
-      "tool": "code.read_files",
-      "root": str(root),
-      "files": results,
-      "text": combined_text,
-  }
+    return {
+        "tool": "code.read_files",
+        "root": str(root),
+        "files": results,
+        "text": combined_text,
+    }
 
 
 async def _tool_code_search(args: Dict[str, Any]) -> Dict[str, Any]:
-  """
-  Simple text search in the workspace.
+    """
+    Simple text search in the workspace.
 
-  Args:
-    - pattern: regex or plain text
-    - globs: list of globs like ['**/*.py', '**/*.ts']
-    - max_results: int
-  """
-  root = _resolve_root(args)
-  pattern = str(args.get("pattern") or args.get("query") or "").strip()
-  max_results = int(args.get("max_results", 50))
-  globs = args.get("globs") or ["**/*.py", "**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.md"]
+    Args:
+      - pattern: regex or plain text
+      - globs: list of globs like ['**/*.py', '**/*.ts']
+      - max_results: int
+    """
+    root = _resolve_root(args)
+    pattern = str(args.get("pattern") or args.get("query") or "").strip()
+    max_results = int(args.get("max_results", 50))
+    globs = args.get("globs") or [
+        "**/*.py",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.md",
+    ]
 
-  if not pattern:
+    if not pattern:
+        return {
+            "tool": "code.search",
+            "root": str(root),
+            "matches": [],
+            "text": "No search pattern provided.",
+        }
+
+    try:
+        regex = re.compile(pattern)
+    except re.error:
+        # Fallback to literal search
+        regex = None
+
+    matches: List[Dict[str, Any]] = []
+
+    for g in globs:
+        for path in root.glob(g):
+            if len(matches) >= max_results:
+                break
+            if not path.is_file():
+                continue
+
+            try:
+                text = path.read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+
+            for i, line in enumerate(text.splitlines()):
+                if len(matches) >= max_results:
+                    break
+                if (regex and regex.search(line)) or (not regex and pattern in line):
+                    matches.append(
+                        {
+                            "path": str(path.relative_to(root)),
+                            "line": i + 1,
+                            "snippet": line.strip()[:200],
+                        }
+                    )
+
+        if len(matches) >= max_results:
+            break
+
+    if not matches:
+        summary = f"No matches for '{pattern}' were found under {root}."
+    else:
+        summary_lines = [f"- {m['path']}:{m['line']} — {m['snippet']}" for m in matches]
+        summary = (
+            f"Found {len(matches)} match(es) for '{pattern}' under {root}:\n"
+            + "\n".join(summary_lines)
+        )
+
     return {
         "tool": "code.search",
         "root": str(root),
-        "matches": [],
-        "text": "No search pattern provided.",
+        "pattern": pattern,
+        "matches": matches,
+        "text": summary,
     }
-
-  try:
-    regex = re.compile(pattern)
-  except re.error:
-    # Fallback to literal search
-    regex = None
-
-  matches: List[Dict[str, Any]] = []
-
-  for g in globs:
-    for path in root.glob(g):
-      if len(matches) >= max_results:
-        break
-      if not path.is_file():
-        continue
-
-      try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-      except Exception:
-        continue
-
-      for i, line in enumerate(text.splitlines()):
-        if len(matches) >= max_results:
-          break
-        if (regex and regex.search(line)) or (not regex and pattern in line):
-          matches.append(
-              {
-                  "path": str(path.relative_to(root)),
-                  "line": i + 1,
-                  "snippet": line.strip()[:200],
-              }
-          )
-
-    if len(matches) >= max_results:
-      break
-
-  if not matches:
-    summary = f"No matches for '{pattern}' were found under {root}."
-  else:
-    summary_lines = [
-        f"- {m['path']}:{m['line']} — {m['snippet']}"
-        for m in matches
-    ]
-    summary = (
-        f"Found {len(matches)} match(es) for '{pattern}' under {root}:\n"
-        + "\n".join(summary_lines)
-    )
-
-  return {
-      "tool": "code.search",
-      "root": str(root),
-      "pattern": pattern,
-      "matches": matches,
-      "text": summary,
-  }
 
 
 # ---------------------------------------------------------------------------
 # Jira tools
 # ---------------------------------------------------------------------------
 
+
 async def _tool_jira_list_assigned_issues(
-    user_id: str,
-    args: Dict[str, Any], 
-    db=None
+    user_id: str, args: Dict[str, Any], db=None
 ) -> Dict[str, Any]:
     """List Jira issues assigned to the current user"""
     from backend.agent.tools.jira_tools import list_assigned_issues_for_user
     from backend.core.db import get_db
     from sqlalchemy import text
-    
+
     try:
         # Prepare context for the tool
         context = {
@@ -477,7 +494,7 @@ async def _tool_jira_list_assigned_issues(
             "jira_assignee": args.get("assignee"),
         }
         org_id = args.get("org_id")
-        
+
         max_results = args.get("max_results", 20)
         local_db = db or next(get_db())
 
@@ -501,28 +518,28 @@ async def _tool_jira_list_assigned_issues(
                 ),
                 "sources": [],
             }
-        
+
         # Call the Jira tool with unified sources output
         result = await list_assigned_issues_for_user(context, max_results)
-        
+
         # Check for errors
         if "error" in result:
             return {
                 "tool": "jira.list_assigned_issues_for_user",
-                "text": f"Error retrieving Jira issues: {result['error']}"
+                "text": f"Error retrieving Jira issues: {result['error']}",
             }
-        
+
         issues = result.get("issues", [])
         sources = result.get("sources", [])
-        
+
         # Format for LLM consumption
         if not issues:
             return {
-                "tool": "jira.list_assigned_issues_for_user", 
+                "tool": "jira.list_assigned_issues_for_user",
                 "text": f"No Jira issues found assigned to user {user_id}",
-                "sources": sources
+                "sources": sources,
             }
-            
+
         # Build a nice summary table
         issue_lines = []
         for issue in issues:
@@ -530,22 +547,25 @@ async def _tool_jira_list_assigned_issues(
             summary = issue.get("summary", "No summary")
             issue_key = issue.get("issue_key", "No key")
             issue_lines.append(f"• **{issue_key}** - {summary}\n  Status: {status}")
-            
-        text_summary = f"Found {len(issues)} Jira issues assigned to you:\n\n" + "\n\n".join(issue_lines)
-        
+
+        text_summary = (
+            f"Found {len(issues)} Jira issues assigned to you:\n\n"
+            + "\n\n".join(issue_lines)
+        )
+
         return {
             "tool": "jira.list_assigned_issues_for_user",
             "issues": issues,
             "sources": sources,  # Unified sources for UI
             "count": len(issues),
-            "text": text_summary
+            "text": text_summary,
         }
-        
+
     except Exception as e:
         logger.error("Jira list assigned issues error: %s", e)
         return {
             "tool": "jira.list_assigned_issues_for_user",
-            "text": f"Failed to fetch Jira issues: {str(e)}"
+            "text": f"Failed to fetch Jira issues: {str(e)}",
         }
 
 
@@ -682,6 +702,7 @@ async def _tool_jira_assign_issue(
 # GitHub tools (write operations)
 # ---------------------------------------------------------------------------
 
+
 async def _tool_github_comment(
     user_id: str,
     args: Dict[str, Any],
@@ -700,9 +721,15 @@ async def _tool_github_comment(
     approved = args.get("approve") is True
 
     if not (repo_full_name and number and comment):
-        return {"tool": "github.comment", "text": "repo, number, and comment are required"}
+        return {
+            "tool": "github.comment",
+            "text": "repo, number, and comment are required",
+        }
     if not approved:
-        return {"tool": "github.comment", "text": "Approval required. Pass approve=true to proceed."}
+        return {
+            "tool": "github.comment",
+            "text": "Approval required. Pass approve=true to proceed.",
+        }
 
     local_db = db or next(get_db())
     conn_q = local_db.query(GhConnection)
@@ -718,7 +745,13 @@ async def _tool_github_comment(
         return {
             "tool": "github.comment",
             "text": f"Added comment to {repo_full_name}#{number}",
-            "sources": [{"name": f"{repo_full_name}#{number}", "type": "github", "connector": "github"}],
+            "sources": [
+                {
+                    "name": f"{repo_full_name}#{number}",
+                    "type": "github",
+                    "connector": "github",
+                }
+            ],
         }
     except Exception as exc:  # noqa: BLE001
         logger.error("GitHub comment error: %s", exc)
@@ -743,9 +776,15 @@ async def _tool_github_set_label(
     approved = args.get("approve") is True
 
     if not (repo_full_name and number and labels):
-        return {"tool": "github.set_label", "text": "repo, number, and labels are required"}
+        return {
+            "tool": "github.set_label",
+            "text": "repo, number, and labels are required",
+        }
     if not approved:
-        return {"tool": "github.set_label", "text": "Approval required. Pass approve=true to proceed."}
+        return {
+            "tool": "github.set_label",
+            "text": "Approval required. Pass approve=true to proceed.",
+        }
 
     local_db = db or next(get_db())
     conn_q = local_db.query(GhConnection)
@@ -761,7 +800,13 @@ async def _tool_github_set_label(
         return {
             "tool": "github.set_label",
             "text": f"Updated labels on {repo_full_name}#{number}: {', '.join(labels)}",
-            "sources": [{"name": f"{repo_full_name}#{number}", "type": "github", "connector": "github"}],
+            "sources": [
+                {
+                    "name": f"{repo_full_name}#{number}",
+                    "type": "github",
+                    "connector": "github",
+                }
+            ],
         }
     except Exception as exc:  # noqa: BLE001
         logger.error("GitHub set_label error: %s", exc)
@@ -785,9 +830,15 @@ async def _tool_github_rerun_check(
     approved = args.get("approve") is True
 
     if not (repo_full_name and check_run_id):
-        return {"tool": "github.rerun_check", "text": "repo and check_run_id are required"}
+        return {
+            "tool": "github.rerun_check",
+            "text": "repo and check_run_id are required",
+        }
     if not approved:
-        return {"tool": "github.rerun_check", "text": "Approval required. Pass approve=true to proceed."}
+        return {
+            "tool": "github.rerun_check",
+            "text": "Approval required. Pass approve=true to proceed.",
+        }
 
     local_db = db or next(get_db())
     conn_q = local_db.query(GhConnection)
@@ -803,7 +854,9 @@ async def _tool_github_rerun_check(
         return {
             "tool": "github.rerun_check",
             "text": f"Requested rerun for check_run {check_run_id} in {repo_full_name}",
-            "sources": [{"name": f"{repo_full_name}", "type": "github", "connector": "github"}],
+            "sources": [
+                {"name": f"{repo_full_name}", "type": "github", "connector": "github"}
+            ],
         }
     except Exception as exc:  # noqa: BLE001
         logger.error("GitHub rerun_check error: %s", exc)

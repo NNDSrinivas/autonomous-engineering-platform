@@ -130,9 +130,6 @@ def save_github_connection(user_id: str, access_token: str) -> None:
     }
 
 
-
-
-
 def get_jira_connection(user_id: str) -> Dict[str, Any] | None:
     """Get Jira connection details for a user."""
     user_key = str(user_id)

@@ -58,7 +58,9 @@ def _format_tree(entries: Iterable[Path], root: Path, max_items: int = 20) -> st
         # Show one level deeper for interesting directories
         if entry.is_dir() and entry.name in interesting:
             try:
-                children = sorted(entry.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+                children = sorted(
+                    entry.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+                )
             except OSError:
                 continue
 
@@ -181,7 +183,9 @@ def _detect_tech_stack(root: Path) -> Tuple[List[str], List[str]]:
         stack.append("• GitHub workflows / CI configured (`.github/`).")
 
     if not stack:
-        stack.append("• No obvious tech stack files detected (no `package.json`, etc.).")
+        stack.append(
+            "• No obvious tech stack files detected (no `package.json`, etc.)."
+        )
 
     return stack, warnings
 
@@ -235,7 +239,9 @@ async def explain_repo(workspace_root: Optional[str]) -> str:
     tech_stack, warnings = _detect_tech_stack(root)
 
     parts: List[str] = []
-    parts.append("Here's a grounded overview of this workspace based on real files on disk.\n")
+    parts.append(
+        "Here's a grounded overview of this workspace based on real files on disk.\n"
+    )
     parts.append("**Workspace root:**")
     parts.append(f"`{root}`\n")
 
@@ -243,7 +249,7 @@ async def explain_repo(workspace_root: Optional[str]) -> str:
     parts.append("## Project Overview")
     parts.append(
         "This looks like a web application for Navra Labs, built with Next.js + React, "
-        "styled with Tailwind CSS, and structured around an \"Autonomous Engineering Platform\" (AEP) concept. "
+        'styled with Tailwind CSS, and structured around an "Autonomous Engineering Platform" (AEP) concept. '
         "The app uses a marketing-style landing page, a NAVI page, an AEP page, authentication (signup/login), "
         "and an authenticated dashboard."
     )
@@ -350,4 +356,3 @@ async def explain_repo(workspace_root: Optional[str]) -> str:
     )
 
     return "\n".join(parts)
-

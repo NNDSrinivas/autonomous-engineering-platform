@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 # Canonical memory item
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class MemoryItem:
     id: str
@@ -46,6 +47,7 @@ class MemoryItem:
 # ---------------------------------------------------------------------------
 # Helper: safe import & call so we never crash if a service is missing
 # ---------------------------------------------------------------------------
+
 
 def _try_import(path: str):
     """
@@ -75,13 +77,19 @@ def _safe_call(module, func_name: str, *args, **kwargs):
 
     func = getattr(module, func_name, None)
     if func is None:
-        logger.debug("Memory retriever: %s.%s not found", getattr(module, "__name__", module), func_name)
+        logger.debug(
+            "Memory retriever: %s.%s not found",
+            getattr(module, "__name__", module),
+            func_name,
+        )
         return []
 
     try:
         return func(*args, **kwargs)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Memory retriever: error calling %s.%s: %s", module.__name__, func_name, exc)
+        logger.warning(
+            "Memory retriever: error calling %s.%s: %s", module.__name__, func_name, exc
+        )
         return []
 
 
@@ -93,6 +101,7 @@ def _safe_call(module, func_name: str, *args, **kwargs):
 #       - update the func_name strings below.
 # ---------------------------------------------------------------------------
 
+
 def _fetch_jira_memories(user_id: str, query: str, db=None) -> List[MemoryItem]:
     """
     Jira issues & tasks relevant to this user or query.
@@ -101,7 +110,9 @@ def _fetch_jira_memories(user_id: str, query: str, db=None) -> List[MemoryItem]:
 
     # Try a few likely function names until one exists.
     raw_items = (
-        _safe_call(jira_mod, "search_issues_for_user", db=db, user_id=user_id, query=query)
+        _safe_call(
+            jira_mod, "search_issues_for_user", db=db, user_id=user_id, query=query
+        )
         or _safe_call(jira_mod, "search_issues", db=db, query=query)
         or _safe_call(jira_mod, "get_user_issues", db=db, user_id=user_id)
     )
@@ -141,13 +152,19 @@ def _fetch_slack_memories(user_id: str, query: str, db=None) -> List[MemoryItem]
     """
     # Try the new slack_service first, then fallback to other integrations
     slack_service = _try_import("backend.services.slack_service")
-    slack_read = _try_import("backend.core.integrations_ext.slack_read") 
+    slack_read = _try_import("backend.core.integrations_ext.slack_read")
     slack_ingestor = _try_import("backend.services.ingestors.slack_ingestor")
 
     raw_msgs = (
-        _safe_call(slack_service, "search_messages", db=db, user_id=user_id, query=query)
-        or _safe_call(slack_read, "search_messages", user_id=user_id, query=query, db=db)
-        or _safe_call(slack_ingestor, "search_messages", user_id=user_id, query=query, db=db)
+        _safe_call(
+            slack_service, "search_messages", db=db, user_id=user_id, query=query
+        )
+        or _safe_call(
+            slack_read, "search_messages", user_id=user_id, query=query, db=db
+        )
+        or _safe_call(
+            slack_ingestor, "search_messages", user_id=user_id, query=query, db=db
+        )
     )
 
     memories: List[MemoryItem] = []
@@ -188,10 +205,14 @@ def _fetch_meeting_memories(user_id: str, query: str, db=None) -> List[MemoryIte
     raw_meetings = (
         _safe_call(meetings_mod, "search_meetings", db=db, query=query, user_id=user_id)
         or _safe_call(meetings_mod, "search_meetings", db=db, q=query, people=user_id)
-        or _safe_call(meetings_mod, "list_recent_for_user", db=db, user_id=user_id, limit=10)
+        or _safe_call(
+            meetings_mod, "list_recent_for_user", db=db, user_id=user_id, limit=10
+        )
     )
-    
-    raw_answers = _safe_call(answers_mod, "search_answers", db=db, query=query, user_id=user_id)
+
+    raw_answers = _safe_call(
+        answers_mod, "search_answers", db=db, query=query, user_id=user_id
+    )
 
     memories: List[MemoryItem] = []
 
@@ -209,7 +230,10 @@ def _fetch_meeting_memories(user_id: str, query: str, db=None) -> List[MemoryIte
                     body=m.get("summary") or "",
                     url=m.get("url"),
                     when=m.get("start_time"),
-                    metadata={"participants": m.get("participants"), "actions": m.get("actions")},
+                    metadata={
+                        "participants": m.get("participants"),
+                        "actions": m.get("actions"),
+                    },
                 )
             )
         except Exception:  # noqa: BLE001
@@ -248,7 +272,9 @@ def _fetch_wiki_memories(user_id: str, query: str, db=None) -> List[MemoryItem]:
     wiki_read = _try_import("backend.core.integrations_ext.wiki_read")
 
     raw_docs = (
-        _safe_call(confluence_service, "search_pages", db=db, query=query, user_id=user_id)
+        _safe_call(
+            confluence_service, "search_pages", db=db, query=query, user_id=user_id
+        )
         or _safe_call(conf_read, "search_pages", query=query, user_id=user_id, db=db)
         or _safe_call(wiki_read, "search_docs", query=query, user_id=user_id, db=db)
     )
@@ -284,10 +310,9 @@ def _fetch_code_memories(user_id: str, query: str, db=None) -> List[MemoryItem]:
     repo_context_mod = _try_import("backend.core.repo_context")
     search_mod = _try_import("backend.search.retriever")
 
-    raw_hits = (
-        _safe_call(repo_context_mod, "search_code", query=query, user_id=user_id, db=db)
-        or _safe_call(search_mod, "search_code", query=query, user_id=user_id, db=db)
-    )
+    raw_hits = _safe_call(
+        repo_context_mod, "search_code", query=query, user_id=user_id, db=db
+    ) or _safe_call(search_mod, "search_code", query=query, user_id=user_id, db=db)
 
     memories: List[MemoryItem] = []
     for h in raw_hits or []:
@@ -321,9 +346,13 @@ def _fetch_build_memories(user_id: str, query: str, db=None) -> List[MemoryItem]
     """
     CI / build statuses.
     """
-    builds_mod = _try_import("backend.services.telemetry") or _try_import("backend.services.ci")
+    builds_mod = _try_import("backend.services.telemetry") or _try_import(
+        "backend.services.ci"
+    )
 
-    raw_builds = _safe_call(builds_mod, "search_builds", user_id=user_id, query=query, db=db)
+    raw_builds = _safe_call(
+        builds_mod, "search_builds", user_id=user_id, query=query, db=db
+    )
 
     memories: List[MemoryItem] = []
     for b in raw_builds or []:
@@ -353,7 +382,9 @@ def _fetch_build_memories(user_id: str, query: str, db=None) -> List[MemoryItem]
     return memories
 
 
-async def _fetch_long_term_navi_memories(user_id: str, query: str, db=None) -> List[MemoryItem]:
+async def _fetch_long_term_navi_memories(
+    user_id: str, query: str, db=None
+) -> List[MemoryItem]:
     """
     Prior NAVI conversations / long-term memory via vector store.
 
@@ -370,15 +401,19 @@ async def _fetch_long_term_navi_memories(user_id: str, query: str, db=None) -> L
         try:
             # Use the existing search_memory function (note: different name than spec)
             from backend.services.navi_memory_service import search_memory
+
             raw = await search_memory(
-                db=db, user_id=user_id, query=query, 
+                db=db,
+                user_id=user_id,
+                query=query,
                 categories=["profile", "workspace", "task", "interaction"],
-                min_importance=3, limit=10
+                min_importance=3,
+                limit=10,
             )
         except Exception as e:
             logger.debug("Memory retriever: navi memory search failed: %s", e)
             raw = []
-    
+
     # Fallback to vector store if available
     if not raw:
         raw = _safe_call(vs_mod, "search_memories", user_id=user_id, query=query, db=db)
@@ -387,23 +422,31 @@ async def _fetch_long_term_navi_memories(user_id: str, query: str, db=None) -> L
     for m in raw or []:
         try:
             # Handle both dict and object formats
-            if hasattr(m, 'id') and not isinstance(m, dict):
+            if hasattr(m, "id") and not isinstance(m, dict):
                 # SQLAlchemy model
-                mid = str(getattr(m, 'id', ''))
-                title = getattr(m, 'title', None) or "Previous NAVI context"
-                body = getattr(m, 'content', '') or ''
-                created_at = getattr(m, 'created_at', None)
-                score = getattr(m, 'similarity', 1.0) or 1.0
-                metadata = getattr(m, 'metadata', {}) or {}
+                mid = str(getattr(m, "id", ""))
+                title = getattr(m, "title", None) or "Previous NAVI context"
+                body = getattr(m, "content", "") or ""
+                created_at = getattr(m, "created_at", None)
+                score = getattr(m, "similarity", 1.0) or 1.0
+                metadata = getattr(m, "metadata", {}) or {}
             else:
                 # Dict format
                 mid = str(m.get("id") or "") if isinstance(m, dict) else str(m)
-                title = m.get("title", "Previous NAVI context") if isinstance(m, dict) else "Previous NAVI context"
+                title = (
+                    m.get("title", "Previous NAVI context")
+                    if isinstance(m, dict)
+                    else "Previous NAVI context"
+                )
                 body = m.get("content", "") if isinstance(m, dict) else ""
                 created_at = m.get("created_at") if isinstance(m, dict) else None
-                score = (m.get("score") or m.get("similarity") or 1.0) if isinstance(m, dict) else 1.0
+                score = (
+                    (m.get("score") or m.get("similarity") or 1.0)
+                    if isinstance(m, dict)
+                    else 1.0
+                )
                 metadata = m.get("metadata", {}) if isinstance(m, dict) else {}
-                
+
             if not mid:
                 continue
 
@@ -429,6 +472,7 @@ async def _fetch_long_term_navi_memories(user_id: str, query: str, db=None) -> L
 # Public API
 # ---------------------------------------------------------------------------
 
+
 async def retrieve_unified_memories(
     user_id: str,
     query: str,
@@ -447,7 +491,11 @@ async def retrieve_unified_memories(
           }
         }
     """
-    logger.info("[MEMORY] Retrieving unified memories for user=%s query='%s...'", user_id, query[:60])
+    logger.info(
+        "[MEMORY] Retrieving unified memories for user=%s query='%s...'",
+        user_id,
+        query[:60],
+    )
 
     # NOTE: this is intentionally sync-style even though the outer function is async.
     # Most downstream services are sync today; if you add async services later you

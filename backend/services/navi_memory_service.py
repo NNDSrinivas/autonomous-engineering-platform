@@ -102,6 +102,7 @@ async def store_memory(
 
         # Prepare metadata as proper JSON string
         import json
+
         meta_json = tags or {}
         meta_json_str = json.dumps(meta_json)
 
@@ -169,7 +170,11 @@ async def search_memory(
     """
     try:
         bind = db.get_bind()
-        dialect = getattr(getattr(bind, "dialect", None), "name", "sqlite") if bind else "sqlite"
+        dialect = (
+            getattr(getattr(bind, "dialect", None), "name", "sqlite")
+            if bind
+            else "sqlite"
+        )
 
         # ----------------- Category filter -----------------
         category_filter = ""

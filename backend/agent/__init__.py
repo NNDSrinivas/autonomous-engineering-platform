@@ -23,7 +23,7 @@ from .state_manager import (
     set_current_jira,
     get_current_jira,
     set_active_file,
-    get_active_file
+    get_active_file,
 )
 from .context_builder import build_context
 from .intent_classifier import classify_intent
@@ -34,10 +34,12 @@ from .memory_retriever import retrieve_memories, retrieve_recent_memories
 from .org_retriever import retrieve_org_context
 from .workspace_retriever import retrieve_workspace_context
 
+
 def generate_plan(intent, context):
     """Backwards-compatible function wrapper."""
     planner = SimplePlanner()
     return planner.plan(intent, context)
+
 
 __all__ = [
     "run_agent_loop",
@@ -76,4 +78,3 @@ __all__ = [
     "github_create_branch",
     "github_create_pr",
 ]
-

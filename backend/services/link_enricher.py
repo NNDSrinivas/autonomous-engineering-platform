@@ -8,7 +8,7 @@ that NAVI can show to users.
 Example usage:
     await enrich_jira_memory_with_link(
         db=db,
-        user_id="default_user", 
+        user_id="default_user",
         jira_key="SCRUM-1",
         link_type="slack",
         url="https://slack.com/app_redirect?channel=C123&message_ts=1234"
@@ -34,10 +34,10 @@ async def enrich_jira_memory_with_link(
 ) -> bool:
     """
     Add a related link to an existing Jira memory in NAVI.
-    
+
     This allows other connectors to associate their resources with Jira tickets,
     creating rich References sections that NAVI can show to users.
-    
+
     Args:
         db: Database session
         user_id: User identifier
@@ -45,14 +45,15 @@ async def enrich_jira_memory_with_link(
         link_type: Type of link ("slack", "zoom", "teams", "confluence", "jenkins", etc.)
         url: The URL to add
         description: Optional description of the link
-        
+
     Returns:
         True if link was added successfully, False if memory not found
     """
     try:
         # Find the Jira memory for this user and key
         result = db.execute(
-            text("""
+            text(
+                """
                 SELECT id, meta_json 
                 FROM navi_memory 
                 WHERE user_id = :user_id 
@@ -60,19 +61,19 @@ async def enrich_jira_memory_with_link(
                   AND scope = :jira_key
                   AND CAST(meta_json AS TEXT) LIKE '%"source": "jira"%'
                 LIMIT 1
-            """),
-            {"user_id": user_id, "jira_key": jira_key}
+            """
+            ),
+            {"user_id": user_id, "jira_key": jira_key},
         ).fetchone()
-        
+
         if not result:
             logger.warning(
-                "[LINK-ENRICHER] No Jira memory found for %s/%s", 
-                user_id, jira_key
+                "[LINK-ENRICHER] No Jira memory found for %s/%s", user_id, jira_key
             )
             return False
-            
+
         memory_id, meta_json_str = result
-        
+
         # Parse existing metadata
         try:
             if isinstance(meta_json_str, str):
@@ -81,69 +82,71 @@ async def enrich_jira_memory_with_link(
                 meta_json = dict(meta_json_str)
         except (json.JSONDecodeError, TypeError):
             meta_json = {}
-            
+
         # Ensure links structure exists
         if "links" not in meta_json:
             meta_json["links"] = {}
-            
+
         links = meta_json["links"]
         if link_type not in links:
             links[link_type] = []
-            
+
         # Add the new link if it's not already there
         if url not in links[link_type]:
             links[link_type].append(url)
-            
+
             # Update the memory with enriched metadata
             updated_meta_json = json.dumps(meta_json)
             db.execute(
-                text("""
+                text(
+                    """
                     UPDATE navi_memory 
                     SET meta_json = :meta_json,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = :memory_id
-                """),
-                {"memory_id": memory_id, "meta_json": updated_meta_json}
+                """
+                ),
+                {"memory_id": memory_id, "meta_json": updated_meta_json},
             )
             db.commit()
-            
+
             logger.info(
                 "[LINK-ENRICHER] Added %s link to %s/%s: %s",
-                link_type, user_id, jira_key, url
+                link_type,
+                user_id,
+                jira_key,
+                url,
             )
             return True
         else:
             logger.debug(
                 "[LINK-ENRICHER] Link already exists for %s/%s: %s",
-                user_id, jira_key, url
+                user_id,
+                jira_key,
+                url,
             )
             return True
-            
+
     except Exception as e:
-        logger.error(
-            "[LINK-ENRICHER] Failed to add link: %s", 
-            e, exc_info=True
-        )
+        logger.error("[LINK-ENRICHER] Failed to add link: %s", e, exc_info=True)
         db.rollback()
         return False
 
 
 async def get_jira_memories_mentioning_key(
-    db: Session,
-    jira_key: str,
-    user_id: Optional[str] = None
+    db: Session, jira_key: str, user_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Find all NAVI memories that mention a specific Jira key.
-    
+
     Useful for finding related discussions, meetings, or docs that reference
     a ticket, even if they're stored as separate memories.
-    
+
     Args:
         db: Database session
         jira_key: Jira ticket key to search for
         user_id: Optional user filter
-        
+
     Returns:
         List of memory dictionaries
     """
@@ -151,18 +154,19 @@ async def get_jira_memories_mentioning_key(
         # Build query conditions
         conditions = [
             "CAST(content AS TEXT) LIKE :jira_key_pattern",
-            "category != 'task'"  # Exclude the Jira task memory itself
+            "category != 'task'",  # Exclude the Jira task memory itself
         ]
         params = {"jira_key_pattern": f"%{jira_key}%"}
-        
+
         if user_id:
             conditions.append("user_id = :user_id")
             params["user_id"] = user_id
-            
+
         where_clause = " AND ".join(conditions)
-        
+
         result = db.execute(
-            text(f"""
+            text(
+                f"""
                 SELECT 
                     id, user_id, category, scope, title, content,
                     meta_json, importance, created_at, updated_at
@@ -170,15 +174,16 @@ async def get_jira_memories_mentioning_key(
                 WHERE {where_clause}
                 ORDER BY updated_at DESC
                 LIMIT 10
-            """),
-            params
+            """
+            ),
+            params,
         )
-        
+
         memories = []
         for row in result:
             memory = {
                 "id": row[0],
-                "user_id": row[1], 
+                "user_id": row[1],
                 "category": row[2],
                 "scope": row[3],
                 "title": row[4],
@@ -188,7 +193,7 @@ async def get_jira_memories_mentioning_key(
                 "created_at": row[8],
                 "updated_at": row[9],
             }
-            
+
             # Parse tags if available
             try:
                 if isinstance(memory["meta_json"], str):
@@ -197,19 +202,19 @@ async def get_jira_memories_mentioning_key(
                     memory["tags"] = dict(memory["meta_json"])
             except Exception:
                 memory["tags"] = {}
-                
+
             memories.append(memory)
-            
+
         logger.info(
-            "[LINK-ENRICHER] Found %d memories mentioning %s",
-            len(memories), jira_key
+            "[LINK-ENRICHER] Found %d memories mentioning %s", len(memories), jira_key
         )
         return memories
-        
+
     except Exception as e:
         logger.error(
             "[LINK-ENRICHER] Failed to search for Jira key mentions: %s",
-            e, exc_info=True
+            e,
+            exc_info=True,
         )
         return []
 
@@ -217,7 +222,7 @@ async def get_jira_memories_mentioning_key(
 # Common link types for validation
 VALID_LINK_TYPES = [
     "confluence",
-    "slack", 
+    "slack",
     "zoom",
     "teams",
     "gmeet",
@@ -229,7 +234,7 @@ VALID_LINK_TYPES = [
     "linear",
     "figma",
     "miro",
-    "other"
+    "other",
 ]
 
 

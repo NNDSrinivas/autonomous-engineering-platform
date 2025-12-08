@@ -269,7 +269,9 @@ def _validate_and_build_registry(raw: Dict[str, Any]) -> LLMRegistry:
     return LLMRegistry(version=version, updated=updated, providers=providers)
 
 
-def load_registry(path: Optional[Path] = None, *, force_reload: bool = False) -> LLMRegistry:
+def load_registry(
+    path: Optional[Path] = None, *, force_reload: bool = False
+) -> LLMRegistry:
     """
     Load the LLM registry from YAML.
 

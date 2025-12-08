@@ -44,10 +44,14 @@ def verify_hmac_signature(
     Verify an HMAC signature (e.g., GitHub style).
     """
     if not secret:
-        logger.warning("webhook.hmac_secret_not_configured", extra={"connector": connector})
+        logger.warning(
+            "webhook.hmac_secret_not_configured", extra={"connector": connector}
+        )
         raise HTTPException(status_code=401, detail="Webhook secret not configured")
     if not signature or not signature.startswith(scheme_prefix):
-        logger.warning("webhook.invalid_signature_header", extra={"connector": connector})
+        logger.warning(
+            "webhook.invalid_signature_header", extra={"connector": connector}
+        )
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     expected = hmac.new(secret.encode(), payload, sha256).hexdigest()
@@ -89,7 +93,9 @@ def verify_slack_signature(
         raise HTTPException(status_code=401, detail="Invalid webhook timestamp")
 
     basestring = f"v0:{timestamp}:{payload.decode('utf-8')}"
-    expected = hmac.new(signing_secret.encode(), basestring.encode(), sha256).hexdigest()
+    expected = hmac.new(
+        signing_secret.encode(), basestring.encode(), sha256
+    ).hexdigest()
     provided = signature.split("=", 1)[1]
     if not hmac.compare_digest(expected, provided):
         logger.warning("webhook.slack_signature_mismatch")

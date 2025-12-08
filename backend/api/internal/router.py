@@ -8,8 +8,10 @@ from datetime import datetime
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
+
 class SystemInfo(BaseModel):
     """System and deployment information"""
+
     service_name: str
     environment: str
     version: str
@@ -21,30 +23,33 @@ class SystemInfo(BaseModel):
     deployment_target: str
     backend_public_url: Optional[str] = None
 
+
 def get_git_info() -> tuple[Optional[str], Optional[str]]:
     """Get current git commit hash and branch"""
     try:
         # Get commit hash
         commit_result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=5
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5
         )
-        commit_hash = commit_result.stdout.strip()[:8] if commit_result.returncode == 0 else None
-        
+        commit_hash = (
+            commit_result.stdout.strip()[:8] if commit_result.returncode == 0 else None
+        )
+
         # Get branch name
         branch_result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=5,
         )
-        branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
-        
+        branch_name = (
+            branch_result.stdout.strip() if branch_result.returncode == 0 else None
+        )
+
         return commit_hash, branch_name
     except Exception:
         return None, None
+
 
 @router.get("/info", response_model=SystemInfo)
 async def get_system_info():
@@ -53,17 +58,17 @@ async def get_system_info():
     Useful for verifying which version is deployed and environment details.
     """
     git_commit, git_branch = get_git_info()
-    
+
     # Determine deployment target based on environment
     backend_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8787")
-    
+
     if "api.navralabs.com" in backend_url:
         deployment_target = "production"
     elif "localhost" in backend_url or "127.0.0.1" in backend_url:
         deployment_target = "local"
     else:
         deployment_target = "staging"
-    
+
     return SystemInfo(
         service_name="autonomous-engineering-platform",
         environment=os.getenv("APP_ENV", "development"),
@@ -74,8 +79,9 @@ async def get_system_info():
         python_version=platform.python_version(),
         platform=f"{platform.system()} {platform.release()}",
         deployment_target=deployment_target,
-        backend_public_url=backend_url
+        backend_public_url=backend_url,
     )
+
 
 @router.get("/health/detailed")
 async def get_detailed_health():
@@ -86,42 +92,56 @@ async def get_detailed_health():
     health_status = {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "checks": {}
+        "checks": {},
     }
-    
+
     # Check database connectivity
     try:
         from ...core.db import get_db
         from sqlalchemy import text
+
         db = next(get_db())
         # Simple query to test connection
         db.execute(text("SELECT 1"))
         db.close()
-        health_status["checks"]["database"] = {"status": "healthy", "message": "Connected"}
+        health_status["checks"]["database"] = {
+            "status": "healthy",
+            "message": "Connected",
+        }
     except Exception as e:
         health_status["checks"]["database"] = {"status": "unhealthy", "message": str(e)}
         health_status["status"] = "degraded"
-    
+
     # Check OpenAI API key presence (not making actual call to avoid cost)
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key and len(openai_key) > 10:
-        health_status["checks"]["openai"] = {"status": "configured", "message": "API key present"}
+        health_status["checks"]["openai"] = {
+            "status": "configured",
+            "message": "API key present",
+        }
     else:
-        health_status["checks"]["openai"] = {"status": "missing", "message": "API key not configured"}
-    
+        health_status["checks"]["openai"] = {
+            "status": "missing",
+            "message": "API key not configured",
+        }
+
     # Check environment variables
     required_vars = ["BACKEND_PUBLIC_URL"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
+
     if missing_vars:
         health_status["checks"]["environment"] = {
-            "status": "incomplete", 
-            "message": f"Missing: {', '.join(missing_vars)}"
+            "status": "incomplete",
+            "message": f"Missing: {', '.join(missing_vars)}",
         }
     else:
-        health_status["checks"]["environment"] = {"status": "complete", "message": "All required vars set"}
-    
+        health_status["checks"]["environment"] = {
+            "status": "complete",
+            "message": "All required vars set",
+        }
+
     return health_status
+
 
 @router.get("/version")
 async def get_version():
@@ -131,5 +151,5 @@ async def get_version():
         "version": "1.0.0",
         "commit": git_commit,
         "branch": git_branch,
-        "environment": os.getenv("APP_ENV", "development")
+        "environment": os.getenv("APP_ENV", "development"),
     }

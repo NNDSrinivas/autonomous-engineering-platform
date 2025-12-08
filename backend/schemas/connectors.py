@@ -30,6 +30,7 @@ class ConnectorStatus(BaseModel):
 
 class ConnectorStatusResponse(BaseModel):
     """Wrapper response for /api/connectors/status."""
+
     items: List[ConnectorStatus]
     offline: bool = False
 

@@ -29,7 +29,9 @@ async def ingest(
     x_webhook_secret: str | None = Header(None),
     org_ctx: dict = Depends(require_org),
 ):
-    verify_shared_secret(x_webhook_secret, settings.DOCS_WEBHOOK_SECRET, connector="docs")
+    verify_shared_secret(
+        x_webhook_secret, settings.DOCS_WEBHOOK_SECRET, connector="docs"
+    )
 
     title = payload.get("title") or ""
     body = payload.get("body") or ""

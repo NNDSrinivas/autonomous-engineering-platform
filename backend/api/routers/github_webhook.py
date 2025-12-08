@@ -59,18 +59,27 @@ async def ingest(
         .first()
     )
     if not gh_conn:
-        logger.warning("github_webhook.no_connection", extra={"repo": repo_full_name, "event": event})
+        logger.warning(
+            "github_webhook.no_connection",
+            extra={"repo": repo_full_name, "event": event},
+        )
         raise HTTPException(status_code=202, detail="No GitHub connection found")
 
     repo_row = (
         db.query(GhRepo)
-        .filter(GhRepo.connection_id == gh_conn.id, GhRepo.repo_full_name == repo_full_name)
+        .filter(
+            GhRepo.connection_id == gh_conn.id, GhRepo.repo_full_name == repo_full_name
+        )
         .order_by(GhRepo.id.desc())
         .first()
     )
     if not repo_row:
-        logger.warning("github_webhook.no_repo", extra={"repo": repo_full_name, "event": event})
-        raise HTTPException(status_code=202, detail="Repo not indexed for this connection")
+        logger.warning(
+            "github_webhook.no_repo", extra={"repo": repo_full_name, "event": event}
+        )
+        raise HTTPException(
+            status_code=202, detail="Repo not indexed for this connection"
+        )
 
     try:
         # Handle core event types
@@ -110,7 +119,9 @@ async def ingest(
                 )
                 db.add(node)
                 db.commit()
-            invalidate_context_packet_cache(pr.get("title") or pr.get("html_url"), org_ctx["org_id"])
+            invalidate_context_packet_cache(
+                pr.get("title") or pr.get("html_url"), org_ctx["org_id"]
+            )
         elif event == "status":
             # Store status as memory nodes for packet hydration
             commit = payload.get("commit") or {}
@@ -141,7 +152,9 @@ async def ingest(
         else:
             logger.info("github_webhook.unhandled_event", extra={"event": event})
     except Exception as exc:
-        logger.error("github_webhook.error", extra={"delivery": delivery, "error": str(exc)})
+        logger.error(
+            "github_webhook.error", extra={"delivery": delivery, "error": str(exc)}
+        )
         raise HTTPException(status_code=500, detail="Failed to process webhook")
 
     return {"status": "ok"}

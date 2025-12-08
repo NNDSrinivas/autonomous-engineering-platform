@@ -6,7 +6,7 @@ Production-grade-ish planner for NAVI autonomous agent.
 
 Key design principles:
 - Do NOT refer to IntentKind members that may not exist
-- Use message-based shortcuts for Jira / Slack flows  
+- Use message-based shortcuts for Jira / Slack flows
 - Fall back to generic per-family planning so we never break
 - Be robust against enum changes
 """
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Planner shortcuts for common patterns
 # ---------------------------------------------------------------------------
+
 
 def maybe_route_jira_my_issues(user_message: str) -> Optional[PlannedStep]:
     """
@@ -61,7 +62,7 @@ def maybe_route_jira_my_issues(user_message: str) -> Optional[PlannedStep]:
 def maybe_route_slack_channel_summary(user_message: str) -> Optional[PlannedStep]:
     """
     Shortcut for common Slack channel queries like:
-    - "summarise the standup slack channel"  
+    - "summarise the standup slack channel"
     - "what happened in #standup today?"
     - "show recent messages from the release channel"
 
@@ -72,7 +73,14 @@ def maybe_route_slack_channel_summary(user_message: str) -> Optional[PlannedStep
 
     # Basic detection: mentions slack OR a '#' channel AND some "summarise / show" verbs
     slack_keywords = ("slack", "channel", "#")
-    action_keywords = ("summarise", "summarize", "recap", "show", "what happened", "recent messages")
+    action_keywords = (
+        "summarise",
+        "summarize",
+        "recap",
+        "show",
+        "what happened",
+        "recent messages",
+    )
 
     if not any(k in msg for k in slack_keywords):
         return None
@@ -110,7 +118,7 @@ def maybe_route_slack_channel_summary(user_message: str) -> Optional[PlannedStep
             "channel_name": channel_name,
             "limit": 50,
             "last_n_days": 1,
-        }
+        },
     )
 
 
@@ -138,11 +146,17 @@ class PlannerV3:
         try:
             user_message = context.get("message", "") or ""
             ctx_packet = context.get("context_packet") or {}
-            packet_key = ctx_packet.get("task_key") if isinstance(ctx_packet, dict) else None
+            packet_key = (
+                ctx_packet.get("task_key") if isinstance(ctx_packet, dict) else None
+            )
 
             # 0. If caller already supplied a context packet for the target item,
             # surface it directly to avoid re-querying and to keep responses cited.
-            if ctx_packet and intent.kind in (IntentKind.SHOW_ITEM_DETAILS, IntentKind.JIRA_LIST_MY_ISSUES, IntentKind.LIST_MY_ITEMS):
+            if ctx_packet and intent.kind in (
+                IntentKind.SHOW_ITEM_DETAILS,
+                IntentKind.JIRA_LIST_MY_ISSUES,
+                IntentKind.LIST_MY_ITEMS,
+            ):
                 # Only use packet when it matches the requested object or no specific object was requested
                 if not intent.object_id or intent.object_id == packet_key:
                     summary = f"Using live context packet for {packet_key or 'item'}"
@@ -179,7 +193,9 @@ class PlannerV3:
                 IntentKind.SUMMARIZE_CHANNEL,
                 IntentKind.SLACK_SUMMARIZE_CHANNEL,
             ):
-                channel_name = intent.filters.get("channel_name") or self._extract_slack_channel(user_message)
+                channel_name = intent.filters.get(
+                    "channel_name"
+                ) or self._extract_slack_channel(user_message)
                 return PlanResult(
                     steps=[
                         PlannedStep(
@@ -197,7 +213,10 @@ class PlannerV3:
                     summary=f"Summarizing {intent.provider.value} channel '{channel_name}'",
                 )
 
-            if intent.provider == Provider.GITHUB and intent.kind == IntentKind.LIST_MY_ITEMS:
+            if (
+                intent.provider == Provider.GITHUB
+                and intent.kind == IntentKind.LIST_MY_ITEMS
+            ):
                 return PlanResult(
                     steps=[
                         PlannedStep(
@@ -257,7 +276,9 @@ class PlannerV3:
                 return await self._plan_default_family(intent, context)
 
         except Exception as e:
-            logger.exception("Planning failed for intent %s/%s", intent.family, intent.kind)
+            logger.exception(
+                "Planning failed for intent %s/%s", intent.family, intent.kind
+            )
             return PlanResult(
                 steps=[
                     PlannedStep(
@@ -292,7 +313,14 @@ class PlannerV3:
                 return token
 
         # Look for common channel names
-        for candidate in ("standup", "deploy", "release", "general", "platform", "engineering"):
+        for candidate in (
+            "standup",
+            "deploy",
+            "release",
+            "general",
+            "platform",
+            "engineering",
+        ):
             if candidate in msg:
                 return candidate
 
@@ -302,9 +330,13 @@ class PlannerV3:
     # Generic family-based planning methods (safe against enum changes)
     # ---------------------------------------------------------------------------
 
-    async def _plan_engineering_family(self, intent: NaviIntent, context: Dict[str, Any]) -> PlanResult:
+    async def _plan_engineering_family(
+        self, intent: NaviIntent, context: Dict[str, Any]
+    ) -> PlanResult:
         """Plan ENGINEERING family intents using generic approach."""
-        kind_value = intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
+        kind_value = (
+            intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
+        )
         steps = [
             PlannedStep(
                 id="engineering_action",
@@ -323,9 +355,13 @@ class PlannerV3:
             summary=f"Engineering {kind_value} plan",
         )
 
-    async def _plan_project_management_family(self, intent: NaviIntent, context: Dict[str, Any]) -> PlanResult:
+    async def _plan_project_management_family(
+        self, intent: NaviIntent, context: Dict[str, Any]
+    ) -> PlanResult:
         """Plan PROJECT_MANAGEMENT family intents using generic approach."""
-        kind_value = intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
+        kind_value = (
+            intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
+        )
 
         steps = [
             PlannedStep(
@@ -345,9 +381,13 @@ class PlannerV3:
             summary=f"Project Management {kind_value} plan",
         )
 
-    async def _plan_autonomous_family(self, intent: NaviIntent, context: Dict[str, Any]) -> PlanResult:
+    async def _plan_autonomous_family(
+        self, intent: NaviIntent, context: Dict[str, Any]
+    ) -> PlanResult:
         """Plan AUTONOMOUS_ORCHESTRATION family intents using generic approach."""
-        kind_value = intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
+        kind_value = (
+            intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
+        )
 
         steps = [
             PlannedStep(
@@ -367,10 +407,18 @@ class PlannerV3:
             summary=f"Autonomous {kind_value} plan",
         )
 
-    async def _plan_default_family(self, intent: NaviIntent, context: Dict[str, Any]) -> PlanResult:
+    async def _plan_default_family(
+        self, intent: NaviIntent, context: Dict[str, Any]
+    ) -> PlanResult:
         """Fallback planning for any intent family."""
-        family_value = intent.family.value if hasattr(intent.family, "value") else str(intent.family)
-        kind_value = intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
+        family_value = (
+            intent.family.value
+            if hasattr(intent.family, "value")
+            else str(intent.family)
+        )
+        kind_value = (
+            intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
+        )
 
         steps = [
             PlannedStep(
@@ -396,8 +444,14 @@ class SimplePlanner:
 
     async def plan(self, intent: NaviIntent, context: Dict[str, Any]) -> PlanResult:
         """Create a simple single-step plan."""
-        family_value = intent.family.value if hasattr(intent.family, "value") else str(intent.family)
-        kind_value = intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
+        family_value = (
+            intent.family.value
+            if hasattr(intent.family, "value")
+            else str(intent.family)
+        )
+        kind_value = (
+            intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
+        )
 
         step = PlannedStep(
             id="simple_step",

@@ -34,7 +34,9 @@ async def ingest_issue(
     """
     Ingest Jira issue webhooks (created/updated).
     """
-    verify_shared_secret(x_webhook_secret, settings.jira_webhook_secret, connector="jira")
+    verify_shared_secret(
+        x_webhook_secret, settings.jira_webhook_secret, connector="jira"
+    )
 
     issue = payload.get("issue")
     if not issue:
@@ -46,14 +48,21 @@ async def ingest_issue(
 
     connection = None
     if base_url:
-        query = db.query(JiraConnection).filter(JiraConnection.cloud_base_url == base_url)
+        query = db.query(JiraConnection).filter(
+            JiraConnection.cloud_base_url == base_url
+        )
         # Enforce org scoping
         query = query.filter(JiraConnection.org_id == org_ctx["org_id"])
         connection = query.order_by(JiraConnection.id.desc()).first()
 
     if not connection:
-        logger.warning("jira_webhook.no_connection", extra={"base_url": base_url, "issue_key": issue.get("key")})
-        raise HTTPException(status_code=202, detail="No Jira connection found for webhook base URL")
+        logger.warning(
+            "jira_webhook.no_connection",
+            extra={"base_url": base_url, "issue_key": issue.get("key")},
+        )
+        raise HTTPException(
+            status_code=202, detail="No Jira connection found for webhook base URL"
+        )
 
     try:
         row = JiraService.upsert_issue(db, connection.id, issue)
@@ -74,7 +83,9 @@ async def ingest_event(
     """
     Ingest Jira generic webhooks (comments, status changes).
     """
-    verify_shared_secret(x_webhook_secret, settings.jira_webhook_secret, connector="jira")
+    verify_shared_secret(
+        x_webhook_secret, settings.jira_webhook_secret, connector="jira"
+    )
 
     issue = payload.get("issue") or {}
     issue_key = issue.get("key")
@@ -86,13 +97,20 @@ async def ingest_event(
     base_url = self_url.split("/rest/")[0] if "/rest/" in self_url else None
     connection = None
     if base_url:
-        query = db.query(JiraConnection).filter(JiraConnection.cloud_base_url == base_url)
+        query = db.query(JiraConnection).filter(
+            JiraConnection.cloud_base_url == base_url
+        )
         query = query.filter(JiraConnection.org_id == org_ctx["org_id"])
         connection = query.order_by(JiraConnection.id.desc()).first()
 
     if not connection:
-        logger.warning("jira_webhook.no_connection", extra={"base_url": base_url, "issue_key": issue_key})
-        raise HTTPException(status_code=202, detail="No Jira connection found for webhook base URL")
+        logger.warning(
+            "jira_webhook.no_connection",
+            extra={"base_url": base_url, "issue_key": issue_key},
+        )
+        raise HTTPException(
+            status_code=202, detail="No Jira connection found for webhook base URL"
+        )
 
     try:
         # Always upsert issue body to keep status fresh
@@ -100,13 +118,19 @@ async def ingest_event(
 
         # Comment added/updated
         if payload.get("comment"):
-            JiraService.upsert_issue_comment(db, connection.id, issue_key, payload["comment"])
+            JiraService.upsert_issue_comment(
+                db, connection.id, issue_key, payload["comment"]
+            )
         # Transition/status change captured via payload.transition
         if payload.get("transition"):
             trans = payload["transition"]
             logger.info(
                 "jira_webhook.transition",
-                extra={"issue_key": issue_key, "transition": trans.get("name"), "id": trans.get("id")},
+                extra={
+                    "issue_key": issue_key,
+                    "transition": trans.get("name"),
+                    "id": trans.get("id"),
+                },
             )
 
         logger.info("jira_webhook.event_processed", extra={"issue_key": issue_key})

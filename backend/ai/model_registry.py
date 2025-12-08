@@ -6,7 +6,7 @@ This module provides a simple in-memory registry backed by `backend/ai/llm_provi
 
 The registry exposes:
 - list_providers() -> List[str]
-- list_models(provider=None) -> List[LLMModelInfo]  
+- list_models(provider=None) -> List[LLMModelInfo]
 - get_model(provider, name) -> Optional[LLMModelInfo]
 - best_smart_auto() -> Optional[LLMModelInfo]
 
@@ -38,8 +38,6 @@ class LLMModelInfo:
     recommended: bool = False
     smart_auto_rank: int = 999
     capabilities: Dict[str, Any] = field(default_factory=dict)
-
-
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -108,7 +106,7 @@ class LLMModelRegistry:
         except FileNotFoundError:
             # No config file found, start with empty registry
             raw = {"providers": {}}
-        
+
         providers_cfg = raw.get("providers", {})
 
         for provider_key, provider_data in providers_cfg.items():
@@ -134,10 +132,7 @@ class LLMModelRegistry:
     def dump_json(self) -> str:
         return json.dumps(
             {
-                provider: {
-                    name: m.to_dict()
-                    for name, m in models.items()
-                }
+                provider: {name: m.to_dict() for name, m in models.items()}
                 for provider, models in self._providers.items()
             },
             indent=2,

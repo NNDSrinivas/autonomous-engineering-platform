@@ -31,7 +31,9 @@ logger = logging.getLogger(__name__)
 async def ingest(
     request: Request,
     db: Session = Depends(get_db),
-    x_slack_request_timestamp: str | None = Header(None, alias="X-Slack-Request-Timestamp"),
+    x_slack_request_timestamp: str | None = Header(
+        None, alias="X-Slack-Request-Timestamp"
+    ),
     x_slack_signature: str | None = Header(None, alias="X-Slack-Signature"),
     org_ctx: dict = Depends(require_org),
 ):
@@ -121,11 +123,17 @@ async def ingest(
 
     logger.info(
         "slack_webhook.event",
-        extra={"event_type": event_type, "org": org_ctx["org_id"], "channel": event.get("channel")},
+        extra={
+            "event_type": event_type,
+            "org": org_ctx["org_id"],
+            "channel": event.get("channel"),
+        },
     )
 
     # Invalidate context packets for any Jira-style keys mentioned
-    for match in re.findall(r"\b[A-Z][A-Z0-9]+-\d+\b", payload.get("event", {}).get("text", "")):
+    for match in re.findall(
+        r"\b[A-Z][A-Z0-9]+-\d+\b", payload.get("event", {}).get("text", "")
+    ):
         invalidate_context_packet_cache(match, org_ctx["org_id"])
 
     return {"status": "ok"}

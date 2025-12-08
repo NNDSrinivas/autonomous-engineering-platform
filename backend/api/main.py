@@ -15,6 +15,7 @@ from backend.core.obs.obs_logging import configure_json_logging
 try:
     from backend.core.obs.obs_tracing import init_tracing, instrument_fastapi_app
 except (ImportError, ModuleNotFoundError):
+
     def init_tracing() -> None:  # type: ignore[unused-ignore]
         """Fallback no-op if tracing module is absent."""
         pass
@@ -22,6 +23,7 @@ except (ImportError, ModuleNotFoundError):
     def instrument_fastapi_app(app: FastAPI) -> None:  # type: ignore[unused-ignore]
         """Fallback no-op if tracing module is absent."""
         pass
+
 
 from backend.core.obs.obs_metrics import metrics_app, PROM_ENABLED
 from backend.core.obs.obs_middleware import ObservabilityMiddleware
@@ -57,8 +59,12 @@ from .org_sync import router as org_sync_router  # Step 2: Jira/Confluence memor
 from .navi_search import router as navi_search_router  # Step 3: Unified RAG search
 from .navi_brief import router as navi_brief_router  # Jira tasks + task brief endpoints
 from .navi_intent import router as navi_intent_router  # NAVI intent classification
-from .routes.intent import router as intent_api_router  # LLM-powered intent classification API
-from .routes.providers import router as providers_api_router  # BYOK provider management API
+from .routes.intent import (
+    router as intent_api_router,
+)  # LLM-powered intent classification API
+from .routes.providers import (
+    router as providers_api_router,
+)  # BYOK provider management API
 from .routes.agent import router as agent_api_router  # Complete NAVI agent API
 from ..search.router import router as search_router
 from .integrations_ext import router as integrations_ext_router
@@ -91,6 +97,7 @@ from .routers.ci_webhook import router as ci_webhook_router
 from .routers.debug_info import router as debug_info_router
 from .routers.debug_context import router as debug_context_router
 from .routers.chat_history import router as chat_history_router
+
 # Auth0 JWT validation routes
 from ..auth.routes import router as auth_routes_router
 
@@ -110,7 +117,7 @@ async def lifespan(app: FastAPI):
     presence_lifecycle.stop_cleanup_thread()
     try:
         result = on_shutdown()  # PR-29: Graceful shutdown
-        if hasattr(result, '__await__'):
+        if hasattr(result, "__await__"):
             await result
     except Exception as e:
         logger.warning(f"Shutdown warning: {e}")
@@ -177,8 +184,10 @@ app.include_router(navi_router)  # PR-5B/PR-6: NAVI VS Code extension
 app.include_router(org_sync_router)  # Step 2: Jira/Confluence memory integration
 app.include_router(navi_search_router)  # Step 3: Unified RAG search
 app.include_router(navi_brief_router)  # NAVI: Jira task list and task brief
-app.include_router(navi_intent_router)  # NAVI: Intent classification for smart routing  
-app.include_router(intent_api_router)  # LLM-powered intent classification API (includes /api/agent/intent prefix)
+app.include_router(navi_intent_router)  # NAVI: Intent classification for smart routing
+app.include_router(
+    intent_api_router
+)  # LLM-powered intent classification API (includes /api/agent/intent prefix)
 app.include_router(providers_api_router)  # BYOK provider management API
 app.include_router(agent_api_router, prefix="/api")  # Complete NAVI agent API
 app.include_router(search_router)

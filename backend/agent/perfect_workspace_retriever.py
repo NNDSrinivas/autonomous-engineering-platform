@@ -4,11 +4,21 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-EXCLUDED_DIRS = {
-    "node_modules", ".git", ".venv", "__pycache__", "dist", "build", "out"
-}
+EXCLUDED_DIRS = {"node_modules", ".git", ".venv", "__pycache__", "dist", "build", "out"}
 
-TEXT_EXT = {".ts", ".tsx", ".py", ".js", ".jsx", ".java", ".md", ".json", ".yaml", ".yml", ".txt"}
+TEXT_EXT = {
+    ".ts",
+    ".tsx",
+    ".py",
+    ".js",
+    ".jsx",
+    ".java",
+    ".md",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".txt",
+}
 
 MAX_FILE_SIZE = 30_000  # 30 KB
 
@@ -66,7 +76,7 @@ async def retrieve_perfect_workspace_context(
     active_file = payload_workspace.get("active_file")
     selected_text = payload_workspace.get("selected_text")
     recent_files = payload_workspace.get("recent_files", [])
-    
+
     logger.info(f"[PERFECT-WORKSPACE] workspace_root: {workspace_root}")
     logger.info(f"[PERFECT-WORKSPACE] payload_workspace: {payload_workspace}")
 
@@ -82,11 +92,9 @@ async def retrieve_perfect_workspace_context(
                 if content:
                     ext = os.path.splitext(path)[1]
                     if ext in TEXT_EXT:
-                        small_files.append({
-                            "path": path,
-                            "ext": ext,
-                            "content": content
-                        })
+                        small_files.append(
+                            {"path": path, "ext": ext, "content": content}
+                        )
 
     return {
         "workspace_root": workspace_root,

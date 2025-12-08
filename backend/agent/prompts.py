@@ -21,19 +21,19 @@ def get_system_prompt(
 ) -> str:
     """
     Generate the complete system prompt for NAVI.
-    
+
     This is the single most important component - it defines HOW NAVI THINKS.
-    
+
     Args:
         include_tools: Whether to inject tool descriptions
         include_jira: Whether to include Jira-specific reasoning
         include_code: Whether to include code generation guidance
         user_context: Optional user-specific memory/preferences
-    
+
     Returns:
         Complete system prompt ready for LLM injection
     """
-    
+
     base_prompt = r"""You are NAVI — the Autonomous Engineering Assistant for Navra Labs.
 
 # YOUR ROLE
@@ -255,19 +255,19 @@ You are NAVI.
     # Add tool descriptions if requested
     if include_tools:
         base_prompt += "\n\n" + _get_tool_descriptions()
-    
+
     # Add Jira-specific reasoning if requested
     if include_jira:
         base_prompt += "\n\n" + _get_jira_reasoning_guide()
-    
+
     # Add code generation guidance if requested
     if include_code:
         base_prompt += "\n\n" + _get_code_generation_guide()
-    
+
     # Add user context if provided
     if user_context:
         base_prompt += "\n\n" + _format_user_context(user_context)
-    
+
     return base_prompt
 
 
@@ -501,26 +501,30 @@ Suggest proper git workflow:
 def _format_user_context(user_context: Dict) -> str:
     """Format user-specific context for injection."""
     context_str = "\n# USER CONTEXT\n\n"
-    
+
     if "name" in user_context:
         context_str += f"**User:** {user_context['name']}\n"
-    
+
     if "email" in user_context:
         context_str += f"**Email:** {user_context['email']}\n"
-    
+
     if "preferences" in user_context:
         prefs = user_context["preferences"]
         context_str += "\n**Preferences:**\n"
         for key, value in prefs.items():
             context_str += f"- {key}: {value}\n"
-    
+
     if "current_task" in user_context:
         task = user_context["current_task"]
-        context_str += f"\n**Current Task:** {task.get('key')} - {task.get('summary')}\n"
-    
+        context_str += (
+            f"\n**Current Task:** {task.get('key')} - {task.get('summary')}\n"
+        )
+
     if "recent_topics" in user_context:
-        context_str += f"\n**Recent Topics:** {', '.join(user_context['recent_topics'])}\n"
-    
+        context_str += (
+            f"\n**Recent Topics:** {', '.join(user_context['recent_topics'])}\n"
+        )
+
     return context_str
 
 

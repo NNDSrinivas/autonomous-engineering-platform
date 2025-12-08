@@ -6,7 +6,7 @@ into a full autonomous AI engineer.
 
 This is the layer that coordinates:
 - Jira understanding (STEP F)
-- Tool execution (STEP E)  
+- Tool execution (STEP E)
 - Intent classification (STEP D)
 - Organizational context (STEP C)
 - Memory & state (STEP B)
@@ -29,7 +29,7 @@ from .steps import (
     step_push_branch,
     step_create_pr,
     step_update_jira,
-    step_done
+    step_done,
 )
 from .engine import run_workflow_step, create_workflow, resume_workflow
 from .runner import WorkflowRunner, start_autonomous_task

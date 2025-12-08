@@ -11,4 +11,6 @@ class ChatMessage(Base):
     org_id = Column(String(255), nullable=True, index=True)
     role = Column(String(50), nullable=False)  # user | assistant | system
     message = Column(Text, nullable=False)
-    created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at = Column(
+        TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False
+    )

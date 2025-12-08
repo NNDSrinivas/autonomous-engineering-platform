@@ -216,7 +216,7 @@ _orchestrator_init_error: Optional[str] = None
 try:
     from backend.agent.planner_v3 import SimplePlanner
     from backend.agent.tool_executor_simple import SimpleToolExecutor
-    
+
     _orchestrator = NaviOrchestrator(
         planner=SimplePlanner(),
         tool_executor=SimpleToolExecutor(),

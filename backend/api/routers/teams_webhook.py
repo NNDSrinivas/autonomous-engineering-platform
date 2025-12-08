@@ -37,12 +37,22 @@ async def ingest(
     """
     Ingest Teams messages for context hydration.
     """
-    verify_shared_secret(x_webhook_secret, settings.teams_webhook_secret, connector="teams")
+    verify_shared_secret(
+        x_webhook_secret, settings.teams_webhook_secret, connector="teams"
+    )
 
     resource = payload.get("resourceData") or payload.get("value") or {}
-    text = resource.get("body", "") if isinstance(resource.get("body"), str) else resource.get("text", "")
+    text = (
+        resource.get("body", "")
+        if isinstance(resource.get("body"), str)
+        else resource.get("text", "")
+    )
     channel = resource.get("channelId") or resource.get("channel")
-    user = resource.get("from", {}).get("user", {}).get("id") if isinstance(resource.get("from"), dict) else None
+    user = (
+        resource.get("from", {}).get("user", {}).get("id")
+        if isinstance(resource.get("from"), dict)
+        else None
+    )
     message_id = resource.get("id")
     thread_id = resource.get("replyToId")
 
@@ -90,5 +100,7 @@ async def ingest(
     for match in re.findall(r"\b[A-Z][A-Z0-9]+-\d+\b", text):
         invalidate_context_packet_cache(match, org_ctx["org_id"])
 
-    logger.info("teams_webhook.event", extra={"org": org_ctx["org_id"], "channel": channel})
+    logger.info(
+        "teams_webhook.event", extra={"org": org_ctx["org_id"], "channel": channel}
+    )
     return {"status": "ok"}

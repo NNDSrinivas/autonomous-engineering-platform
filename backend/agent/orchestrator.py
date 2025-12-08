@@ -38,27 +38,29 @@ logger = logging.getLogger(__name__)
 # Optional Interfaces (State + Memory)
 # ============================================================================
 
-class StateManager(Protocol):
-    def load_state(self, session_id: str) -> Dict[str, Any]:
-        ...
 
-    def save_state(self, session_id: str, state: Dict[str, Any]) -> None:
-        ...
+class StateManager(Protocol):
+    def load_state(self, session_id: str) -> Dict[str, Any]: ...
+
+    def save_state(self, session_id: str, state: Dict[str, Any]) -> None: ...
 
 
 class MemoryRetriever(Protocol):
-    def retrieve(self, intent: NaviIntent, context: Dict[str, Any]) -> Dict[str, Any]:
-        ...
+    def retrieve(
+        self, intent: NaviIntent, context: Dict[str, Any]
+    ) -> Dict[str, Any]: ...
 
 
 class Planner(Protocol):
-    async def plan(self, intent: NaviIntent, context: Dict[str, Any]) -> "PlanResult":
-        ...
+    async def plan(
+        self, intent: NaviIntent, context: Dict[str, Any]
+    ) -> "PlanResult": ...
 
 
 class ToolExecutor(Protocol):
-    async def execute_step(self, step: "PlannedStep", intent: NaviIntent, context: Dict[str, Any]) -> "StepResult":
-        ...
+    async def execute_step(
+        self, step: "PlannedStep", intent: NaviIntent, context: Dict[str, Any]
+    ) -> "StepResult": ...
 
 
 class LLMIntentClassifier(Protocol):
@@ -71,17 +73,18 @@ class LLMIntentClassifier(Protocol):
         api_key: Optional[str] = None,
         org_id: Optional[str] = None,
         session_id: Optional[str] = None,
-    ) -> NaviIntent:
-        ...
+    ) -> NaviIntent: ...
 
 
 # ============================================================================
 # Planning Data Structures
 # ============================================================================
 
+
 @dataclass
 class PlannedStep:
     """A single step produced by the planner."""
+
     id: str
     description: str
     tool: str
@@ -91,6 +94,7 @@ class PlannedStep:
 @dataclass
 class PlanResult:
     """Result from the planner containing steps and optional summary."""
+
     steps: List[PlannedStep]
     summary: Optional[str] = None
 
@@ -98,6 +102,7 @@ class PlanResult:
 @dataclass
 class StepResult:
     """Result from executing a single step."""
+
     step_id: str
     ok: bool
     output: Any
@@ -108,6 +113,7 @@ class StepResult:
 # ============================================================================
 # Result Container Returned to API/UI
 # ============================================================================
+
 
 @dataclass
 class AgentTurnResult:
@@ -120,6 +126,7 @@ class AgentTurnResult:
 # ============================================================================
 # Orchestrator Implementation
 # ============================================================================
+
 
 class NaviOrchestrator:
     """
@@ -144,10 +151,11 @@ class NaviOrchestrator:
         if not self.llm_classifier:
             try:
                 from ..ai.intent_llm_classifier import LLMIntentClassifier
+
                 self.llm_classifier = LLMIntentClassifier()
             except ImportError:
                 logger.warning("LLM classifier not available, using heuristic only")
-                
+
         self.heuristic_classifier = heuristic_classifier or IntentClassifier()
 
         # Optional components
@@ -195,7 +203,9 @@ class NaviOrchestrator:
                 raise Exception("LLM classifier not available")
         except Exception as e:
             logger.error(f"[INTENT] LLM classifier failed → fallback. Error: {e}")
-            intent = self.heuristic_classifier.classify(message, metadata=metadata, repo=repo)
+            intent = self.heuristic_classifier.classify(
+                message, metadata=metadata, repo=repo
+            )
 
         # 3. Retrieve long-term memory (optional)
         memory = {}
@@ -242,9 +252,13 @@ class NaviOrchestrator:
                 trace.append(step_result)
 
                 if not step_result.ok:
-                    logger.warning(f"[EXECUTION] Step {step.id} failed: {step_result.error}")
+                    logger.warning(
+                        f"[EXECUTION] Step {step.id} failed: {step_result.error}"
+                    )
             except Exception as e:
-                logger.exception(f"[EXECUTION] Tool execution failure for step {step.id}")
+                logger.exception(
+                    f"[EXECUTION] Tool execution failure for step {step.id}"
+                )
                 trace.append(
                     StepResult(step_id=step.id, ok=False, output=None, error=str(e))
                 )
@@ -297,7 +311,9 @@ class NaviOrchestrator:
                 raise Exception("LLM classifier not available")
         except Exception as e:
             logger.error(f"[INTENT] LLM classifier failed → fallback. Error: {e}")
-            return self.heuristic_classifier.classify(message, metadata=metadata, repo=repo)
+            return self.heuristic_classifier.classify(
+                message, metadata=metadata, repo=repo
+            )
 
     # ----------------------------------------------------------------------
     # Private summary builder
@@ -327,7 +343,9 @@ class NaviOrchestrator:
 
         if failures:
             first_err = failures[0]
-            parts.append(f"First failure in step '{first_err.step_id}': {first_err.error}")
+            parts.append(
+                f"First failure in step '{first_err.step_id}': {first_err.error}"
+            )
 
         return " ".join(parts)
 
@@ -335,6 +353,7 @@ class NaviOrchestrator:
 # ============================================================================
 # Backwards Compatibility
 # ============================================================================
+
 
 async def run_agent_turn(
     session_id: str,

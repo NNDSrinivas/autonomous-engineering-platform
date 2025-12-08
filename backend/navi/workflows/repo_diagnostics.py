@@ -26,6 +26,7 @@ class FileEdit:
       - new_text
       - description
     """
+
     relative_path: str
     kind: PatchKind
     new_text: str
@@ -46,7 +47,9 @@ class RepoDiagnosticsWorkflow:
       - a list of FileEdit objects for simple, safe auto-fixes
     """
 
-    def __init__(self, *, run_npm_scripts: bool = True, npm_timeout_sec: int = 25) -> None:
+    def __init__(
+        self, *, run_npm_scripts: bool = True, npm_timeout_sec: int = 25
+    ) -> None:
         self.run_npm_scripts = run_npm_scripts
         self.npm_timeout_sec = npm_timeout_sec
 
@@ -92,17 +95,21 @@ class RepoDiagnosticsWorkflow:
 
         if not lint_script:
             summary["non_blocking_issues"].append(
-                "No `lint` script defined in package.json. Consider adding `\"lint\": \"eslint .\"`."
+                'No `lint` script defined in package.json. Consider adding `"lint": "eslint ."`.'
             )
         else:
-            summary["high_level_findings"].append(f"`npm run lint` script found: `{lint_script}`")
+            summary["high_level_findings"].append(
+                f"`npm run lint` script found: `{lint_script}`"
+            )
 
         if not test_script:
             summary["non_blocking_issues"].append(
                 "No `test` script defined in package.json. Consider adding Jest / Vitest / your test runner."
             )
         else:
-            summary["high_level_findings"].append(f"`npm test` script found: `{test_script}`")
+            summary["high_level_findings"].append(
+                f"`npm test` script found: `{test_script}`"
+            )
 
         # 3) Optional: actually run npm scripts
         ci_results: Dict[str, Dict] = {}
@@ -138,7 +145,7 @@ class RepoDiagnosticsWorkflow:
         non_blocking_actions: List[str] = []
         if not lint_script:
             non_blocking_actions.append(
-                "Add a `lint` script to package.json and wire up ESLint (for example: `\"lint\": \"eslint .\"`)."
+                'Add a `lint` script to package.json and wire up ESLint (for example: `"lint": "eslint ."`).'
             )
         if not test_script:
             non_blocking_actions.append(
@@ -158,7 +165,9 @@ class RepoDiagnosticsWorkflow:
             "details": raw_details,
         }
 
-    async def plan_simple_fixes(self, repo_root: Path, diagnostics: Dict) -> List[FileEdit]:
+    async def plan_simple_fixes(
+        self, repo_root: Path, diagnostics: Dict
+    ) -> List[FileEdit]:
         """
         Plan safe, automatic edits. We keep this **very conservative**.
 
@@ -206,6 +215,7 @@ class RepoDiagnosticsWorkflow:
 
         This runs blocking subprocess call in thread pool to avoid blocking FastAPI event loop.
         """
+
         def _run_sync() -> Tuple[bool, str]:
             try:
                 completed = subprocess.run(
@@ -220,9 +230,12 @@ class RepoDiagnosticsWorkflow:
             except (FileNotFoundError, PermissionError) as exc:
                 return False, f"Failed to run npm: {exc}"
             except subprocess.TimeoutExpired:
-                return False, f"`npm run {script}` timed out after {self.npm_timeout_sec} seconds."
+                return (
+                    False,
+                    f"`npm run {script}` timed out after {self.npm_timeout_sec} seconds.",
+                )
 
             ok = completed.returncode == 0
             return ok, completed.stdout or ""
-        
+
         return await asyncio.to_thread(_run_sync)

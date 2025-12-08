@@ -88,6 +88,7 @@ def get_broadcaster() -> Broadcast:
 # Authentication Dependencies
 # ---------------------------------------------------------------------------
 
+
 async def get_current_user(
     authorization: Optional[str] = Header(None),
     x_api_key: Optional[str] = Header(None),
@@ -95,26 +96,26 @@ async def get_current_user(
 ) -> Dict[str, Any]:
     """
     Get current authenticated user from request headers.
-    
+
     For now, this is a simple implementation that accepts any authorization.
     In production, this would validate JWT tokens or API keys.
     """
-    
+
     # Simple authentication for development
     # In production, implement proper JWT/API key validation
     user_id = "default_user"
-    
+
     if authorization:
         # Extract user info from Bearer token (simplified)
         if authorization.startswith("Bearer "):
             token = authorization[7:]
             # In production: validate and decode JWT token
             user_id = f"user_{hash(token) % 10000}"
-    
+
     if x_api_key:
         # Use API key as user identifier (simplified)
         user_id = f"api_user_{hash(x_api_key) % 10000}"
-    
+
     return {
         "user_id": user_id,
         "authenticated": True,
@@ -124,7 +125,7 @@ async def get_current_user(
 
 
 # ---------------------------------------------------------------------------
-# NAVI Orchestrator Dependencies  
+# NAVI Orchestrator Dependencies
 # ---------------------------------------------------------------------------
 
 _orchestrator_instance: Optional["NaviOrchestrator"] = None
@@ -134,28 +135,28 @@ _orchestrator_lock = threading.Lock()
 def get_orchestrator() -> "NaviOrchestrator":
     """
     Get a singleton NAVI orchestrator instance.
-    
+
     This creates a default orchestrator for API endpoints.
     Individual requests can override settings via parameters.
     """
     global _orchestrator_instance
-    
+
     # Fast path: instance already created
     if _orchestrator_instance is not None:
         return _orchestrator_instance
-    
+
     # Slow path: create instance (with lock)
     with _orchestrator_lock:
         # Double-check
         if _orchestrator_instance is not None:
             return _orchestrator_instance
-        
+
         try:
             from backend.agent.orchestrator import NaviOrchestrator
             from backend.agent.planner_v3 import SimplePlanner
             from backend.agent.tool_executor_simple import SimpleToolExecutor
             from backend.ai.intent_llm_classifier import LLMIntentClassifier
-            
+
             # Create production orchestrator with full LLM support
             _orchestrator_instance = NaviOrchestrator(
                 planner=SimplePlanner(),
@@ -163,21 +164,21 @@ def get_orchestrator() -> "NaviOrchestrator":
                 llm_classifier=LLMIntentClassifier(),
                 # Optional components will be auto-initialized if available
             )
-            
+
             logger.info("[Deps] Created production NAVI orchestrator with LLM support")
-            
+
         except ImportError as e:
             logger.warning(f"[Deps] Could not create production orchestrator: {e}")
-            
+
             # Fallback to minimal orchestrator with simple components
             from backend.agent.orchestrator import NaviOrchestrator
             from backend.agent.planner_v3 import SimplePlanner
             from backend.agent.tool_executor_simple import SimpleToolExecutor
-            
+
             _orchestrator_instance = NaviOrchestrator(
                 planner=SimplePlanner(),
                 tool_executor=SimpleToolExecutor(),
                 # No LLM classifier - will use heuristic fallback
             )
-        
+
         return _orchestrator_instance

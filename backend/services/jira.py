@@ -21,7 +21,11 @@ class JiraService:
 
     @staticmethod
     def save_connection(
-        db: Session, base_url: str, access_token: str, user_id: str | None = None, org_id: str | None = None
+        db: Session,
+        base_url: str,
+        access_token: str,
+        user_id: str | None = None,
+        org_id: str | None = None,
     ) -> JiraConnection:
         conn = JiraConnection(
             id=JiraService._id(),
@@ -37,7 +41,9 @@ class JiraService:
         return conn
 
     @staticmethod
-    def get_connection_for_user(db: Session, user_id: str, org_id: Optional[str] = None) -> JiraConnection | None:
+    def get_connection_for_user(
+        db: Session, user_id: str, org_id: Optional[str] = None
+    ) -> JiraConnection | None:
         """Get the most recent JiraConnection for a user"""
         query = db.query(JiraConnection).filter_by(user_id=user_id)
         if org_id:
@@ -135,7 +141,7 @@ class JiraService:
             db.add(row)
         db.commit()
         return row
-    
+
     @staticmethod
     def upsert_issue_comment(db: Session, conn_id: str, issue_key: str, comment: dict):
         """
@@ -150,7 +156,8 @@ class JiraService:
             {
                 "id": comment.get("id"),
                 "author": (comment.get("author") or {}).get("displayName"),
-                "body": (comment.get("body") or {}).get("content") or comment.get("body"),
+                "body": (comment.get("body") or {}).get("content")
+                or comment.get("body"),
                 "created": comment.get("created"),
                 "updated": comment.get("updated"),
                 "url": comment.get("self"),
@@ -205,7 +212,9 @@ class JiraService:
         return [dict(r) for r in rows]
 
     @staticmethod
-    def list_issues_for_assignee(db: Session, assignee: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def list_issues_for_assignee(
+        db: Session, assignee: str, limit: int = 20
+    ) -> List[Dict[str, Any]]:
         """
         Convenience wrapper: all issues assigned to a given user.
         """
@@ -315,7 +324,9 @@ class JiraService:
             return {"status": "ok"}
 
     @staticmethod
-    def _select_connection(db: Session, user_id: Optional[str], org_id: Optional[str]) -> Optional[JiraConnection]:
+    def _select_connection(
+        db: Session, user_id: Optional[str], org_id: Optional[str]
+    ) -> Optional[JiraConnection]:
         """
         Pick the most recent Jira connection for an org/user.
         """

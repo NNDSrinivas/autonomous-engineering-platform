@@ -50,22 +50,25 @@ async def _get_jira_client_for_user(db: Session, user_id: str) -> Optional[JiraC
         try:
             # Decrypt the token (access_token is encrypted)
             decrypted_token = decrypt_token(connection.access_token)
-            
-            # Create client with saved credentials  
+
+            # Create client with saved credentials
             # Note: The model doesn't have email field, use env var as fallback
             email = os.getenv("AEP_JIRA_EMAIL", "")
             return JiraClient(
                 base_url=connection.cloud_base_url,
                 email=email,
-                api_token=decrypted_token
+                api_token=decrypted_token,
             )
         except Exception as e:
             logger.warning("Failed to decrypt saved connection", error=str(e))
-    
+
     # Fallback to environment variables
-    if all(os.getenv(var) for var in ["AEP_JIRA_BASE_URL", "AEP_JIRA_EMAIL", "AEP_JIRA_API_TOKEN"]):
+    if all(
+        os.getenv(var)
+        for var in ["AEP_JIRA_BASE_URL", "AEP_JIRA_EMAIL", "AEP_JIRA_API_TOKEN"]
+    ):
         return JiraClient()
-    
+
     return None
 
 
@@ -173,18 +176,18 @@ async def ingest_jira_for_user(
 
                 assignee_obj = fields.get("assignee", {}) or {}
                 assignee = assignee_obj.get("displayName", "Unassigned")
-                
+
                 # Extract timestamps and project info
                 created = fields.get("created", "")
                 updated = fields.get("updated", "")
-                
+
                 project_obj = fields.get("project", {}) or {}
                 project_key = project_obj.get("key", "")
                 project_name = project_obj.get("name", "")
-                
+
                 issue_type_obj = fields.get("issuetype", {}) or {}
                 issue_type = issue_type_obj.get("name", "Task")
-                
+
                 reporter_obj = fields.get("reporter", {}) or {}
                 reporter = reporter_obj.get("displayName", "Unknown")
 

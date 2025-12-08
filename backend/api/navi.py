@@ -39,7 +39,13 @@ from backend.core.db import get_db
 from backend.agent.agent_loop import run_agent_loop
 from backend.agent.planner_v3 import PlannerV3
 from backend.agent.tool_executor import execute_tool_with_sources
-from backend.agent.intent_schema import IntentFamily, IntentKind, IntentSource, IntentPriority, NaviIntent
+from backend.agent.intent_schema import (
+    IntentFamily,
+    IntentKind,
+    IntentSource,
+    IntentPriority,
+    NaviIntent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +61,46 @@ if not OPENAI_ENABLED:
 planner_v3 = PlannerV3()
 
 # Jira keywords for fast-path routing
-JIRA_KEYWORDS = ("jira", "ticket", "tickets", "issue", "issues", "story", "stories", "assigned")
-ME_KEYWORDS = ("assigned to me", "my tickets", "my issues", "my tasks", "assigned for me", "my jira")
-WORK_KEYWORDS = ("jira", "ticket", "issue", "pr", "pull request", "code", "build", "test", "plan", "doc", "repo")
+JIRA_KEYWORDS = (
+    "jira",
+    "ticket",
+    "tickets",
+    "issue",
+    "issues",
+    "story",
+    "stories",
+    "assigned",
+)
+ME_KEYWORDS = (
+    "assigned to me",
+    "my tickets",
+    "my issues",
+    "my tasks",
+    "assigned for me",
+    "my jira",
+)
+WORK_KEYWORDS = (
+    "jira",
+    "ticket",
+    "issue",
+    "pr",
+    "pull request",
+    "code",
+    "build",
+    "test",
+    "plan",
+    "doc",
+    "repo",
+)
+
 
 def _looks_like_jira_my_issues(message: str) -> bool:
     """Check if message is asking for user's Jira issues."""
     msg = message.lower()
     has_jira = any(k in msg for k in JIRA_KEYWORDS)
-    has_me = any(k in msg for k in ME_KEYWORDS) or "assigned to me" in msg or "my " in msg
+    has_me = (
+        any(k in msg for k in ME_KEYWORDS) or "assigned to me" in msg or "my " in msg
+    )
     return has_jira and has_me
 
 
@@ -219,7 +256,9 @@ async def navi_chat(
     try:
         user_id = (request.user_id or "default_user").strip() or "default_user"
         mode = (request.mode or "chat-only").strip() or "chat-only"
-        workspace_root = request.workspace_root or (request.workspace or {}).get("workspace_root")
+        workspace_root = request.workspace_root or (request.workspace or {}).get(
+            "workspace_root"
+        )
         org_id = http_request.headers.get("x-org-id") if http_request else None
 
         logger.info(
@@ -234,10 +273,16 @@ async def navi_chat(
 
         # If this is clear small talk and not a work request, reply directly
         msg_lower = request.message.lower().strip()
-        if any(p in msg_lower for p in smalltalk_phrases) and not _looks_like_jira_my_issues(msg_lower):
+        if any(
+            p in msg_lower for p in smalltalk_phrases
+        ) and not _looks_like_jira_my_issues(msg_lower):
             if "how are" in msg_lower:
                 reply = "I’m doing well and ready to help. What do you want to tackle—code, Jira, docs, or builds?"
-            elif "news" in msg_lower or "what's up" in msg_lower or "what is up" in msg_lower:
+            elif (
+                "news" in msg_lower
+                or "what's up" in msg_lower
+                or "what is up" in msg_lower
+            ):
                 reply = "All clear on my side. Tell me what you want to work on—code, Jira, docs, or builds."
             else:
                 reply = "Hi there—ready when you are. What should we work on—code, Jira, docs, or builds?"
@@ -271,9 +316,13 @@ async def navi_chat(
         if "jira" in msg_lower and not _looks_like_jira_my_issues(msg_lower):
             # Fallback: if no org_id header, use the most recent Jira connection's org_id
             if not org_id:
-                org_id = db.execute(text("SELECT org_id FROM jira_connection ORDER BY id DESC LIMIT 1")).scalar()
-            conn_count = db.execute(text("SELECT COUNT(*) FROM jira_connection")).scalar() or 0
-            
+                org_id = db.execute(
+                    text("SELECT org_id FROM jira_connection ORDER BY id DESC LIMIT 1")
+                ).scalar()
+            conn_count = (
+                db.execute(text("SELECT COUNT(*) FROM jira_connection")).scalar() or 0
+            )
+
             # Check if Jira connector is connected (don't wait for slow sync)
             if conn_count == 0:
                 msg = "Jira is not connected. Connect Jira in the Connectors tab and retry."
@@ -290,16 +339,26 @@ async def navi_chat(
 
         # ✅ Jira fast-path: bypass workspace planner for direct tool execution
         jira_match = _looks_like_jira_my_issues(request.message)
-        logger.info("[NAVI-CHAT] Checking Jira fast-path for: '%s' -> %s", request.message, jira_match)
-        
+        logger.info(
+            "[NAVI-CHAT] Checking Jira fast-path for: '%s' -> %s",
+            request.message,
+            jira_match,
+        )
+
         if jira_match:
-            logger.info("[NAVI-CHAT] Using Jira fast-path for message: %s", request.message[:50])
+            logger.info(
+                "[NAVI-CHAT] Using Jira fast-path for message: %s", request.message[:50]
+            )
 
             # Guard: Jira connection present for this org?
             if not org_id:
-                org_id = db.execute(text("SELECT org_id FROM jira_connection ORDER BY id DESC LIMIT 1")).scalar()
-            conn_count = db.execute(text("SELECT COUNT(*) FROM jira_connection")).scalar() or 0
-            
+                org_id = db.execute(
+                    text("SELECT org_id FROM jira_connection ORDER BY id DESC LIMIT 1")
+                ).scalar()
+            conn_count = (
+                db.execute(text("SELECT COUNT(*) FROM jira_connection")).scalar() or 0
+            )
+
             # Just check if Jira is connected (don't wait for slow sync)
             if conn_count == 0:
                 msg = "Jira is not connected. Connect Jira in the Connectors tab and retry."
@@ -313,10 +372,10 @@ async def navi_chat(
                     state={"jira_fast_path": True},
                     duration_ms=0,
                 )
-            
+
             # Track timing
             started = time.monotonic()
-            
+
             # Create Jira intent
             NaviIntent(
                 family=IntentFamily.PROJECT_MANAGEMENT,
@@ -324,35 +383,35 @@ async def navi_chat(
                 raw_text=request.message,
                 source=IntentSource.CHAT,
                 priority=IntentPriority.NORMAL,
-                confidence=0.9
+                confidence=0.9,
             )
-            
+
             context = {
                 "message": request.message,
                 "user_id": user_id,
                 "workspace": request.workspace or {"workspace_root": workspace_root},
             }
-            
+
             # Direct tool execution with sources
             try:
                 tool_result = await execute_tool_with_sources(
                     user_id=user_id,
                     tool_name="jira.list_assigned_issues_for_user",
                     args={"limit": 20, "context": context},
-                    db=db
+                    db=db,
                 )
-                
+
                 # Format response for VS Code
                 issues_text = "Here are your Jira issues:\n"
                 if tool_result.output:
                     for issue in tool_result.output[:10]:  # Limit to 10 for display
-                        key = issue.get('issue_key', 'Unknown')
-                        summary = issue.get('summary', 'No summary')
-                        status = issue.get('status', 'Unknown')
+                        key = issue.get("issue_key", "Unknown")
+                        summary = issue.get("summary", "No summary")
+                        status = issue.get("status", "Unknown")
                         issues_text += f"• **{key}** - {summary} ({status})\n"
                 else:
                     issues_text = "No Jira issues found for you."
-                
+
                 # Return direct response with sources
                 return ChatResponse(
                     content=issues_text,
@@ -364,16 +423,16 @@ async def navi_chat(
                     state={"jira_fast_path": True},
                     duration_ms=int((time.monotonic() - started) * 1000),
                 )
-                
+
             except Exception as e:
                 logger.error("[NAVI-CHAT] Jira fast-path failed: %s", e)
                 # Fall through to regular agent loop
-        
+
         # Call the NAVI agent loop with perfect workspace context
         workspace_data = request.workspace or {}
         if workspace_root:
             workspace_data["workspace_root"] = workspace_root
-        
+
         agent_result = await run_agent_loop(
             user_id=user_id,
             message=request.message,
@@ -440,7 +499,7 @@ async def navi_chat(
 
         # Extract sources from agent result
         sources = agent_result.get("sources") or []
-        
+
         # Map `reply` -> `content` for the extension
         return ChatResponse(
             content=reply,

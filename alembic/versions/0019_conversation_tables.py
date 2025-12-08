@@ -22,12 +22,26 @@ def upgrade() -> None:
         sa.Column("message_ts", sa.String(length=255), nullable=True),
         sa.Column("user", sa.String(length=255), nullable=True),
         sa.Column("text", sa.Text(), nullable=False),
-        sa.Column("meta_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()"), nullable=False),
+        sa.Column(
+            "meta_json",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("NOW()"),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_conversation_message_org_id", "conversation_message", ["org_id"])
-    op.create_index("ix_conversation_message_message_ts", "conversation_message", ["message_ts"])
+    op.create_index(
+        "ix_conversation_message_org_id", "conversation_message", ["org_id"]
+    )
+    op.create_index(
+        "ix_conversation_message_message_ts", "conversation_message", ["message_ts"]
+    )
 
     op.create_table(
         "conversation_reply",
@@ -37,13 +51,27 @@ def upgrade() -> None:
         sa.Column("message_ts", sa.String(length=255), nullable=True),
         sa.Column("user", sa.String(length=255), nullable=True),
         sa.Column("text", sa.Text(), nullable=False),
-        sa.Column("meta_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()"), nullable=False),
-        sa.ForeignKeyConstraint(["parent_id"], ["conversation_message.id"], ondelete="CASCADE"),
+        sa.Column(
+            "meta_json",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("NOW()"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(
+            ["parent_id"], ["conversation_message.id"], ondelete="CASCADE"
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_conversation_reply_org_id", "conversation_reply", ["org_id"])
-    op.create_index("ix_conversation_reply_message_ts", "conversation_reply", ["message_ts"])
+    op.create_index(
+        "ix_conversation_reply_message_ts", "conversation_reply", ["message_ts"]
+    )
 
 
 def downgrade() -> None:
@@ -51,6 +79,8 @@ def downgrade() -> None:
     op.drop_index("ix_conversation_reply_org_id", table_name="conversation_reply")
     op.drop_table("conversation_reply")
 
-    op.drop_index("ix_conversation_message_message_ts", table_name="conversation_message")
+    op.drop_index(
+        "ix_conversation_message_message_ts", table_name="conversation_message"
+    )
     op.drop_index("ix_conversation_message_org_id", table_name="conversation_message")
     op.drop_table("conversation_message")

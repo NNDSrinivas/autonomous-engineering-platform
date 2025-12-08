@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 # LLM Intent Classifier
 # ======================================================================
 
+
 class LLMIntentClassifier:
     """
     High-accuracy LLM-powered intent classifier for NAVI.
@@ -92,13 +93,17 @@ class LLMIntentClassifier:
         try:
             llm_response = await self._ask_llm(text, metadata, api_key, org_id)
             parsed = self._parse_json(llm_response.text)
-            validated = self._validate_and_convert(parsed, raw=text, metadata=metadata, repo=repo)
+            validated = self._validate_and_convert(
+                parsed, raw=text, metadata=metadata, repo=repo
+            )
 
             logger.info("[LLM-Intent] Successfully classified using LLM")
             return validated
 
         except Exception as e:
-            logger.error(f"[LLM-Intent] LLM classification failed → fallback. Error: {e}")
+            logger.error(
+                f"[LLM-Intent] LLM classification failed → fallback. Error: {e}"
+            )
 
         # Fallback to heuristic classifier
         return self.heuristic.classify(message, repo=repo, metadata=metadata)
@@ -116,7 +121,7 @@ class LLMIntentClassifier:
     ) -> LLMResponse:
         """
         Call the LLM with the structured intent classification prompt.
-        
+
         Uses the system prompt to instruct the LLM to return provider-aware
         JSON classification for cross-app workflows.
         """
@@ -186,8 +191,12 @@ class LLMIntentClassifier:
             autonomy_mode=autonomy or AutonomyMode.ASSISTED,
             max_steps=data.get("workflow", {}).get("max_steps", 8),
             auto_run_tests=data.get("workflow", {}).get("auto_run_tests", False),
-            allow_cross_repo_changes=data.get("workflow", {}).get("allow_cross_repo_changes", False),
-            allow_long_running=data.get("workflow", {}).get("allow_long_running", False),
+            allow_cross_repo_changes=data.get("workflow", {}).get(
+                "allow_cross_repo_changes", False
+            ),
+            allow_long_running=data.get("workflow", {}).get(
+                "allow_long_running", False
+            ),
         )
 
         # Optional code_edit spec
@@ -233,7 +242,7 @@ class LLMIntentClassifier:
             # New provider-aware fields
             provider=provider or Provider.GENERIC,
             object_type=data.get("object_type"),
-            object_id=data.get("object_id"), 
+            object_id=data.get("object_id"),
             filters=data.get("filters", {}),
             code_edit=code_edit,
             test_run=test_run,
@@ -245,6 +254,7 @@ class LLMIntentClassifier:
 # ======================================================================
 # Utility Helpers
 # ======================================================================
+
 
 def _norm_text(msg: Any) -> str:
     if isinstance(msg, str):

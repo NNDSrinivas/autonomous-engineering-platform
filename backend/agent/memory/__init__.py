@@ -19,14 +19,14 @@ from .memory_types import (
     ConversationalMemory,
     WorkspaceMemory,
     OrganizationalMemory,
-    TaskMemory
+    TaskMemory,
 )
 from .memory_capture import (
     MemoryCapture,
     capture_user_preference,
     capture_code_pattern,
     capture_org_context,
-    capture_task_execution
+    capture_task_execution,
 )
 from .memory_retrieval import (
     MemoryRetrieval,
@@ -34,20 +34,20 @@ from .memory_retrieval import (
     retrieve_workspace_memories,
     retrieve_org_memories,
     retrieve_task_memories,
-    retrieve_relevant_context
+    retrieve_relevant_context,
 )
 from .learning_engine import (
     LearningEngine,
     learn_from_approval,
     learn_from_code_change,
     learn_coding_style,
-    detect_patterns
+    detect_patterns,
 )
 from .memory_manager import (
     MemoryManager,
     prune_old_memories,
     merge_similar_memories,
-    optimize_memory_store
+    optimize_memory_store,
 )
 
 __all__ = [

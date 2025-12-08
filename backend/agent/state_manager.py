@@ -32,7 +32,7 @@ _USER_STATES: Dict[str, Dict[str, Any]] = {}
 async def get_user_state(user_id: str) -> Dict[str, Any]:
     """
     Get the current state for a user.
-    
+
     Returns empty dict if no state exists (first message or cleared).
     """
     state = _USER_STATES.get(user_id, {})
@@ -44,15 +44,15 @@ async def get_user_state(user_id: str) -> Dict[str, Any]:
 async def update_user_state(user_id: str, updates: Dict[str, Any]) -> None:
     """
     Update user state with new information.
-    
+
     This merges the updates into existing state (doesn't replace).
     """
     if user_id not in _USER_STATES:
         _USER_STATES[user_id] = {}
-    
+
     _USER_STATES[user_id].update(updates)
     _USER_STATES[user_id]["last_updated"] = datetime.utcnow().isoformat()
-    
+
     logger.info(f"[STATE] Updated state for user={user_id}: {list(updates.keys())}")
 
 
@@ -65,17 +65,22 @@ def clear_user_state(user_id: str) -> None:
         logger.info(f"[STATE] Cleared state for user={user_id}")
 
 
-async def set_current_task(user_id: str, task_key: str, task_summary: Optional[str] = None) -> None:
+async def set_current_task(
+    user_id: str, task_key: str, task_summary: Optional[str] = None
+) -> None:
     """
     Set the user's currently active Jira task.
     """
-    await update_user_state(user_id, {
-        "current_task": {
-            "key": task_key,
-            "summary": task_summary,
-            "set_at": datetime.utcnow().isoformat()
-        }
-    })
+    await update_user_state(
+        user_id,
+        {
+            "current_task": {
+                "key": task_key,
+                "summary": task_summary,
+                "set_at": datetime.utcnow().isoformat(),
+            }
+        },
+    )
 
 
 async def get_current_task(user_id: str) -> Optional[Dict[str, Any]]:
@@ -89,15 +94,18 @@ async def get_current_task(user_id: str) -> Optional[Dict[str, Any]]:
 async def set_last_shown_issues(user_id: str, issues: list) -> None:
     """
     Remember the last list of Jira issues shown to the user.
-    
+
     This enables "the first one", "the second task", etc. references.
     """
-    await update_user_state(user_id, {
-        "last_shown_issues": [
-            {"key": issue.get("key"), "summary": issue.get("summary")}
-            for issue in issues
-        ]
-    })
+    await update_user_state(
+        user_id,
+        {
+            "last_shown_issues": [
+                {"key": issue.get("key"), "summary": issue.get("summary")}
+                for issue in issues
+            ]
+        },
+    )
 
 
 async def get_last_shown_issues(user_id: str) -> list:
@@ -112,30 +120,33 @@ async def set_pending_action(
     user_id: str,
     action_type: str,
     action_data: Dict[str, Any],
-    description: Optional[str] = None
+    description: Optional[str] = None,
 ) -> None:
     """
     Set a pending action waiting for user approval.
-    
+
     Examples:
     - "Create file X" → user can say "yes" to approve
     - "Apply diff to file Y" → user can say "go ahead"
     - "Run command Z" → user can say "do it"
-    
+
     Args:
         user_id: User ID
         action_type: Type of action (create_file, apply_diff, run_command, etc.)
         action_data: Action parameters
         description: Human-readable description of the action
     """
-    await update_user_state(user_id, {
-        "pending_action": {
-            "type": action_type,
-            "data": action_data,
-            "description": description,
-            "created_at": datetime.utcnow().isoformat()
-        }
-    })
+    await update_user_state(
+        user_id,
+        {
+            "pending_action": {
+                "type": action_type,
+                "data": action_data,
+                "description": description,
+                "created_at": datetime.utcnow().isoformat(),
+            }
+        },
+    )
     logger.info(f"[STATE] Set pending action for user={user_id}: {action_type}")
 
 
@@ -160,28 +171,34 @@ async def clear_pending_action(user_id: str) -> None:
 async def set_last_action(user_id: str, action_type: str, result: str) -> None:
     """
     Record the last action taken by NAVI.
-    
+
     This enables better continuity and debugging.
     """
-    await update_user_state(user_id, {
-        "last_action": {
-            "type": action_type,
-            "result": result,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    })
+    await update_user_state(
+        user_id,
+        {
+            "last_action": {
+                "type": action_type,
+                "result": result,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        },
+    )
 
 
 async def set_current_jira(user_id: str, jira_key: str) -> None:
     """
     Set the current Jira issue being discussed/worked on.
-    
+
     This enables "this Jira", "that issue" references.
     """
-    await update_user_state(user_id, {
-        "current_jira": jira_key,
-        "current_jira_set_at": datetime.utcnow().isoformat()
-    })
+    await update_user_state(
+        user_id,
+        {
+            "current_jira": jira_key,
+            "current_jira_set_at": datetime.utcnow().isoformat(),
+        },
+    )
 
 
 async def get_current_jira(user_id: str) -> Optional[str]:
@@ -195,13 +212,13 @@ async def get_current_jira(user_id: str) -> Optional[str]:
 async def set_active_file(user_id: str, file_path: str) -> None:
     """
     Set the currently active file in workspace.
-    
+
     This enables "this file", "the current file" references.
     """
-    await update_user_state(user_id, {
-        "active_file": file_path,
-        "active_file_set_at": datetime.utcnow().isoformat()
-    })
+    await update_user_state(
+        user_id,
+        {"active_file": file_path, "active_file_set_at": datetime.utcnow().isoformat()},
+    )
 
 
 async def get_active_file(user_id: str) -> Optional[str]:

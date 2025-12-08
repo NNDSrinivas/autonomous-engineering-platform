@@ -13,7 +13,9 @@ from ..telemetry.context_metrics import CTX_LAT_MS, CTX_HITS
 from ..deps import get_current_user
 from backend.core.auth_org import require_org
 import time
-from backend.agent.context_packet import build_context_packet  # Agent-facing packet builder
+from backend.agent.context_packet import (
+    build_context_packet,
+)  # Agent-facing packet builder
 
 router = APIRouter(prefix="/context", tags=["context"])
 
@@ -38,7 +40,9 @@ def get_context_pack(req: ContextPackRequest, db: Session = Depends(get_db)):
 
     # Resolve org_id from caller; require it to avoid cross-tenant leakage.
     if not req.org_id:
-        raise HTTPException(status_code=400, detail="org_id is required for context retrieval")
+        raise HTTPException(
+            status_code=400, detail="org_id is required for context retrieval"
+        )
     org_id = req.org_id
 
     # Build hybrid context pack
@@ -99,6 +103,8 @@ async def get_context_packet(
             include_related=include_related,
         )
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to build context packet: {exc}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to build context packet: {exc}"
+        )
 
     return packet.to_dict()

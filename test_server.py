@@ -46,7 +46,9 @@ def get_connector_status_for_user(user_id: str) -> List[ConnectorStatus]:
     ]
 
 
-def save_jira_connection(user_id: str, base_url: str, email: str, api_token: str) -> None:
+def save_jira_connection(
+    user_id: str, base_url: str, email: str, api_token: str
+) -> None:
     pass
 
 
@@ -60,6 +62,7 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Test Connectors Server")
 
+
 # Add request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -67,6 +70,7 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     print(f"📤 Response: {response.status_code}")
     return response
+
 
 # CORS middleware
 app.add_middleware(
@@ -77,35 +81,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
 
 # NAVI endpoints that the extension expects
 @app.get("/api/navi/chat")
 async def navi_chat():
     return {"status": "navi_endpoint_available", "message": "Chat endpoint placeholder"}
 
+
 @app.post("/api/navi/chat")
 async def navi_chat_post():
     return {"response": "Test response from NAVI chat"}
+
 
 @app.get("/api/navi/jira-tasks")
 async def navi_jira_tasks():
     return {"tasks": [{"key": "TEST-1", "summary": "Sample Jira task"}]}
 
+
 @app.get("/api/navi/task-brief")
 async def navi_task_brief():
     return {"brief": "Task brief placeholder"}
+
 
 # Additional endpoints that might be needed
 @app.get("/api/navi/search")
 async def navi_search():
     return {"results": []}
 
+
 @app.post("/api/navi/search")
 async def navi_search_post():
     return {"results": []}
+
 
 @app.get("/api/connectors/marketplace/status", response_model=List[ConnectorStatus])
 async def get_marketplace_status(user_id: Optional[str] = None):
@@ -116,6 +128,7 @@ async def get_marketplace_status(user_id: Optional[str] = None):
 
     return get_connector_status_for_user(user_id)
 
+
 @app.post("/api/connectors/jira/connect", response_model=ConnectorConnectResponse)
 async def connect_jira(request: JiraConnectorRequest, user_id: Optional[str] = None):
     """Connect to Jira for the specified user."""
@@ -124,10 +137,13 @@ async def connect_jira(request: JiraConnectorRequest, user_id: Optional[str] = N
         user_id = "test_user"
 
     # Extract fields from request and save connection
-    save_jira_connection(user_id, str(request.base_url), request.email, request.api_token)
+    save_jira_connection(
+        user_id, str(request.base_url), request.email, request.api_token
+    )
 
     # Return success response
     return ConnectorConnectResponse(ok=True, connector_id="jira")
+
 
 @app.post("/api/connectors/slack/connect", response_model=ConnectorConnectResponse)
 async def connect_slack(request: SlackConnectorRequest, user_id: Optional[str] = None):
@@ -142,15 +158,23 @@ async def connect_slack(request: SlackConnectorRequest, user_id: Optional[str] =
     # Return success response
     return ConnectorConnectResponse(ok=True, connector_id="slack")
 
+
 @app.get("/api/autonomous/coding")
 async def autonomous_coding():
     return {"status": "available"}
 
+
 # Catch-all for any other /api requests (MUST BE LAST)
-@app.api_route("/api/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+@app.api_route(
+    "/api/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"]
+)
 async def catch_all_api(full_path: str):
     print(f"🚨 Unhandled API request: /api/{full_path}")
-    return {"message": f"Endpoint /api/{full_path} available in test mode", "status": "ok"}
+    return {
+        "message": f"Endpoint /api/{full_path} available in test mode",
+        "status": "ok",
+    }
+
 
 if __name__ == "__main__":
     print("🚀 Starting test connectors server on http://localhost:8000")

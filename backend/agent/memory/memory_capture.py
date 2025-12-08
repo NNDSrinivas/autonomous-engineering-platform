@@ -20,7 +20,7 @@ from .memory_types import (
     ConversationalMemory,
     WorkspaceMemory,
     OrganizationalMemory,
-    TaskMemory
+    TaskMemory,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,23 +30,23 @@ class MemoryCapture:
     """
     Memory capture engine that automatically stores learned information.
     """
-    
+
     def __init__(self, db_session):
         """
         Initialize memory capture.
-        
+
         Args:
             db_session: Database session for storage
         """
         self.db = db_session
-    
+
     async def capture_memory(self, memory: MemoryEntry) -> bool:
         """
         Store a memory in the database.
-        
+
         Args:
             memory: Memory entry to store
-            
+
         Returns:
             True if successfully stored
         """
@@ -54,24 +54,27 @@ class MemoryCapture:
             # Generate embedding if not provided
             if not memory.embedding and memory.content:
                 memory.embedding = await self._generate_embedding(memory.content)
-            
+
             # Calculate importance
             from .memory_types import calculate_importance
+
             memory.importance = calculate_importance(memory)
-            
+
             # Store in database (pseudo-code, actual DB operation depends on schema)
             # await self.db.execute(
             #     "INSERT INTO navi_memory (...) VALUES (...)",
             #     memory.to_dict()
             # )
-            
-            logger.info(f"Captured {memory.memory_type.value} memory: {memory.content[:50]}...")
+
+            logger.info(
+                f"Captured {memory.memory_type.value} memory: {memory.content[:50]}..."
+            )
             return True
-            
+
         except Exception as e:
             logger.error(f"Error capturing memory: {e}", exc_info=True)
             return False
-    
+
     async def _generate_embedding(self, text: str) -> List[float]:
         """Generate vector embedding for text."""
         # Placeholder - integrate with OpenAI embeddings
@@ -88,11 +91,11 @@ async def capture_user_preference(
     preference_value: str,
     context: str,
     learned_from: str = "explicit",
-    db_session = None
+    db_session=None,
 ) -> bool:
     """
     Capture a user preference or coding style preference.
-    
+
     Examples:
         await capture_user_preference(
             user_id="user@example.com",
@@ -101,7 +104,7 @@ async def capture_user_preference(
             context="User said: I prefer TypeScript over JavaScript",
             learned_from="explicit"
         )
-    
+
     Args:
         user_id: User ID
         preference_key: Preference type (e.g., "language_preference")
@@ -109,11 +112,11 @@ async def capture_user_preference(
         context: Full context of how this was learned
         learned_from: "explicit" (user told us) or "implicit" (observed)
         db_session: Database session
-        
+
     Returns:
         True if captured successfully
     """
-    
+
     memory = ConversationalMemory(
         user_id=user_id,
         category=MemoryCategory.USER_PREFERENCE,
@@ -123,9 +126,9 @@ async def capture_user_preference(
         learned_from=learned_from,
         source="user",
         confidence=1.0 if learned_from == "explicit" else 0.7,
-        tags=[preference_key, "preference"]
+        tags=[preference_key, "preference"],
     )
-    
+
     capture = MemoryCapture(db_session)
     return await capture.capture_memory(memory)
 
@@ -136,11 +139,11 @@ async def capture_code_pattern(
     pattern_description: str,
     file_path: Optional[str] = None,
     example_code: Optional[str] = None,
-    db_session = None
+    db_session=None,
 ) -> bool:
     """
     Capture a code pattern observed in the workspace.
-    
+
     Examples:
         await capture_code_pattern(
             user_id="user@example.com",
@@ -149,7 +152,7 @@ async def capture_code_pattern(
             file_path="backend/api/navi.py",
             example_code="try:\\n    ...\\nexcept Exception as e:\\n    logger.error(...)"
         )
-    
+
     Args:
         user_id: User ID
         pattern_type: Type of pattern (architecture, convention, etc.)
@@ -157,11 +160,11 @@ async def capture_code_pattern(
         file_path: Optional file where pattern was observed
         example_code: Optional code example
         db_session: Database session
-        
+
     Returns:
         True if captured successfully
     """
-    
+
     memory = WorkspaceMemory(
         user_id=user_id,
         category=MemoryCategory.CODE_CONVENTION,
@@ -172,9 +175,9 @@ async def capture_code_pattern(
         source="code",
         confidence=0.8,
         tags=[pattern_type, "pattern", "code"],
-        last_seen=datetime.utcnow()
+        last_seen=datetime.utcnow(),
     )
-    
+
     capture = MemoryCapture(db_session)
     return await capture.capture_memory(memory)
 
@@ -185,11 +188,11 @@ async def capture_org_context(
     org_id: str,
     content: str,
     metadata: Dict[str, Any],
-    db_session = None
+    db_session=None,
 ) -> bool:
     """
     Capture organizational context from Jira, Slack, Confluence, etc.
-    
+
     Examples:
         await capture_org_context(
             user_id="user@example.com",
@@ -202,7 +205,7 @@ async def capture_org_context(
                 "timestamp": "2025-11-17T10:30:00Z"
             }
         )
-    
+
     Args:
         user_id: User ID
         org_system: System name (jira, slack, confluence, zoom, github)
@@ -210,20 +213,20 @@ async def capture_org_context(
         content: Content/summary
         metadata: Additional metadata
         db_session: Database session
-        
+
     Returns:
         True if captured successfully
     """
-    
+
     # Determine category based on system
     category_map = {
         "jira": MemoryCategory.JIRA_CONTEXT,
         "slack": MemoryCategory.SLACK_DISCUSSION,
         "confluence": MemoryCategory.CONFLUENCE_DOC,
         "zoom": MemoryCategory.MEETING_NOTES,
-        "github": MemoryCategory.PR_REVIEW
+        "github": MemoryCategory.PR_REVIEW,
     }
-    
+
     memory = OrganizationalMemory(
         user_id=user_id,
         category=category_map.get(org_system, MemoryCategory.SLACK_DISCUSSION),
@@ -234,9 +237,9 @@ async def capture_org_context(
         source=org_system,
         confidence=0.9,
         tags=[org_system, "org"],
-        timestamp=datetime.utcnow()
+        timestamp=datetime.utcnow(),
     )
-    
+
     capture = MemoryCapture(db_session)
     return await capture.capture_memory(memory)
 
@@ -252,11 +255,11 @@ async def capture_task_execution(
     resolution: Optional[str] = None,
     files_changed: Optional[List[str]] = None,
     code_diff: Optional[str] = None,
-    db_session = None
+    db_session=None,
 ) -> bool:
     """
     Capture task execution history for learning.
-    
+
     Examples:
         await capture_task_execution(
             user_id="user@example.com",
@@ -267,7 +270,7 @@ async def capture_task_execution(
             user_approved=True,
             files_changed=["backend/api/navi.py"]
         )
-    
+
     Args:
         user_id: User ID
         task_id: Jira key or workflow ID
@@ -280,11 +283,11 @@ async def capture_task_execution(
         files_changed: List of modified files
         code_diff: Code diff if applicable
         db_session: Database session
-        
+
     Returns:
         True if captured successfully
     """
-    
+
     memory = TaskMemory(
         user_id=user_id,
         category=MemoryCategory.EXECUTION_TRACE,
@@ -300,9 +303,9 @@ async def capture_task_execution(
         code_diff=code_diff,
         source="workflow",
         confidence=1.0,
-        tags=[task_id, step, "execution"]
+        tags=[task_id, step, "execution"],
     )
-    
+
     capture = MemoryCapture(db_session)
     return await capture.capture_memory(memory)
 
@@ -312,13 +315,13 @@ async def capture_coding_style_observation(
     style_aspect: str,
     observed_behavior: str,
     frequency: int = 1,
-    db_session = None
+    db_session=None,
 ) -> bool:
     """
     Capture observed coding style patterns from user's approvals.
-    
+
     This is how NAVI learns implicitly from your behavior.
-    
+
     Examples:
         await capture_coding_style_observation(
             user_id="user@example.com",
@@ -326,18 +329,18 @@ async def capture_coding_style_observation(
             observed_behavior="User always approves diffs that add explicit null checks",
             frequency=5
         )
-    
+
     Args:
         user_id: User ID
         style_aspect: Aspect of style (naming, error_handling, etc.)
         observed_behavior: What was observed
         frequency: How many times observed
         db_session: Database session
-        
+
     Returns:
         True if captured successfully
     """
-    
+
     memory = ConversationalMemory(
         user_id=user_id,
         category=MemoryCategory.CODING_STYLE,
@@ -345,10 +348,12 @@ async def capture_coding_style_observation(
         preference_key=style_aspect,
         learned_from="implicit",
         source="observation",
-        confidence=min(0.5 + (frequency * 0.1), 0.95),  # Higher frequency = higher confidence
+        confidence=min(
+            0.5 + (frequency * 0.1), 0.95
+        ),  # Higher frequency = higher confidence
         tags=[style_aspect, "style", "learned"],
-        metadata={"frequency": frequency}
+        metadata={"frequency": frequency},
     )
-    
+
     capture = MemoryCapture(db_session)
     return await capture.capture_memory(memory)

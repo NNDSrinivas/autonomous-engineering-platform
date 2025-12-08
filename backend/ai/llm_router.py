@@ -56,11 +56,13 @@ logger = logging.getLogger(__name__)
 # Unified Response Object
 # ======================================================================
 
+
 @dataclass
 class LLMResponse:
     """
     Normalized output structure for all model providers.
     """
+
     text: str
     model: str
     provider: str
@@ -77,23 +79,28 @@ class LLMResponse:
 # Router Exception Classes
 # ======================================================================
 
+
 class LLMRouterError(Exception):
     """Base exception for LLM router errors."""
+
     pass
 
 
 class ModelNotFoundError(LLMRouterError):
     """Raised when requested model/provider combination is not found."""
+
     pass
 
 
 class APIKeyMissingError(LLMRouterError):
     """Raised when required API key is missing."""
+
     pass
 
 
 class ProviderError(LLMRouterError):
     """Raised when provider API returns an error."""
+
     def __init__(self, message: str, provider: str, status_code: Optional[int] = None):
         super().__init__(message)
         self.provider = provider
@@ -103,6 +110,7 @@ class ProviderError(LLMRouterError):
 # ======================================================================
 # Router
 # ======================================================================
+
 
 class LLMRouter:
     """
@@ -142,7 +150,7 @@ class LLMRouter:
     ) -> LLMResponse:
         """
         Execute an LLM call using the selected provider & model.
-        
+
         Args:
             prompt: The main user message/prompt
             model: Specific model ID (e.g., "gpt-4o", "claude-3-5-sonnet-20241022")
@@ -156,10 +164,10 @@ class LLMRouter:
             max_tokens: Maximum tokens to generate
             use_smart_auto: Use SMART-AUTO model selection
             allowed_providers: Restrict SMART-AUTO to specific providers
-            
+
         Returns:
             LLMResponse with normalized output
-            
+
         Raises:
             ModelNotFoundError: If model/provider not found
             APIKeyMissingError: If required API key missing
@@ -196,7 +204,9 @@ class LLMRouter:
 
         # Normalize final response
         text = self._extract_text(provider_info.provider_id, response_json)
-        tokens_used = self._extract_token_count(provider_info.provider_id, response_json)
+        tokens_used = self._extract_token_count(
+            provider_info.provider_id, response_json
+        )
 
         return LLMResponse(
             text=text,
@@ -230,14 +240,16 @@ class LLMRouter:
             )
             if not candidates:
                 raise ModelNotFoundError("No SMART-AUTO candidates available")
-            
+
             best = candidates[0]
-            logger.info(f"[LLM] SMART-AUTO selected: {best.provider_id}:{best.model_id}")
-            
+            logger.info(
+                f"[LLM] SMART-AUTO selected: {best.provider_id}:{best.model_id}"
+            )
+
             # provider_info = None  # get_provider(best.provider_id) not available  # Provider lookup
             if False:  # provider_info check
                 raise ModelNotFoundError(f"Provider {best.provider_id} not found")
-            
+
             return None, best
 
         # Explicit provider + model
@@ -245,21 +257,23 @@ class LLMRouter:
             # provider_info = None  # get_provider(provider) not available  # Provider lookup
             if False:  # provider_info check
                 raise ModelNotFoundError(f"Provider '{provider}' not found")
-            
+
             model_info = None  # get_model(model, provider) not available
             # model_info check removed
-            
+
             return None, model_info
 
         # Model only → find provider that contains it
         if model:
             model_info = None  # get_model(model) not available
             # model_info check removed
-            
+
             provider_info = None  # get_provider(model_info.provider_id) not available
             if False:  # provider_info check
-                raise ModelNotFoundError(f"Provider '{model_info.provider_id}' not found")
-            
+                raise ModelNotFoundError(
+                    f"Provider '{model_info.provider_id}' not found"
+                )
+
             return None, model_info
 
         # Provider only → use its recommended model or first available
@@ -267,11 +281,13 @@ class LLMRouter:
             # provider_info = None  # get_provider(provider) not available  # Provider lookup
             if False:  # provider_info check
                 raise ModelNotFoundError(f"Provider '{provider}' not found")
-            
+
             models = registry.list_models(provider)
             if not models:
-                raise ModelNotFoundError(f"No models available for provider '{provider}'")
-            
+                raise ModelNotFoundError(
+                    f"No models available for provider '{provider}'"
+                )
+
             # Find recommended model or use first
             recommended = next((m for m in models if m.recommended), models[0])
             return provider_info, recommended
@@ -295,7 +311,7 @@ class LLMRouter:
         max_tokens: int,
     ) -> Dict[str, Any]:
         """Build request payload specific to each provider."""
-        
+
         provider = provider_info.provider_id
         model = model_info.model_id
 
@@ -328,11 +344,15 @@ class LLMRouter:
                     "maxOutputTokens": max_tokens,
                     "temperature": temperature,
                 },
-                "contents": [{
-                    "role": "user",
-                    "parts": self._build_gemini_parts(prompt, images),
-                }],
-                "systemInstruction": {"parts": [{"text": system_prompt}]} if system_prompt else None,
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": self._build_gemini_parts(prompt, images),
+                    }
+                ],
+                "systemInstruction": (
+                    {"parts": [{"text": system_prompt}]} if system_prompt else None
+                ),
             }
 
         # Meta LLaMA (local or Ollama-style)
@@ -350,7 +370,7 @@ class LLMRouter:
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
-            
+
             return {
                 "model": model,
                 "max_tokens": max_tokens,
@@ -367,7 +387,7 @@ class LLMRouter:
         images: Optional[List[str]],
     ) -> List[Dict[str, Any]]:
         """Build OpenAI-format messages with optional system prompt and images."""
-        
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -375,10 +395,12 @@ class LLMRouter:
         if images:
             content: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
             for img in images:
-                content.append({
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{img}"}
-                })
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{img}"},
+                    }
+                )
             messages.append({"role": "user", "content": content})
         else:
             messages.append({"role": "user", "content": prompt})
@@ -386,21 +408,14 @@ class LLMRouter:
         return messages
 
     def _build_gemini_parts(
-        self, 
-        prompt: str, 
-        images: Optional[List[str]]
+        self, prompt: str, images: Optional[List[str]]
     ) -> List[Dict[str, Any]]:
         """Build Gemini-format parts with optional images."""
-        
+
         parts: List[Dict[str, Any]] = [{"text": prompt}]
         if images:
             for img in images:
-                parts.append({
-                    "inlineData": {
-                        "mimeType": "image/jpeg",
-                        "data": img
-                    }
-                })
+                parts.append({"inlineData": {"mimeType": "image/jpeg", "data": img}})
         return parts
 
     # ------------------------------------------------------------------
@@ -429,14 +444,14 @@ class LLMRouter:
             try:
                 async with httpx.AsyncClient(timeout=self.timeout_sec) as client:
                     response = await client.post(url, json=payload, headers=headers)
-                    
+
                     # Handle different error status codes
                     if response.status_code >= 400:
                         error_detail = self._extract_error_message(response)
                         raise ProviderError(
                             f"Provider API error: {error_detail}",
                             provider_info.provider_id,
-                            response.status_code
+                            response.status_code,
                         )
 
                 latency_ms = (time.time() - start_time) * 1000
@@ -445,15 +460,17 @@ class LLMRouter:
             except httpx.TimeoutException as e:
                 logger.error(f"[LLM] Timeout on attempt {attempt+1}: {e}")
                 last_error = ProviderError("Request timeout", provider_info.provider_id)
-                
+
             except httpx.RequestError as e:
                 logger.error(f"[LLM] Request error on attempt {attempt+1}: {e}")
-                last_error = ProviderError(f"Network error: {e}", provider_info.provider_id)
-                
+                last_error = ProviderError(
+                    f"Network error: {e}", provider_info.provider_id
+                )
+
             except ProviderError as e:
                 logger.error(f"[LLM] Provider error on attempt {attempt+1}: {e}")
                 last_error = e
-                
+
             except Exception as e:
                 logger.error(f"[LLM] Unexpected error on attempt {attempt+1}: {e}")
                 last_error = LLMRouterError(f"Unexpected error: {e}")
@@ -463,7 +480,7 @@ class LLMRouter:
                 raise last_error
 
             # Exponential backoff with jitter
-            sleep_time = self.base_retry_delay * (2 ** attempt) + random.uniform(0, 0.1)
+            sleep_time = self.base_retry_delay * (2**attempt) + random.uniform(0, 0.1)
             logger.info(f"[LLM] Retrying in {sleep_time:.1f}s...")
             await asyncio.sleep(sleep_time)
 
@@ -471,16 +488,18 @@ class LLMRouter:
 
     def _get_api_url(self, provider_info: ProviderInfo, model_info: ModelInfo) -> str:
         """Get the API URL for the provider."""
-        
+
         # Use model-specific base_url if available, otherwise provider base_url
         base_url = model_info.base_url or provider_info.base_url
-        
+
         if not base_url:
-            raise ValueError(f"No base URL configured for provider {provider_info.provider_id}")
-        
+            raise ValueError(
+                f"No base URL configured for provider {provider_info.provider_id}"
+            )
+
         # Add provider-specific endpoints
         provider = provider_info.provider_id
-        
+
         if provider == "openai":
             return f"{base_url.rstrip('/')}/chat/completions"
         elif provider == "anthropic":
@@ -514,13 +533,10 @@ class LLMRouter:
     # ------------------------------------------------------------------
 
     def _build_headers(
-        self, 
-        provider: str, 
-        api_key: Optional[str], 
-        org_id: Optional[str]
+        self, provider: str, api_key: Optional[str], org_id: Optional[str]
     ) -> Dict[str, str]:
         """Build HTTP headers for each provider."""
-        
+
         if not api_key:
             raise APIKeyMissingError(f"No API key provided for provider '{provider}'")
 
@@ -573,8 +589,8 @@ class LLMRouter:
                 content = data.get("content", [])
                 if content and isinstance(content, list):
                     return "".join(
-                        block.get("text", "") 
-                        for block in content 
+                        block.get("text", "")
+                        for block in content
                         if block.get("type") == "text"
                     )
                 return str(content)
@@ -606,12 +622,16 @@ class LLMRouter:
                 return str(data)
 
         except Exception as e:
-            logger.warning(f"[LLM] Failed to extract text from {provider} response: {e}")
+            logger.warning(
+                f"[LLM] Failed to extract text from {provider} response: {e}"
+            )
             return str(data)
 
-    def _extract_token_count(self, provider: str, data: Dict[str, Any]) -> Optional[int]:
+    def _extract_token_count(
+        self, provider: str, data: Dict[str, Any]
+    ) -> Optional[int]:
         """Extract token usage from provider-specific response format."""
-        
+
         try:
             if provider in {"openai", "xai", "mistral"}:
                 usage = data.get("usage", {})
@@ -645,6 +665,7 @@ class LLMRouter:
 # Global router instance for convenience
 _default_router: Optional[LLMRouter] = None
 
+
 def get_router() -> LLMRouter:
     """Get the default LLM router instance."""
     global _default_router
@@ -660,11 +681,11 @@ async def quick_chat(
     provider: Optional[str] = None,
     api_key: Optional[str] = None,
     use_smart_auto: bool = True,
-    **kwargs
+    **kwargs,
 ) -> str:
     """
     Quick chat function for simple text generation.
-    
+
     Returns just the text content for convenience.
     """
     router = get_router()
@@ -674,7 +695,7 @@ async def quick_chat(
         provider=provider,
         api_key=api_key,
         use_smart_auto=use_smart_auto,
-        **kwargs
+        **kwargs,
     )
     return response.text
 
@@ -684,11 +705,11 @@ async def smart_auto_chat(
     *,
     api_key: Optional[str] = None,
     allowed_providers: Optional[List[str]] = None,
-    **kwargs
+    **kwargs,
 ) -> LLMResponse:
     """
     Chat using SMART-AUTO model selection.
-    
+
     This is what NAVI orchestrator will typically use.
     """
     router = get_router()
@@ -697,5 +718,5 @@ async def smart_auto_chat(
         api_key=api_key,
         use_smart_auto=True,
         allowed_providers=allowed_providers,
-        **kwargs
+        **kwargs,
     )

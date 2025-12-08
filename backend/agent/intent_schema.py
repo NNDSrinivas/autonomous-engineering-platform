@@ -36,6 +36,7 @@ from pydantic import BaseModel, Field
 
 class IntentFamily(str, Enum):
     """Broad category of what NAVI is doing."""
+
     ENGINEERING = "engineering"
     PROJECT_MANAGEMENT = "project_management"
     AUTONOMOUS_ORCHESTRATION = "autonomous_orchestration"
@@ -53,19 +54,19 @@ class IntentKind(str, Enum):
     """
 
     # --- Repository discovery / understanding --------------------------------
-    INSPECT_REPO = "inspect_repo"              # high-level overview of repo
-    SUMMARIZE_FILE = "summarize_file"          # explain one file
-    SUMMARIZE_DIFF = "summarize_diff"          # explain a patch or diff
-    SEARCH_CODE = "search_code"                # semantic or text search
+    INSPECT_REPO = "inspect_repo"  # high-level overview of repo
+    SUMMARIZE_FILE = "summarize_file"  # explain one file
+    SUMMARIZE_DIFF = "summarize_diff"  # explain a patch or diff
+    SEARCH_CODE = "search_code"  # semantic or text search
 
     # --- Code authoring / refactoring ----------------------------------------
-    MODIFY_CODE = "modify_code"                # edit existing code
-    CREATE_FILE = "create_file"                # add new source/test/config
-    REFACTOR_CODE = "refactor_code"            # structural improvements
-    IMPLEMENT_FEATURE = "implement_feature"    # end-to-end change
-    FIX_BUG = "fix_bug"                        # debug + patch
+    MODIFY_CODE = "modify_code"  # edit existing code
+    CREATE_FILE = "create_file"  # add new source/test/config
+    REFACTOR_CODE = "refactor_code"  # structural improvements
+    IMPLEMENT_FEATURE = "implement_feature"  # end-to-end change
+    FIX_BUG = "fix_bug"  # debug + patch
     UPDATE_DEPENDENCIES = "update_dependencies"
-    EDIT_INFRA = "edit_infra"                  # Dockerfile, CI, infra-as-code
+    EDIT_INFRA = "edit_infra"  # Dockerfile, CI, infra-as-code
 
     # --- Testing / verification ----------------------------------------------
     RUN_TESTS = "run_tests"
@@ -75,18 +76,22 @@ class IntentKind(str, Enum):
     RUN_CUSTOM_COMMAND = "run_custom_command"
 
     # --- Project management / collaboration ----------------------------------
-    CREATE_TICKET = "create_ticket"            # Jira / GitHub issue, etc.
+    CREATE_TICKET = "create_ticket"  # Jira / GitHub issue, etc.
     UPDATE_TICKET = "update_ticket"
     SUMMARIZE_TICKETS = "summarize_tickets"
-    
+
     # Cross-app general intents (provider-agnostic)
-    LIST_MY_ITEMS = "list_my_items"           # general: Jira issues, GitHub issues, tasks
-    SUMMARIZE_CHANNEL = "summarize_channel"   # general: Slack, Teams, Discord channels
-    SHOW_ITEM_DETAILS = "show_item_details"   # general: show details of any item (issue, PR, doc)
-    
+    LIST_MY_ITEMS = "list_my_items"  # general: Jira issues, GitHub issues, tasks
+    SUMMARIZE_CHANNEL = "summarize_channel"  # general: Slack, Teams, Discord channels
+    SHOW_ITEM_DETAILS = (
+        "show_item_details"  # general: show details of any item (issue, PR, doc)
+    )
+
     # Provider-specific intents (for backward compatibility)
     JIRA_LIST_MY_ISSUES = "jira_list_my_issues"  # list Jira issues assigned to user
-    SLACK_SUMMARIZE_CHANNEL = "slack_summarize_channel"  # summarize Slack channel messages
+    SLACK_SUMMARIZE_CHANNEL = (
+        "slack_summarize_channel"  # summarize Slack channel messages
+    )
     SUMMARIZE_PR = "summarize_pr"
     REVIEW_PR = "review_pr"
     GENERATE_RELEASE_NOTES = "generate_release_notes"
@@ -96,32 +101,33 @@ class IntentKind(str, Enum):
     EXPLAIN_ERROR = "explain_error"
     ARCHITECTURE_OVERVIEW = "architecture_overview"
     DESIGN_PROPOSAL = "design_proposal"
-    GREET = "greet"                            # simple greeting/hello
+    GREET = "greet"  # simple greeting/hello
 
     # --- Autonomous orchestration --------------------------------------------
     AUTONOMOUS_SESSION = "autonomous_session"  # multi-step agent run
     BACKGROUND_WORKFLOW = "background_workflow"
     SCHEDULED_TASK = "scheduled_task"
-    CONTINUE_SESSION = "continue_session"      # resume previous run
+    CONTINUE_SESSION = "continue_session"  # resume previous run
     CANCEL_WORKFLOW = "cancel_workflow"
 
     # --- Fallback / meta -----------------------------------------------------
-    UNKNOWN = "unknown"                        # classifier unsure
-    
+    UNKNOWN = "unknown"  # classifier unsure
+
     # --- Additional core kinds to fix planner errors -----
-    CREATE = "create"                          # generic create operation
-    IMPLEMENT = "implement"                    # generic implementation
-    FIX = "fix"                               # generic fix operation  
-    SEARCH = "search"                         # generic search
-    EXPLAIN = "explain"                       # generic explanation
-    DEPLOY = "deploy"                         # deployment operations
-    SYNC = "sync"                             # synchronization operations
-    CONFIGURE = "configure"                   # configuration operations
-    GENERIC = "generic"                       # fallback generic
+    CREATE = "create"  # generic create operation
+    IMPLEMENT = "implement"  # generic implementation
+    FIX = "fix"  # generic fix operation
+    SEARCH = "search"  # generic search
+    EXPLAIN = "explain"  # generic explanation
+    DEPLOY = "deploy"  # deployment operations
+    SYNC = "sync"  # synchronization operations
+    CONFIGURE = "configure"  # configuration operations
+    GENERIC = "generic"  # fallback generic
 
 
 class IntentPriority(str, Enum):
     """Relative importance – helps orchestration & queueing."""
+
     LOW = "low"
     NORMAL = "normal"
     HIGH = "high"
@@ -130,9 +136,10 @@ class IntentPriority(str, Enum):
 
 class Provider(str, Enum):
     """External service/app that NAVI integrates with for cross-app workflows."""
+
     JIRA = "jira"
     SLACK = "slack"
-    GITHUB = "github"  
+    GITHUB = "github"
     TEAMS = "teams"
     ZOOM = "zoom"
     CONFLUENCE = "confluence"
@@ -145,11 +152,12 @@ class Provider(str, Enum):
 
 class IntentSource(str, Enum):
     """Where this intent originated from."""
-    CHAT = "chat"              # user message in UI
-    IDE_EVENT = "ide_event"    # VS Code / JetBrains triggers
-    WEBHOOK = "webhook"        # Jira / GitHub / CI hooks
-    SYSTEM = "system"          # internal automation
-    SCHEDULE = "schedule"      # cron / time-based agent
+
+    CHAT = "chat"  # user message in UI
+    IDE_EVENT = "ide_event"  # VS Code / JetBrains triggers
+    WEBHOOK = "webhook"  # Jira / GitHub / CI hooks
+    SYSTEM = "system"  # internal automation
+    SCHEDULE = "schedule"  # cron / time-based agent
 
 
 class AutonomyMode(str, Enum):
@@ -158,10 +166,11 @@ class AutonomyMode(str, Enum):
 
     The frontend and orchestrator should enforce these semantics.
     """
-    SINGLE_STEP = "single_step"          # one tool call, then ask
-    ASSISTED = "assisted"                # propose plan, ask before execute
+
+    SINGLE_STEP = "single_step"  # one tool call, then ask
+    ASSISTED = "assisted"  # propose plan, ask before execute
     AUTONOMOUS_SESSION = "autonomous_session"  # run full plan, show results
-    BATCH = "batch"                      # background, many tasks (dangerous)
+    BATCH = "batch"  # background, many tasks (dangerous)
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +185,7 @@ class RepoTarget(BaseModel):
     For now we assume a single local repo root, but this model is flexible
     enough to support multiple roots or remote workspaces later.
     """
+
     repo_id: Optional[str] = Field(
         default=None,
         description="Logical ID of the repo (for multi-repo setups).",
@@ -188,6 +198,7 @@ class RepoTarget(BaseModel):
 
 class FileRegion(BaseModel):
     """Optional sub-portion of a file NAVI should focus on."""
+
     start_line: Optional[int] = Field(default=None, ge=1)
     end_line: Optional[int] = Field(default=None, ge=1)
     symbol: Optional[str] = Field(
@@ -205,6 +216,7 @@ class FileSelector(BaseModel):
       - globs
       - language-scoped queries
     """
+
     path: Optional[str] = Field(
         default=None,
         description="File path relative to repo root.",
@@ -226,6 +238,7 @@ class CommandSpec(BaseModel):
 
     This powers: tests, builds, linters, migrations, etc.
     """
+
     command: str = Field(
         ...,
         description="Shell command to execute (without user secrets).",
@@ -251,6 +264,7 @@ class PatchOperation(BaseModel):
     We keep this abstract – planner/tool layer can decide whether to apply
     a textual diff, AST transform, etc.
     """
+
     description: str = Field(
         ...,
         description="Human description of what this patch does.",
@@ -270,6 +284,7 @@ class PatchOperation(BaseModel):
 
 class CodeEditSpec(BaseModel):
     """Details for MODIFY_CODE / IMPLEMENT_FEATURE / FIX_BUG / REFACTOR_CODE."""
+
     goal: str = Field(..., description="What should the code change achieve?")
     repo: RepoTarget
     primary_files: List[FileSelector] = Field(
@@ -293,6 +308,7 @@ class CodeEditSpec(BaseModel):
 
 class TestRunSpec(BaseModel):
     """Details for RUN_TESTS / RUN_LINT / RUN_BUILD / RUN_CUSTOM_COMMAND."""
+
     repo: RepoTarget
     command: CommandSpec
     only_if_files_changed: bool = Field(
@@ -303,6 +319,7 @@ class TestRunSpec(BaseModel):
 
 class TicketInfo(BaseModel):
     """Generic representation of a Jira / GitHub / etc. ticket."""
+
     provider: str = Field(..., description="e.g. 'jira', 'github'")
     id: Optional[str] = None
     title: Optional[str] = None
@@ -313,6 +330,7 @@ class TicketInfo(BaseModel):
 
 class ProjectManagementSpec(BaseModel):
     """Payload for CREATE_TICKET / UPDATE_TICKET / PR summaries, etc."""
+
     tickets: List[TicketInfo] = Field(default_factory=list)
     repo: Optional[RepoTarget] = None
     pr_number: Optional[str] = None
@@ -331,6 +349,7 @@ class WorkflowHints(BaseModel):
       - whether to auto-run tests
       - whether to touch multiple services
     """
+
     autonomy_mode: AutonomyMode = AutonomyMode.ASSISTED
     max_steps: int = Field(
         default=12,
@@ -351,7 +370,7 @@ class WorkflowHints(BaseModel):
     allow_long_running: bool = Field(
         default=False,
         description="If True, workflows may exceed typical UI timeouts and "
-                    "run in the background.",
+        "run in the background.",
     )
 
 
@@ -441,32 +460,32 @@ class NaviIntent(BaseModel):
     # --- legacy compatibility fields -----------------------------------------
     # These are kept for backwards compatibility with existing routes and UI glue.
     # New code should use the structured fields above (workflow, code_edit, etc.)
-    
+
     requires_approval: bool = Field(
         default=True,
         description="Whether NAVI should ask before applying changes (legacy field)",
     )
-    
+
     target: Optional[str] = Field(
         default=None,
         description="High-level target used by older flows (legacy field)",
     )
-    
+
     parameters: Dict[str, Any] = Field(
         default_factory=dict,
         description="Free-form parameter bag used in older APIs (legacy field)",
     )
-    
+
     time: Optional[str] = Field(
         default=None,
         description="Timestamp field used in some logging/UI code (legacy field)",
     )
-    
+
     model_used: Optional[str] = Field(
         default=None,
         description="Model used for classification (telemetry field)",
     )
-    
+
     provider_used: Optional[str] = Field(
         default=None,
         description="Provider used for classification (telemetry field)",
@@ -483,11 +502,14 @@ class NaviIntent(BaseModel):
         return self.family == IntentFamily.PROJECT_MANAGEMENT
 
     def is_autonomous(self) -> bool:
-        return self.family == IntentFamily.AUTONOMOUS_ORCHESTRATION or \
-            self.workflow.autonomy_mode in {
+        return (
+            self.family == IntentFamily.AUTONOMOUS_ORCHESTRATION
+            or self.workflow.autonomy_mode
+            in {
                 AutonomyMode.AUTONOMOUS_SESSION,
                 AutonomyMode.BATCH,
             }
+        )
 
     def requires_repo(self) -> bool:
         """True if this intent needs repo context to be meaningful."""

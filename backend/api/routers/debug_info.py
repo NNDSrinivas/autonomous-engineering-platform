@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 def debug_context(
     db: Session = Depends(get_db),
     org_ctx: dict = Depends(require_org),
-    user = Depends(get_current_user_optional),
+    user=Depends(get_current_user_optional),
 ):
     """
     Return current user/org and basic ingestion counts for diagnostics.

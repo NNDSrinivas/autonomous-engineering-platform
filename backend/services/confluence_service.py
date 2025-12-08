@@ -33,7 +33,7 @@ def search_pages(
 ) -> List[Dict[str, Any]]:
     """
     Search Confluence pages by query text (for unified memory retriever).
-    
+
     Returns normalized page format:
     {
         "id": str,
@@ -70,7 +70,11 @@ def search_pages(
                 "body": page.get("body") or page.get("content") or "",
                 "url": page.get("url") or page.get("_links", {}).get("webui"),
                 "updated_at": page.get("updated") or page.get("lastModified"),
-                "space": page.get("space", {}).get("key") if isinstance(page.get("space"), dict) else page.get("space"),
+                "space": (
+                    page.get("space", {}).get("key")
+                    if isinstance(page.get("space"), dict)
+                    else page.get("space")
+                ),
                 "labels": page.get("labels") or [],
             }
         )

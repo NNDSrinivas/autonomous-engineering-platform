@@ -272,7 +272,10 @@ class IntentClassifier:
             priority=priority,
             confidence=confidence,
             raw_text=raw_text,
-            slots={"language": language_hint, **{k: v for k, v in metadata.items() if k not in {"files", "language"}}},
+            slots={
+                "language": language_hint,
+                **{k: v for k, v in metadata.items() if k not in {"files", "language"}},
+            },
             code_edit=code_edit,
             test_run=test_run,
             project_mgmt=project_mgmt,
@@ -302,9 +305,12 @@ class IntentClassifier:
         ):
             # Only if it's a pure greeting with no other intent
             words = text.strip().split()
-            if len(words) <= 3 and not any(work_word in text for work_word in ["jira", "code", "help", "task", "work", "project"]):
+            if len(words) <= 3 and not any(
+                work_word in text
+                for work_word in ["jira", "code", "help", "task", "work", "project"]
+            ):
                 return IntentFamily.ENGINEERING  # Will be handled as GREET in kind
-        
+
         if _contains_any(
             text,
             (
@@ -359,9 +365,12 @@ class IntentClassifier:
             ):
                 # Only if it's a pure greeting with minimal other words
                 words = text.strip().split()
-                if len(words) <= 3 and not any(work_word in text for work_word in ["jira", "code", "help", "task", "work", "project"]):
+                if len(words) <= 3 and not any(
+                    work_word in text
+                    for work_word in ["jira", "code", "help", "task", "work", "project"]
+                ):
                     return IntentKind.GREET
-            
+
             if _contains_any(
                 text,
                 (
@@ -516,7 +525,7 @@ class IntentClassifier:
                     "list the jira tasks assigned to me",
                     "show my jira tickets",
                     "my jira issues",
-                    "jira tasks assigned to me", 
+                    "jira tasks assigned to me",
                     "list my jira tasks",
                     "show jira issues assigned to me",
                     "what jira tickets am i currently on",

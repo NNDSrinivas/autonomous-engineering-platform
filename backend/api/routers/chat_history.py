@@ -53,9 +53,7 @@ def clear_history(
     org_id = org_ctx.get("org_id")
     user_id = _current_user_id(user)
     db.execute(
-        text(
-            "DELETE FROM chat_history WHERE org_id = :org_id AND user_id = :user_id"
-        ),
+        text("DELETE FROM chat_history WHERE org_id = :org_id AND user_id = :user_id"),
         {"org_id": org_id, "user_id": user_id},
     )
     db.commit()

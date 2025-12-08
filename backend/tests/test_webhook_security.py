@@ -16,10 +16,16 @@ def client():
 
 def test_slack_webhook_rejects_bad_signature(client, monkeypatch):
     from backend.core import settings as core_settings
+
     monkeypatch.setattr(core_settings.settings, "SLACK_SIGNING_SECRET", "testsecret")
     body = {"event": {"type": "message", "text": "hello"}}
     timestamp = str(int(time.time()))
-    sig = "v0=" + hmac.new("wrong".encode(), f"v0:{timestamp}:{json.dumps(body)}".encode(), sha256).hexdigest()
+    sig = (
+        "v0="
+        + hmac.new(
+            "wrong".encode(), f"v0:{timestamp}:{json.dumps(body)}".encode(), sha256
+        ).hexdigest()
+    )
 
     resp = client.post(
         "/api/webhooks/slack",
@@ -35,11 +41,14 @@ def test_slack_webhook_rejects_bad_signature(client, monkeypatch):
 
 def test_slack_webhook_accepts_good_signature(client, monkeypatch):
     from backend.core import settings as core_settings
+
     monkeypatch.setattr(core_settings.settings, "SLACK_SIGNING_SECRET", "testsecret")
     body = {"event": {"type": "message", "text": "hello"}}
     timestamp = str(int(time.time()))
     basestring = f"v0:{timestamp}:{json.dumps(body)}"
-    sig = "v0=" + hmac.new("testsecret".encode(), basestring.encode(), sha256).hexdigest()
+    sig = (
+        "v0=" + hmac.new("testsecret".encode(), basestring.encode(), sha256).hexdigest()
+    )
 
     resp = client.post(
         "/api/webhooks/slack",
@@ -56,8 +65,12 @@ def test_slack_webhook_accepts_good_signature(client, monkeypatch):
 
 def test_github_webhook_requires_org_and_signature(client, monkeypatch):
     from backend.core import settings as core_settings
+
     monkeypatch.setattr(core_settings.settings, "GITHUB_WEBHOOK_SECRET", "ghsecret")
-    body = {"repository": {"full_name": "org/repo"}, "pull_request": {"number": 1, "title": "Test PR"}}
+    body = {
+        "repository": {"full_name": "org/repo"},
+        "pull_request": {"number": 1, "title": "Test PR"},
+    }
     payload = json.dumps(body).encode()
     sig = "sha256=" + hmac.new("ghsecret".encode(), payload, sha256).hexdigest()
 

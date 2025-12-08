@@ -18,7 +18,12 @@ def upgrade() -> None:
         sa.Column("org_id", sa.String(length=255), nullable=True, index=True),
         sa.Column("role", sa.String(length=50), nullable=False),
         sa.Column("message", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("NOW()"),
+            nullable=False,
+        ),
     )
     op.create_index("ix_chat_history_user_id", "chat_history", ["user_id"])
     op.create_index("ix_chat_history_org_id", "chat_history", ["org_id"])

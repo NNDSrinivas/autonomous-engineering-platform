@@ -290,28 +290,31 @@ async def _handle_task_query(
         try:
             import os
             from backend.services.navi_memory_service import list_jira_tasks_for_user
-            
+
             user_id = os.environ.get("DEV_USER_ID", "default_user")
             # We need a db session, but we can't easily inject it here
             # So we'll create a new session temporarily
             from backend.core.db import get_engine
             from sqlalchemy.orm import sessionmaker
+
             engine = get_engine()
             SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-            
+
             with SessionLocal() as db:
                 memory_rows = list_jira_tasks_for_user(db, user_id, limit=20)
                 tasks = []
                 for row in memory_rows:
-                    # Convert memory format to task format 
+                    # Convert memory format to task format
                     tags = row.get("tags", {})
-                    tasks.append({
-                        "jira_key": tags.get("key", row.get("scope", "")),
-                        "title": row.get("title", ""),
-                        "status": tags.get("status", "Unknown"),
-                        "scope": row.get("scope", ""),
-                        "updated_at": row.get("updated_at", "")
-                    })
+                    tasks.append(
+                        {
+                            "jira_key": tags.get("key", row.get("scope", "")),
+                            "title": row.get("title", ""),
+                            "status": tags.get("status", "Unknown"),
+                            "scope": row.get("scope", ""),
+                            "updated_at": row.get("updated_at", ""),
+                        }
+                    )
         except Exception as e:
             logger.error(f"Error fetching tasks from NAVI memory: {e}")
             tasks = []
@@ -333,19 +336,28 @@ async def _handle_task_query(
         content += "📋 **Your JIRA Tasks:**\n"
         for task in tasks[:5]:
             status_emoji = (
-                "🔄" if task.get("status") == "In Progress"
-                else "📝" if task.get("status") == "To Do" 
-                else "✅" if task.get("status") == "Done"
-                else "📌"
+                "🔄"
+                if task.get("status") == "In Progress"
+                else (
+                    "📝"
+                    if task.get("status") == "To Do"
+                    else "✅" if task.get("status") == "Done" else "📌"
+                )
             )
             jira_key = task.get("jira_key", "")
-            title = task.get("title", "").replace(f"[Jira] {jira_key}: ", "")  # Clean up title
+            title = task.get("title", "").replace(
+                f"[Jira] {jira_key}: ", ""
+            )  # Clean up title
             content += f"{status_emoji} **{jira_key}**: {title} ({task.get('status', 'Unknown')})\n"
 
         suggestions = [
-            f"Work on {tasks[0].get('jira_key', 'first task')}" if tasks else "Find new tasks",
+            (
+                f"Work on {tasks[0].get('jira_key', 'first task')}"
+                if tasks
+                else "Find new tasks"
+            ),
             "Generate plan for highest priority task",
-            "Show task dependencies", 
+            "Show task dependencies",
             "Check what teammates are working on",
         ]
 

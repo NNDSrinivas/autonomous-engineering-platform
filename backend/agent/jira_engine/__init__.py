@@ -17,7 +17,12 @@ This is what makes NAVI better than Devin/Cursor/Cline - true organizational int
 from .parser import parse_jira_issue
 from .enricher import enrich_jira_context
 from .planner import generate_jira_plan
-from .executor import start_jira_work, complete_jira_work, add_jira_comment, transition_jira
+from .executor import (
+    start_jira_work,
+    complete_jira_work,
+    add_jira_comment,
+    transition_jira,
+)
 from .resolver import resolve_jira_target
 
 __all__ = [

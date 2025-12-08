@@ -81,7 +81,12 @@ def _shape_actions_from_plan(plan) -> List[Dict[str, Any]]:
         content: Optional[str] = None
 
         # File-editing tools
-        if tool in {"code.apply_patch", "code.write_file", "code.create_file", "code.overwrite_file"}:
+        if tool in {
+            "code.apply_patch",
+            "code.write_file",
+            "code.create_file",
+            "code.overwrite_file",
+        }:
             step_type = "fileEdit"
             file_path = (
                 args.get("path")
@@ -353,15 +358,17 @@ async def run_agent_loop(
             if previous_state and previous_state.get("pending_action"):
                 logger.info("[AGENT] Affirmative detected, executing pending action")
                 pending = previous_state["pending_action"]
-                tool_name = pending if isinstance(pending, str) else pending.get(
-                    "tool", ""
+                tool_name = (
+                    pending if isinstance(pending, str) else pending.get("tool", "")
                 )
-                tool_args = {} if isinstance(pending, str) else pending.get(
-                    "args", {}
-                )
+                tool_args = {} if isinstance(pending, str) else pending.get("args", {})
                 tool_result = await execute_tool_with_sources(
-                    user_id, tool_name, tool_args, db=db,
-                    attachments=attachments, workspace=workspace
+                    user_id,
+                    tool_name,
+                    tool_args,
+                    db=db,
+                    attachments=attachments,
+                    workspace=workspace,
                 )
                 elapsed_ms = int((time.monotonic() - started) * 1000)
                 # Return unified result with sources
@@ -412,15 +419,17 @@ async def run_agent_loop(
             }
 
         # ---------------------------------------------------------
-        # STAGE 2: Build perfect workspace context 
+        # STAGE 2: Build perfect workspace context
         # ---------------------------------------------------------
         logger.info("[AGENT] Retrieving perfect workspace context...")
-        from backend.agent.perfect_workspace_retriever import retrieve_perfect_workspace_context
-        
+        from backend.agent.perfect_workspace_retriever import (
+            retrieve_perfect_workspace_context,
+        )
+
         workspace_ctx = {}
         if workspace:
             workspace_ctx = await retrieve_perfect_workspace_context(workspace)
-        
+
         org_ctx = await retrieve_org_context(user_id, message, db=db)
         memory_ctx = await retrieve_memories(user_id, message, db=db)
 
@@ -460,19 +469,24 @@ async def run_agent_loop(
             # Use new LLM-powered classifier for provider-aware classification
             llm_classifier = LLMIntentClassifier()
             intent = await llm_classifier.classify(
-                message=message,
-                metadata={"user_id": user_id, "workspace": workspace}
+                message=message, metadata={"user_id": user_id, "workspace": workspace}
             )
-            logger.info("[AGENT] LLM Intent: %s/%s (provider: %s)", 
-                       intent.family.value if intent.family else "None", 
-                       intent.kind.value if intent.kind else "None",
-                       intent.provider.value if intent.provider else "None")
+            logger.info(
+                "[AGENT] LLM Intent: %s/%s (provider: %s)",
+                intent.family.value if intent.family else "None",
+                intent.kind.value if intent.kind else "None",
+                intent.provider.value if intent.provider else "None",
+            )
         except Exception as e:
             # Fallback to rule-based classifier if LLM fails
-            logger.warning("[AGENT] LLM classifier failed (%s), using rule-based fallback", e)
+            logger.warning(
+                "[AGENT] LLM classifier failed (%s), using rule-based fallback", e
+            )
             classifier = IntentClassifier()
             intent = classifier.classify(message)
-            logger.info("[AGENT] Fallback Intent: %s/%s", intent.family.value, intent.kind.value)
+            logger.info(
+                "[AGENT] Fallback Intent: %s/%s", intent.family.value, intent.kind.value
+            )
 
         # ---------------------------------------------------------
         # STAGE 4: Handle low confidence intents
@@ -503,6 +517,7 @@ async def run_agent_loop(
         # ---------------------------------------------------------
         logger.info("[AGENT] Generating plan...")
         from backend.agent.planner_v3 import PlannerV3
+
         planner = PlannerV3()
         plan = await planner.plan(intent, full_context)
         logger.info("[AGENT] Plan generated with %d steps", len(plan.steps))
@@ -574,22 +589,24 @@ async def run_agent_loop(
             for step in plan.steps[:3]:  # Limit to first 3 steps
                 try:
                     tool_result = await execute_tool_with_sources(
-                        user_id, step.tool, step.arguments, db=db,
-                        attachments=attachments, workspace=workspace
+                        user_id,
+                        step.tool,
+                        step.arguments,
+                        db=db,
+                        attachments=attachments,
+                        workspace=workspace,
                     )
                     # Collect sources
                     if tool_result.sources:
                         all_sources.extend(tool_result.sources)
-                    
+
                     # Format output for LLM context
                     result_text = json.dumps(tool_result.output, indent=2, default=str)
                     tool_snippets.append(
                         f"TOOL {step.tool} (description={step.description!r}):\n{result_text}"
                     )
                 except Exception as e:  # noqa: BLE001
-                    logger.exception(
-                        "[AGENT] Safe tool %s failed: %s", step.tool, e
-                    )
+                    logger.exception("[AGENT] Safe tool %s failed: %s", step.tool, e)
                     tool_snippets.append(
                         f"TOOL_ERROR {step.tool} (description={step.description!r}): {str(e)}"
                     )

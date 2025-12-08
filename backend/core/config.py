@@ -183,7 +183,7 @@ class Settings(BaseSettings):
     teams_webhook_secret: Optional[str] = None
     docs_webhook_secret: Optional[str] = None
     ci_webhook_secret: Optional[str] = None
-    
+
     # Development Authentication
     dev_user_id: Optional[str] = None
 

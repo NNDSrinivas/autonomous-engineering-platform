@@ -88,7 +88,8 @@ def _looks_like_diagnostics(text: str, primary_intent: str) -> bool:
 
     # Generic "errors/issues" when talking about repo/code/project
     if ("error" in t or "errors" in t or "issues" in t) and any(
-        kw in t for kw in ("project", "repo", "repository", "codebase", "code", "workspace")
+        kw in t
+        for kw in ("project", "repo", "repository", "codebase", "code", "workspace")
     ):
         return True
 
@@ -124,7 +125,9 @@ def _refine_chat_mode(message: str, primary_intent: str) -> ChatMode:
         if "which repo" in text or "which project" in text or "where are we" in text:
             logger.info("[NAVI-CHAT] refine matched repo_info (workspace intent)")
             return ChatMode.REPO_INFO
-        if "explain" in text and ("project" in text or "repo" in text or "workspace" in text):
+        if "explain" in text and (
+            "project" in text or "repo" in text or "workspace" in text
+        ):
             logger.info("[NAVI-CHAT] refine matched explain_repo (workspace intent)")
             return ChatMode.EXPLAIN_REPO
 
@@ -132,7 +135,9 @@ def _refine_chat_mode(message: str, primary_intent: str) -> ChatMode:
     if "which repo" in text or "which project" in text:
         logger.info("[NAVI-CHAT] refine matched repo_info (fallback)")
         return ChatMode.REPO_INFO
-    if "explain" in text and ("project" in text or "repo" in text or "workspace" in text):
+    if "explain" in text and (
+        "project" in text or "repo" in text or "workspace" in text
+    ):
         logger.info("[NAVI-CHAT] refine matched explain_repo (fallback)")
         return ChatMode.EXPLAIN_REPO
 

@@ -75,7 +75,8 @@ class MemoryRetrieval:
         # results = await self.db.fetch_all(query)
         # return [self._parse_memory_entry(row) for row in results]
         
-        # Placeholder - will integrate with actual database
+        # TODO: Implement vector search with pgvector once database is ready
+        # For now, returning empty list - memory retrieval will be populated in future
         return []
     
     async def _generate_query_embedding(self, query: str) -> List[float]:

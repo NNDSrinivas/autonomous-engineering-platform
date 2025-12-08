@@ -58,12 +58,14 @@ async def enrich_jira_context(
     try:
         title = issue.get("title", "")
         issue_id = issue.get("id", "")
-        issue.get("description", "")
+        description = issue.get("description", "")
         labels = issue.get("labels", [])
         
         # Combine search terms
         search_terms = [issue_id.lower(), title.lower()]
         search_terms.extend([label.lower() for label in labels])
+        if description:
+            search_terms.append(description.lower())
         
         # Remove empty terms
         search_terms = [term for term in search_terms if term]

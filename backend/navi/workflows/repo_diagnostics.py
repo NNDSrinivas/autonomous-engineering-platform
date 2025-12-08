@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 from dataclasses import dataclass
@@ -109,7 +110,7 @@ class RepoDiagnosticsWorkflow:
             for script_name, label in (("lint", "lint"), ("test", "test")):
                 if script_name not in scripts:
                     continue
-                ok, output = self._run_npm_script(repo_root, script_name)
+                ok, output = await self._run_npm_script(repo_root, script_name)
                 ci_results[script_name] = {
                     "ok": ok,
                     "output": output,
@@ -199,27 +200,29 @@ class RepoDiagnosticsWorkflow:
     # Internal helpers
     # ------------------------------------------------------------------ #
 
-    def _run_npm_script(self, repo_root: Path, script: str) -> Tuple[bool, str]:
+    async def _run_npm_script(self, repo_root: Path, script: str) -> Tuple[bool, str]:
         """
         Run `npm run <script>` with a short timeout, returning (ok, combined_output).
 
-        This is intentionally simple – NAVI will surface the combined output
-        in the diagnostics summary, not stream it.
+        This runs blocking subprocess call in thread pool to avoid blocking FastAPI event loop.
         """
-        try:
-            completed = subprocess.run(
-                ["npm", "run", script],
-                cwd=str(repo_root),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=self.npm_timeout_sec,
-                check=False,
-                text=True,
-            )
-        except (FileNotFoundError, PermissionError) as exc:
-            return False, f"Failed to run npm: {exc}"
-        except subprocess.TimeoutExpired:
-            return False, f"`npm run {script}` timed out after {self.npm_timeout_sec} seconds."
+        def _run_sync() -> Tuple[bool, str]:
+            try:
+                completed = subprocess.run(
+                    ["npm", "run", script],
+                    cwd=str(repo_root),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=self.npm_timeout_sec,
+                    check=False,
+                    text=True,
+                )
+            except (FileNotFoundError, PermissionError) as exc:
+                return False, f"Failed to run npm: {exc}"
+            except subprocess.TimeoutExpired:
+                return False, f"`npm run {script}` timed out after {self.npm_timeout_sec} seconds."
 
-        ok = completed.returncode == 0
-        return ok, completed.stdout or ""
+            ok = completed.returncode == 0
+            return ok, completed.stdout or ""
+        
+        return await asyncio.to_thread(_run_sync)

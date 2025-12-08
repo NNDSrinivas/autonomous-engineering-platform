@@ -42,8 +42,8 @@ def build_file_tree(root: str, depth: int = 2) -> List[Dict[str, Any]]:
                 node["type"] = "file"
 
             result.append(node)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to process filesystem node", extra={"error": str(exc)})
 
     return result
 

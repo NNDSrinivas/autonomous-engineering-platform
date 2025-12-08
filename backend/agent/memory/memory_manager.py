@@ -338,7 +338,7 @@ async def archive_old_memories(
     """
     
     try:
-        datetime.utcnow() - timedelta(days=days_old)
+        cutoff_date = datetime.utcnow() - timedelta(days=days_old)
         
         # Move to archive table
         # query = """

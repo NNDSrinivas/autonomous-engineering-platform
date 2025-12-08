@@ -13,7 +13,7 @@ from backend.agent.tools.search_repo import search_repo
 from backend.agent.tools.read_file import read_file
 from backend.agent.tools.apply_diff import apply_diff
 from backend.agent.tools.run_command import run_command
-from backend.agent.tools.github_tools import github_create_branch, github_create_pr
+from backend.agent.tools.github_tools import github_create_pr
 from backend.agent.jira_engine.executor import transition_jira, add_jira_comment
 from backend.llm.router import complete_chat as call_llm
 
@@ -111,7 +111,7 @@ async def step_locate_files(
         
         # Build search query from issue and plan
         issue_title = state.issue.get("title", "")
-        plan_summary = state.plan.get("summary", "")
+        state.plan.get("summary", "")
         
         # Search for relevant files
         search_result = await search_repo(

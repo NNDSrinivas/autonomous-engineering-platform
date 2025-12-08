@@ -37,7 +37,6 @@ from backend.core.settings import settings
 from ..core.middleware import AuditMiddleware
 
 # removed unused: RequestIDMiddleware (ObservabilityMiddleware provides this)
-from ..core.rate_limit.middleware import RateLimitMiddleware
 from ..core.audit_service.middleware import EnhancedAuditMiddleware
 from ..core.cache.middleware import CacheMiddleware
 from ..core.db import get_db
@@ -85,7 +84,6 @@ from ..core.realtime_engine import presence as presence_lifecycle
 from ..core.obs.obs_logging import logger
 
 from .routers.jira_webhook import router as jira_webhook_router
-from .routers.github_webhook import router as github_webhook_router
 from .routers.slack_webhook import router as slack_webhook_router
 from .routers.teams_webhook import router as teams_webhook_router
 from .routers.docs_webhook import router as docs_webhook_router

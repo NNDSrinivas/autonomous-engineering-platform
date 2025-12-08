@@ -58,7 +58,7 @@ async def enrich_jira_context(
     try:
         title = issue.get("title", "")
         issue_id = issue.get("id", "")
-        description = issue.get("description", "")
+        issue.get("description", "")
         labels = issue.get("labels", [])
         
         # Combine search terms

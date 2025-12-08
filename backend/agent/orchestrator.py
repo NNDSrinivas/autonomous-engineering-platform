@@ -30,7 +30,6 @@ from typing import Any, Dict, List, Optional, Protocol
 
 from .intent_schema import NaviIntent
 from .intent_classifier import IntentClassifier
-from .tool_executor import ToolResult, _normalize_tool_result
 
 logger = logging.getLogger(__name__)
 

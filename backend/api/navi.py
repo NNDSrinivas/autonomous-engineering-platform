@@ -318,7 +318,7 @@ async def navi_chat(
             started = time.monotonic()
             
             # Create Jira intent
-            intent = NaviIntent(
+            NaviIntent(
                 family=IntentFamily.PROJECT_MANAGEMENT,
                 kind=IntentKind.SUMMARIZE_TICKETS,  # Use existing enum value
                 raw_text=request.message,

@@ -1,5 +1,5 @@
 # backend/api/navi_intent.py
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Literal
 import os
@@ -89,7 +89,7 @@ async def classify_intent(req: IntentRequest) -> IntentResponse:
         
         logger.info(f"[NAVI-INTENT] Classified '{req.message}' as: {intent}")
         return IntentResponse(intent=intent)
-    except Exception as e:
+    except Exception:
         logger.error("[INTENT] Failed to classify", exc_info=True)
         # Fallback to simple heuristic on error
         text = req.message.lower().strip()

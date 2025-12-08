@@ -8,7 +8,7 @@ This is the entry point for autonomous task execution.
 import logging
 from typing import Dict, Any, Optional
 
-from .state import WorkflowState, WorkflowStatus
+from .state import WorkflowStatus
 from .engine import (
     run_workflow_step,
     create_workflow,

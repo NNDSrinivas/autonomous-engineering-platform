@@ -12,7 +12,7 @@ Key design principles:
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from .orchestrator import PlanResult, PlannedStep
 from .intent_schema import NaviIntent, IntentFamily, IntentKind, Provider

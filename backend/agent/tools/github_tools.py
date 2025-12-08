@@ -43,7 +43,7 @@ async def github_create_branch(user_id: str, branch_name: str, base_branch: str 
                 "error": "GitHub client not available"
             }
         
-        branch = await gh_client.create_branch(branch_name, base_branch)
+        await gh_client.create_branch(branch_name, base_branch)
         
         return {
             "success": True,

@@ -21,7 +21,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import tiktoken
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
-from sqlalchemy import text, select
+from sqlalchemy import text
 from backend.models.memory_graph import MemoryNode, MemoryChunk, MemoryEdge
 
 logger = logging.getLogger(__name__)

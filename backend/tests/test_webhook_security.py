@@ -7,7 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.api.main import app
-from backend.core.settings import settings
 
 
 @pytest.fixture

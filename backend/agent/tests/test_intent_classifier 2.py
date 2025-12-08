@@ -7,7 +7,6 @@ logic and ensure proper intent mapping.
 """
 
 import pytest
-from typing import Dict, Any, Optional
 
 from backend.agent.intent_classifier import IntentClassifier
 from backend.agent.intent_schema import (

@@ -7,7 +7,7 @@ This is a write operation with strict sandboxing (requires user approval).
 
 import subprocess
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 

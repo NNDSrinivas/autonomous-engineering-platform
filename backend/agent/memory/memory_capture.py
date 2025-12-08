@@ -16,7 +16,6 @@ from datetime import datetime
 
 from .memory_types import (
     MemoryEntry,
-    MemoryType,
     MemoryCategory,
     ConversationalMemory,
     WorkspaceMemory,

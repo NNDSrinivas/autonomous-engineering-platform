@@ -26,7 +26,6 @@ from backend.agent.org_retriever import retrieve_org_context
 from backend.agent.workspace_retriever import retrieve_workspace_context
 from backend.agent.intent_classifier import IntentClassifier
 from backend.ai.intent_llm_classifier import LLMIntentClassifier
-from backend.agent.planner_v3 import PlannerV3
 from backend.agent.tool_executor import execute_tool, execute_tool_with_sources
 from backend.agent.state_manager import (
     get_user_state,

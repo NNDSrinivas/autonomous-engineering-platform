@@ -174,7 +174,7 @@ async def _scan_small_files(
                     if len(small_files) >= max_files:
                         break
                 
-                except Exception as e:
+                except Exception:
                     continue
             
             if len(small_files) >= max_files:

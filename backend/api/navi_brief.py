@@ -208,7 +208,6 @@ async def list_jira_tasks_live(
         logger.info("[JIRA-LIVE] Fetching live tasks from Jira API for user: %s", uid)
         
         # Import here to avoid circular imports
-        from ..integrations.jira_client import JiraClient
         from ..services.org_ingestor import _get_jira_client_for_user
         
         # Get Jira client for this user
@@ -238,17 +237,17 @@ async def list_jira_tasks_live(
                 status = status_obj.get("name", "Unknown")
                 
                 priority_obj = fields.get("priority", {}) or {}
-                priority = priority_obj.get("name", "Medium")
+                priority_obj.get("name", "Medium")
                 
                 assignee_obj = fields.get("assignee", {}) or {}
-                assignee = assignee_obj.get("displayName", "Unassigned")
+                assignee_obj.get("displayName", "Unassigned")
                 
                 # Build Jira URL
                 jira_url = f"{jira_client.base_url}/browse/{key}"
                 
                 # Use updated timestamp from Jira
                 updated = fields.get("updated", "")
-                created = fields.get("created", "")
+                fields.get("created", "")
                 
                 items.append(
                     JiraTaskItem(

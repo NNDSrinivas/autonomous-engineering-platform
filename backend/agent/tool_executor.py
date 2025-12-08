@@ -225,10 +225,9 @@ async def _tool_repo_inspect(args: Dict[str, Any]) -> Dict[str, Any]:
   
   Uses VS Code attachments when available, falls back to filesystem scan.
   """
-  from backend.agent.workspace_retriever import retrieve_workspace_context
   from backend.services.llm import call_llm
   
-  user_id = args.get("user_id", "default_user")
+  args.get("user_id", "default_user")
   workspace = args.get("workspace", {})
   attachments = args.get("attachments")
   message = args.get("message", "Explain this repository and its structure.")
@@ -665,14 +664,12 @@ async def _tool_jira_assign_issue(
     db=None,
 ) -> Dict[str, Any]:
     """Assign a Jira issue to a user."""
-    from backend.services.jira import JiraService
-    from backend.core.db import get_db
 
     issue_key = args.get("issue_key") or args.get("key")
-    org_id = args.get("org_id")
-    assignee_account_id = args.get("assignee_account_id")
-    assignee_name = args.get("assignee_name")
-    approved = args.get("approve") is True
+    args.get("org_id")
+    args.get("assignee_account_id")
+    args.get("assignee_name")
+    args.get("approve") is True
 
     if not issue_key:
         return {
@@ -900,7 +897,7 @@ async def _tool_slack_fetch_recent_channel_messages(
             "channel_filter": channel_name,
             "message_count": len(messages),
             "messages": messages,
-            "text": summary + f":\n\n" + "\n".join([
+            "text": summary + ":\n\n" + "\n".join([
                 f"• {msg.get('user', 'unknown')}: {msg.get('text', '')[:100]}..." 
                 for msg in messages[:10]
             ]) if messages else summary + " (no messages found)"

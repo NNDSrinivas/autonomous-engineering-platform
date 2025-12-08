@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 
 from .memory_types import (
     MemoryEntry,
-    MemoryType,
     should_prune_memory
 )
 
@@ -339,7 +338,7 @@ async def archive_old_memories(
     """
     
     try:
-        cutoff_date = datetime.utcnow() - timedelta(days=days_old)
+        datetime.utcnow() - timedelta(days=days_old)
         
         # Move to archive table
         # query = """

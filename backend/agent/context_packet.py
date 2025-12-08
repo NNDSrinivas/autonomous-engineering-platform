@@ -89,7 +89,7 @@ async def build_context_packet(
     - Add webhook-driven cache invalidation + on-demand refresh
     """
 
-    packet = ContextPacket(task_key=task_key)
+    ContextPacket(task_key=task_key)
 
     cache_key = f"context_packet:{org_id}:{task_key}" if use_cache and org_id else None
 

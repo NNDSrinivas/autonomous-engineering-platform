@@ -77,7 +77,7 @@ async def retrieve_org_context(
         # 2. Check for Jira-related intents (list tasks, etc.)
         # ---------------------------------------------------------
         if _is_jira_list_intent(query) or not jira_keys:
-            logger.info(f"[ORG] Detected Jira list intent or no specific keys")
+            logger.info("[ORG] Detected Jira list intent or no specific keys")
             user_tasks = await _fetch_user_jira_tasks(user_id, db)
             
             # Merge with any specific key results

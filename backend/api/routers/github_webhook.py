@@ -5,7 +5,6 @@ GitHub webhook ingestion with HMAC verification.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session

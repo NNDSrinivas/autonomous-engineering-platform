@@ -290,7 +290,6 @@ async def _handle_task_query(
         try:
             import os
             from backend.services.navi_memory_service import list_jira_tasks_for_user
-            from backend.core.db import get_db
             
             user_id = os.environ.get("DEV_USER_ID", "default_user")
             # We need a db session, but we can't easily inject it here

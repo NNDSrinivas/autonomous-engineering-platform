@@ -29,13 +29,11 @@ Capabilities:
 
 from __future__ import annotations
 
-import json
 import time
-import base64
 import logging
 import random
 import asyncio
-from typing import Any, Dict, Optional, List, Literal, Union
+from typing import Any, Dict, Optional, List
 from dataclasses import dataclass
 
 try:
@@ -450,7 +448,7 @@ class LLMRouter:
 
             except httpx.TimeoutException as e:
                 logger.error(f"[LLM] Timeout on attempt {attempt+1}: {e}")
-                last_error = ProviderError(f"Request timeout", provider_info.provider_id)
+                last_error = ProviderError("Request timeout", provider_info.provider_id)
                 
             except httpx.RequestError as e:
                 logger.error(f"[LLM] Request error on attempt {attempt+1}: {e}")

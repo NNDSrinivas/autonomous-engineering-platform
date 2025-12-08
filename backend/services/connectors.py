@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Dict, Any, List
 
-from backend.schemas.connectors import ConnectorStatus, ConnectorId
+from backend.schemas.connectors import ConnectorStatus
 
 
 # In-memory storage: { user_id: { connector_id: { ...config... } } }

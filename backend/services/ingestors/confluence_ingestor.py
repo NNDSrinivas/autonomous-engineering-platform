@@ -13,7 +13,7 @@ Creates edges for:
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from backend.services.memory_graph_service import MemoryGraphService
 
 logger = logging.getLogger(__name__)

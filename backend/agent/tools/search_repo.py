@@ -7,7 +7,7 @@ This is a read-only operation (no approval needed).
 
 import os
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 import re
 
 logger = logging.getLogger(__name__)

@@ -10,7 +10,6 @@ This is a write operation (requires user approval).
 import os
 import logging
 from typing import Dict, Any, Optional
-import difflib
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,7 @@ async def apply_diff(user_id: str, path: str, diff: str, old_content: Optional[s
         if old_content is not None and current_content != old_content:
             return {
                 "success": False,
-                "message": f"❌ File has changed since diff was generated. Please regenerate diff.",
+                "message": "❌ File has changed since diff was generated. Please regenerate diff.",
                 "error": "File content mismatch"
             }
         
@@ -87,7 +86,7 @@ async def apply_diff(user_id: str, path: str, diff: str, old_content: Optional[s
                     old_start = int(old_range[0]) - 1  # 0-indexed
                     
                     new_range = parts[2].lstrip("+").split(",")
-                    new_start = int(new_range[0]) - 1  # 0-indexed
+                    int(new_range[0]) - 1  # 0-indexed
                     
                     # Collect hunk changes
                     hunk_old = []

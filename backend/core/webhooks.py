@@ -12,7 +12,7 @@ import logging
 from hashlib import sha256
 from typing import Optional
 
-from fastapi import HTTPException, Header
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 

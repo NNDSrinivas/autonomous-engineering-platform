@@ -24,11 +24,6 @@ from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...agent.orchestrator import NaviOrchestrator, AgentTurnResult
-from ...agent.planner_v3 import PlannerV3
-from ...agent.tool_executor import execute_tool
-from ...agent.protocols import SupportsLLMModelRegistry
-from ...ai.llm_router import LLMRouter
-from ...ai.intent_llm_classifier import LLMIntentClassifier
 from ..deps import get_current_user, get_orchestrator
 
 router = APIRouter(prefix="/agent", tags=["Agent"])
@@ -285,7 +280,7 @@ async def get_available_models(
             total_count=len(models),
         )
     
-    except Exception as e:
+    except Exception:
         # Return minimal response on error
         return ModelsResponse(
             models=[
@@ -347,7 +342,7 @@ async def health_check() -> Dict[str, Any]:
         try:
             # Test LLM connectivity
             from ...ai.llm_router import LLMRouter
-            router_test = LLMRouter()
+            LLMRouter()
             llm_status = "ok"
         except Exception:
             llm_status = "degraded"

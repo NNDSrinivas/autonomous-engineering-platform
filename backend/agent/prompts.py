@@ -10,7 +10,7 @@ Architecture:
 - Context injection: User memory, org artifacts, workspace state
 """
 
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 
 
 def get_system_prompt(

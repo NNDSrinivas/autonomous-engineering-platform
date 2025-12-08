@@ -15,9 +15,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel, Field, SecretStr
 from typing import Any, Dict, List, Optional
 import logging
-from sqlalchemy.orm import Session
 
-from ...database.session import get_db
 from ..deps import get_current_user
 
 logger = logging.getLogger(__name__)

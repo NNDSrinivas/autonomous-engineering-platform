@@ -6,8 +6,7 @@ This is what makes NAVI get smarter every day.
 """
 
 import logging
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from typing import Dict, Any, List
 from collections import Counter
 
 from .memory_capture import (

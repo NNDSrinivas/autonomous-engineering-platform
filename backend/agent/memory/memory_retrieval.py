@@ -7,7 +7,7 @@ This is how NAVI remembers context and personalizes responses.
 
 import logging
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from .memory_types import (
     MemoryEntry,

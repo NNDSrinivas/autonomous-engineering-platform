@@ -6,7 +6,7 @@ Handles different Jira response formats and extracts key information consistentl
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 

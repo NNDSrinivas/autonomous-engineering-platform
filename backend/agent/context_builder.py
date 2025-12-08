@@ -181,7 +181,7 @@ def _build_combined_text(context: Dict[str, Any]) -> str:
     # Add project information from workspace analysis
     if workspace.get("project_info"):
         project = workspace["project_info"]
-        parts.append(f"## Current Project\n\n")
+        parts.append("## Current Project\n\n")
         parts.append(f"**Project Name**: {project.get('name', 'Unknown')}\n")
         if project.get('description'):
             parts.append(f"**Description**: {project['description']}\n")

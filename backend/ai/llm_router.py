@@ -238,7 +238,7 @@ class LLMRouter:
             if False:  # provider_info check
                 raise ModelNotFoundError(f"Provider {best.provider_id} not found")
             
-            return provider_info, best
+            return None, best
 
         # Explicit provider + model
         if provider and model:

@@ -6,6 +6,10 @@ import logging
 import os
 import threading
 from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from backend.navi.workflows.navi_orchestrator import NaviOrchestrator
+
 from fastapi import Header
 
 from backend.infra.broadcast.base import Broadcast, BroadcastRegistry

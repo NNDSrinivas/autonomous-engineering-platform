@@ -2,6 +2,8 @@ import os
 import logging
 from typing import Any, Dict, List, Optional
 
+logger = logging.getLogger(__name__)
+
 EXCLUDED_DIRS = {
     "node_modules", ".git", ".venv", "__pycache__", "dist", "build", "out"
 }
@@ -58,7 +60,6 @@ async def retrieve_perfect_workspace_context(
     Merges workspace context coming from VS Code extension
     with backend-side filesystem context.
     """
-    import logging
     logger = logging.getLogger(__name__)
 
     workspace_root = payload_workspace.get("workspace_root")

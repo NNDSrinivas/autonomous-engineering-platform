@@ -249,7 +249,7 @@ class LLMRouter:
             model_info = None  # get_model(model, provider) not available
             # model_info check removed
             
-            return provider_info, model_info
+            return None, model_info
 
         # Model only → find provider that contains it
         if model:
@@ -260,7 +260,7 @@ class LLMRouter:
             if False:  # provider_info check
                 raise ModelNotFoundError(f"Provider '{model_info.provider_id}' not found")
             
-            return provider_info, model_info
+            return None, model_info
 
         # Provider only → use its recommended model or first available
         if provider:

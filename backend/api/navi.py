@@ -39,7 +39,7 @@ from backend.core.db import get_db
 from backend.agent.agent_loop import run_agent_loop
 from backend.agent.planner_v3 import PlannerV3
 from backend.agent.tool_executor import execute_tool_with_sources
-from backend.agent.intent_schema import IntentFamily, IntentKind, NaviIntent
+from backend.agent.intent_schema import IntentFamily, IntentKind, IntentSource, IntentPriority, NaviIntent
 
 logger = logging.getLogger(__name__)
 

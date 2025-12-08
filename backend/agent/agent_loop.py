@@ -373,13 +373,6 @@ async def run_agent_loop(
                     "state": {"executed_pending_action": True},
                     "duration_ms": elapsed_ms,
                 }
-                return {
-                    "reply": str(result),
-                    "actions": [],
-                    "should_stream": False,
-                    "state": {"executed_pending_action": True},
-                    "duration_ms": elapsed_ms,
-                }
 
             # If no pending action, treat as continuation
             message = f"(user agrees to continue previous task) {message}"

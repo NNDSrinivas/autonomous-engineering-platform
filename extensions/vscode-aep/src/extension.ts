@@ -42,9 +42,9 @@ type NaviIntent =
   | 'general'
   | 'other';
 
-interface IntentResponse {
-  intent: NaviIntent;
-}
+// interface IntentResponse {
+//   intent: NaviIntent;
+// }
 
 // PR-5: File attachment interface for type safety
 interface FileAttachment {
@@ -54,14 +54,14 @@ interface FileAttachment {
   content: string;
 }
 
-interface NaviChatRequest {
-  id: string;
-  model: string;
-  mode: string;
-  messages: NaviMessage[];
-  stream: boolean;
-  attachments?: FileAttachment[]; // PR-5: Strongly-typed file attachments
-}
+// interface NaviChatRequest {
+//   id: string;
+//   model: string;
+//   mode: string;
+//   messages: NaviMessage[];
+//   stream: boolean;
+//   attachments?: FileAttachment[]; // PR-5: Strongly-typed file attachments
+// }
 
 interface AgentAction {
   type: 'editFile' | 'createFile' | 'runCommand';
@@ -877,7 +877,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private formatJiraTaskListForChat(data: any, originalMessage: string): string {
+  private formatJiraTaskListForChat(data: any, _originalMessage: string): string {
     if (!data.tasks || data.tasks.length === 0) {
       return "I don't see any Jira tasks in your synced memory yet. Try running a Jira sync and ask me again.";
     }
@@ -1997,7 +1997,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     const fileName = path.basename(filePath);
     const tempUri = vscode.Uri.parse(`untitled:${fileName} (NAVI Proposed)`);
 
-    const tempDoc = await vscode.workspace.openTextDocument(tempUri);
+    await vscode.workspace.openTextDocument(tempUri);
     const edit = new vscode.WorkspaceEdit();
     edit.insert(tempUri, new vscode.Position(0, 0), newContent);
     await vscode.workspace.applyEdit(edit);

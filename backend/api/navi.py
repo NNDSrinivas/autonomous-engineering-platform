@@ -175,8 +175,8 @@ async def test_agent_endpoint():
 @router.post("/chat", response_model=ChatResponse)
 async def navi_chat(
     request: ChatRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
-    http_request: Request = None,
 ) -> ChatResponse:
     """
     Main NAVI chat endpoint used by the VS Code extension.
@@ -314,13 +314,16 @@ async def navi_chat(
                     duration_ms=0,
                 )
             
+            # Track timing
+            started = time.monotonic()
+            
             # Create Jira intent
             intent = NaviIntent(
                 family=IntentFamily.PROJECT_MANAGEMENT,
                 kind=IntentKind.SUMMARIZE_TICKETS,  # Use existing enum value
                 raw_text=request.message,
-                source="chat",
-                priority="normal",
+                source=IntentSource.CHAT,
+                priority=IntentPriority.NORMAL,
                 confidence=0.9
             )
             

@@ -123,15 +123,13 @@ export const NaviConversationView: React.FC<NaviConversationViewProps> = ({
             });
 
             // This mapper already exists in your codebase; keep using it.
-            const assistantMessage = mapChatResponseToNaviChatMessage({
-                response,
-                lastUserMessage: trimmed,
-                role: "assistant",
-                repoPath: workspacePath,
-                branch: branch,
-            });
-
-            addMessages([assistantMessage]);
+      const assistantMessage = mapChatResponseToNaviChatMessage({
+        response,
+        lastUserMessage: trimmed,
+        role: "assistant",
+        repoPath: workspacePath ?? undefined,
+        branch: branch ?? undefined,
+      });            addMessages([assistantMessage]);
         } catch (err: any) {
             console.error("Failed to send NAVI chat:", err);
             setError(

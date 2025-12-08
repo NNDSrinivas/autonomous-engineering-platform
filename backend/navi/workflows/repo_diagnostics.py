@@ -73,7 +73,8 @@ class RepoDiagnosticsWorkflow:
             summary["high_level_findings"].append("package.json present at repo root.")
             try:
                 pkg_data = json.loads(pkg_path.read_text())
-                raw_details["package_json"] = pkg_data
+                if pkg_data is not None:
+                    raw_details["package_json"] = pkg_data
             except json.JSONDecodeError as exc:
                 msg = f"package.json could not be parsed: {exc}"
                 summary["blocking_issues"].append(msg)

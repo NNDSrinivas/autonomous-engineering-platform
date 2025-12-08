@@ -28,16 +28,16 @@ from .state_manager import (
 from .context_builder import build_context
 from .intent_classifier import classify_intent
 from .planner_v3 import SimplePlanner
-
-def generate_plan(intent, context):
-    """Backwards-compatible function wrapper."""
-    planner = SimplePlanner()
-    return planner.plan(intent, context)
 from .tool_executor import execute_tool, get_available_tools, is_write_operation
 from .rag import retrieve_rag_context, format_rag_context_for_llm
 from .memory_retriever import retrieve_memories, retrieve_recent_memories
 from .org_retriever import retrieve_org_context
 from .workspace_retriever import retrieve_workspace_context
+
+def generate_plan(intent, context):
+    """Backwards-compatible function wrapper."""
+    planner = SimplePlanner()
+    return planner.plan(intent, context)
 
 # Import all tools
 from .tools import (

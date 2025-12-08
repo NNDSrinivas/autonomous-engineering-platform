@@ -365,7 +365,9 @@ class NaviWebviewProvider {
                         try {
                             const baseUrl = this.getBackendBaseUrl();
                             const response = await fetch(`${baseUrl}/api/connectors/status`, {
-                                headers: { 'X-Org-Id': 'org_aep_platform_4538597546e6fec6' }
+                                headers: {
+                                    'X-Org-Id': 'org_aep_platform_4538597546e6fec6',
+                                },
                             });
                             if (!response.ok) {
                                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -396,7 +398,10 @@ class NaviWebviewProvider {
                             });
                             const response = await fetch(endpoint, {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'X-Org-Id': 'org_aep_platform_4538597546e6fec6' },
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-Org-Id': 'org_aep_platform_4538597546e6fec6',
+                                },
                                 body: JSON.stringify({
                                     base_url: msg.baseUrl,
                                     email: msg.email || undefined,
@@ -450,7 +455,10 @@ class NaviWebviewProvider {
                             console.log('[AEP] Jira sync-now – calling enhanced endpoint', endpoint);
                             const response = await fetch(endpoint, {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'X-Org-Id': 'org_aep_platform_4538597546e6fec6' },
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-Org-Id': 'org_aep_platform_4538597546e6fec6',
+                                },
                                 body: JSON.stringify({
                                     user_id: 'default_user',
                                     max_issues: 20
@@ -666,7 +674,7 @@ class NaviWebviewProvider {
             await this.callNaviBackend(originalMessage, this._currentModelId, this._currentModeId, this.getCurrentAttachments());
         }
     }
-    formatJiraTaskListForChat(data, originalMessage) {
+    formatJiraTaskListForChat(data, _originalMessage) {
         if (!data.tasks || data.tasks.length === 0) {
             return "I don't see any Jira tasks in your synced memory yet. Try running a Jira sync and ask me again.";
         }
@@ -851,7 +859,7 @@ class NaviWebviewProvider {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Org-Id': 'org_aep_platform_4538597546e6fec6'
+                    'X-Org-Id': 'org_aep_platform_4538597546e6fec6',
                 },
                 body: JSON.stringify(payload)
             });
@@ -1579,7 +1587,7 @@ class NaviWebviewProvider {
         // Create temp file with new content for preview
         const fileName = path.basename(filePath);
         const tempUri = vscode.Uri.parse(`untitled:${fileName} (NAVI Proposed)`);
-        const tempDoc = await vscode.workspace.openTextDocument(tempUri);
+        await vscode.workspace.openTextDocument(tempUri);
         const edit = new vscode.WorkspaceEdit();
         edit.insert(tempUri, new vscode.Position(0, 0), newContent);
         await vscode.workspace.applyEdit(edit);

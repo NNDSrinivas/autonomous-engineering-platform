@@ -12,15 +12,51 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import uvicorn
 import logging
+
+
+# Test server schema definitions
+class ConnectorStatus(BaseModel):
+    connector_id: str
+    status: str
+
+
+class ConnectorConnectResponse(BaseModel):
+    ok: bool
+    connector_id: str
+
+
+class JiraConnectorRequest(BaseModel):
+    base_url: str
+    email: str
+    api_token: str
+
+
+class SlackConnectorRequest(BaseModel):
+    bot_token: str
+
+
+# Mock functions for testing
+def get_connector_status_for_user(user_id: str) -> List[ConnectorStatus]:
+    return [
+        ConnectorStatus(connector_id="jira", status="connected"),
+        ConnectorStatus(connector_id="slack", status="connected"),
+    ]
+
+
+def save_jira_connection(user_id: str, base_url: str, email: str, api_token: str) -> None:
+    pass
+
+
+def save_slack_connection(user_id: str, bot_token: str) -> None:
+    pass
+
 
 # Set up logging to see all requests
 logging.basicConfig(level=logging.INFO)
 
-# Import our connector schemas and services
-from backend.schemas.connectors import ConnectorStatus, JiraConnectorRequest, SlackConnectorRequest, ConnectorConnectResponse
-from backend.services.connectors import get_connector_status_for_user, save_jira_connection, save_slack_connection
 
 app = FastAPI(title="Test Connectors Server")
 
@@ -50,7 +86,7 @@ async def health():
 async def navi_chat():
     return {"status": "navi_endpoint_available", "message": "Chat endpoint placeholder"}
 
-@app.post("/api/navi/chat") 
+@app.post("/api/navi/chat")
 async def navi_chat_post():
     return {"response": "Test response from NAVI chat"}
 
@@ -67,7 +103,7 @@ async def navi_task_brief():
 async def navi_search():
     return {"results": []}
 
-@app.post("/api/navi/search") 
+@app.post("/api/navi/search")
 async def navi_search_post():
     return {"results": []}
 
@@ -77,7 +113,7 @@ async def get_marketplace_status(user_id: Optional[str] = None):
     # For testing, use a default user if none provided
     if not user_id:
         user_id = "test_user"
-    
+
     return get_connector_status_for_user(user_id)
 
 @app.post("/api/connectors/jira/connect", response_model=ConnectorConnectResponse)
@@ -86,10 +122,10 @@ async def connect_jira(request: JiraConnectorRequest, user_id: Optional[str] = N
     # For testing, use a default user if none provided
     if not user_id:
         user_id = "test_user"
-    
+
     # Extract fields from request and save connection
     save_jira_connection(user_id, str(request.base_url), request.email, request.api_token)
-    
+
     # Return success response
     return ConnectorConnectResponse(ok=True, connector_id="jira")
 
@@ -99,10 +135,10 @@ async def connect_slack(request: SlackConnectorRequest, user_id: Optional[str] =
     # For testing, use a default user if none provided
     if not user_id:
         user_id = "test_user"
-    
+
     # Extract fields from request and save connection
     save_slack_connection(user_id, request.bot_token)
-    
+
     # Return success response
     return ConnectorConnectResponse(ok=True, connector_id="slack")
 

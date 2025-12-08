@@ -124,7 +124,7 @@ async def test_unified_memory_with_slack():
         )
         
         slack_memories = memories.get("slack_memories", [])
-        print(f"✅ Unified memory retrieval completed")
+        print("✅ Unified memory retrieval completed")
         print(f"   - Total sources: {len(memories)} ")
         print(f"   - Slack messages: {len(slack_memories)}")
         
@@ -165,9 +165,9 @@ async def main():
     
     print("\n" + "=" * 50)
     print("📊 Integration Test Results:")
-    print(f"  ✅ Bot Token: Configured")
+    print("  ✅ Bot Token: Configured")
     print(f"  ✅ SlackClient: Connected ({len(channels)} channels)")  
-    print(f"  ✅ Slack Service: Working")
+    print("  ✅ Slack Service: Working")
     print(f"  {'✅' if memory_works else '⚠️'} Unified Memory: {'Working' if memory_works else 'No messages yet'}")
     
     if memory_works:

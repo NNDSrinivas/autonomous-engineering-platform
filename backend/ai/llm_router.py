@@ -46,8 +46,6 @@ except ImportError as exc:
 from .llm_model_registry import (
     get_registry,
     smart_auto_candidates,
-    get_model,
-    get_provider,
     ModelInfo,
     ProviderInfo,
 )

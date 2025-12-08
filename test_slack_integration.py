@@ -18,7 +18,7 @@ def test_slack_service_import():
     print("\n=== Testing Slack Service Import ===")
     
     try:
-        from backend.services.slack_service import search_messages_for_user, search_messages, _get_client
+        from backend.services.slack_service import _get_client
         print("✅ SlackService imported successfully")
         
         # Test client creation (should not crash even if token missing)

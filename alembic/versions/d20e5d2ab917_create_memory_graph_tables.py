@@ -8,11 +8,16 @@ depends_on = None
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON
 
 
 def upgrade() -> None:
-    # Enable pgvector extension if not already enabled
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # Enable pgvector extension if not already enabled (PostgreSQL only)
+    try:
+        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    except Exception:
+        # SQLite doesn't support extensions
+        pass
 
     # Create memory_node table
     op.create_table(
@@ -22,7 +27,7 @@ def upgrade() -> None:
         sa.Column("node_type", sa.String(length=50), nullable=False),
         sa.Column("title", sa.Text(), nullable=True),
         sa.Column("text", sa.Text(), nullable=False),
-        sa.Column("meta_json", JSONB, server_default="{}", nullable=False),
+        sa.Column("meta_json", JSON(), server_default="{}", nullable=False),
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),
@@ -41,9 +46,7 @@ def upgrade() -> None:
         sa.Column("node_id", sa.BigInteger(), nullable=False),
         sa.Column("chunk_index", sa.Integer(), nullable=False),
         sa.Column("chunk_text", sa.Text(), nullable=False),
-        sa.Column(
-            "embedding", sa.Text(), nullable=True
-        ),  # Will be VECTOR(1536) via raw SQL
+        sa.Column("embedding", sa.Text(), nullable=True),
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),
@@ -54,19 +57,22 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
 
-    # Alter embedding column to use vector type
-    op.execute(
-        "ALTER TABLE memory_chunk ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector(1536)"
-    )
-
-    # Create HNSW index for vector similarity search
-    op.execute(
+    # Alter embedding column to use vector type (PostgreSQL only)
+    try:
+        op.execute(
+            "ALTER TABLE memory_chunk ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector(1536)"
+        )
+        # Create HNSW index for vector similarity search (PostgreSQL only)
+        op.execute(
+            """
+            CREATE INDEX idx_memory_chunk_embedding 
+            ON memory_chunk 
+            USING hnsw (embedding vector_cosine_ops)
         """
-        CREATE INDEX idx_memory_chunk_embedding 
-        ON memory_chunk 
-        USING hnsw (embedding vector_cosine_ops)
-    """
-    )
+        )
+    except Exception:
+        # SQLite doesn't support vector type or HNSW index
+        pass
 
     # Create memory_edge table
     op.create_table(
@@ -77,7 +83,7 @@ def upgrade() -> None:
         sa.Column("to_id", sa.BigInteger(), nullable=False),
         sa.Column("edge_type", sa.String(length=50), nullable=False),
         sa.Column("weight", sa.Float(), server_default="1.0", nullable=False),
-        sa.Column("meta_json", JSONB, server_default="{}", nullable=False),
+        sa.Column("meta_json", JSON(), server_default="{}", nullable=False),
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),

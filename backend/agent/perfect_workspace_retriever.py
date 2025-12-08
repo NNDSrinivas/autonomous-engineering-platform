@@ -18,7 +18,7 @@ def safe_read_file(path: str) -> Optional[str]:
             return None
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             return f.read()
-    except:
+    except Exception:
         return None
 
 

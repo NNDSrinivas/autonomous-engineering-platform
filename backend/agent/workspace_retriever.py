@@ -299,7 +299,8 @@ async def _analyze_project_info(root: str) -> Dict[str, Any]:
                                 project_info["framework"] = "vue"
                             elif "angular" in str(pkg.get("dependencies", {})):
                                 project_info["framework"] = "angular"
-                    except:
+                    except Exception:
+
                         pass
                 
                 break
@@ -316,7 +317,8 @@ async def _analyze_project_info(root: str) -> Dict[str, Any]:
                         if line and not line.startswith('#') and len(line) > 20:
                             project_info["description"] = line
                             break
-            except:
+            except Exception:
+
                 pass
         
         logger.info(f"[WORKSPACE] Project analysis: {project_info}")

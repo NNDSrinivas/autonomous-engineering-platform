@@ -195,7 +195,7 @@ async def get_jira_memories_mentioning_key(
                     memory["tags"] = json.loads(memory["meta_json"])
                 else:
                     memory["tags"] = dict(memory["meta_json"])
-            except:
+            except Exception:
                 memory["tags"] = {}
                 
             memories.append(memory)

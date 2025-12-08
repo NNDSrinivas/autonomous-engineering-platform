@@ -35,7 +35,8 @@ async def github_create_branch(user_id: str, branch_name: str, base_branch: str 
     try:
         from backend.integrations.github.service import GitHubService
         
-        import os; gh_client = GitHubService(token=os.getenv("GITHUB_TOKEN", ""))
+        import os
+        gh_client = GitHubService(token=os.getenv("GITHUB_TOKEN", ""))
         if not gh_client:
             return {
                 "success": False,
@@ -94,7 +95,8 @@ async def github_create_pr(
     try:
         from backend.integrations.github.service import GitHubService
         
-        import os; gh_client = GitHubService(token=os.getenv("GITHUB_TOKEN", ""))
+        import os
+        gh_client = GitHubService(token=os.getenv("GITHUB_TOKEN", ""))
         if not gh_client:
             return {
                 "success": False,

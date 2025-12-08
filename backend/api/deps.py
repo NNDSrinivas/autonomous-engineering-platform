@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 from fastapi import Header
 
 from backend.infra.broadcast.base import Broadcast, BroadcastRegistry

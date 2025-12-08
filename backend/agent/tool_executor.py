@@ -173,11 +173,11 @@ async def execute_tool(
     return await _tool_github_rerun_check(user_id, args, db)
 
   # Slack integration tools -------------------------------------------------------
-  if tool_name == "slack.fetch_recent_channel_messages":
-    return await _tool_slack_fetch_recent_channel_messages(user_id, args, db)
-
-  if tool_name == "slack.search_user_messages":
-    return await _tool_slack_search_user_messages(user_id, args, db)
+  # Slack tools not yet implemented
+  # if tool_name == "slack.fetch_recent_channel_messages":
+  #   return await _tool_slack_fetch_recent_channel_messages(user_id, args, db)
+  # if tool_name == "slack.search_user_messages":
+  #   return await _tool_slack_search_user_messages(user_id, args, db)
 
   # Project-management stubs (future expansion) --------------------------------
   if tool_name.startswith("pm."):

@@ -7,8 +7,6 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from backend.database.session import get_db
 from sqlalchemy import text
-from datetime import datetime
-import json
 
 def populate_test_jira_data():
     """Insert some test Jira issues into navi_memory for testing"""

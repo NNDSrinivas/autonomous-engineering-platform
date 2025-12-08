@@ -32,7 +32,7 @@ async def manage_channels():
     try:
         from backend.integrations.slack_client import SlackClient
         client = SlackClient()
-        print(f"✅ Connected to Slack")
+        print("✅ Connected to Slack")
         
         # List all channels
         channels = client.list_channels()
@@ -65,32 +65,32 @@ async def manage_channels():
                 
             except Exception as e:
                 if "not_in_channel" in str(e):
-                    print(f"   ❌ Bot not in channel")
+                    print("   ❌ Bot not in channel")
                     
                     if not ch.get("is_private"):
-                        print(f"   🔧 Attempting to join...")
+                        print("   🔧 Attempting to join...")
                         if client.join_channel(ch_id):
                             try:
                                 messages = client.fetch_channel_messages(ch_id, limit=2)
                                 accessible_count += 1
                                 print(f"   ✅ Joined successfully! ({len(messages)} recent messages)")
-                            except:
-                                print(f"   ⚠️ Joined but still cannot read messages")
+                            except Exception:
+                                print("   ⚠️ Joined but still cannot read messages")
                         else:
-                            print(f"   ❌ Failed to join")
+                            print("   ❌ Failed to join")
                     else:
-                        print(f"   ℹ️ Private channel - manual invite required")
+                        print("   ℹ️ Private channel - manual invite required")
                         print(f"   💡 Invite @your-bot-name to #{ch_name} in Slack")
                 else:
                     print(f"   ❌ Error: {e}")
         
-        print(f"\n📊 Summary:")
+        print("\n📊 Summary:")
         print(f"  Total channels: {len(channels)}")
         print(f"  Bot has access: {accessible_count}")
         print(f"  Need invites: {len(channels) - accessible_count}")
         
         # Test unified memory
-        print(f"\n🧠 Testing Unified Memory Integration...")
+        print("\n🧠 Testing Unified Memory Integration...")
         from backend.services.slack_service import search_messages_for_user
         
         messages = search_messages_for_user(
@@ -102,7 +102,7 @@ async def manage_channels():
         print(f"✅ Unified memory can fetch {len(messages)} messages total")
         
         if messages:
-            print(f"\n💬 Sample messages from unified memory:")
+            print("\n💬 Sample messages from unified memory:")
             for msg in messages[:3]:
                 channel = msg.get("channel_name", msg.get("channel", "unknown"))
                 text = msg.get("text", "")[:80]
@@ -112,11 +112,11 @@ async def manage_channels():
                 print(f"   #{channel} - @{user}: {text}")
         
         if accessible_count > 0:
-            print(f"\n🎉 SUCCESS! Bot can access Slack messages!")
-            print(f"NAVI will now include these messages in organizational memory.")
+            print("\n🎉 SUCCESS! Bot can access Slack messages!")
+            print("NAVI will now include these messages in organizational memory.")
         else:
-            print(f"\n⚠️ Bot needs channel access to fetch messages.")
-            print(f"Invite the bot to channels or join public ones.")
+            print("\n⚠️ Bot needs channel access to fetch messages.")
+            print("Invite the bot to channels or join public ones.")
             
     except Exception as e:
         print(f"❌ Error: {e}")

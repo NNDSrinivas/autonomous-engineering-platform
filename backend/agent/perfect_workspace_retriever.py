@@ -23,13 +23,23 @@ TEXT_EXT = {
 MAX_FILE_SIZE = 30_000  # 30 KB
 
 
-def safe_read_file(path: str) -> Optional[str]:
+def safe_read_file(path: str, workspace_root: Optional[str] = None) -> Optional[str]:
     try:
-        if not os.path.exists(path):
+        # Normalize paths to prevent path traversal attacks
+        normalized_path = os.path.normpath(os.path.abspath(path))
+
+        # Validate path is within workspace if workspace_root is provided
+        if workspace_root:
+            normalized_workspace = os.path.normpath(os.path.abspath(workspace_root))
+            if not normalized_path.startswith(normalized_workspace):
+                logger.warning("Rejecting path outside workspace: %s", normalized_path)
+                return None
+
+        if not os.path.exists(normalized_path):
             return None
-        if os.path.getsize(path) > MAX_FILE_SIZE:
+        if os.path.getsize(normalized_path) > MAX_FILE_SIZE:
             return None
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(normalized_path, "r", encoding="utf-8", errors="ignore") as f:
             return f.read()
     except Exception:
         return None
@@ -61,46 +71,28 @@ def build_file_tree(root: str, depth: int = 2) -> List[Dict[str, Any]]:
     return result
 
 
-async def retrieve_perfect_workspace_context(
-    payload_workspace: Dict[str, Any],
-    include_files: bool = True,
-) -> Dict[str, Any]:
-    """
-    PERFECT WORKSPACE RETRIEVER
-    Merges workspace context coming from VS Code extension
-    with backend-side filesystem context.
-    """
-    logger = logging.getLogger(__name__)
+def retrieve_workspace(root: str, max_files: int = 20) -> Dict[str, Any]:
+    """Retrieve workspace structure and file contents."""
+    files = {}
+    count = 0
 
-    workspace_root = payload_workspace.get("workspace_root")
-    active_file = payload_workspace.get("active_file")
-    selected_text = payload_workspace.get("selected_text")
-    recent_files = payload_workspace.get("recent_files", [])
+    for root_path, dirs, filenames in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
 
-    logger.info(f"[PERFECT-WORKSPACE] workspace_root: {workspace_root}")
-    logger.info(f"[PERFECT-WORKSPACE] payload_workspace: {payload_workspace}")
+        for filename in filenames:
+            if count >= max_files:
+                break
 
-    file_tree = []
-    small_files = []
+            _, ext = os.path.splitext(filename)
+            if ext not in TEXT_EXT:
+                continue
 
-    if workspace_root and os.path.exists(workspace_root):
-        file_tree = build_file_tree(workspace_root, depth=2)
+            file_path = os.path.join(root_path, filename)
+            content = safe_read_file(file_path, root)
 
-        if include_files:
-            for path in recent_files[:10]:
-                content = safe_read_file(path)
-                if content:
-                    ext = os.path.splitext(path)[1]
-                    if ext in TEXT_EXT:
-                        small_files.append(
-                            {"path": path, "ext": ext, "content": content}
-                        )
+            if content:
+                rel_path = os.path.relpath(file_path, root)
+                files[rel_path] = content
+                count += 1
 
-    return {
-        "workspace_root": workspace_root,
-        "active_file": active_file,
-        "selected_text": selected_text,
-        "recent_files": recent_files,
-        "file_tree": file_tree,
-        "small_files": small_files,
-    }
+    return {"root": root, "structure": build_file_tree(root), "files": files}

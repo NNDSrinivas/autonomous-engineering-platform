@@ -7,11 +7,15 @@ depends_on = None
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import JSON
 
 
 def upgrade() -> None:
+    """No-op migration - tables already created in 0013_memory_graph.
+    
+    This migration was auto-generated but the tables (memory_node, memory_edge)
+    already exist from migration 0013_memory_graph. Keeping this as a no-op
+    to maintain the migration chain integrity for dependent migrations.
+    """
     # Enable pgvector extension if not already enabled (PostgreSQL only)
     try:
         op.execute("CREATE EXTENSION IF NOT EXISTS vector")
@@ -19,87 +23,7 @@ def upgrade() -> None:
         # SQLite doesn't support extensions
         pass
 
-    # Create memory_node table
-    op.create_table(
-        "memory_node",
-        sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("org_id", sa.String(length=255), nullable=False),
-        sa.Column("node_type", sa.String(length=50), nullable=False),
-        sa.Column("title", sa.Text(), nullable=True),
-        sa.Column("text", sa.Text(), nullable=False),
-        sa.Column("meta_json", JSON(), server_default="{}", nullable=False),
-        sa.Column(
-            "created_at",
-            sa.TIMESTAMP(timezone=True),
-            server_default=sa.text("NOW()"),
-            nullable=False,
-        ),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index("ix_memory_node_org_id", "memory_node", ["org_id"])
-    op.create_index("ix_memory_node_type", "memory_node", ["node_type"])
-
-    # Create memory_chunk table (for embeddings)
-    op.create_table(
-        "memory_chunk",
-        sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("node_id", sa.BigInteger(), nullable=False),
-        sa.Column("chunk_index", sa.Integer(), nullable=False),
-        sa.Column("chunk_text", sa.Text(), nullable=False),
-        sa.Column("embedding", sa.Text(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.TIMESTAMP(timezone=True),
-            server_default=sa.text("NOW()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["node_id"], ["memory_node.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-    )
-
-    # Alter embedding column to use vector type (PostgreSQL only)
-    try:
-        op.execute(
-            "ALTER TABLE memory_chunk ALTER COLUMN embedding TYPE vector(1536) USING embedding::vector(1536)"
-        )
-        # Create HNSW index for vector similarity search (PostgreSQL only)
-        op.execute(
-            """
-            CREATE INDEX idx_memory_chunk_embedding 
-            ON memory_chunk 
-            USING hnsw (embedding vector_cosine_ops)
-        """
-        )
-    except Exception:
-        # SQLite doesn't support vector type or HNSW index
-        pass
-
-    # Create memory_edge table
-    op.create_table(
-        "memory_edge",
-        sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("org_id", sa.String(length=255), nullable=False),
-        sa.Column("from_id", sa.BigInteger(), nullable=False),
-        sa.Column("to_id", sa.BigInteger(), nullable=False),
-        sa.Column("edge_type", sa.String(length=50), nullable=False),
-        sa.Column("weight", sa.Float(), server_default="1.0", nullable=False),
-        sa.Column("meta_json", JSON(), server_default="{}", nullable=False),
-        sa.Column(
-            "created_at",
-            sa.TIMESTAMP(timezone=True),
-            server_default=sa.text("NOW()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["from_id"], ["memory_node.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["to_id"], ["memory_node.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index("ix_memory_edge_from_id", "memory_edge", ["from_id"])
-    op.create_index("ix_memory_edge_to_id", "memory_edge", ["to_id"])
-    op.create_index("ix_memory_edge_type", "memory_edge", ["edge_type"])
-
 
 def downgrade() -> None:
-    op.drop_table("memory_edge")
-    op.drop_table("memory_chunk")
-    op.drop_table("memory_node")
+    """No-op downgrade - tables are managed by 0013_memory_graph."""
+    pass

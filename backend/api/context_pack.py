@@ -10,7 +10,7 @@ from ..context.schemas import ContextPackRequest, ContextPackResponse
 from ..context.retriever import build_context_pack
 from ..context.service import filter_by_policy, fetch_relevant_notes
 from ..telemetry.context_metrics import CTX_LAT_MS, CTX_HITS
-from ..deps import get_current_user
+from .deps import get_current_user
 from backend.core.auth_org import require_org
 import time
 from backend.agent.context_packet import (

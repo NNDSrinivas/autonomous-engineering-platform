@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, SecretStr
 from typing import Any, Dict, List, Optional
 import logging
 
-from ..deps import get_current_user
+from backend.api.deps import get_current_user
 
 logger = logging.getLogger(__name__)
 

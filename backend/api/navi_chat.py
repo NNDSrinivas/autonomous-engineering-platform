@@ -8,8 +8,8 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.llm.factory import get_llm_client
-from backend.llm.base import ChatMessage
+from backend.llm import get_llm_client
+from backend.llm import ChatMessage
 
 logger = logging.getLogger(__name__)
 

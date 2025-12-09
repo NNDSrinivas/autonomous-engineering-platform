@@ -24,6 +24,45 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+# Tools that mutate state or filesystem. Used by guardrails and UI.
+WRITE_OPERATION_TOOLS = {
+    "code.apply_diff",
+    "code.create_file",
+    "code.edit_file",
+    "code.run_command",
+    "repo.write",
+}
+
+
+def get_available_tools():
+    """List supported tool entrypoints for UI/help surfaces."""
+    return sorted(
+        {
+            "context.present_packet",
+            "context.summary",
+            "repo.inspect",
+            "code.read_files",
+            "code.search",
+            "code.explain",
+            "code.apply_diff",
+            "code.create_file",
+            "code.edit_file",
+            "code.run_command",
+            "jira.search_issues",
+            "jira.assign_issue",
+            "jira.create_issue",
+            "slack.send_message",
+            "github.create_pr",
+            "github.rerun_check",
+            "project.summary",
+        }
+    )
+
+
+def is_write_operation(tool_name):
+    """Return True if the tool mutates files or external systems."""
+    return tool_name in WRITE_OPERATION_TOOLS
+
 
 @dataclass
 class ToolResult:

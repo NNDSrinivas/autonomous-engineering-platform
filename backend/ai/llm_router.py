@@ -246,7 +246,6 @@ class LLMRouter:
                 f"[LLM] SMART-AUTO selected: {best.provider_id}:{best.model_id}"
             )
 
-
             return None, best
 
         # Explicit provider + model

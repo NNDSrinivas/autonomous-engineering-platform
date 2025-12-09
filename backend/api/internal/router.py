@@ -5,6 +5,7 @@ import os
 import subprocess
 import platform
 from datetime import datetime
+from urllib.parse import urlparse
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -62,9 +63,11 @@ async def get_system_info():
     # Determine deployment target based on environment
     backend_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8787")
 
-    if "api.navralabs.com" in backend_url:
+    parsed_url = urlparse(backend_url)
+    host = parsed_url.hostname or ""
+    if host == "api.navralabs.com":
         deployment_target = "production"
-    elif "localhost" in backend_url or "127.0.0.1" in backend_url:
+    elif host in ("localhost", "127.0.0.1"):
         deployment_target = "local"
     else:
         deployment_target = "staging"

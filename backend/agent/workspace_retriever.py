@@ -22,6 +22,16 @@ logger = logging.getLogger(__name__)
 MAX_CONTENT_CHARS = 8000  # safety cap per file
 
 
+def _is_safe_path(basedir: str, candidate: str) -> bool:
+    """Ensure candidate path stays within basedir."""
+    basedir_real = os.path.abspath(os.path.realpath(basedir))
+    candidate_real = os.path.abspath(os.path.realpath(candidate))
+    try:
+        return os.path.commonpath([basedir_real, candidate_real]) == basedir_real
+    except ValueError:
+        return False
+
+
 async def retrieve_workspace_context(
     user_id: str,
     workspace_root: Optional[str] = None,
@@ -305,8 +315,9 @@ async def _analyze_project_info(root: str) -> Dict[str, Any]:
     Analyze the project to determine its type, name, and description.
     This helps NAVI understand what project the user is actually working on.
     """
+    norm_root = os.path.abspath(os.path.realpath(root))
     project_info = {
-        "name": os.path.basename(root),
+        "name": os.path.basename(norm_root),
         "type": "unknown",
         "description": None,
         "framework": None,
@@ -328,7 +339,9 @@ async def _analyze_project_info(root: str) -> Dict[str, Any]:
         }
 
         for config_file, lang in config_files.items():
-            config_path = os.path.join(root, config_file)
+            config_path = os.path.join(norm_root, config_file)
+            if not _is_safe_path(norm_root, config_path):
+                continue
             if os.path.exists(config_path):
                 project_info["language"] = lang
 
@@ -357,8 +370,8 @@ async def _analyze_project_info(root: str) -> Dict[str, Any]:
                 break
 
         # Check for README.md for additional description
-        readme_path = os.path.join(root, "README.md")
-        if os.path.exists(readme_path) and not project_info["description"]:
+        readme_path = os.path.join(norm_root, "README.md")
+        if _is_safe_path(norm_root, readme_path) and os.path.exists(readme_path) and not project_info["description"]:
             try:
                 with open(readme_path, "r", encoding="utf-8") as f:
                     readme_content = f.read()[:500]  # First 500 chars

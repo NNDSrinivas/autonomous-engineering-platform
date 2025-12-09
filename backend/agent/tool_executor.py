@@ -216,6 +216,12 @@ def _resolve_root(args: Dict[str, Any]) -> Path:
     root_arg = args.get("root")
     if root_arg:
         root = Path(root_arg).expanduser().resolve()
+        try:
+            root.relative_to(DEFAULT_WORKSPACE_ROOT)
+        except ValueError:
+            raise ValueError(
+                f"Provided root path '{root_arg}' is not allowed; must be inside {DEFAULT_WORKSPACE_ROOT}."
+            )
     else:
         root = DEFAULT_WORKSPACE_ROOT
 
@@ -329,9 +335,16 @@ async def _tool_code_read_files(args: Dict[str, Any]) -> Dict[str, Any]:
     total = 0
 
     for rel in files:
-        path = (root / rel).resolve()
-        if not str(path).startswith(str(root)):
-            # prevent traversal
+        rel_path = Path(rel)
+        if rel_path.is_absolute() or ".." in rel_path.parts or rel_path == Path(""):
+            results.append({"path": rel, "error": "invalid_path"})
+            continue
+
+        path = (root / rel_path).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError:
+            results.append({"path": rel, "error": "path_outside_workspace"})
             continue
 
         if not path.exists() or not path.is_file():

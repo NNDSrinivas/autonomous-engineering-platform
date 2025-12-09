@@ -246,17 +246,11 @@ class LLMRouter:
                 f"[LLM] SMART-AUTO selected: {best.provider_id}:{best.model_id}"
             )
 
-            # provider_info = None  # get_provider(best.provider_id) not available  # Provider lookup
-            if False:  # provider_info check
-                raise ModelNotFoundError(f"Provider {best.provider_id} not found")
 
             return None, best
 
         # Explicit provider + model
         if provider and model:
-            # provider_info = None  # get_provider(provider) not available  # Provider lookup
-            if False:  # provider_info check
-                raise ModelNotFoundError(f"Provider '{provider}' not found")
 
             model_info = None  # get_model(model, provider) not available
             # model_info check removed
@@ -269,18 +263,6 @@ class LLMRouter:
             # model_info check removed
 
             provider_info = None  # get_provider(model_info.provider_id) not available
-            if False:  # provider_info check
-                raise ModelNotFoundError(
-                    f"Provider '{model_info.provider_id}' not found"
-                )
-
-            return None, model_info
-
-        # Provider only → use its recommended model or first available
-        if provider:
-            # provider_info = None  # get_provider(provider) not available  # Provider lookup
-            if False:  # provider_info check
-                raise ModelNotFoundError(f"Provider '{provider}' not found")
 
             models = registry.list_models(provider)
             if not models:

@@ -111,12 +111,12 @@ async def step_locate_files(
 
         # Build search query from issue and plan
         issue_title = state.issue.get("title", "")
-        state.plan.get("summary", "")
+        plan_summary = state.plan.get("summary", "")
 
         # Search for relevant files
         search_result = await search_repo(
             user_id=user_id,
-            query=issue_title,
+            query=f"{issue_title} {plan_summary}".strip(),
             workspace_root=workspace_root,
             max_results=20,
             case_sensitive=False,

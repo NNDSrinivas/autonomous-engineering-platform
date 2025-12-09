@@ -87,8 +87,6 @@ async def apply_diff(
                     old_range = parts[1].lstrip("-").split(",")
                     old_start = int(old_range[0]) - 1  # 0-indexed
 
-                    new_range = parts[2].lstrip("+").split(",")
-                    int(new_range[0]) - 1  # 0-indexed
 
                     # Collect hunk changes
                     hunk_old = []

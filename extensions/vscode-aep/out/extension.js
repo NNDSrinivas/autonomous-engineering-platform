@@ -1617,12 +1617,16 @@ class NaviWebviewProvider {
         // Production: will use bundled React app
         const isDevelopment = cfg.get('development.useReactDevServer') ?? false;
         const devServerUrl = 'http://localhost:3000';
+        const cspSource = isDevelopment
+            ? `script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' http://localhost:3000; connect-src ${webview.cspSource} http://localhost:3000 http://127.0.0.1:8787;`
+            : `script-src ${webview.cspSource} 'unsafe-inline'; connect-src ${webview.cspSource} http://127.0.0.1:8787;`;
         return /* html */ `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${cspSource} style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} data: https:; font-src ${webview.cspSource};" />
     <title>NAVI — Autonomous Engineering Assistant</title>
     <script>
       // Expose backend URL and workspace context to React app

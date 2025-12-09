@@ -523,7 +523,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
               const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: { 
+                headers: {
                   'Content-Type': 'application/json',
                   'X-Org-Id': 'org_aep_platform_4538597546e6fec6',
                 },
@@ -591,7 +591,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
               const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: { 
+                headers: {
                   'Content-Type': 'application/json',
                   'X-Org-Id': 'org_aep_platform_4538597546e6fec6',
                 },
@@ -2038,19 +2038,24 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     const cfg = vscode.workspace.getConfiguration('aep');
     const rawBase = cfg.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787';
     const backendBaseUrl = rawBase.replace(/\/$/, '');
-    
+
     // NAVI uses React Vite dev server for all UI
     // Development: http://localhost:3000
     // Production: will use bundled React app
     const isDevelopment = cfg.get<boolean>('development.useReactDevServer') ?? false;
     const devServerUrl = 'http://localhost:3000';
-    
+
+    const cspSource = isDevelopment 
+      ? `script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' http://localhost:3000; connect-src ${webview.cspSource} http://localhost:3000 http://127.0.0.1:8787;`
+      : `script-src ${webview.cspSource} 'unsafe-inline'; connect-src ${webview.cspSource} http://127.0.0.1:8787;`;
+
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${cspSource} style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} data: https:; font-src ${webview.cspSource};" />
     <title>NAVI — Autonomous Engineering Assistant</title>
     <script>
       // Expose backend URL and workspace context to React app
@@ -2061,10 +2066,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   </head>
   <body>
     <div id="root"></div>
-    ${isDevelopment 
-      ? `<script type="module" src="${devServerUrl}/src/main.tsx"></script>`
-      : `<script type="module" src="file:///VITE_BUILD_PATH/main.js"></script>`
-    }
+    ${isDevelopment
+        ? `<script type="module" src="${devServerUrl}/src/main.tsx"></script>`
+        : `<script type="module" src="file:///VITE_BUILD_PATH/main.js"></script>`
+      }
   </body>
 </html>`;
   }

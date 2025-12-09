@@ -183,7 +183,7 @@ def _file_edit_to_patch(edit) -> NaviFilePatch:
     )
 
 
-def _make_diagnostics_action(edits: List[object]) -> List[NaviAction]:
+def _make_diagnostics_action(edits: List) -> List[NaviAction]:
     if not edits:
         return []
 

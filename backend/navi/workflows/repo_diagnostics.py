@@ -58,7 +58,7 @@ class RepoDiagnosticsWorkflow:
     # --------------------------------------------------------------------- #
 
     async def diagnose_and_summarize(self, repo_root: Path) -> Dict:
-        summary: Dict[str, List[str]] = {
+        summary: Dict[str, Any] = {
             "high_level_findings": [],
             "blocking_issues": [],
             "non_blocking_issues": [],
@@ -138,7 +138,7 @@ class RepoDiagnosticsWorkflow:
             summary["fix_plan_steps"].append(
                 {
                     "title": "Fix blocking issues",
-                    "actions": summary["blocking_issues"],
+                    "actions": list(summary["blocking_issues"]),
                 }
             )
 
@@ -156,7 +156,7 @@ class RepoDiagnosticsWorkflow:
             summary["fix_plan_steps"].append(
                 {
                     "title": "Improve dev-experience & safety",
-                    "actions": non_blocking_actions,
+                    "actions": list(non_blocking_actions),
                 }
             )
 

@@ -1,14 +1,10 @@
 // src/api/navi/client.ts
-import {
+import type {
     ChatResponse,
-    NaviIntent,
-    extractNaviIntent,
-    mapChatResponseToNaviChatMessage,
 } from "./types";
 import {
     NaviChatMessage,
-    NaviChatMessageIntent,
-    NaviChatMessageText,
+    mapChatResponseToNaviChatMessage,
 } from "../../types/naviChat";
 
 /**
@@ -98,39 +94,13 @@ export function mapChatResponseToNaviChatMessage(options: {
 
     const textContent = response.reply || response.content || "";
 
-    // Try to detect a frontend intent from backend response
-    const intent: NaviIntent = extractNaviIntent(lastUserMessage, response);
-
-    if (intent === "CHECK_ERRORS_AND_FIX") {
-        const intentMsg: NaviChatMessageIntent = {
-            id,
-            createdAt: now,
-            role,
-            kind: "navi-intent",
-            intent,
-            text: textContent,
-            repoPath,
-            branch,
-            meta: baseMeta,
-        };
-        return intentMsg;
-    }
-
-    const textMsg: NaviChatMessageText = {
-        id,
-        createdAt: now,
-        role,
-        kind: "text",
-        text: textContent,
-        meta: {
+    // Create a chat message from the response
+    const msg: NaviChatMessage = mapChatResponseToNaviChatMessage(
+        {
+            content: textContent,
             actions: baseMeta.actions || [],
-            sources: baseMeta.sources || [],
-            agentRun: baseMeta.agentRun || null,
-            controls: baseMeta.controls || null,
-            changes: baseMeta.changes || null,
-            state: baseMeta.state || null,
-            durationMs: baseMeta.durationMs || null,
         },
-    };
-    return textMsg;
+        role
+    );
+    return msg;
 }

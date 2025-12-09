@@ -99,13 +99,11 @@ export const NaviConversationView: React.FC<NaviConversationViewProps> = ({
 
         setError(null);
 
-        const now = new Date().toISOString();
         const userMessage: NaviChatMessage = {
             id: `user-${Date.now()}`,
-            createdAt: now,
             role: "user",
-            kind: "text",
-            text: trimmed,
+            content: trimmed,
+            timestamp: Date.now(),
         };
         addMessages([userMessage]);
         setInput("");
@@ -123,13 +121,13 @@ export const NaviConversationView: React.FC<NaviConversationViewProps> = ({
             });
 
             // This mapper already exists in your codebase; keep using it.
-      const assistantMessage = mapChatResponseToNaviChatMessage({
-        response,
-        lastUserMessage: trimmed,
-        role: "assistant",
-        repoPath: workspacePath ?? undefined,
-        branch: branch ?? undefined,
-      });            addMessages([assistantMessage]);
+            const assistantMessage = mapChatResponseToNaviChatMessage({
+                response,
+                lastUserMessage: trimmed,
+                role: "assistant",
+                repoPath: workspacePath ?? undefined,
+                branch: branch ?? undefined,
+            }); addMessages([assistantMessage]);
         } catch (err: any) {
             console.error("Failed to send NAVI chat:", err);
             setError(
@@ -139,10 +137,9 @@ export const NaviConversationView: React.FC<NaviConversationViewProps> = ({
 
             const errorMessage: NaviChatMessage = {
                 id: `err-${Date.now()}`,
-                createdAt: new Date().toISOString(),
                 role: "assistant",
-                kind: "text",
-                text: "Something went wrong while processing this command. Please check server logs or retry.",
+                content: "Something went wrong while processing this command. Please check server logs or retry.",
+                timestamp: Date.now(),
             };
             addMessages([errorMessage]);
         } finally {

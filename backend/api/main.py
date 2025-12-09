@@ -13,7 +13,7 @@ from backend.core.obs.obs_logging import configure_json_logging
 
 # Try to import tracing module, provide no-op implementations if not available
 try:
-    from backend.core.obs.obs_tracing import init_tracing, instrument_fastapi_app
+    from backend.core.obs.obs_tracing import init_tracing, instrument_fastapi_app  # type: ignore[import]
 except (ImportError, ModuleNotFoundError):
 
     def init_tracing() -> None:  # type: ignore[unused-ignore]

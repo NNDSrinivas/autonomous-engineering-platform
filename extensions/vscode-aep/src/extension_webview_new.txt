@@ -1,0 +1,33 @@
+  } private getWebviewHtml(webview: vscode.Webview): string {
+    // Determine backend base URL for webview
+    const cfg = vscode.workspace.getConfiguration('aep');
+    const rawBase = cfg.get<string>('navi.backendUrl') || 'http://127.0.0.1:8000';
+    const backendBaseUrl = rawBase.replace(/\/$/, '');
+
+    // Use React frontend (Vite dev server for now, will add production build later)
+    const frontendUrl = 'http://localhost:3000';
+
+    return /* html */ `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; connect-src http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; img-src ${webview.cspSource} https: data: http://localhost:* http://127.0.0.1:*; style-src 'unsafe-inline' ${webview.cspSource} http://localhost:* http://127.0.0.1:*; script-src 'unsafe-inline' 'unsafe-eval' http://localhost:* http://127.0.0.1:*;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AEP: NAVI Assistant</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      window.AEP_BACKEND_BASE_URL = ${JSON.stringify(backendBaseUrl)};
+      window.AEP_CONFIG = {
+        backendBaseUrl: ${JSON.stringify(backendBaseUrl)}
+      };
+    </script>
+    <script type="module" src="${frontendUrl}/@vite/client"></script>
+    <script type="module" src="${frontendUrl}/src/main.tsx"></script>
+  </body>
+</html>`;
+  }

@@ -1163,260 +1163,316 @@ class NaviWebviewProvider {
                     ? 'current file'
                     : 'attached file';
             const lang = att.language ?? ''; // ok to be empty
-            const fenceHeader = lang ? `\`\`\`${lang}` : '```';
-            chunks.push(`\n\nFile: \`${fileLabel}\` (${kindLabel})\n` +
+            const fenceHeader = lang ? `` `` : , $, { lang };
+            ` : '` ``;
+            ';;
+            chunks.push(`\n\nFile: `, $, { fileLabel } ` (${kindLabel})\n` +
                 `${fenceHeader}\n` +
                 `${att.content}\n` +
-                `\`\`\``);
-        }
-        chunks.push('\n\nUser request:\n');
-        chunks.push(latestUserText);
-        return chunks.join('');
+                `` `` `
+      );
     }
-    // PR-5: Handle attachment requests from the webview
-    async handleAttachmentRequest(webview, kind) {
-        const editor = vscode.window.activeTextEditor;
-        try {
-            // 1) Attach SELECTION
-            if (kind === 'selection') {
-                if (!editor || editor.selection.isEmpty) {
-                    const msg = 'Select some code in the active editor before attaching.';
-                    vscode.window.showInformationMessage(`NAVI: ${msg}`);
-                    // Also show a short-lived toast inside the panel
-                    this.postToWebview({
-                        type: 'toast',
-                        level: 'warning',
-                        message: msg,
-                    });
-                    return;
-                }
-                const selectedText = editor.document.getText(editor.selection);
-                const filePath = editor.document.uri.fsPath;
-                const language = editor.document.languageId;
-                const attachment = {
-                    kind: 'selection',
-                    path: filePath,
-                    language,
-                    content: selectedText,
-                };
-                // Update internal state + tell panel
-                this.addAttachment(attachment);
-                return;
-            }
-            // 2) Attach CURRENT FILE
-            if (kind === 'current-file' && editor) {
-                const content = editor.document.getText();
-                const filePath = editor.document.uri.fsPath;
-                const language = editor.document.languageId;
-                const attachment = {
-                    kind: 'currentFile',
-                    path: filePath,
-                    language,
-                    content,
-                };
-                this.addAttachment(attachment);
-                return;
-            }
-            // 3) Pick FILE via file picker
-            if (kind === 'pick-file') {
-                const uris = await vscode.window.showOpenDialog({
-                    canSelectFiles: true,
-                    canSelectFolders: false,
-                    canSelectMany: false,
-                    openLabel: 'Attach File to NAVI',
-                });
-                if (!uris || uris.length === 0) {
-                    return;
-                }
-                const uri = uris[0];
-                const bytes = await vscode.workspace.fs.readFile(uri);
-                const textContent = new TextDecoder('utf-8').decode(bytes);
-                const attachment = {
-                    kind: 'pickedFile',
-                    path: uri.fsPath,
-                    content: textContent,
-                };
-                this.addAttachment(attachment);
-                return;
-            }
+
+    chunks.push('\n\nUser request:\n');
+    chunks.push(latestUserText);
+
+    return chunks.join('');
+  }
+
+  // PR-5: Handle attachment requests from the webview
+  private async handleAttachmentRequest(webview: vscode.Webview, kind: string): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+
+    try {
+      // 1) Attach SELECTION
+      if (kind === 'selection') {
+        if (!editor || editor.selection.isEmpty) {
+          const msg = 'Select some code in the active editor before attaching.';
+          vscode.window.showInformationMessage(`, NAVI, $, { msg } `);
+
+          // Also show a short-lived toast inside the panel
+          this.postToWebview({
+            type: 'toast',
+            level: 'warning',
+            message: msg,
+          });
+          return;
         }
-        catch (err) {
-            console.error('[Extension Host] [AEP] Error reading attachment:', err);
-            vscode.window.showErrorMessage('NAVI: Failed to read file for attachment.');
-        }
-    }
-    // PR-7: Apply agent action from new unified message format
-    async handleAgentApplyAction(message) {
-        const { decision, actionIndex, actions } = message;
-        if (decision !== 'approve') {
-            // For now we don't need to do anything on reject
-            console.log('[Extension Host] [AEP] User rejected action');
-            return;
-        }
-        if (!actions || actionIndex == null || !Number.isInteger(actionIndex) || actionIndex < 0 || actionIndex >= actions.length) {
-            console.warn('[Extension Host] [AEP] Invalid action data:', { actionIndex, actionsLength: actions?.length });
-            return;
-        }
-        const action = actions[actionIndex];
-        if (!action || !action.type) {
-            console.warn('[Extension Host] [AEP] Invalid action object:', action);
-            return;
-        }
-        try {
-            console.log('[Extension Host] [AEP] Applying agent action:', action);
-            // 1) Create new file
-            if (action.type === 'createFile') {
-                await this.applyCreateFileAction(action);
-                return;
-            }
-            // 2) Edit existing file with diff
-            if (action.type === 'editFile') {
-                await this.applyEditFileAction(action);
-                return;
-            }
-            // 3) Run terminal command
-            if (action.type === 'runCommand') {
-                await this.applyRunCommandAction(action);
-                return;
-            }
-            console.warn('[Extension Host] [AEP] Unknown action type:', action.type);
-        }
-        catch (error) {
-            console.error('[Extension Host] [AEP] Error applying action:', error);
-            vscode.window.showErrorMessage(`Failed to apply action: ${error.message}`);
-        }
-    }
-    // NEW: Apply a full workspace plan (array of AgentAction)
-    async applyWorkspacePlan(actions) {
-        if (!actions || actions.length === 0) {
-            vscode.window.showInformationMessage('NAVI: No workspace actions to apply.');
-            return;
-        }
-        console.log('[Extension Host] [AEP] Applying workspace plan with', actions.length, 'actions');
-        let appliedCount = 0;
-        for (const action of actions) {
-            try {
-                if (!action || !action.type) {
-                    console.warn('[Extension Host] [AEP] Skipping invalid action in workspace plan:', action);
-                    continue;
-                }
-                if (action.type === 'createFile') {
-                    await this.applyCreateFileAction(action);
-                    appliedCount += 1;
-                }
-                else if (action.type === 'editFile') {
-                    await this.applyEditFileAction(action);
-                    appliedCount += 1;
-                }
-                else if (action.type === 'runCommand') {
-                    await this.applyRunCommandAction(action);
-                    appliedCount += 1;
-                }
-                else {
-                    console.warn('[Extension Host] [AEP] Unknown action type in workspace plan:', action.type);
-                }
-            }
-            catch (err) {
-                console.error('[Extension Host] [AEP] Failed to apply action in workspace plan:', err);
-                vscode.window.showErrorMessage(`NAVI: Failed to apply one of the workspace actions: ${err.message ?? String(err)}`);
-            }
-        }
-        this.postBotStatus(`✅ Applied ${appliedCount}/${actions.length} workspace actions.`);
-    }
-    async applyCreateFileAction(action) {
-        const fileName = action.filePath ?? 'sample.js';
-        const content = action.content ?? '// Sample generated by NAVI\nconsole.log("Hello, World!");\n';
-        const folders = vscode.workspace.workspaceFolders;
-        const editor = vscode.window.activeTextEditor;
-        // 1) Best case: have a workspace folder → create under that root
-        if (folders && folders.length > 0) {
-            const root = folders[0].uri;
-            await this.createFileUnderRoot(root, fileName, content);
-            return;
-        }
-        // 2) No workspace, but we DO have a saved active file → ask to use its folder
-        if (editor && !editor.document.isUntitled) {
-            this.postBotStatus("I don't see a workspace folder open. I can still create the sample file if you tell me where it should live.");
-            const choice = await vscode.window.showQuickPick([
-                {
-                    label: '$(file) Create next to current file',
-                    description: editor.document.uri.fsPath,
-                    id: 'here',
-                },
-                {
-                    label: '$(folder) Choose another folder…',
-                    id: 'pick',
-                },
-                {
-                    label: '$(x) Cancel',
-                    id: 'cancel',
-                },
-            ], {
-                placeHolder: 'Where should I create the sample file?',
-                title: 'NAVI - Create Sample File',
-            });
-            if (!choice || choice.id === 'cancel') {
-                this.postBotStatus('No problem! Let me know if you need anything else.');
-                return;
-            }
-            if (choice.id === 'here') {
-                const dir = vscode.Uri.joinPath(editor.document.uri, '..');
-                await this.createFileUnderRoot(dir, fileName, content);
-                return;
-            }
-            // fall through to folder picker below
-        }
-        // 3) No workspace AND no saved active file → let user pick any folder
-        this.postBotStatus("I don't see a workspace folder open. Please pick a folder where I should create the sample file.");
-        const picked = await vscode.window.showOpenDialog({
-            canSelectFolders: true,
-            canSelectFiles: false,
-            canSelectMany: false,
-            openLabel: 'Use this folder for the sample file',
-            title: 'NAVI - Choose Folder for Sample File',
+
+        const selectedText = editor.document.getText(editor.selection);
+        const filePath = editor.document.uri.fsPath;
+        const language = editor.document.languageId;
+
+        const attachment: FileAttachment = {
+          kind: 'selection',
+          path: filePath,
+          language,
+          content: selectedText,
+        };
+
+        // Update internal state + tell panel
+        this.addAttachment(attachment);
+        return;
+      }
+
+      // 2) Attach CURRENT FILE
+      if (kind === 'current-file' && editor) {
+        const content = editor.document.getText();
+        const filePath = editor.document.uri.fsPath;
+        const language = editor.document.languageId;
+
+        const attachment: FileAttachment = {
+          kind: 'currentFile',
+          path: filePath,
+          language,
+          content,
+        };
+
+        this.addAttachment(attachment);
+        return;
+      }
+
+      // 3) Pick FILE via file picker
+      if (kind === 'pick-file') {
+        const uris = await vscode.window.showOpenDialog({
+          canSelectFiles: true,
+          canSelectFolders: false,
+          canSelectMany: false,
+          openLabel: 'Attach File to NAVI',
         });
-        if (!picked || picked.length === 0) {
-            this.postBotStatus('No problem! Let me know if you need anything else.');
-            return;
+
+        if (!uris || uris.length === 0) {
+          return;
         }
-        const targetRoot = picked[0];
-        await this.createFileUnderRoot(targetRoot, fileName, content);
+
+        const uri = uris[0];
+        const bytes = await vscode.workspace.fs.readFile(uri);
+        const textContent = new TextDecoder('utf-8').decode(bytes);
+
+        const attachment: FileAttachment = {
+          kind: 'pickedFile',
+          path: uri.fsPath,
+          content: textContent,
+        };
+
+        this.addAttachment(attachment);
+        return;
+      }
+
+    } catch (err) {
+      console.error('[Extension Host] [AEP] Error reading attachment:', err);
+      vscode.window.showErrorMessage('NAVI: Failed to read file for attachment.');
     }
-    async createFileUnderRoot(root, relPath, content) {
-        // Security: Validate path to prevent traversal attacks
-        const path = require('path');
-        // Normalize path and check for absolute paths
-        const normalizedPath = path.normalize(relPath);
-        if (path.isAbsolute(normalizedPath)) {
-            vscode.window.showErrorMessage('NAVI: Cannot create file with absolute path');
-            return;
+  }
+
+  // PR-7: Apply agent action from new unified message format
+  private async handleAgentApplyAction(message: any): Promise<void> {
+    const { decision, actionIndex, actions } = message;
+
+    if (decision !== 'approve') {
+      // For now we don't need to do anything on reject
+      console.log('[Extension Host] [AEP] User rejected action');
+      return;
+    }
+
+    if (!actions || actionIndex == null || !Number.isInteger(actionIndex) || actionIndex < 0 || actionIndex >= actions.length) {
+      console.warn('[Extension Host] [AEP] Invalid action data:', { actionIndex, actionsLength: actions?.length });
+      return;
+    }
+
+    const action = actions[actionIndex];
+    if (!action || !action.type) {
+      console.warn('[Extension Host] [AEP] Invalid action object:', action);
+      return;
+    }
+
+    try {
+      console.log('[Extension Host] [AEP] Applying agent action:', action);
+
+      // 1) Create new file
+      if (action.type === 'createFile') {
+        await this.applyCreateFileAction(action);
+        return;
+      }
+
+      // 2) Edit existing file with diff
+      if (action.type === 'editFile') {
+        await this.applyEditFileAction(action);
+        return;
+      }
+
+      // 3) Run terminal command
+      if (action.type === 'runCommand') {
+        await this.applyRunCommandAction(action);
+        return;
+      }
+
+      console.warn('[Extension Host] [AEP] Unknown action type:', action.type);
+    } catch (error: any) {
+      console.error('[Extension Host] [AEP] Error applying action:', error);
+      vscode.window.showErrorMessage(`, Failed, to, apply, action, $, { error, : .message } `);
+    }
+  }
+
+  // NEW: Apply a full workspace plan (array of AgentAction)
+  private async applyWorkspacePlan(actions: AgentAction[]): Promise<void> {
+    if (!actions || actions.length === 0) {
+      vscode.window.showInformationMessage('NAVI: No workspace actions to apply.');
+      return;
+    }
+
+    console.log('[Extension Host] [AEP] Applying workspace plan with', actions.length, 'actions');
+
+    let appliedCount = 0;
+
+    for (const action of actions) {
+      try {
+        if (!action || !action.type) {
+          console.warn('[Extension Host] [AEP] Skipping invalid action in workspace plan:', action);
+          continue;
         }
-        // Check for path traversal attempts (including encoded variants)
-        if (normalizedPath.includes('..') || /\%2e\%2e|\.\./.test(relPath)) {
-            vscode.window.showErrorMessage('NAVI: Cannot create file with path traversal (..)');
-            return;
+
+        if (action.type === 'createFile') {
+          await this.applyCreateFileAction(action);
+          appliedCount += 1;
+        } else if (action.type === 'editFile') {
+          await this.applyEditFileAction(action);
+          appliedCount += 1;
+        } else if (action.type === 'runCommand') {
+          await this.applyRunCommandAction(action);
+          appliedCount += 1;
+        } else {
+          console.warn('[Extension Host] [AEP] Unknown action type in workspace plan:', action.type);
         }
-        const fileUri = vscode.Uri.joinPath(root, relPath);
-        const resolvedPath = fileUri.fsPath;
-        const rootPath = root.fsPath;
-        // Ensure the resolved path is within the workspace root
-        if (!resolvedPath.startsWith(rootPath)) {
-            vscode.window.showErrorMessage('NAVI: Cannot create file outside workspace');
-            return;
+      } catch (err: any) {
+        console.error('[Extension Host] [AEP] Failed to apply action in workspace plan:', err);
+        vscode.window.showErrorMessage(`, NAVI, Failed, to, apply, one, of, the, workspace, actions, $, { err, : .message ?? String(err) } `);
+      }
+    }
+
+    this.postBotStatus(`, Applied, $, { appliedCount } / $, { actions, : .length }, workspace, actions. `);
+  }
+
+  private async applyCreateFileAction(action: any): Promise<void> {
+    const fileName: string = action.filePath ?? 'sample.js';
+    const content: string = action.content ?? '// Sample generated by NAVI\nconsole.log("Hello, World!");\n';
+
+    const folders = vscode.workspace.workspaceFolders;
+    const editor = vscode.window.activeTextEditor;
+
+    // 1) Best case: have a workspace folder → create under that root
+    if (folders && folders.length > 0) {
+      const root = folders[0].uri;
+      await this.createFileUnderRoot(root, fileName, content);
+      return;
+    }
+
+    // 2) No workspace, but we DO have a saved active file → ask to use its folder
+    if (editor && !editor.document.isUntitled) {
+      this.postBotStatus(
+        "I don't see a workspace folder open. I can still create the sample file if you tell me where it should live."
+      );
+
+      const choice = await vscode.window.showQuickPick(
+        [
+          {
+            label: '$(file) Create next to current file',
+            description: editor.document.uri.fsPath,
+            id: 'here',
+          },
+          {
+            label: '$(folder) Choose another folder…',
+            id: 'pick',
+          },
+          {
+            label: '$(x) Cancel',
+            id: 'cancel',
+          },
+        ],
+        {
+          placeHolder: 'Where should I create the sample file?',
+          title: 'NAVI - Create Sample File',
         }
-        // Ensure parent folders exist (best effort)
-        const dir = vscode.Uri.joinPath(fileUri, '..');
-        try {
-            await vscode.workspace.fs.createDirectory(dir);
+      );
+
+      if (!choice || choice.id === 'cancel') {
+        this.postBotStatus('No problem! Let me know if you need anything else.');
+        return;
+      }
+
+      if (choice.id === 'here') {
+        const dir = vscode.Uri.joinPath(editor.document.uri, '..');
+        await this.createFileUnderRoot(dir, fileName, content);
+        return;
+      }
+
+      // fall through to folder picker below
+    }
+
+    // 3) No workspace AND no saved active file → let user pick any folder
+    this.postBotStatus(
+      "I don't see a workspace folder open. Please pick a folder where I should create the sample file."
+    );
+
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFolders: true,
+      canSelectFiles: false,
+      canSelectMany: false,
+      openLabel: 'Use this folder for the sample file',
+      title: 'NAVI - Choose Folder for Sample File',
+    });
+
+    if (!picked || picked.length === 0) {
+      this.postBotStatus('No problem! Let me know if you need anything else.');
+      return;
+    }
+
+    const targetRoot = picked[0];
+    await this.createFileUnderRoot(targetRoot, fileName, content);
+  }
+
+  private async createFileUnderRoot(root: vscode.Uri, relPath: string, content: string): Promise<void> {
+    // Security: Validate path to prevent traversal attacks
+    const path = require('path');
+    // Normalize path and check for absolute paths
+    const normalizedPath = path.normalize(relPath);
+    if (path.isAbsolute(normalizedPath)) {
+      vscode.window.showErrorMessage('NAVI: Cannot create file with absolute path');
+      return;
+    }
+    // Check for path traversal attempts (including encoded variants)
+    if (normalizedPath.includes('..') || /\%2e\%2e|\.\./.test(relPath)) {
+      vscode.window.showErrorMessage('NAVI: Cannot create file with path traversal (..)');
+      return;
+    }
+
+    const fileUri = vscode.Uri.joinPath(root, relPath);
+    const resolvedPath = fileUri.fsPath;
+    const rootPath = root.fsPath;
+
+    // Ensure the resolved path is within the workspace root
+    if (!resolvedPath.startsWith(rootPath)) {
+      vscode.window.showErrorMessage('NAVI: Cannot create file outside workspace');
+      return;
+    }
+
+    // Ensure parent folders exist (best effort)
+    const dir = vscode.Uri.joinPath(fileUri, '..');
+    try {
+      await vscode.workspace.fs.createDirectory(dir);
+    } catch {
+      // ignore if it already exists
+    }
+
+    await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf8'));
+
+    const doc = await vscode.workspace.openTextDocument(fileUri);
+    await vscode.window.showTextDocument(doc);
+
+    vscode.window.setStatusBarMessage(`, NAVI, Created, $, { relPath } `, 3000);
+
+    this.postBotStatus(`, Done, I, 've created `${relPath}` at ${fileUri.fsPath}`););
         }
-        catch {
-            // ignore if it already exists
-        }
-        await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf8'));
-        const doc = await vscode.workspace.openTextDocument(fileUri);
-        await vscode.window.showTextDocument(doc);
-        vscode.window.setStatusBarMessage(`✅ NAVI: Created ${relPath}`, 3000);
-        this.postBotStatus(`✅ Done! I've created \`${relPath}\` at ${fileUri.fsPath}`);
     }
     postBotStatus(text) {
         if (!this._view)
@@ -1609,41 +1665,33 @@ class NaviWebviewProvider {
         }
     }
     getWebviewHtml(webview) {
-        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.js'));
-        const connectorsScriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'connectorsPanel.js'));
-        const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.css'));
-        const naviLogoUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'mascot-navi-fox.svg'));
-        const nonce = getNonce();
-        // Determine backend base URL for webview scripts (Connectors, etc.)
+        // Determine backend base URL for webview
         const cfg = vscode.workspace.getConfiguration('aep');
         const rawBase = cfg.get('navi.backendUrl') || 'http://127.0.0.1:8000';
         const backendBaseUrl = rawBase.replace(/\/$/, '');
-        // Generate icons URI for connector icons
-        const iconsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'icons'));
+        // Use React frontend (Vite dev server for now, will add production build later)
+        const frontendUrl = 'http://localhost:3000';
         return /* html */ `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'nonce-${nonce}';"
+      content="default-src 'none'; connect-src http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; img-src ${webview.cspSource} https: data: http://localhost:* http://127.0.0.1:*; style-src 'unsafe-inline' ${webview.cspSource} http://localhost:* http://127.0.0.1:*; script-src 'unsafe-inline' 'unsafe-eval' http://localhost:* http://127.0.0.1:*;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link href="${styleUri}" rel="stylesheet" />
     <title>AEP: NAVI Assistant</title>
   </head>
   <body>
-    <div id="root" data-mascot-src="${naviLogoUri}"></div>
-    <script nonce="${nonce}">
+    <div id="root"></div>
+    <script type="module">
       window.AEP_BACKEND_BASE_URL = ${JSON.stringify(backendBaseUrl)};
       window.AEP_CONFIG = {
-        backendBaseUrl: ${JSON.stringify(backendBaseUrl)},
-        iconsUri: ${JSON.stringify(iconsUri.toString())}
+        backendBaseUrl: ${JSON.stringify(backendBaseUrl)}
       };
     </script>
-
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-    <script nonce="${nonce}" src="${connectorsScriptUri}"></script>
+    <script type="module" src="${frontendUrl}/@vite/client"></script>
+    <script type="module" src="${frontendUrl}/src/main.tsx"></script>
   </body>
 </html>`;
     }
@@ -1663,12 +1711,5 @@ class NaviWebviewProvider {
 function generateConversationId() {
     return `navi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
-function getNonce() {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
-}
+return text;
 //# sourceMappingURL=extension.js.map

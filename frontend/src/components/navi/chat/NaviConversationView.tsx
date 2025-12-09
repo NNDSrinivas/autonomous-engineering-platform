@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { sendNaviChat, mapChatResponseToNaviChatMessage } from "../../../api/navi/client";
+import { sendNaviChat } from "../../../api/navi/client";
 import { NaviChatMessageList } from "./NaviChatMessageList";
 import type { NaviChatMessage } from "../../../types/naviChat";
 
@@ -115,19 +115,11 @@ export const NaviConversationView: React.FC<NaviConversationViewProps> = ({
 
         setIsSending(true);
         try {
-            const response = await sendNaviChat(trimmed, {
+            const assistantMessage = await sendNaviChat(trimmed, {
                 workspace_root: workspacePath,
                 branch: branch,
             });
-
-            // This mapper already exists in your codebase; keep using it.
-            const assistantMessage = mapChatResponseToNaviChatMessage({
-                response,
-                lastUserMessage: trimmed,
-                role: "assistant",
-                repoPath: workspacePath ?? undefined,
-                branch: branch ?? undefined,
-            }); addMessages([assistantMessage]);
+            addMessages([assistantMessage]);
         } catch (err: any) {
             console.error("Failed to send NAVI chat:", err);
             setError(

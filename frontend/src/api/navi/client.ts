@@ -1,11 +1,6 @@
 // src/api/navi/client.ts
-import type {
-    ChatResponse,
-} from "./types";
-import {
-    NaviChatMessage,
-    mapChatResponseToNaviChatMessage,
-} from "../../types/naviChat";
+import type { NaviChatMessage, NaviChatResponse } from "../../types/naviChat";
+import { mapChatResponseToNaviChatMessage } from "../../types/naviChat";
 
 /**
  * Low-level API call to NAVI backend.
@@ -17,7 +12,7 @@ import {
 export async function sendNaviChat(
     userText: string,
     extraPayload?: Record<string, any>,
-): Promise<ChatResponse> {
+): Promise<NaviChatMessage> {
     // Use the backend base URL from window (set by extension or fallback)
     const backendBase = (window as any).__AEP_BACKEND_BASE_URL__ || "http://127.0.0.1:8787";
     const url = `${backendBase}/api/navi/chat`;
@@ -60,47 +55,8 @@ export async function sendNaviChat(
         );
     }
 
-    const data = (await res.json()) as ChatResponse;
-    return data;
-}
+    const data = (await res.json()) as NaviChatResponse;
 
-/**
- * Map a single ChatResponse into one UI-facing NaviChatMessage.
- *
- * - If an intent is detected (CHECK_ERRORS_AND_FIX), returns kind: "navi-intent".
- * - Otherwise, returns kind: "text".
- */
-export function mapChatResponseToNaviChatMessage(options: {
-    response: ChatResponse;
-    lastUserMessage: string;
-    role?: "assistant";
-    repoPath?: string;
-    branch?: string;
-}): NaviChatMessage {
-    const { response, lastUserMessage, role = "assistant", repoPath, branch } = options;
-
-    const now = new Date().toISOString();
-    const id = `assistant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-    const baseMeta = {
-        actions: response.actions ?? [],
-        sources: response.sources ?? [],
-        agentRun: response.agentRun ?? null,
-        controls: response.controls ?? null,
-        changes: response.changes ?? null,
-        state: response.state ?? null,
-        durationMs: response.duration_ms ?? null,
-    };
-
-    const textContent = response.reply || response.content || "";
-
-    // Create a chat message from the response
-    const msg: NaviChatMessage = mapChatResponseToNaviChatMessage(
-        {
-            content: textContent,
-            actions: baseMeta.actions || [],
-        },
-        role
-    );
-    return msg;
+    // Convert backend response to NaviChatMessage
+    return mapChatResponseToNaviChatMessage(data, "assistant");
 }

@@ -169,7 +169,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  public resolveWebviewView(
+  public async resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken
@@ -178,10 +178,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [this._extensionUri]
+      localResourceRoots: [this._extensionUri],
+      enableCommandUris: true
     };
 
-    webviewView.webview.html = this.getWebviewHtml(webviewView.webview);
+    webviewView.webview.html = await this.getWebviewHtml(webviewView.webview);
 
     // PR-4: Hydrate model/mode state from storage after webview loads
     webviewView.webview.onDidReceiveMessage(async (msg: any) => {
@@ -2034,44 +2035,55 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     } else {
       vscode.window.showInformationMessage('Changes discarded');
     }
-  } private getWebviewHtml(webview: vscode.Webview): string {
+  } 
+  
+  private async getWebviewHtml(webview: vscode.Webview): Promise<string> {
     const cfg = vscode.workspace.getConfiguration('aep');
-    const rawBase = cfg.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787';
-    const backendBaseUrl = rawBase.replace(/\/$/, '');
+    const isDevelopment = cfg.get<boolean>('development.useReactDevServer') ?? true; // Default to true for dev
+    
+    console.log('[AEP] Development mode:', isDevelopment);
 
-    // NAVI uses React Vite dev server for all UI
-    // Development: http://localhost:3000
-    // Production: will use bundled React app
-    const isDevelopment = cfg.get<boolean>('development.useReactDevServer') ?? false;
-    const devServerUrl = 'http://localhost:3000';
-
-    const cspSource = isDevelopment 
-      ? `script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' http://localhost:3000; connect-src ${webview.cspSource} http://localhost:3000 http://127.0.0.1:8787;`
-      : `script-src ${webview.cspSource} 'unsafe-inline'; connect-src ${webview.cspSource} http://127.0.0.1:8787;`;
-
-    return /* html */ `<!DOCTYPE html>
+    if (isDevelopment) {
+      // In development, create a tunnel to the Vite dev server
+      const viteUrl = await vscode.env.asExternalUri(vscode.Uri.parse('http://localhost:3000'));
+      console.log('[AEP] Loading Vite from:', viteUrl.toString());
+      
+      return /* html */ `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; ${cspSource} style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} data: https:; font-src ${webview.cspSource};" />
-    <title>NAVI — Autonomous Engineering Assistant</title>
-    <script>
-      // Expose backend URL and workspace context to React app
-      window.__AEP_BACKEND_BASE_URL__ = ${JSON.stringify(backendBaseUrl)};
-      window.__WORKSPACE_CONTEXT__ = null;
-      window.__WORKSPACE_ROOT__ = null;
-    </script>
+    <title>NAVI Assistant</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { width: 100%; height: 100vh; overflow: hidden; }
+      iframe { width: 100%; height: 100%; border: none; display: block; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    ${isDevelopment
-        ? `<script type="module" src="${devServerUrl}/src/main.tsx"></script>`
-        : `<script type="module" src="file:///VITE_BUILD_PATH/main.js"></script>`
-      }
+    <iframe src="${viteUrl}" allow="cross-origin-isolated"></iframe>
   </body>
 </html>`;
+    } else {
+      // Production: Load bundled React app
+      // TODO: Implement production build path
+      return /* html */ `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NAVI Assistant</title>
+    <style>
+      body { background: #020617; color: white; font-family: system-ui; padding: 20px; }
+      h1 { color: #10b981; }
+    </style>
+  </head>
+  <body>
+    <h1>Production Mode</h1>
+    <p>Bundled React app will be loaded here.</p>
+  </body>
+</html>`;
+    }
   }
 
   // --- Command Methods ---

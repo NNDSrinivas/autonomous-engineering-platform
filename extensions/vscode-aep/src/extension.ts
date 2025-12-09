@@ -2035,55 +2035,36 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       vscode.window.showInformationMessage('Changes discarded');
     }
   } private getWebviewHtml(webview: vscode.Webview): string {
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.js')
-    );
-    const connectorsScriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'media', 'connectorsPanel.js')
-    );
-    const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.css')
-    );
-    const naviLogoUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'media', 'mascot-navi-fox.svg')
-    );
-
-    const nonce = getNonce();
-    // Determine backend base URL for webview scripts (Connectors, etc.)
     const cfg = vscode.workspace.getConfiguration('aep');
-    const rawBase = cfg.get<string>('navi.backendUrl') || 'http://127.0.0.1:8000';
+    const rawBase = cfg.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787';
     const backendBaseUrl = rawBase.replace(/\/$/, '');
-
-    // Generate icons URI for connector icons
-    const iconsUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'media', 'icons')
-    );
-
+    
+    // NAVI uses React Vite dev server for all UI
+    // Development: http://localhost:3000
+    // Production: will use bundled React app
+    const isDevelopment = cfg.get<boolean>('development.useReactDevServer') ?? false;
+    const devServerUrl = 'http://localhost:3000';
+    
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src 'unsafe-inline' ${webview.cspSource
-      }; script-src 'nonce-${nonce}';"
-    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link href="${styleUri}" rel="stylesheet" />
-    <title>AEP: NAVI Assistant</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>NAVI — Autonomous Engineering Assistant</title>
+    <script>
+      // Expose backend URL and workspace context to React app
+      window.__AEP_BACKEND_BASE_URL__ = ${JSON.stringify(backendBaseUrl)};
+      window.__WORKSPACE_CONTEXT__ = null;
+      window.__WORKSPACE_ROOT__ = null;
+    </script>
   </head>
   <body>
-    <div id="root" data-mascot-src="${naviLogoUri}"></div>
-    <script nonce="${nonce}">
-      window.AEP_BACKEND_BASE_URL = ${JSON.stringify(backendBaseUrl)};
-      window.AEP_CONFIG = {
-        backendBaseUrl: ${JSON.stringify(backendBaseUrl)},
-        iconsUri: ${JSON.stringify(iconsUri.toString())}
-      };
-    </script>
-
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-    <script nonce="${nonce}" src="${connectorsScriptUri}"></script>
+    <div id="root"></div>
+    ${isDevelopment 
+      ? `<script type="module" src="${devServerUrl}/src/main.tsx"></script>`
+      : `<script type="module" src="file:///VITE_BUILD_PATH/main.js"></script>`
+    }
   </body>
 </html>`;
   }

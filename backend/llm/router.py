@@ -488,3 +488,30 @@ def complete_chat(
     )
 
     return response_text
+
+    async def chat(self, messages: list, temperature: float = 0.7, max_tokens: int = 1000):
+        """Simple chat method for compatibility"""
+        # Convert messages to prompt
+        prompt_parts = []
+        for msg in messages:
+            role = getattr(msg, 'role', 'user')
+            content = getattr(msg, 'content', str(msg))
+            prompt_parts.append(f"{role}: {content}")
+        
+        prompt = "\n".join(prompt_parts)
+        
+        # Use the call method with general phase
+        result_text, telemetry = self.call(
+            phase="general",
+            prompt=prompt,
+            context={},
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        
+        # Return a simple result object
+        class ChatResult:
+            def __init__(self, content):
+                self.content = content
+        
+        return ChatResult(result_text)

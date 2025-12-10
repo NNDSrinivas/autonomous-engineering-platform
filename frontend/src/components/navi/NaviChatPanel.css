@@ -1,0 +1,220 @@
+.navi-chat-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: radial-gradient(circle at top, #020617 0%, #000000 55%);
+  color: #e5e7eb;
+}
+
+.navi-chat-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 12px 16px 16px;
+  gap: 8px;
+}
+
+/* Behavior controls */
+.navi-chat-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.navi-chat-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navi-chat-control-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+}
+
+.navi-chat-select {
+  background: rgba(15, 23, 42, 0.95);
+  border-radius: 999px;
+  border: 1px solid rgba(55, 65, 81, 0.9);
+  color: #e5e7eb;
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  outline: none;
+}
+
+.navi-chat-select:hover {
+  border-color: rgba(75, 85, 99, 0.9);
+}
+
+.navi-chat-select:focus {
+  border-color: rgba(236, 72, 153, 0.6);
+}
+
+/* Quick actions toolbar */
+.navi-chat-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.navi-chat-toolbar-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9ca3af;
+  margin-right: 4px;
+}
+
+.navi-chat-toolbar-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #e5e7eb;
+  background: rgba(75, 85, 99, 0.6);
+  transition: all 0.15s ease;
+}
+
+.navi-chat-toolbar-btn:hover {
+  background: rgba(75, 85, 99, 0.9);
+  transform: translateY(-1px);
+}
+
+.navi-chat-toolbar-btn--ghost {
+  background: transparent;
+  border: 1px solid rgba(75, 85, 99, 0.5);
+}
+
+.navi-chat-toolbar-btn--ghost:hover {
+  border-color: rgba(239, 68, 68, 0.7);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.navi-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.navi-chat-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  max-width: 80%;
+}
+
+.navi-chat-row--user {
+  margin-left: auto;
+  flex-direction: row-reverse;
+}
+
+.navi-chat-row--assistant {
+  margin-right: auto;
+}
+
+.navi-chat-row--system {
+  margin: 0 auto;
+  max-width: 90%;
+}
+
+.navi-chat-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: radial-gradient(circle, #ec4899, #4f46e5);
+  opacity: 0.7;
+}
+
+.navi-chat-row--user .navi-chat-avatar {
+  background: radial-gradient(circle, #22c55e, #16a34a);
+}
+
+.navi-chat-bubble {
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.navi-chat-row--user .navi-chat-bubble {
+  background: linear-gradient(135deg, #4c1d95, #ec4899);
+  border-color: rgba(248, 250, 252, 0.12);
+}
+
+.navi-chat-row--system .navi-chat-bubble {
+  background: rgba(31, 41, 55, 0.9);
+  border-style: dashed;
+}
+
+.navi-chat-empty {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.navi-chat-empty code {
+  font-size: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.navi-chat-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(51, 65, 85, 0.8);
+}
+
+.navi-chat-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(75, 85, 99, 0.9);
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5e7eb;
+  font-size: 13px;
+  outline: none;
+}
+
+.navi-chat-input:focus {
+  border-color: rgba(236, 72, 153, 0.8);
+  box-shadow: 0 0 0 1px rgba(236, 72, 153, 0.5);
+}
+
+.navi-chat-send-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #f9fafb;
+  background: linear-gradient(135deg, #ec4899, #a855f7);
+  box-shadow:
+    0 0 0 1px rgba(248, 113, 113, 0.5),
+    0 8px 18px rgba(15, 23, 42, 0.9);
+}
+
+.navi-chat-send-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}

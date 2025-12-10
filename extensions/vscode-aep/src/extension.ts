@@ -1077,8 +1077,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     // Perfect Workspace Context Collection
     const workspaceContext = await collectWorkspaceContext();
 
-    // NEW: detect workspace root from VS Code
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? undefined;
+    // Detect the most relevant workspace root (prefer the one of the active file)
+    const workspaceRoot = this.getActiveWorkspaceRoot();
 
     const payload = {
       message: messageWithContext,
@@ -1232,6 +1232,24 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         text: '⚠️ Error while processing response from NAVI backend.'
       });
     }
+  }
+
+  /**
+   * Returns the workspace folder for the active editor if available,
+   * otherwise falls back to the first workspace folder. This prevents
+   * sending the wrong repo path when multiple folders are open.
+   */
+  private getActiveWorkspaceRoot(): string | undefined {
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+      const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+      if (folder) {
+        return folder.uri.fsPath;
+      }
+    }
+
+    // Fallback: first workspace folder if present
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? undefined;
   }
 
   // --- SSE reader (streaming support baked in for later) ----------------------
@@ -2035,19 +2053,19 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     } else {
       vscode.window.showInformationMessage('Changes discarded');
     }
-  } 
-  
+  }
+
   private async getWebviewHtml(webview: vscode.Webview): Promise<string> {
     const cfg = vscode.workspace.getConfiguration('aep');
-    const isDevelopment = cfg.get<boolean>('development.useReactDevServer') ?? true; // Default to true for dev
-    
+    const isDevelopment = cfg.get<boolean>('development.useReactDevServer') ?? true;
+
     console.log('[AEP] Development mode:', isDevelopment);
 
     if (isDevelopment) {
-      // In development, create a tunnel to the Vite dev server
-      const viteUrl = await vscode.env.asExternalUri(vscode.Uri.parse('http://localhost:3000'));
-      console.log('[AEP] Loading Vite from:', viteUrl.toString());
-      
+      // Don't check - just try to load and let iframe error handler deal with failures
+      const viteUrl = await vscode.env.asExternalUri(vscode.Uri.parse('http://localhost:3004/webview.html'));
+      console.log('[AEP] Loading Vite webview from:', viteUrl.toString());
+
       return /* html */ `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -2056,12 +2074,51 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     <title>NAVI Assistant</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { width: 100%; height: 100vh; overflow: hidden; }
+      body { width: 100%; height: 100vh; overflow: hidden; background: #020617; color: white; font-family: system-ui; }
       iframe { width: 100%; height: 100%; border: none; display: block; }
+      .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; padding: 20px; text-align: center; }
+      .loading h2 { color: #10b981; margin-bottom: 16px; }
+      .loading p { color: #94a3b8; margin-bottom: 8px; }
+      .loading code { background: #1e293b; padding: 2px 8px; border-radius: 4px; color: #10b981; }
+      .error-box {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #1e293b;
+        border: 2px solid #ef4444;
+        border-radius: 8px;
+        padding: 24px;
+        max-width: 500px;
+        text-align: left;
+        z-index: 1000;
+      }
+      .error-box h2 { color: #ef4444; margin-bottom: 12px; }
+      .error-box p { color: #cbd5e1; margin: 8px 0; }
+      .error-box code { background: #0f172a; padding: 2px 6px; border-radius: 3px; color: #10b981; }
     </style>
   </head>
   <body>
-    <iframe src="${viteUrl}" allow="cross-origin-isolated"></iframe>
+    <div class="loading" id="loading">
+      <h2>⚡ NAVI is starting...</h2>
+      <p>Loading frontend interface...</p>
+    </div>
+    <div class="error-box" id="errorBox">
+      <h2>❌ Frontend Server Not Running</h2>
+      <p>NAVI needs the frontend development server to display the interface.</p>
+      <p style="margin-top: 16px;"><strong>Quick Fix:</strong></p>
+      <p><code>cd frontend && npm run dev</code></p>
+      <p style="margin-top: 12px; font-size: 12px; color: #94a3b8;">Then reload this panel or restart VS Code.</p>
+    </div>
+    <iframe 
+      id="webview"
+      src="${viteUrl}" 
+      allow="cross-origin-isolated" 
+      style="display:none;"
+      onload="document.getElementById('loading').style.display='none'; this.style.display='block';"
+      onerror="document.getElementById('loading').style.display='none'; document.getElementById('errorBox').style.display='block';">
+    </iframe>
   </body>
 </html>`;
     } else {
@@ -2074,16 +2131,162 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NAVI Assistant</title>
     <style>
-      body { background: #020617; color: white; font-family: system-ui; padding: 20px; }
-      h1 { color: #10b981; }
+      body { background: #020617; color: white; font-family: system-ui; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; text-align: center; }
+      h1 { color: #10b981; margin-bottom: 16px; }
+      p { color: #94a3b8; margin-bottom: 8px; }
+      code { background: #1e293b; padding: 2px 8px; border-radius: 4px; color: #10b981; }
     </style>
   </head>
   <body>
-    <h1>Production Mode</h1>
-    <p>Bundled React app will be loaded here.</p>
+    <h1>🚧 Production Mode</h1>
+    <p>The bundled React app is not built yet.</p>
+    <p style="margin-top: 16px;">To use NAVI, enable development mode in settings:</p>
+    <p><code>"aep.development.useReactDevServer": true</code></p>
+    <p style="margin-top: 16px;">Then start the frontend dev server:</p>
+    <p><code>cd frontend && npm run dev</code></p>
   </body>
 </html>`;
     }
+  }
+
+  private async checkFrontendServer(): Promise<boolean> {
+    try {
+      // Try GET request first (more reliable than HEAD for some servers)
+      const response = await fetch('http://localhost:3004/', {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000)
+      });
+      // Accept any 2xx or 3xx response as "running"
+      return response.status < 400;
+    } catch (err) {
+      console.log('[AEP] Frontend server check failed:', err instanceof Error ? err.message : 'unknown error');
+      return false;
+    }
+  }
+
+  private async startFrontendServer(): Promise<void> {
+    try {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        console.log('[AEP] No workspace folder found - skipping auto-start');
+        return;
+      }
+
+      const frontendPath = path.join(workspaceFolder.uri.fsPath, 'frontend');
+      console.log('[AEP] Attempting to start frontend server at:', frontendPath);
+
+      // Check if frontend directory exists
+      try {
+        await vscode.workspace.fs.stat(vscode.Uri.file(frontendPath));
+      } catch {
+        console.log('[AEP] Frontend directory does not exist - skipping auto-start');
+        return;
+      }
+
+      // Create terminal with command that ensures Node v20
+      console.log('[AEP] Creating terminal to start frontend server...');
+      const terminal = vscode.window.createTerminal({
+        name: 'NAVI Frontend',
+        cwd: frontendPath,
+        hideFromUser: false
+      });
+      terminal.show();
+
+      // Use nvm to ensure correct Node version, then start dev server
+      terminal.sendText('nvm use 20.19.6 && npm run dev');
+      console.log('[AEP] Frontend server start command sent to terminal');
+
+      // Show a helpful notification
+      vscode.window.showInformationMessage(
+        'NAVI: Starting frontend server... Please wait a moment then reload the panel.',
+        'Reload Panel'
+      ).then(selection => {
+        if (selection === 'Reload Panel') {
+          vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+        }
+      });
+    } catch (err) {
+      console.log('[AEP] Could not start frontend server automatically:', err);
+      // Don't show error - the error HTML will guide the user
+    }
+  }
+
+  private getServerNotRunningHtml(): string {
+    return /* html */ `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NAVI Assistant</title>
+    <style>
+      body { 
+        background: #020617; 
+        color: white; 
+        font-family: system-ui; 
+        padding: 20px; 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        justify-content: center; 
+        height: 100vh; 
+        text-align: center; 
+      }
+      h1 { color: #ef4444; margin-bottom: 16px; font-size: 24px; }
+      h2 { color: #10b981; margin: 24px 0 12px; font-size: 18px; }
+      p { color: #94a3b8; margin-bottom: 8px; line-height: 1.6; }
+      code { 
+        background: #1e293b; 
+        padding: 4px 8px; 
+        border-radius: 4px; 
+        color: #10b981; 
+        font-family: 'Courier New', monospace;
+      }
+      .command-block {
+        background: #1e293b;
+        padding: 12px;
+        border-radius: 6px;
+        margin: 16px 0;
+        border-left: 3px solid #10b981;
+      }
+      .steps {
+        text-align: left;
+        max-width: 500px;
+        margin: 20px auto;
+      }
+      .step {
+        margin: 12px 0;
+        padding: 8px;
+        background: #1e293b;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>⚠️ Frontend Server Not Running</h1>
+    <p>NAVI needs the frontend development server to display the interface.</p>
+    
+    <div class="steps">
+      <h2>Quick Fix:</h2>
+      <div class="step">
+        <strong>Option 1:</strong> Use VS Code Task
+        <div class="command-block">
+          <code>Cmd/Ctrl + Shift + P</code> → <code>Tasks: Run Task</code> → <code>frontend: start (vite)</code>
+        </div>
+      </div>
+      
+      <div class="step">
+        <strong>Option 2:</strong> Run in Terminal
+        <div class="command-block">
+          <code>cd frontend && npm run dev</code>
+        </div>
+      </div>
+    </div>
+    
+    <p style="margin-top: 24px; font-size: 12px; color: #64748b;">
+      After starting the server, reload this panel or restart VS Code.
+    </p>
+  </body>
+</html>`;
   }
 
   // --- Command Methods ---

@@ -805,7 +805,7 @@ async def _tool_jira_assign_issue(
                 }
             ],
         }
-    except Exception as exc:
+    except Exception:
         logger.error("Jira assign_issue error occurred")
         return {
             "tool": "jira.assign_issue",

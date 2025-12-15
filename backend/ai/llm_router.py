@@ -266,7 +266,7 @@ class LLMRouter:
                     if model_info.model_id == model:
                         provider_info = prov
                         return provider_info, model_info
-            
+
             raise ModelNotFoundError(f"Model '{model}' not found in any provider")
 
         # Nothing provided → fall back to SMART AUTO

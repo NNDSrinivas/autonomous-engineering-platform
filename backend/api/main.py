@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI):
         result = on_shutdown()  # PR-29: Graceful shutdown
         if inspect.iscoroutine(result):
             await result
-    except Exception as e:
+    except Exception:
         logger.warning("Shutdown warning occurred during cleanup")
 
 

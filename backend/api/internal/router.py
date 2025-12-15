@@ -78,7 +78,7 @@ async def get_system_info():
         version="1.0.0",  # TODO: Read from package.json or version file
         git_commit=git_commit,
         git_branch=git_branch,
-        build_timestamp=datetime.utcnow().isoformat(),
+        build_timestamp=os.getenv("BUILD_TIMESTAMP", datetime.utcnow().isoformat()),
         python_version=platform.python_version(),
         platform=f"{platform.system()} {platform.release()}",
         deployment_target=deployment_target,

@@ -46,8 +46,7 @@ except ImportError as exc:
 from .llm_model_registry import (
     get_registry,
     smart_auto_candidates,
-    ModelInfo,
-    ProviderInfo,
+    LLMModelInfo,
 )
 
 logger = logging.getLogger(__name__)

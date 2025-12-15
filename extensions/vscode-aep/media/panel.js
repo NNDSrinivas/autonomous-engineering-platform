@@ -1072,11 +1072,16 @@ function showEphemeralToast(message, level = 'info') {
     }
 
     attachmentsContainer.style.display = 'block';
-    attachmentsContainer.innerHTML = pendingAttachments.map(attachment => {
-      const filename = attachment.path.split(/[\\\/]/).pop() || attachment.path;
-      const ext = getFileExtension(attachment.path);
+    
+    // Clear container
+    attachmentsContainer.innerHTML = '';
+    
+    // Create attachments using safe DOM methods
+    pendingAttachments.forEach(attachment => {
+      const filename = (attachment.path || '').split(/[\\\/]/).pop() || attachment.path || '';
+      const ext = getFileExtension(attachment.path || '');
       const language = getLanguageFromExtension(ext);
-      const lineCount = attachment.content.split('\n').length;
+      const lineCount = (attachment.content || '').split('\n').length;
 
       const kindLabel = {
         'selection': '📝 Selected code',
@@ -1085,28 +1090,57 @@ function showEphemeralToast(message, level = 'info') {
       }[attachment.kind] || '📎 Attachment';
 
       // Truncate content for preview (first 5 lines)
-      const lines = attachment.content.split('\n');
+      const lines = (attachment.content || '').split('\n');
       const previewLines = lines.slice(0, 5);
       const hasMore = lines.length > 5;
       const preview = previewLines.join('\n') + (hasMore ? '\n...' : '');
 
-      return `
-        <div class="navi-attachment-pill" data-attachment-id="${attachment.id}">
-          <div class="navi-attachment-header">
-            <span class="navi-attachment-label">${kindLabel}</span>
-            <span class="navi-attachment-path" title="${attachment.path}">
-              ${filename} · ${lineCount} line${lineCount !== 1 ? 's' : ''}
-            </span>
-            <button class="navi-attachment-remove" onclick="removeAttachment('${attachment.id}')" title="Remove attachment">
-              ✕
-            </button>
-          </div>
-          <div class="navi-attachment-content">
-            <pre class="navi-attachment-code language-${language}"><code>${escapeHtml(preview)}</code></pre>
-          </div>
-        </div>
-      `;
-    }).join('');
+      // Create attachment pill
+      const pill = document.createElement('div');
+      pill.className = 'navi-attachment-pill';
+      pill.setAttribute('data-attachment-id', attachment.id || '');
+
+      // Create header
+      const header = document.createElement('div');
+      header.className = 'navi-attachment-header';
+
+      const label = document.createElement('span');
+      label.className = 'navi-attachment-label';
+      label.textContent = kindLabel;
+
+      const path = document.createElement('span');
+      path.className = 'navi-attachment-path';
+      path.title = attachment.path || '';
+      path.textContent = `${filename} · ${lineCount} line${lineCount !== 1 ? 's' : ''}`;
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'navi-attachment-remove';
+      removeBtn.title = 'Remove attachment';
+      removeBtn.textContent = '✕';
+      removeBtn.onclick = () => removeAttachment(attachment.id || '');
+
+      header.appendChild(label);
+      header.appendChild(path);
+      header.appendChild(removeBtn);
+
+      // Create content
+      const content = document.createElement('div');
+      content.className = 'navi-attachment-content';
+
+      const pre = document.createElement('pre');
+      pre.className = `navi-attachment-code language-${language}`;
+
+      const code = document.createElement('code');
+      code.textContent = preview;
+
+      pre.appendChild(code);
+      content.appendChild(pre);
+
+      pill.appendChild(header);
+      pill.appendChild(content);
+
+      attachmentsContainer.appendChild(pill);
+    });
   }
 
   // Form events --------------------------------------------------------------
@@ -1161,13 +1195,30 @@ function showEphemeralToast(message, level = 'info') {
           const filename = attachment.path ? attachment.path.split('/').pop() : 'Unknown file';
           const lines = attachment.content ? attachment.content.split('\n').length : 0;
 
-          attachmentEl.innerHTML = `
-            <div class="navi-attachment-icon">📎</div>
-            <div class="navi-attachment-info">
-              <div class="navi-attachment-name">${filename}</div>
-              <div class="navi-attachment-meta">${lines} lines • ${attachment.language || 'text'}</div>
-            </div>
-          `;
+          // Create icon
+          const icon = document.createElement('div');
+          icon.className = 'navi-attachment-icon';
+          icon.textContent = '📎';
+
+          // Create info container
+          const info = document.createElement('div');
+          info.className = 'navi-attachment-info';
+
+          // Create name
+          const name = document.createElement('div');
+          name.className = 'navi-attachment-name';
+          name.textContent = filename;
+
+          // Create meta
+          const meta = document.createElement('div');
+          meta.className = 'navi-attachment-meta';
+          meta.textContent = `${lines} lines • ${attachment.language || 'text'}`;
+
+          info.appendChild(name);
+          info.appendChild(meta);
+
+          attachmentEl.appendChild(icon);
+          attachmentEl.appendChild(info);
 
           attachmentsList.appendChild(attachmentEl);
         });

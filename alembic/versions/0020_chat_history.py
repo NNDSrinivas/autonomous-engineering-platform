@@ -14,8 +14,8 @@ def upgrade() -> None:
     op.create_table(
         "chat_history",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
-        sa.Column("user_id", sa.String(length=255), nullable=False, index=True),
-        sa.Column("org_id", sa.String(length=255), nullable=True, index=True),
+        sa.Column("user_id", sa.String(length=255), nullable=False),
+        sa.Column("org_id", sa.String(length=255), nullable=True),
         sa.Column("role", sa.String(length=50), nullable=False),
         sa.Column("message", sa.Text(), nullable=False),
         sa.Column(
@@ -25,8 +25,9 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index("ix_chat_history_user_id", "chat_history", ["user_id"])
-    op.create_index("ix_chat_history_org_id", "chat_history", ["org_id"])
+    # Use raw SQL to create indexes with IF NOT EXISTS for SQLite compatibility
+    op.execute("CREATE INDEX IF NOT EXISTS ix_chat_history_user_id ON chat_history (user_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_chat_history_org_id ON chat_history (org_id)")
 
 
 def downgrade() -> None:

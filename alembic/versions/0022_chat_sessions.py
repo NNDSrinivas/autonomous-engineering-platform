@@ -32,15 +32,21 @@ def upgrade() -> None:
     )
     op.execute("DROP INDEX IF EXISTS ix_chat_session_org_id")
     op.execute("DROP INDEX IF EXISTS ix_chat_session_user_id")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_chat_session_org_id ON chat_session (org_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_chat_session_user_id ON chat_session (user_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_chat_session_org_id ON chat_session (org_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_chat_session_user_id ON chat_session (user_id)"
+    )
 
     # Link chat_history to chat_session
     op.add_column(
         "chat_history", sa.Column("session_id", sa.BigInteger(), nullable=True)
     )
     op.execute("DROP INDEX IF EXISTS ix_chat_history_session_id")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_chat_history_session_id ON chat_history (session_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_chat_history_session_id ON chat_history (session_id)"
+    )
     op.create_foreign_key(
         "fk_chat_history_session",
         source_table="chat_history",

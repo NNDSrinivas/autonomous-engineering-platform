@@ -26,8 +26,12 @@ def upgrade() -> None:
         ),
     )
     # Use raw SQL to create indexes with IF NOT EXISTS for SQLite compatibility
-    op.execute("CREATE INDEX IF NOT EXISTS ix_chat_history_user_id ON chat_history (user_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS ix_chat_history_org_id ON chat_history (org_id)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_chat_history_user_id ON chat_history (user_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_chat_history_org_id ON chat_history (org_id)"
+    )
 
 
 def downgrade() -> None:

@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 def upgrade() -> None:
     """No-op migration - tables already created in 0013_memory_graph.
-    
+
     This migration was auto-generated but the tables (memory_node, memory_edge)
     already exist from migration 0013_memory_graph. Keeping this as a no-op
     to maintain the migration chain integrity for dependent migrations.

@@ -17,8 +17,18 @@ def upgrade() -> None:
         sa.Column("org_id", sa.String(length=255), nullable=True, index=True),
         sa.Column("user_id", sa.String(length=255), nullable=False, index=True),
         sa.Column("title", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()"), nullable=False),
-        sa.Column("updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("NOW()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("NOW()"),
+            nullable=False,
+        ),
     )
     op.execute("DROP INDEX IF EXISTS ix_chat_session_org_id")
     op.execute("DROP INDEX IF EXISTS ix_chat_session_user_id")
@@ -26,7 +36,9 @@ def upgrade() -> None:
     op.create_index("ix_chat_session_user_id", "chat_session", ["user_id"])
 
     # Link chat_history to chat_session
-    op.add_column("chat_history", sa.Column("session_id", sa.BigInteger(), nullable=True))
+    op.add_column(
+        "chat_history", sa.Column("session_id", sa.BigInteger(), nullable=True)
+    )
     op.execute("DROP INDEX IF EXISTS ix_chat_history_session_id")
     op.create_index("ix_chat_history_session_id", "chat_history", ["session_id"])
     op.create_foreign_key(

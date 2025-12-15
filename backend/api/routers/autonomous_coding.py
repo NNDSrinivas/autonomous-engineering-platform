@@ -222,7 +222,9 @@ async def execute_step(request: ExecuteStepRequest, db: Session = Depends(get_db
 
     except Exception as e:
         logger.error(f"Failed to execute step {request.step_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500, detail="Failed to execute autonomous coding step"
+        )
 
 
 @router.get("/tasks/{task_id}")
@@ -363,9 +365,7 @@ async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error(f"Failed to create PR for task {task_id}: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create pull request: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail="Failed to create pull request")
 
 
 @router.get("/health")

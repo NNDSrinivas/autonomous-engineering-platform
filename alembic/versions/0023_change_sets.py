@@ -17,7 +17,7 @@ def upgrade() -> None:
     op.execute("DROP INDEX IF EXISTS ix_change_set_user_id")
     # Drop table if it exists (cascade will drop dependent indexes too)
     op.execute("DROP TABLE IF EXISTS change_set CASCADE")
-    
+
     op.create_table(
         "change_set",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
@@ -25,10 +25,19 @@ def upgrade() -> None:
         sa.Column("user_id", sa.String(length=255), nullable=False),
         sa.Column("summary", sa.String(length=500), nullable=True),
         sa.Column("details", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("NOW()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("NOW()"),
+            nullable=False,
+        ),
     )
-    op.create_index("ix_change_set_org_id", "change_set", ["org_id"], if_not_exists=True)
-    op.create_index("ix_change_set_user_id", "change_set", ["user_id"], if_not_exists=True)
+    op.create_index(
+        "ix_change_set_org_id", "change_set", ["org_id"], if_not_exists=True
+    )
+    op.create_index(
+        "ix_change_set_user_id", "change_set", ["user_id"], if_not_exists=True
+    )
 
 
 def downgrade() -> None:

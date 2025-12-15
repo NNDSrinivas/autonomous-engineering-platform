@@ -92,7 +92,7 @@ function showEphemeralToast(message, level = 'info') {
     if (!intentResultEl) return;
 
     if (!message.ok) {
-      intentResultEl.innerHTML = `❌ Intent error: ${message.error || 'Unknown error'}`;
+      intentResultEl.textContent = `❌ Intent error: ${message.error || 'Unknown error'}`;
       intentResultEl.className = 'navi-intent-pill show';
       return;
     }
@@ -105,9 +105,16 @@ function showEphemeralToast(message, level = 'info') {
     const confidence = intent.confidence || 0;
     const modelUsed = intent.model_used || intent.provider_used || 'smart-auto';
 
-    intentResultEl.innerHTML =
-      `🧠 <strong>${family}</strong> / ${kind} ` +
-      `(${Math.round(confidence * 100)}% confidence) · model: <code>${modelUsed}</code>`;
+    // Use safe DOM manipulation to prevent XSS
+    intentResultEl.innerHTML = '';
+    intentResultEl.appendChild(document.createTextNode('🧠 '));
+    const strongEl = document.createElement('strong');
+    strongEl.textContent = family;
+    intentResultEl.appendChild(strongEl);
+    intentResultEl.appendChild(document.createTextNode(` / ${kind} (${Math.round(confidence * 100)}% confidence) · model: `));
+    const codeEl = document.createElement('code');
+    codeEl.textContent = modelUsed;
+    intentResultEl.appendChild(codeEl);
     intentResultEl.className = 'navi-intent-pill show';
   }
 
@@ -718,7 +725,9 @@ function showEphemeralToast(message, level = 'info') {
     }
 
     // Use markdown rendering for all content
-    container.innerHTML = renderMarkdown(safeText);
+    // Ensure markdown rendering is safe from XSS
+    const renderedContent = renderMarkdown(safeText);
+    container.innerHTML = renderedContent;
   }
 
   // appendMessage with stable toolbar ---------------------------------------

@@ -222,7 +222,7 @@ async def execute_step(request: ExecuteStepRequest, db: Session = Depends(get_db
         return result
 
     except Exception as e:
-        logger.error(f"Failed to execute step {request.step_id}: {e}")
+        logger.error(f"Failed to execute step {request.step_id}: {str(e)}")
         raise HTTPException(
             status_code=500, detail="Failed to execute autonomous coding step"
         )

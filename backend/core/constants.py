@@ -14,7 +14,7 @@ import re
 # JIRA project keys are 2-10 chars; negative assertions prevent false matches in URLs.
 JIRA_KEY_PATTERN = re.compile(r"(?<![A-Z0-9])[A-Z]{2,10}-\d+(?![A-Z0-9])")
 PR_NUMBER_PATTERN = re.compile(r"#(\d+)")
-SLACK_THREAD_PATTERN = re.compile(r"p\d{10,}")
+SLACK_THREAD_PATTERN = re.compile(r"p\d{10,20}")
 
 # Relationship detection patterns
 FIXES_PATTERN = re.compile(

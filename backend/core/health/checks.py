@@ -50,7 +50,7 @@ def _timed(fn, name: str) -> CheckResult:
             "name": name,
             "ok": False,
             "latency_ms": int((time.time() - start) * 1000),
-            "detail": f"check failed: {type(e).__name__}",
+            "detail": "check failed",
         }
 
 

@@ -135,12 +135,52 @@ app.add_middleware(
 app.add_middleware(
     ResilienceMiddleware
 )  # PR-29: Circuit breaker support with 503 responses
+
+# CORS configuration - always explicit for dev to work properly
+# FastAPI CORSMiddleware doesn't send CORS headers with ["*"] reliably
+dev_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:3003",
+    "http://localhost:3004",
+    "http://localhost:3005",
+    "http://localhost:3006",
+    "http://localhost:3007",
+    "http://localhost:3008",
+    "http://localhost:3009",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3002",
+    "http://127.0.0.1:3003",
+    "http://127.0.0.1:3004",
+    "http://127.0.0.1:3005",
+    "http://127.0.0.1:3006",
+    "http://127.0.0.1:3007",
+    "http://127.0.0.1:3008",
+    "http://127.0.0.1:3009",
+    "vscode-webview://",
+]
+
+if settings.CORS_ORIGINS == "*":
+    # Development: allow all localhost + pattern
+    cors_origins = dev_origins
+    cors_regex = r"^(https?://(localhost|127\.0\.0\.1):\d+|vscode-webview://.*)$"
+    allow_creds = False
+else:
+    # Production: use explicit list
+    cors_origins = settings.cors_origins_list
+    cors_regex = r"https://.*\.vscode-cdn\.net"
+    allow_creds = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_origin_regex=cors_regex,
+    allow_credentials=allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 # RequestIDMiddleware removed - ObservabilityMiddleware provides this functionality
 # Temporarily disabled for local dev while debugging connector issues

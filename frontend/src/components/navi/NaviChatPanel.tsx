@@ -1,372 +1,896 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+// frontend/src/components/navi/NaviChatPanel.tsx
+"use client";
 
-declare global {
-  interface Window {
-    __NAVI_WORKSPACE_ROOT__?: string | null;
-  }
-}
+import {
+  KeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { useWorkspace } from "../../context/WorkspaceContext";
+import { QuickActionsBar } from "./QuickActionsBar";
+import { AttachmentToolbar } from "./AttachmentToolbar";
+import {
+  AttachmentChips,
+  AttachmentChipData,
+} from "./AttachmentChips";
+import * as vscodeApi from "../../utils/vscodeApi";
+import "./NaviChatPanel.css";
 
-type Role = "user" | "assistant" | "system";
+/* ---------- Types ---------- */
 
-interface ChatMessage {
+type ChatRole = "user" | "assistant" | "system";
+
+export interface ChatMessage {
   id: string;
-  role: Role;
+  role: ChatRole;
   content: string;
+  createdAt: string;           // NEW: timestamp for each message
+  responseData?: NaviChatResponse;
 }
+
+type ExecutionMode = "plan_propose" | "plan_and_run";
+type ScopeMode = "this_repo" | "current_file" | "service";
+type ProviderId = "openai_navra" | "openai_byok" | "anthropic_byok";
+
+const EXECUTION_LABELS: Record<ExecutionMode, string> = {
+  plan_propose: "Plan + propose",
+  plan_and_run: "Plan + run",
+};
+
+const SCOPE_LABELS: Record<ScopeMode, string> = {
+  this_repo: "This repo",
+  current_file: "This file",
+  service: "This service",
+};
+
+const PROVIDER_LABELS: Record<ProviderId, string> = {
+  openai_navra: "OpenAI (Navra key)",
+  openai_byok: "OpenAI (BYOK)",
+  anthropic_byok: "Anthropic (BYOK)",
+};
 
 interface NaviAction {
   id?: string;
   title?: string;
   description?: string;
   intent_kind?: string;
-  [key: string]: any;
+  context?: Record<string, unknown>;
+}
+
+interface ReviewComment {
+  path: string;
+  line?: number | null;
+  summary: string;
+  comment: string;
+  level?: "nit" | "suggestion" | "issue" | "critical";
+  suggestion?: string;
 }
 
 interface NaviChatResponse {
   content?: string;
   reply?: string;
   actions?: NaviAction[];
-  sources?: any[];
-  [key: string]: any;
-}
-
-/** Execution / scope / persona controls */
-type ExecutionMode = "explain" | "plan" | "auto";
-type ScopeMode = "file" | "service" | "repo" | "org";
-type Persona = "ic" | "tech_lead" | "sre" | "qa" | "em_tpm";
-
-const EXECUTION_LABELS: Record<ExecutionMode, string> = {
-  explain: "Explain only",
-  plan: "Plan + propose",
-  auto: "Auto-apply",
-};
-
-const SCOPE_LABELS: Record<ScopeMode, string> = {
-  file: "This file",
-  service: "This service",
-  repo: "This repo",
-  org: "Org-wide",
-};
-
-const PERSONA_LABELS: Record<Persona, string> = {
-  ic: "IC engineer",
-  tech_lead: "Tech lead",
-  sre: "SRE / DevOps",
-  qa: "QA / Tester",
-  em_tpm: "EM / TPM",
-};
-
-const BACKEND_BASE = "http://127.0.0.1:8787";
-
-function getWorkspaceRoot(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.__NAVI_WORKSPACE_ROOT__ ?? null;
-}
-
-function getRepoName(workspaceRoot: string | null): string {
-  if (!workspaceRoot) return "this workspace";
-  const parts = workspaceRoot.split(/[/\\]/).filter(Boolean);
-  return parts[parts.length - 1] || "this workspace";
-}
-
-async function sendNaviChat(
-  message: string,
-  executionMode: ExecutionMode,
-  scope: ScopeMode,
-  persona: Persona
-): Promise<NaviChatResponse> {
-  const workspaceRoot = getWorkspaceRoot();
-  const url = `${BACKEND_BASE}/api/navi/chat`;
-
-  const body = {
-    message,
-    model: "gpt-4o-mini",
-    mode: "concierge",
-    attachments: [],
-    context: {},
-    workspace: workspaceRoot,
-    workspace_root: workspaceRoot,
-    branch: null,
-    user_id: "default-user",
-    // NEW: behavior controls for planner
-    execution_mode: executionMode,
-    scope,
-    persona,
+  reviews?: ReviewComment[];
+  prDraft?: {
+    title?: string;
+    body?: string;
   };
-
-  console.log("[NAVI Chat] Sending request:", { url, body });
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  const text = await res.text();
-  console.log("[NAVI Chat] Raw response:", res.status, text);
-
-  if (!res.ok) {
-    throw new Error(`Navi chat failed (${res.status}): ${text}`);
-  }
-
-  const data = JSON.parse(text);
-  console.log("[NAVI Chat] Parsed response:", data);
-  return data;
+  status?: string;
+  progress_steps?: string[];
+  state?: {
+    repo_fast_path?: boolean;
+    kind?: string;
+    [key: string]: any;
+  };
 }
+
+/* ---------- Utils ---------- */
+
+const makeMessageId = (role: ChatRole): string => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${role}-${(crypto as any).randomUUID()}`;
+  }
+  return `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
+const nowIso = () => new Date().toISOString();
+
+const formatTime = (iso?: string): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
+
+/* ---------- Toast ---------- */
+
+interface ToastState {
+  id: number;
+  message: string;
+  kind: "info" | "warning" | "error";
+}
+
+/* ---------- Component ---------- */
 
 export default function NaviChatPanel() {
+  const { workspaceRoot, repoName, isLoading } = useWorkspace();
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [attachments, setAttachments] = useState<AttachmentChipData[]>([]);
   const [sending, setSending] = useState(false);
 
-  // NEW: behavior state
-  const [executionMode, setExecutionMode] = useState<ExecutionMode>("plan");
-  const [scope, setScope] = useState<ScopeMode>("repo");
-  const [persona, setPersona] = useState<Persona>("ic");
+  const [executionMode, setExecutionMode] =
+    useState<ExecutionMode>("plan_propose");
+  const [scope, setScope] = useState<ScopeMode>("this_repo");
+  const [provider, setProvider] = useState<ProviderId>("openai_navra");
 
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-focus input on mount
+  const [toast, setToast] = useState<ToastState | null>(null);
+
+  const showToast = (
+    message: string,
+    kind: ToastState["kind"] = "info"
+  ) => {
+    const id = Date.now();
+    setToast({ id, message, kind });
+
+    window.setTimeout(() => {
+      setToast((current) =>
+        current && current.id === id ? null : current
+      );
+    }, 2400);
+  };
+
+  /**
+   * Derive workspaceRoot / repoName robustly.
+   */
+  const getEffectiveWorkspace = () => {
+    let effectiveRoot: string | null =
+      (workspaceRoot && workspaceRoot.trim()) || null;
+
+    if (!effectiveRoot && typeof window !== "undefined") {
+      try {
+        const url = new URL(window.location.href);
+        const fromQuery = url.searchParams.get("workspaceRoot");
+        if (fromQuery && fromQuery.trim()) {
+          effectiveRoot = fromQuery.trim();
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    let effectiveRepoName: string | null =
+      (repoName && repoName.trim()) || null;
+
+    if (
+      (!effectiveRepoName || effectiveRepoName === "current") &&
+      effectiveRoot
+    ) {
+      const segments = effectiveRoot.split(/[\\/]/).filter(Boolean);
+      if (segments.length > 0) {
+        effectiveRepoName = segments[segments.length - 1];
+      }
+    }
+
+    return {
+      effectiveRoot,
+      effectiveRepoName,
+    };
+  };
+
+  // Debug workspace context
+  useEffect(() => {
+    const { effectiveRoot, effectiveRepoName } = getEffectiveWorkspace();
+    console.log("[NaviChatPanel] 🔍 Workspace context:", {
+      contextWorkspaceRoot: workspaceRoot,
+      contextRepoName: repoName,
+      isLoading,
+      url:
+        typeof window !== "undefined"
+          ? window.location.href
+          : "(no-window)",
+      effectiveRoot,
+      effectiveRepoName,
+    });
+
+    if (!workspaceRoot) {
+      vscodeApi.postMessage({ type: "getWorkspaceRoot" });
+    }
+  }, [workspaceRoot, repoName, isLoading]);
+
+  // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // Auto-scroll to bottom on new messages
+  // Scroll on new message
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!scrollerRef.current) return;
+    scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
   }, [messages.length]);
 
-  const handleSend = useCallback(async () => {
-    const trimmed = input.trim();
-    if (!trimmed || sending) return;
+  // Note: Removed global keydown handler to let OS handle Cmd/Ctrl-C naturally
+  // This prevents VS Code clipboard blocking errors in webviews
+
+  // Listen for VS Code messages
+  useEffect(() => {
+    return vscodeApi.onMessage((msg) => {
+      if (!msg || typeof msg !== "object") return;
+
+      // NEW: inline toast from extension
+      if (msg.type === 'toast' && msg.message) {
+        showToast(msg.message, msg.kind || 'info');
+        return;
+      }
+
+      if (msg.type === "addAttachment" && msg.attachment) {
+        const att = msg.attachment as AttachmentChipData;
+
+        setAttachments((prev) => {
+          const key = `${att.kind}:${att.path}:${(att as any).content?.length ?? 0}`;
+          const exists = prev.some(
+            (p) =>
+              `${p.kind}:${p.path}:${(p as any).content?.length ?? 0}` === key
+          );
+          if (exists) return prev;
+          return [...prev, att];
+        });
+      }
+
+      if (msg.type === "clearAttachments") {
+        setAttachments([]);
+      }
+
+      if (msg.type === "botMessage" && msg.text) {
+        const assistantMessage: ChatMessage = {
+          id: makeMessageId("assistant"),
+          role: "assistant",
+          content: msg.text,
+          createdAt: nowIso(),
+        };
+        setMessages((prev) => [...prev, assistantMessage]);
+        setSending(false);
+      }
+
+      if (msg.type === "botThinking") {
+        setSending(msg.value === true);
+      }
+    });
+  }, []);
+
+  /* ---------- direct backend call (fallback) ---------- */
+
+  const sendNaviChatRequest = async (
+    message: string
+  ): Promise<NaviChatResponse> => {
+    const { effectiveRoot } = getEffectiveWorkspace();
+
+    if (!effectiveRoot) {
+      vscodeApi.postMessage({ type: "getWorkspaceRoot" });
+    }
+
+    const workspaceRootToSend = effectiveRoot;
+
+    const body = {
+      message,
+      workspace: null,
+      workspace_root: workspaceRootToSend,
+      branch: null,
+      mode: "concierge",
+      execution: executionMode,
+      scope,
+      provider,
+      attachments: attachments.map((att) => ({
+        kind: att.kind,
+        path: att.path,
+        language: att.language,
+        content: (att as any).content,
+      })),
+    };
+
+    const url = "http://127.0.0.1:8787/api/navi/chat";
+    console.log("[NAVI Chat] Sending request:", { url, body });
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const raw = (await res.json()) as NaviChatResponse;
+    console.log("[NAVI Chat] Raw response:", raw);
+    return raw;
+  };
+
+  /* ---------- reply shaping ---------- */
+
+  const buildAssistantReply = (
+    data: NaviChatResponse,
+    userText: string
+  ): string => {
+    const { effectiveRoot, effectiveRepoName } = getEffectiveWorkspace();
+    const lowerUser = userText.toLowerCase();
+    const state = data.state || {};
+
+    const backendRepoName =
+      typeof state.repo_name === "string" ? state.repo_name.trim() : "";
+    const backendRepoRoot =
+      typeof state.repo_root === "string" ? state.repo_root.trim() : "";
+
+    const repoFastPathWhere =
+      state?.repo_fast_path &&
+      (state.kind === "where" ||
+        state.kind === "which_repo" ||
+        state.kind === "where_repo");
+
+    const repoFastPathExplain =
+      state?.repo_fast_path &&
+      (state.kind === "explain" ||
+        state.kind === "what" ||
+        state.kind === "describe");
+
+    const isWhichRepoQuestion =
+      lowerUser.includes("which repo") ||
+      lowerUser.includes("what repo") ||
+      lowerUser.includes("which project") ||
+      lowerUser.includes("what project") ||
+      lowerUser.includes("which repository") ||
+      lowerUser.includes("what repository") ||
+      lowerUser.includes("where are we") ||
+      lowerUser.includes("what repo are we in");
+
+    const isExplainRepoQuestion =
+      lowerUser.includes("explain this repo") ||
+      lowerUser.includes("explain about this repo") ||
+      (lowerUser.includes("explain") &&
+        (lowerUser.includes("this repo") ||
+          lowerUser.includes("the repo") ||
+          lowerUser.includes("this project") ||
+          lowerUser.includes("the project") ||
+          lowerUser.includes("codebase")));
+
+    const name =
+      backendRepoName ||
+      (effectiveRepoName && effectiveRepoName.trim().length > 0
+        ? effectiveRepoName
+        : "this repo");
+
+    const root =
+      backendRepoRoot ||
+      effectiveRoot ||
+      "";
+
+    if (isWhichRepoQuestion || repoFastPathWhere) {
+      if (root) {
+        return `You're currently working in the **${name}** repo at \`${root}\`.`;
+      }
+      return `You're currently working in the **${name}** repo.`;
+    }
+
+    if (isExplainRepoQuestion || repoFastPathExplain) {
+      const backendCandidate = (data.content || data.reply || "").trim();
+
+      if (backendCandidate) {
+        return backendCandidate;
+      }
+
+      const pathSuffix = root ? ` at \`${root}\`` : "";
+      return `You're working in the **${name}** repo${pathSuffix}. Try asking me about specific files or directories.`;
+    }
+
+    if (data.content && data.content.trim()) {
+      return data.content;
+    }
+
+    if (data.reply && data.reply.trim()) {
+      return data.reply;
+    }
+
+    const hasActions = Array.isArray(data.actions) && data.actions.length > 0;
+    const action: NaviAction | null = hasActions ? data.actions![0] : null;
+
+    const intentKind = (action?.intent_kind || "").toLowerCase();
+    const titleLower = (action?.title || "").toLowerCase();
+    const isInspectRepo =
+      intentKind.includes("inspect_repo") ||
+      titleLower.includes("inspect_repo");
+
+    if (action && isInspectRepo) {
+      return (
+        `Plan: **Inspect repository structure**\n\n` +
+        `I'll scan the repository structure, git history, and linked tools so I can ` +
+        `explain this project and propose fixes.`
+      );
+    }
+
+    if (
+      lowerUser.includes("explain") &&
+      (lowerUser.includes("project") || lowerUser.includes("repo"))
+    ) {
+      if (data.reply && data.reply.trim()) return data.reply;
+      if (hasActions) {
+        const title = action?.title || "Explain project plan";
+        const desc =
+          action?.description ||
+          "Navi will inspect the repo and then summarize what this project does.";
+        return `Plan: **${title}**\n\n${desc}`;
+      }
+    }
+
+    if (hasActions) {
+      const title = action?.title || action?.intent_kind || "Planned action";
+      const desc =
+        action?.description ||
+        "Navi has prepared a plan. Use the file changes panel on the right to review edits.";
+      return `Plan: **${title}**\n\n${desc}`;
+    }
+
+    const fallback =
+      (typeof data.reply === "string" && data.reply.trim().length > 0
+        ? data.reply
+        : data.content) || "";
+
+    if (!fallback.trim()) return "(Navi returned an empty reply)";
+    return fallback;
+  };
+
+  /* ---------- send ---------- */
+
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
+    if (!text) return;
 
     const userMessage: ChatMessage = {
-      id: `m-${Date.now()}-user`,
+      id: makeMessageId("user"),
       role: "user",
-      content: trimmed,
+      content: text,
+      createdAt: nowIso(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    setInput("");
+    if (!overrideText) setInput("");
     setSending(true);
 
     try {
-      const data = await sendNaviChat(trimmed, executionMode, scope, persona);
+      console.log(
+        "[NAVI] 🚀 ROUTING MESSAGE THROUGH VS CODE EXTENSION:",
+        text
+      );
+      console.log("[NAVI] 📎 Including attachments:", attachments);
 
-      const workspaceRoot = getWorkspaceRoot();
-      const repoName = getRepoName(workspaceRoot);
-      const hasActions = Array.isArray(data.actions) && data.actions.length > 0;
-      const action = hasActions ? data.actions![0] : null;
+      vscodeApi.postMessage({
+        type: "sendMessage",
+        text,
+        attachments,
+        modelId: "default",
+        modeId: "concierge",
+      });
 
-      let replyText: string;
+      // We hand off to the extension; it will send botMessage / botThinking
+      // We keep `sending=true` until we get a botThinking(false) or botMessage.
+      setAttachments([]);
+      return;
+    } catch (err: any) {
+      console.error("[NAVI Chat] Error during VS Code send, falling back:", err);
+      showToast(
+        "VS Code messaging failed, using direct backend call.",
+        "warning"
+      );
+    }
 
-      if (action && action.intent_kind === "inspect_repo") {
-        replyText =
-          `You're currently working in the **${repoName}** repo` +
-          (workspaceRoot ? ` at \`${workspaceRoot}\`.` : ".") +
-          "\n\n" +
-          "I can also run a deeper repo inspection (files, Git history, JIRA/CI signals).\n" +
-          "Use the repo tools panel to start an inspection run.";
-      } else if (hasActions) {
-        const title = action?.title || action?.intent_kind || "Planned action";
-        const desc =
-          action?.description ||
-          "Navi has prepared a plan. Use the tools panel to execute it.";
-        replyText = `Plan: **${title}**\n\n${desc}`;
-      } else {
-        replyText =
-          (typeof data.reply === "string" && data.reply.trim().length > 0
-            ? data.reply
-            : data.content) || "(Navi returned an empty reply)";
+    // Fallback path – only reached if the VS Code bridge throws
+    try {
+      const data = await sendNaviChatRequest(text);
+      const replyText = buildAssistantReply(data, text);
+
+      let finalReplyText = replyText;
+      if (data.progress_steps && data.progress_steps.length > 0) {
+        finalReplyText +=
+          "\n\n**Processing Steps:**\n" +
+          data.progress_steps.map((step) => `✅ ${step}`).join("\n");
+      }
+      if (data.status) {
+        finalReplyText += `\n\n*Status: ${data.status}*`;
       }
 
       const assistantMessage: ChatMessage = {
-        id: `m-${Date.now()}-assistant`,
+        id: makeMessageId("assistant"),
         role: "assistant",
-        content: replyText,
+        content: finalReplyText,
+        createdAt: nowIso(),
+        responseData: data,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      setAttachments([]);
     } catch (err: any) {
       console.error("[NAVI Chat] Error during send:", err);
       const errorMessage: ChatMessage = {
-        id: `m-${Date.now()}-error`,
+        id: makeMessageId("system"),
         role: "system",
-        content: `Error talking to Navi: ${err.message ?? String(err)}`,
+        content: `Error talking to Navi: ${err?.message ?? String(err ?? "Unknown error")
+          }`,
+        createdAt: nowIso(),
       };
       setMessages((prev) => [...prev, errorMessage]);
+      showToast("Error talking to Navi backend.", "error");
     } finally {
       setSending(false);
+      setTimeout(() => inputRef.current?.focus(), 10);
     }
-  }, [input, sending, executionMode, scope, persona]);
+  };
 
-  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
+  /* ---------- quick actions ---------- */
+
+  const handleQuickPrompt = (prompt: string) => {
+    void handleSend(prompt);
+  };
+
+  /* ---------- attachments ---------- */
+
+  const handleApplyAllFixes = (reviews: ReviewComment[]) => {
+    vscodeApi.postMessage({
+      type: "agent.applyReviewFixes",
+      reviews,
+    });
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  /* ---------- keyboard ---------- */
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    const isMeta = e.metaKey || e.ctrlKey;
+
+    // Custom paste handling: Cmd+V / Ctrl+V
+    if (isMeta && e.key.toLowerCase() === 'v') {
+      e.preventDefault();
+
+      vscodeApi.readClipboard().then((text) => {
+        if (!text) return;
+
+        setInput((prev) => {
+          const el = inputRef.current;
+          if (!el) return prev + text;
+
+          const start = el.selectionStart ?? prev.length;
+          const end = el.selectionEnd ?? prev.length;
+
+          const before = prev.slice(0, start);
+          const after = prev.slice(end);
+          const next = before + text + after;
+
+          // restore caret after React updates value
+          setTimeout(() => {
+            const caret = start + text.length;
+            try {
+              el.setSelectionRange(caret, caret);
+            } catch {
+              // ignore
+            }
+          }, 0);
+
+          return next;
+        });
+      });
+
+      return;
+    }
+
+    // Existing Enter-to-send logic
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
     }
   };
 
-  const handleQuickPrompt = (prompt: string) => {
-    setInput(prompt);
-    inputRef.current?.focus();
+  /* ---------- per-message actions ---------- */
+
+  const handleCopyMessage = (msg: ChatMessage) => {
+    // Delegate clipboard to the VS Code extension and wait for result
+    vscodeApi
+      .writeClipboard(msg.content)
+      .then((success) => {
+        if (success) {
+          showToast("Copied to clipboard.", "info");
+        } else {
+          showToast(
+            "Copy failed – try selecting and copying the text manually.",
+            "error"
+          );
+        }
+      })
+      .catch((err) => {
+        console.error("[NAVI] Clipboard write error:", err);
+        showToast(
+          "Copy failed – try selecting and copying the text manually.",
+          "error"
+        );
+      });
   };
+
+  const handleEditMessage = (msg: ChatMessage) => {
+    setInput(msg.content);
+    setTimeout(() => inputRef.current?.focus(), 10);
+  };
+
+  const handleUndoMessage = (msg: ChatMessage) => {
+    setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+  };
+
+  const handleRedoMessage = (msg: ChatMessage) => {
+    void handleSend(msg.content);
+  };
+
+  /* ---------- clear chat ---------- */
 
   const handleClearChat = () => {
     setMessages([]);
     setInput("");
-    inputRef.current?.focus();
+    setAttachments([]);
+    setTimeout(() => inputRef.current?.focus(), 10);
   };
+
+  /* ---------- render ---------- */
 
   return (
     <div className="navi-chat-root">
-      <div className="navi-chat-body">
-        {/* Behavior controls row */}
-        <div className="navi-chat-controls">
-          <div className="navi-chat-control-group">
-            <span className="navi-chat-control-label">Execution</span>
-            <select
-              className="navi-chat-select"
-              value={executionMode}
-              onChange={(e) => setExecutionMode(e.target.value as ExecutionMode)}
-            >
-              {(Object.keys(EXECUTION_LABELS) as ExecutionMode[]).map((key) => (
-                <option key={key} value={key}>
-                  {EXECUTION_LABELS[key]}
-                </option>
-              ))}
-            </select>
-          </div>
+      <header className="navi-chat-header">
+        <div className="navi-chat-title">AEP: NAVI ASSISTANT</div>
+        <button
+          type="button"
+          className="navi-pill navi-pill--ghost"
+          onClick={handleClearChat}
+        >
+          Clear chat
+        </button>
+      </header>
 
-          <div className="navi-chat-control-group">
-            <span className="navi-chat-control-label">Scope</span>
-            <select
-              className="navi-chat-select"
-              value={scope}
-              onChange={(e) => setScope(e.target.value as ScopeMode)}
-            >
-              {(Object.keys(SCOPE_LABELS) as ScopeMode[]).map((key) => (
-                <option key={key} value={key}>
-                  {SCOPE_LABELS[key]}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="navi-chat-control-group">
-            <span className="navi-chat-control-label">Persona</span>
-            <select
-              className="navi-chat-select"
-              value={persona}
-              onChange={(e) => setPersona(e.target.value as Persona)}
-            >
-              {(Object.keys(PERSONA_LABELS) as Persona[]).map((key) => (
-                <option key={key} value={key}>
-                  {PERSONA_LABELS[key]}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Toolbar / quick actions */}
-        <div className="navi-chat-toolbar">
-          <span className="navi-chat-toolbar-label">Quick actions:</span>
-          <button
-            type="button"
-            className="navi-chat-toolbar-btn"
-            onClick={() => handleQuickPrompt("check errors and fix them in this repo")}
-          >
-            Check errors & fix
-          </button>
-          <button
-            type="button"
-            className="navi-chat-toolbar-btn"
-            onClick={() =>
-              handleQuickPrompt("explain what this repo does and its key components")
-            }
-          >
-            Explain this repo
-          </button>
-          <button
-            type="button"
-            className="navi-chat-toolbar-btn"
-            onClick={() =>
-              handleQuickPrompt("create an engineering plan for improving this repo")
-            }
-          >
-            Create plan
-          </button>
-          <button
-            type="button"
-            className="navi-chat-toolbar-btn navi-chat-toolbar-btn--ghost"
-            onClick={handleClearChat}
-          >
-            Clear chat
-          </button>
-        </div>
-
-        {/* Messages list */}
-        <div className="navi-chat-messages">
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={
-                "navi-chat-row " +
-                (m.role === "user"
-                  ? "navi-chat-row--user"
-                  : m.role === "assistant"
-                  ? "navi-chat-row--assistant"
-                  : "navi-chat-row--system")
-              }
-            >
-              <div className="navi-chat-avatar" />
-              <div className="navi-chat-bubble">
-                {m.content.split("\n").map((line, idx) => (
-                  <p
-                    key={`${m.id}-line-${idx}`}
-                    style={{ margin: idx === 0 ? 0 : "4px 0 0" }}
-                  >
-                    {line}
-                  </p>
-                ))}
-              </div>
-            </div>
-          ))}
-
-          {messages.length === 0 && (
-            <div className="navi-chat-empty">
-              Ask Navi anything about your repo, JIRA, or builds.
-              <br />
+      <div className="navi-chat-body" ref={scrollerRef}>
+        {messages.length === 0 && (
+          <div className="navi-chat-empty">
+            <div>Ask Navi anything about your repo, JIRA, or builds.</div>
+            <div className="navi-chat-empty-example">
               Example: <code>check errors and fix them</code>
             </div>
-          )}
+          </div>
+        )}
 
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input bar */}
-        <div className="navi-chat-input-bar">
-          <input
-            ref={inputRef}
-            className="navi-chat-input"
-            placeholder={`Ask Navi: e.g. "check errors and fix them"`}
-            value={input}
-            disabled={sending}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-
-          <button
-            className="navi-chat-send-btn"
-            disabled={sending || !input.trim()}
-            onClick={() => void handleSend()}
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            className={`navi-chat-bubble-row navi-chat-bubble-row--${m.role}`}
           >
-            {sending ? "Sending..." : "Send"}
-          </button>
-        </div>
+            <div className={`navi-chat-avatar navi-chat-avatar--${m.role}`}>
+              {m.role === "user" ? "🧑‍💻" : m.role === "assistant" ? "🪐" : "!"}
+            </div>
+            <div className={`navi-chat-bubble navi-chat-bubble--${m.role}`}>
+              {m.content.split("\n").map((line, idx) => (
+                <p key={idx}>{line}</p>
+              ))}
+
+              {/* Timestamp */}
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 11,
+                  opacity: 0.6,
+                  textAlign: m.role === "user" ? "right" : "left",
+                }}
+              >
+                {formatTime(m.createdAt)}
+              </div>
+
+              {/* Reviews + apply fixes */}
+              {m.role === "assistant" &&
+                m.responseData?.reviews &&
+                m.responseData.reviews.length > 0 && (
+                  <div
+                    className="navi-reviews-section"
+                    style={{
+                      marginTop: "16px",
+                      padding: "12px",
+                      backgroundColor: "#1f2430",
+                      borderRadius: "6px",
+                    }}
+                  >
+                    <h4
+                      style={{
+                        margin: "0 0 8px 0",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Code Review ({m.responseData.reviews.length} issues)
+                    </h4>
+                    <div style={{ marginBottom: "12px" }}>
+                      {m.responseData.reviews.slice(0, 3).map((review, idx) => (
+                        <div
+                          key={idx}
+                          style={{ marginBottom: "8px", fontSize: "13px" }}
+                        >
+                          <strong>{review.path}</strong>
+                          {review.line && ` (line ${review.line})`}:{" "}
+                          {review.summary}
+                        </div>
+                      ))}
+                      {m.responseData.reviews.length > 3 && (
+                        <div
+                          style={{ fontSize: "13px", color: "#aaa" }}
+                        >{`...and ${m.responseData.reviews.length - 3
+                          } more issues`}</div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="navi-pill navi-pill--primary"
+                      onClick={() =>
+                        handleApplyAllFixes(m.responseData!.reviews!)
+                      }
+                      style={{ fontSize: "12px", padding: "6px 12px" }}
+                    >
+                      Apply all fixes
+                    </button>
+                  </div>
+                )}
+
+              <div className="navi-chat-bubble-actions">
+                <button
+                  type="button"
+                  className="navi-icon-btn"
+                  title="Copy"
+                  onClick={() => handleCopyMessage(m)}
+                >
+                  ⧉
+                </button>
+                {m.role === "user" && (
+                  <button
+                    type="button"
+                    className="navi-icon-btn"
+                    title="Edit"
+                    onClick={() => handleEditMessage(m)}
+                  >
+                    ✎
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="navi-icon-btn"
+                  title="Undo (remove this message)"
+                  onClick={() => handleUndoMessage(m)}
+                >
+                  ↺
+                </button>
+                <button
+                  type="button"
+                  className="navi-icon-btn"
+                  title="Redo (resend this message)"
+                  onClick={() => handleRedoMessage(m)}
+                >
+                  ↻
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Progress indicator when NAVI is thinking */}
+        {sending && (
+          <div className="navi-chat-bubble-row navi-chat-bubble-row--assistant">
+            <div className="navi-chat-avatar navi-chat-avatar--assistant">
+              🪐
+            </div>
+            <div className="navi-chat-bubble navi-chat-bubble--assistant">
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <div className="navi-thinking-spinner">⚡</div>
+                <span
+                  style={{ fontStyle: "italic", color: "#666" }}
+                >{`NAVI is working on your request...`}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Quick actions */}
+      <QuickActionsBar
+        className="mb-2"
+        disabled={sending}
+        onQuickPrompt={handleQuickPrompt}
+      />
+
+      {/* Attachment tools + chips */}
+      <AttachmentToolbar className="mb-1" />
+      <AttachmentChips
+        attachments={attachments}
+        onRemove={handleRemoveAttachment}
+      />
+
+      {/* Input row */}
+      <div className="navi-chat-input-row">
+        <input
+          ref={inputRef}
+          className="navi-chat-input"
+          placeholder={`Ask Navi: e.g. "check errors and fix them"`}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+
+        <button
+          type="button"
+          className="navi-pill navi-pill--primary navi-chat-send-btn"
+          onClick={() => void handleSend()}
+          disabled={!input.trim()}
+        >
+          {sending ? "Sending…" : "Send"}
+        </button>
+      </div>
+
+      {/* Mode row */}
+      <div className="navi-chat-mode-row">
+        <select
+          className="navi-chat-mode-select navi-pill"
+          value={executionMode}
+          onChange={(e) =>
+            setExecutionMode(e.target.value as ExecutionMode)
+          }
+        >
+          {(Object.keys(EXECUTION_LABELS) as ExecutionMode[]).map(
+            (key) => (
+              <option key={key} value={key}>
+                {EXECUTION_LABELS[key]}
+              </option>
+            )
+          )}
+        </select>
+
+        <select
+          className="navi-chat-mode-select navi-pill"
+          value={scope}
+          onChange={(e) => setScope(e.target.value as ScopeMode)}
+        >
+          {(Object.keys(SCOPE_LABELS) as ScopeMode[]).map((key) => (
+            <option key={key} value={key}>
+              {SCOPE_LABELS[key]}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="navi-chat-mode-select navi-pill"
+          value={provider}
+          onChange={(e) => setProvider(e.target.value as ProviderId)}
+        >
+          {(Object.keys(PROVIDER_LABELS) as ProviderId[]).map(
+            (key) => (
+              <option key={key} value={key}>
+                {PROVIDER_LABELS[key]}
+              </option>
+            )
+          )}
+        </select>
+      </div>
+
+      {/* Inline toast */}
+      {toast && (
+        <div className={`navi-toast navi-toast--${toast.kind}`}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

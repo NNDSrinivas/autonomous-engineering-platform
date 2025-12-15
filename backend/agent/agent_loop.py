@@ -423,12 +423,14 @@ async def run_agent_loop(
         # ---------------------------------------------------------
         logger.info("[AGENT] Retrieving perfect workspace context...")
         from backend.agent.perfect_workspace_retriever import (
-            retrieve_perfect_workspace_context,
+            retrieve_workspace,
         )
 
         workspace_ctx = {}
-        if workspace:
-            workspace_ctx = await retrieve_perfect_workspace_context(workspace)
+        if workspace and isinstance(workspace, dict):
+            workspace_root = workspace.get("workspace_root")
+            if workspace_root and isinstance(workspace_root, str):
+                workspace_ctx = retrieve_workspace(workspace_root)
 
         org_ctx = await retrieve_org_context(user_id, message, db=db)
         memory_ctx = await retrieve_memories(user_id, message, db=db)

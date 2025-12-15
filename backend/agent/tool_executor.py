@@ -290,10 +290,10 @@ async def _tool_repo_inspect(args: Dict[str, Any]) -> Dict[str, Any]:
 
     # Get workspace context using perfect workspace retriever
     from backend.agent.perfect_workspace_retriever import (
-        retrieve_perfect_workspace_context,
+        retrieve_workspace,
     )
 
-    workspace_ctx = await retrieve_perfect_workspace_context(workspace)
+    workspace_ctx = await retrieve_workspace(workspace)
 
     # Build system context for the LLM
     system_context = (

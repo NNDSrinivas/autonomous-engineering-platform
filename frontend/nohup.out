@@ -1,0 +1,22 @@
+
+> frontend@1.0.0 dev
+> vite
+
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+  VITE v5.4.21  ready in 186 ms
+
+  ➜  Local:   http://localhost:3007/
+  ➜  Network: http://192.168.1.152:3007/
+  ➜  press h + enter to show help
+
+> frontend@1.0.0 dev
+> vite
+
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+  VITE v5.4.21  ready in 132 ms
+
+  ➜  Local:   http://localhost:3007/
+  ➜  Network: http://192.168.1.152:3007/
+  ➜  press h + enter to show help

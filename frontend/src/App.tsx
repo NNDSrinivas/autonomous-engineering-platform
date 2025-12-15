@@ -5,6 +5,8 @@ import { PlansListPage } from './pages/PlansListPage'
 import { PlanView } from './pages/PlanView'
 import ConciergePage from './pages/ConciergePage'
 import { NaviSearchPage } from './pages/NaviSearchPage'
+import NaviRoot from './components/navi/NaviRoot'
+import { WorkspaceProvider } from './context/WorkspaceContext'
 
 function HomePage() {
   return (
@@ -60,8 +62,8 @@ function HomePage() {
 function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
 
-  // Don't show nav on home page
-  if (location.pathname === '/') {
+  // Don't show nav on home page or NAVI webview
+  if (location.pathname === '/' || location.pathname === '/navi') {
     return <>{children}</>
   }
 
@@ -103,16 +105,19 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/concierge" element={<ConciergePage />} />
-        <Route path="/memory/graph" element={<MemoryGraphPage />} />
-        <Route path="/plans" element={<PlansListPage />} />
-        <Route path="/plan/:id" element={<PlanView />} />
-        <Route path="/navi/search" element={<NaviSearchPage />} />
-      </Routes>
-    </Layout>
+    <WorkspaceProvider>
+      <Layout>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/navi" element={<NaviRoot />} />
+          <Route path="/concierge" element={<ConciergePage />} />
+          <Route path="/memory/graph" element={<MemoryGraphPage />} />
+          <Route path="/plans" element={<PlansListPage />} />
+          <Route path="/plan/:id" element={<PlanView />} />
+          <Route path="/navi/search" element={<NaviSearchPage />} />
+        </Routes>
+      </Layout>
+    </WorkspaceProvider>
   )
 }
 

@@ -34,6 +34,14 @@
       {
         "command": "aep.attachCurrentFile",
         "title": "NAVI: Attach Current File"
+      },
+      {
+        "command": "aep.checkErrorsAndFix",
+        "title": "NAVI: Check Errors & Fix"
+      },
+      {
+        "command": "aep.generateTestsForFile",
+        "title": "NAVI: Generate Tests for File"
       }
     ],
     "viewsContainers": {

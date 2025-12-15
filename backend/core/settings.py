@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     RATE_LIMITING_ESTIMATED_ACTIVE_USERS: int = 5
 
     # CORS configuration
-    CORS_ORIGINS: str = "*"  # Comma-separated list of allowed origins
+    CORS_ORIGINS: str = "*"  # Comma-separated list of allowed origins or "*" for all
 
     # API server configuration
     API_HOST: str = "0.0.0.0"

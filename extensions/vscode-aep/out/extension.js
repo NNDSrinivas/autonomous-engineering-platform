@@ -5,8 +5,11 @@ exports.deactivate = deactivate;
 // src/extension.ts
 const vscode = require("vscode");
 const path = require("path");
+const child_process = require("child_process");
+const util = require("util");
 const diffUtils_1 = require("./diffUtils");
 const connectorsPanel_1 = require("./connectorsPanel");
+const exec = util.promisify(child_process.exec);
 // Perfect Workspace Context Collection
 async function collectWorkspaceContext() {
     const editor = vscode.window.activeTextEditor;
@@ -21,6 +24,81 @@ async function collectWorkspaceContext() {
         selected_text: selectedText,
         recent_files: recentFiles,
     };
+}
+// Detect Diagnostics Commands (for "check errors & fix" functionality)
+async function detectDiagnosticsCommands(workspaceRoot) {
+    const cmds = [];
+    const fs = await Promise.resolve().then(() => require('fs'));
+    try {
+        // 1) Node.js projects: look at package.json
+        const pkgPath = path.join(workspaceRoot, 'package.json');
+        if (fs.existsSync(pkgPath)) {
+            const text = fs.readFileSync(pkgPath, 'utf8');
+            const pkg = JSON.parse(text);
+            const scripts = pkg.scripts ?? {};
+            for (const [name, cmd] of Object.entries(scripts)) {
+                const nameMatch = /^(lint|test|check|validate|build)$/i.test(name) ||
+                    /lint|test|check/i.test(name);
+                const cmdMatch = /eslint|tslint|jest|vitest|mocha|cypress|playwright|tsc|npm test|yarn test|pnpm test/i.test(cmd);
+                if (nameMatch || cmdMatch) {
+                    // Prefer npm run for consistency
+                    if (pkg.packageManager?.startsWith('yarn')) {
+                        cmds.push(`yarn ${name}`);
+                    }
+                    else if (pkg.packageManager?.startsWith('pnpm')) {
+                        cmds.push(`pnpm ${name}`);
+                    }
+                    else {
+                        cmds.push(`npm run ${name}`);
+                    }
+                }
+            }
+        }
+        // 2) Python projects: look for common linting/testing patterns
+        const pythonFiles = ['setup.py', 'pyproject.toml', 'requirements.txt', 'Pipfile'];
+        const hasPython = pythonFiles.some(f => fs.existsSync(path.join(workspaceRoot, f)));
+        if (hasPython) {
+            // Check for common Python tools
+            const pyprojectPath = path.join(workspaceRoot, 'pyproject.toml');
+            if (fs.existsSync(pyprojectPath)) {
+                const content = fs.readFileSync(pyprojectPath, 'utf8');
+                if (content.includes('flake8') || content.includes('black') || content.includes('mypy')) {
+                    cmds.push('python -m flake8 .');
+                    if (content.includes('black'))
+                        cmds.push('python -m black --check .');
+                    if (content.includes('mypy'))
+                        cmds.push('python -m mypy .');
+                }
+            }
+            // Common pytest patterns
+            if (fs.existsSync(path.join(workspaceRoot, 'pytest.ini')) ||
+                fs.existsSync(path.join(workspaceRoot, 'tests'))) {
+                cmds.push('python -m pytest');
+            }
+        }
+        // 3) Java projects: Maven/Gradle
+        if (fs.existsSync(path.join(workspaceRoot, 'pom.xml'))) {
+            cmds.push('mvn compile', 'mvn test');
+        }
+        if (fs.existsSync(path.join(workspaceRoot, 'build.gradle')) ||
+            fs.existsSync(path.join(workspaceRoot, 'build.gradle.kts'))) {
+            cmds.push('./gradlew build', './gradlew test');
+        }
+        // 4) Rust projects
+        if (fs.existsSync(path.join(workspaceRoot, 'Cargo.toml'))) {
+            cmds.push('cargo check', 'cargo test', 'cargo clippy');
+        }
+        // 5) Go projects
+        if (fs.existsSync(path.join(workspaceRoot, 'go.mod'))) {
+            cmds.push('go build ./...', 'go test ./...', 'go vet ./...');
+        }
+        console.log('[Extension Host] [AEP] 🔍 Detected diagnostics commands:', cmds);
+        return cmds;
+    }
+    catch (error) {
+        console.warn('[Extension Host] [AEP] Error detecting diagnostics commands:', error);
+        return [];
+    }
 }
 // PR-4: Storage keys for persistent model/mode selection
 const STORAGE_KEYS = {
@@ -38,6 +116,87 @@ const DEFAULT_MODE = {
     id: 'chat-only',
     label: 'Agent (full access)',
 };
+async function getGitDiff(scope, provider) {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+        vscode.window.showErrorMessage("NAVI: Open a folder in VS Code before using Git review actions.");
+        return null;
+    }
+    const cwd = folder.uri.fsPath;
+    console.log("[AEP][Git] getGitDiff scope:", scope, "cwd:", cwd);
+    // 1) Are we actually in a git repo?
+    try {
+        const { stdout } = await exec("git rev-parse --is-inside-work-tree", {
+            cwd,
+        });
+        console.log("[AEP][Git] rev-parse output:", stdout.trim());
+        if (stdout.trim() !== "true") {
+            vscode.window.showWarningMessage('NAVI: This folder is not a Git repository. ' +
+                'Quick actions like "Review working changes" only work in a Git project.\n\n' +
+                'Run "git init" (and make at least one commit) in the terminal, or open a Git-backed repo.');
+            return null;
+        }
+    }
+    catch (err) {
+        console.error("[AEP][Git] rev-parse failed:", err);
+        return null;
+    }
+    // 2) Show status so we can see what Git thinks has changed
+    try {
+        const { stdout: statusOut } = await exec("git status --porcelain=v1", {
+            cwd,
+        });
+        console.log("[AEP][Git] status --porcelain:\n" + (statusOut || "<empty>"));
+        if (!statusOut.trim()) {
+            // No tracked or untracked changes at all
+            console.log("[AEP][Git] Working tree is clean (no changes).");
+        }
+    }
+    catch (err) {
+        console.error("[AEP][Git] git status failed:", err);
+    }
+    // 3) Build the actual diff command
+    let cmd;
+    switch (scope) {
+        case "staged":
+            cmd = "git diff --cached --unified=3";
+            break;
+        case "lastCommit":
+            cmd = "git show --patch --unified=3 HEAD";
+            break;
+        case "working":
+        default:
+            // HEAD vs working tree (staged + unstaged)
+            cmd = "git diff HEAD --unified=3";
+            break;
+    }
+    console.log("[AEP][Git] Running diff command:", cmd);
+    try {
+        const { stdout } = await exec(cmd, { cwd });
+        const diff = stdout.trim();
+        console.log(`[AEP][Git] ${cmd} length:`, diff.length, "chars");
+        if (!diff) {
+            const label = scope === "staged"
+                ? "staged changes"
+                : scope === "lastCommit"
+                    ? "last commit"
+                    : "working tree changes";
+            vscode.window.showInformationMessage(`NAVI: No ${label} found (git ${scope === "lastCommit" ? "show" : "diff"} is empty).`);
+            return null;
+        }
+        // Optionally clamp very huge diffs to avoid backend 422 on insane payloads
+        const MAX_DIFF_CHARS = 250000;
+        if (diff.length > MAX_DIFF_CHARS) {
+            console.warn("[AEP][Git] Diff too large, truncating to", MAX_DIFF_CHARS, "chars");
+            return diff.slice(0, MAX_DIFF_CHARS) + "\n\n…[truncated large diff]…\n";
+        }
+        return diff;
+    }
+    catch (err) {
+        console.error("[AEP][Git] Diff command failed:", err);
+        return null;
+    }
+}
 function activate(context) {
     const provider = new NaviWebviewProvider(context.extensionUri, context);
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(
@@ -47,6 +206,10 @@ function activate(context) {
         await provider.attachSelectionCommand();
     }), vscode.commands.registerCommand('aep.attachCurrentFile', async () => {
         await provider.attachCurrentFileCommand();
+    }), vscode.commands.registerCommand('aep.checkErrorsAndFix', async () => {
+        await provider.checkErrorsAndFixCommand();
+    }), vscode.commands.registerCommand('aep.generateTestsForFile', async () => {
+        await provider.generateTestsForFileCommand();
     }));
 }
 function deactivate() {
@@ -62,6 +225,8 @@ class NaviWebviewProvider {
         this._currentModeLabel = DEFAULT_MODE.label;
         // Attachment state
         this._attachments = [];
+        // Git warning state - only show once per session
+        this._gitWarningShown = false;
         this._extensionUri = extensionUri;
         this._context = context;
         this._conversationId = generateConversationId();
@@ -99,6 +264,17 @@ class NaviWebviewProvider {
             console.log('[AEP] Extension received message:', msg.type);
             try {
                 switch (msg.type) {
+                    case 'requestWorkspaceContext': {
+                        // Send workspace context to frontend
+                        const workspaceRoot = this.getActiveWorkspaceRoot();
+                        const workspaceContext = await collectWorkspaceContext();
+                        this.postToWebview({
+                            type: 'workspaceContext',
+                            workspaceRoot,
+                            workspaceContext
+                        });
+                        break;
+                    }
                     case 'openExternal': {
                         const url = String(msg.url || '').trim();
                         if (!url)
@@ -128,29 +304,257 @@ class NaviWebviewProvider {
                         // NOTE: Removed automatic Jira sync - now only triggered when user explicitly asks about Jira tasks
                         break;
                     }
+                    case 'clipboard.write': {
+                        const id = msg.id;
+                        try {
+                            const text = typeof msg.text === 'string' ? msg.text : '';
+                            await vscode.env.clipboard.writeText(text);
+                            // Ack success back to the webview
+                            this.postToWebview({
+                                type: 'clipboard.write.result',
+                                id,
+                                success: true,
+                            });
+                        }
+                        catch (err) {
+                            console.error('[AEP] Clipboard write failed', err);
+                            this.postToWebview({
+                                type: 'clipboard.write.result',
+                                id,
+                                success: false,
+                            });
+                        }
+                        break;
+                    }
+                    case 'clipboard.read': {
+                        const id = msg.id;
+                        try {
+                            const text = await vscode.env.clipboard.readText();
+                            this.postToWebview({
+                                type: 'clipboard.read.result',
+                                id,
+                                text,
+                            });
+                        }
+                        catch (err) {
+                            console.error('[AEP] Clipboard read failed', err);
+                            this.postToWebview({
+                                type: 'clipboard.read.result',
+                                id,
+                                text: '',
+                            });
+                        }
+                        break;
+                    }
+                    case 'attachCurrentFile': {
+                        const editor = vscode.window.activeTextEditor;
+                        if (!editor)
+                            return;
+                        const doc = editor.document;
+                        const fsPath = doc.uri.fsPath;
+                        const content = doc.getText();
+                        this.postToWebview({
+                            type: 'addAttachment',
+                            attachment: {
+                                kind: 'file',
+                                path: fsPath,
+                                language: doc.languageId,
+                                content,
+                            },
+                        });
+                        break;
+                    }
+                    case 'attachSelection': {
+                        const editor = vscode.window.activeTextEditor;
+                        if (!editor)
+                            return;
+                        const doc = editor.document;
+                        const sel = editor.selection;
+                        const hasSelection = sel && !sel.isEmpty;
+                        const content = hasSelection ? doc.getText(sel) : doc.getText();
+                        const fsPath = doc.uri.fsPath;
+                        this.postToWebview({
+                            type: 'addAttachment',
+                            attachment: {
+                                kind: hasSelection ? 'selection' : 'file',
+                                path: fsPath,
+                                language: doc.languageId,
+                                content,
+                            },
+                        });
+                        break;
+                    }
+                    case 'attachLocalFile': {
+                        const picked = await vscode.window.showOpenDialog({
+                            canSelectFiles: true,
+                            canSelectFolders: false,
+                            canSelectMany: false,
+                            openLabel: 'Attach file to Navi',
+                        });
+                        if (!picked || picked.length === 0)
+                            return;
+                        const uri = picked[0];
+                        const bytes = await vscode.workspace.fs.readFile(uri);
+                        const content = new TextDecoder('utf-8').decode(bytes);
+                        this.postToWebview({
+                            type: 'addAttachment',
+                            attachment: {
+                                kind: 'local_file',
+                                path: uri.fsPath,
+                                language: 'plaintext',
+                                content,
+                            },
+                        });
+                        break;
+                    }
+                    case 'copyToClipboard': {
+                        const text = String(msg.text || '');
+                        if (!text)
+                            return;
+                        try {
+                            await vscode.env.clipboard.writeText(text);
+                            vscode.window.setStatusBarMessage('NAVI: Copied to clipboard.', 1500);
+                        }
+                        catch (err) {
+                            console.error('[AEP] Clipboard write failed:', err);
+                            vscode.window.showErrorMessage('NAVI: Failed to copy to clipboard.');
+                        }
+                        break;
+                    }
                     case 'sendMessage': {
                         const text = String(msg.text || '').trim();
                         if (!text) {
                             return;
                         }
+                        console.log('[Extension Host] [AEP] 🔥 INTERCEPTING MESSAGE:', text);
+                        // IMMEDIATE REPO QUESTION INTERCEPTION
+                        const lower = text.toLowerCase();
+                        const isRepoQuestion = /which repo|what repo|which project|what project/.test(lower);
+                        // GIT INIT CONFIRMATION HANDLING
+                        const isGitInitConfirmation = /^(yes|y|initialize git|init git|set up git)$/i.test(text.trim());
+                        console.log('[Extension Host] [AEP] 🔍 Git init check:', { isGitInitConfirmation, hasPendingGitInit: !!this._pendingGitInit, text: text.trim() });
+                        if (isGitInitConfirmation && this._pendingGitInit) {
+                            console.log('[Extension Host] [AEP] 🎯 EXECUTING GIT INIT');
+                            await this.executeGitInit();
+                            return;
+                        }
+                        if (isRepoQuestion) {
+                            console.log('[Extension Host] [AEP] 🎯 REPO QUESTION DETECTED - HANDLING LOCALLY');
+                            const workspaceRoot = this.getActiveWorkspaceRoot();
+                            const repoName = workspaceRoot ? path.basename(workspaceRoot) : 'unknown workspace';
+                            console.log('[Extension Host] [AEP] 🎯 WORKSPACE DEBUG:', {
+                                workspaceRoot,
+                                repoName,
+                                activeEditor: vscode.window.activeTextEditor?.document.uri.fsPath,
+                                workspaceFolders: vscode.workspace.workspaceFolders?.map(f => ({ name: f.name, path: f.uri.fsPath })),
+                                workspaceName: vscode.workspace.name,
+                                workspaceFile: vscode.workspace.workspaceFile?.fsPath
+                            });
+                            const answer = workspaceRoot
+                                ? `You're currently working in the **${repoName}** repo at \`${workspaceRoot}\`.`
+                                : `You're currently working in an **${repoName}**.`;
+                            console.log('[Extension Host] [AEP] 🎯 LOCAL REPO ANSWER:', { workspaceRoot, repoName, answer });
+                            // Add to message history and send response
+                            this._messages.push({ role: 'user', content: text });
+                            this._messages.push({ role: 'assistant', content: answer });
+                            this.postToWebview({ type: 'botThinking', value: false });
+                            this.postToWebview({ type: 'botMessage', text: answer });
+                            return;
+                        }
                         // PR-4: Use modelId and modeId from the message (coming from pills)
                         const modelId = msg.modelId || this._currentModelId;
                         const modeId = msg.modeId || this._currentModeId;
-                        // PR-5: Use extension's internal attachments (the authoritative source)
-                        const attachments = this.getCurrentAttachments();
-                        console.log('[Extension Host] [AEP] User message:', text, 'model:', modelId, 'mode:', modeId, 'attachments:', attachments.length);
-                        console.log('[Extension Host] [AEP] About to process message with smart routing:', text);
+                        // Start from any explicit attachments (chips / commands or from message)
+                        let attachments = msg.attachments || this.getCurrentAttachments();
+                        let autoAttachmentSummary = null;
+                        // If the user didn't attach anything explicitly, try to infer context from the editor.
+                        if (!attachments || attachments.length === 0) {
+                            const auto = this.buildAutoAttachments(text);
+                            if (auto) {
+                                attachments = auto.attachments;
+                                autoAttachmentSummary = auto.summary;
+                                console.log('[Extension Host] [AEP] Auto-attached editor context:', {
+                                    attachments: attachments.map(a => ({ kind: a.kind, path: a.path })),
+                                    summary: auto.summary,
+                                });
+                            }
+                        }
+                        console.log('[Extension Host] [AEP] User message:', text, 'model:', modelId, 'mode:', modeId, 'attachments:', attachments?.length ?? 0);
                         // Update local state
                         this._messages.push({ role: 'user', content: text });
+                        // If we auto-attached something, show a tiny status line in the chat
+                        if (autoAttachmentSummary) {
+                            this.postToWebview({
+                                type: 'botMessage',
+                                text: `> ${autoAttachmentSummary}`,
+                            });
+                        }
                         // Show thinking state
                         this.postToWebview({ type: 'botThinking', value: true });
+                        console.log('[Extension Host] [AEP] About to process message with smart routing:', text);
                         console.log('[Extension Host] [AEP] Using smart intent-based routing...');
-                        await this.handleSmartRouting(text, modelId, modeId, attachments);
+                        await this.handleSmartRouting(text, modelId, modeId, attachments || []);
                         console.log('[Extension Host] [AEP] Smart routing completed');
                         break;
                     }
                     case 'requestAttachment': {
                         await this.handleAttachmentRequest(webviewView.webview, msg.kind);
+                        break;
+                    }
+                    case 'getDiagnostics': {
+                        console.log('[AEP] 🔍 Getting diagnostics for current workspace');
+                        try {
+                            const diagnostics = vscode.languages.getDiagnostics();
+                            const errorCount = diagnostics.reduce((count, [uri, diags]) => count + diags.length, 0);
+                            const fileCount = diagnostics.length;
+                            if (errorCount === 0) {
+                                this.postToWebview({
+                                    type: 'botMessage',
+                                    text: `✅ **No diagnostic errors found!**\n\nYour workspace appears to be clean with no linting errors or compiler issues detected.`
+                                });
+                            }
+                            else {
+                                // Collect detailed diagnostic info
+                                let diagnosticDetails = '';
+                                let errorsByFile = 0;
+                                for (const [uri, diags] of diagnostics) {
+                                    if (diags.length > 0 && errorsByFile < 5) { // Show max 5 files
+                                        const fileName = path.basename(uri.fsPath);
+                                        const errors = diags.filter(d => d.severity === vscode.DiagnosticSeverity.Error).length;
+                                        const warnings = diags.filter(d => d.severity === vscode.DiagnosticSeverity.Warning).length;
+                                        const info = diags.length - errors - warnings;
+                                        diagnosticDetails += `\n- **${fileName}**: `;
+                                        if (errors > 0)
+                                            diagnosticDetails += `${errors} error${errors > 1 ? 's' : ''}`;
+                                        if (warnings > 0) {
+                                            if (errors > 0)
+                                                diagnosticDetails += ', ';
+                                            diagnosticDetails += `${warnings} warning${warnings > 1 ? 's' : ''}`;
+                                        }
+                                        if (info > 0) {
+                                            if (errors > 0 || warnings > 0)
+                                                diagnosticDetails += ', ';
+                                            diagnosticDetails += `${info} info`;
+                                        }
+                                        errorsByFile++;
+                                    }
+                                }
+                                if (fileCount > 5) {
+                                    diagnosticDetails += `\n- ...and ${fileCount - 5} more files`;
+                                }
+                                this.postToWebview({
+                                    type: 'botMessage',
+                                    text: `🔍 **Found ${errorCount} diagnostic issues** across ${fileCount} files:\n${diagnosticDetails}\n\nWould you like me to help you review and fix these issues?`
+                                });
+                            }
+                        }
+                        catch (error) {
+                            console.error('[AEP] Error getting diagnostics:', error);
+                            this.postToWebview({
+                                type: 'botMessage',
+                                text: `⚠️ **Could not retrieve diagnostics**\n\nMake sure you have:\n- Language servers installed (e.g., TypeScript, ESLint)\n- Linting tools configured for your project\n- Files open in VS Code for analysis`
+                            });
+                        }
                         break;
                     }
                     case 'agent.applyAction': {
@@ -544,6 +948,155 @@ class NaviWebviewProvider {
                         }
                         break;
                     }
+                    case 'getWorkspaceRoot': {
+                        // Send workspace info down to the webview as a fallback
+                        const workspaceRoot = this.getActiveWorkspaceRoot();
+                        const repoName = workspaceRoot
+                            ? path.basename(workspaceRoot)
+                            : 'unknown workspace';
+                        this.postToWebview({
+                            type: 'workspaceRoot',
+                            workspaceRoot,
+                            repoName,
+                        });
+                        // Optional extra event name if the React side is listening for something else
+                        this.postToWebview({
+                            type: 'workspaceInfo',
+                            workspaceRoot,
+                            repoName,
+                        });
+                        break;
+                    }
+                    case 'navra.copyToClipboard': {
+                        const text = String(msg.text ?? '');
+                        if (!text)
+                            break;
+                        try {
+                            await vscode.env.clipboard.writeText(text);
+                            // If you want, you can also send a tiny toast back:
+                            // this.postToWebview({ type: 'toast', level: 'info', message: 'Copied to clipboard' });
+                        }
+                        catch (err) {
+                            console.error('[AEP] Failed to copy via vscode.env.clipboard:', err);
+                            vscode.window.showErrorMessage(`NAVI: Failed to copy to clipboard: ${err?.message || 'unknown error'}`);
+                        }
+                        break;
+                    }
+                    case 'copyToClipboard': {
+                        try {
+                            const text = String(msg.text || '').trim();
+                            if (!text)
+                                return;
+                            await vscode.env.clipboard.writeText(text);
+                            // optional: tiny status message
+                            vscode.window.setStatusBarMessage('NAVI: Response copied to clipboard', 1500);
+                        }
+                        catch (err) {
+                            console.error('[Extension Host] [AEP] Failed to copy to clipboard:', err);
+                            vscode.window.showErrorMessage('NAVI: Failed to copy to clipboard.');
+                        }
+                        break;
+                    }
+                    case 'navra.attachLocal': {
+                        // Open OS file picker and attach selected file(s)
+                        await this.handleAttachmentRequest(webviewView.webview, 'pick-file');
+                        break;
+                    }
+                    case 'navra.attachFromRepo': {
+                        // Prefer selection, fall back to current file
+                        const editor = vscode.window.activeTextEditor;
+                        if (editor && !editor.selection.isEmpty) {
+                            await this.handleAttachmentRequest(webviewView.webview, 'selection');
+                        }
+                        else {
+                            await this.handleAttachmentRequest(webviewView.webview, 'current-file');
+                        }
+                        break;
+                    }
+                    case 'agent.applyReviewFixes': {
+                        const reviews = Array.isArray(msg.reviews) ? msg.reviews : [];
+                        await this.handleApplyReviewFixes(reviews);
+                        break;
+                    }
+                    case 'quickAction': {
+                        const action = String(msg.action || '');
+                        switch (action) {
+                            case 'checkErrorsAndFix': {
+                                console.log('[Extension Host] [AEP] 🔧 Quick Action: Check errors and fix');
+                                // Get current file or selection as attachment if available
+                                const attachments = this.getCurrentAttachments();
+                                // Use the enhanced message that will trigger diagnostics detection
+                                const message = 'check errors and fix them';
+                                await this.callNaviBackend(message, this._currentModelId, this._currentModeId, attachments);
+                                break;
+                            }
+                            case 'reviewWorkingChanges':
+                            case 'reviewStagedChanges':
+                            case 'reviewLastCommit': {
+                                let scope = 'working';
+                                if (action === 'reviewStagedChanges')
+                                    scope = 'staged';
+                                if (action === 'reviewLastCommit')
+                                    scope = 'lastCommit';
+                                const diff = await getGitDiff(scope, this);
+                                console.log("[AEP][Git] handleSmartRouting diff scope=", scope, "null? ", diff == null, "length=", diff ? diff.length : 0);
+                                if (!diff) {
+                                    const scopeName = scope === "staged"
+                                        ? "staged changes"
+                                        : scope === "lastCommit"
+                                            ? "last commit"
+                                            : "working tree changes";
+                                    this.postToWebview({
+                                        type: "botMessage",
+                                        text: `I checked your Git ${scopeName} but ${scope === "lastCommit"
+                                            ? "there is no last commit yet."
+                                            : "there are no uncommitted changes."}\n\n` +
+                                            (scope === "lastCommit"
+                                                ? "Once you have commits in your repository, ask me again and I'll review them."
+                                                : "Once you've saved your edits and `git diff` is non-empty, ask me again and I'll review them."),
+                                    });
+                                    this.postToWebview({ type: "botThinking", value: false });
+                                    return;
+                                }
+                                let message;
+                                if (scope === 'staged') {
+                                    message =
+                                        'Review the staged changes only. Point out issues, potential bugs, and improvements.';
+                                }
+                                else if (scope === 'lastCommit') {
+                                    message =
+                                        'Review the last commit. Summarize what changed and highlight any issues or improvements.';
+                                }
+                                else {
+                                    message =
+                                        'Review my uncommitted working tree changes. Point out issues and potential improvements.';
+                                }
+                                await this.callNaviBackend(message, this._currentModelId, this._currentModeId, [
+                                    {
+                                        kind: 'diff',
+                                        path: scope === 'staged'
+                                            ? 'git:diff:staged'
+                                            : scope === 'lastCommit'
+                                                ? 'git:diff:last-commit'
+                                                : 'git:diff:working',
+                                        language: 'diff',
+                                        content: diff,
+                                    },
+                                ]);
+                                break;
+                            }
+                            case 'explainRepo': {
+                                console.log('[Extension Host] [AEP] 📖 Quick Action: Explain repo');
+                                const message = 'explain this repo, what it does, and the key components';
+                                await this.callNaviBackend(message, this._currentModelId, this._currentModeId, []);
+                                break;
+                            }
+                            default:
+                                console.warn('[AEP] Unknown quickAction:', action);
+                                break;
+                        }
+                        break;
+                    }
                     default:
                         console.warn('[Extension Host] [AEP] Unknown message from webview:', msg);
                 }
@@ -614,18 +1167,118 @@ class NaviWebviewProvider {
         }
     }
     async handleSmartRouting(text, modelId, modeId, attachments) {
-        // 1) Classify intent
+        console.log('[AEP] 🚀 ENTERING handleSmartRouting with text:', text);
+        const lower = (text || '').toLowerCase();
+        // 0) Natural-language Git review triggers (before everything else)
+        const wantsReviewWorkingExplicit = /review (my )?(current )?(working( tree)? )?changes/.test(lower) ||
+            /review my changes\b/.test(lower);
+        const wantsReviewStagedExplicit = /review (my )?staged changes/.test(lower) ||
+            /review what i staged/.test(lower);
+        const wantsReviewLastCommitExplicit = /review (the )?last commit/.test(lower) ||
+            /explain (the )?last commit/.test(lower);
+        // New: generic "git diff / show diff / what changed" style triggers
+        const wantsGenericGitDiff = /\bgit diff\b/.test(lower) ||
+            /do (a )?git diff/.test(lower) ||
+            /run (a )?git diff/.test(lower) ||
+            /show (me )?(the )?diff\b/.test(lower) ||
+            /show (me )?(what )?changed\b/.test(lower) ||
+            /compare (my )?changes\b/.test(lower);
+        let scope = null;
+        if (wantsReviewWorkingExplicit) {
+            scope = 'working';
+        }
+        else if (wantsReviewStagedExplicit) {
+            scope = 'staged';
+        }
+        else if (wantsReviewLastCommitExplicit) {
+            scope = 'lastCommit';
+        }
+        else if (wantsGenericGitDiff) {
+            // For generic "git diff / what changed" questions, default to working tree
+            scope = 'working';
+        }
+        if (scope) {
+            console.log(`[AEP] Selected scope: ${scope} for text: "${text}"`);
+            const diff = await getGitDiff(scope, this);
+            console.log("[AEP][Git] handleSmartRouting diff scope=", scope, "null? ", diff == null, "length=", diff ? diff.length : 0);
+            if (!diff) {
+                const scopeName = scope === "staged"
+                    ? "staged changes"
+                    : scope === "lastCommit"
+                        ? "last commit"
+                        : "working tree changes";
+                this.postToWebview({
+                    type: "botMessage",
+                    text: `I checked your Git ${scopeName} but ${scope === "lastCommit"
+                        ? "there is no last commit yet."
+                        : "there are no uncommitted changes."}\n\n` +
+                        (scope === "lastCommit"
+                            ? "Once you have commits in your repository, ask me again and I'll review them."
+                            : "Once you've saved your edits and `git diff` is non-empty, ask me again and I'll review them."),
+                });
+                this.postToWebview({ type: "botThinking", value: false });
+                return;
+            }
+            let message;
+            if (scope === 'staged') {
+                message =
+                    'Review the staged changes only. Point out bugs, potential issues, and improvements.';
+            }
+            else if (scope === 'lastCommit') {
+                message =
+                    'Review the last commit. Summarize what changed and highlight any issues or improvements.';
+            }
+            else {
+                // working
+                message =
+                    'Review my uncommitted working tree changes. Point out issues, potential bugs, and improvements.';
+            }
+            await this.callNaviBackend(message, modelId, modeId, [
+                {
+                    kind: 'diff',
+                    path: scope === 'staged'
+                        ? 'git:diff:staged'
+                        : scope === 'lastCommit'
+                            ? 'git:diff:last-commit'
+                            : 'git:diff:working',
+                    language: 'diff',
+                    content: diff,
+                },
+            ]);
+            return;
+        }
+        // 1) Repo "what is this project?" style questions → local explanation
+        console.log('[AEP] 🔍 Checking for repo question. Input text:', { text, lower });
+        const isRepoQuestion = /which repo|what repo|which project|what project|explain.*repo|explain.*project|tell me about.*repo/.test(lower);
+        console.log('[AEP] 🔍 Repo question test result:', {
+            isRepoQuestion,
+            pattern: 'which repo|what repo|which project|what project|explain.*repo|explain.*project|tell me about.*repo',
+        });
+        if (isRepoQuestion) {
+            const workspaceRoot = this.getActiveWorkspaceRoot();
+            console.log('[AEP] 🎯 Repo question detected, handling locally (bypassing backend):', {
+                text,
+                workspaceRoot,
+                repoName: workspaceRoot ? path.basename(workspaceRoot) : 'no-workspace-root',
+            });
+            await this.handleLocalExplainRepo(text);
+            return;
+        }
+        console.log('[AEP] 🔍 Not a repo question, proceeding to intent classification');
+        // 2) Classify intent (for all other questions)
         const intent = await this.classifyIntent(text);
         console.log('[AEP] Detected intent:', intent, 'for message:', text);
-        // We may add attachments automatically (workspace snapshot)
         let effectiveAttachments = attachments;
-        // 2) If this is a workspace question and there is no context yet,
-        //    build and attach a lightweight workspace snapshot.
-        if (intent === 'workspace' &&
-            (!effectiveAttachments || effectiveAttachments.length === 0)) {
-            console.log('[AEP] Workspace intent with no attachments → auto-attaching snapshot');
-            await this.autoAttachWorkspaceSnapshot();
+        // 3) For workspace/code questions, enrich context with smart attachments
+        if (intent === 'workspace' || intent === 'code') {
+            await this.maybeAttachWorkspaceContextForQuestion(text);
             effectiveAttachments = this.getCurrentAttachments();
+            // If we still have no context, attach a small workspace snapshot
+            if (!effectiveAttachments || effectiveAttachments.length === 0) {
+                console.log('[AEP] Workspace/code intent with no attachments → auto-attaching snapshot');
+                await this.autoAttachWorkspaceSnapshot();
+                effectiveAttachments = this.getCurrentAttachments();
+            }
         }
         // 3) Route based on intent
         try {
@@ -657,6 +1310,350 @@ class NaviWebviewProvider {
                 text: 'Sorry, something went wrong while processing this message.',
             });
         }
+    }
+    async handleLocalExplainRepo(originalMessage) {
+        // Try to infer a meaningful "repo root" from the workspace or active file.
+        let workspaceRootPath = this.getActiveWorkspaceRoot();
+        const editor = vscode.window.activeTextEditor;
+        const activeFilePath = editor?.document?.uri.fsPath;
+        console.log('[AEP] 🔍 handleLocalExplainRepo debug:', {
+            originalMessage,
+            workspaceRootPath,
+            activeFilePath,
+            workspaceFolders: vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath)
+        });
+        let repoName;
+        if (workspaceRootPath) {
+            repoName = path.basename(workspaceRootPath);
+        }
+        else if (activeFilePath) {
+            const maybeRoot = path.dirname(activeFilePath);
+            workspaceRootPath = maybeRoot;
+            repoName = path.basename(maybeRoot);
+        }
+        else {
+            repoName = 'current';
+        }
+        if (!workspaceRootPath) {
+            const text = `You're currently working in the **${repoName}** workspace in VS Code.\n\n` +
+                `I couldn't infer a project root from VS Code (no folder is open yet). ` +
+                `Try opening a folder in VS Code and ask again, or tell me which file or directory you want me to analyse.`;
+            this._messages.push({ role: 'assistant', content: text });
+            this.postToWebview({ type: 'botThinking', value: false });
+            this.postToWebview({ type: 'botMessage', text });
+            return;
+        }
+        const rootUri = vscode.Uri.file(workspaceRootPath);
+        // Helper to read package.json at root or subfolder (e.g. "frontend", "backend")
+        const readPkg = async (subdir) => {
+            try {
+                const segments = subdir ? [subdir, 'package.json'] : ['package.json'];
+                const pkgUri = vscode.Uri.joinPath(rootUri, ...segments);
+                const bytes = await vscode.workspace.fs.readFile(pkgUri);
+                const text = new TextDecoder().decode(bytes);
+                return JSON.parse(text);
+            }
+            catch {
+                return null;
+            }
+        };
+        // Helper to check if a file exists
+        const exists = async (...segments) => {
+            try {
+                const uri = vscode.Uri.joinPath(rootUri, ...segments);
+                await vscode.workspace.fs.stat(uri);
+                return true;
+            }
+            catch {
+                return false;
+            }
+        };
+        // 1) Discover top-level folders
+        let topLevelDirs = [];
+        try {
+            const entries = await vscode.workspace.fs.readDirectory(rootUri);
+            topLevelDirs = entries
+                .filter(([_, type]) => type === vscode.FileType.Directory)
+                .map(([name]) => name)
+                .sort();
+        }
+        catch {
+            // ignore; not critical
+        }
+        const hasFrontend = topLevelDirs.includes('frontend');
+        const hasBackend = topLevelDirs.includes('backend');
+        const hasSrc = topLevelDirs.includes('src');
+        const hasApps = topLevelDirs.includes('apps');
+        const hasPackages = topLevelDirs.includes('packages');
+        // 2) Read package.json(s) + README
+        const [rootPkg, frontendPkg, backendPkg] = await Promise.all([
+            readPkg(),
+            hasFrontend ? readPkg('frontend') : Promise.resolve(null),
+            hasBackend ? readPkg('backend') : Promise.resolve(null),
+        ]);
+        let readme = null;
+        for (const name of ['README.md', 'readme.md']) {
+            if (readme)
+                break;
+            try {
+                const uri = vscode.Uri.joinPath(rootUri, name);
+                const bytes = await vscode.workspace.fs.readFile(uri);
+                const text = new TextDecoder().decode(bytes);
+                readme = text.trim();
+            }
+            catch {
+                // no README at this path, continue
+            }
+        }
+        const displayName = (rootPkg && typeof rootPkg.name === 'string' && rootPkg.name.trim()) ||
+            repoName;
+        const description = rootPkg &&
+            typeof rootPkg.description === 'string' &&
+            rootPkg.description.trim()
+            ? rootPkg.description.trim()
+            : null;
+        // 3) Infer tech stack from package.jsons + structure
+        const techs = [];
+        const addTech = (label) => {
+            if (!techs.includes(label))
+                techs.push(label);
+        };
+        const collectTechFromPkg = (pkg) => {
+            if (!pkg || typeof pkg !== 'object')
+                return;
+            const deps = {
+                ...(pkg.dependencies || {}),
+                ...(pkg.devDependencies || {}),
+            };
+            const scripts = pkg.scripts || {};
+            if (deps.react)
+                addTech('React');
+            if (deps['react-dom'])
+                addTech('React DOM');
+            if (deps.next)
+                addTech('Next.js');
+            if (deps.vite)
+                addTech('Vite');
+            if (deps.typescript)
+                addTech('TypeScript');
+            if (deps['tailwindcss'])
+                addTech('Tailwind CSS');
+            if (deps['express'] || deps['fastify'] || deps['koa']) {
+                addTech('Node.js API server');
+            }
+            if (deps['@vscode/webview-ui-toolkit'] || (pkg.engines && pkg.engines.vscode)) {
+                addTech('VS Code extension');
+            }
+            const devScript = scripts.dev || '';
+            if (devScript.includes('next'))
+                addTech('Next.js dev server');
+            if (devScript.includes('vite'))
+                addTech('Vite dev server');
+        };
+        collectTechFromPkg(rootPkg);
+        collectTechFromPkg(frontendPkg);
+        collectTechFromPkg(backendPkg);
+        // 4) Detect VS Code extension entrypoint
+        let hasExtensionEntrypoint = false;
+        if (await exists('src', 'extension.ts')) {
+            hasExtensionEntrypoint = true;
+            addTech('VS Code extension');
+        }
+        // 5) Build high-level structure summary
+        const structureLines = [];
+        if (hasFrontend) {
+            const labelParts = ['frontend/ — main web UI'];
+            if (frontendPkg) {
+                const deps = {
+                    ...(frontendPkg.dependencies || {}),
+                    ...(frontendPkg.devDependencies || {}),
+                };
+                if (deps.next)
+                    labelParts.push('(Next.js)');
+                else if (deps.vite)
+                    labelParts.push('(Vite + React)');
+                else if (deps.react)
+                    labelParts.push('(React app)');
+            }
+            structureLines.push(`- \`frontend/\` — ${labelParts.join(' ')}`);
+        }
+        if (hasBackend) {
+            const labelParts = ['backend/ — server/API layer'];
+            if (backendPkg) {
+                const deps = {
+                    ...(backendPkg.dependencies || {}),
+                    ...(backendPkg.devDependencies || {}),
+                };
+                if (deps.express)
+                    labelParts.push('(Express.js API)');
+                else if (deps.fastify)
+                    labelParts.push('(Fastify API)');
+                else if (deps.koa)
+                    labelParts.push('(Koa API)');
+            }
+            structureLines.push(`- \`backend/\` — ${labelParts.join(' ')}`);
+        }
+        if (hasSrc) {
+            const base = hasExtensionEntrypoint
+                ? 'src/ — VS Code extension sources (including extension.ts)'
+                : 'src/ — main source files';
+            structureLines.push(`- \`src/\` — ${base}`);
+        }
+        if (hasApps) {
+            structureLines.push('- `apps/` — multi-app/monorepo entry points');
+        }
+        if (hasPackages) {
+            structureLines.push('- `packages/` — shared libraries in a monorepo setup');
+        }
+        const otherDirs = topLevelDirs.filter((d) => ![
+            'frontend',
+            'backend',
+            'src',
+            'apps',
+            'packages',
+            '.git',
+            '.vscode',
+            'node_modules',
+        ].includes(d));
+        if (otherDirs.length > 0) {
+            structureLines.push(`- Other top-level dirs: ${otherDirs.map((d) => `\`${d}/\``).join(', ')}`);
+        }
+        // 6) README snippet
+        let readmeSnippet = null;
+        if (readme) {
+            const lines = readme.split('\n').slice(0, 12);
+            const snippet = lines.join('\n').trim();
+            readmeSnippet =
+                snippet.length > 500 ? snippet.slice(0, 500).trimEnd() + '…' : snippet;
+        }
+        // 7) Compose final dynamic answer
+        const parts = [];
+        parts.push(`You're currently working in the **${displayName}** repo at \`${workspaceRootPath}\`.`);
+        if (description) {
+            parts.push(`\n**Description (from package.json):** ${description}`);
+        }
+        if (techs.length > 0) {
+            parts.push(`\n**Tech stack signals:** ${techs.join(', ')}.`);
+        }
+        if (structureLines.length > 0) {
+            parts.push('\n**Repo structure (top level):**\n');
+            parts.push(structureLines.join('\n'));
+        }
+        if (readmeSnippet) {
+            parts.push(`\n**README snapshot:**\n\n${readmeSnippet}`);
+        }
+        parts.push(`\nIf you want, ask me about a specific file, component, or feature (e.g. ` +
+            '`explain `src/extension.ts`` or `how does the frontend auth work?`) and I can dive deeper using the real code.');
+        const answer = parts.join('\n');
+        console.log('[AEP] Local repo explanation (rich):', {
+            repoName: displayName,
+            path: workspaceRootPath,
+            techs,
+            topLevelDirs,
+            hasExtensionEntrypoint,
+        });
+        this._messages.push({ role: 'assistant', content: answer });
+        this.postToWebview({ type: 'botThinking', value: false });
+        this.postToWebview({ type: 'botMessage', text: answer });
+    }
+    async handleGitInitRequest(requestedScope) {
+        const workspaceRoot = this.getActiveWorkspaceRoot();
+        const repoName = workspaceRoot ? path.basename(workspaceRoot) : 'current folder';
+        const scopeText = requestedScope === 'staged'
+            ? 'staged changes'
+            : requestedScope === 'lastCommit'
+                ? 'last commit'
+                : 'working changes';
+        // Explain the problem and offer solution via chat
+        const explanation = `I can't review your ${scopeText} because this folder isn't a Git repository yet. ` +
+            `Git is needed to track changes and create diffs for code review.\n\n` +
+            `**Would you like me to initialize Git in "${repoName}"?**\n\n` +
+            `This will:\n` +
+            `• Create a \`.git\` folder to track changes\n` +
+            `• Add all current files to the initial commit\n` +
+            `• Enable git diff commands for future reviews\n\n` +
+            `Reply **"yes"** or **"initialize git"** and I'll set it up for you! 🚀`;
+        this._messages.push({ role: 'assistant', content: explanation });
+        this.postToWebview({ type: 'botThinking', value: false });
+        this.postToWebview({ type: 'botMessage', text: explanation });
+        // Store the pending git init context for follow-up
+        this._pendingGitInit = {
+            workspaceRoot,
+            requestedScope,
+            timestamp: Date.now()
+        };
+    }
+    async executeGitInit() {
+        if (!this._pendingGitInit)
+            return;
+        const { workspaceRoot, requestedScope } = this._pendingGitInit;
+        const repoName = workspaceRoot ? path.basename(workspaceRoot) : 'current folder';
+        this.postToWebview({ type: 'botThinking', value: true });
+        try {
+            const workingDir = workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!workingDir) {
+                throw new Error('No workspace folder available');
+            }
+            // Execute git commands
+            const { exec } = require('child_process');
+            const { promisify } = require('util');
+            const execAsync = promisify(exec);
+            console.log('[Extension Host] [AEP] Initializing git in:', workingDir);
+            // Initialize git repository
+            await execAsync('git init', { cwd: workingDir });
+            console.log('[Extension Host] [AEP] ✅ git init completed');
+            // Add all files
+            await execAsync('git add .', { cwd: workingDir });
+            console.log('[Extension Host] [AEP] ✅ git add completed');
+            // Create initial commit
+            await execAsync('git commit -m "Initial commit via NAVI"', { cwd: workingDir });
+            console.log('[Extension Host] [AEP] ✅ git commit completed');
+            // Success message
+            const successMessage = `🎉 **Git repository initialized successfully!**\n\n` +
+                `I've set up Git in "${repoName}" and created an initial commit with all your files.\n\n` +
+                `Now I can review your code changes. Let me try your original request again...`;
+            this._messages.push({ role: 'assistant', content: successMessage });
+            this.postToWebview({ type: 'botMessage', text: successMessage });
+            // Clear pending state
+            this._pendingGitInit = undefined;
+            // Wait a moment then retry the original git operation
+            setTimeout(async () => {
+                const scopeText = requestedScope === 'staged'
+                    ? 'review staged changes'
+                    : requestedScope === 'lastCommit'
+                        ? 'review last commit'
+                        : 'review my working changes';
+                // Since we just created an initial commit, for working/staged there won't be changes yet
+                // but for lastCommit we can now review the initial commit
+                if (requestedScope === 'lastCommit') {
+                    await this.handleSmartRouting(scopeText, this._currentModelId, this._currentModeId, []);
+                }
+                else {
+                    const noChangesMsg = `The repository is now ready! Since we just committed all files, ` +
+                        `there are no ${requestedScope === 'staged' ? 'staged' : 'working'} changes to review yet.\n\n` +
+                        `Make some changes to your code, then ask me to review them again! 📝`;
+                    this._messages.push({ role: 'assistant', content: noChangesMsg });
+                    this.postToWebview({ type: 'botMessage', text: noChangesMsg });
+                }
+            }, 1000);
+        }
+        catch (error) {
+            console.error('[Extension Host] [AEP] Git init failed:', error);
+            const errorMessage = `❌ **Failed to initialize Git repository**\n\n` +
+                `Error: ${error.message}\n\n` +
+                `You can try initializing Git manually:\n` +
+                `\`\`\`bash\n` +
+                `cd "${workspaceRoot || ''}"\n` +
+                `git init\n` +
+                `git add .\n` +
+                `git commit -m "Initial commit"\n` +
+                `\`\`\``;
+            this._messages.push({ role: 'assistant', content: errorMessage });
+            this.postToWebview({ type: 'botMessage', text: errorMessage });
+            // Clear pending state
+            this._pendingGitInit = undefined;
+        }
+        this.postToWebview({ type: 'botThinking', value: false });
     }
     async handleJiraListIntent(originalMessage) {
         try {
@@ -824,8 +1821,10 @@ class NaviWebviewProvider {
         const messageWithContext = this.buildMessageWithAttachments(latestUserText, attachments);
         // Perfect Workspace Context Collection
         const workspaceContext = await collectWorkspaceContext();
-        // NEW: detect workspace root from VS Code
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? undefined;
+        // Detect the most relevant workspace root (prefer the one of the active file)
+        const workspaceRoot = this.getActiveWorkspaceRoot();
+        // 🔧 NEW: Detect diagnostics commands for "check errors & fix" functionality
+        const diagnosticsCommandsArray = workspaceRoot ? await detectDiagnosticsCommands(workspaceRoot) : [];
         const payload = {
             message: messageWithContext,
             model: modelId || this._currentModelId,
@@ -833,12 +1832,21 @@ class NaviWebviewProvider {
             user_id: 'default_user',
             workspace: workspaceContext, // 🚀 Perfect workspace awareness
             workspace_root: workspaceRoot, // NEW: VS Code workspace root path
+            diagnosticsCommandsArray, // 🔧 NEW: Commands for error checking
             // Map attachment kinds to match backend expectations
             attachments: (attachments ?? []).map(att => ({
                 ...att,
-                kind: att.kind === 'currentFile' || att.kind === 'pickedFile' ? 'file' : 'selection'
+                kind: att.kind === 'currentFile' || att.kind === 'pickedFile'
+                    ? 'file'
+                    : att.kind === 'diff'
+                        ? 'diff'
+                        : 'selection',
             })),
         };
+        console.log('[Extension Host] [AEP] Workspace debug:', {
+            workspaceRoot,
+            workspaceContextRoot: workspaceContext?.workspace_root,
+        });
         let response;
         try {
             // Read backend URL from configuration with fallback
@@ -964,6 +1972,100 @@ class NaviWebviewProvider {
                 text: '⚠️ Error while processing response from NAVI backend.'
             });
         }
+    }
+    /**
+     * Best-effort automatic context based on the current editor and the user's message.
+     * - For code-ish questions, prefer the current selection.
+     * - If no selection, fall back to the whole current file.
+     * - For repo/project questions, we return null and let handleLocalExplainRepo deal with it.
+     */
+    buildAutoAttachments(message) {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor)
+            return null;
+        const doc = editor.document;
+        const text = (message || '').toLowerCase();
+        // Repo / project-level questions → let handleLocalExplainRepo answer instead
+        const repoLike = /this repo|this repository|this project|entire repo|whole repo|whole project/.test(text);
+        if (repoLike)
+            return null;
+        // Only auto-attach when it sounds like a code question
+        const maybeCodeQuestion = /(code|bug|error|stack trace|exception|component|hook|function|method|class|file|module|refactor|tests?|unit test|integration test|compile|build|lint|ts error|typescript|js error|react|jsx|tsx|java|c#|python)/.test(text);
+        if (!maybeCodeQuestion) {
+            return null;
+        }
+        const hasSelection = !editor.selection.isEmpty;
+        const mentionsSelection = /this code|this snippet|these lines|selected code|highlighted code|above code|this block/.test(text);
+        const mentionsFile = /this file|this component|this page|this screen|this module|current file|entire file|whole file/.test(text);
+        const attachments = [];
+        let summary = null;
+        const workspaceRoot = this.getActiveWorkspaceRoot();
+        const fullPath = doc.uri.fsPath;
+        const relPath = workspaceRoot && fullPath.startsWith(workspaceRoot)
+            ? path.relative(workspaceRoot, fullPath)
+            : fullPath;
+        // Prefer selection when present, unless user clearly talks about "this file"
+        if (hasSelection && (mentionsSelection || !mentionsFile)) {
+            const content = doc.getText(editor.selection);
+            if (content.trim()) {
+                attachments.push({
+                    kind: 'selection',
+                    path: fullPath,
+                    language: doc.languageId,
+                    content,
+                });
+                summary = `Using selected code from \`${relPath}\` as context.`;
+            }
+        }
+        else {
+            // Fall back to whole file
+            const content = doc.getText();
+            if (content.trim()) {
+                attachments.push({
+                    kind: 'currentFile',
+                    path: fullPath,
+                    language: doc.languageId,
+                    content,
+                });
+                summary = `Using whole file \`${relPath}\` as context.`;
+            }
+        }
+        if (attachments.length === 0) {
+            return null;
+        }
+        return {
+            attachments,
+            summary: summary ?? `Using \`${relPath}\` as context.`,
+        };
+    }
+    /**
+     * Returns the workspace folder for the active editor if available,
+     * otherwise falls back to the first workspace folder. This prevents
+     * sending the wrong repo path when multiple folders are open.
+     */
+    getActiveWorkspaceRoot() {
+        console.log('[Extension Host] [AEP] 🔍 Getting workspace root...');
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+            if (folder) {
+                console.log('[Extension Host] [AEP] ✅ Found workspace from active editor:', folder.uri.fsPath);
+                return folder.uri.fsPath;
+            }
+            console.log('[Extension Host] [AEP] ⚠️ Active editor found but no workspace folder for:', editor.document.uri.fsPath);
+        }
+        else {
+            console.log('[Extension Host] [AEP] ⚠️ No active text editor found');
+        }
+        // Fallback: first workspace folder if present
+        const firstWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (firstWorkspace) {
+            console.log('[Extension Host] [AEP] 📁 Using first workspace folder as fallback:', firstWorkspace);
+        }
+        else {
+            console.log('[Extension Host] [AEP] ❌ No workspace folders found at all');
+        }
+        return firstWorkspace;
     }
     // --- SSE reader (streaming support baked in for later) ----------------------
     /**
@@ -1127,6 +2229,109 @@ class NaviWebviewProvider {
             console.log('[AEP] No key workspace files found');
         }
     }
+    async attachFileIfExists(rootUri, relPath) {
+        try {
+            const segments = relPath.split(/[\\/]/).filter(Boolean);
+            const fileUri = vscode.Uri.joinPath(rootUri, ...segments);
+            const stat = await vscode.workspace.fs.stat(fileUri);
+            if (stat.type !== vscode.FileType.File) {
+                return false;
+            }
+            const bytes = await vscode.workspace.fs.readFile(fileUri);
+            const raw = new TextDecoder().decode(bytes);
+            const content = this.truncateForAttachment(raw, relPath);
+            this.addAttachment({
+                kind: 'file',
+                path: fileUri.fsPath,
+                content,
+            });
+            console.log('[AEP] Attached extra context file:', relPath);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
+    async maybeAttachWorkspaceContextForQuestion(userMessage) {
+        const msg = (userMessage || '').toLowerCase();
+        const wantsRouting = msg.includes(' route') ||
+            msg.startsWith('route') ||
+            msg.includes('routing') ||
+            msg.includes('routes') ||
+            msg.includes('router') ||
+            msg.includes('navigation') ||
+            msg.includes('nav bar') ||
+            msg.includes('nav menu');
+        const wantsExtension = msg.includes('extension') ||
+            msg.includes('vs code extension') ||
+            msg.includes('webview') ||
+            msg.includes('chat panel') ||
+            msg.includes('navi panel');
+        if (!wantsRouting && !wantsExtension) {
+            return;
+        }
+        const workspaceRootPath = this.getActiveWorkspaceRoot();
+        if (!workspaceRootPath) {
+            return;
+        }
+        const rootUri = vscode.Uri.file(workspaceRootPath);
+        const maxExtra = 4;
+        let added = 0;
+        const tryAttach = async (relPath) => {
+            if (added >= maxExtra)
+                return;
+            const ok = await this.attachFileIfExists(rootUri, relPath);
+            if (ok)
+                added += 1;
+        };
+        if (wantsRouting) {
+            const routingCandidates = [
+                'frontend/src/routes.tsx',
+                'frontend/src/routes/index.tsx',
+                'frontend/src/router.tsx',
+                'frontend/src/App.tsx',
+                'frontend/src/App.jsx',
+                'frontend/src/main.tsx',
+                'frontend/src/main.jsx',
+                'frontend/app/page.tsx',
+                'frontend/app/layout.tsx',
+                'src/routes.tsx',
+                'src/routes/index.tsx',
+                'src/router.tsx',
+                'src/App.tsx',
+                'src/App.jsx',
+                'src/main.tsx',
+                'src/main.jsx',
+                'app/page.tsx',
+                'app/layout.tsx',
+            ];
+            for (const rel of routingCandidates) {
+                await tryAttach(rel);
+                if (added >= maxExtra)
+                    break;
+            }
+        }
+        if (wantsExtension) {
+            const extensionCandidates = [
+                'src/extension.ts',
+                'src/extension.js',
+                'src/panels/NaviChatPanel.tsx',
+                'src/panels/NaviChatPanel.jsx',
+            ];
+            for (const rel of extensionCandidates) {
+                await tryAttach(rel);
+                if (added >= maxExtra)
+                    break;
+            }
+        }
+        if (added > 0) {
+            console.log('[AEP] Added extra workspace context for question:', {
+                wantsRouting,
+                wantsExtension,
+                added,
+            });
+        }
+    }
     getCurrentAttachments() {
         return this._attachments.slice();
     }
@@ -1245,6 +2450,70 @@ class NaviWebviewProvider {
             console.error('[Extension Host] [AEP] Error reading attachment:', err);
             vscode.window.showErrorMessage('NAVI: Failed to read file for attachment.');
         }
+    }
+    async handleApplyReviewFixes(reviews) {
+        if (!reviews || reviews.length === 0) {
+            vscode.window.showWarningMessage('NAVI: No review comments were provided to apply.');
+            return;
+        }
+        const workspaceRoot = this.getActiveWorkspaceRoot();
+        if (!workspaceRoot) {
+            vscode.window.showErrorMessage('NAVI: No workspace root detected. Open a folder before applying fixes.');
+            return;
+        }
+        const seenPaths = new Set();
+        const attachments = [];
+        for (const r of reviews) {
+            const relPath = (r.path || '').trim();
+            if (!relPath || seenPaths.has(relPath)) {
+                continue;
+            }
+            seenPaths.add(relPath);
+            const fileFsPath = path.join(workspaceRoot, relPath);
+            const fileUri = vscode.Uri.file(fileFsPath);
+            try {
+                const bytes = await vscode.workspace.fs.readFile(fileUri);
+                const content = new TextDecoder('utf-8').decode(bytes);
+                let language;
+                try {
+                    const doc = await vscode.workspace.openTextDocument(fileUri);
+                    language = doc.languageId;
+                }
+                catch {
+                    // Best-effort: leave language undefined
+                }
+                attachments.push({
+                    kind: 'file',
+                    path: fileFsPath,
+                    language,
+                    content,
+                });
+            }
+            catch (err) {
+                console.warn('[AEP] Failed to read file for review fix:', relPath, err);
+            }
+        }
+        if (attachments.length === 0) {
+            vscode.window.showWarningMessage('NAVI: None of the files from the review comments could be read from disk.');
+            return;
+        }
+        const reviewJson = JSON.stringify(reviews, null, 2);
+        const prompt = [
+            'You previously reviewed this repo and produced these structured review comments.',
+            'Now apply ALL of these suggestions directly to the attached files.',
+            '',
+            'Rules:',
+            '- Return concrete file edits only, as agent actions of type "editFile".',
+            "- Don\'t repeat the full review text back to me.",
+            '- Keep behaviour the same except where fixes are required.',
+            '',
+            'Here are the review comments as JSON:',
+            '```json',
+            reviewJson,
+            '```',
+        ].join('\n');
+        // Use the existing chat call so we get back actions / diff views
+        await this.callNaviBackend(prompt, this._currentModelId, this._currentModeId, attachments);
     }
     // PR-7: Apply agent action from new unified message format
     async handleAgentApplyAction(message) {
@@ -1611,12 +2880,17 @@ class NaviWebviewProvider {
     }
     async getWebviewHtml(webview) {
         const cfg = vscode.workspace.getConfiguration('aep');
-        const isDevelopment = cfg.get('development.useReactDevServer') ?? true; // Default to true for dev
+        const isDevelopment = cfg.get('development.useReactDevServer') ?? true;
         console.log('[AEP] Development mode:', isDevelopment);
+        console.log('[AEP] 🔍 WEBVIEW DEBUG: Starting to generate HTML...');
         if (isDevelopment) {
-            // In development, create a tunnel to the Vite dev server
-            const viteUrl = await vscode.env.asExternalUri(vscode.Uri.parse('http://localhost:3000'));
-            console.log('[AEP] Loading Vite from:', viteUrl.toString());
+            // Get workspace root for context
+            const workspaceRoot = this.getActiveWorkspaceRoot();
+            const workspaceParam = workspaceRoot ? `?workspaceRoot=${encodeURIComponent(workspaceRoot)}` : '';
+            console.log('[AEP] 📁 Workspace context:', { workspaceRoot, workspaceParam });
+            // Load from Vite dev server - use /navi route for NaviRoot component
+            const viteUrl = await vscode.env.asExternalUri(vscode.Uri.parse(`http://localhost:3007/navi${workspaceParam}`));
+            console.log('[AEP] 🌐 Loading Vite webview from:', viteUrl.toString());
             return /* html */ `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -1625,12 +2899,89 @@ class NaviWebviewProvider {
     <title>NAVI Assistant</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { width: 100%; height: 100vh; overflow: hidden; }
+      body { width: 100%; height: 100vh; overflow: hidden; background: #020617; color: white; font-family: system-ui; }
       iframe { width: 100%; height: 100%; border: none; display: block; }
+      .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; padding: 20px; text-align: center; }
+      .loading h2 { color: #10b981; margin-bottom: 16px; }
+      .loading p { color: #94a3b8; margin-bottom: 8px; }
+      .loading code { background: #1e293b; padding: 2px 8px; border-radius: 4px; color: #10b981; }
+      .error-box {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #1e293b;
+        border: 2px solid #ef4444;
+        border-radius: 8px;
+        padding: 24px;
+        max-width: 500px;
+        text-align: left;
+        z-index: 1000;
+      }
+      .error-box h2 { color: #ef4444; margin-bottom: 12px; }
+      .error-box p { color: #cbd5e1; margin: 8px 0; }
+      .error-box code { background: #0f172a; padding: 2px 6px; border-radius: 3px; color: #10b981; }
     </style>
   </head>
   <body>
-    <iframe src="${viteUrl}" allow="cross-origin-isolated"></iframe>
+    <div class="loading" id="loading">
+      <h2>⚡ NAVI is starting...</h2>
+      <p>Loading frontend interface...</p>
+    </div>
+    <div class="error-box" id="errorBox">
+      <h2>❌ Frontend Server Not Running</h2>
+      <p>NAVI needs the frontend development server to display the interface.</p>
+      <p style="margin-top: 16px;"><strong>Quick Fix:</strong></p>
+      <p><code>cd frontend && npm run dev</code></p>
+      <p style="margin-top: 12px; font-size: 12px; color: #94a3b8;">Then reload this panel or restart VS Code.</p>
+    </div>
+    <iframe 
+      id="webview"
+      src="${viteUrl}" 
+      allow="cross-origin-isolated" 
+      style="display:none;"
+      onload="document.getElementById('loading').style.display='none'; this.style.display='block';"
+      onerror="document.getElementById('loading').style.display='none'; document.getElementById('errorBox').style.display='block';">
+    </iframe>
+    <script>
+      // Bridge VS Code API to iframe
+      const vscode = acquireVsCodeApi();
+      
+      // Forward messages from iframe to VS Code extension
+      window.addEventListener('message', (event) => {
+        if (event.source === document.getElementById('webview').contentWindow) {
+          // Message from iframe, forward to VS Code
+          vscode.postMessage(event.data);
+        }
+      });
+      
+      // Forward messages from VS Code to iframe
+      window.addEventListener('message', (event) => {
+        if (event.data && event.data.type) {
+          // Message from VS Code, forward to iframe
+          const iframe = document.getElementById('webview');
+          if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage(event.data, '*');
+          }
+        }
+      });
+      
+      // Inject vscode-like API into iframe when it loads
+      document.getElementById('webview').onload = function() {
+        document.getElementById('loading').style.display='none'; 
+        this.style.display='block';
+        
+        // Inject vscode API into iframe
+        const iframe = this;
+        if (iframe.contentWindow) {
+          iframe.contentWindow.postMessage({
+            type: '__vscode_init__',
+            vscodeApi: true
+          }, '*');
+        }
+      };
+    </script>
   </body>
 </html>`;
         }
@@ -1644,16 +2995,154 @@ class NaviWebviewProvider {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NAVI Assistant</title>
     <style>
-      body { background: #020617; color: white; font-family: system-ui; padding: 20px; }
-      h1 { color: #10b981; }
+      body { background: #020617; color: white; font-family: system-ui; padding: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; text-align: center; }
+      h1 { color: #10b981; margin-bottom: 16px; }
+      p { color: #94a3b8; margin-bottom: 8px; }
+      code { background: #1e293b; padding: 2px 8px; border-radius: 4px; color: #10b981; }
     </style>
   </head>
   <body>
-    <h1>Production Mode</h1>
-    <p>Bundled React app will be loaded here.</p>
+    <h1>🚧 Production Mode</h1>
+    <p>The bundled React app is not built yet.</p>
+    <p style="margin-top: 16px;">To use NAVI, enable development mode in settings:</p>
+    <p><code>"aep.development.useReactDevServer": true</code></p>
+    <p style="margin-top: 16px;">Then start the frontend dev server:</p>
+    <p><code>cd frontend && npm run dev</code></p>
   </body>
 </html>`;
         }
+    }
+    async checkFrontendServer() {
+        try {
+            // Try GET request first (more reliable than HEAD for some servers)
+            const response = await fetch('http://localhost:3007/', {
+                method: 'GET',
+                signal: AbortSignal.timeout(3000)
+            });
+            // Accept any 2xx or 3xx response as "running"
+            return response.status < 400;
+        }
+        catch (err) {
+            console.log('[AEP] Frontend server check failed:', err instanceof Error ? err.message : 'unknown error');
+            return false;
+        }
+    }
+    async startFrontendServer() {
+        try {
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            if (!workspaceFolder) {
+                console.log('[AEP] No workspace folder found - skipping auto-start');
+                return;
+            }
+            const frontendPath = path.join(workspaceFolder.uri.fsPath, 'frontend');
+            console.log('[AEP] Attempting to start frontend server at:', frontendPath);
+            // Check if frontend directory exists
+            try {
+                await vscode.workspace.fs.stat(vscode.Uri.file(frontendPath));
+            }
+            catch {
+                console.log('[AEP] Frontend directory does not exist - skipping auto-start');
+                return;
+            }
+            // Create terminal with command that ensures Node v20
+            console.log('[AEP] Creating terminal to start frontend server...');
+            const terminal = vscode.window.createTerminal({
+                name: 'NAVI Frontend',
+                cwd: frontendPath,
+                hideFromUser: false
+            });
+            terminal.show();
+            // Use nvm to ensure correct Node version, then start dev server
+            terminal.sendText('nvm use 20.19.6 && npm run dev');
+            console.log('[AEP] Frontend server start command sent to terminal');
+            // Show a helpful notification
+            vscode.window.showInformationMessage('NAVI: Starting frontend server... Please wait a moment then reload the panel.', 'Reload Panel').then(selection => {
+                if (selection === 'Reload Panel') {
+                    vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+                }
+            });
+        }
+        catch (err) {
+            console.log('[AEP] Could not start frontend server automatically:', err);
+            // Don't show error - the error HTML will guide the user
+        }
+    }
+    getServerNotRunningHtml() {
+        return /* html */ `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NAVI Assistant</title>
+    <style>
+      body { 
+        background: #020617; 
+        color: white; 
+        font-family: system-ui; 
+        padding: 20px; 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        justify-content: center; 
+        height: 100vh; 
+        text-align: center; 
+      }
+      h1 { color: #ef4444; margin-bottom: 16px; font-size: 24px; }
+      h2 { color: #10b981; margin: 24px 0 12px; font-size: 18px; }
+      p { color: #94a3b8; margin-bottom: 8px; line-height: 1.6; }
+      code { 
+        background: #1e293b; 
+        padding: 4px 8px; 
+        border-radius: 4px; 
+        color: #10b981; 
+        font-family: 'Courier New', monospace;
+      }
+      .command-block {
+        background: #1e293b;
+        padding: 12px;
+        border-radius: 6px;
+        margin: 16px 0;
+        border-left: 3px solid #10b981;
+      }
+      .steps {
+        text-align: left;
+        max-width: 500px;
+        margin: 20px auto;
+      }
+      .step {
+        margin: 12px 0;
+        padding: 8px;
+        background: #1e293b;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>⚠️ Frontend Server Not Running</h1>
+    <p>NAVI needs the frontend development server to display the interface.</p>
+    
+    <div class="steps">
+      <h2>Quick Fix:</h2>
+      <div class="step">
+        <strong>Option 1:</strong> Use VS Code Task
+        <div class="command-block">
+          <code>Cmd/Ctrl + Shift + P</code> → <code>Tasks: Run Task</code> → <code>frontend: start (vite)</code>
+        </div>
+      </div>
+      
+      <div class="step">
+        <strong>Option 2:</strong> Run in Terminal
+        <div class="command-block">
+          <code>cd frontend && npm run dev</code>
+        </div>
+      </div>
+    </div>
+    
+    <p style="margin-top: 24px; font-size: 12px; color: #64748b;">
+      After starting the server, reload this panel or restart VS Code.
+    </p>
+  </body>
+</html>`;
     }
     // --- Command Methods ---
     async attachSelectionCommand() {
@@ -1664,6 +3153,56 @@ class NaviWebviewProvider {
     async attachCurrentFileCommand() {
         if (this._view) {
             await this.handleAttachmentRequest(this._view.webview, 'current-file');
+        }
+    }
+    async checkErrorsAndFixCommand() {
+        console.log('[Extension Host] [AEP] Check errors & fix command triggered');
+        if (!this._view) {
+            return;
+        }
+        try {
+            // Clear attachments since diagnostics doesn't need file attachments
+            this.clearAttachments();
+            // Add user message and trigger AI processing
+            const message = "Check errors and fix them";
+            this._messages.push({ role: 'user', content: message });
+            // Show thinking state and process message
+            this.postToWebview({ type: 'botThinking', value: true });
+            await this.handleSmartRouting(message, this._currentModelId, this._currentModeId, []);
+            // Show confirmation to user
+            vscode.window.setStatusBarMessage('NAVI: Running diagnostics...', 3000);
+        }
+        catch (error) {
+            console.error('[Extension Host] [AEP] Check errors command failed:', error);
+            vscode.window.showErrorMessage('Failed to run error checking.');
+        }
+    }
+    async generateTestsForFileCommand() {
+        console.log('[Extension Host] [AEP] Generate tests for file command triggered');
+        if (!this._view) {
+            return;
+        }
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage('Open a file first to generate tests.');
+            return;
+        }
+        try {
+            // Attach current file for test generation
+            await this.handleAttachmentRequest(this._view.webview, 'current-file');
+            // Add user message and trigger AI processing
+            const message = "Generate unit tests for this file";
+            this._messages.push({ role: 'user', content: message });
+            // Show thinking state and process message
+            this.postToWebview({ type: 'botThinking', value: true });
+            const attachments = this.getCurrentAttachments();
+            await this.handleSmartRouting(message, this._currentModelId, this._currentModeId, attachments);
+            // Show confirmation to user
+            vscode.window.setStatusBarMessage('NAVI: Generating tests...', 3000);
+        }
+        catch (error) {
+            console.error('[Extension Host] [AEP] Generate tests command failed:', error);
+            vscode.window.showErrorMessage('Failed to generate tests.');
         }
     }
 }

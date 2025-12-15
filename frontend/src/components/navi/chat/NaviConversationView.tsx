@@ -16,6 +16,7 @@ export interface NaviConversationViewProps {
     initialMessages?: NaviChatMessage[];
     initialRepoPath?: string | null;
     initialBranch?: string | null;
+    mode?: string;
 }
 
 // Heuristic phrases that mean "run diagnostics / check errors"
@@ -49,6 +50,7 @@ export const NaviConversationView: React.FC<NaviConversationViewProps> = ({
     initialMessages = [],
     initialRepoPath,
     initialBranch,
+    mode,
 }) => {
     const [messages, setMessages] = useState<NaviChatMessage[]>(initialMessages);
     const [input, setInput] = useState("");
@@ -118,6 +120,7 @@ export const NaviConversationView: React.FC<NaviConversationViewProps> = ({
             const assistantMessage = await sendNaviChat(trimmed, {
                 workspace_root: workspacePath,
                 branch: branch,
+                mode,
             });
             addMessages([assistantMessage]);
         } catch (err: any) {

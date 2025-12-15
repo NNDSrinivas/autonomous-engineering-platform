@@ -1536,7 +1536,7 @@ async def handle_repo_scan_fast_path(
             state={
                 "repo_fast_path": True,
                 "kind": "scan",
-                "llm_error": str(e),
+                "llm_error": "LLM generation failed",
             },
             duration_ms=int((time.monotonic() - started) * 1000),
         )
@@ -2922,5 +2922,5 @@ async def navi_chat(
         logger.error("[NAVI-CHAT] Error: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to process NAVI chat: {str(e)}",
+            detail="Failed to process NAVI chat",
         )

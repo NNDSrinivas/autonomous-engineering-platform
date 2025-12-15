@@ -644,7 +644,7 @@ async def _tool_jira_list_assigned_issues(
         logger.error("Jira list assigned issues error: %s", e)
         return {
             "tool": "jira.list_assigned_issues_for_user",
-            "text": f"Failed to fetch Jira issues: {str(e)}",
+            "text": "Failed to fetch Jira issues - check your connection and credentials",
         }
 
 

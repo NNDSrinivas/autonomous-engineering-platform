@@ -15,8 +15,8 @@ def upgrade() -> None:
     # Clean up any prior partial deployments
     op.execute("DROP INDEX IF EXISTS ix_change_set_org_id")
     op.execute("DROP INDEX IF EXISTS ix_change_set_user_id")
-    # Drop table if it exists (cascade will drop dependent indexes too)
-    op.execute("DROP TABLE IF EXISTS change_set CASCADE")
+    # Drop table if it exists (SQLite compatible)
+    op.execute("DROP TABLE IF EXISTS change_set")
 
     op.create_table(
         "change_set",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -168,6 +169,7 @@ def undo_change(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"Undo failed: {exc}") from exc
+        logging.error("Undo operation failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Undo operation failed")
 
     return {"ok": True, "message": "Changes undone via stored patch."}

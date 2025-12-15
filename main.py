@@ -315,7 +315,7 @@ async def ask_question(request: QuestionRequest):
         logger.error("Error in ask_question: %s", e)
         raise HTTPException(
             status_code=500, detail="Error processing question. Please try again later."
-        ) from e
+        )
 
 
 @app.post("/api/analyze-code")

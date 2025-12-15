@@ -96,14 +96,14 @@ def readiness_payload() -> dict:
     try:
         checks.append(check_db())
     except Exception:
-        logging.exception("DB readiness check failed")
+        logging.error("DB readiness check failed")
         checks.append(
             {"name": "db", "ok": False, "latency_ms": 0, "detail": "internal error"}
         )
     try:
         checks.append(check_redis())
     except Exception:
-        logging.exception("Redis readiness check failed")
+        logging.error("Redis readiness check failed")
         checks.append(
             {"name": "redis", "ok": False, "latency_ms": 0, "detail": "internal error"}
         )

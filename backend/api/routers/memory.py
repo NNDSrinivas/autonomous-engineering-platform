@@ -86,7 +86,7 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=503,
             detail="Memory service temporarily unavailable (database connection issue)",
-        ) from e
+        )
     except ProgrammingError as e:
         # Log the original exception for debugging while preserving exception context
         logger.error(
@@ -98,7 +98,7 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500,
             detail="Memory service misconfigured (database schema error)",
-        ) from e
+        )
 
     return {"status": "recorded", "session_id": req.session_id}
 

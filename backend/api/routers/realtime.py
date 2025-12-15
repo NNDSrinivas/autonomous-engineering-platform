@@ -122,7 +122,7 @@ def get_redis_client() -> redis.Redis:
         raise HTTPException(
             status_code=HTTP_503_SERVICE_UNAVAILABLE,
             detail="Redis unavailable",
-        ) from e
+        )
 
 
 # Context manager for database sessions in streaming contexts

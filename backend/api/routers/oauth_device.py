@@ -137,10 +137,8 @@ async def start_device_code_flow(request: DeviceCodeStartRequest):
             interval=5,  # Poll every 5 seconds
         )
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start device code flow: {str(e)}"
-        ) from e
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to start device code flow")
 
 
 @router.post("/device/poll", response_model=DeviceCodeTokenResponse)
@@ -249,10 +247,8 @@ async def poll_device_code(request: DeviceCodePollRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to poll device code: {str(e)}"
-        ) from e
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to poll device code")
 
 
 class DeviceAuthorizationRequest(BaseModel):
@@ -313,10 +309,8 @@ async def authorize_device_code(request: DeviceAuthorizationRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to authorize device: {str(e)}"
-        ) from e
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to authorize device")
 
 
 def _generate_user_code() -> str:

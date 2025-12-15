@@ -391,7 +391,7 @@ async def analyze_code(request: CodeAnalysisRequest):
         logger.error("Error in analyze_code: %s", e)
         raise HTTPException(
             status_code=500, detail="Error analyzing code. Please try again later."
-        ) from e
+        )
 
 
 @app.get("/api/team-analytics")
@@ -465,7 +465,7 @@ async def get_team_analytics():
         logger.error("Error in team_analytics: %s", e)
         raise HTTPException(
             status_code=500, detail="Error getting analytics. Please try again later."
-        ) from e
+        )
 
 
 @app.get("/api/features")

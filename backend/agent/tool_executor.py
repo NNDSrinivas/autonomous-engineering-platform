@@ -293,7 +293,7 @@ async def _tool_repo_inspect(args: Dict[str, Any]) -> Dict[str, Any]:
         retrieve_workspace_sync,
     )
 
-    workspace_ctx = retrieve_workspace_sync(workspace.get('workspace_root', ''))
+    workspace_ctx = retrieve_workspace_sync(workspace.get("workspace_root", ""))
 
     # Build system context for the LLM
     system_context = (
@@ -585,8 +585,8 @@ async def _tool_jira_list_assigned_issues(
             sources = result.get("sources", [])
         else:
             # Handle ToolResult
-            issues = result.output if hasattr(result, 'output') else []
-            sources = result.sources if hasattr(result, 'sources') else []
+            issues = result.output if hasattr(result, "output") else []
+            sources = result.sources if hasattr(result, "sources") else []
 
         # Format for LLM consumption
         if not issues:
@@ -742,9 +742,6 @@ async def _tool_jira_assign_issue(
     """Assign a Jira issue to a user."""
 
     issue_key = args.get("issue_key") or args.get("key")
-    org_id = args.get("org_id")
-    assignee_account_id = args.get("assignee_account_id")
-    assignee_name = args.get("assignee_name")
     approved = args.get("approve") is True
 
     if not issue_key:
@@ -752,7 +749,7 @@ async def _tool_jira_assign_issue(
             "tool": "jira.assign_issue",
             "text": "issue_key is required to assign a Jira issue.",
         }
-    
+
     if not approved:
         return {
             "tool": "jira.assign_issue",
@@ -807,7 +804,7 @@ async def _tool_github_comment(
     if not conn:
         return {"tool": "github.comment", "text": "No GitHub connection found"}
 
-    gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
+    GitHubService(token=decrypt_token(conn.access_token or ""))
     try:
         # TODO: Implement add_comment method in GitHubService
         # await gh_client.add_comment(repo_full_name, number, comment)
@@ -833,8 +830,6 @@ async def _tool_github_set_label(
     db=None,
 ) -> Dict[str, Any]:
     """Set a label on a GitHub issue/PR."""
-    from backend.integrations.github.service import GitHubService
-    from backend.core.crypto import decrypt_token
     from backend.core.db import get_db
     from backend.models.integrations import GhConnection
 
@@ -863,9 +858,9 @@ async def _tool_github_set_label(
     if not conn:
         return {"tool": "github.set_label", "text": "No GitHub connection found"}
 
-    gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
+    # gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
     try:
-        # TODO: Implement set_labels method in GitHubService  
+        # TODO: Implement set_labels method in GitHubService
         # await gh_client.set_labels(repo_full_name, number, labels)
         return {
             "tool": "github.set_label",
@@ -889,8 +884,6 @@ async def _tool_github_rerun_check(
     db=None,
 ) -> Dict[str, Any]:
     """Re-run a GitHub check suite/workflow for a commit/PR."""
-    from backend.integrations.github.service import GitHubService
-    from backend.core.crypto import decrypt_token
     from backend.core.db import get_db
     from backend.models.integrations import GhConnection
 
@@ -918,7 +911,7 @@ async def _tool_github_rerun_check(
     if not conn:
         return {"tool": "github.rerun_check", "text": "No GitHub connection found"}
 
-    gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
+    # gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
     try:
         # TODO: Implement rerun_check_run method in GitHubService
         # await gh_client.rerun_check_run(repo_full_name, check_run_id)

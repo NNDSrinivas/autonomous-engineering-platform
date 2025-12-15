@@ -222,7 +222,7 @@ async def execute_step(request: ExecuteStepRequest, db: Session = Depends(get_db
         return result
 
     except Exception:
-        logger.error(f"Failed to execute step {request.step_id}")
+        logger.error("Failed to execute autonomous coding step")
         raise HTTPException(
             status_code=500, detail="Failed to execute autonomous coding step"
         )
@@ -362,7 +362,7 @@ async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
 
         # If error, raise HTTPException with generic message, otherwise return result
         if result.get("status") == "error":
-            logger.error(f"Failed to create PR for task {task_id}")
+            logger.error("Failed to create pull request")
             raise HTTPException(
                 status_code=500,
                 detail="Failed to create pull request",
@@ -371,7 +371,7 @@ async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
         return result
 
     except Exception:
-        logger.error(f"Failed to create PR for task {task_id}")
+        logger.error("Failed to create pull request")
         raise HTTPException(status_code=500, detail="Failed to create pull request")
 
 

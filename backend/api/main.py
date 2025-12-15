@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter, Request
@@ -117,10 +118,10 @@ async def lifespan(app: FastAPI):
     presence_lifecycle.stop_cleanup_thread()
     try:
         result = on_shutdown()  # PR-29: Graceful shutdown
-        if hasattr(result, "__await__"):
+        if inspect.iscoroutine(result):
             await result
     except Exception as e:
-        logger.warning(f"Shutdown warning: {e}")
+        logger.warning("Shutdown warning occurred during cleanup")
 
 
 app = FastAPI(title=f"{settings.APP_NAME} - Core API", lifespan=lifespan)

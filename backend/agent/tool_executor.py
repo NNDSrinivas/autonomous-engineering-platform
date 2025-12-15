@@ -763,27 +763,54 @@ async def _tool_jira_assign_issue(
     db=None,
 ) -> Dict[str, Any]:
     """Assign a Jira issue to a user."""
+    from backend.services.jira import JiraService
+    from backend.core.db import get_db
 
     issue_key = args.get("issue_key") or args.get("key")
+    org_id = args.get("org_id")
+    assignee_account_id = args.get("assignee_account_id")
+    assignee_name = args.get("assignee_name")
     approved = args.get("approve") is True
 
-    if not issue_key:
+    if not issue_key or not assignee_account_id:
         return {
             "tool": "jira.assign_issue",
-            "text": "issue_key is required to assign a Jira issue.",
+            "text": "issue_key and assignee_account_id are required to assign a Jira issue.",
         }
-
     if not approved:
         return {
             "tool": "jira.assign_issue",
             "text": "Approval required to assign a Jira issue. Pass approve=true to proceed.",
         }
 
-    # TODO: Implement actual Jira assignment
-    return {
-        "tool": "jira.assign_issue",
-        "text": f"Jira issue assignment not yet implemented for {issue_key}",
-    }
+    local_db = db or next(get_db())
+
+    try:
+        await JiraService.assign_issue(
+            local_db,
+            issue_key=issue_key,
+            assignee_account_id=assignee_account_id,
+            assignee_name=assignee_name,
+            user_id=user_id,
+            org_id=org_id,
+        )
+        return {
+            "tool": "jira.assign_issue",
+            "text": f"Assigned {issue_key} to {assignee_name or assignee_account_id}",
+            "sources": [
+                {
+                    "name": issue_key,
+                    "type": "jira",
+                    "connector": "jira",
+                }
+            ],
+        }
+    except Exception as exc:
+        logger.error("Jira assign_issue error occurred")
+        return {
+            "tool": "jira.assign_issue",
+            "text": "Failed to assign Jira issue due to an error",
+        }
 
 
 # ---------------------------------------------------------------------------

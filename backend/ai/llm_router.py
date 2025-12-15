@@ -259,20 +259,15 @@ class LLMRouter:
 
         # Model only → find provider that contains it
         if model:
-            model_info = None  # get_model(model) not available
-            # model_info check removed
-
-            provider_info = None  # get_provider(model_info.provider_id) not available
-
-            models = registry.list_models(provider)
-            if not models:
-                raise ModelNotFoundError(
-                    f"No models available for provider '{provider}'"
-                )
-
-            # Find recommended model or use first
-            recommended = next((m for m in models if m.recommended), models[0])
-            return provider_info, recommended
+            # Search all providers for the model
+            for prov in registry.list_providers():
+                models = registry.list_models(prov.provider_id)
+                for model_info in models:
+                    if model_info.model_id == model:
+                        provider_info = prov
+                        return provider_info, model_info
+            
+            raise ModelNotFoundError(f"Model '{model}' not found in any provider")
 
         # Nothing provided → fall back to SMART AUTO
         return self._resolve_model(None, None, True, allowed_providers)

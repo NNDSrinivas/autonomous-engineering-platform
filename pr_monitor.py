@@ -7,8 +7,6 @@ Monitors PR #54 for build failures and new comments, automatically fixes issues.
 import subprocess
 import time
 import json
-import sys
-import requests
 from datetime import datetime
 
 def run_command(cmd, capture_output=True):

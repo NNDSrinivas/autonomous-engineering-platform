@@ -262,7 +262,7 @@
       // Create icon circle
       const iconCircle = document.createElement("div");
       iconCircle.className = "aep-connectors-icon-circle";
-      
+
       if (iconUrl) {
         const img = document.createElement("img");
         img.src = iconUrl;

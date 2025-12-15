@@ -246,7 +246,8 @@ class LLMRouter:
                 f"[LLM] SMART-AUTO selected: {best.provider_id}:{best.model_id}"
             )
 
-            return None, best
+            provider_info = registry.get_provider(best.provider_id)
+            return provider_info, best
 
         # Explicit provider + model
         if provider and model:

@@ -1072,10 +1072,10 @@ function showEphemeralToast(message, level = 'info') {
     }
 
     attachmentsContainer.style.display = 'block';
-    
+
     // Clear container
     attachmentsContainer.innerHTML = '';
-    
+
     // Create attachments using safe DOM methods
     pendingAttachments.forEach(attachment => {
       const filename = (attachment.path || '').split(/[\\\/]/).pop() || attachment.path || '';
@@ -1611,27 +1611,27 @@ function showEphemeralToast(message, level = 'info') {
           actionsContainer.className = 'navi-agent-actions';
 
           msg.actions.forEach((action, idx) => {
-          const row = document.createElement('div');
-          row.className = 'navi-agent-action-row';
+            const row = document.createElement('div');
+            row.className = 'navi-agent-action-row';
 
-          const isPatch = isPatchAction(action);
-          const stepIndex = idx + 1;
-          const titleText =
-            action.title ||
-            action.label ||
-            action.description ||
-            (isPatch ? 'Apply code change' : 'Workspace step');
+            const isPatch = isPatchAction(action);
+            const stepIndex = idx + 1;
+            const titleText =
+              action.title ||
+              action.label ||
+              action.description ||
+              (isPatch ? 'Apply code change' : 'Workspace step');
 
-          const filePath = action.filePath || action.path || '';
-          const escapedTitle = escapeHtml(titleText);
-          const escapedDesc = escapeHtml(action.description || action.detail || '');
-          const escapedFile = filePath ? escapeHtml(filePath) : '';
+            const filePath = action.filePath || action.path || '';
+            const escapedTitle = escapeHtml(titleText);
+            const escapedDesc = escapeHtml(action.description || action.detail || '');
+            const escapedFile = filePath ? escapeHtml(filePath) : '';
 
-          const safetyLabel = isPatch ? 'CHANGES CODE' : 'SAFE · reads workspace';
-          const safetyClass = isPatch ? 'navi-agent-badge-danger' : 'navi-agent-badge-safe';
-          const requiresApproval = action.requiresApproval === true;
+            const safetyLabel = isPatch ? 'CHANGES CODE' : 'SAFE · reads workspace';
+            const safetyClass = isPatch ? 'navi-agent-badge-danger' : 'navi-agent-badge-safe';
+            const requiresApproval = action.requiresApproval === true;
 
-          row.innerHTML = `
+            row.innerHTML = `
             <details class="navi-agent-action-collapsible" open>
               <summary class="navi-agent-action-summary">
                 <span class="navi-agent-step-index">Step ${stepIndex}</span>
@@ -1643,24 +1643,24 @@ function showEphemeralToast(message, level = 'info') {
                 ${escapedDesc ? `<div class="navi-agent-action-detail">${escapedDesc}</div>` : ''}
                 <div class="navi-agent-action-buttons">
                   ${requiresApproval
-                    ? `<div class="navi-agent-action-detail">Approval required below.</div>`
-                    : isPatch
-                      ? `
+                ? `<div class="navi-agent-action-detail">Approval required below.</div>`
+                : isPatch
+                  ? `
                           <button class="navi-agent-btn navi-agent-btn-approve" data-command="apply" data-index="${idx}">Apply</button>
                           <button class="navi-agent-btn" data-command="diff" data-index="${idx}">Diff</button>
                           <button class="navi-agent-btn" data-command="explain" data-index="${idx}">Explain</button>
                         `
-                      : `
+                  : `
                           <button class="navi-agent-btn navi-agent-btn-approve" data-command="run" data-index="${idx}">Run step</button>
                           <button class="navi-agent-btn" data-command="explain" data-index="${idx}">Explain</button>
                         `
-                  }
+              }
                 </div>
               </div>
             </details>
           `;
 
-          actionsContainer.appendChild(row);
+            actionsContainer.appendChild(row);
           });
 
           // Click handler for Apply / Diff / Explain / Run

@@ -209,6 +209,10 @@ async def _scan_small_files(
 
                 filepath = os.path.join(dirpath, filename)
 
+                # Validate filepath is within root directory to prevent path traversal
+                if not _is_safe_path(root, filepath):
+                    continue
+
                 try:
                     file_size = os.path.getsize(filepath)
                     if file_size > max_size:

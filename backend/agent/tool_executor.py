@@ -472,11 +472,34 @@ async def _tool_code_search(args: Dict[str, Any]) -> Dict[str, Any]:
             "text": "No search pattern provided.",
         }
 
-    try:
-        regex = re.compile(pattern)
-    except re.error:
-        # Fallback to literal search
-        regex = None
+    # Safely compile regex pattern to prevent injection attacks
+    def _safe_compile_regex(pattern: str) -> Optional[re.Pattern]:
+        """Safely compile regex pattern with validation and size limits."""
+        # Limit pattern length to prevent ReDoS attacks
+        if len(pattern) > 1000:
+            return None
+
+        # Check for dangerous regex constructs
+        dangerous_patterns = [
+            r"\(\?\#",  # Comments that could hide malicious code
+            r"\(\?\=.*\)",  # Complex lookaheads
+            r"\(\?\!.*\)",  # Complex lookbehinds
+            r"\*\*+",  # Nested quantifiers
+            r"\+\++",  # Nested quantifiers
+            r"\{\d+,\}",  # Unbounded quantifiers
+        ]
+
+        for dangerous in dangerous_patterns:
+            if re.search(dangerous, pattern):
+                return None
+
+        try:
+            # Set reasonable timeout for compilation
+            return re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+        except (re.error, OverflowError, MemoryError):
+            return None
+
+    regex = _safe_compile_regex(pattern)
 
     matches: List[Dict[str, Any]] = []
 

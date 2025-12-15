@@ -1,8 +1,24 @@
 import os
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _is_safe_path(path: str, workspace_root: str) -> bool:
+    """Safely validate that path is within workspace_root to prevent path traversal."""
+    try:
+        # Convert to pathlib Path objects and resolve
+        target_path = Path(path).resolve()
+        workspace_path = Path(workspace_root).resolve()
+
+        # Check if target is within workspace
+        target_path.relative_to(workspace_path)
+        return True
+    except (ValueError, OSError):
+        return False
+
 
 EXCLUDED_DIRS = {"node_modules", ".git", ".venv", "__pycache__", "dist", "build", "out"}
 
@@ -25,23 +41,22 @@ MAX_FILE_SIZE = 30_000  # 30 KB
 
 def safe_read_file(path: str, workspace_root: Optional[str] = None) -> Optional[str]:
     try:
-        # Normalize paths to prevent path traversal attacks
-        normalized_path = os.path.normpath(os.path.abspath(path))
-
         # Validate path is within workspace if workspace_root is provided
-        if workspace_root:
-            normalized_workspace = os.path.normpath(os.path.abspath(workspace_root))
-            if not normalized_path.startswith(normalized_workspace):
-                logger.warning("Rejecting path outside workspace: %s", normalized_path)
-                return None
+        if workspace_root and not _is_safe_path(path, workspace_root):
+            logger.warning("Rejecting unsafe path: %s", path)
+            return None
 
-        if not os.path.exists(normalized_path):
+        # Use pathlib for secure path operations
+        file_path = Path(path).resolve()
+
+        if not file_path.exists() or not file_path.is_file():
             return None
-        if os.path.getsize(normalized_path) > MAX_FILE_SIZE:
+        if file_path.stat().st_size > MAX_FILE_SIZE:
             return None
-        with open(normalized_path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read()
-    except Exception:
+
+        return file_path.read_text(encoding="utf-8", errors="ignore")
+    except (OSError, ValueError) as e:
+        logger.warning("Error reading file %s: %s", path, e)
         return None
 
 
@@ -51,22 +66,29 @@ def build_file_tree(root: str, depth: int = 2) -> List[Dict[str, Any]]:
         return result
 
     try:
-        for entry in os.listdir(root):
-            if entry in EXCLUDED_DIRS:
+        root_path = Path(root).resolve()
+        if not root_path.exists() or not root_path.is_dir():
+            return result
+
+        for entry in root_path.iterdir():
+            if entry.name in EXCLUDED_DIRS:
                 continue
 
-            full_path = os.path.join(root, entry)
-            node: Dict[str, Any] = {"name": entry}
+            # Validate the entry is actually within root directory
+            if not _is_safe_path(str(entry), str(root_path)):
+                continue
 
-            if os.path.isdir(full_path):
+            node: Dict[str, Any] = {"name": entry.name}
+
+            if entry.is_dir():
                 node["type"] = "dir"
-                node["children"] = build_file_tree(full_path, depth - 1)
+                node["children"] = build_file_tree(str(entry), depth - 1)
             else:
                 node["type"] = "file"
 
             result.append(node)
-    except Exception as exc:
-        logger.warning("Failed to process filesystem node", extra={"error": str(exc)})
+    except (OSError, ValueError) as exc:
+        logger.warning("Failed to process filesystem node: %s", exc)
 
     return result
 
@@ -76,23 +98,36 @@ def retrieve_workspace_sync(root: str, max_files: int = 20) -> Dict[str, Any]:
     files = {}
     count = 0
 
-    for root_path, dirs, filenames in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
+    try:
+        root_path = Path(root).resolve()
+        if not root_path.exists() or not root_path.is_dir():
+            return {"root": root, "structure": [], "files": {}}
 
-        for filename in filenames:
-            if count >= max_files:
-                break
+        for current_root, dirs, filenames in os.walk(str(root_path)):
+            dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
 
-            _, ext = os.path.splitext(filename)
-            if ext not in TEXT_EXT:
-                continue
+            for filename in filenames:
+                if count >= max_files:
+                    break
 
-            file_path = os.path.join(root_path, filename)
-            content = safe_read_file(file_path, root)
+                _, ext = os.path.splitext(filename)
+                if ext not in TEXT_EXT:
+                    continue
 
-            if content:
-                rel_path = os.path.relpath(file_path, root)
-                files[rel_path] = content
-                count += 1
+                file_path = os.path.join(current_root, filename)
 
-    return {"root": root, "structure": build_file_tree(root), "files": files}
+                # Validate file path is within root
+                if not _is_safe_path(file_path, str(root_path)):
+                    continue
+
+                content = safe_read_file(file_path, str(root_path))
+
+                if content:
+                    rel_path = os.path.relpath(file_path, str(root_path))
+                    files[rel_path] = content
+                    count += 1
+
+        return {"root": root, "structure": build_file_tree(root), "files": files}
+    except (OSError, ValueError) as exc:
+        logger.warning("Error retrieving workspace: %s", exc)
+        return {"root": root, "structure": [], "files": {}}

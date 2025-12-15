@@ -47,18 +47,13 @@ def upgrade() -> None:
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_chat_history_session_id ON chat_history (session_id)"
     )
-    op.create_foreign_key(
-        "fk_chat_history_session",
-        source_table="chat_history",
-        referent_table="chat_session",
-        local_cols=["session_id"],
-        remote_cols=["id"],
-        ondelete="SET NULL",
-    )
+    # Skip foreign key constraint for SQLite compatibility
+    # SQLite doesn't support adding foreign key constraints after table creation
+    # The relationship will be maintained at the application level
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_chat_history_session", "chat_history", type_="foreignkey")
+    # Skip foreign key constraint drop for SQLite compatibility
     op.drop_index("ix_chat_history_session_id", table_name="chat_history")
     op.drop_column("chat_history", "session_id")
     op.drop_index("ix_chat_session_user_id", table_name="chat_session")

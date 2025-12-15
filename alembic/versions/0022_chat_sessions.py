@@ -20,13 +20,13 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),
-            server_default=sa.text("NOW()"),
+            server_default=sa.text("(datetime('now'))"),
             nullable=False,
         ),
         sa.Column(
             "updated_at",
             sa.TIMESTAMP(timezone=True),
-            server_default=sa.text("NOW()"),
+            server_default=sa.text("(datetime('now'))"),
             nullable=False,
         ),
     )

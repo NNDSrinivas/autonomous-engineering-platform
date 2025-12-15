@@ -18,7 +18,7 @@ SLACK_THREAD_PATTERN = re.compile(r"p\d{10,}")
 
 # Relationship detection patterns
 FIXES_PATTERN = re.compile(
-    r"(?:fix(?:es)?|close(?:s)?|resolve(?:s)?)\\s*(?:#(\\d{1,8})|([A-Z]{2,10}-\\d{1,8}))",
+    r"(?:fix(?:es)?|close(?:s)?|resolve(?:s)?)\s*(?:#(\d{1,8})|([A-Z]{2,10}-\d{1,8}))",
     re.IGNORECASE,
 )
 REVERT_PATTERN = re.compile(r"revert|reverts", re.IGNORECASE)

@@ -191,7 +191,7 @@ async def create_task_from_jira(
     except Exception as e:
         logger.error(f"Failed to create task from JIRA {request.jira_key}: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Failed to create autonomous task: {str(e)}"
+            status_code=500, detail="Failed to create autonomous task. Please check server logs for details."
         )
 
 
@@ -251,8 +251,8 @@ async def get_task_status(task_id: str, db: Session = Depends(get_db)):
         }
 
     except Exception as e:
-        logger.error(f"Failed to get task status {task_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to get steps for task {task_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve task steps. Please check server logs.") to retrieve task status. Please check server logs.")
 
 
 @router.get("/tasks/{task_id}/steps")
@@ -289,7 +289,7 @@ async def get_task_steps(task_id: str, db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error(f"Failed to get task steps {task_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve task steps. Please check server logs.")
 
 
 @router.post("/tasks/{task_id}/preview-step/{step_id}")
@@ -334,7 +334,7 @@ async def preview_step_changes(
 
     except Exception as e:
         logger.error(f"Failed to preview step {step_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to preview step. Please check server logs.")
 
 
 @router.post("/tasks/{task_id}/create-pr")
@@ -423,7 +423,7 @@ async def get_user_daily_context(request: Request, db: Session = Depends(get_db)
 
     except Exception as e:
         logger.error(f"Failed to get daily context: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to retrieve daily context. Please check server logs.")
 
 
 # Helper functions for enterprise context gathering

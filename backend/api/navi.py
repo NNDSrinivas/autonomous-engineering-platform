@@ -304,47 +304,6 @@ def _looks_like_generate_tests(message: str) -> bool:
 
 def _looks_like_code_edit(message: str) -> bool:
     """
-    Generic 'edit this code' detector (excluding test-generation phrases).
-    """
-    msg = (message or "").lower()
-    patterns = (
-        "fix this code",
-        "fix the code",
-        "fix compilation error",
-        "fix type error",
-        "fix the typescript errors",
-        "refactor this",
-        "refactor this code",
-        "improve this code",
-        "optimize this function",
-        "rewrite this function",
-        "implement this function",
-        "rename this symbol",
-        "add logging to this function",
-    )
-    return any(p in msg for p in patterns)
-
-
-def _looks_like_check_errors(message: str) -> bool:
-    """
-    Detects 'check errors & fix' style messages.
-    This is what the VS Code quick action sends.
-    """
-    msg = (message or "").lower()
-    patterns = (
-        "check errors and fix",
-        "check errors & fix",
-        "check errors",
-        "fix errors",
-        "fix the errors",
-        "run tests and fix",
-        "run the tests and fix",
-    )
-    return any(p in msg for p in patterns)
-
-
-def _looks_like_code_edit(message: str) -> bool:
-    """
     Detect 'please fix/refactor/implement' type requests
     where the user is likely expecting direct code changes.
     """
@@ -1163,7 +1122,7 @@ async def _run_command_in_repo(
         return -1, f"Command {' '.join(cmd)} timed out after {timeout}s."
 
     text = out.decode("utf-8", "ignore")
-    return proc.returncode, text
+    return proc.returncode or -1, text
 
 
 def _detect_diagnostics_command(root: Path) -> Optional[List[str]]:

@@ -290,10 +290,10 @@ async def _tool_repo_inspect(args: Dict[str, Any]) -> Dict[str, Any]:
 
     # Get workspace context using perfect workspace retriever
     from backend.agent.perfect_workspace_retriever import (
-        retrieve_workspace,
+        retrieve_workspace_sync,
     )
 
-    workspace_ctx = await retrieve_workspace(workspace)
+    workspace_ctx = retrieve_workspace_sync(workspace.get('workspace_root', ''))
 
     # Build system context for the LLM
     system_context = (
@@ -574,15 +574,19 @@ async def _tool_jira_list_assigned_issues(
         # Call the Jira tool with unified sources output
         result = await list_assigned_issues_for_user(context, max_results)
 
-        # Check for errors
-        if "error" in result:
-            return {
-                "tool": "jira.list_assigned_issues_for_user",
-                "text": f"Error retrieving Jira issues: {result['error']}",
-            }
-
-        issues = result.get("issues", [])
-        sources = result.get("sources", [])
+        # Check for errors - handle both dict and ToolResult
+        if isinstance(result, dict):
+            if "error" in result:
+                return {
+                    "tool": "jira.list_assigned_issues_for_user",
+                    "text": f"Error retrieving Jira issues: {result['error']}",
+                }
+            issues = result.get("issues", [])
+            sources = result.get("sources", [])
+        else:
+            # Handle ToolResult
+            issues = result.output if hasattr(result, 'output') else []
+            sources = result.sources if hasattr(result, 'sources') else []
 
         # Format for LLM consumption
         if not issues:
@@ -738,16 +742,28 @@ async def _tool_jira_assign_issue(
     """Assign a Jira issue to a user."""
 
     issue_key = args.get("issue_key") or args.get("key")
-    args.get("org_id")
-    args.get("assignee_account_id")
-    args.get("assignee_name")
-    args.get("approve") is True
+    org_id = args.get("org_id")
+    assignee_account_id = args.get("assignee_account_id")
+    assignee_name = args.get("assignee_name")
+    approved = args.get("approve") is True
 
     if not issue_key:
         return {
             "tool": "jira.assign_issue",
             "text": "issue_key is required to assign a Jira issue.",
         }
+    
+    if not approved:
+        return {
+            "tool": "jira.assign_issue",
+            "text": "Approval required to assign a Jira issue. Pass approve=true to proceed.",
+        }
+
+    # TODO: Implement actual Jira assignment
+    return {
+        "tool": "jira.assign_issue",
+        "text": f"Jira issue assignment not yet implemented for {issue_key}",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -793,10 +809,11 @@ async def _tool_github_comment(
 
     gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
     try:
-        await gh_client.add_comment(repo_full_name, number, comment)
+        # TODO: Implement add_comment method in GitHubService
+        # await gh_client.add_comment(repo_full_name, number, comment)
         return {
             "tool": "github.comment",
-            "text": f"Added comment to {repo_full_name}#{number}",
+            "text": f"GitHub comment functionality not yet implemented for {repo_full_name}#{number}",
             "sources": [
                 {
                     "name": f"{repo_full_name}#{number}",
@@ -848,10 +865,11 @@ async def _tool_github_set_label(
 
     gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
     try:
-        await gh_client.set_labels(repo_full_name, number, labels)
+        # TODO: Implement set_labels method in GitHubService  
+        # await gh_client.set_labels(repo_full_name, number, labels)
         return {
             "tool": "github.set_label",
-            "text": f"Updated labels on {repo_full_name}#{number}: {', '.join(labels)}",
+            "text": f"GitHub label setting functionality not yet implemented for {repo_full_name}#{number}",
             "sources": [
                 {
                     "name": f"{repo_full_name}#{number}",
@@ -902,10 +920,11 @@ async def _tool_github_rerun_check(
 
     gh_client = GitHubService(token=decrypt_token(conn.access_token or ""))
     try:
-        await gh_client.rerun_check_run(repo_full_name, check_run_id)
+        # TODO: Implement rerun_check_run method in GitHubService
+        # await gh_client.rerun_check_run(repo_full_name, check_run_id)
         return {
             "tool": "github.rerun_check",
-            "text": f"Requested rerun for check_run {check_run_id} in {repo_full_name}",
+            "text": f"GitHub check run rerun functionality not yet implemented for {repo_full_name}",
             "sources": [
                 {"name": f"{repo_full_name}", "type": "github", "connector": "github"}
             ],

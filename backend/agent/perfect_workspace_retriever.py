@@ -71,7 +71,7 @@ def build_file_tree(root: str, depth: int = 2) -> List[Dict[str, Any]]:
     return result
 
 
-def retrieve_workspace(root: str, max_files: int = 20) -> Dict[str, Any]:
+def retrieve_workspace_sync(root: str, max_files: int = 20) -> Dict[str, Any]:
     """Retrieve workspace structure and file contents."""
     files = {}
     count = 0

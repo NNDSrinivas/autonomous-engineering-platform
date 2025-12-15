@@ -255,27 +255,62 @@
       const iconUrl = c.icon && iconBase ? `${iconBase}/${c.icon}` : "";
       console.log(`[AEP] Icon for ${c.name}: ${iconUrl || 'fallback to letter'}`);
 
-      row.innerHTML = `
-        <div class="aep-connectors-card-main">
-          <div class="aep-connectors-icon-circle">
-            ${iconUrl
-          ? `<img src="${iconUrl}" alt="${c.name}" />`
-          : c.name.charAt(0).toUpperCase()
-        }
-          </div>
-          <div class="aep-connectors-card-text">
-            <div class="aep-connectors-card-title-row">
-              <div class="aep-connectors-card-title">${c.name}</div>
-              ${renderStatusBadge(c)}
-            </div>
-            <div class="aep-connectors-card-desc">${c.description}</div>
-            <div class="aep-connectors-card-meta">${c.vendor}</div>
-          </div>
-        </div>
-        <div class="aep-connectors-card-side">
-          ${renderActionButton(c)}
-        </div>
-      `;
+      // Create main container
+      const main = document.createElement("div");
+      main.className = "aep-connectors-card-main";
+
+      // Create icon circle
+      const iconCircle = document.createElement("div");
+      iconCircle.className = "aep-connectors-icon-circle";
+      
+      if (iconUrl) {
+        const img = document.createElement("img");
+        img.src = iconUrl;
+        img.alt = c.name || "";
+        iconCircle.appendChild(img);
+      } else {
+        iconCircle.textContent = (c.name || "").charAt(0).toUpperCase();
+      }
+
+      // Create text container
+      const textContainer = document.createElement("div");
+      textContainer.className = "aep-connectors-card-text";
+
+      // Create title row
+      const titleRow = document.createElement("div");
+      titleRow.className = "aep-connectors-card-title-row";
+
+      const title = document.createElement("div");
+      title.className = "aep-connectors-card-title";
+      title.textContent = c.name || "";
+
+      titleRow.appendChild(title);
+      titleRow.insertAdjacentHTML('beforeend', renderStatusBadge(c));
+
+      // Create description
+      const desc = document.createElement("div");
+      desc.className = "aep-connectors-card-desc";
+      desc.textContent = c.description || "";
+
+      // Create meta
+      const meta = document.createElement("div");
+      meta.className = "aep-connectors-card-meta";
+      meta.textContent = c.vendor || "";
+
+      textContainer.appendChild(titleRow);
+      textContainer.appendChild(desc);
+      textContainer.appendChild(meta);
+
+      main.appendChild(iconCircle);
+      main.appendChild(textContainer);
+
+      // Create side container
+      const side = document.createElement("div");
+      side.className = "aep-connectors-card-side";
+      side.insertAdjacentHTML('beforeend', renderActionButton(c));
+
+      row.appendChild(main);
+      row.appendChild(side);
 
       const btn = row.querySelector("button[data-connector-id]");
       if (btn) {

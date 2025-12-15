@@ -24,7 +24,7 @@ def upgrade() -> None:
         sa.Column("org_id", sa.String(length=255), nullable=True),
         sa.Column("user_id", sa.String(length=255), nullable=False),
         sa.Column("summary", sa.String(length=500), nullable=True),
-        sa.Column("details", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("details", sa.JSON(), nullable=True),
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),

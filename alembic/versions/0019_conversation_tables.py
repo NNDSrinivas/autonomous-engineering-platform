@@ -24,9 +24,9 @@ def upgrade() -> None:
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column(
             "meta_json",
-            postgresql.JSONB(astext_type=sa.Text()),
+            sa.JSON(),
             nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
+            server_default=sa.text("'{}'"),
         ),
         sa.Column(
             "created_at",
@@ -53,9 +53,9 @@ def upgrade() -> None:
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column(
             "meta_json",
-            postgresql.JSONB(astext_type=sa.Text()),
+            sa.JSON(),
             nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
+            server_default=sa.text("'{}'"),
         ),
         sa.Column(
             "created_at",

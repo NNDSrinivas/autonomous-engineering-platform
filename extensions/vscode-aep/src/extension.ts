@@ -221,8 +221,8 @@ async function getGitDiff(
     if (stdout.trim() !== "true") {
       vscode.window.showWarningMessage(
         'NAVI: This folder is not a Git repository. ' +
-          'Quick actions like "Review working changes" only work in a Git project.\n\n' +
-          'Run "git init" (and make at least one commit) in the terminal, or open a Git-backed repo.',
+        'Quick actions like "Review working changes" only work in a Git project.\n\n' +
+        'Run "git init" (and make at least one commit) in the terminal, or open a Git-backed repo.',
       );
       return null;
     }
@@ -285,8 +285,7 @@ async function getGitDiff(
             : "working tree changes";
 
       vscode.window.showInformationMessage(
-        `NAVI: No ${label} found (git ${
-          scope === "lastCommit" ? "show" : "diff"
+        `NAVI: No ${label} found (git ${scope === "lastCommit" ? "show" : "diff"
         } is empty).`,
       );
       return null;
@@ -1320,10 +1319,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   this.postToWebview({
                     type: "botMessage",
                     text:
-                      `I checked your Git ${scopeName} but ${
-                        scope === "lastCommit"
-                          ? "there is no last commit yet."
-                          : "there are no uncommitted changes."
+                      `I checked your Git ${scopeName} but ${scope === "lastCommit"
+                        ? "there is no last commit yet."
+                        : "there are no uncommitted changes."
                       }\n\n` +
                       (scope === "lastCommit"
                         ? "Once you have commits in your repository, ask me again and I'll review them."
@@ -1536,10 +1534,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({
           type: "botMessage",
           text:
-            `I checked your Git ${scopeName} but ${
-              scope === "lastCommit"
-                ? "there is no last commit yet."
-                : "there are no uncommitted changes."
+            `I checked your Git ${scopeName} but ${scope === "lastCommit"
+              ? "there is no last commit yet."
+              : "there are no uncommitted changes."
             }\n\n` +
             (scope === "lastCommit"
               ? "Once you have commits in your repository, ask me again and I'll review them."

@@ -358,7 +358,7 @@ async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
             )
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to create pull request: {result.get('error', 'Unknown error')}",
+                detail="Failed to create pull request",
             )
 
         return result

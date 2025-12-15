@@ -70,7 +70,8 @@ def parse_time_window(window_str: str) -> int:
         >>> parse_time_window('invalid')
         30
     """
-    match = re.match(r"(\d+)d", window_str.lower())
+    # Use more specific regex with length limit to prevent ReDoS attacks
+    match = re.match(r"^(\d{1,4})d$", window_str.lower())
     if match:
         return int(match.group(1))
     return 30  # Default to 30 days

@@ -34,65 +34,80 @@ def _iter_top_level(root: Path) -> List[Path]:
     return entries
 
 
-def _generate_project_description(tech_stack: List[str], samples: List[SampledFile]) -> Optional[str]:
+def _generate_project_description(
+    tech_stack: List[str], samples: List[SampledFile]
+) -> Optional[str]:
     """Generate a dynamic project description based on detected tech stack and files."""
     if not tech_stack and not samples:
         return None
-    
+
     # Detect common frameworks and technologies
     frameworks = []
     languages = []
-    
+
     for tech in tech_stack:
         tech_lower = tech.lower()
-        if 'next.js' in tech_lower or 'nextjs' in tech_lower:
-            frameworks.append('Next.js')
-        elif 'react' in tech_lower:
-            frameworks.append('React')
-        elif 'vue' in tech_lower:
-            frameworks.append('Vue.js')
-        elif 'angular' in tech_lower:
-            frameworks.append('Angular')
-        elif 'django' in tech_lower:
-            frameworks.append('Django')
-        elif 'flask' in tech_lower:
-            frameworks.append('Flask')
-        elif 'spring' in tech_lower:
-            frameworks.append('Spring')
-        elif 'express' in tech_lower:
-            frameworks.append('Express.js')
-        
-        if 'typescript' in tech_lower:
-            languages.append('TypeScript')
-        elif 'javascript' in tech_lower and 'typescript' not in ' '.join(tech_stack).lower():
-            languages.append('JavaScript')
-        elif 'python' in tech_lower:
-            languages.append('Python')
-        elif 'java' in tech_lower:
-            languages.append('Java')
-        elif 'c#' in tech_lower or 'csharp' in tech_lower:
-            languages.append('C#')
-    
+        if "next.js" in tech_lower or "nextjs" in tech_lower:
+            frameworks.append("Next.js")
+        elif "react" in tech_lower:
+            frameworks.append("React")
+        elif "vue" in tech_lower:
+            frameworks.append("Vue.js")
+        elif "angular" in tech_lower:
+            frameworks.append("Angular")
+        elif "django" in tech_lower:
+            frameworks.append("Django")
+        elif "flask" in tech_lower:
+            frameworks.append("Flask")
+        elif "spring" in tech_lower:
+            frameworks.append("Spring")
+        elif "express" in tech_lower:
+            frameworks.append("Express.js")
+
+        if "typescript" in tech_lower:
+            languages.append("TypeScript")
+        elif (
+            "javascript" in tech_lower
+            and "typescript" not in " ".join(tech_stack).lower()
+        ):
+            languages.append("JavaScript")
+        elif "python" in tech_lower:
+            languages.append("Python")
+        elif "java" in tech_lower:
+            languages.append("Java")
+        elif "c#" in tech_lower or "csharp" in tech_lower:
+            languages.append("C#")
+
     # Remove duplicates
     frameworks = list(set(frameworks))
     languages = list(set(languages))
-    
+
     # Build description
     parts = []
-    
+
     if frameworks or languages:
         if frameworks and languages:
-            parts.append(f"This appears to be a {'/'.join(languages)} project using {'/'.join(frameworks)}.")
+            parts.append(
+                f"This appears to be a {'/'.join(languages)} project using {'/'.join(frameworks)}."
+            )
         elif frameworks:
-            parts.append(f"This appears to be a project built with {'/'.join(frameworks)}.")
+            parts.append(
+                f"This appears to be a project built with {'/'.join(frameworks)}."
+            )
         elif languages:
             parts.append(f"This appears to be a {'/'.join(languages)} project.")
-    
+
     # Check for common application types
-    has_api = any('api' in str(s.path).lower() or 'endpoint' in s.reason.lower() for s in samples)
-    has_web_pages = any('page' in s.reason.lower() or 'app/' in str(s.path) for s in samples)
-    has_components = any('component' in s.reason.lower() or 'components/' in str(s.path) for s in samples)
-    
+    has_api = any(
+        "api" in str(s.path).lower() or "endpoint" in s.reason.lower() for s in samples
+    )
+    has_web_pages = any(
+        "page" in s.reason.lower() or "app/" in str(s.path) for s in samples
+    )
+    has_components = any(
+        "component" in s.reason.lower() or "components/" in str(s.path) for s in samples
+    )
+
     app_type_hints = []
     if has_web_pages and has_components:
         app_type_hints.append("web application")
@@ -100,14 +115,14 @@ def _generate_project_description(tech_stack: List[str], samples: List[SampledFi
         app_type_hints.append("API service")
     elif has_components:
         app_type_hints.append("component library")
-    
+
     if app_type_hints:
         if parts:
             parts.append(f" It looks like a {'/'.join(app_type_hints)}.")
         else:
             parts.append(f"This appears to be a {'/'.join(app_type_hints)}.")
-    
-    return ''.join(parts) if parts else None
+
+    return "".join(parts) if parts else None
 
 
 def _format_tree(entries: Iterable[Path], root: Path, max_items: int = 20) -> str:
@@ -323,13 +338,15 @@ async def explain_repo(workspace_root: Optional[str]) -> str:
 
     # High-level project summary
     parts.append("## Project Overview")
-    
+
     # Generate dynamic project description based on actual tech stack
     project_description = _generate_project_description(tech_stack, samples)
     if project_description:
         parts.append(project_description)
     else:
-        parts.append("This appears to be a software project. See the structure and tech stack details below for more information.")
+        parts.append(
+            "This appears to be a software project. See the structure and tech stack details below for more information."
+        )
 
     # Tech stack
     parts.append("\n## Tech Stack")

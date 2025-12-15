@@ -55,7 +55,9 @@ def set_preferences(
     org_id = org_ctx.get("org_id")
     user_id = _current_user_id(user)
     if not isinstance(prefs, dict):
-        raise HTTPException(status_code=400, detail="Preferences payload must be a JSON object")
+        raise HTTPException(
+            status_code=400, detail="Preferences payload must be a JSON object"
+        )
     db.execute(
         text(
             """

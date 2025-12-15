@@ -371,7 +371,11 @@ async def _analyze_project_info(root: str) -> Dict[str, Any]:
 
         # Check for README.md for additional description
         readme_path = os.path.join(norm_root, "README.md")
-        if _is_safe_path(norm_root, readme_path) and os.path.exists(readme_path) and not project_info["description"]:
+        if (
+            _is_safe_path(norm_root, readme_path)
+            and os.path.exists(readme_path)
+            and not project_info["description"]
+        ):
             try:
                 with open(readme_path, "r", encoding="utf-8") as f:
                     readme_content = f.read()[:500]  # First 500 chars

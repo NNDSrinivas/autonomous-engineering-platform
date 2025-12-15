@@ -18,6 +18,7 @@ router = APIRouter()
 
 class ToolExecutionRequest(BaseModel):
     """Request to execute a tool."""
+
     user_id: str
     tool_name: str
     args: Dict[str, Any]
@@ -26,6 +27,7 @@ class ToolExecutionRequest(BaseModel):
 
 class ToolExecutionResponse(BaseModel):
     """Response from tool execution."""
+
     tool: str
     text: str
     output: Optional[Dict[str, Any]] = None
@@ -40,17 +42,17 @@ async def execute_tool_endpoint(
 ) -> ToolExecutionResponse:
     """
     Execute a tool and return its results.
-    
+
     This is used by the VS Code extension to run workspace read operations
     (repo.inspect, code.read_files, etc.) when the user clicks "Run step".
-    
+
     Args:
         request: Tool execution request with user_id, tool_name, and args
         db: Database session
-        
+
     Returns:
         Tool execution result with text summary and optional structured output
-        
+
     Raises:
         HTTPException: If tool execution fails
     """
@@ -62,7 +64,7 @@ async def execute_tool_endpoint(
             db=db,
             workspace=request.workspace,
         )
-        
+
         return ToolExecutionResponse(
             tool=result.get("tool", request.tool_name),
             text=result.get("text", ""),
@@ -71,7 +73,4 @@ async def execute_tool_endpoint(
             error=result.get("error"),
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Tool execution failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Tool execution failed: {str(e)}")

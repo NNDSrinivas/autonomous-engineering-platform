@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import shlex
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -21,9 +20,13 @@ router = APIRouter(prefix="/api/run", tags=["command-runner"])
 
 class RunRequest(BaseModel):
     command: str = Field(..., description="Command to run (exact string)")
-    workdir: Optional[str] = Field(None, description="Working directory to run the command in")
+    workdir: Optional[str] = Field(
+        None, description="Working directory to run the command in"
+    )
     approved: bool = Field(False, description="Must be true to actually execute")
-    background: bool = Field(False, description="If true, start command in background and return immediately")
+    background: bool = Field(
+        False, description="If true, start command in background and return immediately"
+    )
 
 
 class RunResponse(BaseModel):
@@ -64,15 +67,18 @@ _ALLOWLIST: List[str] = [
 ]
 _AUTO_APPROVE: List[str] = []
 
+
 def _ensure_table(db) -> None:
     try:
         # Detect dialect to use appropriate timestamp type
         dialect = getattr(getattr(db.bind, "dialect", None), "dialect", None)
         dialect_name = getattr(dialect, "name", "") if dialect else ""
-        
+
         timestamp_type = "TEXT" if dialect_name == "sqlite" else "TIMESTAMPTZ"
-        default_timestamp = "CURRENT_TIMESTAMP" if dialect_name == "sqlite" else "CURRENT_TIMESTAMP"
-        
+        default_timestamp = (
+            "CURRENT_TIMESTAMP" if dialect_name == "sqlite" else "CURRENT_TIMESTAMP"
+        )
+
         db.execute(
             text(
                 f"""
@@ -104,9 +110,15 @@ def _is_allowlisted(cmd: str) -> bool:
 def get_allowlist(db=Depends(get_db)):
     """Return current allowlist and auto-approve list."""
     _ensure_table(db)
-    rows = db.execute(
-        text("SELECT command, auto_approve FROM navi_run_allowlist ORDER BY command")
-    ).mappings().all()
+    rows = (
+        db.execute(
+            text(
+                "SELECT command, auto_approve FROM navi_run_allowlist ORDER BY command"
+            )
+        )
+        .mappings()
+        .all()
+    )
     commands = [dict(r) for r in rows] if rows else []
     if not commands:
         # Seed defaults
@@ -161,11 +173,17 @@ def run_command(
 
     # Reload allowlist from DB if present
     _ensure_table(db)
-    rows = db.execute(text("SELECT command, auto_approve FROM navi_run_allowlist")).mappings().all()
+    rows = (
+        db.execute(text("SELECT command, auto_approve FROM navi_run_allowlist"))
+        .mappings()
+        .all()
+    )
     allow_from_db = [r["command"] for r in rows] if rows else _ALLOWLIST
-    auto_from_db = [r["command"] for r in rows if r.get("auto_approve")] if rows else _AUTO_APPROVE
+    [r["command"] for r in rows if r.get("auto_approve")] if rows else _AUTO_APPROVE
 
-    if not any(cmd == allowed or cmd.startswith(allowed + " ") for allowed in allow_from_db):
+    if not any(
+        cmd == allowed or cmd.startswith(allowed + " ") for allowed in allow_from_db
+    ):
         raise HTTPException(status_code=403, detail="Command not allowlisted")
 
     # Normalize workdir
@@ -225,7 +243,9 @@ def run_command(
             len(stderr),
         )
 
-        return RunResponse(ok=(rc == 0), stdout=stdout, stderr=stderr, returncode=rc, audit_id=audit_id)
+        return RunResponse(
+            ok=(rc == 0), stdout=stdout, stderr=stderr, returncode=rc, audit_id=audit_id
+        )
     except Exception as exc:  # noqa: BLE001
         logger.error("[CMD] Failed to run command: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail="Command execution failed")

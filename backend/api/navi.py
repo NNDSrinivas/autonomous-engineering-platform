@@ -32,8 +32,7 @@ import logging
 import os
 import re
 import time
-import asyncio
-from asyncio.subprocess import PIPE, STDOUT
+from asyncio.subprocess import STDOUT
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Literal, Tuple
 
@@ -64,23 +63,22 @@ router = APIRouter(prefix="/api/navi", tags=["navi-chat"])
 
 class ProgressTracker:
     """Simple progress tracker for user status updates"""
+
     def __init__(self):
         self.steps = []
         self.current_status = "Processing request..."
-    
+
     def update_status(self, status: str):
         self.current_status = status
         logger.info(f"[NAVI-PROGRESS] {status}")
-    
+
     def complete_step(self, step: str):
         self.steps.append(step)
         logger.info(f"[NAVI-PROGRESS] ✅ {step}")
-    
+
     def get_status(self) -> Dict[str, Any]:
-        return {
-            "status": self.current_status,
-            "progress_steps": self.steps.copy()
-        }
+        return {"status": self.current_status, "progress_steps": self.steps.copy()}
+
 
 # Feature-flag: still allow running without OpenAI, but in degraded mode
 # Load environment variables from .env so OPENAI_API_KEY is available in local dev.
@@ -288,9 +286,6 @@ def _looks_like_repo_explain(message: str) -> bool:
         "describe this project",
     )
     return any(p in msg for p in patterns)
-
-
-
 
 
 def _looks_like_generate_tests(message: str) -> bool:
@@ -578,12 +573,12 @@ async def _generate_edits_with_llm(
         "Your job is to propose concrete code edits for the attached files.\n\n"
         "You MUST respond with a single JSON object of the form:\n"
         "{\n"
-        '  \"summary\": string,           // high-level explanation for the user\n'
-        '  \"edits\": [                  // list of edits to apply\n'
+        '  "summary": string,           // high-level explanation for the user\n'
+        '  "edits": [                  // list of edits to apply\n'
         "    {\n"
-        '      \"path\": string,         // file path, as provided in the input\n'
-        '      \"newContent\": string,   // full new file content AFTER edits\n'
-        '      \"description\"?: string  // optional: what this edit does\n'
+        '      "path": string,         // file path, as provided in the input\n'
+        '      "newContent": string,   // full new file content AFTER edits\n'
+        '      "description"?: string  // optional: what this edit does\n'
         "    }\n"
         "  ]\n"
         "}\n\n"
@@ -823,9 +818,7 @@ def build_repo_snapshot_markdown(
         fence = f"```{lang}" if lang else "```"
         rel = p.relative_to(root)
         body_sections.append(
-            f"\n\n---\n\n"
-            f"### File: `{rel}`\n\n"
-            f"{fence}\n{text}\n```"
+            f"\n\n---\n\n" f"### File: `{rel}`\n\n" f"{fence}\n{text}\n```"
         )
 
     snapshot = header + layout + "".join(body_sections)
@@ -857,9 +850,7 @@ def build_repo_tree_markdown(
         if depth > max_depth:
             return
         try:
-            children = sorted(
-                list(dir_path.iterdir()), key=lambda p: p.name.lower()
-            )
+            children = sorted(list(dir_path.iterdir()), key=lambda p: p.name.lower())
         except Exception as e:  # noqa: BLE001
             logger.warning("Failed to list %s: %s", dir_path, e)
             return
@@ -878,7 +869,16 @@ def build_repo_tree_markdown(
             else:
                 # Only include "interesting" files in the tree to keep it small
                 ext = child.suffix.lower()
-                if ext in {".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".cs", ".go"} or name in {
+                if ext in {
+                    ".ts",
+                    ".tsx",
+                    ".js",
+                    ".jsx",
+                    ".py",
+                    ".java",
+                    ".cs",
+                    ".go",
+                } or name in {
                     "package.json",
                     "pyproject.toml",
                     "requirements.txt",
@@ -982,7 +982,10 @@ def find_repo_entrypoints(root: Path) -> list[dict[str, str]]:
                     continue
                 if any(k in script_cmd for k in ("next dev", "next start")):
                     add(pkg, f"`npm run {script_name}` → Next.js app entry")
-                elif any(k in script_cmd for k in ("vite", "react-scripts", "webpack-dev-server")):
+                elif any(
+                    k in script_cmd
+                    for k in ("vite", "react-scripts", "webpack-dev-server")
+                ):
                     add(pkg, f"`npm run {script_name}` → frontend dev entry")
                 elif "node " in script_cmd or "ts-node " in script_cmd:
                     add(pkg, f"`npm run {script_name}` → Node backend/CLI entry")
@@ -1087,7 +1090,7 @@ def _guess_language_tag(path: Path) -> str:
         ".yaml": "yaml",
         ".md": "md",
     }.get(ext, "")
-    
+
 
 def collect_repo_context(
     root: Path,
@@ -1126,11 +1129,13 @@ def collect_repo_context(
         lang = _guess_language_tag(path)
         fence = f"```{lang}" if lang else "```"
 
-        file_chunks.append(
-            f"### {rel}\n\n{fence}\n{text}\n```"
-        )
+        file_chunks.append(f"### {rel}\n\n{fence}\n{text}\n```")
 
-    files_md = "\n\n".join(file_chunks) if file_chunks else "_(no interesting files could be read)_"
+    files_md = (
+        "\n\n".join(file_chunks)
+        if file_chunks
+        else "_(no interesting files could be read)_"
+    )
     return tree_md, files_md
 
 
@@ -1210,7 +1215,12 @@ def _collect_repo_snapshot(root: Path, max_files: int = 200) -> tuple[str, list[
 
     try:
         for dirpath, dirnames, filenames in os.walk(root):
-            logger.info("[NAVI-REPO] Walking directory: %s (dirs=%s, files=%s)", dirpath, len(dirnames), len(filenames))
+            logger.info(
+                "[NAVI-REPO] Walking directory: %s (dirs=%s, files=%s)",
+                dirpath,
+                len(dirnames),
+                len(filenames),
+            )
             # Filter ignored directories in place so os.walk doesn't descend into them
             dirnames[:] = [d for d in dirnames if d not in REPO_EXPLAIN_IGNORE_DIRS]
 
@@ -1244,7 +1254,11 @@ def _collect_repo_snapshot(root: Path, max_files: int = 200) -> tuple[str, list[
         logger.error("[NAVI-REPO] Error during os.walk: %s", e, exc_info=True)
         return "Error scanning directory", []
 
-    logger.info("[NAVI-REPO] Collected %d total files, %d directory entries", len(all_files), len(dir_entries))
+    logger.info(
+        "[NAVI-REPO] Collected %d total files, %d directory entries",
+        len(all_files),
+        len(dir_entries),
+    )
 
     # Pick "key" files: well-known names first
     key_files: list[Path] = []
@@ -1320,9 +1334,12 @@ def detect_project_commands(root: Path) -> Dict[str, Any]:
         kind = "node"
         scripts: Dict[str, Any] = {}
         try:
-            scripts = json.loads(pkg.read_text(encoding="utf-8", errors="ignore")).get(
-                "scripts", {}
-            ) or {}
+            scripts = (
+                json.loads(pkg.read_text(encoding="utf-8", errors="ignore")).get(
+                    "scripts", {}
+                )
+                or {}
+            )
         except Exception as e:  # noqa: BLE001
             logger.warning("Failed to parse package.json in %s: %s", root, e)
 
@@ -1352,7 +1369,9 @@ def detect_project_commands(root: Path) -> Dict[str, Any]:
         if (root / "pytest.ini").exists() or (root / "tests").exists():
             commands.append({"label": "pytest", "cmd": ["pytest"]})
         else:
-            commands.append({"label": "python -m pytest", "cmd": ["python", "-m", "pytest"]})
+            commands.append(
+                {"label": "python -m pytest", "cmd": ["python", "-m", "pytest"]}
+            )
 
         return {"kind": kind, "commands": commands}
 
@@ -1446,9 +1465,10 @@ async def handle_repo_scan_fast_path(
 
     # If OpenAI isn't available, just return the raw tree + entrypoint list
     if not OPENAI_ENABLED or openai_client is None:
-        bullet_entries = "\n".join(
-            f"- `{e['path']}` — {e['reason']}" for e in entrypoints
-        ) or "_No obvious entrypoints detected._"
+        bullet_entries = (
+            "\n".join(f"- `{e['path']}` — {e['reason']}" for e in entrypoints)
+            or "_No obvious entrypoints detected._"
+        )
 
         msg = (
             f"Here's a quick structural scan of the **{repo_name}** repo at "
@@ -1499,9 +1519,7 @@ async def handle_repo_scan_fast_path(
     )
 
     entrypoints_md = (
-        "\n".join(
-            f"- `{e['path']}` — {e['reason']}" for e in entrypoints
-        )
+        "\n".join(f"- `{e['path']}` — {e['reason']}" for e in entrypoints)
         or "_No obvious entrypoints detected from heuristics._"
     )
 
@@ -1529,9 +1547,10 @@ async def handle_repo_scan_fast_path(
     except Exception as e:  # noqa: BLE001
         logger.error("Repo scan fast-path OpenAI error: %s", e, exc_info=True)
 
-        bullet_entries = "\n".join(
-            f"- `{e['path']}` — {e['reason']}" for e in entrypoints
-        ) or "_No obvious entrypoints detected._"
+        bullet_entries = (
+            "\n".join(f"- `{e['path']}` — {e['reason']}" for e in entrypoints)
+            or "_No obvious entrypoints detected._"
+        )
 
         msg = (
             f"Here's a structural scan of the **{repo_name}** repo at `{root}`.\n\n"
@@ -1616,14 +1635,18 @@ async def handle_repo_explain_fast_path(
             sources=[],
             reply=msg,
             should_stream=False,
-            state={"repo_fast_path": True, "kind": "explain", "error": "missing_workspace"},
+            state={
+                "repo_fast_path": True,
+                "kind": "explain",
+                "error": "missing_workspace",
+            },
             duration_ms=0,
         )
 
     logger.info("[NAVI-REPO] Starting repo scan for workspace_root=%s", workspace_root)
     logger.info("[NAVI-REPO] Root path exists: %s", root.exists())
     logger.info("[NAVI-REPO] Root path is_dir: %s", root.is_dir())
-    
+
     structure_md, key_files = _collect_repo_snapshot(root)
 
     logger.info(
@@ -1633,15 +1656,16 @@ async def handle_repo_explain_fast_path(
         [str(p.relative_to(root)) for p in key_files],
     )
     logger.info("[NAVI-REPO] Structure markdown length: %d", len(structure_md))
-    logger.info("[NAVI-REPO] Structure preview: %s", structure_md[:200] if structure_md else "EMPTY")
+    logger.info(
+        "[NAVI-REPO] Structure preview: %s",
+        structure_md[:200] if structure_md else "EMPTY",
+    )
 
     snippets_parts: list[str] = []
     for f in key_files:
         rel = f.relative_to(root)
         snippet = _read_file_snippet(f)
-        snippets_parts.append(
-            f"### File: `{rel}`\n```text\n{snippet}\n```"
-        )
+        snippets_parts.append(f"### File: `{rel}`\n```text\n{snippet}\n```")
 
     files_md = "\n\n".join(snippets_parts)
     if not files_md:
@@ -1880,9 +1904,7 @@ async def handle_repo_diagnostics_fast_path(
         )
 
     if not summary:
-        summary = (
-            "I ran diagnostics, identified failing files, and proposed edits to fix the errors."
-        )
+        summary = "I ran diagnostics, identified failing files, and proposed edits to fix the errors."
 
     # Build a nice chat explanation
     lines = [summary, ""]
@@ -1981,12 +2003,12 @@ async def handle_code_edit_fast_path(
         "Your job is to propose concrete code edits for the attached files.\n\n"
         "You MUST respond with a single JSON object of the form:\n"
         "{\n"
-        '  \"summary\": string,           // high-level explanation for the user\n'
-        '  \"edits\": [                  // list of edits to apply\n'
+        '  "summary": string,           // high-level explanation for the user\n'
+        '  "edits": [                  // list of edits to apply\n'
         "    {\n"
-        '      \"path\": string,         // file path, as provided in the input\n'
-        '      \"newContent\": string,   // full new file content AFTER edits\n'
-        '      \"description\"?: string  // optional: what this edit does\n'
+        '      "path": string,         // file path, as provided in the input\n'
+        '      "newContent": string,   // full new file content AFTER edits\n'
+        '      "description"?: string  // optional: what this edit does\n'
         "    },\n"
         "    ...\n"
         "  ]\n"
@@ -2274,11 +2296,11 @@ class ChatResponse(BaseModel):
     actions: List[Dict[str, Any]] = []
     agentRun: Optional[Dict[str, Any]] = None
     sources: List[Dict[str, Any]] = []  # Add sources field
-    
+
     # NEW: structured code edits Navi is proposing
     # Each edit: { "path": string, "newContent": string, "description"?: string }
     edits: List[Dict[str, Any]] = []
-    
+
     # Progress tracking
     status: Optional[str] = None  # Current status message for user
     progress_steps: List[str] = []  # List of completed steps
@@ -2312,7 +2334,7 @@ async def test_agent_endpoint():
 async def debug_openai():
     """Debug endpoint to check OpenAI status."""
     import os
-    
+
     key = os.getenv("OPENAI_API_KEY", "")
     return {
         "OPENAI_ENABLED": OPENAI_ENABLED,
@@ -2341,8 +2363,14 @@ async def navi_chat(
     - Maps the result into the `{ content, actions, agentRun }` shape the
       VS Code panel expects.
     """
-    print(f"[NAVI-ENTRY-DEBUG] Received request: message='{request.message[:50]}...', workspace={request.workspace}")
-    logger.info("[NAVI-ENTRY-DEBUG] Request received: message=%s, workspace=%s", request.message[:50], request.workspace)
+    print(
+        f"[NAVI-ENTRY-DEBUG] Received request: message='{request.message[:50]}...', workspace={request.workspace}"
+    )
+    logger.info(
+        "[NAVI-ENTRY-DEBUG] Request received: message=%s, workspace=%s",
+        request.message[:50],
+        request.workspace,
+    )
     if not OPENAI_ENABLED:
         # Still return a `content` field so the extension stays happy
         msg = (
@@ -2372,7 +2400,7 @@ async def navi_chat(
         "what is going on",
         "news",
     )
-    
+
     # Phrases that indicate NOT smalltalk (work-related questions)
     work_question_indicators = (
         "project",
@@ -2408,7 +2436,7 @@ async def navi_chat(
             workspace_root,
             request.message[:80],
         )
-        
+
         # Debug workspace detection
         logger.info(
             "[NAVI-WORKSPACE-DEBUG] workspace_root=%s, workspace_dict=%s",
@@ -2416,9 +2444,14 @@ async def navi_chat(
             request.workspace,
         )
         logger.info("[NAVI-WORKSPACE-DEBUG] request.message=%s", request.message)
-        logger.info("[NAVI-WORKSPACE-DEBUG] repo_explain_check=%s", _looks_like_repo_explain(request.message))
-        logger.info("[NAVI-WORKSPACE-DEBUG] request.workspace_root=%s", request.workspace_root)
-        
+        logger.info(
+            "[NAVI-WORKSPACE-DEBUG] repo_explain_check=%s",
+            _looks_like_repo_explain(request.message),
+        )
+        logger.info(
+            "[NAVI-WORKSPACE-DEBUG] request.workspace_root=%s", request.workspace_root
+        )
+
         # Log workspace detection for debugging
         logger.info("[NAVI-WORKSPACE-DEBUG] Using workspace_root=%s", workspace_root)
 
@@ -2426,8 +2459,10 @@ async def navi_chat(
         # To avoid false positives (e.g., "which project are we in?"), only trigger when the
         # message is short, matches known greeting phrases, and doesn't contain work indicators.
         msg_lower = request.message.lower().strip()
-        is_work_question = any(indicator in msg_lower for indicator in work_question_indicators)
-        
+        is_work_question = any(
+            indicator in msg_lower for indicator in work_question_indicators
+        )
+
         if (
             len(msg_lower) <= 24
             and any(p in msg_lower for p in smalltalk_phrases)
@@ -2589,47 +2624,49 @@ async def navi_chat(
             request.message,
             repo_match,
         )
-        
-        # ✅ Repo explain fast-path: detect "explain this repo/project" questions  
+
+        # ✅ Repo explain fast-path: detect "explain this repo/project" questions
         repo_explain_match = _looks_like_repo_explain(request.message)
         logger.info(
             "[NAVI-CHAT] Checking repo explain fast-path for: '%s' -> %s",
             request.message,
             repo_explain_match,
         )
-        
+
         if repo_match:
             logger.info(
                 "[NAVI-CHAT] Using repo fast-path for message: %s", request.message[:50]
             )
-            
+
             # Derive repo info from VS Code workspace context
             repo_root = workspace_root  # This comes from request.workspace_root
-            
+
             if not repo_root and request.workspace:
                 # Fallback: extract from workspace object
                 workspace_data = request.workspace
-                repo_root = workspace_data.get("workspace_root") or workspace_data.get("repo_root")
-            
+                repo_root = workspace_data.get("workspace_root") or workspace_data.get(
+                    "repo_root"
+                )
+
             # Extract repo name from workspace root
             repo_name = None
             if repo_root:
                 clean = str(repo_root).rstrip("/\\")
                 base = os.path.basename(clean)
                 repo_name = base or clean
-            
+
             # Log the detected repo name for debugging
             logger.info("[NAVI-CHAT] 🚨 Detected repo_name: %r", repo_name)
-            
+
             logger.info(
                 "[NAVI-CHAT] Repo fast-path: workspace_root=%r repo_root=%r repo_name=%r",
                 workspace_root,
                 repo_root,
                 repo_name,
             )
-            
+
             reply = f"You're currently working in the **{repo_name}** repo."
-            
+
             return ChatResponse(
                 content=reply,
                 actions=[],
@@ -2641,15 +2678,21 @@ async def navi_chat(
                     "repo_fast_path": True,
                     "repo_name": repo_name,
                     "repo_root": repo_root,
-                    "kind": "where"
+                    "kind": "where",
                 },
                 duration_ms=10,
             )
 
         # Repo explanation and scan fast-paths, based on local workspace_root
-        logger.info("[NAVI-DEBUG] Checking repo explain: workspace_root=%s, msg_lower=%s", workspace_root, msg_lower[:50])
-        logger.info("[NAVI-DEBUG] repo explain match: %s", _looks_like_repo_explain(msg_lower))
-        
+        logger.info(
+            "[NAVI-DEBUG] Checking repo explain: workspace_root=%s, msg_lower=%s",
+            workspace_root,
+            msg_lower[:50],
+        )
+        logger.info(
+            "[NAVI-DEBUG] repo explain match: %s", _looks_like_repo_explain(msg_lower)
+        )
+
         if workspace_root:
             if _looks_like_repo_explain(msg_lower):
                 try:
@@ -2750,7 +2793,7 @@ async def navi_chat(
         progress_tracker = ProgressTracker()
         progress_tracker.update_status("Initializing NAVI agent...")
         progress_tracker.complete_step("Workspace detected")
-        
+
         # Determine request type for better progress messages
         msg_lower = request.message.lower()
         if any(word in msg_lower for word in ["review", "diff", "changes", "git"]):
@@ -2765,7 +2808,7 @@ async def navi_chat(
         else:
             progress_tracker.update_status("Analyzing your request...")
             progress_tracker.complete_step("Request type identified")
-        
+
         agent_result = await run_agent_loop(
             user_id=user_id,
             message=request.message,
@@ -2775,7 +2818,7 @@ async def navi_chat(
             attachments=[a.dict() for a in (request.attachments or [])],
             workspace=workspace_data,
         )
-        
+
         progress_tracker.complete_step("Analysis complete")
         progress_tracker.update_status("Generating response...")
 
@@ -2797,9 +2840,9 @@ async def navi_chat(
 
                 # 1) From workspace payload (if any)
                 if not repo_root and isinstance(workspace_data, dict):
-                    repo_root = workspace_data.get("workspace_root") or workspace_data.get(
-                        "repo_root"
-                    )
+                    repo_root = workspace_data.get(
+                        "workspace_root"
+                    ) or workspace_data.get("repo_root")
 
                 # 2) Last resort: backend working directory
                 if not repo_root:
@@ -2899,7 +2942,7 @@ async def navi_chat(
         # Complete progress tracking
         progress_tracker.complete_step("Response generated")
         progress_tracker.update_status("Ready")
-        
+
         # Map `reply` -> `content` for the extension
         return ChatResponse(
             content=reply,

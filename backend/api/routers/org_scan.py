@@ -49,9 +49,17 @@ def _ensure_table(db: Session) -> None:
             )
         )
         # Ensure new columns exist on old tables
-        db.execute(text("ALTER TABLE navi_org_scan ADD COLUMN IF NOT EXISTS allow_secrets BOOLEAN DEFAULT FALSE"))
-        db.execute(text("ALTER TABLE navi_org_scan ADD COLUMN IF NOT EXISTS summary TEXT"))
-        db.execute(text("ALTER TABLE navi_org_scan ADD COLUMN IF NOT EXISTS config_json JSONB"))
+        db.execute(
+            text(
+                "ALTER TABLE navi_org_scan ADD COLUMN IF NOT EXISTS allow_secrets BOOLEAN DEFAULT FALSE"
+            )
+        )
+        db.execute(
+            text("ALTER TABLE navi_org_scan ADD COLUMN IF NOT EXISTS summary TEXT")
+        )
+        db.execute(
+            text("ALTER TABLE navi_org_scan ADD COLUMN IF NOT EXISTS config_json JSONB")
+        )
         db.commit()
         _TABLE_READY = True
     except Exception:
@@ -109,12 +117,16 @@ def _upsert_state(
 
 def _get_state(db: Session, org_id: str, user_id: str) -> dict:
     _ensure_table(db)
-    row = db.execute(
-        text(
-            "SELECT org_id, user_id, consent, allow_secrets, consent_at, paused_at, last_scan_at, state, summary, config_json FROM navi_org_scan WHERE org_id = :org_id AND user_id = :user_id"
-        ),
-        {"org_id": org_id, "user_id": user_id},
-    ).mappings().first()
+    row = (
+        db.execute(
+            text(
+                "SELECT org_id, user_id, consent, allow_secrets, consent_at, paused_at, last_scan_at, state, summary, config_json FROM navi_org_scan WHERE org_id = :org_id AND user_id = :user_id"
+            ),
+            {"org_id": org_id, "user_id": user_id},
+        )
+        .mappings()
+        .first()
+    )
     return dict(row) if row else {}
 
 
@@ -139,7 +151,9 @@ def give_consent(
     """
     org_id = "org_vscode_extension"
     user_id = _current_user_id(user)
-    _upsert_state(db, org_id, user_id, consent=True, allow_secrets=allow_secrets, state="ready")
+    _upsert_state(
+        db, org_id, user_id, consent=True, allow_secrets=allow_secrets, state="ready"
+    )
     return {"consent": True, "allow_secrets": allow_secrets}
 
 
@@ -161,7 +175,9 @@ def pause_scan(
 ):
     org_id = "org_vscode_extension"
     user_id = _current_user_id(user)
-    _upsert_state(db, org_id, user_id, paused_at=datetime.now(timezone.utc), state="paused")
+    _upsert_state(
+        db, org_id, user_id, paused_at=datetime.now(timezone.utc), state="paused"
+    )
     return {"paused": True}
 
 
@@ -240,7 +256,9 @@ def trigger_scan(
     if not state.get("consent"):
         raise HTTPException(status_code=403, detail="Consent required before scanning")
     if state.get("paused_at"):
-        raise HTTPException(status_code=409, detail="Scanning is paused; resume before running")
+        raise HTTPException(
+            status_code=409, detail="Scanning is paused; resume before running"
+        )
 
     allow_secrets = bool(state.get("allow_secrets"))
     effective_include_secrets = include_secrets and allow_secrets
@@ -261,7 +279,14 @@ def trigger_scan(
                 config=_get_config(local_db, org_id, user_id),
             )
             finished = datetime.now(timezone.utc)
-            _upsert_state(local_db, org_id, user_id, last_scan_at=finished, state="completed", summary=summary)
+            _upsert_state(
+                local_db,
+                org_id,
+                user_id,
+                last_scan_at=finished,
+                state="completed",
+                summary=summary,
+            )
         except Exception as exc:  # noqa: BLE001
             _upsert_state(local_db, org_id, user_id, state=f"failed: {exc}")
         finally:
@@ -272,7 +297,11 @@ def trigger_scan(
 
     _SCAN_EXECUTOR.submit(_do_scan)
 
-    return {"started": True, "include_secrets": effective_include_secrets, "queued_at": now}
+    return {
+        "started": True,
+        "include_secrets": effective_include_secrets,
+        "queued_at": now,
+    }
 
 
 @router.get("/status")
@@ -305,6 +334,7 @@ def clear_org_memory(
 
 
 # --- helpers ---------------------------------------------------------------
+
 
 def _env_list(var_name: str) -> List[str]:
     raw = os.getenv(var_name, "") or ""
@@ -353,7 +383,16 @@ def _scan_workspace(
         return f"Workspace root not found: {root}"
 
     excluded_dirs = {
-        ".git", "node_modules", ".venv", "venv", "__pycache__", ".idea", ".vscode", "dist", "build", "out"
+        ".git",
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".idea",
+        ".vscode",
+        "dist",
+        "build",
+        "out",
     }
     secret_like = {"secrets", "keys", ".ssh", ".aws", "config", ".env", ".env.local"}
 
@@ -378,7 +417,18 @@ def _scan_workspace(
 
         for fname in filenames:
             if not include_secrets:
-                if any(token in fname.lower() for token in ["secret", "key", ".pem", ".p12", ".crt", ".env", "config"]):
+                if any(
+                    token in fname.lower()
+                    for token in [
+                        "secret",
+                        "key",
+                        ".pem",
+                        ".p12",
+                        ".crt",
+                        ".env",
+                        "config",
+                    ]
+                ):
                     continue
             path_rel = os.path.join(rel_dir, fname) if rel_dir else fname
             tree_lines.append(path_rel)
@@ -413,7 +463,9 @@ def _scan_workspace(
             if dp.is_file() and dp.suffix.lower() in {".md", ".txt"}:
                 rel = dp.relative_to(root_path)
                 try:
-                    docs_samples.append({"path": str(rel), "content": dp.read_text()[:3000]})
+                    docs_samples.append(
+                        {"path": str(rel), "content": dp.read_text()[:3000]}
+                    )
                 except Exception:
                     continue
                 if len(docs_samples) >= 5:
@@ -437,35 +489,45 @@ def _scan_workspace(
 
     # Jira snapshot (best-effort)
     try:
-        jira_rows = db.execute(
-            text(
-                """
+        jira_rows = (
+            db.execute(
+                text(
+                    """
                 SELECT issue_key, project_key, summary, status, assignee, updated
                 FROM jira_issue
                 ORDER BY updated DESC NULLS LAST
                 LIMIT 20
                 """
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         if jira_rows:
             summary.append("\nJira snapshot (latest 20):")
-            summary.append(json.dumps([dict(r) for r in jira_rows], default=str, indent=2))
+            summary.append(
+                json.dumps([dict(r) for r in jira_rows], default=str, indent=2)
+            )
     except Exception:
         summary.append("\nJira snapshot unavailable (query failed).")
 
     # Confluence / Slack / Zoom snapshot from navi_memory (workspace + interaction)
     try:
-        mem_rows = db.execute(
-            text(
-                """
+        mem_rows = (
+            db.execute(
+                text(
+                    """
                 SELECT category, title, content, meta_json, updated_at
                 FROM navi_memory
                 WHERE category IN ('workspace','interaction')
                 ORDER BY updated_at DESC
                 LIMIT 20
                 """
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
         if mem_rows:
             snapshot = []
             for r in mem_rows:
@@ -495,7 +557,9 @@ def _scan_workspace(
     return "\n".join(summary)
 
 
-async def _ingest_external_sources(db: Session, user_id: str, config: dict) -> List[str]:
+async def _ingest_external_sources(
+    db: Session, user_id: str, config: dict
+) -> List[str]:
     """
     Best-effort ingestion of Jira, Confluence, Slack, Teams, Zoom into org memory.
     Configuration is driven by environment variables so background scan can stay automatic.
@@ -510,15 +574,22 @@ async def _ingest_external_sources(db: Session, user_id: str, config: dict) -> L
         notes.append(f"Jira: skipped/failed ({exc})")
 
     # Confluence
-    space_keys = config.get("confluence_space_keys") or _env_list("AEP_CONFLUENCE_SPACE_KEYS")
+    space_keys = config.get("confluence_space_keys") or _env_list(
+        "AEP_CONFLUENCE_SPACE_KEYS"
+    )
     if not space_keys:
-        single_space = config.get("confluence_space_key") or os.getenv("AEP_CONFLUENCE_SPACE_KEY", "").strip()
+        single_space = (
+            config.get("confluence_space_key")
+            or os.getenv("AEP_CONFLUENCE_SPACE_KEY", "").strip()
+        )
         if single_space:
             space_keys = [single_space]
     if space_keys:
         for space in space_keys:
             try:
-                page_ids = await ingest_confluence_space(db, user_id=user_id, space_key=space, limit=15)
+                page_ids = await ingest_confluence_space(
+                    db, user_id=user_id, space_key=space, limit=15
+                )
                 notes.append(f"Confluence[{space}]: {len(page_ids)} pages")
             except Exception as exc:  # noqa: BLE001
                 notes.append(f"Confluence[{space}]: skipped/failed ({exc})")
@@ -529,8 +600,12 @@ async def _ingest_external_sources(db: Session, user_id: str, config: dict) -> L
     slack_channels = config.get("slack_channels") or _env_list("AEP_SLACK_CHANNELS")
     if slack_channels:
         try:
-            chans = await ingest_slack(db, user_id=user_id, channels=slack_channels, limit=120)
-            notes.append(f"Slack: {len(chans)} channels ingested ({', '.join(slack_channels)})")
+            chans = await ingest_slack(
+                db, user_id=user_id, channels=slack_channels, limit=120
+            )
+            notes.append(
+                f"Slack: {len(chans)} channels ingested ({', '.join(slack_channels)})"
+            )
         except Exception as exc:  # noqa: BLE001
             notes.append(f"Slack: skipped/failed ({exc})")
     else:
@@ -555,10 +630,20 @@ async def _ingest_external_sources(db: Session, user_id: str, config: dict) -> L
         notes.append("Teams: skipped (AEP_TEAMS not set)")
 
     # Zoom
-    zoom_user = (config.get("zoom_user") or os.getenv("AEP_ZOOM_USER_EMAIL", "")).strip()
+    zoom_user = (
+        config.get("zoom_user") or os.getenv("AEP_ZOOM_USER_EMAIL", "")
+    ).strip()
     if zoom_user:
-        lookback_days = int(config.get("zoom_lookback_days") or os.getenv("AEP_ZOOM_LOOKBACK_DAYS", "30") or "30")
-        max_meetings = int(config.get("zoom_max_meetings") or os.getenv("AEP_ZOOM_MAX_MEETINGS", "20") or "20")
+        lookback_days = int(
+            config.get("zoom_lookback_days")
+            or os.getenv("AEP_ZOOM_LOOKBACK_DAYS", "30")
+            or "30"
+        )
+        max_meetings = int(
+            config.get("zoom_max_meetings")
+            or os.getenv("AEP_ZOOM_MAX_MEETINGS", "20")
+            or "20"
+        )
         to_date = datetime.now(timezone.utc).date()
         from_date = to_date - timedelta(days=lookback_days)
         try:

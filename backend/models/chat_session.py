@@ -10,7 +10,15 @@ class ChatSession(Base):
     org_id = Column(String(255), nullable=True, index=True)
     user_id = Column(String(255), nullable=False, index=True)
     title = Column(Text, nullable=True)
-    created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
-    updated_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
-    archived = Column(TIMESTAMP(timezone=True), nullable=True, index=True)  # soft archive timestamp
-    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True, index=True)  # soft delete with retention
+    created_at = Column(
+        TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    updated_at = Column(
+        TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False
+    )
+    archived = Column(
+        TIMESTAMP(timezone=True), nullable=True, index=True
+    )  # soft archive timestamp
+    deleted_at = Column(
+        TIMESTAMP(timezone=True), nullable=True, index=True
+    )  # soft delete with retention

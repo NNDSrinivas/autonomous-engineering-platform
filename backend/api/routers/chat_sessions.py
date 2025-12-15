@@ -57,9 +57,13 @@ def _ensure_schema(db: Session) -> None:
             add_column("ALTER TABLE chat_session ADD COLUMN deleted_at TIMESTAMP")
         if "starred" not in existing:
             if is_sqlite:
-                add_column("ALTER TABLE chat_session ADD COLUMN starred INTEGER DEFAULT 0")
+                add_column(
+                    "ALTER TABLE chat_session ADD COLUMN starred INTEGER DEFAULT 0"
+                )
             else:
-                add_column("ALTER TABLE chat_session ADD COLUMN starred BOOLEAN DEFAULT FALSE")
+                add_column(
+                    "ALTER TABLE chat_session ADD COLUMN starred BOOLEAN DEFAULT FALSE"
+                )
     finally:
         _SCHEMA_READY = True
 
@@ -71,42 +75,46 @@ def _current_user_id(user) -> str:
 def _extract_org_context_for_sessions(user_id: str) -> list[str]:
     """Extract all possible org_id values to search for chat sessions."""
     org_ids = []
-    
+
     # 1. Most common: VS Code extension default
     org_ids.append("org_vscode_extension")
-    
+
     # 2. Workspace-based org_ids (multiple possible workspace paths)
     try:
         import hashlib
+
         workspace_path = "/Users/mounikakapa/Desktop/Personal Projects/autonomous-engineering-platform"
         workspace_hash = hashlib.md5(workspace_path.encode()).hexdigest()[:12]
         org_ids.append(f"org_workspace_{workspace_hash}")
-        
+
         # Also try shorter hash (in case algorithm changed)
         workspace_hash_short = hashlib.md5(workspace_path.encode()).hexdigest()[:8]
         org_ids.append(f"org_workspace_{workspace_hash_short}")
-        
+
         # Platform-based ID (aep = autonomous engineering platform)
-        platform_hash = hashlib.md5("autonomous-engineering-platform".encode()).hexdigest()[:16]
+        platform_hash = hashlib.md5(
+            "autonomous-engineering-platform".encode()
+        ).hexdigest()[:16]
         org_ids.append(f"org_aep_platform_{platform_hash}")
     except Exception:
         pass
-    
+
     # 3. User-based org_id (both hashed and direct user_id)
     try:
         # Direct user_id format (what navi.py actually creates)
         org_ids.append(f"org_user_{user_id}")
-        
+
         # Hashed format (legacy)
         import hashlib
+
         user_hash = hashlib.md5(user_id.encode()).hexdigest()[:8]
         org_ids.append(f"org_user_{user_hash}")
     except Exception:
         pass
-    
+
     # 4. Legacy values found in database
     org_ids.extend(["dev_org", None])  # None for very old records
-    
+
     return org_ids
 
 
@@ -189,7 +197,6 @@ def delete_session(
 ):
     _ensure_schema(db)
     # Use default org_id for VS Code extension compatibility
-    org_id = "org_vscode_extension"
     user_id = user_id or _current_user_id(user)
     # Soft delete: mark deleted_at; retain for up to 30 days
     dialect = getattr(getattr(db, "bind", None), "dialect", None)
@@ -213,7 +220,6 @@ def archive_session(
     user=Depends(get_current_user_optional),
 ):
     _ensure_schema(db)
-    org_id = "org_vscode_extension"
     user_id = user_id or _current_user_id(user)
     dialect = getattr(getattr(db, "bind", None), "dialect", None)
     dialect_name = getattr(dialect, "name", "") if dialect else ""
@@ -236,7 +242,6 @@ def unarchive_session(
     user=Depends(get_current_user_optional),
 ):
     _ensure_schema(db)
-    org_id = "org_vscode_extension"
     user_id = user_id or _current_user_id(user)
     db.execute(
         text(
@@ -259,25 +264,28 @@ def restore_session(
     Restore a soft-deleted session within a 30-day retention window.
     """
     _ensure_schema(db)
-    org_id = "org_vscode_extension"
     user_id = user_id or _current_user_id(user)
 
     # Only allow restore within 30 days
-    row = db.execute(
-        text(
-            """
+    row = (
+        db.execute(
+            text(
+                """
             SELECT deleted_at FROM chat_session
             WHERE id = :sid AND user_id = :user_id
             """
-        ),
-        {"sid": session_id, "user_id": user_id},
-    ).mappings().first()
+            ),
+            {"sid": session_id, "user_id": user_id},
+        )
+        .mappings()
+        .first()
+    )
 
     if not row or not row.get("deleted_at"):
         raise HTTPException(status_code=404, detail="Session not found or not deleted")
 
     deleted_at = row["deleted_at"]
-    from datetime import datetime, timezone, timedelta
+    from datetime import timezone, timedelta
 
     if deleted_at < datetime.now(timezone.utc) - timedelta(days=30):
         raise HTTPException(status_code=410, detail="Restore window expired (>30 days)")
@@ -300,7 +308,6 @@ def star_session(
     user=Depends(get_current_user_optional),
 ):
     _ensure_schema(db)
-    org_id = "org_vscode_extension"
     user_id = user_id or _current_user_id(user)
     db.execute(
         text(
@@ -320,7 +327,6 @@ def unstar_session(
     user=Depends(get_current_user_optional),
 ):
     _ensure_schema(db)
-    org_id = "org_vscode_extension"
     user_id = user_id or _current_user_id(user)
     db.execute(
         text(

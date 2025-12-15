@@ -3,7 +3,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from datetime import datetime
 
 from backend.core.db import get_db
 from backend.core.auth_org import require_org
@@ -74,6 +73,7 @@ def get_change(
         raise HTTPException(status_code=404, detail="Change set not found")
     return dict(row)
 
+
 @router.get("/{change_id}/diff")
 def get_change_diff(
     change_id: int,
@@ -104,7 +104,9 @@ def get_change_diff(
     details = row.get("details") or {}
     patch = details.get("patch")
     if not patch:
-        raise HTTPException(status_code=404, detail="No diff stored for this change set")
+        raise HTTPException(
+            status_code=404, detail="No diff stored for this change set"
+        )
     return {"patch": patch}
 
 
@@ -140,13 +142,16 @@ def undo_change(
     patch = details.get("patch")
     workspace_root = details.get("workspace_root")
     if not patch:
-        raise HTTPException(status_code=400, detail="No patch stored for this change set")
+        raise HTTPException(
+            status_code=400, detail="No patch stored for this change set"
+        )
     if not workspace_root:
         raise HTTPException(status_code=400, detail="Missing workspace path for undo")
 
     # Apply reverse patch using git apply -R
     try:
         import subprocess
+
         proc = subprocess.run(
             ["git", "apply", "-R", "-"],
             input=patch,

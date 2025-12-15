@@ -12,4 +12,6 @@ class ChangeSet(Base):
     user_id = Column(String(255), nullable=False, index=True)
     summary = Column(String(500), nullable=True)
     details = Column(JSONB, nullable=True)
-    created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at = Column(
+        TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False
+    )

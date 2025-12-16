@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .repo_context import repo_snapshot, list_neighbors
 from backend.core.ai_service import AIService
 from backend.core.utils.hashing import sha256_hash
-from backend.llm.router import complete_chat
+from backend.ai.llm_router import complete_chat
 from backend.services.learning_service import LearningService, BanditConfigurationError
 from backend.services.feedback_service import FeedbackService
 

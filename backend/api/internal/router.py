@@ -4,7 +4,7 @@ from typing import Optional
 import os
 import subprocess
 import platform
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 router = APIRouter(prefix="/internal", tags=["internal"])
@@ -78,7 +78,7 @@ async def get_system_info():
         version="1.0.0",  # TODO: Read from package.json or version file
         git_commit=git_commit,
         git_branch=git_branch,
-        build_timestamp=os.getenv("BUILD_TIMESTAMP", datetime.utcnow().isoformat()),
+        build_timestamp=os.getenv("BUILD_TIMESTAMP", datetime.now(timezone.utc).isoformat()),
         python_version=platform.python_version(),
         platform=f"{platform.system()} {platform.release()}",
         deployment_target=deployment_target,
@@ -94,7 +94,7 @@ async def get_detailed_health():
     """
     health_status = {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "checks": {},
     }
 

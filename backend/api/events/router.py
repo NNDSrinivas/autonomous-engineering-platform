@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 import logging
-from datetime import datetime
+from datetime import timezone, datetime
 
 from .models import IngestEvent, IngestResponse, IngestBatchRequest, IngestBatchResponse
 from ...core.db import get_db
@@ -42,7 +42,7 @@ async def ingest_event(
             "source": event.source,
             "event_type": event.event_type,
             "external_id": event.external_id,
-            "ingested_at": datetime.utcnow().isoformat(),
+            "ingested_at": datetime.now(timezone.utc).isoformat(),
             **event.tags,
         }
 
@@ -120,7 +120,7 @@ async def ingest_events_batch(
                 "source": event.source,
                 "event_type": event.event_type,
                 "external_id": event.external_id,
-                "ingested_at": datetime.utcnow().isoformat(),
+                "ingested_at": datetime.now(timezone.utc).isoformat(),
                 **event.tags,
             }
 

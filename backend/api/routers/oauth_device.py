@@ -11,7 +11,7 @@ import os
 import random
 import secrets
 import string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -110,14 +110,14 @@ async def start_device_code_flow(request: DeviceCodeStartRequest):
 
         # Store device code with metadata
         # 10 minute expiry
-        expires_at = datetime.utcnow() + timedelta(minutes=10)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
         _device_codes[device_code] = {
             "user_code": user_code,
             "client_id": request.client_id,
             "scope": request.scope,
             "expires_at": expires_at,
             "status": "pending",  # pending, authorized, denied
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         }
 
         # Base verification URI (for development, use localhost)
@@ -161,7 +161,7 @@ async def poll_device_code(request: DeviceCodePollRequest):
         device_info = _device_codes[device_code]
 
         # Check if expired
-        if datetime.utcnow() > device_info["expires_at"]:
+        if datetime.now(timezone.utc) > device_info["expires_at"]:
             del _device_codes[device_code]
             raise HTTPException(
                 status_code=400,
@@ -173,7 +173,7 @@ async def poll_device_code(request: DeviceCodePollRequest):
         if device_info["status"] == "pending":
             # For development/testing: Auto-approve after initial delay to simulate user approval
             # In production, this should be replaced with proper web-based user approval
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
             time_since_creation = (
                 current_time - device_info["created_at"]
             ).total_seconds()
@@ -217,7 +217,7 @@ async def poll_device_code(request: DeviceCodePollRequest):
         # Generate access token
         if device_info["status"] == "authorized":
             access_token = secrets.token_urlsafe(32)
-            token_expires_at = datetime.utcnow() + timedelta(hours=24)  # 24 hour token
+            token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)  # 24 hour token
 
             # Store access token
             _access_tokens[access_token] = {
@@ -225,7 +225,7 @@ async def poll_device_code(request: DeviceCodePollRequest):
                 "scope": device_info["scope"],
                 "expires_at": token_expires_at,
                 "user_id": "demo-user",  # In production, get from authorization
-                "created_at": datetime.utcnow(),
+                "created_at": datetime.now(timezone.utc),
             }
 
             # Clean up device code
@@ -287,18 +287,18 @@ async def authorize_device_code(request: DeviceAuthorizationRequest):
         device_info = _device_codes[device_code]
 
         # Check if already expired
-        if datetime.utcnow() > device_info["expires_at"]:
+        if datetime.now(timezone.utc) > device_info["expires_at"]:
             del _device_codes[device_code]
             raise HTTPException(status_code=400, detail="Device code has expired")
 
         # Update authorization status
         if request.action.lower() == "approve":
             device_info["status"] = "authorized"
-            device_info["authorized_at"] = datetime.utcnow()
+            device_info["authorized_at"] = datetime.now(timezone.utc)
             message = f"Device with user code {request.user_code} has been authorized"
         elif request.action.lower() == "deny":
             device_info["status"] = "denied"
-            device_info["denied_at"] = datetime.utcnow()
+            device_info["denied_at"] = datetime.now(timezone.utc)
             message = f"Device with user code {request.user_code} has been denied"
         else:
             raise HTTPException(
@@ -330,7 +330,7 @@ def validate_access_token(token: str) -> Dict[str, Any]:
 
     token_info = _access_tokens[token]
 
-    if datetime.utcnow() > token_info["expires_at"]:
+    if datetime.now(timezone.utc) > token_info["expires_at"]:
         del _access_tokens[token]
         raise HTTPException(status_code=401, detail="Token expired")
 

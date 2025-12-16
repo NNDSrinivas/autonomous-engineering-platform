@@ -29,7 +29,7 @@ def _is_safe_path(path: str, workspace_root: str) -> bool:
 
         # Only allow relative paths with standard separators
         normalized_path = path.replace("\\", "/")
-        if "//" in normalized_path or normalized_path.startswith("./"):
+        if "//" in normalized_path:
             return False
 
         # Normalize the workspace root

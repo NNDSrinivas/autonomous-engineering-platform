@@ -46,7 +46,7 @@ def _is_safe_path(basedir: str, candidate: str) -> bool:
 
         # Only allow relative paths with standard separators
         normalized_candidate = candidate.replace("\\", "/")
-        if "//" in normalized_candidate or normalized_candidate.startswith("./"):
+        if "//" in normalized_candidate:
             return False
 
         # Normalize base directory

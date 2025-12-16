@@ -26,21 +26,37 @@ MAX_CONTENT_CHARS = 8000  # safety cap per file
 def _is_safe_path(basedir: str, candidate: str) -> bool:
     """Ensure candidate path stays within basedir."""
     try:
-        # Sanitize candidate path to prevent path traversal
-        if not candidate or candidate.startswith("/") or ".." in candidate:
+        # Enhanced input validation
+        if not candidate or not isinstance(candidate, str):
+            return False
+            
+        # Reject absolute paths
+        if candidate.startswith(("/", "\\")):
+            return False
+            
+        # Reject any path with parent directory references
+        if ".." in candidate or "~" in candidate:
+            return False
+            
+        # Reject paths with null bytes or other dangerous characters
+        if "\x00" in candidate or any(c in candidate for c in ["<", ">", ":", '"', "|", "?", "*"]):
+            return False
+
+        # Only allow relative paths with standard separators
+        normalized_candidate = candidate.replace("\\", "/")
+        if "//" in normalized_candidate or normalized_candidate.startswith("./"):
             return False
 
         # Normalize base directory
         basedir_real = Path(basedir).resolve()
 
-        # Join paths safely
-        candidate_path = basedir_real / candidate
-
-        # Resolve and check containment
-        candidate_real = candidate_path.resolve()
+        # Use os.path.join for safer path construction
+        import os
+        candidate_full = os.path.normpath(os.path.join(str(basedir_real), normalized_candidate))
+        candidate_resolved = Path(candidate_full).resolve()
 
         # Verify candidate is within basedir
-        candidate_real.relative_to(basedir_real)
+        candidate_resolved.relative_to(basedir_real)
         return True
     except (ValueError, OSError):
         return False

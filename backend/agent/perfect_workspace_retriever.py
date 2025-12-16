@@ -9,21 +9,37 @@ logger = logging.getLogger(__name__)
 def _is_safe_path(path: str, workspace_root: str) -> bool:
     """Safely validate that path is within workspace_root to prevent path traversal."""
     try:
-        # Sanitize and validate input path
-        if not path or path.startswith("/") or ".." in path:
+        # Enhanced input validation
+        if not path or not isinstance(path, str):
+            return False
+            
+        # Reject absolute paths
+        if path.startswith(("/", "\\")):
+            return False
+            
+        # Reject any path with parent directory references
+        if ".." in path or "~" in path:
+            return False
+            
+        # Reject paths with null bytes or other dangerous characters
+        if "\x00" in path or any(c in path for c in ["<", ">", ":", '"', "|", "?", "*"]):
             return False
 
-        # Normalize the workspace root first
+        # Only allow relative paths with standard separators
+        normalized_path = path.replace("\\", "/")
+        if "//" in normalized_path or normalized_path.startswith("./"):
+            return False
+
+        # Normalize the workspace root
         workspace_path = Path(workspace_root).resolve()
 
-        # Join paths safely without resolving user input directly
-        candidate_path = workspace_path / path
-
-        # Now resolve and check containment
-        resolved_path = candidate_path.resolve()
+        # Use os.path.join for safer path construction
+        import os
+        candidate_full = os.path.normpath(os.path.join(str(workspace_path), normalized_path))
+        candidate_resolved = Path(candidate_full).resolve()
 
         # Verify the resolved path is still within workspace
-        resolved_path.relative_to(workspace_path)
+        candidate_resolved.relative_to(workspace_path)
         return True
     except (ValueError, OSError):
         return False
@@ -50,13 +66,22 @@ MAX_FILE_SIZE = 30_000  # 30 KB
 
 def safe_read_file(path: str, workspace_root: Optional[str] = None) -> Optional[str]:
     try:
-        # Validate path is within workspace if workspace_root is provided
-        if workspace_root and not _is_safe_path(path, workspace_root):
+        # Always validate path, using workspace_root if provided or Path.cwd() as fallback
+        validate_root = workspace_root or str(Path.cwd())
+        if not _is_safe_path(path, validate_root):
             logger.warning("Rejecting unsafe path: %s", path)
             return None
 
-        # Use pathlib for secure path operations
-        file_path = Path(path).resolve()
+        # Construct safe path using validated workspace root
+        root_path = Path(validate_root).resolve()
+        file_path = (root_path / path).resolve()
+        
+        # Double-check containment after resolution
+        try:
+            file_path.relative_to(root_path)
+        except ValueError:
+            logger.warning("Path traversal detected: %s", path)
+            return None
 
         if not file_path.exists() or not file_path.is_file():
             return None

@@ -1,9 +1,9 @@
 """Contextual bandit learning system for AI parameter optimization."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
-import numpy as np
+from numpy.random import beta
 
 from backend.infra.cache.redis_cache import cache
 from backend.models.ai_feedback import TaskType
@@ -154,7 +154,7 @@ class ThompsonSamplingBandit:
 
             # Thompson Sampling: sample from Beta(successes, failures), where
             # successes and failures include the prior (initially 1.0 each).
-            score = np.random.beta(successes, failures)
+            score = beta(successes, failures)
 
             arm_scores.append((score, arm))
 
@@ -291,5 +291,5 @@ class LearningService:
         return {
             "org_key": org_key,
             "contexts": context_stats,
-            "last_updated": datetime.utcnow().isoformat(),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
         }

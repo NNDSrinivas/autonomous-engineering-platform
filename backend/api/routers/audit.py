@@ -15,7 +15,7 @@ from backend.core.auth.models import User, Role
 from backend.core.eventstore.service import replay, get_plan_event_count
 from backend.core.eventstore.models import AuditLog
 
-router = APIRouter(prefix="/api", tags=["audit"])
+router = APIRouter(tags=["audit"])
 
 
 class PlanEventOut(BaseModel):

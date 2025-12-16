@@ -14,11 +14,11 @@ import re
 # JIRA project keys are 2-10 chars; negative assertions prevent false matches in URLs.
 JIRA_KEY_PATTERN = re.compile(r"(?<![A-Z0-9])[A-Z]{2,10}-\d+(?![A-Z0-9])")
 PR_NUMBER_PATTERN = re.compile(r"#(\d+)")
-SLACK_THREAD_PATTERN = re.compile(r"p\d{10,}")
+SLACK_THREAD_PATTERN = re.compile(r"p\d{10,20}")
 
 # Relationship detection patterns
 FIXES_PATTERN = re.compile(
-    r"(?:fixes?|closes?|resolves?)\s*(?:#(\d+)|([A-Z]{2,10}-\d+))",
+    r"(?:fix(?:es)?|close(?:s)?|resolve(?:s)?)\s*(?:#(\d{1,8})|([A-Z]{2,10}-\d{1,8}))",
     re.IGNORECASE,
 )
 REVERT_PATTERN = re.compile(r"revert|reverts", re.IGNORECASE)
@@ -70,7 +70,8 @@ def parse_time_window(window_str: str) -> int:
         >>> parse_time_window('invalid')
         30
     """
-    match = re.match(r"(\d+)d", window_str.lower())
+    # Use more specific regex with length limit to prevent ReDoS attacks
+    match = re.match(r"^(\d{1,4})d$", window_str.lower())
     if match:
         return int(match.group(1))
     return 30  # Default to 30 days

@@ -1,0 +1,68 @@
+/* History */
+.navi-history-root {
+    padding: 16px 20px;
+    color: #e5e7eb;
+    font-size: 13px;
+}
+
+.navi-history-header {
+    margin-bottom: 12px;
+}
+
+.navi-history-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.navi-history-subtitle {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.navi-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.navi-history-card {
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.98);
+    border: 1px solid rgba(31, 41, 55, 0.9);
+    cursor: pointer;
+}
+
+.navi-history-card:hover {
+    border-color: rgba(59, 130, 246, 0.9);
+}
+
+.navi-history-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.navi-history-session-title {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.navi-history-token {
+    font-size: 11px;
+    color: #9ca3af;
+}
+
+.navi-history-repo {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 2px;
+}
+
+.navi-history-meta {
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 2px;
+}

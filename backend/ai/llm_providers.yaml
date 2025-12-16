@@ -1,0 +1,295 @@
+version: 1.0
+updated: 2025-01-01
+
+providers:
+  ##########################################################################
+  # OPENAI
+  ##########################################################################
+  openai:
+    display_name: "OpenAI"
+    base_url: "https://api.openai.com/v1/chat/completions"
+    models:
+      gpt-5.1:
+        provider: openai
+        type: text+vision
+        max_context: 200000
+        speed_index: 4
+        cost_index: 4
+        coding_accuracy: 5
+        recommended: true
+        smart_auto_rank: 1
+        capabilities:
+          vision: true
+          structured_output: true
+          code_interpreter: true
+
+      gpt-5.0:
+        provider: openai
+        type: text+vision
+        max_context: 150000
+        speed_index: 4
+        cost_index: 3
+        coding_accuracy: 5
+        smart_auto_rank: 3
+        capabilities:
+          vision: true
+          structured_output: true
+
+      gpt-4.2:
+        provider: openai
+        type: text+vision
+        max_context: 128000
+        speed_index: 4
+        cost_index: 2
+        coding_accuracy: 4
+        smart_auto_rank: 4
+        capabilities:
+          vision: true
+
+      gpt-4.1:
+        provider: openai
+        type: text
+        max_context: 128000
+        speed_index: 5
+        cost_index: 2
+        coding_accuracy: 5
+        recommended: true
+        smart_auto_rank: 2
+
+      gpt-4o:
+        provider: openai
+        type: text+vision
+        max_context: 128000
+        speed_index: 5
+        cost_index: 1
+        coding_accuracy: 4
+        smart_auto_rank: 5
+
+      gpt-4o-mini:
+        provider: openai
+        type: text
+        max_context: 128000
+        speed_index: 5
+        cost_index: 1
+        coding_accuracy: 3
+        smart_auto_rank: 6
+
+      gpt-3.5-turbo:
+        provider: openai
+        type: legacy
+        max_context: 16000
+        speed_index: 5
+        cost_index: 1
+        coding_accuracy: 2
+        smart_auto_rank: 99
+
+  ##########################################################################
+  # ANTHROPIC (CLAUDE)
+  ##########################################################################
+  anthropic:
+    display_name: "Anthropic Claude"
+    base_url: "https://api.anthropic.com/v1/messages"
+    models:
+      claude-3.7-opus:
+        provider: anthropic
+        type: text+vision
+        max_context: 200000
+        speed_index: 3
+        cost_index: 4
+        coding_accuracy: 5
+        recommended: true
+        smart_auto_rank: 3
+        capabilities:
+          vision: true
+          reasoning: true
+
+      claude-3.7-sonnet:
+        provider: anthropic
+        type: text
+        max_context: 200000
+        speed_index: 5
+        cost_index: 3
+        coding_accuracy: 5
+        recommended: true
+        smart_auto_rank: 2
+        capabilities:
+          reasoning: true
+
+      claude-3.5-sonnet:
+        provider: anthropic
+        type: text
+        max_context: 200000
+        speed_index: 4
+        cost_index: 3
+        coding_accuracy: 5
+        smart_auto_rank: 4
+
+      claude-3.5-haiku:
+        provider: anthropic
+        type: text
+        max_context: 120000
+        speed_index: 5
+        cost_index: 1
+        coding_accuracy: 3
+        smart_auto_rank: 7
+
+  ##########################################################################
+  # GOOGLE GEMINI
+  ##########################################################################
+  google:
+    display_name: "Google Gemini"
+    base_url: "https://generativelanguage.googleapis.com/v1beta/models"
+    models:
+      gemini-2.0-pro:
+        provider: google
+        type: text+vision
+        max_context: 200000
+        speed_index: 4
+        cost_index: 3
+        coding_accuracy: 4
+        smart_auto_rank: 5
+
+      gemini-2.0-flash:
+        provider: google
+        type: text+vision
+        max_context: 200000
+        speed_index: 5
+        cost_index: 1
+        coding_accuracy: 3
+        smart_auto_rank: 6
+
+      gemini-1.5-pro:
+        provider: google
+        type: text+vision
+        max_context: 1000000
+        speed_index: 4
+        cost_index: 3
+        coding_accuracy: 4
+        smart_auto_rank: 5
+
+      gemini-1.5-flash:
+        provider: google
+        type: text+vision
+        max_context: 1000000
+        speed_index: 5
+        cost_index: 1
+        coding_accuracy: 3
+        smart_auto_rank: 7
+
+  ##########################################################################
+  # xAI GROK
+  ##########################################################################
+  xai:
+    display_name: "xAI Grok"
+    base_url: "https://api.x.ai/v1/chat/completions"
+    models:
+      grok-3:
+        provider: xai
+        type: text+vision
+        max_context: 128000
+        speed_index: 5
+        cost_index: 2
+        coding_accuracy: 3
+        smart_auto_rank: 6
+
+      grok-2:
+        provider: xai
+        type: text
+        max_context: 128000
+        speed_index: 5
+        cost_index: 1
+        coding_accuracy: 2
+        smart_auto_rank: 9
+
+  ##########################################################################
+  # META LLAMA (LOCAL / OFFLINE OPTIONS)
+  ##########################################################################
+  meta:
+    display_name: "Meta LLaMA"
+    base_url: "local" # local inference server
+    models:
+      llama-3.2-vision:
+        provider: meta
+        type: text+vision
+        max_context: 128000
+        speed_index: 4
+        cost_index: 0 # local
+        coding_accuracy: 3
+        smart_auto_rank: 10
+
+      llama-3.1-405b:
+        provider: meta
+        type: text
+        max_context: 128000
+        speed_index: 3
+        cost_index: 0
+        coding_accuracy: 4
+        smart_auto_rank: 8
+
+      llama-3.1-70b:
+        provider: meta
+        type: text
+        max_context: 128000
+        speed_index: 4
+        cost_index: 0
+        coding_accuracy: 3
+        smart_auto_rank: 9
+
+      llama-3.1-8b:
+        provider: meta
+        type: text
+        max_context: 128000
+        speed_index: 5
+        cost_index: 0
+        coding_accuracy: 2
+        smart_auto_rank: 12
+
+  ##########################################################################
+  # COHERE
+  ##########################################################################
+  cohere:
+    display_name: "Cohere"
+    base_url: "https://api.cohere.com/v1/chat"
+    models:
+      command-r-plus:
+        provider: cohere
+        type: text
+        max_context: 200000
+        speed_index: 4
+        cost_index: 2
+        coding_accuracy: 4
+        smart_auto_rank: 6
+
+      command-r:
+        provider: cohere
+        type: text
+        max_context: 100000
+        speed_index: 4
+        cost_index: 1
+        coding_accuracy: 3
+        smart_auto_rank: 10
+
+  ##########################################################################
+  # MISTRAL
+  ##########################################################################
+  mistral:
+    display_name: "Mistral"
+    base_url: "https://api.mistral.ai/v1/chat/completions"
+    models:
+      mistral-large:
+        provider: mistral
+        type: text
+        max_context: 128000
+        speed_index: 3
+        cost_index: 2
+        coding_accuracy: 4
+        smart_auto_rank: 8
+
+      mixtral-8x22b:
+        provider: mistral
+        type: text
+        max_context: 64000
+        speed_index: 5
+        cost_index: 1
+        coding_accuracy: 3
+        smart_auto_rank: 11

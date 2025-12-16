@@ -112,8 +112,8 @@ def get_coding_engine(
                     raise PermissionError(
                         f"Workspace directory not accessible: {workspace_path}"
                     )
-            except (OSError, PermissionError) as e:
-                logger.error(f"Failed to create/access workspace {workspace_id}: {e}")
+            except (OSError, PermissionError):
+                logger.error(f"Failed to create/access workspace {workspace_id}")
                 raise ValueError("Workspace initialization failed")
 
             # Create engine without database session (session will be injected per request)
@@ -189,9 +189,10 @@ async def create_task_from_jira(
         return TaskPresentationResponse(**presentation)
 
     except Exception as e:
-        logger.error(f"Failed to create task from JIRA {request.jira_key}: {e}")
+        logger.error(f"Failed to create task from JIRA {request.jira_key}: {str(e)}")
         raise HTTPException(
-            status_code=500, detail=f"Failed to create autonomous task: {str(e)}"
+            status_code=500,
+            detail="Failed to create autonomous task. Please check server logs for details.",
         )
 
 
@@ -221,8 +222,10 @@ async def execute_step(request: ExecuteStepRequest, db: Session = Depends(get_db
         return result
 
     except Exception as e:
-        logger.error(f"Failed to execute step {request.step_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to execute autonomous coding step: %s", str(e))
+        raise HTTPException(
+            status_code=500, detail="Failed to execute autonomous coding step"
+        )
 
 
 @router.get("/tasks/{task_id}")
@@ -249,8 +252,11 @@ async def get_task_status(task_id: str, db: Session = Depends(get_db)):
         }
 
     except Exception as e:
-        logger.error(f"Failed to get task status {task_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to get task status: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve task status. Please check server logs.",
+        )
 
 
 @router.get("/tasks/{task_id}/steps")
@@ -286,8 +292,11 @@ async def get_task_steps(task_id: str, db: Session = Depends(get_db)):
         }
 
     except Exception as e:
-        logger.error(f"Failed to get task steps {task_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to get task steps: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve task steps. Please check server logs.",
+        )
 
 
 @router.post("/tasks/{task_id}/preview-step/{step_id}")
@@ -331,8 +340,10 @@ async def preview_step_changes(
         return preview
 
     except Exception as e:
-        logger.error(f"Failed to preview step {step_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to preview step {step_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Failed to preview step. Please check server logs."
+        )
 
 
 @router.post("/tasks/{task_id}/create-pr")
@@ -347,25 +358,24 @@ async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
             branch_name=None,  # Use task's branch
         )
 
-        logger.info(f"Created PR for task {task_id}: {result.get('pr_url', 'unknown')}")
+        logger.info("Created pull request successfully")
 
         # If error, raise HTTPException with generic message, otherwise return result
         if result.get("status") == "error":
             logger.error(
-                f"Failed to create PR for task {task_id}: {result.get('error')}"
+                "Failed to create pull request: %s",
+                result.get("message", "Unknown error"),
             )
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to create pull request: {result.get('error', 'Unknown error')}",
+                detail="Failed to create pull request",
             )
 
         return result
 
     except Exception as e:
-        logger.error(f"Failed to create PR for task {task_id}: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create pull request: {str(e)}"
-        )
+        logger.error(f"Failed to create pull request: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create pull request")
 
 
 @router.get("/health")
@@ -383,7 +393,7 @@ async def health_check(db: Session = Depends(get_db)):
         }
 
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error(f"Health check failed: {str(e)}")
         return {"status": "unhealthy", "error": "Internal server error"}
 
 
@@ -422,8 +432,11 @@ async def get_user_daily_context(request: Request, db: Session = Depends(get_db)
         return daily_context
 
     except Exception as e:
-        logger.error(f"Failed to get daily context: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to get daily context: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve daily context. Please check server logs.",
+        )
 
 
 # Helper functions for enterprise context gathering
@@ -546,7 +559,7 @@ async def get_concierge_greeting(request: Request, db: Session = Depends(get_db)
         )
 
     except Exception as e:
-        logger.error(f"Failed to generate concierge greeting: {e}")
+        logger.error(f"Failed to generate concierge greeting: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to generate greeting")
 
 
@@ -568,7 +581,7 @@ async def update_wallpaper_preferences(
         }
 
     except Exception as e:
-        logger.error(f"Failed to update wallpaper preferences: {e}")
+        logger.error(f"Failed to update wallpaper preferences: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update preferences")
 
 
@@ -744,7 +757,7 @@ async def _get_user_daily_context_data(user_id: str, db: Session) -> Dict[str, A
         }
 
     except Exception as e:
-        logger.error(f"Failed to get daily context: {e}")
+        logger.error(f"Failed to get daily context: {str(e)}")
         return {"tasks_summary": {}, "jira_tasks": []}
 
 

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NAVI Assistant</title>
+    <script>
+        // Set backend URL and workspace context for NAVI client
+        // These are accessed by frontend/src/api/navi/client.ts
+        window.__AEP_BACKEND_BASE_URL__ = "http://127.0.0.1:8787";
+        window.__WORKSPACE_CONTEXT__ = null;
+        window.__WORKSPACE_ROOT__ = null;
+        console.log('[Webview] Globals set:', {
+            backendUrl: window.__AEP_BACKEND_BASE_URL__,
+            workspace: window.__WORKSPACE_CONTEXT__,
+            workspaceRoot: window.__WORKSPACE_ROOT__
+        });
+    </script>
+</head>
+
+<body>
+    <div id="root"></div>
+    <script type="module" src="/src/webview.tsx"></script>
+</body>
+
+</html>

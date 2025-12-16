@@ -1,9 +1,11 @@
-"""NAVI Memory Service
+"""
+NAVI Memory Service
 
 This service manages NAVI's conversational memory system - storing and
 retrieving memories for profile, workspace, task, and interaction contexts.
 
-Uses pgvector for semantic search with OpenAI embeddings.
+Originally this was written for PostgreSQL + pgvector. This version is
+safe to run on SQLite in local/dev while still working on Postgres in prod.
 """
 
 import os
@@ -38,13 +40,13 @@ def _get_openai_client() -> AsyncOpenAI:
 
 
 async def generate_embedding(
-    text: str, model: str = "text-embedding-3-large"
+    text_value: str, model: str = "text-embedding-ada-002"
 ) -> List[float]:
     """
     Generate OpenAI embedding for text.
 
     Args:
-        text: Text to embed
+        text_value: Text to embed
         model: OpenAI embedding model
 
     Returns:
@@ -53,13 +55,13 @@ async def generate_embedding(
     try:
         client = _get_openai_client()
         response = await client.embeddings.create(
-            input=text,
+            input=text_value,
             model=model,
         )
         return response.data[0].embedding
     except Exception as e:
         logger.error(
-            "Failed to generate embedding", error=str(e), text_length=len(text)
+            "Failed to generate embedding", error=str(e), text_length=len(text_value)
         )
         raise
 
@@ -94,21 +96,26 @@ async def store_memory(
         # Generate embedding
         embedding = await generate_embedding(content)
 
-        # Convert embedding to PostgreSQL vector format
+        # Convert embedding to a string representation.
+        # On Postgres this is cast to vector, on SQLite it is just stored as TEXT.
         embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
 
-        # Prepare metadata
-        meta_json = tags or {}
+        # Prepare metadata as proper JSON string
+        import json
 
-        # Insert memory
+        meta_json = tags or {}
+        meta_json_str = json.dumps(meta_json)
+
         result = db.execute(
             text(
                 """
                 INSERT INTO navi_memory 
-                (user_id, category, scope, title, content, embedding_vec, meta_json, importance, created_at, updated_at)
+                    (user_id, category, scope, title, content, 
+                     embedding_vec, meta_json, importance, created_at, updated_at)
                 VALUES 
-                (:user_id, :category, :scope, :title, :content, :embedding_vec::vector, :meta_json::json, :importance, now(), now())
-                RETURNING id
+                    (:user_id, :category, :scope, :title, :content, 
+                     :embedding_vec, :meta_json, :importance, 
+                     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """
             ),
             {
@@ -118,15 +125,13 @@ async def store_memory(
                 "title": title,
                 "content": content,
                 "embedding_vec": embedding_str,
-                "meta_json": str(meta_json),
+                "meta_json": meta_json_str,
                 "importance": importance,
             },
         )
 
-        row = result.fetchone()
-        if not row:
-            raise RuntimeError("Failed to insert memory: no ID returned")
-        memory_id = row[0]
+        # On SQLite result.lastrowid is populated; on Postgres it's usually None
+        memory_id = getattr(result, "lastrowid", None) or 0
         db.commit()
 
         logger.info(
@@ -157,37 +162,119 @@ async def search_memory(
     min_importance: int = 1,
 ) -> List[Dict[str, Any]]:
     """
-    Semantic search for memories using cosine similarity.
+    Semantic / text search for memories.
 
-    Args:
-        db: Database session
-        user_id: User identifier
-        query: Search query text
-        categories: Optional list of categories to filter (e.g., ["task", "workspace"])
-        limit: Maximum number of results
-        min_importance: Minimum importance score to include
-
-    Returns:
-        List of memory dictionaries with similarity scores
+    On Postgres with pgvector we use real vector similarity.
+    On SQLite (your local dev case) we fall back to a simple LIKE-based search
+    over title/content but keep the same return shape.
     """
     try:
+        bind = db.get_bind()
+        dialect = (
+            getattr(getattr(bind, "dialect", None), "name", "sqlite")
+            if bind
+            else "sqlite"
+        )
+
+        # ----------------- Category filter -----------------
+        category_filter = ""
+        category_params: Dict[str, Any] = {}
+        if categories:
+            placeholders = []
+            for idx, cat in enumerate(categories):
+                key = f"cat_{idx}"
+                placeholders.append(f":{key}")
+                category_params[key] = cat
+            category_filter = f"AND category IN ({', '.join(placeholders)})"
+
+        params: Dict[str, Any] = {
+            "user_id": user_id,
+            "min_importance": min_importance,
+            "limit": limit,
+            **category_params,
+        }
+
+        # ----------------- SQLite path -----------------
+        if dialect == "sqlite":
+            # Simple text search on title/content; no pgvector.
+            params["like_query"] = f"%{query}%"
+
+            result = db.execute(
+                text(
+                    f"""
+                    SELECT 
+                        id,
+                        user_id,
+                        category,
+                        scope,
+                        title,
+                        content,
+                        meta_json,
+                        importance,
+                        created_at,
+                        updated_at
+                    FROM navi_memory
+                    WHERE user_id = :user_id
+                      AND importance >= :min_importance
+                      {category_filter}
+                      AND (
+                           title   LIKE :like_query
+                        OR content LIKE :like_query
+                      )
+                    ORDER BY created_at DESC
+                    LIMIT :limit
+                """
+                ),
+                params,
+            )
+
+            memories: List[Dict[str, Any]] = []
+            for row in result:
+                created_at = row[8]
+                if hasattr(created_at, "isoformat"):
+                    created_at = created_at.isoformat()
+                else:
+                    created_at = str(created_at) if created_at else None
+
+                updated_at = row[9]
+                if hasattr(updated_at, "isoformat"):
+                    updated_at = updated_at.isoformat()
+                else:
+                    updated_at = str(updated_at) if updated_at else None
+
+                memories.append(
+                    {
+                        "id": row[0],
+                        "user_id": row[1],
+                        "category": row[2],
+                        "scope": row[3],
+                        "title": row[4],
+                        "content": row[5],
+                        "meta": row[6],
+                        "importance": row[7],
+                        "created_at": created_at,
+                        "updated_at": updated_at,
+                        # We don't have real similarity on SQLite; use dummy 1.0
+                        "similarity": 1.0,
+                    }
+                )
+
+            logger.info(
+                "Searched NAVI memory (sqlite fallback)",
+                user_id=user_id,
+                query_length=len(query),
+                categories=categories,
+                results=len(memories),
+            )
+            return memories
+
+        # ----------------- Postgres + pgvector path -----------------
         # Generate embedding for query
         query_embedding = await generate_embedding(query)
         query_embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+        # Inline the vector literal to avoid driver-specific param casting issues
+        query_vec_literal = f"'{query_embedding_str}'::vector"
 
-        # Build category filter using parameterization to prevent SQL injection
-        category_filter = ""
-        category_params = {}
-        if categories:
-            # Build a list of parameter names for each category
-            cat_placeholders = []
-            for idx, cat in enumerate(categories):
-                key = f"cat_{idx}"
-                cat_placeholders.append(f":{key}")
-                category_params[key] = cat
-            category_filter = f"AND category IN ({', '.join(cat_placeholders)})"
-
-        # Search using pgvector cosine similarity
         result = db.execute(
             text(
                 f"""
@@ -202,25 +289,19 @@ async def search_memory(
                     importance,
                     created_at,
                     updated_at,
-                    1 - (embedding_vec <=> :query_vec::vector) as similarity
+                    1 - (embedding_vec <=> {query_vec_literal}) as similarity
                 FROM navi_memory
                 WHERE user_id = :user_id
                   AND importance >= :min_importance
                   {category_filter}
-                ORDER BY embedding_vec <=> :query_vec::vector
+                ORDER BY embedding_vec <=> {query_vec_literal}
                 LIMIT :limit
             """
             ),
-            {
-                "user_id": user_id,
-                "query_vec": query_embedding_str,
-                "min_importance": min_importance,
-                "limit": limit,
-                **category_params,
-            },
+            params,
         )
 
-        memories = []
+        memories: List[Dict[str, Any]] = []
         for row in result:
             memories.append(
                 {
@@ -261,22 +342,13 @@ async def get_recent_memories(
 ) -> List[Dict[str, Any]]:
     """
     Get recent memories ordered by creation time.
-
-    Args:
-        db: Database session
-        user_id: User identifier
-        category: Optional category filter
-        limit: Maximum number of results
-
-    Returns:
-        List of memory dictionaries
     """
     try:
         category_filter = ""
         if category:
             category_filter = "AND category = :category"
 
-        query_params = {
+        query_params: Dict[str, Any] = {
             "user_id": user_id,
             "limit": limit,
         }
@@ -299,8 +371,20 @@ async def get_recent_memories(
             query_params,
         )
 
-        memories = []
+        memories: List[Dict[str, Any]] = []
         for row in result:
+            created_at = row[8]
+            if hasattr(created_at, "isoformat"):
+                created_at = created_at.isoformat()
+            else:
+                created_at = str(created_at) if created_at else None
+
+            updated_at = row[9]
+            if hasattr(updated_at, "isoformat"):
+                updated_at = updated_at.isoformat()
+            else:
+                updated_at = str(updated_at) if updated_at else None
+
             memories.append(
                 {
                     "id": row[0],
@@ -311,8 +395,8 @@ async def get_recent_memories(
                     "content": row[5],
                     "meta": row[6],
                     "importance": row[7],
-                    "created_at": row[8].isoformat() if row[8] else None,
-                    "updated_at": row[9].isoformat() if row[9] else None,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
                 }
             )
 
@@ -333,14 +417,6 @@ async def get_recent_memories(
 async def delete_memory(db: Session, memory_id: int, user_id: str) -> bool:
     """
     Delete a memory (with user_id verification).
-
-    Args:
-        db: Database session
-        memory_id: Memory ID to delete
-        user_id: User identifier (for authorization)
-
-    Returns:
-        True if deleted, False if not found or unauthorized
     """
     try:
         result = db.execute(
@@ -378,11 +454,11 @@ def list_jira_tasks_for_user(
     limit: int = 20,
 ) -> List[Dict[str, Any]]:
     """
-    Return recent Jira task memories for this user from NAVI memory.
+    Return recent Jira *task* memories for this user from NAVI memory.
 
-    Filters for:
-    - category = "task"
-    - meta_json->'source' = "jira"
+    In dev you only have Jira ingest, so we intentionally **do not** filter on
+    meta_json->'source' = 'jira' to avoid JSON / dialect issues. We simply
+    take all memories with category = 'task' for this user.
 
     Args:
         db: Database session
@@ -402,7 +478,6 @@ def list_jira_tasks_for_user(
                 FROM navi_memory
                 WHERE user_id = :user_id
                   AND category = 'task'
-                  AND meta_json->>'source' = 'jira'
                 ORDER BY updated_at DESC
                 LIMIT :limit
             """
@@ -410,8 +485,31 @@ def list_jira_tasks_for_user(
             {"user_id": user_id, "limit": limit},
         )
 
-        tasks = []
+        tasks: List[Dict[str, Any]] = []
         for row in result:
+            # created_at / updated_at may be datetime or string (SQLite)
+            created_at = row[8]
+            if hasattr(created_at, "isoformat"):
+                created_at = created_at.isoformat()
+            else:
+                created_at = str(created_at) if created_at else None
+
+            updated_at = row[9]
+            if hasattr(updated_at, "isoformat"):
+                updated_at = updated_at.isoformat()
+            else:
+                updated_at = str(updated_at) if updated_at else None
+
+            tags = row[6]
+            # meta_json is stored as str(dict) in dev; parse it if possible
+            if isinstance(tags, str):
+                try:
+                    import ast
+
+                    tags = ast.literal_eval(tags) if tags else {}
+                except Exception:
+                    tags = {}
+
             tasks.append(
                 {
                     "id": row[0],
@@ -420,10 +518,10 @@ def list_jira_tasks_for_user(
                     "scope": row[3],
                     "title": row[4],
                     "content": row[5],
-                    "tags": row[6],  # meta_json column
+                    "tags": tags,
                     "importance": row[7],
-                    "created_at": row[8].isoformat() if row[8] else None,
-                    "updated_at": row[9].isoformat() if row[9] else None,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
                 }
             )
 

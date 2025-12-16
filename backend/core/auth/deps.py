@@ -137,9 +137,11 @@ def get_current_user(
         # Dev shim mode: read from environment variables
         user_id = os.getenv("DEV_USER_ID")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="DEV_USER_ID environment variable required in dev mode",
+            # Soft fallback for dev UX: auto-assign a default user when none provided.
+            user_id = "dev_user"
+            logger.warning(
+                "DEV_USER_ID not set; falling back to 'dev_user' for development. "
+                "Set DEV_USER_ID to avoid this fallback."
             )
 
         email = os.getenv("DEV_USER_EMAIL")
@@ -158,7 +160,7 @@ def get_current_user(
         role = Role(role_str)
 
         # Org: prefer X-Org-Id header, fallback to DEV_ORG_ID env
-        org_id = x_org_id or os.getenv("DEV_ORG_ID")
+        org_id = x_org_id or os.getenv("DEV_ORG_ID") or "dev_org"
 
         # Projects: comma-separated list from env
         projects = parse_comma_separated(os.getenv("DEV_PROJECTS"))
@@ -171,6 +173,32 @@ def get_current_user(
             org_id=org_id,
             projects=projects,
         )
+
+
+def get_current_user_optional(
+    x_org_id: Annotated[Optional[str], Header()] = None,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Optional[User]:
+    """
+    Extract current user from request context, returning None if not authenticated.
+
+    This is useful for endpoints that work with or without authentication.
+
+    Mode 1 (JWT_ENABLED=true): Parse JWT token from Authorization header
+    Mode 2 (JWT_ENABLED=false): Use DEV_* environment variables (dev shim)
+
+    Args:
+        x_org_id: Optional organization ID from X-Org-Id header (dev mode only)
+        credentials: Bearer token from Authorization header (JWT mode)
+
+    Returns:
+        User object with role and context, or None if not authenticated
+    """
+    try:
+        return get_current_user(x_org_id=x_org_id, credentials=credentials)
+    except HTTPException:
+        # Not authenticated - return None instead of raising
+        return None
 
 
 def require_role(minimum_role: Role):

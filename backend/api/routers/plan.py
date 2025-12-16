@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import asyncio
 import logging
@@ -262,7 +262,7 @@ async def add_step(
         "id": str(uuid4()),
         "text": req.text,
         "owner": req.owner,
-        "ts": datetime.utcnow().isoformat(),
+        "ts": datetime.now(timezone.utc).isoformat(),
     }
 
     # Update plan - append to JSON array
@@ -275,7 +275,7 @@ async def add_step(
     steps = getattr(plan, "steps", []) or []
     steps.append(step)
     setattr(plan, "steps", steps)
-    setattr(plan, "updated_at", datetime.utcnow())
+    setattr(plan, "updated_at", datetime.now(timezone.utc))
 
     # Warn if plan is getting large (performance concern)
     # Use exponential thresholds to avoid log flooding: 50, 100, 200, 400, 800...
@@ -532,7 +532,7 @@ def archive_plan(
     # Mark as archived (or already archived from edge case above)
     if not getattr(plan, "archived", False):
         setattr(plan, "archived", True)
-        setattr(plan, "updated_at", datetime.utcnow())
+        setattr(plan, "updated_at", datetime.now(timezone.utc))
 
     # Create memory graph node
     node = MemoryNode(
@@ -556,7 +556,7 @@ def archive_plan(
         metadata={
             "steps_count": len(getattr(plan, "steps", []) or []),
             "participants": getattr(plan, "participants", []) or [],
-            "archived_at": datetime.utcnow().isoformat(),
+            "archived_at": datetime.now(timezone.utc).isoformat(),
         },
         created_at=plan.created_at,
     )

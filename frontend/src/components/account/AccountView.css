@@ -1,0 +1,96 @@
+/* Account / BYOK */
+.navi-settings-root {
+    padding: 16px 20px;
+    color: #e5e7eb;
+    font-size: 13px;
+}
+
+.navi-settings-header {
+    margin-bottom: 12px;
+}
+
+.navi-settings-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.navi-settings-subtitle {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.navi-settings-section {
+    margin-bottom: 16px;
+}
+
+.navi-settings-section-title {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.navi-settings-text {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.navi-settings-text code {
+    background: rgba(15, 23, 42, 0.9);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.navi-settings-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.navi-settings-card {
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.98);
+    border: 1px solid rgba(31, 41, 55, 0.9);
+    min-width: 220px;
+}
+
+.navi-settings-card-title {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.navi-settings-input {
+    width: 100%;
+    border-radius: 6px;
+    border: 1px solid rgba(55, 65, 81, 0.9);
+    background: rgba(15, 23, 42, 0.95);
+    color: #e5e7eb;
+    font-size: 12px;
+    padding: 4px 6px;
+}
+
+.navi-settings-help {
+    margin: 4px 0 0;
+    font-size: 11px;
+    color: #9ca3af;
+}
+
+.navi-settings-save-btn {
+    margin-top: 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(55, 65, 81, 0.9);
+    background: rgba(37, 99, 235, 0.9);
+    color: #e5e7eb;
+    padding: 5px 14px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.navi-settings-save-btn:hover {
+    background: rgba(37, 99, 235, 1);
+}

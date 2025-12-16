@@ -173,7 +173,7 @@ async def unified_search(req: SearchRequest, db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error("NAVI search failed", error=str(e), user_id=req.user_id)
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Search failed")
 
 
 @router.get("/search/stats", response_model=SearchStatsResponse)
@@ -225,7 +225,7 @@ async def get_search_stats(user_id: str, db: Session = Depends(get_db)):
 
     except Exception as e:
         logger.error("Failed to get memory stats", error=str(e), user_id=user_id)
-        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get stats")
 
 
 @router.get("/search/health")

@@ -42,7 +42,7 @@ def jira_sync(connection_id: str) -> None:
                     while True:
                         jql = f'project={key} AND updated >= "{since}"'
                         r = await client.get(
-                            f"{conn.cloud_base_url}/rest/api/3/search",
+                            f"{conn.cloud_base_url}/rest/api/3/search/jql",
                             params={"jql": jql, "startAt": start_at, "maxResults": 50},
                             headers=headers,
                         )

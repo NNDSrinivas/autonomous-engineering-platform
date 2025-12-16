@@ -8,6 +8,9 @@ class ContextPackRequest(BaseModel):
     """Request schema for building a context pack"""
 
     query: str = Field(..., description="Search query for context retrieval")
+    org_id: Optional[str] = Field(
+        None, description="Organization identifier for scoping results"
+    )
     task_key: Optional[str] = Field(
         None, description="Associated task key (e.g., JIRA issue)"
     )

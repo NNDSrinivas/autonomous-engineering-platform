@@ -38,11 +38,13 @@ class JiraSyncRequest(BaseModel):
 
 
 class JiraSyncResponse(BaseModel):
-    """Response from Jira sync operation"""
+    """Response from Jira sync operation with snapshot tracking"""
 
     processed_keys: List[str] = Field(..., description="List of processed issue keys")
     total: int = Field(..., description="Total issues processed")
     user_id: str = Field(..., description="User identifier")
+    snapshot_ts: str = Field(..., description="ISO timestamp when sync completed")
+    success: bool = Field(True, description="Whether sync completed successfully")
 
 
 class ConfluenceSyncRequest(BaseModel):
@@ -188,10 +190,38 @@ async def sync_jira(req: JiraSyncRequest, db: Session = Depends(get_db)):
 
         logger.info("Jira sync complete", user_id=req.user_id, processed=len(keys))
 
+        # Add snapshot timestamp to all newly synced memories
+        from datetime import datetime, timezone
+        from sqlalchemy import text
+
+        snapshot_ts = datetime.now(timezone.utc).isoformat()
+
+        # Update all newly created Jira memories with sync timestamp
+        db.execute(
+            text(
+                """
+                UPDATE navi_memory
+                SET meta_json = JSON_SET(
+                    COALESCE(meta_json, '{}'),
+                    '$.synced_at',
+                    :synced_at
+                )
+                WHERE user_id = :user_id
+                  AND category = 'task'
+                  AND CAST(meta_json AS TEXT) LIKE '%\"source\": \"jira\"%'
+                  AND updated_at >= datetime('now', '-5 minutes')
+            """
+            ),
+            {"user_id": req.user_id.strip(), "synced_at": snapshot_ts},
+        )
+        db.commit()
+
         return JiraSyncResponse(
             processed_keys=keys,
             total=len(keys),
             user_id=req.user_id,
+            snapshot_ts=snapshot_ts,
+            success=True,
         )
 
     except RuntimeError as e:

@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     RATE_LIMITING_ESTIMATED_ACTIVE_USERS: int = 5
 
     # CORS configuration
-    CORS_ORIGINS: str = "*"  # Comma-separated list of allowed origins
+    CORS_ORIGINS: str = "*"  # Comma-separated list of allowed origins or "*" for all
 
     # API server configuration
     API_HOST: str = "0.0.0.0"
@@ -63,6 +63,15 @@ class Settings(BaseSettings):
 
     # Audit logging configuration
     enable_audit_logging: bool = True
+
+    # Webhook secrets (shared secrets for inbound webhooks)
+    JIRA_WEBHOOK_SECRET: str | None = None
+    GITHUB_WEBHOOK_SECRET: str | None = None
+    SLACK_WEBHOOK_SECRET: str | None = None
+    SLACK_SIGNING_SECRET: str | None = None
+    TEAMS_WEBHOOK_SECRET: str | None = None
+    DOCS_WEBHOOK_SECRET: str | None = None
+    CI_WEBHOOK_SECRET: str | None = None
 
     @property
     def cors_origins_list(self) -> list[str]:

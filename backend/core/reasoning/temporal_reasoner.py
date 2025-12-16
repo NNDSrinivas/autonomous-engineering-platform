@@ -8,7 +8,7 @@ Uses weighted BFS for uniform weights, Dijkstra for variable weights.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Tuple, Set
 from sqlalchemy.orm import Session
 
@@ -52,7 +52,7 @@ class TemporalReasoner:
 
         # Parse window
         days = self._parse_window(window)
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         # Find root node
         root_node = (

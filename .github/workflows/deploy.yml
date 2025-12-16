@@ -1,0 +1,60 @@
+name: Deploy AEP Backend to EC2
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # Run only if secrets exist
+    if: github.ref == 'refs/heads/main'
+
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ env.EC2_SSH_KEY }}
+          script: |
+            cd /opt/aep-backend
+            git fetch --all
+            git checkout main
+            git pull origin main
+            chmod +x deploy.sh
+            ./deploy.sh
+
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ env.EC2_SSH_KEY }}
+          script: |
+            echo "Checking container status..."
+            docker ps --filter "name=aep-backend"
+            echo ""
+            echo "Testing health endpoint..."
+            curl -f http://127.0.0.1/health/live
+
+  skip:
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main'
+    steps:
+      - name: Skip deployment
+        run: |
+          echo "❌ Deployment skipped — EC2 secrets missing"

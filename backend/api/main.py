@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import inspect
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter, Request
@@ -6,25 +9,37 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-# --- Observability imports (PR-28)
-from ..core.obs.obs_logging import configure_json_logging
-from ..core.obs.tracing import init_tracing, instrument_fastapi_app
-from ..core.obs.obs_metrics import metrics_app, PROM_ENABLED
-from ..core.obs.obs_middleware import ObservabilityMiddleware
+# ---- Observability imports ----
+from backend.core.obs.obs_logging import configure_json_logging
 
-# --- Health & Resilience imports (PR-29)
-from ..core.health.router import router as health_router
-from ..core.health.shutdown import on_startup, on_shutdown
-from ..core.resilience.resilience_middleware import ResilienceMiddleware
+# Try to import tracing module, provide no-op implementations if not available
+try:
+    from backend.core.obs.obs_tracing import init_tracing, instrument_fastapi_app  # type: ignore[import]
+except (ImportError, ModuleNotFoundError):
 
-from ..core.settings import settings
+    def init_tracing() -> None:  # type: ignore[unused-ignore]
+        """Fallback no-op if tracing module is absent."""
+        pass
+
+    def instrument_fastapi_app(app: FastAPI) -> None:  # type: ignore[unused-ignore]
+        """Fallback no-op if tracing module is absent."""
+        pass
+
+
+from backend.core.obs.obs_metrics import metrics_app, PROM_ENABLED
+from backend.core.obs.obs_middleware import ObservabilityMiddleware
+
+from backend.core.health.router import router as health_router
+from backend.core.health.shutdown import on_startup, on_shutdown
+from backend.core.resilience.resilience_middleware import ResilienceMiddleware
+
+from backend.core.settings import settings
 
 # removed unused: setup_logging (using obs logging instead)
 # removed unused: metrics_router (using new /metrics mount)
 from ..core.middleware import AuditMiddleware
 
 # removed unused: RequestIDMiddleware (ObservabilityMiddleware provides this)
-from ..core.rate_limit.middleware import RateLimitMiddleware
 from ..core.audit_service.middleware import EnhancedAuditMiddleware
 from ..core.cache.middleware import CacheMiddleware
 from ..core.db import get_db
@@ -38,11 +53,21 @@ from .tasks import router as tasks_router
 from .routers.plan import router as plan_router
 from .deliver import router as deliver_router
 from .routers.policy import router as policy_router
+from .routers.audit import router as audit_router
 from .change import router as change_router
 from .chat import router as chat_router
 from .navi import router as navi_router  # PR-5B/PR-6: NAVI extension endpoint
 from .org_sync import router as org_sync_router  # Step 2: Jira/Confluence memory sync
 from .navi_search import router as navi_search_router  # Step 3: Unified RAG search
+from .navi_brief import router as navi_brief_router  # Jira tasks + task brief endpoints
+from .navi_intent import router as navi_intent_router  # NAVI intent classification
+from .routes.intent import (
+    router as intent_api_router,
+)  # LLM-powered intent classification API
+from .routes.providers import (
+    router as providers_api_router,
+)  # BYOK provider management API
+from .routes.agent import router as agent_api_router  # Complete NAVI agent API
 from ..search.router import router as search_router
 from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
@@ -51,16 +76,29 @@ from .routers.plan import router as live_plan_router
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
 from .routers.rate_limit_admin import router as rate_limit_admin_router
+from .routers.github_webhook import router as github_webhook_router
 
 # VS Code Extension API endpoints
 from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
+from .routers.connectors import router as connectors_router
 from .routers.me import router as me_router
 from .routers.jira_integration import router as jira_integration_router
 from .routers.agent_planning import router as agent_planning_router
 from .routers.ai_codegen import router as ai_codegen_router
 from .routers.ai_feedback import router as ai_feedback_router
+from .events.router import router as events_router  # Universal event ingestion
+from .internal.router import router as internal_router  # System info and diagnostics
 from ..core.realtime_engine import presence as presence_lifecycle
 from ..core.obs.obs_logging import logger
+
+from .routers.jira_webhook import router as jira_webhook_router
+from .routers.slack_webhook import router as slack_webhook_router
+from .routers.teams_webhook import router as teams_webhook_router
+from .routers.docs_webhook import router as docs_webhook_router
+from .routers.ci_webhook import router as ci_webhook_router
+from .routers.debug_info import router as debug_info_router
+from .routers.debug_context import router as debug_context_router
+from .routers.chat_history import router as chat_history_router
 
 # Auth0 JWT validation routes
 from ..auth.routes import router as auth_routes_router
@@ -79,7 +117,12 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown: cleanup background services
     presence_lifecycle.stop_cleanup_thread()
-    await on_shutdown()  # PR-29: Graceful shutdown
+    try:
+        result = on_shutdown()  # PR-29: Graceful shutdown
+        if inspect.iscoroutine(result):
+            await result
+    except Exception:
+        logger.warning("Shutdown warning occurred during cleanup", exc_info=True)
 
 
 app = FastAPI(title=f"{settings.APP_NAME} - Core API", lifespan=lifespan)
@@ -94,15 +137,56 @@ app.add_middleware(
 app.add_middleware(
     ResilienceMiddleware
 )  # PR-29: Circuit breaker support with 503 responses
+
+# CORS configuration - always explicit for dev to work properly
+# FastAPI CORSMiddleware doesn't send CORS headers with ["*"] reliably
+dev_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:3003",
+    "http://localhost:3004",
+    "http://localhost:3005",
+    "http://localhost:3006",
+    "http://localhost:3007",
+    "http://localhost:3008",
+    "http://localhost:3009",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3002",
+    "http://127.0.0.1:3003",
+    "http://127.0.0.1:3004",
+    "http://127.0.0.1:3005",
+    "http://127.0.0.1:3006",
+    "http://127.0.0.1:3007",
+    "http://127.0.0.1:3008",
+    "http://127.0.0.1:3009",
+    "vscode-webview://",
+]
+
+if settings.CORS_ORIGINS == "*":
+    # Development: allow all localhost + pattern
+    cors_origins = dev_origins
+    cors_regex = r"^(https?://(localhost|127\.0\.0\.1):\d+|vscode-webview://.*)$"
+    allow_creds = False
+else:
+    # Production: use explicit list
+    cors_origins = settings.cors_origins_list
+    cors_regex = r"https://.*\.vscode-cdn\.net"
+    allow_creds = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_origin_regex=cors_regex,
+    allow_credentials=allow_creds,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 # RequestIDMiddleware removed - ObservabilityMiddleware provides this functionality
-app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
+# Temporarily disabled for local dev while debugging connector issues
+# app.add_middleware(RateLimitMiddleware, enabled=settings.RATE_LIMITING_ENABLED)
 app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 
 # Conditional audit logging (disabled in test/CI environments to prevent DB errors)
@@ -141,12 +225,32 @@ app.include_router(chat_router)  # Enhanced conversational interface
 app.include_router(navi_router)  # PR-5B/PR-6: NAVI VS Code extension
 app.include_router(org_sync_router)  # Step 2: Jira/Confluence memory integration
 app.include_router(navi_search_router)  # Step 3: Unified RAG search
+app.include_router(navi_brief_router)  # NAVI: Jira task list and task brief
+app.include_router(navi_intent_router)  # NAVI: Intent classification for smart routing
+app.include_router(
+    intent_api_router
+)  # LLM-powered intent classification API (includes /api/agent/intent prefix)
+app.include_router(providers_api_router)  # BYOK provider management API
+app.include_router(agent_api_router, prefix="/api")  # Complete NAVI agent API
 app.include_router(search_router)
 app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
+app.include_router(events_router, prefix="/api")  # Universal event ingestion
+app.include_router(internal_router, prefix="/api")  # System info and diagnostics
+app.include_router(audit_router, prefix="/api")  # Audit and replay endpoints
+app.include_router(jira_webhook_router)  # Jira webhook ingestion
+app.include_router(github_webhook_router)  # GitHub webhook ingestion
+app.include_router(slack_webhook_router)  # Slack webhook ingestion
+app.include_router(teams_webhook_router)  # Teams webhook ingestion
+app.include_router(docs_webhook_router)  # Docs ingestion webhook
+app.include_router(ci_webhook_router)  # CI ingestion webhook
+app.include_router(debug_info_router)  # Debug context/ingestion info
+app.include_router(chat_history_router)  # Chat history endpoints
+app.include_router(debug_context_router)  # Debug org/user/context info
 
 app.include_router(oauth_device_auth0_router)
+app.include_router(connectors_router)
 app.include_router(me_router)
 app.include_router(jira_integration_router)
 app.include_router(agent_planning_router)

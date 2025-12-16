@@ -1,0 +1,1 @@
+# CodeQL conflict resolution completed

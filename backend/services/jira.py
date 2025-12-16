@@ -1,9 +1,12 @@
 import uuid
 import datetime as dt
+from typing import List, Dict, Any, Optional
+import httpx
+
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 from ..models.integrations import JiraConnection, JiraProjectConfig, JiraIssue
-from ..core.crypto import encrypt_token
+from ..core.crypto import encrypt_token, decrypt_token
 
 # Configuration constants
 MAX_DESCRIPTION_LENGTH = 8000
@@ -18,18 +21,34 @@ class JiraService:
 
     @staticmethod
     def save_connection(
-        db: Session, base_url: str, access_token: str
+        db: Session,
+        base_url: str,
+        access_token: str,
+        user_id: str | None = None,
+        org_id: str | None = None,
     ) -> JiraConnection:
         conn = JiraConnection(
             id=JiraService._id(),
             cloud_base_url=base_url,
             access_token=encrypt_token(access_token),
+            user_id=user_id,
+            org_id=org_id,
             scopes=["read"],
         )
         db.add(conn)
         db.commit()
         db.refresh(conn)
         return conn
+
+    @staticmethod
+    def get_connection_for_user(
+        db: Session, user_id: str, org_id: Optional[str] = None
+    ) -> JiraConnection | None:
+        """Get the most recent JiraConnection for a user"""
+        query = db.query(JiraConnection).filter_by(user_id=user_id)
+        if org_id:
+            query = query.filter_by(org_id=org_id)
+        return query.order_by(JiraConnection.id.desc()).first()
 
     @staticmethod
     def set_project_config(
@@ -124,19 +143,196 @@ class JiraService:
         return row
 
     @staticmethod
+    def upsert_issue_comment(db: Session, conn_id: str, issue_key: str, comment: dict):
+        """
+        Attach latest comment metadata to JiraIssue.raw for packet hydration.
+        """
+        row = db.scalar(select(JiraIssue).where(JiraIssue.issue_key == issue_key))
+        if not row:
+            return None
+        raw = row.raw or {}
+        comments = raw.get("comments", [])
+        comments.append(
+            {
+                "id": comment.get("id"),
+                "author": (comment.get("author") or {}).get("displayName"),
+                "body": (comment.get("body") or {}).get("content")
+                or comment.get("body"),
+                "created": comment.get("created"),
+                "updated": comment.get("updated"),
+                "url": comment.get("self"),
+            }
+        )
+        raw["comments"] = comments[-50:]  # keep bounded
+        row.raw = raw
+        db.add(row)
+        db.commit()
+        return row
+
+    @staticmethod
     def search_issues(
-        db: Session, project: str | None, q: str | None, updated_since: str | None
-    ):
+        db: Session,
+        project: Optional[str] = None,
+        q: Optional[str] = None,
+        updated_since: Optional[str] = None,
+        assignee: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """
+        General search helper used by tools and ingestors.
+
+        Returns a normalized list of issues including canonical URLs for source links.
+        """
         clause = ["1=1"]
-        params = {}
+        params: Dict[str, Any] = {}
+
         if project:
-            clause.append("project_key=:proj")
+            clause.append("project_key = :proj")
             params["proj"] = project
         if updated_since:
-            clause.append("updated>=:u")
+            clause.append("updated >= :u")
             params["u"] = updated_since
         if q:
             clause.append("(summary ILIKE :q OR description ILIKE :q)")
             params["q"] = f"%{q}%"
-        sql = f"SELECT issue_key, project_key, issue_type, summary, status, assignee, updated, url FROM jira_issue WHERE {' AND '.join(clause)} ORDER BY updated DESC NULLS LAST LIMIT 50"
-        return [dict(r) for r in db.execute(text(sql), params).mappings().all()]
+        if assignee:
+            clause.append("assignee = :assignee")
+            params["assignee"] = assignee
+
+        sql = (
+            "SELECT issue_key, project_key, summary, status, "
+            "assignee, updated, url FROM jira_issue "
+            f"WHERE {' AND '.join(clause)} "
+            "ORDER BY updated DESC NULLS LAST "
+            "LIMIT :limit"
+        )
+        params["limit"] = min(limit, 100)
+
+        rows = db.execute(text(sql), params).mappings().all()
+        return [dict(r) for r in rows]
+
+    @staticmethod
+    def list_issues_for_assignee(
+        db: Session, assignee: str, limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Convenience wrapper: all issues assigned to a given user.
+        """
+        return JiraService.search_issues(db, assignee=assignee, limit=limit)
+
+    # ------------------------------------------------------------------
+    # Write operations (approval-gated at higher layers)
+    # ------------------------------------------------------------------
+    @staticmethod
+    async def add_comment(
+        db: Session,
+        issue_key: str,
+        comment: str,
+        user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Add a comment to a Jira issue using the latest connection for the user/org.
+        """
+        conn = JiraService._select_connection(db, user_id=user_id, org_id=org_id)
+        if not conn:
+            raise ValueError("No Jira connection available for this user/org")
+
+        token = decrypt_token(conn.access_token)
+        url = f"{conn.cloud_base_url}/rest/api/3/issue/{issue_key}/comment"
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json={"body": comment},
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    @staticmethod
+    async def transition_issue(
+        db: Session,
+        issue_key: str,
+        transition_id: str,
+        user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Transition a Jira issue to a new status.
+        """
+        conn = JiraService._select_connection(db, user_id=user_id, org_id=org_id)
+        if not conn:
+            raise ValueError("No Jira connection available for this user/org")
+
+        token = decrypt_token(conn.access_token)
+        url = f"{conn.cloud_base_url}/rest/api/3/issue/{issue_key}/transitions"
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json={"transition": {"id": transition_id}},
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    @staticmethod
+    async def assign_issue(
+        db: Session,
+        issue_key: str,
+        assignee_account_id: Optional[str] = None,
+        assignee_name: Optional[str] = None,
+        user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Assign a Jira issue to a user (accountId preferred for Jira Cloud).
+        """
+        conn = JiraService._select_connection(db, user_id=user_id, org_id=org_id)
+        if not conn:
+            raise ValueError("No Jira connection available for this user/org")
+
+        if not assignee_account_id and not assignee_name:
+            raise ValueError("assignee_account_id or assignee_name is required")
+
+        payload: Dict[str, Any] = {}
+        if assignee_account_id:
+            payload["accountId"] = assignee_account_id
+        else:
+            payload["name"] = assignee_name  # fallback for server/DC
+
+        token = decrypt_token(conn.access_token)
+        url = f"{conn.cloud_base_url}/rest/api/3/issue/{issue_key}/assignee"
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.put(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            resp.raise_for_status()
+            return {"status": "ok"}
+
+    @staticmethod
+    def _select_connection(
+        db: Session, user_id: Optional[str], org_id: Optional[str]
+    ) -> Optional[JiraConnection]:
+        """
+        Pick the most recent Jira connection for an org/user.
+        """
+        query = db.query(JiraConnection)
+        if org_id:
+            query = query.filter_by(org_id=org_id)
+        if user_id:
+            query = query.filter_by(user_id=user_id)
+        return query.order_by(JiraConnection.id.desc()).first()

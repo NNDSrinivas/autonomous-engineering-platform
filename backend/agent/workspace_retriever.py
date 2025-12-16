@@ -1,0 +1,436 @@
+"""
+Workspace Retriever - Fetch Workspace Context (STEP C Enhanced)
+
+Retrieves relevant context from the user's workspace:
+- Currently open files
+- Selected text/code
+- Project structure
+- Git branch/status
+- Recent file changes
+- Small files (for context)
+
+This helps NAVI understand what the user is working on right now.
+Enables code explanation, refactoring, and generation.
+"""
+
+import logging
+from typing import Dict, Any, Optional, List
+import os
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+MAX_CONTENT_CHARS = 8000  # safety cap per file
+
+
+def _is_safe_path(basedir: str, candidate: str) -> bool:
+    """Ensure candidate path stays within basedir."""
+    try:
+        # Enhanced input validation
+        if not candidate or not isinstance(candidate, str):
+            return False
+
+        # Reject absolute paths
+        if candidate.startswith(("/", "\\")):
+            return False
+
+        # Reject any path with parent directory references
+        if ".." in candidate or "~" in candidate:
+            return False
+
+        # Reject paths with null bytes or other dangerous characters
+        if "\x00" in candidate or any(
+            c in candidate for c in ["<", ">", ":", '"', "|", "?", "*"]
+        ):
+            return False
+
+        # Only allow relative paths with standard separators
+        normalized_candidate = candidate.replace("\\", "/")
+        if "//" in normalized_candidate:
+            return False
+
+        # Normalize base directory
+        basedir_real = Path(basedir).resolve()
+
+        # Use os.path.join for safer path construction
+        import os
+
+        candidate_full = os.path.normpath(
+            os.path.join(str(basedir_real), normalized_candidate)
+        )
+        candidate_resolved = Path(candidate_full).resolve()
+
+        # Verify candidate is within basedir
+        candidate_resolved.relative_to(basedir_real)
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+async def retrieve_workspace_context(
+    user_id: str,
+    workspace_root: Optional[str] = None,
+    include_files: bool = True,
+    attachments: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """
+    Retrieve workspace context for the user.
+
+    Args:
+        user_id: User identifier
+        workspace_root: Root path of workspace (if known)
+        include_files: Whether to read small files
+
+    Returns:
+        {
+            "active_file": str,           # Currently open file path
+            "selected_text": str,         # Selected code/text
+            "project_root": str,          # Workspace root path
+            "git_branch": str,            # Current git branch
+            "recent_files": List[Dict],   # Recently edited files
+            "file_tree": Dict             # Project structure summary
+        }
+    """
+
+    # ---------- 1) VS Code attachment-driven context ----------
+    if attachments:
+        logger.info(
+            f"[WORKSPACE] Using VS Code attachments for user={user_id} ({len(attachments)} attachments)"
+        )
+        active_file_path: Optional[str] = None
+        selected_text_chunks: List[str] = []
+        small_files: List[Dict[str, Any]] = []
+        recent_files: List[str] = []
+
+        for att in attachments:
+            kind = att.get("kind")
+            path = att.get("path")
+            content = att.get("content") or ""
+
+            if path:
+                recent_files.append(path)
+
+            # Active file: currentFile / file / pickedFile
+            if not active_file_path and kind in {"currentFile", "file", "pickedFile"}:
+                active_file_path = path
+
+            # Selected text: accumulate all "selection" attachments
+            if kind == "selection" and content:
+                selected_text_chunks.append(content)
+
+            # Small file snapshots for context
+            if (
+                include_files
+                and kind in {"currentFile", "file", "pickedFile"}
+                and content
+            ):
+                small_files.append(
+                    {
+                        "path": path,
+                        "language": att.get("language"),
+                        "content": content[:MAX_CONTENT_CHARS],
+                        "source": "vscode-attachment",
+                    }
+                )
+
+        return {
+            "active_file": active_file_path,
+            "selected_text": (
+                "\n\n".join(selected_text_chunks) if selected_text_chunks else None
+            ),
+            "project_root": workspace_root or None,
+            "git_branch": None,  # we don't know this from VS Code yet
+            "recent_files": list(dict.fromkeys(recent_files)),  # de-dupe
+            "file_tree": None,  # could be filled later with a dedicated "list workspace" tool
+            "small_files": small_files if include_files else [],
+        }
+
+    # ---------- 2) Fallback: old behaviour (server filesystem scan) ----------
+    logger.info(
+        f"[WORKSPACE] No VS Code attachments, using filesystem scan for user={user_id}"
+    )
+
+    context = {
+        "active_file": None,
+        "selected_text": None,
+        "project_root": workspace_root,
+        "git_branch": None,
+        "recent_files": [],
+        "file_tree": {},
+    }
+
+    # If workspace root is provided, scan for small files
+    if workspace_root and include_files and os.path.exists(workspace_root):
+        context["recent_files"] = await _scan_small_files(workspace_root)
+        context["git_branch"] = await _get_git_branch(workspace_root)
+        context["file_tree"] = await _build_file_tree_summary(workspace_root)
+        context["project_info"] = await _analyze_project_info(workspace_root)
+
+    return context
+
+
+async def _scan_small_files(
+    root: str, max_size: int = 50000, max_files: int = 10  # 50KB
+) -> List[Dict[str, Any]]:
+    """
+    Scan for small files that can fit in context window.
+
+    Only includes text files, excludes:
+    - node_modules, .venv, __pycache__, .git
+    - Binary files
+    - Large files
+    """
+
+    excluded_dirs = {
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".git",
+        "dist",
+        "build",
+        "out",
+        ".next",
+        "target",
+        "vendor",
+    }
+
+    text_extensions = {
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".java",
+        ".go",
+        ".rs",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".cs",
+        ".rb",
+        ".php",
+        ".swift",
+        ".kt",
+        ".scala",
+        ".sh",
+        ".bash",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".toml",
+        ".xml",
+        ".md",
+        ".txt",
+        ".sql",
+        ".html",
+        ".css",
+        ".scss",
+        ".sass",
+    }
+
+    small_files = []
+
+    try:
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Skip excluded directories
+            dirnames[:] = [d for d in dirnames if d not in excluded_dirs]
+
+            for filename in filenames:
+                ext = os.path.splitext(filename)[1]
+                if ext not in text_extensions:
+                    continue
+
+                filepath = os.path.join(dirpath, filename)
+
+                # Validate filepath is within root directory to prevent path traversal
+                if not _is_safe_path(root, filepath):
+                    continue
+
+                try:
+                    file_size = os.path.getsize(filepath)
+                    if file_size > max_size:
+                        continue
+
+                    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read()
+
+                    rel_path = os.path.relpath(filepath, root)
+                    small_files.append(
+                        {"path": rel_path, "content": content, "size": file_size}
+                    )
+
+                    if len(small_files) >= max_files:
+                        break
+
+                except Exception:
+                    continue
+
+            if len(small_files) >= max_files:
+                break
+
+        logger.info(f"[WORKSPACE] Scanned {len(small_files)} small files")
+        return small_files
+
+    except Exception as e:
+        logger.error(f"[WORKSPACE] Error scanning files: {e}")
+        return []
+
+
+async def _get_git_branch(root: str) -> Optional[str]:
+    """Get current git branch."""
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception as e:
+        logger.debug(f"[WORKSPACE] Could not get git branch: {e}")
+
+    return None
+
+
+async def _build_file_tree_summary(root: str, max_depth: int = 2) -> Dict[str, Any]:
+    """
+    Build a summary of the file tree structure.
+
+    Returns a nested dict showing directories and key files.
+    """
+
+    excluded_dirs = {
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".git",
+        "dist",
+        "build",
+        "out",
+    }
+
+    try:
+        tree = {}
+
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Calculate depth
+            rel_path = os.path.relpath(dirpath, root)
+            depth = rel_path.count(os.sep) if rel_path != "." else 0
+
+            if depth > max_depth:
+                continue
+
+            # Skip excluded directories
+            dirnames[:] = [d for d in dirnames if d not in excluded_dirs]
+
+            # Add this level to tree
+            parts = rel_path.split(os.sep) if rel_path != "." else []
+            current = tree
+            for part in parts:
+                if part not in current:
+                    current[part] = {}
+                current = current[part]
+
+            # Add file count
+            current["__files__"] = len(filenames)
+            current["__dirs__"] = len(dirnames)
+
+        return tree
+
+    except Exception as e:
+        logger.error(f"[WORKSPACE] Error building file tree: {e}")
+        return {}
+
+
+async def _analyze_project_info(root: str) -> Dict[str, Any]:
+    """
+    Analyze the project to determine its type, name, and description.
+    This helps NAVI understand what project the user is actually working on.
+    """
+    norm_root = os.path.abspath(os.path.realpath(root))
+    project_info = {
+        "name": os.path.basename(norm_root),
+        "type": "unknown",
+        "description": None,
+        "framework": None,
+        "language": None,
+    }
+
+    try:
+        # Check for common project files and extract info
+        config_files = {
+            "package.json": "nodejs",
+            "pom.xml": "java",
+            "build.gradle": "java",
+            "requirements.txt": "python",
+            "pyproject.toml": "python",
+            "Cargo.toml": "rust",
+            "go.mod": "go",
+            "composer.json": "php",
+            ".csproj": "csharp",
+        }
+
+        for config_file, lang in config_files.items():
+            config_path = os.path.join(norm_root, config_file)
+            if not _is_safe_path(norm_root, config_path):
+                continue
+            if os.path.exists(config_path):
+                project_info["language"] = lang
+
+                # Try to extract project name and description
+                if config_file == "package.json":
+                    try:
+                        import json
+
+                        with open(config_path, "r", encoding="utf-8") as f:
+                            pkg = json.load(f)
+                            project_info["name"] = pkg.get("name", project_info["name"])
+                            project_info["description"] = pkg.get("description")
+                            project_info["type"] = "nodejs"
+                            if "react" in str(
+                                pkg.get("dependencies", {})
+                            ) or "next" in str(pkg.get("dependencies", {})):
+                                project_info["framework"] = "react"
+                            elif "vue" in str(pkg.get("dependencies", {})):
+                                project_info["framework"] = "vue"
+                            elif "angular" in str(pkg.get("dependencies", {})):
+                                project_info["framework"] = "angular"
+                    except Exception:
+
+                        pass
+
+                break
+
+        # Check for README.md for additional description
+        readme_path = os.path.join(norm_root, "README.md")
+        if (
+            _is_safe_path(norm_root, readme_path)
+            and os.path.exists(readme_path)
+            and not project_info["description"]
+        ):
+            try:
+                with open(readme_path, "r", encoding="utf-8") as f:
+                    readme_content = f.read()[:500]  # First 500 chars
+                    lines = readme_content.split("\n")
+                    for line in lines:
+                        line = line.strip()
+                        if line and not line.startswith("#") and len(line) > 20:
+                            project_info["description"] = line
+                            break
+            except Exception:
+
+                pass
+
+        logger.info(f"[WORKSPACE] Project analysis: {project_info}")
+
+    except Exception as e:
+        logger.error(f"[WORKSPACE] Error analyzing project: {e}")
+
+    return project_info

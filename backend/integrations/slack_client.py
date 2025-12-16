@@ -78,12 +78,74 @@ class SlackClient:
             )
             return messages
         except SlackApiError as e:
-            logger.error(
-                "Failed to fetch channel messages",
-                channel_id=channel_id,
-                error=e.response["error"],
-            )
-            raise RuntimeError(f"Slack API error: {e.response['error']}")
+            error_code = e.response.get("error", "unknown")
+            if error_code == "not_in_channel":
+                logger.info(
+                    "Bot not in channel, attempting to join", channel_id=channel_id
+                )
+                if self.join_channel(channel_id):
+                    # Retry after joining
+                    try:
+                        res = self.client.conversations_history(
+                            channel=channel_id,
+                            limit=limit,
+                            oldest=oldest,
+                            inclusive=False,
+                        )
+                        messages = res.get("messages", [])
+                        logger.info(
+                            "Fetched channel messages after joining",
+                            channel_id=channel_id,
+                            count=len(messages),
+                        )
+                        return messages
+                    except SlackApiError:
+                        logger.warning(
+                            "Still cannot access channel after joining",
+                            channel_id=channel_id,
+                        )
+                        return []
+                else:
+                    logger.warning("Cannot join channel", channel_id=channel_id)
+                    return []
+            else:
+                logger.error(
+                    "Failed to fetch channel messages",
+                    channel_id=channel_id,
+                    error=error_code,
+                )
+                raise RuntimeError(f"Slack API error: {error_code}")
+
+    def join_channel(self, channel_id: str) -> bool:
+        """
+        Join a channel (for public channels) or get invited to private channels.
+
+        Args:
+            channel_id: Slack channel ID
+
+        Returns:
+            True if successfully joined, False otherwise
+        """
+        try:
+            self.client.conversations_join(channel=channel_id)
+            logger.info("Successfully joined channel", channel_id=channel_id)
+            return True
+        except SlackApiError as e:
+            error_code = e.response.get("error", "unknown")
+            if error_code == "is_archived":
+                logger.warning("Cannot join archived channel", channel_id=channel_id)
+            elif error_code == "channel_not_found":
+                logger.warning("Channel not found", channel_id=channel_id)
+            elif error_code == "is_private":
+                logger.info(
+                    "Cannot auto-join private channel - invite required",
+                    channel_id=channel_id,
+                )
+            else:
+                logger.warning(
+                    "Failed to join channel", channel_id=channel_id, error=error_code
+                )
+            return False
 
     def fetch_thread_replies(
         self, channel_id: str, thread_ts: str

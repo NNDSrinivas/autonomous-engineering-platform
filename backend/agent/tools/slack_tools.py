@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from backend.services.slack_service import search_messages_for_user
+
+
 async def slack_fetch_recent_channel_messages(
     user_id: str,
     db,

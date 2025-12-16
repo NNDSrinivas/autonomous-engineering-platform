@@ -3,7 +3,6 @@
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
-import numpy as np
 from numpy.random import beta
 
 from backend.infra.cache.redis_cache import cache

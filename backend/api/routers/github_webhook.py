@@ -103,7 +103,6 @@ async def ingest(
                 review = payload.get("review") or {}
                 from backend.models.memory_graph import MemoryNode
 
-
                 node = MemoryNode(
                     org_id=org_ctx["org_id"],
                     node_type="github_pr_review",
@@ -131,7 +130,6 @@ async def ingest(
             description = payload.get("description")
             sha = commit.get("sha")
             from backend.models.memory_graph import MemoryNode
-
 
             node = MemoryNode(
                 org_id=org_ctx["org_id"],

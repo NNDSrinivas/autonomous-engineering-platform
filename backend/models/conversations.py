@@ -23,7 +23,9 @@ class ConversationMessage(Base):
     text = Column(Text, nullable=False)
     meta_json = Column(JSONB, default={}, nullable=False)
     created_at = Column(
-        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        TIMESTAMP(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
 
     replies = relationship(
@@ -46,7 +48,9 @@ class ConversationReply(Base):
     text = Column(Text, nullable=False)
     meta_json = Column(JSONB, default={}, nullable=False)
     created_at = Column(
-        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        TIMESTAMP(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
 
     parent = relationship("ConversationMessage", back_populates="replies")

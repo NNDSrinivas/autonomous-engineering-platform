@@ -12,5 +12,7 @@ class ChatMessage(Base):
     role = Column(String(50), nullable=False)  # user | assistant | system
     message = Column(Text, nullable=False)
     created_at = Column(
-        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        TIMESTAMP(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )

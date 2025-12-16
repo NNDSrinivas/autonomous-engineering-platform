@@ -13,5 +13,7 @@ class ChangeSet(Base):
     summary = Column(String(500), nullable=True)
     details = Column(JSONB, nullable=True)
     created_at = Column(
-        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        TIMESTAMP(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )

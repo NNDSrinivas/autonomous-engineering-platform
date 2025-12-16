@@ -46,7 +46,11 @@ class Project(Base):
     team_members = Column(JSON, nullable=True)  # List of team member IDs
     settings = Column(JSON, nullable=True)  # Project-specific settings
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     # Relationships
     knowledge_entries = relationship("KnowledgeEntry", back_populates="project")
@@ -88,7 +92,11 @@ class KnowledgeEntry(Base):
     tags = Column(JSON, nullable=True)  # List of tags
     vector_id = Column(String(255), nullable=True)  # ChromaDB vector ID
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     # Relationships
     project = relationship("Project", back_populates="knowledge_entries")

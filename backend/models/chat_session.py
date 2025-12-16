@@ -11,10 +11,14 @@ class ChatSession(Base):
     user_id = Column(String(255), nullable=False, index=True)
     title = Column(Text, nullable=True)
     created_at = Column(
-        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        TIMESTAMP(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
     updated_at = Column(
-        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        TIMESTAMP(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
     archived = Column(
         TIMESTAMP(timezone=True), nullable=True, index=True

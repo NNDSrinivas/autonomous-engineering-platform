@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
@@ -48,7 +48,7 @@ async def ingest(
         title=title,
         text=body,
         meta_json={"url": url, "anchor": anchor, "source": source},
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.add(node)
     db.commit()

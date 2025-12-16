@@ -1875,25 +1875,25 @@ function showEphemeralToast(message, level = 'info') {
           intentResultEl.innerHTML = '';
           const displayDiv = document.createElement('div');
           displayDiv.className = 'navi-intent-display';
-          
+
           const intentText = document.createElement('strong');
           intentText.textContent = 'Intent: ';
           displayDiv.appendChild(intentText);
-          
+
           const labelSpan = document.createElement('span');
           labelSpan.textContent = intentLabel;
           displayDiv.appendChild(labelSpan);
-          
+
           const confidenceSpan = document.createElement('span');
           confidenceSpan.className = 'navi-intent-confidence';
           confidenceSpan.textContent = ` (${confidence}% confidence)`;
           displayDiv.appendChild(confidenceSpan);
-          
+
           const modelDiv = document.createElement('div');
           modelDiv.className = 'navi-intent-model';
           modelDiv.textContent = `Model: ${model}`;
           displayDiv.appendChild(modelDiv);
-          
+
           intentResultEl.appendChild(displayDiv);
           intentResultEl.style.display = 'block';
         }

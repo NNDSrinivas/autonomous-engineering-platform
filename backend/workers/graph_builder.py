@@ -15,7 +15,7 @@ Heuristics implemented:
 import re
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, Set
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -60,7 +60,7 @@ class GraphBuilder:
             Dict with nodes_created, edges_created counts
         """
         if since is None:
-            since = datetime.utcnow() - timedelta(days=90)
+            since = datetime.now(timezone.utc) - timedelta(days=90)
 
         logger.info(f"Starting graph rebuild for org={org_id}, since={since}")
 
@@ -96,7 +96,7 @@ class GraphBuilder:
         edges_created = 0
 
         # Get recent nodes (last 30 days) for potential edges
-        recent_cutoff = datetime.utcnow() - timedelta(days=30)
+        recent_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
         recent_nodes = (
             self.db.query(MemoryNode)
             .filter(

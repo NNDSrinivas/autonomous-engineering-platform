@@ -13,7 +13,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 
 from backend.core.db import get_db
@@ -77,7 +77,7 @@ async def ingest(
                 user=user,
                 text=text,
                 meta_json=resource,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
             db.add(reply)
     else:
@@ -90,7 +90,7 @@ async def ingest(
             user=user,
             text=text,
             meta_json=resource,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.add(msg)
 

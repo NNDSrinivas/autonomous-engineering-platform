@@ -5,6 +5,7 @@ GitHub webhook ingestion with HMAC verification.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from sqlalchemy.orm import Session
@@ -101,7 +102,7 @@ async def ingest(
             if event == "pull_request_review":
                 review = payload.get("review") or {}
                 from backend.models.memory_graph import MemoryNode
-                from datetime import datetime
+
 
                 node = MemoryNode(
                     org_id=org_ctx["org_id"],
@@ -115,7 +116,7 @@ async def ingest(
                         "user": (review.get("user") or {}).get("login"),
                         "html_url": review.get("html_url"),
                     },
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc),
                 )
                 db.add(node)
                 db.commit()
@@ -130,7 +131,7 @@ async def ingest(
             description = payload.get("description")
             sha = commit.get("sha")
             from backend.models.memory_graph import MemoryNode
-            from datetime import datetime
+
 
             node = MemoryNode(
                 org_id=org_ctx["org_id"],
@@ -144,7 +145,7 @@ async def ingest(
                     "state": state,
                     "target_url": payload.get("target_url"),
                 },
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
             db.add(node)
             db.commit()

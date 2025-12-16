@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, BigInteger, String, TIMESTAMP
 from sqlalchemy.dialects.postgresql import JSONB
 from backend.core.db import Base
@@ -13,5 +13,5 @@ class ChangeSet(Base):
     summary = Column(String(500), nullable=True)
     details = Column(JSONB, nullable=True)
     created_at = Column(
-        TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False
+        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )

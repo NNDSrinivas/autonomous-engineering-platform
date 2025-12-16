@@ -3,7 +3,7 @@ Database configuration and models for autonomous engineering platform
 Using SQLAlchemy 2.0 with async support
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from typing import Optional
 
@@ -45,8 +45,8 @@ class Project(Base):
     tech_stack = Column(JSON, nullable=True)  # List of technologies
     team_members = Column(JSON, nullable=True)  # List of team member IDs
     settings = Column(JSON, nullable=True)  # Project-specific settings
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     knowledge_entries = relationship("KnowledgeEntry", back_populates="project")
@@ -65,7 +65,7 @@ class TeamMember(Base):
     role = Column(String(100), nullable=True)  # developer, lead, architect, etc.
     expertise = Column(JSON, nullable=True)  # List of skills/technologies
     preferences = Column(JSON, nullable=True)  # Working preferences
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     authored_sessions = relationship("TeamSession", back_populates="author")
@@ -87,8 +87,8 @@ class KnowledgeEntry(Base):
     author_id = Column(Integer, ForeignKey("team_members.id"), nullable=True)
     tags = Column(JSON, nullable=True)  # List of tags
     vector_id = Column(String(255), nullable=True)  # ChromaDB vector ID
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     project = relationship("Project", back_populates="knowledge_entries")
@@ -109,7 +109,7 @@ class TeamSession(Base):
     context = Column(JSON, nullable=True)  # Session context data
     outcomes = Column(JSON, nullable=True)  # Session outcomes/decisions
     duration_minutes = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
 
     # Relationships
@@ -131,7 +131,7 @@ class AIInteraction(Base):
     feedback = Column(JSON, nullable=True)  # User feedback on response
     response_time_ms = Column(Integer, nullable=True)
     confidence_score = Column(String(10), nullable=True)  # AI confidence
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     session = relationship("TeamSession", back_populates="interactions")
@@ -167,7 +167,7 @@ class AutonomousTask(Base):
     dependencies = Column(JSON, nullable=True)  # Task dependencies
     execution_log = Column(JSON, nullable=True)  # Detailed execution steps
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 

@@ -263,6 +263,7 @@ async def create_or_update_provider_configuration(
         user_id=user_id,
         api_key_set=True,
         validation_status="validating",
+        last_validated=None,  # Will be set after background validation
     )
 
 

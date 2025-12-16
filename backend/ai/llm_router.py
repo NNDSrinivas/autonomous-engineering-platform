@@ -247,15 +247,22 @@ class LLMRouter:
             )
 
             provider_info = registry.get_provider(best.provider_id)
+            if provider_info is None:
+                raise ModelNotFoundError(f"Provider {best.provider_id} not found")
             return provider_info, best
 
         # Explicit provider + model
         if provider and model:
-
-            model_info = None  # get_model(model, provider) not available
-            # model_info check removed
-
-            return None, model_info
+            provider_info = registry.get_provider(provider)
+            if provider_info is None:
+                raise ModelNotFoundError(f"Provider {provider} not found")
+            
+            # Create a basic ModelInfo since we don't have get_model available
+            model_info = ModelInfo(
+                provider_id=provider,
+                model_id=model,
+            )
+            return provider_info, model_info
 
         # Model only → find provider that contains it
         if model:

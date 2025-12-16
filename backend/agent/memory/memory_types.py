@@ -71,9 +71,9 @@ class MemoryEntry:
     importance: float = 0.5  # 0.0 to 1.0
     confidence: float = 1.0  # How confident we are in this memory
 
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
-    accessed_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    accessed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     access_count: int = 0
 
     tags: List[str] = field(default_factory=list)

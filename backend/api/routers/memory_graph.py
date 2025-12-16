@@ -11,7 +11,7 @@ All endpoints enforce org-level RBAC and audit logging.
 
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from pydantic import BaseModel, Field
@@ -152,7 +152,7 @@ async def rebuild_graph(
         if req.since.endswith("d"):
             try:
                 days = parse_time_window(req.since)
-                since = datetime.utcnow() - timedelta(days=days)
+                since = datetime.now(timezone.utc) - timedelta(days=days)
             except ValueError:
                 raise HTTPException(
                     status_code=400,

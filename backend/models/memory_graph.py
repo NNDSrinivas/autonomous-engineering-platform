@@ -17,7 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from backend.core.db import Base
 
 
@@ -47,7 +47,7 @@ class MemoryNode(Base):
     text = Column(Text, nullable=False)
     meta_json = Column(JSONB, default={}, nullable=False)
     created_at = Column(
-        TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False
+        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
 
     # Relationships
@@ -89,7 +89,7 @@ class MemoryChunk(Base):
     chunk_text = Column(Text, nullable=False)
     embedding = Column(Text, nullable=True)  # VECTOR(1536) in PostgreSQL
     created_at = Column(
-        TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False
+        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
 
     # Relationships
@@ -133,7 +133,7 @@ class MemoryEdge(Base):
     weight = Column(Float, default=1.0, nullable=False)
     meta_json = Column(JSONB, default={}, nullable=False)
     created_at = Column(
-        TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False
+        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
 
     # Relationships

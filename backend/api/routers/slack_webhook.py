@@ -20,7 +20,7 @@ from backend.core.auth_org import require_org
 import re
 from backend.models.memory_graph import MemoryNode
 from backend.models.conversations import ConversationMessage, ConversationReply
-from datetime import datetime
+from datetime import datetime, timezone
 from backend.agent.context_packet import invalidate_context_packet_cache
 
 router = APIRouter(prefix="/api/webhooks/slack", tags=["slack_webhook"])
@@ -87,7 +87,7 @@ async def ingest(
                     user=user,
                     text=text,
                     meta_json=event,
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc),
                 )
                 db.add(reply)
         else:
@@ -100,7 +100,7 @@ async def ingest(
                 user=user,
                 text=text,
                 meta_json=event,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
             db.add(msg)
 
@@ -116,7 +116,7 @@ async def ingest(
                 "thread_ts": thread_ts,
                 "event": event_type,
             },
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.add(node)
         db.commit()

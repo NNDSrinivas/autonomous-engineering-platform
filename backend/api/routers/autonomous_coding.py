@@ -362,7 +362,10 @@ async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
 
         # If error, raise HTTPException with generic message, otherwise return result
         if result.get("status") == "error":
-            logger.error("Failed to create pull request: %s", result.get("message", "Unknown error"))
+            logger.error(
+                "Failed to create pull request: %s",
+                result.get("message", "Unknown error"),
+            )
             raise HTTPException(
                 status_code=500,
                 detail="Failed to create pull request",

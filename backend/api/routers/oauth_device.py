@@ -217,7 +217,9 @@ async def poll_device_code(request: DeviceCodePollRequest):
         # Generate access token
         if device_info["status"] == "authorized":
             access_token = secrets.token_urlsafe(32)
-            token_expires_at = datetime.now(timezone.utc) + timedelta(hours=24)  # 24 hour token
+            token_expires_at = datetime.now(timezone.utc) + timedelta(
+                hours=24
+            )  # 24 hour token
 
             # Store access token
             _access_tokens[access_token] = {

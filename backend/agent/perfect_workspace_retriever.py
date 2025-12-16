@@ -10,18 +10,18 @@ def _is_safe_path(path: str, workspace_root: str) -> bool:
     """Safely validate that path is within workspace_root to prevent path traversal."""
     try:
         # Sanitize and validate input path
-        if not path or path.startswith('/') or '..' in path:
+        if not path or path.startswith("/") or ".." in path:
             return False
-            
+
         # Normalize the workspace root first
         workspace_path = Path(workspace_root).resolve()
-        
+
         # Join paths safely without resolving user input directly
         candidate_path = workspace_path / path
-        
+
         # Now resolve and check containment
         resolved_path = candidate_path.resolve()
-        
+
         # Verify the resolved path is still within workspace
         resolved_path.relative_to(workspace_path)
         return True

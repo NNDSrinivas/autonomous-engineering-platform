@@ -27,18 +27,18 @@ def _is_safe_path(basedir: str, candidate: str) -> bool:
     """Ensure candidate path stays within basedir."""
     try:
         # Sanitize candidate path to prevent path traversal
-        if not candidate or candidate.startswith('/') or '..' in candidate:
+        if not candidate or candidate.startswith("/") or ".." in candidate:
             return False
-            
+
         # Normalize base directory
         basedir_real = Path(basedir).resolve()
-        
+
         # Join paths safely
         candidate_path = basedir_real / candidate
-        
+
         # Resolve and check containment
         candidate_real = candidate_path.resolve()
-        
+
         # Verify candidate is within basedir
         candidate_real.relative_to(basedir_real)
         return True

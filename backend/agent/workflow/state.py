@@ -8,7 +8,7 @@ This is the "brain state" that remembers where NAVI is in a multi-step workflow.
 import logging
 from enum import Enum
 from typing import Dict, Any, List, Optional, Union
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +67,8 @@ class WorkflowState:
         self.user_id = user_id
         self.status = WorkflowStatus.PENDING
         self.current_step = "analysis"
-        self.started_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.started_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
         self.completed_at: Optional[datetime] = None
 
         # Step-specific data
@@ -105,7 +105,7 @@ class WorkflowState:
             current_idx = self.STEP_ORDER.index(self.current_step)
             if current_idx < len(self.STEP_ORDER) - 1:
                 self.current_step = self.STEP_ORDER[current_idx + 1]
-                self.updated_at = datetime.utcnow()
+                self.updated_at = datetime.now(timezone.utc)
                 logger.info(
                     f"Workflow {self.issue_id} advanced to step: {self.current_step}"
                 )
@@ -126,9 +126,9 @@ class WorkflowState:
             result: Step execution result
         """
         self.step_history.append(
-            {"step": step, "timestamp": datetime.utcnow().isoformat(), "result": result}
+            {"step": step, "timestamp": datetime.now(timezone.utc).isoformat(), "result": result}
         )
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         logger.info(f"Recorded completion of step {step} for workflow {self.issue_id}")
 
     def record_error(self, error: str):
@@ -142,10 +142,10 @@ class WorkflowState:
             {
                 "step": self.current_step,
                 "error": error,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         )
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         logger.error(f"Recorded error in workflow {self.issue_id}: {error}")
 
     def set_waiting_approval(self, approval_data: Dict[str, Any]):
@@ -157,7 +157,7 @@ class WorkflowState:
         """
         self.status = WorkflowStatus.WAITING_APPROVAL
         self.pending_approval = approval_data
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         logger.info(
             f"Workflow {self.issue_id} waiting for approval at step {self.current_step}"
         )
@@ -166,7 +166,7 @@ class WorkflowState:
         """User approved pending action."""
         self.status = WorkflowStatus.IN_PROGRESS
         self.pending_approval = None
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         logger.info(f"Workflow {self.issue_id} approved by user")
 
     def reject(self, reason: Optional[str] = None):
@@ -174,28 +174,28 @@ class WorkflowState:
         self.status = WorkflowStatus.CANCELLED
         if reason:
             self.record_error(f"User rejected: {reason}")
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         logger.info(f"Workflow {self.issue_id} rejected by user")
 
     def complete(self):
         """Mark workflow as completed."""
         self.status = WorkflowStatus.COMPLETED
         self.current_step = "done"
-        self.completed_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
         logger.info(f"Workflow {self.issue_id} completed successfully")
 
     def fail(self, error: str):
         """Mark workflow as failed."""
         self.status = WorkflowStatus.FAILED
         self.record_error(error)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         logger.error(f"Workflow {self.issue_id} failed: {error}")
 
     def cancel(self):
         """Cancel workflow."""
         self.status = WorkflowStatus.CANCELLED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         logger.info(f"Workflow {self.issue_id} cancelled")
 
     def to_dict(self) -> Dict[str, Any]:

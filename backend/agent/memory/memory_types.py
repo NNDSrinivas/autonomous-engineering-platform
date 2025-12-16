@@ -7,7 +7,7 @@ Defines the structure of all memory entries in NAVI's global memory brain.
 import logging
 from enum import Enum
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ class MemoryEntry:
 
     def update_access(self):
         """Update access tracking."""
-        self.accessed_at = datetime.utcnow()
+        self.accessed_at = datetime.now(timezone.utc)
         self.access_count += 1
 
 
@@ -236,7 +236,7 @@ def calculate_importance(memory: MemoryEntry) -> float:
         score += 0.3
 
     # Recent access = more important
-    days_since_access = (datetime.utcnow() - memory.accessed_at).days
+    days_since_access = (datetime.now(timezone.utc) - memory.accessed_at).days
     if days_since_access < 7:
         score += 0.2
     elif days_since_access < 30:
@@ -276,7 +276,7 @@ def should_prune_memory(memory: MemoryEntry) -> bool:
         return False
 
     # Never accessed in 90+ days = prune
-    days_since_access = (datetime.utcnow() - memory.accessed_at).days
+    days_since_access = (datetime.now(timezone.utc) - memory.accessed_at).days
     if days_since_access > 90 and memory.access_count == 0:
         return True
 

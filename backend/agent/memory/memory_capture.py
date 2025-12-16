@@ -12,7 +12,7 @@ This is how NAVI learns over time.
 
 import logging
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .memory_types import (
     MemoryEntry,
@@ -175,7 +175,7 @@ async def capture_code_pattern(
         source="code",
         confidence=0.8,
         tags=[pattern_type, "pattern", "code"],
-        last_seen=datetime.utcnow(),
+        last_seen=datetime.now(timezone.utc),
     )
 
     capture = MemoryCapture(db_session)
@@ -237,7 +237,7 @@ async def capture_org_context(
         source=org_system,
         confidence=0.9,
         tags=[org_system, "org"],
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )
 
     capture = MemoryCapture(db_session)

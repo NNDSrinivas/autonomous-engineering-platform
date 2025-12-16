@@ -20,7 +20,7 @@ This is IN-MEMORY for now (can be moved to Redis/DB for persistence).
 
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ async def update_user_state(user_id: str, updates: Dict[str, Any]) -> None:
         _USER_STATES[user_id] = {}
 
     _USER_STATES[user_id].update(updates)
-    _USER_STATES[user_id]["last_updated"] = datetime.utcnow().isoformat()
+    _USER_STATES[user_id]["last_updated"] = datetime.now(timezone.utc).isoformat()
 
     logger.info(f"[STATE] Updated state for user={user_id}: {list(updates.keys())}")
 
@@ -77,7 +77,7 @@ async def set_current_task(
             "current_task": {
                 "key": task_key,
                 "summary": task_summary,
-                "set_at": datetime.utcnow().isoformat(),
+                "set_at": datetime.now(timezone.utc).isoformat(),
             }
         },
     )
@@ -143,7 +143,7 @@ async def set_pending_action(
                 "type": action_type,
                 "data": action_data,
                 "description": description,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
         },
     )
@@ -180,7 +180,7 @@ async def set_last_action(user_id: str, action_type: str, result: str) -> None:
             "last_action": {
                 "type": action_type,
                 "result": result,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         },
     )
@@ -196,7 +196,7 @@ async def set_current_jira(user_id: str, jira_key: str) -> None:
         user_id,
         {
             "current_jira": jira_key,
-            "current_jira_set_at": datetime.utcnow().isoformat(),
+            "current_jira_set_at": datetime.now(timezone.utc).isoformat(),
         },
     )
 
@@ -217,7 +217,7 @@ async def set_active_file(user_id: str, file_path: str) -> None:
     """
     await update_user_state(
         user_id,
-        {"active_file": file_path, "active_file_set_at": datetime.utcnow().isoformat()},
+        {"active_file": file_path, "active_file_set_at": datetime.now(timezone.utc).isoformat()},
     )
 
 

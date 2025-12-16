@@ -448,7 +448,7 @@ def process_user_input(data: Dict[str, Any]) -> Optional[ProcessedData]:
     try:
         return ProcessedData(
             user_id=data["user_id"],
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
     except ValidationError as e:
         logger.error(f"Validation failed: {e}")

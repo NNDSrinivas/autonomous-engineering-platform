@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel, Field, SecretStr
 from typing import Any, Dict, List, Optional
 import logging
+from datetime import datetime, timezone
 
 from backend.api.deps import get_current_user
 
@@ -209,9 +210,8 @@ async def create_or_update_provider_configuration(
         logger.warning("Could not validate provider against registry")
 
     # Store configuration
-    import datetime
 
-    now = datetime.datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat() + "Z"
 
     config = {
         "provider_id": request.provider_id,
@@ -406,10 +406,9 @@ async def _validate_provider_background(
         # Update validation status
         config = _get_user_providers(user_id).get(provider_id)
         if config:
-            import datetime
 
             config["validation_status"] = "valid"
-            config["last_validated"] = datetime.datetime.utcnow().isoformat() + "Z"
+            config["last_validated"] = datetime.now(timezone.utc).isoformat() + "Z"
             _save_user_provider(user_id, provider_id, config)
 
         logger.info(
@@ -420,10 +419,9 @@ async def _validate_provider_background(
         # Update validation status as invalid
         config = _get_user_providers(user_id).get(provider_id)
         if config:
-            import datetime
 
             config["validation_status"] = "invalid"
-            config["last_validated"] = datetime.datetime.utcnow().isoformat() + "Z"
+            config["last_validated"] = datetime.now(timezone.utc).isoformat() + "Z"
             config["validation_error"] = str(e)
             _save_user_provider(user_id, provider_id, config)
 

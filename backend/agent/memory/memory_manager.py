@@ -7,7 +7,7 @@ This keeps NAVI's memory efficient and relevant.
 
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 
 from .memory_types import MemoryEntry, should_prune_memory
 
@@ -323,7 +323,7 @@ async def archive_old_memories(
     """
 
     try:
-        datetime.utcnow() - timedelta(days=days_old)
+        datetime.now(timezone.utc) - timedelta(days=days_old)
 
         # Move to archive table
         # query = """

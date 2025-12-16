@@ -697,3 +697,52 @@ async def smart_auto_chat(
         allowed_providers=allowed_providers,
         **kwargs,
     )
+
+
+async def complete_chat(
+    *,
+    system: str,
+    user: str,
+    model: Optional[str] = None,
+    provider: Optional[str] = None,
+    api_key: Optional[str] = None,
+    temperature: float = 0.2,
+    max_tokens: int = 4096,
+    timeout_sec: int = 60,
+    task_type: Optional[str] = None,
+    tags: Optional[Dict[str, Any]] = None,
+    **kwargs,
+) -> str:
+    """
+    Complete chat function for backward compatibility.
+    
+    This matches the interface expected by codegen_service.py and other modules.
+    
+    Args:
+        system: System prompt/instructions
+        user: User prompt/message
+        model: Model to use
+        provider: Provider to use  
+        api_key: API key for BYOK
+        temperature: Temperature for generation
+        max_tokens: Maximum tokens to generate
+        timeout_sec: Request timeout (not currently used)
+        task_type: Task type for logging/metrics (not currently used)
+        tags: Additional tags for logging/metrics (not currently used)
+        **kwargs: Additional arguments passed to the router
+        
+    Returns:
+        Generated text response
+    """
+    router = get_router()
+    response = await router.run(
+        prompt=user,
+        system_prompt=system,
+        model=model,
+        provider=provider,
+        api_key=api_key,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        **kwargs,
+    )
+    return response.text

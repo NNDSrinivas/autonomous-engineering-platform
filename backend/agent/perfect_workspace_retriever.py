@@ -9,12 +9,21 @@ logger = logging.getLogger(__name__)
 def _is_safe_path(path: str, workspace_root: str) -> bool:
     """Safely validate that path is within workspace_root to prevent path traversal."""
     try:
-        # Convert to pathlib Path objects and resolve
-        target_path = Path(path).resolve()
+        # Sanitize and validate input path
+        if not path or path.startswith('/') or '..' in path:
+            return False
+            
+        # Normalize the workspace root first
         workspace_path = Path(workspace_root).resolve()
-
-        # Check if target is within workspace
-        target_path.relative_to(workspace_path)
+        
+        # Join paths safely without resolving user input directly
+        candidate_path = workspace_path / path
+        
+        # Now resolve and check containment
+        resolved_path = candidate_path.resolve()
+        
+        # Verify the resolved path is still within workspace
+        resolved_path.relative_to(workspace_path)
         return True
     except (ValueError, OSError):
         return False

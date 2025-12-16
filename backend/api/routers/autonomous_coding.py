@@ -252,7 +252,7 @@ async def get_task_status(task_id: str, db: Session = Depends(get_db)):
         }
 
     except Exception:
-        logger.error(f"Failed to get steps for task {task_id}")
+        logger.error("Failed to get task status")
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve task status. Please check server logs.",
@@ -292,7 +292,7 @@ async def get_task_steps(task_id: str, db: Session = Depends(get_db)):
         }
 
     except Exception:
-        logger.error(f"Failed to get task steps {task_id}")
+        logger.error("Failed to get task steps")
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve task steps. Please check server logs.",
@@ -358,7 +358,7 @@ async def create_pull_request(task_id: str, db: Session = Depends(get_db)):
             branch_name=None,  # Use task's branch
         )
 
-        logger.info(f"Created PR for task {task_id}: {result.get('pr_url', 'unknown')}")
+        logger.info("Created pull request successfully")
 
         # If error, raise HTTPException with generic message, otherwise return result
         if result.get("status") == "error":

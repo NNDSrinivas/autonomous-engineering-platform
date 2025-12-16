@@ -1,7 +1,7 @@
 """Contextual bandit learning system for AI parameter optimization."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
 import numpy as np
 
@@ -291,5 +291,5 @@ class LearningService:
         return {
             "org_key": org_key,
             "contexts": context_stats,
-            "last_updated": datetime.utcnow().isoformat(),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
         }

@@ -1,6 +1,6 @@
 """Service layer for AI feedback operations."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, func, select
@@ -116,7 +116,7 @@ class FeedbackService:
         days: int = 30,
     ) -> Dict:
         """Get aggregated feedback statistics for an organization."""
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         # Get basic stats
         total_gen_result = await self.session.execute(

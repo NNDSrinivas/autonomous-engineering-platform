@@ -122,7 +122,7 @@ async def lifespan(app: FastAPI):
         if inspect.iscoroutine(result):
             await result
     except Exception:
-        logger.warning("Shutdown warning occurred during cleanup")
+        logger.warning("Shutdown warning occurred during cleanup", exc_info=True)
 
 
 app = FastAPI(title=f"{settings.APP_NAME} - Core API", lifespan=lifespan)

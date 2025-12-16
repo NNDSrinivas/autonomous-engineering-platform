@@ -12,17 +12,19 @@ def _is_safe_path(path: str, workspace_root: str) -> bool:
         # Enhanced input validation
         if not path or not isinstance(path, str):
             return False
-            
+
         # Reject absolute paths
         if path.startswith(("/", "\\")):
             return False
-            
+
         # Reject any path with parent directory references
         if ".." in path or "~" in path:
             return False
-            
+
         # Reject paths with null bytes or other dangerous characters
-        if "\x00" in path or any(c in path for c in ["<", ">", ":", '"', "|", "?", "*"]):
+        if "\x00" in path or any(
+            c in path for c in ["<", ">", ":", '"', "|", "?", "*"]
+        ):
             return False
 
         # Only allow relative paths with standard separators
@@ -35,7 +37,10 @@ def _is_safe_path(path: str, workspace_root: str) -> bool:
 
         # Use os.path.join for safer path construction
         import os
-        candidate_full = os.path.normpath(os.path.join(str(workspace_path), normalized_path))
+
+        candidate_full = os.path.normpath(
+            os.path.join(str(workspace_path), normalized_path)
+        )
         candidate_resolved = Path(candidate_full).resolve()
 
         # Verify the resolved path is still within workspace
@@ -75,7 +80,7 @@ def safe_read_file(path: str, workspace_root: Optional[str] = None) -> Optional[
         # Construct safe path using validated workspace root
         root_path = Path(validate_root).resolve()
         file_path = (root_path / path).resolve()
-        
+
         # Double-check containment after resolution
         try:
             file_path.relative_to(root_path)

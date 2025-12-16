@@ -53,6 +53,7 @@ from .tasks import router as tasks_router
 from .routers.plan import router as plan_router
 from .deliver import router as deliver_router
 from .routers.policy import router as policy_router
+from .routers.audit import router as audit_router
 from .change import router as change_router
 from .chat import router as chat_router
 from .navi import router as navi_router  # PR-5B/PR-6: NAVI extension endpoint
@@ -237,6 +238,7 @@ app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(events_router, prefix="/api")  # Universal event ingestion
 app.include_router(internal_router, prefix="/api")  # System info and diagnostics
+app.include_router(audit_router, prefix="/api")  # Audit and replay endpoints
 app.include_router(jira_webhook_router)  # Jira webhook ingestion
 app.include_router(github_webhook_router)  # GitHub webhook ingestion
 app.include_router(slack_webhook_router)  # Slack webhook ingestion

@@ -715,14 +715,14 @@ async def complete_chat(
 ) -> str:
     """
     Complete chat function for backward compatibility.
-    
+
     This matches the interface expected by codegen_service.py and other modules.
-    
+
     Args:
         system: System prompt/instructions
         user: User prompt/message
         model: Model to use
-        provider: Provider to use  
+        provider: Provider to use
         api_key: API key for BYOK
         temperature: Temperature for generation
         max_tokens: Maximum tokens to generate
@@ -730,7 +730,7 @@ async def complete_chat(
         task_type: Task type for logging/metrics (not currently used)
         tags: Additional tags for logging/metrics (not currently used)
         **kwargs: Additional arguments passed to the router
-        
+
     Returns:
         Generated text response
     """

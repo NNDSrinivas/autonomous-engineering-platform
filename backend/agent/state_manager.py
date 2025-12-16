@@ -217,7 +217,10 @@ async def set_active_file(user_id: str, file_path: str) -> None:
     """
     await update_user_state(
         user_id,
-        {"active_file": file_path, "active_file_set_at": datetime.now(timezone.utc).isoformat()},
+        {
+            "active_file": file_path,
+            "active_file_set_at": datetime.now(timezone.utc).isoformat(),
+        },
     )
 
 

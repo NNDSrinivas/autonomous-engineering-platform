@@ -126,7 +126,11 @@ class WorkflowState:
             result: Step execution result
         """
         self.step_history.append(
-            {"step": step, "timestamp": datetime.now(timezone.utc).isoformat(), "result": result}
+            {
+                "step": step,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "result": result,
+            }
         )
         self.updated_at = datetime.now(timezone.utc)
         logger.info(f"Recorded completion of step {step} for workflow {self.issue_id}")

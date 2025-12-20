@@ -25,6 +25,7 @@ from backend.services.navi_memory_service import search_memory
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/navi", tags=["navi-search"])
+from backend.services.navi_memory_service import get_recent_memories
 
 
 # ============================================================================
@@ -226,6 +227,29 @@ async def get_search_stats(user_id: str, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error("Failed to get memory stats", error=str(e), user_id=user_id)
         raise HTTPException(status_code=500, detail="Failed to get stats")
+
+
+@router.get("/memory/recent")
+async def get_recent_memory(
+    user_id: str,
+    limit: int = 50,
+    category: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch recent memories for a user (optional category filter), newest first.
+    """
+    if not user_id.strip():
+        raise HTTPException(status_code=400, detail="user_id is required")
+
+    try:
+        memories = await get_recent_memories(
+            db=db, user_id=user_id, category=category, limit=min(limit, 200)
+        )
+        return {"user_id": user_id, "limit": limit, "items": memories}
+    except Exception as e:
+        logger.error("Recent memory fetch failed", error=str(e), user_id=user_id)
+        raise HTTPException(status_code=500, detail="Failed to fetch recent memory")
 
 
 @router.get("/search/health")

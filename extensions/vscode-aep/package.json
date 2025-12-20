@@ -17,8 +17,47 @@
       "properties": {
         "aep.navi.backendUrl": {
           "type": "string",
-          "default": "http://127.0.0.1:8787/api/navi/chat",
-          "description": "Backend URL for NAVI Assistant API calls (full endpoint URL including /api/navi/chat)"
+          "default": "http://127.0.0.1:8787",
+          "description": "Backend URL for NAVI Assistant API calls (base URL without path)"
+        },
+        "aep.navi.orgId": {
+          "type": "string",
+          "default": "default",
+          "description": "Org id sent to NAVI backend for policy and coverage enforcement"
+        },
+        "aep.navi.userId": {
+          "type": "string",
+          "default": "default_user",
+          "description": "User id sent to NAVI backend for scans and memory context"
+        },
+        "aep.navi.autoScanEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically scan the repo when consented (interval-based)."
+        },
+        "aep.navi.autoScanIntervalHours": {
+          "type": "number",
+          "default": 24,
+          "minimum": 1,
+          "maximum": 168,
+          "description": "How often to run the automatic repo scan."
+        },
+        "aep.smartMode.autoApplyThreshold": {
+          "type": "number",
+          "default": 0.3,
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Risk threshold below which changes are automatically applied (0.0 = never auto-apply, 1.0 = always auto-apply)"
+        },
+        "aep.smartMode.showProgressNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show progress notifications during Smart Mode operations"
+        },
+        "aep.smartMode.enableSmartVerification": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable smart verification mode for medium-risk changes"
         }
       }
     },
@@ -42,8 +81,77 @@
       {
         "command": "aep.generateTestsForFile",
         "title": "NAVI: Generate Tests for File"
+      },
+      {
+        "command": "aep.navi.smartReviewWorkspace",
+        "title": "NAVI: Smart Review Workspace",
+        "icon": "$(search-view-icon)"
+      },
+      {
+        "command": "aep.navi.smartReviewSelection",
+        "title": "NAVI: Smart Review Selection",
+        "icon": "$(file-text)"
+      },
+      {
+        "command": "aep.navi.smartReviewWithInstruction",
+        "title": "NAVI: Smart Review with Custom Instruction",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "aep.navi.applySmartDiff",
+        "title": "NAVI: Apply Smart Diff",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "aep.navi.undoSmartMode",
+        "title": "NAVI: Undo Last Smart Mode Operation",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "aep.navi.smartModeSettings",
+        "title": "NAVI: Smart Mode Settings",
+        "icon": "$(settings-gear)"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "aep.navi.smartReviewWorkspace",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "aep.navi.smartReviewSelection",
+          "when": "editorHasSelection || activeEditor"
+        },
+        {
+          "command": "aep.navi.smartReviewWithInstruction",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "aep.navi.applySmartDiff"
+        },
+        {
+          "command": "aep.navi.undoSmartMode"
+        },
+        {
+          "command": "aep.navi.smartModeSettings"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "aep.navi.smartReviewSelection",
+          "when": "editorTextFocus",
+          "group": "1_modification@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "aep.navi.smartReviewWorkspace",
+          "when": "explorerViewletFocus",
+          "group": "7_modification@1"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {

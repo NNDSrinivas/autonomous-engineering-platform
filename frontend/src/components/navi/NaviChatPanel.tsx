@@ -428,6 +428,53 @@ type CoverageGateState = {
   updatedAt: string;
 };
 
+/* ---------- Phase 1.3.1: Diff File Card (HYBRID - IDE-native diff) ---------- */
+
+interface FileDiffDetail {
+  path: string;
+  additions: number;
+  deletions: number;
+  diff: string;
+  scope: 'staged' | 'unstaged';
+}
+
+function DiffFileCard({ fileDiff }: { fileDiff: FileDiffDetail }) {
+  const handleOpenDiff = () => {
+    vscodeApi.postMessage({
+      type: 'openDiff',
+      path: fileDiff.path,
+      scope: fileDiff.scope
+    });
+  };
+
+  return (
+    <div className="border border-gray-700 rounded-lg bg-gray-900/50 overflow-hidden">
+      {/* File summary with action button */}
+      <div className="p-2 flex items-center justify-between">
+        <div className="flex items-center gap-2 flex-1">
+          <span className="text-xs">📄</span>
+          <span className="text-xs font-mono text-gray-300">{fileDiff.path}</span>
+          <span className={`text-xs px-1 rounded ${fileDiff.scope === 'staged' ? 'bg-green-900/30 text-green-400' : 'bg-yellow-900/30 text-yellow-400'}`}>
+            {fileDiff.scope}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-green-400">+{fileDiff.additions}</span>
+          <span className="text-xs text-red-400">−{fileDiff.deletions}</span>
+          <button
+            onClick={handleOpenDiff}
+            className="text-xs px-2 py-1 ml-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+            title="Open native diff in VS Code editor"
+          >
+            Open
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Component ---------- */
 
 export default function NaviChatPanel() {
@@ -491,7 +538,7 @@ export default function NaviChatPanel() {
     skipped_files: number;
     highlights: string[];
   } | null>(null);
-  
+
   // NEW: Repo diff summary from agent (Phase 1.2)
   const [repoSummary, setRepoSummary] = useState<{
     base: string;
@@ -501,6 +548,15 @@ export default function NaviChatPanel() {
     stagedFiles: Array<{ path: string; status: string }>;
     totalChanges: number;
   } | null>(null);
+
+  // NEW: Diff details for each file (Phase 1.3)
+  const [diffDetails, setDiffDetails] = useState<Array<{
+    path: string;
+    additions: number;
+    deletions: number;
+    diff: string;
+    scope: 'staged' | 'unstaged';
+  }>>([]);
 
   const showToast = (
     message: string,
@@ -1095,7 +1151,7 @@ export default function NaviChatPanel() {
           const severities = data.severityCounts || {};
           const totalIssues = Number(data.totalIssues) || 0;
           const highlights: string[] = Array.isArray(data.highlights) ? data.highlights : [];
-          
+
           // Build comprehensive highlights with branch comparison
           const summaryHighlights: string[] = [];
           if (totalIssues > 0) {
@@ -1161,6 +1217,22 @@ export default function NaviChatPanel() {
             totalChanges: totalChanges || 0,
           });
           console.log('[NaviChatPanel] 📊 Received repo diff summary:', { base, unstagedCount, stagedCount });
+          // Reset diff details when new summary arrives
+          setDiffDetails([]);
+          return;
+        }
+
+        // NEW (Phase 1.3): Handle individual file diff details
+        if (kind === 'repo.diff.detail') {
+          const { path, additions, deletions, diff, scope } = data;
+          setDiffDetails(prev => [...prev, {
+            path,
+            additions: additions || 0,
+            deletions: deletions || 0,
+            diff: diff || '',
+            scope: scope || 'unstaged'
+          }]);
+          console.log('[NaviChatPanel] 📄 Received diff for:', path, `+${additions} -${deletions}`);
           return;
         }
 
@@ -2391,7 +2463,7 @@ export default function NaviChatPanel() {
               <h3 className="text-sm font-semibold text-gray-100">📊 Working Tree Changes</h3>
               <span className="text-xs text-gray-400">base: <span className="font-mono text-blue-300">{repoSummary.base}</span></span>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-2">
               <div className="p-2 bg-gray-800/50 rounded border border-gray-700">
                 <div className="text-xs text-gray-400">Unstaged</div>
@@ -2435,10 +2507,13 @@ export default function NaviChatPanel() {
           </div>
         )}
 
-        {/* If no repo summary yet, show waiting state */}
-        {!repoSummary && (
-          <div className="p-3 bg-gray-900/40 border border-gray-800 rounded-lg mt-2 text-xs text-gray-500">
-            📊 Waiting for repo diff data from agent...
+        {/* PHASE 1.3: Diff Viewer (READ-ONLY, NO OPINIONS, NO ACTIONS) */}
+        {diffDetails.length > 0 && (
+          <div className="mt-2 space-y-2">
+            <div className="text-xs font-semibold text-gray-300 mb-2">📄 File Changes</div>
+            {diffDetails.map((fileDiff, idx) => (
+              <DiffFileCard key={`${fileDiff.path}-${idx}`} fileDiff={fileDiff} />
+            ))}
           </div>
         )}
 

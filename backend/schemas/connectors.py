@@ -63,3 +63,31 @@ class ConnectorConnectResponse(BaseModel):
     ok: bool
     connector_id: ConnectorId
     error: Optional[str] = None
+
+
+class GenericConnectorRequest(BaseModel):
+    provider: str
+    name: Optional[str] = "default"
+    base_url: Optional[str] = None
+    token: Optional[str] = None
+    workspace_root: Optional[str] = None
+    extra: Optional[dict] = None
+
+
+class GenericConnectorResponse(BaseModel):
+    ok: bool
+    connector_id: str
+    id: Optional[int] = None
+    error: Optional[str] = None
+
+
+class ConnectorListItem(BaseModel):
+    id: Optional[int]
+    provider: str
+    name: str
+    config: dict
+    workspace_root: Optional[str] = None
+
+
+class ConnectorListResponse(BaseModel):
+    items: list[ConnectorListItem]

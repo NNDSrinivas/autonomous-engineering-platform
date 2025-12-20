@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { CORE_API } from '../api/client'
 
 interface PlatformHealth {
   status: string
@@ -22,7 +23,7 @@ const Dashboard: React.FC = () => {
 
   const fetchHealth = async () => {
     try {
-      const response = await fetch('http://localhost:8000/health')
+      const response = await fetch(`${CORE_API}/health`)
       const data = await response.json()
       setHealth(data)
     } catch (error) {

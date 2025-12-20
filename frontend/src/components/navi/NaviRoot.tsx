@@ -6,6 +6,14 @@ import HistoryView from "../history/HistoryView";
 import AccountView from "../account/AccountView";
 import "./NaviRoot.css";
 
+// Import PrismJS for syntax highlighting
+import 'prismjs/themes/prism-tomorrow.css';
+import 'prismjs/components/prism-diff';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-bash';
+
 type NaviView = "chat" | "connections" | "history" | "account";
 
 export default function NaviRoot() {
@@ -60,7 +68,9 @@ export default function NaviRoot() {
       <main className="navi-main">
         {activeView === "chat" && <NaviChatPanel />}
         {activeView === "connections" && <ConnectionsView />}
-        {activeView === "history" && <HistoryView />}
+        {activeView === "history" && (
+          <HistoryView onSelectSession={() => setActiveView("chat")} />
+        )}
         {activeView === "account" && <AccountView />}
       </main>
     </div>

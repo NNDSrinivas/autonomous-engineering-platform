@@ -56,9 +56,15 @@ from .routers.policy import router as policy_router
 from .routers.audit import router as audit_router
 from .change import router as change_router
 from .chat import router as chat_router
+from .chat import navi_router as navi_chat_router  # Diff-aware Navi chat
 from .navi import router as navi_router  # PR-5B/PR-6: NAVI extension endpoint
 from .org_sync import router as org_sync_router  # Step 2: Jira/Confluence memory sync
 from .navi_search import router as navi_search_router  # Step 3: Unified RAG search
+from .github_actions import router as github_actions_router  # GitHub PR actions
+from .github_ci import router as github_ci_router  # GitHub Actions CI
+from .gitlab_ci import router as gitlab_ci_router  # GitLab CI
+from .jenkins_ci import router as jenkins_ci_router  # Jenkins CI
+from .routers.connectors import router as connectors_router
 from .navi_brief import router as navi_brief_router  # Jira tasks + task brief endpoints
 from .navi_intent import router as navi_intent_router  # NAVI intent classification
 from .routes.intent import (
@@ -73,10 +79,18 @@ from .integrations_ext import router as integrations_ext_router
 from .context_pack import router as context_pack_router
 from .routers.memory import router as memory_router
 from .routers.plan import router as live_plan_router
+from .apply_fix import router as apply_fix_router  # Batch 6: Auto-Fix Engine
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
 from .routers.rate_limit_admin import router as rate_limit_admin_router
 from .routers.github_webhook import router as github_webhook_router
+from .review_stream import router as review_stream_router  # SSE streaming for reviews
+from .real_review_stream import router as real_review_stream_router  # Real git-based review streaming
+from .test_real_review import router as test_real_review_router  # Test real review service
+from .comprehensive_review import router as comprehensive_review_router  # Advanced comprehensive analysis
+from .debug_navi import router as debug_navi_router  # Debug NAVI analysis
+from .simple_navi_test import router as simple_navi_test_router  # Simple NAVI test
+from .debug_navi import router as debug_navi_router  # Debug NAVI analysis
 
 # VS Code Extension API endpoints
 from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
@@ -98,7 +112,10 @@ from .routers.docs_webhook import router as docs_webhook_router
 from .routers.ci_webhook import router as ci_webhook_router
 from .routers.debug_info import router as debug_info_router
 from .routers.debug_context import router as debug_context_router
+from .routers.org_scan import router as org_scan_router
 from .routers.chat_history import router as chat_history_router
+# from .refactor_stream_api import router as refactor_stream_router  # Batch 8 Part 4: SSE Live Refactor Streaming - TODO: Implement
+from .orchestrator import router as orchestrator_router  # Multi-Agent Orchestrator API
 
 # Auth0 JWT validation routes
 from ..auth.routes import router as auth_routes_router
@@ -210,6 +227,11 @@ def health():
     return {"status": "ok", "service": "core"}
 
 
+@app.get("/ping")
+def ping():
+    return {"status": "ok", "message": "pong"}
+
+
 @app.get("/version")
 def version():
     return {"name": settings.APP_SLUG, "env": settings.APP_ENV, "version": "0.1.0"}
@@ -222,9 +244,15 @@ app.include_router(deliver_router)
 app.include_router(policy_router)
 app.include_router(change_router)
 app.include_router(chat_router)  # Enhanced conversational interface
+app.include_router(navi_chat_router)  # Diff-aware Navi chat (/api/navi/chat)
 app.include_router(navi_router)  # PR-5B/PR-6: NAVI VS Code extension
 app.include_router(org_sync_router)  # Step 2: Jira/Confluence memory integration
 app.include_router(navi_search_router)  # Step 3: Unified RAG search
+app.include_router(github_actions_router)  # GitHub PR actions
+app.include_router(github_ci_router)  # GitHub CI trigger/status
+app.include_router(gitlab_ci_router)  # GitLab CI trigger/status
+app.include_router(jenkins_ci_router)  # Jenkins CI trigger/status
+app.include_router(connectors_router, prefix="/api")  # Connector management
 app.include_router(navi_brief_router)  # NAVI: Jira task list and task brief
 app.include_router(navi_intent_router)  # NAVI: Intent classification for smart routing
 app.include_router(
@@ -232,12 +260,20 @@ app.include_router(
 )  # LLM-powered intent classification API (includes /api/agent/intent prefix)
 app.include_router(providers_api_router)  # BYOK provider management API
 app.include_router(agent_api_router, prefix="/api")  # Complete NAVI agent API
+app.include_router(apply_fix_router)  # Batch 6: Auto-Fix Engine with AI patch generation
 app.include_router(search_router)
 app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(events_router, prefix="/api")  # Universal event ingestion
 app.include_router(internal_router, prefix="/api")  # System info and diagnostics
+app.include_router(review_stream_router)  # SSE streaming for code reviews
+app.include_router(real_review_stream_router, prefix="/api")  # Real git-based review streaming
+app.include_router(test_real_review_router, prefix="/api")  # Test real review service
+app.include_router(comprehensive_review_router, prefix="/api")  # Advanced comprehensive analysis
+app.include_router(debug_navi_router, prefix="/api")  # Debug NAVI analysis
+app.include_router(simple_navi_test_router, prefix="/api")  # Simple NAVI test
+# app.include_router(refactor_stream_router)  # Batch 8 Part 4: SSE Live Refactor Streaming - TODO: Implement
 app.include_router(audit_router, prefix="/api")  # Audit and replay endpoints
 app.include_router(jira_webhook_router)  # Jira webhook ingestion
 app.include_router(github_webhook_router)  # GitHub webhook ingestion
@@ -248,6 +284,8 @@ app.include_router(ci_webhook_router)  # CI ingestion webhook
 app.include_router(debug_info_router)  # Debug context/ingestion info
 app.include_router(chat_history_router)  # Chat history endpoints
 app.include_router(debug_context_router)  # Debug org/user/context info
+app.include_router(org_scan_router)  # Org scan consent and run endpoints
+app.include_router(orchestrator_router)  # Multi-Agent Orchestrator API
 
 app.include_router(oauth_device_auth0_router)
 app.include_router(connectors_router)

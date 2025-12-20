@@ -24,6 +24,12 @@ const QUICK_ACTIONS: QuickAction[] = [
     emoji: "🧹",
   },
   {
+    id: "live_analysis",
+    label: "Live Code Analysis",
+    prompt: "__LIVE_ANALYSIS__", // Special marker for real-time analysis
+    emoji: "⚡",
+  },
+  {
     id: "review_working",
     label: "Review working changes",
     prompt: "review my working tree changes and suggest improvements",
@@ -46,6 +52,12 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: "Explain this repo",
     prompt: "explain this repo, what it does, and the key components",
     emoji: "📁",
+  },
+  {
+    id: "scan_repo",
+    label: "Scan repo",
+    prompt: "scan repo",
+    emoji: "🛰️",
   },
   {
     id: "clear_chat",
@@ -105,6 +117,11 @@ export function QuickActionsBar({
             )}
             onClick={() => handleClick(action)}
             disabled={disabled}
+            data-testid={
+              action.id === "live_analysis"
+                ? "smart-workspace-btn"
+                : `quick-${action.id}`
+            }
           >
             {action.emoji && (
               <span className="navi-quick-actions__icon">

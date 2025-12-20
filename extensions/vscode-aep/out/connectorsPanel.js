@@ -103,7 +103,15 @@ class ConnectorsPanel {
             case "slack":
                 await this._connectSlack();
                 break;
-            // you can add github, teams, etc. later here
+            case "github":
+                await this._connectGeneric("github");
+                break;
+            case "gitlab":
+                await this._connectGeneric("gitlab");
+                break;
+            case "jenkins":
+                await this._connectGeneric("jenkins");
+                break;
             default:
                 vscode.window.showWarningMessage(`Connector '${connectorId}' is not yet implemented.`);
                 return;
@@ -253,6 +261,66 @@ class ConnectorsPanel {
                 },
             });
             vscode.window.showErrorMessage(`Failed to connect Slack: ${msg}`);
+        }
+    }
+    async _connectGeneric(provider) {
+        const baseUrl = await vscode.window.showInputBox({
+            title: `${provider} base URL`,
+            prompt: provider === "github" ? "https://api.github.com (or enterprise API root)" : "Base API URL",
+            value: provider === "github" ? "https://api.github.com" : undefined,
+            ignoreFocusOut: true,
+        });
+        if (!baseUrl) {
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: { connectorId: provider, ok: false, error: "User cancelled" },
+            });
+            return;
+        }
+        const token = await vscode.window.showInputBox({
+            title: `${provider} token`,
+            prompt: `Personal access token for ${provider}`,
+            password: true,
+            ignoreFocusOut: true,
+            validateInput: (v) => (v.trim().length === 0 ? "Token is required" : undefined),
+        });
+        if (!token) {
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: { connectorId: provider, ok: false, error: "User cancelled" },
+            });
+            return;
+        }
+        const url = `${this._backendBaseUrl}/api/connectors/save`;
+        try {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    provider,
+                    base_url: baseUrl,
+                    token,
+                    name: "default",
+                }),
+            });
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`HTTP ${res.status} ${res.statusText}: ${errText}`);
+            }
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: { connectorId: provider, ok: true },
+            });
+        }
+        catch (err) {
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId: provider,
+                    ok: false,
+                    error: err?.message || String(err),
+                },
+            });
         }
     }
     // -----------------------------------------------------------------------

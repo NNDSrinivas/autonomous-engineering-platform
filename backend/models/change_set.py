@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, BigInteger, String, TIMESTAMP
-from sqlalchemy.dialects.postgresql import JSONB
+from backend.database.types import PortableJSONB as JSONB
 from backend.core.db import Base
 
 

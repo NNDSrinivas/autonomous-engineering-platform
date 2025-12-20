@@ -5,13 +5,18 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
 from backend.core.auth.deps import get_current_user
+from backend.core.db import get_db
 from backend.schemas.connectors import (
     ConnectorStatusResponse,
     JiraConnectorRequest,
     SlackConnectorRequest,
     ConnectorConnectResponse,
+    GenericConnectorRequest,
+    GenericConnectorResponse,
+    ConnectorListResponse,
 )
 from backend.services import connectors as connectors_service
 
@@ -48,6 +53,7 @@ def _current_user_id(current_user: Any = Depends(get_current_user)) -> str:
 )
 def connectors_status(
     user_id: str = Depends(_current_user_id),
+    db: Session = Depends(get_db),
 ) -> ConnectorStatusResponse:
     """
     Returns status for all known connectors (Jira, Slack, GitHub, etc.)
@@ -55,9 +61,9 @@ def connectors_status(
 
     Used by the VS Code Connectors panel to show which tiles are connected.
     """
-    items = connectors_service.get_connector_status_for_user(user_id=user_id)
-    # Later, if we detect DB / dependency issues, we can set offline=True.
-    return ConnectorStatusResponse(items=items, offline=False)
+    items = connectors_service.get_connector_status_for_user(user_id=user_id, db=db)
+    offline = not connectors_service.connectors_available(db)
+    return ConnectorStatusResponse(items=items, offline=offline)
 
 
 @router.get(
@@ -67,13 +73,15 @@ def connectors_status(
 )
 def marketplace_status(
     user_id: str = Depends(_current_user_id),
+    db: Session = Depends(get_db),
 ) -> ConnectorStatusResponse:
     """
     Alternative endpoint for marketplace compatibility.
     Returns same data as /status but at marketplace-friendly path.
     """
-    items = connectors_service.get_connector_status_for_user(user_id=user_id)
-    return ConnectorStatusResponse(items=items, offline=False)
+    items = connectors_service.get_connector_status_for_user(user_id=user_id, db=db)
+    offline = not connectors_service.connectors_available(db)
+    return ConnectorStatusResponse(items=items, offline=offline)
 
 
 @router.post(
@@ -85,6 +93,7 @@ def marketplace_status(
 def connect_jira(
     payload: JiraConnectorRequest,
     user_id: str = Depends(_current_user_id),
+    db: Session = Depends(get_db),
 ) -> ConnectorConnectResponse:
     """
     Save Jira connection details for the current user.
@@ -100,6 +109,7 @@ def connect_jira(
             base_url=str(payload.base_url),
             email=payload.email,
             api_token=payload.api_token,
+            db=db,
         )
     except Exception as exc:  # pragma: no cover – defensive
         raise HTTPException(
@@ -119,6 +129,7 @@ def connect_jira(
 def connect_slack(
     payload: SlackConnectorRequest,
     user_id: str = Depends(_current_user_id),
+    db: Session = Depends(get_db),
 ) -> ConnectorConnectResponse:
     """
     Save Slack connection details for the current user (dev-mode).
@@ -129,6 +140,7 @@ def connect_slack(
         connectors_service.save_slack_connection(
             user_id=user_id,
             bot_token=payload.bot_token,
+            db=db,
         )
     except Exception as exc:  # pragma: no cover
         raise HTTPException(
@@ -137,3 +149,79 @@ def connect_slack(
         ) from exc
 
     return ConnectorConnectResponse(ok=True, connector_id="slack")
+
+
+@router.post(
+    "/save",
+    response_model=GenericConnectorResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Save a connector (generic providers)",
+)
+def save_connector(
+    payload: GenericConnectorRequest,
+    user_id: str = Depends(_current_user_id),
+    db: Session = Depends(get_db),
+) -> GenericConnectorResponse:
+    """
+    Save connector details for provider (github, gitlab, jenkins, etc.).
+    """
+    try:
+        cfg = {}
+        if payload.base_url:
+            cfg["base_url"] = payload.base_url
+        if payload.extra:
+            cfg.update(payload.extra)
+        secrets = {}
+        if payload.token:
+            secrets["token"] = payload.token
+        connector_id = connectors_service.upsert_connector(
+            db=db,
+            user_id=user_id,
+            provider=payload.provider,
+            name=payload.name or "default",
+            config=cfg,
+            secrets=secrets,
+            workspace_root=payload.workspace_root,
+        )
+        return GenericConnectorResponse(
+            ok=True,
+            connector_id=payload.provider,
+            id=connector_id,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save connector: {exc}",
+        ) from exc
+
+
+@router.get(
+    "",
+    response_model=ConnectorListResponse,
+    summary="List connectors for current user",
+)
+def list_connectors(
+    workspace_root: str | None = None,
+    provider: str | None = None,
+    user_id: str = Depends(_current_user_id),
+    db: Session = Depends(get_db),
+) -> ConnectorListResponse:
+    items = connectors_service.list_connectors(
+        db=db, user_id=user_id, workspace_root=workspace_root, provider=provider
+    )
+    return ConnectorListResponse(items=items)
+
+
+@router.delete(
+    "/{connector_id}",
+    summary="Delete a connector by id",
+)
+def delete_connector(
+    connector_id: int,
+    user_id: str = Depends(_current_user_id),
+    db: Session = Depends(get_db),
+):
+    deleted = connectors_service.delete_connector(db=db, user_id=user_id, connector_id=connector_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return {"ok": True}

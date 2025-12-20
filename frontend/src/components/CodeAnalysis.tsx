@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { CORE_API } from '../api/client'
 
 const CodeAnalysis: React.FC = () => {
   const [code, setCode] = useState('')
@@ -10,7 +11,7 @@ const CodeAnalysis: React.FC = () => {
     
     setLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/analyze-code', {
+      const response = await fetch(`${CORE_API}/api/analyze-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

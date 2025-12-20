@@ -1,0 +1,618 @@
+"""
+Auto-Fix Service with AI-powered patch generation.
+
+This service handles:
+- Fix registration and tracking
+- AI-powered unified diff patch generation
+- Patch validation and safety checks
+- Integration with LLM router for intelligent code fixes
+
+Part of Batch 6 — Real Auto-Fix Engine.
+"""
+
+import os
+import uuid
+import logging
+from typing import Dict, Any, Optional
+import re
+from pathlib import Path
+
+from backend.ai.llm_router import smart_auto_chat
+
+logger = logging.getLogger(__name__)
+
+# Global fix registry - in production this should be Redis/DB
+_FIX_REGISTRY: Dict[str, Dict[str, Any]] = {}
+
+
+def register_fix(file: str, hunk: str, issue: str, line_number: Optional[int] = None, severity: str = "info") -> str:
+    """
+    Register a new fix for later application.
+    
+    Args:
+        file: Path to the file containing the issue
+        hunk: Git diff hunk showing the problematic code
+        issue: Description of the issue to fix
+        line_number: Optional line number where the issue occurs
+        severity: Severity level of the issue
+        
+    Returns:
+        str: Unique fix ID for tracking this fix
+    """
+    fix_id = f"fix_{uuid.uuid4().hex[:8]}"
+    
+    _FIX_REGISTRY[fix_id] = {
+        "file": file,
+        "hunk": hunk,
+        "issue": issue,
+        "line_number": line_number,
+        "severity": severity,
+        "registered_at": str(uuid.uuid4())  # Simple timestamp
+    }
+    
+    logger.info(f"Registered fix {fix_id} for file {file}: {issue}")
+    return fix_id
+
+
+def get_fix_info(fix_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get information about a registered fix.
+    
+    Args:
+        fix_id: Unique identifier for the fix
+        
+    Returns:
+        Dict with fix information or None if not found
+    """
+    return _FIX_REGISTRY.get(fix_id)
+
+
+async def run_auto_fix(fix_id: str) -> Dict[str, Any]:
+    """
+    Generate AI-powered patch for a registered fix.
+    
+    Args:
+        fix_id: Unique identifier for the fix to apply
+        
+    Returns:
+        Dict containing the generated patch and metadata
+        
+    Raises:
+        ValueError: If fix_id not found or file doesn't exist
+        Exception: If AI patch generation fails
+    """
+    if fix_id not in _FIX_REGISTRY:
+        raise ValueError(f"Unknown fix_id: {fix_id}")
+
+    fix_data = _FIX_REGISTRY[fix_id]
+    file_path = fix_data["file"]
+    hunk = fix_data["hunk"]
+    issue = fix_data["issue"]
+    
+    logger.info(f"Starting auto-fix for {fix_id}: {file_path}")
+
+    # Validate file exists
+    if not os.path.exists(file_path):
+        raise ValueError(f"File not found: {file_path}")
+
+    # Read original file content
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            original_content = f.read()
+    except Exception as e:
+        raise ValueError(f"Failed to read file {file_path}: {str(e)}")
+
+    # Generate AI-powered patch
+    patch = await _generate_ai_patch(file_path, original_content, hunk, issue)
+    
+    # Validate patch format
+    if not _is_valid_patch(patch):
+        raise Exception(f"AI generated invalid patch format for {fix_id}")
+
+    # Calculate confidence and safety metrics
+    metadata = _analyze_patch_safety(patch, original_content)
+    
+    logger.info(f"Successfully generated patch for {fix_id}")
+    
+    return {
+        "patch": patch,
+        "file_path": file_path,
+        "metadata": {
+            **metadata,
+            "fix_id": fix_id,
+            "issue": issue,
+            "original_severity": fix_data["severity"]
+        }
+    }
+
+
+async def _generate_ai_patch(file_path: str, original_content: str, hunk: str, issue: str) -> str:
+    """
+    Generate unified diff patch using AI.
+    
+    Args:
+        file_path: Path to the file being fixed
+        original_content: Current content of the file
+        hunk: Git diff hunk showing the issue
+        issue: Description of what needs to be fixed
+        
+    Returns:
+        str: Valid unified diff patch
+    """
+    # Get file extension for language context
+    file_ext = Path(file_path).suffix
+    language_hint = _get_language_from_extension(file_ext)
+    
+    prompt = f"""You are Navi, an expert code review and auto-fix agent.
+
+Generate a UNIFIED DIFF PATCH that fixes the following code issue.
+Return ONLY the patch in standard unified diff format, no explanation or markdown.
+
+File: {file_path} ({language_hint})
+
+Issue to fix: {issue}
+
+Current file content:
+```
+{original_content}
+```
+
+Problematic diff hunk (for reference):
+```
+{hunk}
+```
+
+Requirements:
+1. Output MUST be a valid unified diff patch starting with "--- a/" and "+++ b/"
+2. Patch must apply cleanly to the current file content
+3. Fix should be minimal and surgical - only change what's necessary
+4. Preserve code style and formatting
+5. Ensure the fix addresses the specific issue described
+6. Use proper line context (3 lines before/after changes)
+
+Generate the patch now:"""
+
+    try:
+        # Use LLM router for AI patch generation
+        ai_response = await smart_auto_chat(
+            prompt,
+            max_completion_tokens=2048,  # Updated parameter name
+            temperature=0.1,  # Lower temperature for more deterministic fixes
+            model="gpt-4o-mini"  # Use appropriate model for code generation
+        )
+        
+        patch = ai_response.strip()
+        
+        # Clean up the patch if it has markdown formatting
+        if "```" in patch:
+            # Extract patch from markdown code blocks
+            lines = patch.split("\n")
+            in_code_block = False
+            patch_lines = []
+            
+            for line in lines:
+                if line.strip().startswith("```"):
+                    in_code_block = not in_code_block
+                    continue
+                if in_code_block or (line.startswith("--- ") or line.startswith("+++ ") or line.startswith("@@")):
+                    patch_lines.append(line)
+                    
+            patch = "\n".join(patch_lines)
+        
+        logger.info(f"Generated patch for {file_path}: {len(patch)} characters")
+        return patch
+        
+    except Exception as e:
+        logger.error(f"AI patch generation failed for {file_path}: {str(e)}")
+        raise Exception(f"Failed to generate patch: {str(e)}")
+
+
+def _get_language_from_extension(ext: str) -> str:
+    """Get programming language from file extension."""
+    lang_map = {
+        ".py": "Python",
+        ".js": "JavaScript", 
+        ".ts": "TypeScript",
+        ".tsx": "TypeScript React",
+        ".jsx": "JavaScript React",
+        ".java": "Java",
+        ".cpp": "C++",
+        ".c": "C",
+        ".go": "Go",
+        ".rs": "Rust",
+        ".php": "PHP",
+        ".rb": "Ruby",
+        ".cs": "C#",
+        ".swift": "Swift",
+        ".kt": "Kotlin"
+    }
+    return lang_map.get(ext.lower(), "Unknown")
+
+
+def _is_valid_patch(patch: str) -> bool:
+                logger.warning(f"Fix '{fix_id}' failed for {file_path}: {description}")
+                
+            return modified_content, success, description
+            
+        except Exception as e:
+            error_msg = f"Error applying fix '{fix_id}': {str(e)}"
+            logger.error(error_msg)
+            return content, False, error_msg
+    
+    def _add_error_handling(self, content: str, file_path: str, context: Dict) -> Tuple[str, bool, str]:
+        """Add try-catch blocks around async operations."""
+        if not file_path.endswith(('.js', '.jsx', '.ts', '.tsx')):
+            return content, False, "Error handling fix only applies to JavaScript/TypeScript files"
+        
+        lines = content.split('\n')
+        modified_lines = []
+        i = 0
+        changes_made = False
+        
+        while i < len(lines):
+            line = lines[i]
+            
+            # Look for async function definitions
+            if re.match(r'\s*async\s+function|\s*const\s+\w+\s*=\s*async\s*\(', line) or \
+               re.match(r'\s*async\s+\w+\s*\(', line):
+                
+                modified_lines.append(line)
+                i += 1
+                
+                # Find the opening brace
+                while i < len(lines) and '{' not in lines[i]:
+                    modified_lines.append(lines[i])
+                    i += 1
+                
+                if i < len(lines):
+                    brace_line = lines[i]
+                    modified_lines.append(brace_line)
+                    
+                    # Add try block
+                    indent = len(brace_line) - len(brace_line.lstrip())
+                    try_indent = ' ' * (indent + 2)
+                    modified_lines.append(f"{try_indent}try {{")
+                    
+                    # Process function body
+                    brace_count = brace_line.count('{') - brace_line.count('}')
+                    i += 1
+                    
+                    while i < len(lines) and brace_count > 0:
+                        body_line = lines[i]
+                        brace_count += body_line.count('{') - body_line.count('}')
+                        
+                        if brace_count == 0:  # This is the closing brace
+                            # Add catch block before closing brace
+                            modified_lines.append(f"{try_indent}}} catch (error) {{")
+                            modified_lines.append(f"{try_indent}  console.error('Error:', error);")
+                            modified_lines.append(f"{try_indent}  throw error;")
+                            modified_lines.append(body_line)
+                            changes_made = True
+                        else:
+                            # Indent the body line
+                            if body_line.strip():
+                                modified_lines.append('  ' + body_line)
+                            else:
+                                modified_lines.append(body_line)
+                        i += 1
+                else:
+                    i += 1
+            else:
+                modified_lines.append(line)
+                i += 1
+        
+        if changes_made:
+            return '\n'.join(modified_lines), True, "Added try-catch blocks to async functions"
+        else:
+            return content, False, "No async functions found to wrap"
+    
+    def _add_type_annotations(self, content: str, file_path: str, context: Dict) -> Tuple[str, bool, str]:
+        """Add type annotations to functions."""
+        if file_path.endswith('.py'):
+            # Python type annotations
+            pattern = r'def (\w+)\(([^)]*)\):'
+            def add_python_annotation(match):
+                func_name = match.group(1)
+                params = match.group(2)
+                return f'def {func_name}({params}) -> Any:'
+            
+            modified = re.sub(pattern, add_python_annotation, content)
+            
+            # Add typing import if not present
+            if modified != content and 'from typing import' not in modified:
+                lines = modified.split('\n')
+                # Find the best place to insert import
+                insert_idx = 0
+                for i, line in enumerate(lines):
+                    if line.startswith('import ') or line.startswith('from '):
+                        insert_idx = i + 1
+                    elif line.strip() and not line.startswith('#'):
+                        break
+                
+                lines.insert(insert_idx, 'from typing import Any')
+                modified = '\n'.join(lines)
+            
+            return modified, modified != content, "Added type annotations to Python functions"
+            
+        elif file_path.endswith(('.ts', '.tsx')):
+            # TypeScript type annotations
+            pattern = r'function (\w+)\(([^)]*)\)\s*{'
+            def add_ts_annotation(match):
+                func_name = match.group(1)
+                params = match.group(2)
+                return f'function {func_name}({params}): any {{'
+            
+            modified = re.sub(pattern, add_ts_annotation, content)
+            return modified, modified != content, "Added type annotations to TypeScript functions"
+        
+        return content, False, "Type annotations only supported for Python and TypeScript"
+    
+    def _fix_imports(self, content: str, file_path: str, context: Dict) -> Tuple[str, bool, str]:
+        """Sort and organize import statements."""
+        lines = content.split('\n')
+        
+        if file_path.endswith(('.js', '.jsx', '.ts', '.tsx')):
+            # JavaScript/TypeScript imports
+            import_lines = []
+            other_lines = []
+            
+            for line in lines:
+                if line.strip().startswith('import '):
+                    import_lines.append(line)
+                else:
+                    other_lines.append(line)
+            
+            if import_lines:
+                # Sort imports: libraries first, then relative imports
+                library_imports = []
+                relative_imports = []
+                
+                for imp in import_lines:
+                    if re.search(r"from\s+['\"][./]", imp) or re.search(r"from\s+['\"]@/", imp):
+                        relative_imports.append(imp)
+                    else:
+                        library_imports.append(imp)
+                
+                library_imports.sort()
+                relative_imports.sort()
+                
+                sorted_imports = library_imports + ([''] if library_imports and relative_imports else []) + relative_imports
+                
+                # Find where to insert organized imports
+                first_non_import = 0
+                for i, line in enumerate(other_lines):
+                    if line.strip() and not line.startswith('#') and not line.startswith('//'):
+                        first_non_import = i
+                        break
+                
+                result = other_lines[:first_non_import] + sorted_imports + ([''] if sorted_imports else []) + other_lines[first_non_import:]
+                return '\n'.join(result), True, "Organized and sorted import statements"
+                
+        elif file_path.endswith('.py'):
+            # Python imports
+            import_lines = []
+            other_lines = []
+            
+            for line in lines:
+                if line.strip().startswith(('import ', 'from ')):
+                    import_lines.append(line)
+                else:
+                    other_lines.append(line)
+            
+            if import_lines:
+                # Sort Python imports: standard library, third party, local
+                stdlib_imports = []
+                third_party_imports = []
+                local_imports = []
+                
+                for imp in import_lines:
+                    if re.search(r'from\s+\.', imp) or 'import .' in imp:
+                        local_imports.append(imp)
+                    elif any(lib in imp for lib in ['os', 'sys', 'json', 're', 'typing', 'datetime']):
+                        stdlib_imports.append(imp)
+                    else:
+                        third_party_imports.append(imp)
+                
+                stdlib_imports.sort()
+                third_party_imports.sort()
+                local_imports.sort()
+                
+                sorted_imports = []
+                for group in [stdlib_imports, third_party_imports, local_imports]:
+                    if group:
+                        sorted_imports.extend(group)
+                        sorted_imports.append('')  # Add blank line between groups
+                
+                if sorted_imports and sorted_imports[-1] == '':
+                    sorted_imports.pop()  # Remove last blank line
+                
+                result = sorted_imports + [''] + other_lines
+                return '\n'.join(result), True, "Organized Python imports by type"
+        
+        return content, False, "No imports found to organize"
+    
+    def _optimize_performance(self, content: str, file_path: str, context: Dict) -> Tuple[str, bool, str]:
+        """Add React performance optimizations."""
+        if not file_path.endswith(('.jsx', '.tsx')):
+            return content, False, "Performance optimizations only apply to React files"
+        
+        changes = []
+        modified = content
+        
+        # Add useCallback for event handlers
+        if 'onClick=' in content and 'useCallback' not in content:
+            # Add useCallback import
+            if 'import React' in modified:
+                modified = re.sub(
+                    r'import React(?:,\s*{([^}]*)})?',
+                    lambda m: f"import React, {{{m.group(1)}, useCallback}}" if m.group(1) else "import React, { useCallback }",
+                    modified
+                )
+                changes.append("Added useCallback import")
+        
+        # Add useMemo for expensive calculations
+        if 'const ' in content and '=' in content and 'useMemo' not in content:
+            if 'import React' in modified:
+                modified = re.sub(
+                    r'import React(?:,\s*{([^}]*)})?',
+                    lambda m: f"import React, {{{m.group(1)}, useMemo}}" if m.group(1) else "import React, { useMemo }",
+                    modified
+                )
+                changes.append("Added useMemo import")
+        
+        if changes:
+            return modified, True, f"Added React performance hooks: {', '.join(changes)}"
+        
+        return content, False, "No performance optimizations applicable"
+    
+    def _add_docstring(self, content: str, file_path: str, context: Dict) -> Tuple[str, bool, str]:
+        """Add docstrings to Python functions."""
+        if not file_path.endswith('.py'):
+            return content, False, "Docstrings only apply to Python files"
+        
+        lines = content.split('\n')
+        modified_lines = []
+        i = 0
+        changes_made = False
+        
+        while i < len(lines):
+            line = lines[i]
+            
+            # Look for function definitions
+            func_match = re.match(r'(\s*)def\s+(\w+)\s*\([^)]*\):', line)
+            if func_match:
+                indent = func_match.group(1)
+                func_name = func_match.group(2)
+                
+                modified_lines.append(line)
+                i += 1
+                
+                # Check if next line already has a docstring
+                if i < len(lines) and ('"""' in lines[i] or "'''" in lines[i]):
+                    # Already has docstring, skip
+                    modified_lines.append(lines[i])
+                else:
+                    # Add docstring
+                    modified_lines.append(f'{indent}    """')
+                    modified_lines.append(f'{indent}    {func_name.replace("_", " ").title()} function.')
+                    modified_lines.append(f'{indent}    ')
+                    modified_lines.append(f'{indent}    TODO: Add detailed description, parameters, and return value.')
+                    modified_lines.append(f'{indent}    """')
+                    changes_made = True
+            else:
+                modified_lines.append(line)
+                i += 1
+        
+        if changes_made:
+            return '\n'.join(modified_lines), True, "Added docstrings to functions"
+        
+        return content, False, "No functions found without docstrings"
+    
+    def _fix_security(self, content: str, file_path: str, context: Dict) -> Tuple[str, bool, str]:
+        """Fix security issues like hardcoded secrets."""
+        # This is a placeholder - real implementation would be more sophisticated
+        security_patterns = [
+            (r'password\s*=\s*["\'][^"\']+["\']', 'password = os.getenv("PASSWORD")'),
+            (r'api_key\s*=\s*["\'][^"\']+["\']', 'api_key = os.getenv("API_KEY")'),
+            (r'secret\s*=\s*["\'][^"\']+["\']', 'secret = os.getenv("SECRET")'),
+        ]
+        
+        modified = content
+        changes = []
+        
+        for pattern, replacement in security_patterns:
+            if re.search(pattern, modified, re.IGNORECASE):
+                modified = re.sub(pattern, replacement, modified, flags=re.IGNORECASE)
+                changes.append("Replaced hardcoded secret with environment variable")
+        
+        if changes:
+            # Add os import if not present
+            if 'import os' not in modified and changes:
+                lines = modified.split('\n')
+                lines.insert(0, 'import os')
+                modified = '\n'.join(lines)
+            
+            return modified, True, f"Fixed security issues: {', '.join(set(changes))}"
+        
+        return content, False, "No security issues found"
+    
+    def _fix_package_json(self, content: str, file_path: str, context: Dict) -> Tuple[str, bool, str]:
+        """Fix common package.json issues."""
+        if not file_path.endswith('package.json'):
+            return content, False, "Package.json fixes only apply to package.json files"
+        
+        try:
+            data = json.loads(content)
+            changes = []
+            
+            # Add missing version
+            if 'version' not in data:
+                data['version'] = '1.0.0'
+                changes.append("Added version field")
+            
+            # Add missing description
+            if 'description' not in data:
+                data['description'] = 'TODO: Add package description'
+                changes.append("Added description field")
+            
+            # Add missing license
+            if 'license' not in data:
+                data['license'] = 'MIT'
+                changes.append("Added license field")
+            
+            # Add missing repository field if it's missing
+            if 'repository' not in data:
+                data['repository'] = {
+                    "type": "git",
+                    "url": "TODO: Add repository URL"
+                }
+                changes.append("Added repository field")
+            
+            if changes:
+                return json.dumps(data, indent=2), True, f"Fixed package.json: {', '.join(changes)}"
+            
+        except json.JSONDecodeError:
+            return content, False, "Invalid JSON format"
+        
+        return content, False, "No package.json issues found"
+    
+    def _remove_unused_imports(self, content: str, file_path: str, context: Dict) -> Tuple[str, bool, str]:
+        """Remove unused import statements."""
+        # This would require AST analysis for proper implementation
+        return content, False, "Unused import removal requires AST analysis (not implemented)"
+    
+    def _add_null_checks(self, content: str, file_path: str, context: Dict) -> Tuple[str, bool, str]:
+        """Add null/undefined checks."""
+        if not file_path.endswith(('.js', '.jsx', '.ts', '.tsx')):
+            return content, False, "Null checks only apply to JavaScript/TypeScript"
+        
+        # Simple pattern to add null checks before property access
+        pattern = r'(\w+)\.(\w+)'
+        def add_null_check(match):
+            obj = match.group(1)
+            prop = match.group(2)
+            return f'{obj}?.{prop}'
+        
+        modified = re.sub(pattern, add_null_check, content)
+        
+        if modified != content:
+            return modified, True, "Added optional chaining for null safety"
+        
+        return content, False, "No null check opportunities found"
+    
+    def _fix_async_await(self, content: str, file_path: str, context: Dict) -> Tuple[str, bool, str]:
+        """Fix async/await patterns."""
+        if not file_path.endswith(('.js', '.jsx', '.ts', '.tsx')):
+            return content, False, "Async/await fixes only apply to JavaScript/TypeScript"
+        
+        # Convert .then() chains to async/await
+        then_pattern = r'\.then\(\s*(\w+)\s*=>\s*{([^}]+)}\s*\)'
+        
+        if re.search(then_pattern, content):
+            # This is a simplified conversion - real implementation would be more complex
+            return content, False, "Promise to async/await conversion requires more sophisticated parsing"
+        
+        return content, False, "No async/await improvements found"
+
+# Global service instance
+auto_fix_service = AutoFixService()

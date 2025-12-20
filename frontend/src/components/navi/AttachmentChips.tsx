@@ -43,8 +43,12 @@ export const AttachmentChips: React.FC<AttachmentChipsProps> = ({
           (att.path ? `${basename(att.path)} ${formatSuffix(att)}` : "Attachment");
 
         return (
-          <div key={att.id ?? `${att.kind}-${index}`} className="navi-attachment-chip">
-            <span className="navi-attachment-chip-label">
+          <div
+            key={att.id ?? `${att.kind}-${index}`}
+            className="navi-attachment-chip"
+            data-testid="attachment-item"
+          >
+            <span className="navi-attachment-chip-label" data-testid="attachment-name">
               📎 {text}
             </span>
             {onRemove && (
@@ -53,6 +57,7 @@ export const AttachmentChips: React.FC<AttachmentChipsProps> = ({
                 className="navi-attachment-chip-close"
                 onClick={() => onRemove(index)}
                 title="Remove attachment"
+                data-testid="remove-attachment-btn"
               >
                 ×
               </button>

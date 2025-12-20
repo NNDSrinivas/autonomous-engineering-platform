@@ -1,92 +1,122 @@
-import { exec as _exec } from 'child_process';
-import { promisify } from 'util';
+// extensions/vscode-aep/src/navi-core/perception/RepoDiffPerception.ts
+/**
+ * Phase 1.2: Repo Diff Perception
+ * 
+ * Collects real git working tree state: unstaged and staged changes vs base branch.
+ * Single source of truth for repo status.
+ */
 
-const exec = promisify(_exec);
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 export interface DiffFile {
-  path: string;
-  status: 'M' | 'A' | 'D' | 'R' | '?';
+    path: string;
+    status: string; // M, A, D, R, etc.
 }
 
 export interface RepoDiffSummary {
-  base: string;
-  unstagedCount: number;
-  stagedCount: number;
-  unstaged: DiffFile[];
-  staged: DiffFile[];
+    base: string;
+    unstagedCount: number;
+    stagedCount: number;
+    unstaged: DiffFile[];
+    staged: DiffFile[];
 }
 
 /**
- * Collect real git diff data for the workspace.
- * Single source of truth for working tree state.
- */
-export async function collectRepoDiff(workspaceRoot: string): Promise<RepoDiffSummary> {
-  const run = async (cmd: string): Promise<string> => {
-    try {
-      const { stdout } = await exec(cmd, { cwd: workspaceRoot });
-      return stdout.trim();
-    } catch (e) {
-      console.log(`[RepoDiffPerception] Git command failed: ${cmd}`, e);
-      return '';
-    }
-  };
-
-  // Get unstaged changes (modified but not staged)
-  const unstagedRaw = await run('git diff --name-status');
-  const unstaged = parseGitStatus(unstagedRaw);
-
-  // Get staged changes (staged but not committed)
-  const stagedRaw = await run('git diff --cached --name-status');
-  const staged = parseGitStatus(stagedRaw);
-
-  // Detect base branch
-  let baseBranch = 'HEAD';
-  try {
-    await exec('git rev-parse --verify main', { cwd: workspaceRoot });
-    baseBranch = 'main';
-  } catch {
-    try {
-      await exec('git rev-parse --verify master', { cwd: workspaceRoot });
-      baseBranch = 'master';
-    } catch {
-      baseBranch = 'HEAD';
-    }
-  }
-
-  console.log(`[RepoDiffPerception] 📊 Repo diff collection complete:`);
-  console.log(`  Base: ${baseBranch}`);
-  console.log(`  Unstaged: ${unstaged.length} files`);
-  console.log(`  Staged: ${staged.length} files`);
-  console.log(`  Unstaged files:`, unstaged);
-  console.log(`  Staged files:`, staged);
-
-  return {
-    base: baseBranch,
-    unstagedCount: unstaged.length,
-    stagedCount: staged.length,
-    unstaged,
-    staged
-  };
-}
-
-/**
- * Parse git status output (name-status format)
- * Format: "M  path/to/file" or "A  path/to/file" etc.
+ * Parse git status output to extract file status.
  */
 function parseGitStatus(output: string): DiffFile[] {
-  if (!output) return [];
+    const files: DiffFile[] = [];
+    const lines = output.trim().split("\n").filter(Boolean);
 
-  return output
-    .split('\n')
-    .filter(Boolean)
-    .map(line => {
-      const parts = line.split(/\s+/);
-      if (parts.length < 2) return null;
-      const [status, ...pathParts] = parts;
-      return {
-        path: pathParts.join(' '),
-        status: (status as any) || 'M'
-      };
-    })
-    .filter((f): f is DiffFile => f !== null);
+    for (const raw of lines) {
+        // git diff --name-status emits lines like:
+        //  - "M\tpath/to/file"
+        //  - "A\tpath/to/file"
+        //  - "D\tpath/to/file"
+        //  - "R100\told/path\tnew/path" (rename with score)
+        const parts = raw.split(/\s+/).filter(Boolean);
+        if (parts.length === 0) continue;
+
+        const status = parts[0];
+
+        // For rename, the last segment is the new path; otherwise second segment is the path
+        const path = parts.length > 2 ? parts[parts.length - 1] : parts[1];
+
+        if (path) {
+            files.push({ path, status: status.replace(/[^A-Z]/g, "") });
+        }
+    }
+
+    return files;
+}
+
+/**
+ * Detect the base branch (main, master, or HEAD).
+ */
+async function detectBaseBranch(workspaceRoot: string): Promise<string> {
+    try {
+        const { stdout: mainCheck } = await execAsync(
+            `git rev-parse --verify main`,
+            { cwd: workspaceRoot }
+        );
+        if (mainCheck.trim()) return "main";
+    } catch {
+        // main doesn't exist, try master
+    }
+
+    try {
+        const { stdout: masterCheck } = await execAsync(
+            `git rev-parse --verify master`,
+            { cwd: workspaceRoot }
+        );
+        if (masterCheck.trim()) return "master";
+    } catch {
+        // master doesn't exist either, use HEAD
+    }
+
+    return "HEAD";
+}
+
+/**
+ * Collect real working tree diff summary (Phase 1.2).
+ * 
+ * @param workspaceRoot - Absolute path to git repository
+ * @returns Summary of unstaged and staged changes
+ */
+export async function collectRepoDiff(
+    workspaceRoot: string
+): Promise<RepoDiffSummary> {
+    try {
+        // Detect base branch
+        const base = await detectBaseBranch(workspaceRoot);
+
+        // Get unstaged changes (working tree vs index)
+        const { stdout: unstagedOutput } = await execAsync(
+            `git diff --name-status`,
+            { cwd: workspaceRoot, maxBuffer: 10 * 1024 * 1024 }
+        );
+
+        // Get staged changes (index vs HEAD)
+        const { stdout: stagedOutput } = await execAsync(
+            `git diff --cached --name-status`,
+            { cwd: workspaceRoot, maxBuffer: 10 * 1024 * 1024 }
+        );
+
+        const unstaged = parseGitStatus(unstagedOutput);
+        const staged = parseGitStatus(stagedOutput);
+
+        return {
+            base,
+            unstagedCount: unstaged.length,
+            stagedCount: staged.length,
+            unstaged,
+            staged
+        };
+    } catch (error) {
+        console.error("[RepoDiffPerception] Failed to collect diff:", error);
+        throw error;
+    }
 }

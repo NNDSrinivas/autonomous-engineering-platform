@@ -8,6 +8,7 @@ import { ExecutorRegistry } from '../navi-core/execution/ExecutorRegistry';
 import { GitExecutor } from '../navi-core/execution/GitExecutor';
 import { DiagnosticExecutor } from '../navi-core/execution/DiagnosticExecutor';
 import { collectRepoDiff } from '../navi-core/perception/RepoDiffPerception';
+import { collectDiffForFile, collectStagedDiffForFile } from '../navi-core/perception/RepoDiffDetailPerception';
 import { exec as _exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -51,15 +52,48 @@ export async function runNaviAgent({
                 }
             });
 
+            // 3.5) Phase 1.3: Emit diff detail for each changed file
+            emitEvent({ type: 'liveProgress', data: { step: 'Collecting diffs...', percentage: 50 } });
+
+            // Emit diffs for unstaged files
+            for (const file of diff.unstaged) {
+                const fileDiff = await collectDiffForFile(workspaceRoot, file.path);
+                emitEvent({
+                    type: 'repo.diff.detail',
+                    data: {
+                        path: fileDiff.path,
+                        additions: fileDiff.additions,
+                        deletions: fileDiff.deletions,
+                        diff: fileDiff.diff,
+                        scope: 'unstaged'
+                    }
+                });
+            }
+
+            // Emit diffs for staged files
+            for (const file of diff.staged) {
+                const fileDiff = await collectStagedDiffForFile(workspaceRoot, file.path);
+                emitEvent({
+                    type: 'repo.diff.detail',
+                    data: {
+                        path: fileDiff.path,
+                        additions: fileDiff.additions,
+                        deletions: fileDiff.deletions,
+                        diff: fileDiff.diff,
+                        scope: 'staged'
+                    }
+                });
+            }
+
             // 4) Signal completion
             emitEvent({ type: 'liveProgress', data: { step: 'Analysis complete', percentage: 100 } });
             emitEvent({ type: 'done', data: {} });
             return;
         } catch (err) {
             console.error('[NaviAgentAdapter] ❌ Repo diff analysis failed:', err);
-            emitEvent({ 
-                type: 'error', 
-                data: { message: `Failed to analyze working tree: ${err instanceof Error ? err.message : String(err)}` } 
+            emitEvent({
+                type: 'error',
+                data: { message: `Failed to analyze working tree: ${err instanceof Error ? err.message : String(err)}` }
             });
             return;
         }

@@ -65,6 +65,10 @@ web/.next/
 # VS Code Extension Testing
 extensions/**/.vscode-test/
 extensions/**/out/test/
+# VS Code extension build output
+extensions/vscode-aep/out/
+extensions/vscode-aep/webview/dist/
+extensions/vscode-aep/webview/node_modules/
 
 # Frontend Configuration (generated from template + env vars)
 frontend/auth_config.json

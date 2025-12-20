@@ -558,6 +558,12 @@ export default function NaviChatPanel() {
     scope: 'staged' | 'unstaged';
   }>>([]);
 
+  // Phase 1.4: Diagnostics scoped to changed files
+  const [diagnosticsByFile, setDiagnosticsByFile] = useState<Array<{
+    path: string;
+    diagnostics: Array<{ message: string; severity: number; line: number; character: number }>
+  }>>([]);
+
   const showToast = (
     message: string,
     kind: ToastState["kind"] = "info"
@@ -1233,6 +1239,13 @@ export default function NaviChatPanel() {
             scope: scope || 'unstaged'
           }]);
           console.log('[NaviChatPanel] 📄 Received diff for:', path, `+${additions} -${deletions}`);
+          return;
+        }
+
+        // NEW (Phase 1.4): Diagnostics summary scoped to changed files
+        if (kind === 'diagnostics.summary') {
+          const files = Array.isArray(data.files) ? data.files : [];
+          setDiagnosticsByFile(files);
           return;
         }
 
@@ -2513,6 +2526,40 @@ export default function NaviChatPanel() {
             <div className="text-xs font-semibold text-gray-300 mb-2">📄 File Changes</div>
             {diffDetails.map((fileDiff, idx) => (
               <DiffFileCard key={`${fileDiff.path}-${idx}`} fileDiff={fileDiff} />
+            ))}
+          </div>
+        )}
+
+        {/* PHASE 1.4: Diagnostics (Changed Files Only) */}
+        {diagnosticsByFile.length > 0 && (
+          <div className="mt-2 space-y-2 p-3 bg-gray-900/70 border border-gray-700 rounded-lg">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-100">🩺 Diagnostics (Changed Files)</h3>
+              <span className="text-xs text-gray-400">
+                {(() => {
+                  const flat = diagnosticsByFile.flatMap(f => f.diagnostics);
+                  const errors = flat.filter(d => d.severity === 0).length;
+                  const warnings = flat.filter(d => d.severity === 1).length;
+                  return `❌ ${errors} • ⚠️ ${warnings}`;
+                })()}
+              </span>
+            </div>
+
+            {diagnosticsByFile.map((f, idx) => (
+              <div key={`${f.path}-${idx}`} className="border-t border-gray-700 pt-2">
+                <div className="text-xs font-mono text-gray-300">{f.path}</div>
+                <div className="mt-1 space-y-1">
+                  {f.diagnostics.map((d, j) => (
+                    <div key={j} className="text-xs text-gray-300 flex items-center gap-2">
+                      <span className="inline-block w-4 text-center">
+                        {d.severity === 0 ? '❌' : d.severity === 1 ? '⚠️' : 'ℹ️'}
+                      </span>
+                      <span className="font-mono text-gray-400">{d.line}:{d.character}</span>
+                      <span className="text-gray-300">{d.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}

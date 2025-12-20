@@ -13,6 +13,28 @@ import { smartModeCommands } from './commands/smartModeCommands';
 import { smartModeSSEClient } from './sse/smartModeClient';
 
 const exec = util.promisify(child_process.exec);
+// Phase 1.4: Collect VS Code diagnostics for a set of files
+function collectDiagnosticsForFiles(workspaceRoot: string, relativePaths: string[]) {
+  const results: Array<{ path: string; diagnostics: Array<{ message: string; severity: vscode.DiagnosticSeverity; line: number; character: number }> }> = [];
+  for (const rel of relativePaths) {
+    if (!rel) continue;
+    const abs = path.join(workspaceRoot, rel);
+    const uri = vscode.Uri.file(abs);
+    const diags = vscode.languages.getDiagnostics(uri);
+    if (diags && diags.length > 0) {
+      results.push({
+        path: rel,
+        diagnostics: diags.map(d => ({
+          message: d.message,
+          severity: d.severity,
+          line: (d.range?.start?.line ?? 0) + 1,
+          character: (d.range?.start?.character ?? 0) + 1,
+        }))
+      });
+    }
+  }
+  return results;
+}
 
 // PATCH 1: Git helper function
 function runGit(
@@ -1489,7 +1511,25 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 workspaceRoot,
                 userInput: text,
                 emitEvent: (event) => {
+                  // Forward all agent events
                   this.postToWebview({ type: 'navi.agent.event', event });
+
+                  // Phase 1.4: When repo diff summary arrives, collect diagnostics for changed files only
+                  const kind = event.type || event.kind;
+                  if (kind === 'repo.diff.summary') {
+                    try {
+                      const unstaged: Array<{ path: string }> = event.data?.unstagedFiles || [];
+                      const staged: Array<{ path: string }> = event.data?.stagedFiles || [];
+                      const relPaths = [...unstaged, ...staged].map(f => f.path).filter(Boolean);
+                      const diagnosticsByFile = collectDiagnosticsForFiles(workspaceRoot, relPaths);
+                      this.postToWebview({
+                        type: 'navi.agent.event',
+                        event: { type: 'diagnostics.summary', data: { files: diagnosticsByFile } }
+                      });
+                    } catch (e) {
+                      console.warn('[AEP] Phase 1.4 diagnostics collection failed:', e);
+                    }
+                  }
                 }
               });
 

@@ -2599,7 +2599,7 @@ export default function NaviChatPanel() {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-100">🧠 Navi Assessment</h3>
               <span className="text-xs text-gray-400">
-                {scopeDecision === 'workspace' ? assessment.errors : (assessment.changedFileErrors || 0)} errors • {scopeDecision === 'workspace' ? assessment.warnings : (assessment.changedFileWarnings || 0)} warnings
+                {scopeDecision === 'workspace' ? assessment.totalDiagnostics : (assessment.changedFileDiagsCount || 0)} issue{(scopeDecision === 'workspace' ? assessment.totalDiagnostics : (assessment.changedFileDiagsCount || 0)) !== 1 ? 's' : ''} ({assessment.introduced} introduced)
               </span>
             </div>
             <div className="text-xs text-gray-300 space-y-1">
@@ -2628,8 +2628,8 @@ export default function NaviChatPanel() {
               <button
                 onClick={() => setScopeDecision('changed-files')}
                 className={`text-xs px-3 py-2 rounded border transition ${scopeDecision === 'changed-files'
-                    ? 'bg-blue-700/60 border-blue-500 text-blue-100'
-                    : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+                  ? 'bg-blue-700/60 border-blue-500 text-blue-100'
+                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
                   }`}
               >
                 ✓ Review changed files only
@@ -2637,8 +2637,8 @@ export default function NaviChatPanel() {
               <button
                 onClick={() => setScopeDecision('workspace')}
                 className={`text-xs px-3 py-2 rounded border transition ${scopeDecision === 'workspace'
-                    ? 'bg-blue-700/60 border-blue-500 text-blue-100'
-                    : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+                  ? 'bg-blue-700/60 border-blue-500 text-blue-100'
+                  : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
                   }`}
               >
                 🌍 Include all workspace issues

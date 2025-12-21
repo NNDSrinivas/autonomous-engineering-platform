@@ -564,6 +564,26 @@ export default function NaviChatPanel() {
     diagnostics: Array<{ message: string; severity: number; line: number; character: number }>
   }>>([]);
 
+  // Phase 1.3: Assessment summary (read-only intelligence)
+  const [assessment, setAssessment] = useState<null | {
+    totalDiagnostics: number;
+    introduced: number;
+    preExisting: number;
+    errors: number;
+    warnings: number;
+    filesAffected: number;
+    // Phase 1.4: Scope breakdown
+    scope?: 'changed-files' | 'workspace';
+    changedFileDiagsCount?: number;
+    globalDiagsCount?: number;
+    changedFileErrors?: number;
+    changedFileWarnings?: number;
+    hasGlobalIssuesOutsideChanged?: boolean;
+  }>(null);
+
+  // Phase 1.4: User's scope decision (changed-files | workspace)
+  const [scopeDecision, setScopeDecision] = useState<'changed-files' | 'workspace'>('changed-files');
+
   const showToast = (
     message: string,
     kind: ToastState["kind"] = "info"
@@ -1246,6 +1266,27 @@ export default function NaviChatPanel() {
         if (kind === 'diagnostics.summary') {
           const files = Array.isArray(data.files) ? data.files : [];
           setDiagnosticsByFile(files);
+          return;
+        }
+
+        // NEW (Phase 1.3): Global assessment summary
+        if (kind === 'navi.agent.assessment') {
+          const a = data || {};
+          setAssessment({
+            totalDiagnostics: Number(a.totalDiagnostics || 0),
+            introduced: Number(a.introduced || 0),
+            preExisting: Number(a.preExisting || 0),
+            errors: Number(a.errors || 0),
+            warnings: Number(a.warnings || 0),
+            filesAffected: Number(a.filesAffected || 0),
+            // Phase 1.4: Scope breakdown
+            scope: a.scope || 'changed-files',
+            changedFileDiagsCount: Number(a.changedFileDiagsCount || 0),
+            globalDiagsCount: Number(a.globalDiagsCount || 0),
+            changedFileErrors: Number(a.changedFileErrors || 0),
+            changedFileWarnings: Number(a.changedFileWarnings || 0),
+            hasGlobalIssuesOutsideChanged: Boolean(a.hasGlobalIssuesOutsideChanged),
+          });
           return;
         }
 
@@ -2530,8 +2571,64 @@ export default function NaviChatPanel() {
           </div>
         )}
 
-        {/* PHASE 1.4: Diagnostics (Changed Files Only) */}
-        {diagnosticsByFile.length > 0 && (
+        {/* PHASE 1.3: Navi Assessment (read-only) */}
+        {assessment && (
+          <div className="mt-2 space-y-2 p-3 bg-gray-900/70 border border-gray-700 rounded-lg">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-100">🧠 Navi Assessment</h3>
+              <span className="text-xs text-gray-400">
+                {scopeDecision === 'workspace' ? assessment.errors : (assessment.changedFileErrors || 0)} errors • {scopeDecision === 'workspace' ? assessment.warnings : (assessment.changedFileWarnings || 0)} warnings
+              </span>
+            </div>
+            <div className="text-xs text-gray-300 space-y-1">
+              <div>• {scopeDecision === 'workspace' ? assessment.totalDiagnostics : (assessment.changedFileDiagsCount || 0)} issues in scope</div>
+              <div>• {assessment.introduced} introduced by your changes</div>
+              <div>• {assessment.preExisting} pre-existing issues</div>
+              <div>• {assessment.filesAffected} files affected</div>
+            </div>
+            <div className="text-xs text-gray-500 italic">No actions taken yet.</div>
+          </div>
+        )}
+
+        {/* PHASE 1.4: Consent Card for Scope Expansion */}
+        {assessment && assessment.hasGlobalIssuesOutsideChanged && scopeDecision === 'changed-files' && (
+          <div className="mt-2 p-3 bg-blue-950/40 border border-blue-700/60 rounded-lg space-y-3">
+            <div className="flex items-start gap-2">
+              <div className="text-blue-400 text-sm mt-0.5">💭</div>
+              <div>
+                <h4 className="text-sm font-semibold text-blue-200">Scope Decision</h4>
+                <p className="text-xs text-blue-300 mt-1">
+                  I found <span className="font-bold">{assessment.preExistingCount}</span> pre-existing issues in the workspace. Your current changes introduced <span className="font-bold">{assessment.introduced}</span> new issues.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setScopeDecision('changed-files')}
+                className={`text-xs px-3 py-2 rounded border transition ${
+                  scopeDecision === 'changed-files'
+                    ? 'bg-blue-700/60 border-blue-500 text-blue-100'
+                    : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                ✓ Review changed files only
+              </button>
+              <button
+                onClick={() => setScopeDecision('workspace')}
+                className={`text-xs px-3 py-2 rounded border transition ${
+                  scopeDecision === 'workspace'
+                    ? 'bg-blue-700/60 border-blue-500 text-blue-100'
+                    : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                🌍 Include all workspace issues
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PHASE 1.4: Diagnostics (Changed Files Only, or All if Workspace Scope Enabled) */}
+        {diagnosticsByFile.length > 0 && scopeDecision === 'changed-files' && (
           <div className="mt-2 space-y-2 p-3 bg-gray-900/70 border border-gray-700 rounded-lg">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-100">🩺 Diagnostics (Changed Files)</h3>
@@ -2561,6 +2658,15 @@ export default function NaviChatPanel() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* PHASE 1.4: Workspace Scope Indicator */}
+        {scopeDecision === 'workspace' && assessment && (
+          <div className="mt-2 p-3 bg-green-950/40 border border-green-700/60 rounded-lg">
+            <div className="text-xs text-green-300">
+              <strong>✓ Workspace Scope Enabled</strong> — Showing all {assessment.totalDiagnostics} issues ({assessment.changedFileDiagsCount} in changed files, {assessment.preExisting} pre-existing).
+            </div>
           </div>
         )}
 

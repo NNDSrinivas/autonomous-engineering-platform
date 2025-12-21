@@ -115,6 +115,38 @@ export async function runNaviAgent({
                 }
             });
 
+            // Phase 1.3 STEP 3: Build assessment summary and emit
+            const errors = classified.filter(d => d.severity === 'error').length;
+            const warnings = classified.filter(d => d.severity === 'warning').length;
+            const filesAffected = new Set(classified.map(d => d.file)).size;
+
+            // Phase 1.4: Scope-aware assessment (changed-files vs global)
+            const changedFileDiags = classified.filter(d => d.impact === 'introduced');
+            const globalDiagsCount = classified.length;
+            const changedFileDiagsCount = changedFileDiags.length;
+            const changedFileErrors = changedFileDiags.filter(d => d.severity === 'error').length;
+            const changedFileWarnings = changedFileDiags.filter(d => d.severity === 'warning').length;
+
+            emitEvent({
+                type: 'navi.agent.assessment',
+                data: {
+                    // Phase 1.3 totals (for backward compat)
+                    totalDiagnostics: classified.length,
+                    introduced: introducedCount,
+                    preExisting: preExistingCount,
+                    errors,
+                    warnings,
+                    filesAffected,
+                    // Phase 1.4: Scope breakdown (for consent decision)
+                    scope: 'changed-files', // current scope
+                    changedFileDiagsCount,
+                    globalDiagsCount,
+                    changedFileErrors,
+                    changedFileWarnings,
+                    hasGlobalIssuesOutsideChanged: preExistingCount > 0
+                }
+            });
+
             // 4) Signal completion
             emitEvent({ type: 'liveProgress', data: { step: 'Analysis complete', percentage: 100 } });
             emitEvent({ type: 'done', data: {} });

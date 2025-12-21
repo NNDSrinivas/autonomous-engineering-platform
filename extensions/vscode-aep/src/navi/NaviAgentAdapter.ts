@@ -12,8 +12,8 @@ import { collectDiffForFile, collectStagedDiffForFile } from '../navi-core/perce
 import { DiagnosticsPerception } from '../navi-core/perception/DiagnosticsPerception';
 import { DiagnosticClassifier } from '../navi-core/perception/DiagnosticClassifier';
 import { FixProposalEngine } from '../navi-core/planning/FixProposalEngine';
+import { computeAssessmentCounts } from '../navi-core/assessment/NaviAssessment';
 import { exec as _exec } from 'child_process';
-import { FixProposalEngine } from '../navi-core/planning/FixProposalEngine';
 import { promisify } from 'util';
 
 const exec = promisify(_exec);
@@ -188,23 +188,6 @@ export async function runNaviAgent({
                 if (!proposalsByFile.has(rel)) proposalsByFile.set(rel, []);
                 proposalsByFile.get(rel)!.push(p);
             }
-            emitEvent({
-                type: 'navi.fix.proposals',
-                data: {
-                    files: Array.from(proposalsByFile.entries()).map(([filePath, proposals]) => ({ filePath, proposals }))
-                }
-            });
-
-            // Phase 2.0: Generate fix proposals (read-only, no execution)
-            const proposals = FixProposalEngine.generate(classified);
-            const proposalsByFile = new Map<string, typeof proposals>();
-            for (const p of proposals) {
-                const relativePath = p.filePath.startsWith(workspaceRoot)
-                    ? p.filePath.slice(workspaceRoot.length + 1)
-                    : p.filePath;
-                if (!proposalsByFile.has(relativePath)) proposalsByFile.set(relativePath, []);
-                proposalsByFile.get(relativePath)!.push(p);
-            }
             const proposalList = Array.from(proposalsByFile.entries()).map(([filePath, items]) => ({
                 filePath,
                 proposals: items.map(p => ({
@@ -225,6 +208,33 @@ export async function runNaviAgent({
             // 4) Signal completion
             emitEvent({ type: 'liveProgress', data: { step: 'Analysis complete', percentage: 100 } });
             emitEvent({ type: 'done', data: {} });
+            // Phase 2.0 – Step 1.5: Canonical assessment counts
+            const counts = computeAssessmentCounts(classified, fixProposals);
+            console.log('[NaviAgentAdapter] 📊 Assessment computed:', counts);
+            emitEvent({
+                type: 'navi.assessment.updated',
+                data: { counts }
+            });
+
+            // Maintain backward-compat with existing assessment event using canonical numbers
+            emitEvent({
+                type: 'navi.agent.assessment',
+                data: {
+                    totalDiagnostics: counts.totalIssues,
+                    introduced: counts.introducedIssues,
+                    preExisting: counts.preExistingIssues,
+                    warnings: counts.warnings,
+                    errors, // keep existing error count computed earlier
+                    filesAffected,
+                    scope: 'changed-files',
+                    changedFileDiagsCount,
+                    globalDiagsCount,
+                    changedFileErrors,
+                    changedFileWarnings,
+                    hasGlobalIssuesOutsideChanged: preExistingCount > 0,
+                    fixableIssues: counts.fixableIssues,
+                }
+            });
             return;
         } catch (err) {
             console.error('[NaviAgentAdapter] ❌ Repo diff analysis failed:', err);

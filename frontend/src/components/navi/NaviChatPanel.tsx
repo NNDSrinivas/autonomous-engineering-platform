@@ -1304,6 +1304,27 @@ export default function NaviChatPanel() {
           return;
         }
 
+        // Phase 2.0 – Step 1.5: Canonical assessment counts
+        if (kind === 'navi.assessment.updated') {
+          const c = (data && data.counts) || {};
+          setAssessment(prev => ({
+            // Consume canonical counts; keep legacy fields if present
+            totalDiagnostics: Number(c.totalIssues ?? prev?.totalDiagnostics ?? 0),
+            introduced: Number(c.introducedIssues ?? prev?.introduced ?? 0),
+            preExisting: Number(c.preExistingIssues ?? prev?.preExisting ?? 0),
+            warnings: Number(c.warnings ?? prev?.warnings ?? 0),
+            errors: Number(prev?.errors ?? 0),
+            filesAffected: Number(prev?.filesAffected ?? 0),
+            scope: prev?.scope || 'changed-files',
+            changedFileDiagsCount: Number(prev?.changedFileDiagsCount ?? 0),
+            globalDiagsCount: Number(prev?.globalDiagsCount ?? 0),
+            changedFileErrors: Number(prev?.changedFileErrors ?? 0),
+            changedFileWarnings: Number(prev?.changedFileWarnings ?? 0),
+            hasGlobalIssuesOutsideChanged: Boolean(prev?.hasGlobalIssuesOutsideChanged ?? (c.preExistingIssues > 0)),
+          }));
+          return;
+        }
+
         // NEW (Phase 1.5): Detailed diagnostics by file
         if (kind === 'navi.diagnostics.detailed') {
           const files = Array.isArray(data.files) ? data.files : [];

@@ -598,6 +598,25 @@ export default function NaviChatPanel() {
   }>>([]);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
+  // Phase 2.0 Step 2: Fix proposals with approval state
+  const [fixProposals, setFixProposals] = useState<Array<{
+    filePath: string;
+    proposals: Array<{
+      id: string;
+      line: number;
+      severity: string;
+      issue: string;
+      rootCause: string;
+      suggestedChange: string;
+      confidence: string;
+      impact: 'introduced' | 'preExisting';
+      canAutoFixLater: boolean;
+      source: string;
+    }>;
+  }>>([]);
+  const [approvalState, setApprovalState] = useState<Map<string, 'approved' | 'ignored'>>(new Map());
+  const [expandedProposals, setExpandedProposals] = useState<Set<string>>(new Set());
+
   const showToast = (
     message: string,
     kind: ToastState["kind"] = "info"
@@ -1330,6 +1349,14 @@ export default function NaviChatPanel() {
           const files = Array.isArray(data.files) ? data.files : [];
           setDetailedDiagnostics(files);
           console.log('[NaviChatPanel] 📊 Detailed diagnostics received:', files.length, 'files');
+          return;
+        }
+
+        // Phase 2.0 – Step 2: Fix proposals
+        if (kind === 'navi.fix.proposals') {
+          const files = Array.isArray(data.files) ? data.files : [];
+          setFixProposals(files);
+          console.log('[NaviChatPanel] 🛠 Fix proposals received:', files.length, 'files');
           return;
         }
 
@@ -2780,6 +2807,159 @@ export default function NaviChatPanel() {
                   </div>
                 );
               })}
+            </div>
+          );
+        })()}
+
+        {/* PHASE 2.0 STEP 2: Fix Proposals (Read-Only with Approval Controls) */}
+        {fixProposals.length > 0 && (() => {
+          const totalProposals = fixProposals.reduce((sum, f) => sum + f.proposals.length, 0);
+          const approvedCount = Array.from(approvalState.values()).filter(v => v === 'approved').length;
+          const ignoredCount = Array.from(approvalState.values()).filter(v => v === 'ignored').length;
+
+          return (
+            <div className="mt-2 space-y-2 p-3 bg-blue-950/30 border border-blue-700/50 rounded-lg">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-blue-100">🛠 Fix Proposals</h3>
+                <span className="text-xs text-blue-300">
+                  {totalProposals} fixable • {approvedCount} approved • {ignoredCount} ignored
+                </span>
+              </div>
+
+              {fixProposals.map((fileGroup, idx) => (
+                <div key={`proposal-file-${idx}`} className="border-t border-blue-700/30 pt-2">
+                  <div className="text-xs font-mono text-blue-200 mb-2">{fileGroup.filePath}</div>
+                  <div className="space-y-3">
+                    {fileGroup.proposals.map((proposal, j) => {
+                      const isExpanded = expandedProposals.has(proposal.id);
+                      const state = approvalState.get(proposal.id);
+                      const isApproved = state === 'approved';
+                      const isIgnored = state === 'ignored';
+
+                      return (
+                        <div
+                          key={proposal.id}
+                          className={`p-2 rounded border ${
+                            isApproved
+                              ? 'bg-green-950/40 border-green-700/50'
+                              : isIgnored
+                              ? 'bg-gray-800/40 border-gray-600/50'
+                              : 'bg-gray-900/60 border-gray-700/50'
+                          }`}
+                        >
+                          {/* Proposal Header */}
+                          <div className="flex items-start gap-2 mb-2">
+                            <span className="text-xs mt-0.5">
+                              {proposal.severity === 'error' ? '❌' : proposal.severity === 'warning' ? '⚠️' : 'ℹ️'}
+                            </span>
+                            <div className="flex-1">
+                              <div className="text-xs text-gray-200 font-semibold">{proposal.issue}</div>
+                              <div className="text-xs text-gray-400 mt-0.5">
+                                Line {proposal.line} • {proposal.source} • {proposal.impact === 'introduced' ? '🟢 Introduced' : '🔵 Pre-existing'}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                proposal.confidence === 'high' ? 'bg-green-900/50 text-green-300' :
+                                proposal.confidence === 'medium' ? 'bg-yellow-900/50 text-yellow-300' :
+                                'bg-gray-800/50 text-gray-400'
+                              }`}>
+                                {proposal.confidence}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Explanation */}
+                          <div className="mb-2 p-2 bg-gray-800/50 rounded">
+                            <div className="text-xs text-gray-400 font-semibold mb-1">Root Cause:</div>
+                            <div className="text-xs text-gray-300">{proposal.rootCause}</div>
+                          </div>
+
+                          {/* Suggested Change */}
+                          <button
+                            onClick={() => {
+                              const newExpanded = new Set(expandedProposals);
+                              if (isExpanded) {
+                                newExpanded.delete(proposal.id);
+                              } else {
+                                newExpanded.add(proposal.id);
+                              }
+                              setExpandedProposals(newExpanded);
+                            }}
+                            className="w-full text-left text-xs text-blue-300 hover:text-blue-200 mb-2 transition"
+                          >
+                            {isExpanded ? '▼' : '▶'} Suggested Change
+                          </button>
+
+                          {isExpanded && (
+                            <div className="mb-2 p-2 bg-gray-900/70 rounded border border-gray-700">
+                              <div className="text-xs text-gray-300 whitespace-pre-wrap font-mono">
+                                {proposal.suggestedChange}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Action Buttons */}
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => {
+                                const newState = new Map(approvalState);
+                                if (isApproved) {
+                                  newState.delete(proposal.id);
+                                } else {
+                                  newState.set(proposal.id, 'approved');
+                                }
+                                setApprovalState(newState);
+                                console.log(`[NaviUI] Proposal ${proposal.id} ${isApproved ? 'unapproved' : 'approved (no file edits)'}`);
+                              }}
+                              className={`text-xs px-3 py-1.5 rounded transition ${
+                                isApproved
+                                  ? 'bg-green-700 text-white hover:bg-green-600'
+                                  : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                              }`}
+                              disabled={isIgnored}
+                            >
+                              {isApproved ? '✅ Approved' : '✓ Approve'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                const newState = new Map(approvalState);
+                                if (isIgnored) {
+                                  newState.delete(proposal.id);
+                                } else {
+                                  newState.set(proposal.id, 'ignored');
+                                }
+                                setApprovalState(newState);
+                                console.log(`[NaviUI] Proposal ${proposal.id} ${isIgnored ? 'un-ignored' : 'ignored'}`);
+                              }}
+                              className={`text-xs px-3 py-1.5 rounded transition ${
+                                isIgnored
+                                  ? 'bg-gray-600 text-white hover:bg-gray-500'
+                                  : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                              }`}
+                              disabled={isApproved}
+                            >
+                              {isIgnored ? '❌ Ignored' : '✗ Ignore'}
+                            </button>
+                          </div>
+
+                          {isApproved && (
+                            <div className="mt-2 text-xs text-green-400 italic">
+                              ✓ Ready for application (no file edits yet — Phase 2.1)
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {approvedCount > 0 && (
+                <div className="mt-2 p-2 bg-blue-900/30 border border-blue-700/50 rounded text-xs text-blue-200">
+                  ℹ️ {approvedCount} fix{approvedCount !== 1 ? 'es' : ''} approved. Actual file edits will be available in Phase 2.1.
+                </div>
+              )}
             </div>
           );
         })()}

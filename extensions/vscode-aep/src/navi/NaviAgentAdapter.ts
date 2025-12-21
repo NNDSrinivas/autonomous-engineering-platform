@@ -147,6 +147,33 @@ export async function runNaviAgent({
                 }
             });
 
+            // Phase 1.5: Emit detailed diagnostic list (grouped by file, for visualization)
+            const diagnosticsByFile = new Map<string, typeof classified>();
+            for (const diag of classified) {
+                const relativePath = diag.file.startsWith(workspaceRoot)
+                    ? diag.file.slice(workspaceRoot.length + 1)
+                    : diag.file;
+                if (!diagnosticsByFile.has(relativePath)) {
+                    diagnosticsByFile.set(relativePath, []);
+                }
+                diagnosticsByFile.get(relativePath)!.push(diag);
+            }
+            const diagnosticList = Array.from(diagnosticsByFile.entries()).map(([filePath, diags]) => ({
+                filePath,
+                diagnostics: diags.map(d => ({
+                    severity: d.severity,
+                    message: d.message,
+                    line: d.line,
+                    character: 0, // Not available in NaviDiagnostic; default to column 0
+                    source: d.source || 'unknown',
+                    impact: d.impact // 'introduced' or 'preExisting'
+                }))
+            }));
+            emitEvent({
+                type: 'navi.diagnostics.detailed',
+                data: { files: diagnosticList }
+            });
+
             // 4) Signal completion
             emitEvent({ type: 'liveProgress', data: { step: 'Analysis complete', percentage: 100 } });
             emitEvent({ type: 'done', data: {} });

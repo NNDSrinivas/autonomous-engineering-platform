@@ -584,6 +584,20 @@ export default function NaviChatPanel() {
   // Phase 1.4: User's scope decision (changed-files | workspace)
   const [scopeDecision, setScopeDecision] = useState<'changed-files' | 'workspace'>('changed-files');
 
+  // Phase 1.5: Detailed diagnostics grouped by file (for visualization)
+  const [detailedDiagnostics, setDetailedDiagnostics] = useState<Array<{
+    filePath: string;
+    diagnostics: Array<{
+      severity: string;
+      message: string;
+      line: number;
+      character: number;
+      source: string;
+      impact: 'introduced' | 'preExisting';
+    }>;
+  }>>([]);
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+
   const showToast = (
     message: string,
     kind: ToastState["kind"] = "info"
@@ -1287,6 +1301,14 @@ export default function NaviChatPanel() {
             changedFileWarnings: Number(a.changedFileWarnings || 0),
             hasGlobalIssuesOutsideChanged: Boolean(a.hasGlobalIssuesOutsideChanged),
           });
+          return;
+        }
+
+        // NEW (Phase 1.5): Detailed diagnostics by file
+        if (kind === 'navi.diagnostics.detailed') {
+          const files = Array.isArray(data.files) ? data.files : [];
+          setDetailedDiagnostics(files);
+          console.log('[NaviChatPanel] 📊 Detailed diagnostics received:', files.length, 'files');
           return;
         }
 
@@ -2598,28 +2620,26 @@ export default function NaviChatPanel() {
               <div>
                 <h4 className="text-sm font-semibold text-blue-200">Scope Decision</h4>
                 <p className="text-xs text-blue-300 mt-1">
-                  I found <span className="font-bold">{assessment.preExistingCount}</span> pre-existing issues in the workspace. Your current changes introduced <span className="font-bold">{assessment.introduced}</span> new issues.
+                  I found <span className="font-bold">{assessment.preExisting}</span> pre-existing issues in the workspace. Your current changes introduced <span className="font-bold">{assessment.introduced}</span> new issues.
                 </p>
               </div>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setScopeDecision('changed-files')}
-                className={`text-xs px-3 py-2 rounded border transition ${
-                  scopeDecision === 'changed-files'
+                className={`text-xs px-3 py-2 rounded border transition ${scopeDecision === 'changed-files'
                     ? 'bg-blue-700/60 border-blue-500 text-blue-100'
                     : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
-                }`}
+                  }`}
               >
                 ✓ Review changed files only
               </button>
               <button
                 onClick={() => setScopeDecision('workspace')}
-                className={`text-xs px-3 py-2 rounded border transition ${
-                  scopeDecision === 'workspace'
+                className={`text-xs px-3 py-2 rounded border transition ${scopeDecision === 'workspace'
                     ? 'bg-blue-700/60 border-blue-500 text-blue-100'
                     : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
-                }`}
+                  }`}
               >
                 🌍 Include all workspace issues
               </button>
@@ -2669,6 +2689,79 @@ export default function NaviChatPanel() {
             </div>
           </div>
         )}
+
+        {/* PHASE 1.5: Diagnostics by File (Grouped, Expandable, Read-Only) */}
+        {detailedDiagnostics.length > 0 && (() => {
+          // Filter based on scope decision
+          const changedFiles = new Set([
+            ...diffDetails.map(d => d.path),
+            ...(repoSummary?.unstagedFiles || []).map((f: any) => f.path),
+            ...(repoSummary?.stagedFiles || []).map((f: any) => f.path)
+          ]);
+          const filteredDiagnostics = scopeDecision === 'changed-files'
+            ? detailedDiagnostics.filter(fd => changedFiles.has(fd.filePath))
+            : detailedDiagnostics;
+
+          if (filteredDiagnostics.length === 0) return null;
+
+          return (
+            <div className="mt-2 space-y-2 p-3 bg-gray-900/70 border border-gray-700 rounded-lg">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-100">📂 Diagnostics by File</h3>
+                <span className="text-xs text-gray-400">
+                  {filteredDiagnostics.reduce((sum, f) => sum + f.diagnostics.length, 0)} issues in {filteredDiagnostics.length} files
+                </span>
+              </div>
+
+              {filteredDiagnostics.map((fileGroup, idx) => {
+                const isExpanded = expandedFiles.has(fileGroup.filePath);
+                const errorCount = fileGroup.diagnostics.filter(d => d.severity === 'error').length;
+                const warningCount = fileGroup.diagnostics.filter(d => d.severity === 'warning').length;
+
+                return (
+                  <div key={`${fileGroup.filePath}-${idx}`} className="border-t border-gray-700 pt-2">
+                    <button
+                      onClick={() => {
+                        const newExpanded = new Set(expandedFiles);
+                        if (isExpanded) {
+                          newExpanded.delete(fileGroup.filePath);
+                        } else {
+                          newExpanded.add(fileGroup.filePath);
+                        }
+                        setExpandedFiles(newExpanded);
+                      }}
+                      className="w-full text-left flex items-center gap-2 hover:bg-gray-800/50 p-1 rounded transition"
+                    >
+                      <span className="text-xs text-gray-400">{isExpanded ? '▼' : '▶'}</span>
+                      <span className="text-xs font-mono text-gray-300 flex-1">{fileGroup.filePath}</span>
+                      <span className="text-xs text-gray-400">
+                        ({fileGroup.diagnostics.length} • {errorCount > 0 ? `❌ ${errorCount}` : ''} {warningCount > 0 ? `⚠️ ${warningCount}` : ''})
+                      </span>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="mt-2 ml-4 space-y-1">
+                        {fileGroup.diagnostics.map((diag, j) => (
+                          <div key={j} className="text-xs text-gray-300 flex items-start gap-2 py-1">
+                            <span className="inline-block w-4 text-center mt-0.5">
+                              {diag.severity === 'error' ? '❌' : diag.severity === 'warning' ? '⚠️' : 'ℹ️'}
+                            </span>
+                            <div className="flex-1">
+                              <div className="text-gray-200">{diag.message}</div>
+                              <div className="text-gray-500 text-xs mt-0.5">
+                                Line {diag.line}:{diag.character} • {diag.source} • {diag.impact === 'introduced' ? '🟢 Introduced' : '🔵 Pre-existing'}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* LEGACY UI DISABLED FOR PHASE 1.2 - analysisSummary rendering removed */}
         {/* TODO: Re-enable after Phase 1.3 (diff + fix rendering) */}

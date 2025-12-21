@@ -2599,11 +2599,11 @@ export default function NaviChatPanel() {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-100">🧠 Navi Assessment</h3>
               <span className="text-xs text-gray-400">
-                {scopeDecision === 'workspace' ? assessment.totalDiagnostics : (assessment.changedFileDiagsCount || 0)} issue{(scopeDecision === 'workspace' ? assessment.totalDiagnostics : (assessment.changedFileDiagsCount || 0)) !== 1 ? 's' : ''} ({assessment.introduced} introduced)
+                {assessment.totalDiagnostics} issue{assessment.totalDiagnostics !== 1 ? 's' : ''} ({assessment.introduced} introduced)
               </span>
             </div>
             <div className="text-xs text-gray-300 space-y-1">
-              <div>• {scopeDecision === 'workspace' ? assessment.totalDiagnostics : (assessment.changedFileDiagsCount || 0)} issues in scope</div>
+              <div>• {assessment.totalDiagnostics} issues in scope</div>
               <div>• {assessment.introduced} introduced by your changes</div>
               <div>• {assessment.preExisting} pre-existing issues</div>
               <div>• {assessment.filesAffected} files affected</div>

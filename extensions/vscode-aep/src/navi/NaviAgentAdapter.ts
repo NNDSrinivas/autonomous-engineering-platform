@@ -9,6 +9,7 @@ import { GitExecutor } from '../navi-core/execution/GitExecutor';
 import { DiagnosticExecutor } from '../navi-core/execution/DiagnosticExecutor';
 import { collectRepoDiff } from '../navi-core/perception/RepoDiffPerception';
 import { collectDiffForFile, collectStagedDiffForFile } from '../navi-core/perception/RepoDiffDetailPerception';
+import { DiagnosticsPerception } from '../navi-core/perception/DiagnosticsPerception';
 import { exec as _exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -84,6 +85,18 @@ export async function runNaviAgent({
                     }
                 });
             }
+
+            // Phase 1.3 STEP 1: Collect global diagnostics (all files in workspace)
+            emitEvent({ type: 'liveProgress', data: { step: 'Scanning diagnostics...', percentage: 75 } });
+            const globalDiagnostics = DiagnosticsPerception.collectWorkspaceDiagnostics();
+            console.log('[NaviAgentAdapter] 📊 Global diagnostics collected:', globalDiagnostics.length);
+            emitEvent({
+                type: 'navi.agent.perception',
+                data: {
+                    diagnosticsCount: globalDiagnostics.length,
+                    diagnostics: globalDiagnostics
+                }
+            });
 
             // 4) Signal completion
             emitEvent({ type: 'liveProgress', data: { step: 'Analysis complete', percentage: 100 } });

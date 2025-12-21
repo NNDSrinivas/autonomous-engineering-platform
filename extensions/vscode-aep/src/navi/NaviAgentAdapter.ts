@@ -11,7 +11,9 @@ import { collectRepoDiff } from '../navi-core/perception/RepoDiffPerception';
 import { collectDiffForFile, collectStagedDiffForFile } from '../navi-core/perception/RepoDiffDetailPerception';
 import { DiagnosticsPerception } from '../navi-core/perception/DiagnosticsPerception';
 import { DiagnosticClassifier } from '../navi-core/perception/DiagnosticClassifier';
+import { FixProposalEngine } from '../navi-core/planning/FixProposalEngine';
 import { exec as _exec } from 'child_process';
+import { FixProposalEngine } from '../navi-core/planning/FixProposalEngine';
 import { promisify } from 'util';
 
 const exec = promisify(_exec);
@@ -173,6 +175,52 @@ export async function runNaviAgent({
                 type: 'navi.diagnostics.detailed',
                 data: { files: diagnosticList }
             });
+
+            // Phase 2.0 STEP 1: Translate diagnostics -> fix proposals (read-only, no UI changes required)
+            const fixProposals = FixProposalEngine.generate(classified);
+            console.log('[NaviAgentAdapter] 🛠 Fix proposals generated:', fixProposals.length);
+            // Group proposals by file for downstream visualization (Phase 2.0 Step 2)
+            const proposalsByFile = new Map<string, typeof fixProposals>();
+            for (const p of fixProposals) {
+                const rel = p.filePath.startsWith(workspaceRoot)
+                    ? p.filePath.slice(workspaceRoot.length + 1)
+                    : p.filePath;
+                if (!proposalsByFile.has(rel)) proposalsByFile.set(rel, []);
+                proposalsByFile.get(rel)!.push(p);
+            }
+            emitEvent({
+                type: 'navi.fix.proposals',
+                data: {
+                    files: Array.from(proposalsByFile.entries()).map(([filePath, proposals]) => ({ filePath, proposals }))
+                }
+            });
+
+            // Phase 2.0: Generate fix proposals (read-only, no execution)
+            const proposals = FixProposalEngine.generate(classified);
+            const proposalsByFile = new Map<string, typeof proposals>();
+            for (const p of proposals) {
+                const relativePath = p.filePath.startsWith(workspaceRoot)
+                    ? p.filePath.slice(workspaceRoot.length + 1)
+                    : p.filePath;
+                if (!proposalsByFile.has(relativePath)) proposalsByFile.set(relativePath, []);
+                proposalsByFile.get(relativePath)!.push(p);
+            }
+            const proposalList = Array.from(proposalsByFile.entries()).map(([filePath, items]) => ({
+                filePath,
+                proposals: items.map(p => ({
+                    id: p.id,
+                    line: p.line,
+                    severity: p.severity,
+                    issue: p.issue,
+                    rootCause: p.rootCause,
+                    suggestedChange: p.suggestedChange,
+                    confidence: p.confidence,
+                    impact: p.impact,
+                    canAutoFixLater: p.canAutoFixLater,
+                    source: p.source || 'unknown',
+                }))
+            }));
+            emitEvent({ type: 'navi.fix.proposals', data: { files: proposalList } });
 
             // 4) Signal completion
             emitEvent({ type: 'liveProgress', data: { step: 'Analysis complete', percentage: 100 } });

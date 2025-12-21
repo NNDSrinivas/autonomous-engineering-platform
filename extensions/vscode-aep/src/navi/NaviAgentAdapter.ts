@@ -10,6 +10,7 @@ import { DiagnosticExecutor } from '../navi-core/execution/DiagnosticExecutor';
 import { collectRepoDiff } from '../navi-core/perception/RepoDiffPerception';
 import { collectDiffForFile, collectStagedDiffForFile } from '../navi-core/perception/RepoDiffDetailPerception';
 import { DiagnosticsPerception } from '../navi-core/perception/DiagnosticsPerception';
+import { DiagnosticClassifier } from '../navi-core/perception/DiagnosticClassifier';
 import { exec as _exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -95,6 +96,22 @@ export async function runNaviAgent({
                 data: {
                     diagnosticsCount: globalDiagnostics.length,
                     diagnostics: globalDiagnostics
+                }
+            });
+
+            // Phase 1.3 STEP 2: Classify diagnostics (introduced vs preExisting)
+            const changedFilesRel = [
+                ...diff.unstaged.map(f => f.path),
+                ...diff.staged.map(f => f.path)
+            ];
+            const classified = DiagnosticClassifier.classify(globalDiagnostics, workspaceRoot, changedFilesRel);
+            const introducedCount = classified.filter(d => d.impact === 'introduced').length;
+            const preExistingCount = classified.filter(d => d.impact === 'preExisting').length;
+            emitEvent({
+                type: 'navi.agent.classification',
+                data: {
+                    introducedCount,
+                    preExistingCount
                 }
             });
 

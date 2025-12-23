@@ -29,15 +29,30 @@ declare global {
   function acquireVsCodeApi(): VsCodeApi;
 }
 
-// VS Code API singleton
+// VS Code API singleton - ensure it's only acquired once
+let vsCodeApiInstance: VsCodeApi | null = null;
+
 export const vscode: VsCodeApi = (() => {
-  if (typeof acquireVsCodeApi !== 'undefined') {
-    return acquireVsCodeApi();
+  if (vsCodeApiInstance) {
+    return vsCodeApiInstance;
   }
-  // Fallback for development
-  return {
+
+  if (typeof acquireVsCodeApi !== 'undefined') {
+    try {
+      vsCodeApiInstance = acquireVsCodeApi();
+      return vsCodeApiInstance;
+    } catch (error) {
+      console.warn('Failed to acquire VS Code API, using fallback:', error);
+    }
+  }
+
+  // Fallback for development or if acquisition fails
+  const fallbackApi = {
     postMessage: (message: any) => console.log('Mock VS Code API:', message),
     getState: () => null,
-    setState: () => {}
+    setState: () => { }
   };
+
+  vsCodeApiInstance = fallbackApi;
+  return fallbackApi;
 })();

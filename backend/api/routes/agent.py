@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ...agent.orchestrator import NaviOrchestrator, AgentTurnResult
+from ...orchestrator import NaviOrchestrator, AgentTurnResult
 from backend.api.deps import get_current_user, get_orchestrator
 
 router = APIRouter(prefix="/agent", tags=["Agent"])

@@ -612,10 +612,32 @@ export default function NaviChatPanel() {
       impact: 'introduced' | 'preExisting';
       canAutoFixLater: boolean;
       source: string;
+      riskLevel?: string;
+      requiresChoice?: boolean;
+      alternatives?: Array<{
+        id: string;
+        issue: string;
+        suggestedChange: string;
+        confidence: string;
+        riskLevel: string;
+        replacementText: string;
+      }>;
     }>;
   }>>([]);
   const [approvalState, setApprovalState] = useState<Map<string, 'approved' | 'ignored'>>(new Map());
   const [expandedProposals, setExpandedProposals] = useState<Set<string>>(new Set());
+  // Phase 2.1.2: Alternative selection modal state
+  const [alternativeModal, setAlternativeModal] = useState<{
+    proposalId: string;
+    alternatives: Array<{
+      id: string;
+      issue: string;
+      suggestedChange: string;
+      confidence: string;
+      riskLevel: string;
+      replacementText: string;
+    }>;
+  } | null>(null);
 
   const showToast = (
     message: string,
@@ -922,7 +944,20 @@ export default function NaviChatPanel() {
       setMessages((prev) => [...prev, coverageMessage]);
     };
 
-    return vscodeApi.onMessage((msg) => {
+    // Phase 2.1 Step 1: Bridge for iframe → webview → extension messages
+    // The iframe (EnhancedLiveReview) sends messages via window.parent.postMessage
+    const handleIframeMessage = (event: MessageEvent) => {
+      if (!event.data || typeof event.data !== 'object') return;
+      const msg = event.data;
+      // Only handle messages we care about (ignore others)
+      if (msg.type === 'navi.fix.apply') {
+        console.log('[NaviChatPanel] Bridging iframe message to extension:', msg);
+        vscodeApi.postMessage(msg);
+      }
+    };
+    window.addEventListener('message', handleIframeMessage);
+
+    const unsub = vscodeApi.onMessage((msg) => {
       if (!msg || typeof msg !== "object") return;
 
       // NEW: inline toast from extension
@@ -1360,6 +1395,26 @@ export default function NaviChatPanel() {
           return;
         }
 
+        // Phase 2.1 – Step 1: Fix application result
+        if (kind === 'navi.fix.result') {
+          const { proposalId, status, reason } = data;
+          console.log(`[NaviChatPanel] Fix result for ${proposalId}:`, status, reason || '');
+
+          // Show appropriate feedback based on status
+          if (status === 'deferred') {
+            showToast(reason || 'Opened in editor for review', 'info');
+          } else if (status === 'cancelled') {
+            showToast(reason || 'Fix cancelled by user', 'info');
+          } else if (status === 'failed') {
+            showToast(reason || 'Fix application failed', 'error');
+          } else if (status === 'pending') {
+            showToast(reason || 'Fix application pending', 'info');
+          } else if (status === 'applied') {
+            showToast('Fix applied successfully! ✅', 'success');
+          }
+          return;
+        }
+
         return;
       }
 
@@ -1374,6 +1429,12 @@ export default function NaviChatPanel() {
         }
       }
     });
+
+    // Return cleanup function
+    return () => {
+      window.removeEventListener('message', handleIframeMessage);
+      unsub?.(); // unsub is the cleanup from vscodeApi.onMessage
+    };
   }, []);
 
   /* ---------- direct backend call (fallback) ---------- */
@@ -2839,13 +2900,12 @@ export default function NaviChatPanel() {
                       return (
                         <div
                           key={proposal.id}
-                          className={`p-2 rounded border ${
-                            isApproved
-                              ? 'bg-green-950/40 border-green-700/50'
-                              : isIgnored
+                          className={`p-2 rounded border ${isApproved
+                            ? 'bg-green-950/40 border-green-700/50'
+                            : isIgnored
                               ? 'bg-gray-800/40 border-gray-600/50'
                               : 'bg-gray-900/60 border-gray-700/50'
-                          }`}
+                            }`}
                         >
                           {/* Proposal Header */}
                           <div className="flex items-start gap-2 mb-2">
@@ -2856,14 +2916,20 @@ export default function NaviChatPanel() {
                               <div className="text-xs text-gray-200 font-semibold">{proposal.issue}</div>
                               <div className="text-xs text-gray-400 mt-0.5">
                                 Line {proposal.line} • {proposal.source} • {proposal.impact === 'introduced' ? '🟢 Introduced' : '🔵 Pre-existing'}
+                                {proposal.riskLevel === 'high' && ' • ⚠️ High Risk'}
+                                {proposal.riskLevel === 'medium' && ' • 🔸 Medium Risk'}
                               </div>
                             </div>
                             <div className="flex items-center gap-1">
-                              <span className={`text-xs px-2 py-0.5 rounded ${
-                                proposal.confidence === 'high' ? 'bg-green-900/50 text-green-300' :
+                              {proposal.riskLevel === 'low' && (
+                                <span className="text-xs px-2 py-0.5 rounded bg-green-900/50 text-green-300">
+                                  ✓ Safe
+                                </span>
+                              )}
+                              <span className={`text-xs px-2 py-0.5 rounded ${proposal.confidence === 'high' ? 'bg-green-900/50 text-green-300' :
                                 proposal.confidence === 'medium' ? 'bg-yellow-900/50 text-yellow-300' :
-                                'bg-gray-800/50 text-gray-400'
-                              }`}>
+                                  'bg-gray-800/50 text-gray-400'
+                                }`}>
                                 {proposal.confidence}
                               </span>
                             </div>
@@ -2906,20 +2972,32 @@ export default function NaviChatPanel() {
                                 const newState = new Map(approvalState);
                                 if (isApproved) {
                                   newState.delete(proposal.id);
+                                  setApprovalState(newState);
+                                  console.log(`[NaviUI] Proposal ${proposal.id} unapproved`);
                                 } else {
-                                  newState.set(proposal.id, 'approved');
+                                  // Phase 2.1.2: Check if proposal requires choice
+                                  if (proposal.requiresChoice && proposal.alternatives && proposal.alternatives.length > 0) {
+                                    console.log(`[NaviUI] Proposal ${proposal.id} requires choice — opening modal...`);
+                                    setAlternativeModal({
+                                      proposalId: proposal.id,
+                                      alternatives: proposal.alternatives
+                                    });
+                                  } else {
+                                    newState.set(proposal.id, 'approved');
+                                    setApprovalState(newState);
+                                    console.log(`[NaviUI] Proposal ${proposal.id} approved — applying fix...`);
+                                    // Phase 2.1: Send apply intent to extension via vscodeApi
+                                    vscodeApi.postMessage({ type: 'navi.fix.apply', proposalId: proposal.id });
+                                  }
                                 }
-                                setApprovalState(newState);
-                                console.log(`[NaviUI] Proposal ${proposal.id} ${isApproved ? 'unapproved' : 'approved (no file edits)'}`);
                               }}
-                              className={`text-xs px-3 py-1.5 rounded transition ${
-                                isApproved
-                                  ? 'bg-green-700 text-white hover:bg-green-600'
-                                  : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
-                              }`}
+                              className={`text-xs px-3 py-1.5 rounded transition ${isApproved
+                                ? 'bg-green-700 text-white hover:bg-green-600'
+                                : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                                }`}
                               disabled={isIgnored}
                             >
-                              {isApproved ? '✅ Approved' : '✓ Approve'}
+                              {isApproved ? '✅ Approved' : (proposal.requiresChoice ? '🔍 Choose Fix' : '✓ Approve')}
                             </button>
                             <button
                               onClick={() => {
@@ -2932,11 +3010,10 @@ export default function NaviChatPanel() {
                                 setApprovalState(newState);
                                 console.log(`[NaviUI] Proposal ${proposal.id} ${isIgnored ? 'un-ignored' : 'ignored'}`);
                               }}
-                              className={`text-xs px-3 py-1.5 rounded transition ${
-                                isIgnored
-                                  ? 'bg-gray-600 text-white hover:bg-gray-500'
-                                  : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
-                              }`}
+                              className={`text-xs px-3 py-1.5 rounded transition ${isIgnored
+                                ? 'bg-gray-600 text-white hover:bg-gray-500'
+                                : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                                }`}
                               disabled={isApproved}
                             >
                               {isIgnored ? '❌ Ignored' : '✗ Ignore'}
@@ -3055,6 +3132,85 @@ export default function NaviChatPanel() {
       {toast && (
         <div className={`navi-toast navi-toast--${toast.kind}`}>
           {toast.message}
+        </div>
+      )}
+
+      {/* Phase 2.1.2: Alternative Selection Modal */}
+      {alternativeModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-blue-500/30 rounded-lg shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="sticky top-0 bg-gray-900 border-b border-blue-500/30 px-4 py-3 flex justify-between items-center">
+              <h3 className="text-base font-semibold text-blue-100">🔍 Choose Fix Alternative</h3>
+              <button
+                onClick={() => setAlternativeModal(null)}
+                className="text-gray-400 hover:text-gray-200 transition"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-gray-400 mb-4">
+                Multiple fixes are possible for this issue. Select the one that best fits your intent.
+              </p>
+              {alternativeModal.alternatives.map((alt, index) => (
+                <div
+                  key={alt.id}
+                  className="bg-gray-800/50 border border-gray-700 rounded-lg p-3 hover:border-blue-500/50 transition cursor-pointer"
+                  onClick={() => {
+                    console.log(`[NaviUI] Alternative ${index} selected for ${alternativeModal.proposalId}`);
+                    vscodeApi.postMessage({
+                      type: 'navi.fix.apply',
+                      proposalId: alternativeModal.proposalId,
+                      selectedAlternativeIndex: index
+                    });
+                    const newState = new Map(approvalState);
+                    newState.set(alternativeModal.proposalId, 'approved');
+                    setApprovalState(newState);
+                    setAlternativeModal(null);
+                  }}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="text-sm font-medium text-gray-200">
+                      {alt.issue}
+                    </div>
+                    <div className="flex gap-2 ml-2">
+                      <span className={`text-xs px-2 py-0.5 rounded ${alt.riskLevel === 'low' ? 'bg-green-900/50 text-green-300' :
+                          alt.riskLevel === 'medium' ? 'bg-yellow-900/50 text-yellow-300' :
+                            'bg-red-900/50 text-red-300'
+                        }`}>
+                        {alt.riskLevel === 'low' ? '🟢 Low' : alt.riskLevel === 'medium' ? '🟡 Medium' : '🔴 High'} Risk
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded ${alt.confidence === 'high' ? 'bg-green-900/50 text-green-300' :
+                          alt.confidence === 'medium' ? 'bg-yellow-900/50 text-yellow-300' :
+                            'bg-gray-700 text-gray-300'
+                        }`}>
+                        {alt.confidence} confidence
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400 mb-2">
+                    {alt.suggestedChange}
+                  </div>
+                  {alt.replacementText && (
+                    <div className="mt-2 p-2 bg-gray-900 border border-gray-700 rounded">
+                      <div className="text-xs text-gray-500 mb-1">Preview:</div>
+                      <pre className="text-xs text-green-400 font-mono overflow-x-auto whitespace-pre-wrap">
+                        {alt.replacementText.substring(0, 200)}{alt.replacementText.length > 200 ? '...' : ''}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="sticky bottom-0 bg-gray-900 border-t border-blue-500/30 px-4 py-3">
+              <button
+                onClick={() => setAlternativeModal(null)}
+                className="w-full px-4 py-2 bg-gray-700 text-gray-200 hover:bg-gray-600 rounded transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

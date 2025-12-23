@@ -152,7 +152,7 @@ def get_orchestrator() -> "NaviOrchestrator":
             return _orchestrator_instance
 
         try:
-            from backend.agent.orchestrator import NaviOrchestrator
+            from backend.orchestrator import NaviOrchestrator
             from backend.agent.planner_v3 import SimplePlanner
             from backend.agent.tool_executor_simple import SimpleToolExecutor
             from backend.ai.intent_llm_classifier import LLMIntentClassifier
@@ -171,7 +171,7 @@ def get_orchestrator() -> "NaviOrchestrator":
             logger.warning(f"[Deps] Could not create production orchestrator: {e}")
 
             # Fallback to minimal orchestrator with simple components
-            from backend.agent.orchestrator import NaviOrchestrator
+            from backend.orchestrator import NaviOrchestrator
             from backend.agent.planner_v3 import SimplePlanner
             from backend.agent.tool_executor_simple import SimpleToolExecutor
 

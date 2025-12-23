@@ -190,18 +190,7 @@ export async function runNaviAgent({
             }
             const proposalList = Array.from(proposalsByFile.entries()).map(([filePath, items]) => ({
                 filePath,
-                proposals: items.map(p => ({
-                    id: p.id,
-                    line: p.line,
-                    severity: p.severity,
-                    issue: p.issue,
-                    rootCause: p.rootCause,
-                    suggestedChange: p.suggestedChange,
-                    confidence: p.confidence,
-                    impact: p.impact,
-                    canAutoFixLater: p.canAutoFixLater,
-                    source: p.source || 'unknown',
-                }))
+                proposals: items // Send FULL proposal objects with alternatives, replacementText, etc.
             }));
             emitEvent({ type: 'navi.fix.proposals', data: { files: proposalList } });
 

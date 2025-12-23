@@ -115,7 +115,7 @@ from .routers.debug_context import router as debug_context_router
 from .routers.org_scan import router as org_scan_router
 from .routers.chat_history import router as chat_history_router
 # from .refactor_stream_api import router as refactor_stream_router  # Batch 8 Part 4: SSE Live Refactor Streaming - TODO: Implement
-from .orchestrator import router as orchestrator_router  # Multi-Agent Orchestrator API
+# from .orchestrator import router as orchestrator_router  # Multi-Agent Orchestrator API
 
 # Auth0 JWT validation routes
 from ..auth.routes import router as auth_routes_router
@@ -285,7 +285,7 @@ app.include_router(debug_info_router)  # Debug context/ingestion info
 app.include_router(chat_history_router)  # Chat history endpoints
 app.include_router(debug_context_router)  # Debug org/user/context info
 app.include_router(org_scan_router)  # Org scan consent and run endpoints
-app.include_router(orchestrator_router)  # Multi-Agent Orchestrator API
+# app.include_router(orchestrator_router)  # Multi-Agent Orchestrator API
 
 app.include_router(oauth_device_auth0_router)
 app.include_router(connectors_router)

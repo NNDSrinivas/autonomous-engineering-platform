@@ -45,8 +45,8 @@
         "aep.smartMode.autoApplyThreshold": {
           "type": "number",
           "default": 0.3,
-          "minimum": 0.0,
-          "maximum": 1.0,
+          "minimum": 0,
+          "maximum": 1,
           "description": "Risk threshold below which changes are automatically applied (0.0 = never auto-apply, 1.0 = always auto-apply)"
         },
         "aep.smartMode.showProgressNotifications": {
@@ -180,15 +180,17 @@
     "demo-backend": "node demo-backend.js"
   },
   "dependencies": {
+    "@octokit/rest": "^22.0.1",
     "@types/diff": "^8.0.0",
-    "diff": "^8.0.2"
+    "diff": "^8.0.2",
+    "simple-git": "^3.30.0"
   },
   "devDependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
+    "cors": "^2.8.5",
     "eslint": "^9.0.0",
+    "express": "^4.21.2",
     "typescript": "^5.4.0"
   }
 }

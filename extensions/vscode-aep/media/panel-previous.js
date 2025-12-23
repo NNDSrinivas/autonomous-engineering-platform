@@ -258,6 +258,21 @@
         hideTyping();
         clearChat();
         break;
+      case 'navi.agent.event':
+        // Handle generative repair notifications
+        if (msg.event?.type === 'navi.fix.result') {
+          hideTyping();
+          const data = msg.event.data;
+
+          if (data?.source === 'multi-file-repair') {
+            addMessage('bot', `🚀 ${data.message || 'Multi-file repair completed'}`);
+          } else if (data?.source === 'generative-repair') {
+            addMessage('bot', `✅ ${data.message || 'File repaired automatically'}`);
+          } else {
+            addMessage('bot', `ℹ️ ${data?.message || 'Fix applied'}`);
+          }
+        }
+        break;
       default:
         console.log('[AEP] Unknown message in webview:', msg);
     }

@@ -1,15 +1,16 @@
 """
-Multi-Repository Orchestration Agent for Navi
+Multi-Repository Orchestration Agent for Navi (Specialized)
 
-Coordinates across multiple repositories for:
-- Dependency management and version synchronization
-- Cross-repo change impact analysis
+Coordinates ONLY across multiple repositories for:
+- Cross-repo dependency synchronization 
 - Multi-repo atomic operations (commits, branches, releases)
 - Microservice architecture coordination
-- API contract consistency enforcement
-- Shared library and component management
+- API contract consistency enforcement across services
 - Repository governance and compliance
 - Cross-team collaboration workflows
+
+Single repository analysis and operations are delegated to the main NaviOrchestrator.
+This specialization eliminates architectural overlaps and focuses on cross-repo concerns.
 """
 
 import json
@@ -135,16 +136,24 @@ class CrossRepoAnalysis:
 
 class MultiRepoOrchestrator:
     """
-    Orchestrates operations across multiple repositories in an engineering ecosystem.
+    Specialized Multi-Repository Orchestrator for cross-repo coordination.
+    
+    This orchestrator focuses ONLY on multi-repository concerns and delegates
+    single-repository operations to the main NaviOrchestrator to eliminate
+    architectural overlaps and conflicts.
+    
     Provides intelligent coordination for complex multi-repo changes.
     """
     
-    def __init__(self):
-        """Initialize the Multi-Repo Orchestrator."""
+    def __init__(self, main_orchestrator=None):
+        """Initialize the Multi-Repo Orchestrator with optional main orchestrator delegation."""
         self.llm = LLMRouter()
         self.db = DatabaseService()
         self.memory = MemoryLayer()
         self.settings = get_settings()
+        
+        # Dependency injection for single-repo operations
+        self.main_orchestrator = main_orchestrator
         
         # Orchestration parameters
         self.max_concurrent_operations = 3
@@ -542,18 +551,34 @@ class MultiRepoOrchestrator:
         }
     
     async def _analyze_repository_structure(self, repo_path: str) -> Dict[str, Any]:
-        """Analyze repository structure and extract metadata."""
+        """
+        Delegate single-repository analysis to main orchestrator.
+        This specialization focuses only on cross-repo relationships.
+        """
         
+        if self.main_orchestrator:
+            # Delegate detailed single-repo analysis to main orchestrator
+            try:
+                # Use the main orchestrator's repo analysis capabilities
+                return await self.main_orchestrator.repo_analyzer.analyze_repository(repo_path)
+            except Exception as e:
+                print(f"Warning: Failed to delegate repo analysis to main orchestrator: {e}")
+        
+        # Fallback: minimal analysis focused on cross-repo concerns only
         analysis = {
             "dependencies": [],
             "api_contracts": [],
             "branches": [],
             "tags": [],
-            "metadata": {}
+            "metadata": {
+                "analysis_source": "multi_repo_orchestrator_fallback",
+                "analysis_scope": "cross_repo_only"
+            }
         }
         
         try:
-            # Get git information
+            # Only analyze what's needed for cross-repo coordination
+            # Get git branches for cross-repo branch coordination
             result = await self._run_git_command(repo_path, ["branch", "-a"])
             if result.get("success"):
                 analysis["branches"] = [
@@ -562,7 +587,7 @@ class MultiRepoOrchestrator:
                     if line.strip() and not line.strip().startswith("HEAD")
                 ]
             
-            # Get tags
+            # Get tags for cross-repo release coordination
             result = await self._run_git_command(repo_path, ["tag", "--list"])
             if result.get("success"):
                 analysis["tags"] = [
@@ -570,7 +595,7 @@ class MultiRepoOrchestrator:
                     if tag.strip()
                 ]
             
-            # Analyze dependency files
+            # Only extract dependencies needed for cross-repo dependency analysis
             dependency_files = [
                 "package.json", "requirements.txt", "go.mod", "pom.xml", 
                 "Cargo.toml", "composer.json", "Pipfile", "pyproject.toml"
@@ -582,19 +607,16 @@ class MultiRepoOrchestrator:
                     deps = await self._extract_dependencies_from_file(dep_path)
                     analysis["dependencies"].extend(deps)
             
-            # Look for API contracts
+            # Look for API contracts (critical for cross-service coordination)
             api_files = await self._find_api_contracts(repo_path)
             analysis["api_contracts"] = api_files
             
-            # Extract additional metadata
-            analysis["metadata"] = {
+            # Minimal metadata for cross-repo coordination
+            analysis["metadata"].update({
                 "has_dockerfile": os.path.exists(os.path.join(repo_path, "Dockerfile")),
                 "has_ci_config": any(os.path.exists(os.path.join(repo_path, f)) 
-                                   for f in [".github/workflows", ".gitlab-ci.yml", "Jenkinsfile"]),
-                "has_tests": any(os.path.exists(os.path.join(repo_path, d)) 
-                               for d in ["test", "tests", "spec", "__tests__"]),
-                "lines_of_code": await self._count_lines_of_code(repo_path)
-            }
+                                   for f in [".github/workflows", ".gitlab-ci.yml", "Jenkinsfile"])
+            })
             
         except Exception as e:
             analysis["metadata"]["analysis_error"] = str(e)
@@ -860,18 +882,6 @@ class MultiRepoOrchestrator:
             pass
         
         return contract_files
-    
-    async def _count_lines_of_code(self, repo_path: str) -> int:
-        """Count lines of code in repository."""
-        try:
-            total_lines = 0
-            for file_path in Path(repo_path).rglob("*"):
-                if file_path.is_file() and file_path.suffix in [".py", ".js", ".ts", ".java", ".go", ".rs"]:
-                    with open(file_path, 'r', errors='ignore') as f:
-                        total_lines += sum(1 for line in f if line.strip())
-            return total_lines
-        except Exception:
-            return 0
     
     # Database operations (simplified stubs)
     async def _save_repository(self, repo: Repository) -> None:

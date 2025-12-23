@@ -33,7 +33,7 @@ from backend.agent.intent_schema import (
     NaviIntent,
     RepoTarget,
 )
-from backend.agent.orchestrator import (
+from backend.orchestrator import (
     AgentTurnResult,
     NaviOrchestrator,
     Planner,

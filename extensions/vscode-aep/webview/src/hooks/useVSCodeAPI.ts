@@ -1,8 +1,7 @@
-export function useVSCodeAPI() {
-  // VS Code injects this global into the webview
-  // @ts-ignore
-  const vscode = acquireVsCodeApi();
+import { vscode } from '../types';
 
+export function useVSCodeAPI() {
+  // Use the singleton VS Code API instance to avoid multiple acquisitions
   return {
     postMessage: (msg: any) => vscode.postMessage(msg),
     getState: () => vscode.getState(),

@@ -14,7 +14,7 @@ Key design principles:
 import logging
 from typing import Any, Dict, Optional
 
-from .orchestrator import PlanResult, PlannedStep
+from backend.orchestrator import PlanResult, PlannedStep
 from .intent_schema import NaviIntent, IntentFamily, IntentKind, Provider
 
 logger = logging.getLogger(__name__)

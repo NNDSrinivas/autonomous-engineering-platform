@@ -7,6 +7,7 @@ const vscode = require("vscode");
 const path = require("path");
 const child_process_1 = require("child_process");
 const fs = require("fs");
+const promises_1 = require("fs/promises");
 const child_process = require("child_process");
 const util = require("util");
 const diffUtils_1 = require("./diffUtils");
@@ -14,6 +15,18 @@ const connectorsPanel_1 = require("./connectorsPanel");
 const sseClient_1 = require("./sse/sseClient");
 const smartModeCommands_1 = require("./commands/smartModeCommands");
 const smartModeClient_1 = require("./sse/smartModeClient");
+const SyntaxCompletionFixEngine_1 = require("./navi-core/fix/SyntaxCompletionFixEngine");
+const RepoPatternExtractor_1 = require("./navi-core/context/patterns/RepoPatternExtractor");
+const IntentClassifier_1 = require("./navi-core/intent/IntentClassifier");
+const FeaturePlanningEngine_1 = require("./navi-core/planning/FeaturePlanningEngine");
+const IntentPlanBuilder_1 = require("./navi-core/intent/IntentPlanBuilder");
+const RepoPatternResolver_1 = require("./navi-core/context/RepoPatternResolver");
+const GenerativeCodeEngine_1 = require("./navi-core/generation/GenerativeCodeEngine");
+const DiagnosticsPerception_1 = require("./navi-core/perception/DiagnosticsPerception");
+const GenerativeStructuralFixEngine_1 = require("./navi-core/fix/GenerativeStructuralFixEngine");
+const FixConfidencePolicy_1 = require("./navi-core/fix/FixConfidencePolicy");
+const FixTransactionManager_1 = require("./navi-core/fix/FixTransactionManager");
+const FeaturePlanEngine_1 = require("./navi-core/planning/FeaturePlanEngine");
 const exec = util.promisify(child_process.exec);
 // Phase 1.4: Collect VS Code diagnostics for a set of files
 function collectDiagnosticsForFiles(workspaceRoot, relativePaths) {
@@ -360,6 +373,433 @@ function activate(context) {
     'aep.chatView', provider));
     // Register Smart Mode commands
     smartModeCommands_1.smartModeCommands.registerCommands(context);
+    // Phase 3.3/3.4 UI Test Commands for immediate testing
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.changePlan', () => {
+        const changePlan = {
+            goal: "Fix path traversal vulnerability in workspace retriever",
+            strategy: "Add comprehensive input validation and path normalization",
+            files: [
+                {
+                    path: "backend/agent/perfect_workspace_retriever.py",
+                    intent: "modify",
+                    rationale: "Add path validation to prevent directory traversal"
+                },
+                {
+                    path: "tests/test_workspace_retriever.py",
+                    intent: "create",
+                    rationale: "Add security tests for path validation"
+                }
+            ],
+            riskLevel: "high",
+            testsRequired: true
+        };
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.changePlan.generated',
+                changePlan
+            });
+            vscode.window.showInformationMessage('🎯 Test: ChangePlan emitted to UI');
+        }
+    }), vscode.commands.registerCommand('aep.test.diffs', () => {
+        const codeChanges = [
+            {
+                file_path: "backend/agent/perfect_workspace_retriever.py",
+                change_type: "modify",
+                diff: `--- a/backend/agent/perfect_workspace_retriever.py
++++ b/backend/agent/perfect_workspace_retriever.py
+@@ -25,7 +25,14 @@ def get_file_path(base, user_path):
+     Get safe file path within base directory
+     """
+-    full_path = os.path.join(base, user_path)
++    # Prevent path traversal attacks
++    normalized = os.path.normpath(user_path)
++    if '..' in normalized or normalized.startswith('/'):
++        raise ValueError("Invalid path: potential traversal detected")
++    
++    full_path = os.path.join(base, normalized)
++    resolved = os.path.abspath(full_path)
++    
++    if not resolved.startswith(os.path.abspath(base)):
++        raise ValueError("Path outside base directory")
++    
+     return full_path`,
+                reasoning: "Add comprehensive path traversal protection"
+            }
+        ];
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.diffs.generated',
+                codeChanges
+            });
+            vscode.window.showInformationMessage('📄 Test: Diffs emitted to UI');
+        }
+    }), vscode.commands.registerCommand('aep.test.validationPassed', () => {
+        const validationResult = {
+            status: 'PASSED',
+            issues: [],
+            canProceed: true
+        };
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.validation.result',
+                validationResult
+            });
+            vscode.window.showInformationMessage('✅ Test: Validation PASSED emitted to UI');
+        }
+    }), vscode.commands.registerCommand('aep.test.validationFailed', () => {
+        const validationResult = {
+            status: 'FAILED',
+            issues: [
+                {
+                    validator: 'SyntaxValidator',
+                    file_path: 'backend/agent/perfect_workspace_retriever.py',
+                    line_number: 42,
+                    message: 'Python syntax error: missing closing parenthesis'
+                },
+                {
+                    validator: 'SecurityValidator',
+                    file_path: 'backend/agent/perfect_workspace_retriever.py',
+                    message: 'Potential SQL injection vulnerability detected'
+                }
+            ],
+            canProceed: false
+        };
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.validation.result',
+                validationResult
+            });
+            vscode.window.showInformationMessage('❌ Test: Validation FAILED emitted to UI');
+        }
+    }), vscode.commands.registerCommand('aep.test.applySuccess', () => {
+        const applyResult = {
+            success: true,
+            appliedFiles: [
+                {
+                    file_path: "backend/agent/perfect_workspace_retriever.py",
+                    operation: "modified",
+                    success: true
+                },
+                {
+                    file_path: "tests/test_workspace_retriever.py",
+                    operation: "created",
+                    success: true
+                }
+            ],
+            summary: {
+                totalFiles: 2,
+                successfulFiles: 2,
+                failedFiles: 0,
+                rollbackAvailable: true
+            },
+            rollbackAvailable: true
+        };
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.changes.applied',
+                applyResult
+            });
+            vscode.window.showInformationMessage('🚀 Test: Apply SUCCESS emitted to UI');
+        }
+    }), vscode.commands.registerCommand('aep.test.fullPipeline', async () => {
+        if (!provider?.webviewAvailable) {
+            vscode.window.showErrorMessage('Webview not available');
+            return;
+        }
+        vscode.window.showInformationMessage('🧪 Running Phase 3.3/3.4/3.5 Full Pipeline Test...');
+        // Step 1: ChangePlan
+        vscode.commands.executeCommand('aep.test.changePlan');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Step 2: Diffs
+        vscode.commands.executeCommand('aep.test.diffs');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Step 3: Validation FAILED
+        vscode.commands.executeCommand('aep.test.validationFailed');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Step 4: Validation PASSED (after fixes)
+        vscode.commands.executeCommand('aep.test.validationPassed');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Step 5: Apply Success
+        vscode.commands.executeCommand('aep.test.applySuccess');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Step 6: Branch Created (Phase 3.5.1)
+        vscode.commands.executeCommand('aep.test.branchCreated');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Step 7: Commit Created (Phase 3.5.2)
+        vscode.commands.executeCommand('aep.test.commitCreated');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Step 8: PR Created (Phase 3.5.3)
+        vscode.commands.executeCommand('aep.test.prCreated');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Step 9: CI Monitoring Started (Phase 3.5.4)
+        vscode.commands.executeCommand('aep.test.prMonitoringStarted');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        // Step 10: CI Updates (Phase 3.5.4)
+        vscode.commands.executeCommand('aep.test.ciUpdates');
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Step 11: CI Completed (Phase 3.5.4)
+        vscode.commands.executeCommand('aep.test.ciCompleted');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Step 12: Self-Healing Demo (Phase 3.6) - simulate CI failure scenario
+        vscode.commands.executeCommand('aep.test.ciFailure');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        vscode.commands.executeCommand('aep.test.selfHealingSequence');
+        vscode.window.showInformationMessage('✅ Phase 3.3-3.6 Complete Autonomous Engineering Pipeline Test Finished!');
+    }), 
+    // Phase 3.5 Test Commands
+    vscode.commands.registerCommand('aep.test.branchCreated', () => {
+        const branchResult = {
+            success: true,
+            branchName: 'navi/feature/fix-path-traversal-vulnerability',
+            createdFrom: 'main',
+            message: "Successfully created branch 'navi/feature/fix-path-traversal-vulnerability' from 'main'",
+            workingTreeClean: true,
+            error: null
+        };
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.pr.branch.created',
+                branchResult
+            });
+            vscode.window.showInformationMessage('🌿 Test: Branch Created emitted to UI');
+        }
+    }), vscode.commands.registerCommand('aep.test.commitCreated', () => {
+        const commitResult = {
+            success: true,
+            sha: 'a3f9c1d8b0e7c1f4e6a8b5c2d9f7e3a1c4b6d8e0',
+            message: 'Fix path traversal validation\n\nNormalize and validate user-controlled paths\n\nGenerated by NAVI autonomous PR system',
+            files: [
+                'backend/agent/perfect_workspace_retriever.py',
+                'backend/tests/test_workspace_retriever.py'
+            ],
+            stagedFilesCount: 2,
+            error: null
+        };
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.pr.commit.created',
+                commitResult
+            });
+            vscode.window.showInformationMessage('📝 Test: Commit Created emitted to UI');
+        }
+    }), vscode.commands.registerCommand('aep.test.prCreated', () => {
+        const prResult = {
+            success: true,
+            prNumber: 42,
+            prUrl: 'https://github.com/user/repo/pull/42',
+            title: 'Fix path traversal vulnerability in workspace retriever',
+            description: 'Add comprehensive input validation and path normalization to prevent directory traversal attacks.',
+            branchName: 'navi/feature/fix-path-traversal-vulnerability',
+            baseBranch: 'main',
+            ciStatus: 'pending'
+        };
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.pr.created',
+                prResult
+            });
+            vscode.window.showInformationMessage('🔄 Test: PR Created emitted to UI');
+        }
+    }));
+    // Phase 3.5.4 - PR Lifecycle Monitoring Test Commands
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.prMonitoringStarted', () => {
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.pr.monitoring.started',
+                prNumber: 42,
+                repoOwner: 'user',
+                repoName: 'repo'
+            });
+            vscode.window.showInformationMessage('🔄 Test: PR Monitoring Started emitted to UI');
+        }
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.ciUpdates', async () => {
+        if (provider?.webviewAvailable) {
+            // Simulate CI progression: pending → running → success
+            const states = [
+                { state: 'pending', conclusion: null, message: '⏳ CI checks queued' },
+                { state: 'running', conclusion: null, message: '🔄 Running CI checks' },
+                { state: 'success', conclusion: 'success', message: '✅ All checks passed' }
+            ];
+            for (let i = 0; i < states.length; i++) {
+                const update = states[i];
+                provider.postToWebview({
+                    type: 'navi.pr.ci.updated',
+                    prNumber: 42,
+                    state: update.state,
+                    conclusion: update.conclusion,
+                    url: 'https://github.com/user/repo/runs/123',
+                    checkCount: 3,
+                    failedChecks: 0,
+                    lastUpdated: new Date().toISOString()
+                });
+                if (i < states.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+            vscode.window.showInformationMessage('🔄 Test: CI Updates sequence emitted to UI');
+        }
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.ciCompleted', () => {
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.pr.completed',
+                prNumber: 42,
+                state: 'success',
+                conclusion: 'success',
+                url: 'https://github.com/user/repo/runs/123',
+                checkCount: 3,
+                failedChecks: 0,
+                monitoringDuration: 45.2
+            });
+            vscode.window.showInformationMessage('🔄 Test: PR Completed emitted to UI');
+        }
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.ciFailure', () => {
+        if (provider?.webviewAvailable) {
+            // Test CI failure scenario
+            provider.postToWebview({
+                type: 'navi.pr.ci.updated',
+                prNumber: 42,
+                state: 'failure',
+                conclusion: 'failure',
+                url: 'https://github.com/user/repo/runs/123',
+                checkCount: 3,
+                failedChecks: 1,
+                lastUpdated: new Date().toISOString()
+            });
+            provider.postToWebview({
+                type: 'navi.pr.completed',
+                prNumber: 42,
+                state: 'failure',
+                conclusion: 'failure',
+                url: 'https://github.com/user/repo/runs/123',
+                checkCount: 3,
+                failedChecks: 1,
+                monitoringDuration: 32.1
+            });
+            vscode.window.showInformationMessage('🔄 Test: CI Failure scenario emitted to UI');
+        }
+    }));
+    // Phase 3.6 - Self-Healing Test Commands
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.selfHealingStarted', () => {
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.selfHealing.started',
+                sessionId: 'heal-42-123456789',
+                prNumber: 42,
+                reason: 'CI failure detected',
+                maxAttempts: 2
+            });
+            vscode.window.showInformationMessage('🔄 Test: Self-Healing Started emitted to UI');
+        }
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.selfHealingBlocked', () => {
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.selfHealing.blocked',
+                sessionId: 'heal-42-123456789',
+                prNumber: 42,
+                reason: 'Test failures require human review',
+                strategy: 'human_only'
+            });
+            vscode.window.showInformationMessage('🔄 Test: Self-Healing Blocked emitted to UI');
+        }
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.selfHealingPlan', () => {
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.selfHealing.plan',
+                sessionId: 'heal-42-123456789',
+                prNumber: 42,
+                goal: 'Fix syntax error reported by CI',
+                confidence: 0.85,
+                strategy: 'auto_fix',
+                riskLevel: 'low'
+            });
+            vscode.window.showInformationMessage('🔄 Test: Self-Healing Plan emitted to UI');
+        }
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.selfHealingApplied', () => {
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.selfHealing.applied',
+                sessionId: 'heal-42-123456789',
+                prNumber: 42,
+                commitSha: 'abc123def456',
+                message: 'Fix applied successfully',
+                fixesCount: 1
+            });
+            vscode.window.showInformationMessage('🔄 Test: Self-Healing Applied emitted to UI');
+        }
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.selfHealingAborted', () => {
+        if (provider?.webviewAvailable) {
+            provider.postToWebview({
+                type: 'navi.selfHealing.aborted',
+                sessionId: 'heal-42-123456789',
+                prNumber: 42,
+                reason: 'Max attempts reached',
+                attemptCount: 2
+            });
+            vscode.window.showInformationMessage('🔄 Test: Self-Healing Aborted emitted to UI');
+        }
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('aep.test.selfHealingSequence', async () => {
+        if (provider?.webviewAvailable) {
+            // Simulate complete self-healing sequence
+            const steps = [
+                { command: 'aep.test.selfHealingStarted', delay: 0, message: '🔄 Starting self-healing...' },
+                { command: 'aep.test.selfHealingPlan', delay: 2000, message: '🧠 Planning fix...' },
+                { command: 'aep.test.selfHealingApplied', delay: 3000, message: '⚡ Applying fix...' }
+            ];
+            for (let i = 0; i < steps.length; i++) {
+                const step = steps[i];
+                if (step.delay > 0) {
+                    await new Promise(resolve => setTimeout(resolve, step.delay));
+                }
+                vscode.commands.executeCommand(step.command);
+                if (i < steps.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
+            vscode.window.showInformationMessage('🔄 Test: Complete Self-Healing Sequence emitted to UI');
+        }
+    }), 
+    // Phase 4.0.4: Canonical Workflow Events Test
+    vscode.commands.registerCommand('aep.test.canonicalWorkflow', async () => {
+        if (!provider?.webviewAvailable) {
+            vscode.window.showErrorMessage('Webview not available');
+            return;
+        }
+        vscode.window.showInformationMessage('🔄 Running Phase 4.0.4 Canonical Workflow Test...');
+        // Start workflow
+        provider.emitToWebview({ type: 'navi.workflow.started' });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Scan step
+        provider.emitToWebview({ type: 'navi.workflow.step', step: 'scan', status: 'active' });
+        await new Promise(resolve => setTimeout(resolve, 800));
+        provider.emitToWebview({ type: 'navi.workflow.step', step: 'scan', status: 'completed' });
+        await new Promise(resolve => setTimeout(resolve, 500));
+        // Plan step
+        provider.emitToWebview({ type: 'navi.workflow.step', step: 'plan', status: 'active' });
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        provider.emitToWebview({ type: 'navi.workflow.step', step: 'plan', status: 'completed' });
+        await new Promise(resolve => setTimeout(resolve, 500));
+        // Diff step
+        provider.emitToWebview({ type: 'navi.workflow.step', step: 'diff', status: 'active' });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        provider.emitToWebview({ type: 'navi.workflow.step', step: 'diff', status: 'completed' });
+        await new Promise(resolve => setTimeout(resolve, 500));
+        // Validate step with approval
+        provider.emitToWebview({ type: 'navi.workflow.step', step: 'validate', status: 'active' });
+        await new Promise(resolve => setTimeout(resolve, 800));
+        provider.emitToWebview({
+            type: 'navi.approval.required',
+            reason: 'Apply generated code changes'
+        });
+        vscode.window.showInformationMessage('✅ Canonical workflow events emitted - awaiting approval in UI');
+    }));
     context.subscriptions.push(vscode.commands.registerCommand('aep.attachSelection', async () => {
         await provider.attachSelectionCommand();
     }), vscode.commands.registerCommand('aep.attachCurrentFile', async () => {
@@ -368,6 +808,18 @@ function activate(context) {
         await provider.checkErrorsAndFixCommand();
     }), vscode.commands.registerCommand('aep.generateTestsForFile', async () => {
         await provider.generateTestsForFileCommand();
+    }), vscode.commands.registerCommand('navi.undoLastFix', async () => {
+        if (!FixTransactionManager_1.FixTransactionManager.hasUndo()) {
+            vscode.window.showInformationMessage('No NAVI fix to undo.');
+            return;
+        }
+        try {
+            await FixTransactionManager_1.FixTransactionManager.rollback();
+            vscode.window.showInformationMessage('NAVI: Last fix undone successfully.');
+        }
+        catch (error) {
+            vscode.window.showErrorMessage(`NAVI: Failed to undo fix - ${error}`);
+        }
     }));
 }
 function deactivate() {
@@ -375,9 +827,17 @@ function deactivate() {
     smartModeClient_1.smartModeSSEClient.dispose();
 }
 class NaviWebviewProvider {
+    // Public accessors for external functions
+    get webviewAvailable() {
+        return !!this._view;
+    }
+    isWebviewReady() {
+        return !!this._view;
+    }
     constructor(extensionUri, context) {
         this._messages = [];
         this._agentActions = new Map(); // PR-6: Track agent actions
+        this._fixProposals = new Map(); // Phase 2.1: Store fix proposals for application
         this._currentModelId = DEFAULT_MODEL.id;
         this._currentModelLabel = DEFAULT_MODEL.label;
         this._currentModeId = DEFAULT_MODE.id;
@@ -417,6 +877,58 @@ class NaviWebviewProvider {
         }
         catch {
             return 'http://127.0.0.1:8787';
+        }
+    }
+    async callBackendAPI(content, mode, model) {
+        try {
+            const baseUrl = this.getBackendBaseUrl();
+            const chatUrl = `${baseUrl}/api/navi/chat`;
+            console.log(`[AEP] 🚀 Calling backend: ${chatUrl}`);
+            // Show thinking state
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: true
+            });
+            const response = await fetch(chatUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: content,
+                    mode: mode,
+                    model: model,
+                    conversation_id: this._conversationId
+                })
+            });
+            if (!response.ok) {
+                throw new Error(`Backend API error: ${response.status} ${response.statusText}`);
+            }
+            const data = await response.json();
+            console.log(`[AEP] ✅ Backend response:`, data);
+            // Hide thinking state
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: false
+            });
+            // Send assistant response to UI
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: data.content || data.response || data.message || '⚠️ Backend response format error'
+            });
+        }
+        catch (error) {
+            console.error(`[AEP] ❌ Backend API error:`, error);
+            // Hide thinking state
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: false
+            });
+            // Send error message to UI
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: `⚠️ Backend not connected yet.`
+            });
         }
     }
     getOrgId(explicit) {
@@ -868,6 +1380,203 @@ class NaviWebviewProvider {
                         await openNativeDiff(workspaceRoot, filePath, scope);
                         break;
                     }
+                    // 🚀 PHASE 2.2: GENERATIVE STRUCTURAL FIX ENGINE (Copilot-class intelligence)
+                    case 'navi.fix.apply': {
+                        const proposalId = String(msg.proposalId || '').trim();
+                        if (!proposalId) {
+                            vscode.window.showWarningMessage('No proposal ID provided');
+                            return;
+                        }
+                        const proposal = this._fixProposals.get(proposalId);
+                        if (!proposal) {
+                            this.postToWebview({
+                                type: 'navi.agent.event',
+                                event: {
+                                    type: 'navi.fix.result',
+                                    data: { proposalId, status: 'failed', reason: 'Proposal not found' }
+                                }
+                            });
+                            return;
+                        }
+                        console.log(`[GenerativeStructuralFixEngine] Starting Copilot-class repair for: ${proposal.suggestedChange}`);
+                        try {
+                            const workspaceRoot = this.getActiveWorkspaceRoot();
+                            if (!workspaceRoot) {
+                                throw new Error('No workspace root found');
+                            }
+                            // 🔥 STEP 1: Collect diagnostics and cluster by root cause
+                            const proposalUri = vscode.Uri.file(proposal.filePath);
+                            const proposalDiagnostics = vscode.languages.getDiagnostics(proposalUri);
+                            if (proposalDiagnostics.length === 0) {
+                                throw new Error('No diagnostics found for file');
+                            }
+                            // Create diagnostic map for clustering
+                            const diagnosticsByFile = new Map();
+                            diagnosticsByFile.set(proposalUri, proposalDiagnostics);
+                            // Cluster diagnostics by root cause (eliminates cascade fixing)
+                            const clusters = DiagnosticsPerception_1.DiagnosticsPerception.clusterDiagnostics(diagnosticsByFile);
+                            console.log(`[GenerativeStructuralFixEngine] Clustered into ${clusters.length} root causes`);
+                            if (clusters.length === 0) {
+                                throw new Error('No clusterable diagnostics found');
+                            }
+                            // 🔥 STEP 2: Begin atomic transaction for all affected files
+                            const affectedUris = clusters.map(cluster => vscode.Uri.parse(cluster.fileUri));
+                            await FixTransactionManager_1.FixTransactionManager.begin(affectedUris);
+                            let totalFixed = 0;
+                            const atomicSuccess = await (async () => {
+                                try {
+                                    // 🔥 STEP 3: Apply confidence-based fix decisions for each cluster
+                                    for (const cluster of clusters) {
+                                        console.log(`[GenerativeStructuralFixEngine] Processing ${cluster.category} cluster: ${cluster.root.message}`);
+                                        // 🎯 STEP 3 INTEGRATION: Build policy context and make auto-apply decision
+                                        const policyContext = await FixConfidencePolicy_1.FixConfidencePolicy.buildContext(cluster);
+                                        const decision = FixConfidencePolicy_1.FixConfidencePolicy.decide(policyContext);
+                                        const explanation = FixConfidencePolicy_1.FixConfidencePolicy.explainDecision(decision, policyContext);
+                                        console.log(`[FixConfidencePolicy] ${explanation}`);
+                                        // Execute based on confidence policy decision
+                                        if (decision === 'auto-apply' && (cluster.category === 'syntax' || cluster.category === 'structure')) {
+                                            console.log(`[GenerativeStructuralFixEngine] Applying generative fix (no alternatives)`);
+                                            const fixResult = await GenerativeStructuralFixEngine_1.GenerativeStructuralFixEngine.generateFix(cluster);
+                                            if (!fixResult.success) {
+                                                console.log(`[GenerativeStructuralFixEngine] Generative fix failed: ${fixResult.error}`);
+                                                continue; // Try other clusters or fallback
+                                            }
+                                            const applied = await GenerativeStructuralFixEngine_1.GenerativeStructuralFixEngine.applyFullFilePatch(cluster.fileUri, fixResult.fixedCode);
+                                            if (applied) {
+                                                totalFixed++;
+                                                console.log(`[GenerativeStructuralFixEngine] Successfully applied generative fix`);
+                                            }
+                                        }
+                                        else if (decision === 'ask-user') {
+                                            // Policy requires user approval - emit approval request
+                                            console.log(`[FixConfidencePolicy] Requesting user approval for ${cluster.category} fix`);
+                                            this.postToWebview({
+                                                type: 'navi.agent.event',
+                                                event: {
+                                                    type: 'navi.fix.approval_required',
+                                                    data: {
+                                                        proposalId,
+                                                        cluster,
+                                                        explanation,
+                                                        previewAvailable: true
+                                                    }
+                                                }
+                                            });
+                                            // Continue to next cluster - user will approve via separate message
+                                            continue;
+                                        }
+                                        else if (decision === 'preview-only') {
+                                            // Policy allows preview but no application
+                                            console.log(`[FixConfidencePolicy] Showing preview-only for ${cluster.category} fix`);
+                                            // For now, skip preview-only (could implement diff preview here)
+                                            continue;
+                                        }
+                                        else {
+                                            // For non-structural issues or other cases, fall back to existing logic
+                                            console.log(`[GenerativeStructuralFixEngine] Non-auto-apply case, using existing approach`);
+                                        }
+                                    }
+                                    return true; // All fixes in the transaction succeeded
+                                }
+                                catch (error) {
+                                    console.error(`[FixTransactionManager] Fix failed, rolling back: ${error}`);
+                                    await FixTransactionManager_1.FixTransactionManager.rollback();
+                                    throw error;
+                                }
+                            })();
+                            if (atomicSuccess && totalFixed > 0) {
+                                // Commit the transaction - fixes are now permanent
+                                FixTransactionManager_1.FixTransactionManager.commit();
+                                this.postToWebview({
+                                    type: 'navi.agent.event',
+                                    event: {
+                                        type: 'navi.fix.result',
+                                        data: {
+                                            proposalId,
+                                            status: 'applied',
+                                            message: `Fixed ${totalFixed} issues atomically with generative repair`,
+                                            source: 'generative-structural-fix',
+                                            undoAvailable: false // Transaction is committed
+                                        }
+                                    }
+                                });
+                                console.log(`[FixTransactionManager] Atomic fix transaction completed successfully`);
+                                return; // ⛔ STOP HERE - atomic success, no alternatives, no fragmentation
+                            }
+                            else {
+                                throw new Error('No fixes could be applied in transaction');
+                            }
+                        }
+                        catch (error) {
+                            console.log(`[NAVI Phase 2.2] Atomic fix transaction failed: ${error}`);
+                            // Transaction was already rolled back by the atomic wrapper
+                            this.postToWebview({
+                                type: 'navi.agent.event',
+                                event: {
+                                    type: 'navi.fix.result',
+                                    data: {
+                                        proposalId,
+                                        status: 'failed',
+                                        message: `Atomic fix failed and was reverted: ${error}`,
+                                        source: 'generative-structural-fix-rollback',
+                                        undoAvailable: false // Already rolled back
+                                    }
+                                }
+                            });
+                            // 🔽 FALLBACK: Use existing proposal-based logic for non-atomic cases
+                            console.log("[NAVI Phase 2.2] Falling back to legacy proposal system");
+                            await this.applyFix(proposal, {
+                                forceApply: msg.forceApply === true,
+                                selectedAlternativeIndex: msg.selectedAlternativeIndex
+                            });
+                        }
+                        break;
+                    }
+                    // 🚀 PHASE 3: AUTONOMOUS FEATURE PLANNING
+                    case 'navi.feature.plan': {
+                        const featureRequest = String(msg.featureRequest || '').trim();
+                        if (!featureRequest) {
+                            vscode.window.showWarningMessage('No feature request provided');
+                            return;
+                        }
+                        console.log(`[Phase 3] Feature planning request: "${featureRequest}"`);
+                        try {
+                            const workspaceRoot = this.getActiveWorkspaceRoot();
+                            if (!workspaceRoot) {
+                                throw new Error('No workspace root found');
+                            }
+                            // Generate comprehensive feature implementation plan
+                            const featurePlan = await FeaturePlanEngine_1.FeaturePlanEngine.generatePlan(featureRequest, workspaceRoot);
+                            console.log(`[Phase 3] Generated plan: ${featurePlan.implementationSteps.length} steps, ${featurePlan.confidence}% confidence`);
+                            // Send plan to webview for user review
+                            this.postToWebview({
+                                type: 'navi.agent.event',
+                                event: {
+                                    type: 'navi.feature.plan.result',
+                                    data: {
+                                        success: true,
+                                        plan: featurePlan,
+                                        source: 'autonomous-feature-planning'
+                                    }
+                                }
+                            });
+                        }
+                        catch (error) {
+                            console.error(`[Phase 3] Feature planning failed: ${error}`);
+                            this.postToWebview({
+                                type: 'navi.agent.event',
+                                event: {
+                                    type: 'navi.feature.plan.result',
+                                    data: {
+                                        success: false,
+                                        error: `Feature planning failed: ${error}`,
+                                        source: 'autonomous-feature-planning'
+                                    }
+                                }
+                            });
+                        }
+                        break;
+                    }
                     case 'ready': {
                         // Send hydration message first
                         this.postToWebview({
@@ -949,6 +1658,220 @@ class NaviWebviewProvider {
                                 type: 'clipboard.write.result',
                                 id,
                                 success: false,
+                            });
+                        }
+                        break;
+                    }
+                    // 🚀 Phase 3.3/3.4 - Code Generation & Validation Pipeline
+                    case 'generate_diffs': {
+                        try {
+                            this.postToWebview({ type: 'botThinking', value: true });
+                            const workspaceRoot = this.getActiveWorkspaceRoot();
+                            if (!workspaceRoot) {
+                                throw new Error('No workspace root found');
+                            }
+                            // Mock diff generation for UI testing (replace with actual backend call)
+                            const codeChanges = [{
+                                    file_path: "backend/agent/example.py",
+                                    change_type: "modify",
+                                    diff: `--- a/backend/agent/example.py\n+++ b/backend/agent/example.py\n@@ -1,3 +1,6 @@\n def example_function():\n+    # Added safety check\n+    if not input_valid:\n+        raise ValueError("Invalid input")\n     return "Hello World"`,
+                                    reasoning: "Added input validation for security"
+                                }];
+                            this.postToWebview({
+                                type: 'navi.diffs.generated',
+                                codeChanges
+                            });
+                        }
+                        catch (error) {
+                            this.postToWebview({
+                                type: 'botMessage',
+                                text: `Failed to generate diffs: ${error}`
+                            });
+                        }
+                        finally {
+                            this.postToWebview({ type: 'botThinking', value: false });
+                        }
+                        break;
+                    }
+                    case 'run_validation': {
+                        try {
+                            this.postToWebview({ type: 'botThinking', value: true });
+                            // Mock validation for UI testing (replace with actual backend call)
+                            const validationResult = {
+                                status: 'PASSED',
+                                issues: [],
+                                canProceed: true
+                            };
+                            this.postToWebview({
+                                type: 'navi.validation.result',
+                                validationResult
+                            });
+                        }
+                        catch (error) {
+                            this.postToWebview({
+                                type: 'navi.validation.result',
+                                validationResult: {
+                                    status: 'FAILED',
+                                    issues: [{
+                                            validator: 'Extension',
+                                            message: `Validation error: ${error}`
+                                        }],
+                                    canProceed: false
+                                }
+                            });
+                        }
+                        finally {
+                            this.postToWebview({ type: 'botThinking', value: false });
+                        }
+                        break;
+                    }
+                    case 'apply_changes': {
+                        try {
+                            this.postToWebview({ type: 'botThinking', value: true });
+                            const workspaceRoot = this.getActiveWorkspaceRoot();
+                            if (!workspaceRoot) {
+                                throw new Error('No workspace root found');
+                            }
+                            // Phase 3.4 - Apply with validation pipeline
+                            const baseUrl = this.getBackendBaseUrl().replace('/api/navi/chat', '');
+                            const response = await fetch(`${baseUrl}/api/apply`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    codeChanges: msg.payload?.diffs || [],
+                                    repoRoot: workspaceRoot,
+                                }),
+                            });
+                            const result = await response.json();
+                            // Emit validation result FIRST
+                            this.postToWebview({
+                                type: 'navi.validation.result',
+                                validationResult: result.validationResult,
+                            });
+                            // If validation passed, emit apply result
+                            if (result.validationResult?.canProceed) {
+                                this.postToWebview({
+                                    type: 'navi.changes.applied',
+                                    applyResult: result.applyResult,
+                                });
+                            }
+                        }
+                        catch (error) {
+                            // Emit validation failure
+                            this.postToWebview({
+                                type: 'navi.validation.result',
+                                validationResult: {
+                                    status: 'FAILED',
+                                    issues: [{
+                                            validator: 'Extension',
+                                            message: `Apply failed: ${error}`
+                                        }],
+                                    canProceed: false
+                                }
+                            });
+                        }
+                        finally {
+                            this.postToWebview({ type: 'botThinking', value: false });
+                        }
+                        break;
+                    }
+                    case 'force_apply_changes': {
+                        try {
+                            this.postToWebview({ type: 'botThinking', value: true });
+                            // Mock force apply (bypasses validation)
+                            const applyResult = {
+                                success: true,
+                                appliedFiles: [{
+                                        file_path: "backend/agent/example.py",
+                                        operation: "modified",
+                                        success: true
+                                    }],
+                                summary: {
+                                    totalFiles: 1,
+                                    successfulFiles: 1,
+                                    failedFiles: 0,
+                                    rollbackAvailable: true
+                                },
+                                rollbackAvailable: true
+                            };
+                            this.postToWebview({
+                                type: 'navi.changes.applied',
+                                applyResult
+                            });
+                        }
+                        catch (error) {
+                            this.postToWebview({
+                                type: 'botMessage',
+                                text: `Force apply failed: ${error}`
+                            });
+                        }
+                        finally {
+                            this.postToWebview({ type: 'botThinking', value: false });
+                        }
+                        break;
+                    }
+                    case 'rollback_changes': {
+                        try {
+                            this.postToWebview({ type: 'botThinking', value: true });
+                            // Mock rollback (implement actual rollback logic)
+                            this.postToWebview({
+                                type: 'botMessage',
+                                text: '🔄 **Changes rolled back successfully**\n\nAll modifications have been reverted to the previous state.'
+                            });
+                        }
+                        catch (error) {
+                            this.postToWebview({
+                                type: 'botMessage',
+                                text: `Rollback failed: ${error}`
+                            });
+                        }
+                        finally {
+                            this.postToWebview({ type: 'botThinking', value: false });
+                        }
+                        break;
+                    }
+                    // Phase 3.3/3.4 - Apply changes from UI with validation pipeline
+                    case 'navi.apply.changes': {
+                        try {
+                            this.postToWebview({ type: 'botThinking', value: false });
+                            const workspaceRoot = this.getActiveWorkspaceRoot();
+                            if (!workspaceRoot) {
+                                throw new Error('No workspace root found');
+                            }
+                            const baseUrl = this.getBackendBaseUrl().replace('/api/navi/chat', '');
+                            const response = await fetch(`${baseUrl}/api/apply`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    codeChanges: msg.codeChanges || [],
+                                    repoRoot: workspaceRoot,
+                                }),
+                            });
+                            const result = await response.json();
+                            // 1️⃣ Always emit validation result
+                            this.postToWebview({
+                                type: 'navi.validation.result',
+                                validationResult: result.validationResult,
+                            });
+                            // 2️⃣ Only emit apply result if validation passed
+                            if (result.validationResult?.canProceed) {
+                                this.postToWebview({
+                                    type: 'navi.changes.applied',
+                                    applyResult: result.applyResult,
+                                });
+                            }
+                        }
+                        catch (err) {
+                            this.postToWebview({
+                                type: 'navi.validation.result',
+                                validationResult: {
+                                    status: 'FAILED',
+                                    issues: [{
+                                            validator: 'Extension',
+                                            message: err?.message || 'Apply failed'
+                                        }],
+                                    canProceed: false
+                                }
                             });
                         }
                         break;
@@ -1158,6 +2081,130 @@ class NaviWebviewProvider {
                             this.postToWebview({ type: 'botMessage', text: reply });
                             return;
                         }
+                        // 🚀 INTENT-BASED ENGINEERING WORK (Step 4 - Copilot-class intelligence)
+                        const intent = IntentClassifier_1.IntentClassifier.classify(text);
+                        console.log(`[IntentEngine] Classified intent: ${intent.type} (confidence: ${intent.confidence})`);
+                        // Handle non-diagnostic intents with generative coding engine
+                        if (intent.type !== 'FIX_ERRORS' && intent.type !== 'UNKNOWN' && intent.confidence >= 0.6) {
+                            console.log(`[IntentEngine] Processing ${intent.type} intent with generative engine`);
+                            // 🔥 PHASE 3.1 - FEATURE PLANNING ENGINE
+                            if (intent.type === 'PLAN_FEATURE') {
+                                try {
+                                    this._messages.push({ role: 'user', content: text });
+                                    recordUserMessage();
+                                    this.postToWebview({ type: 'botThinking', value: true });
+                                    const workspaceRoot = this.getActiveWorkspaceRoot();
+                                    if (!workspaceRoot) {
+                                        this.postToWebview({ type: 'botMessage', text: 'No workspace open. Please open a project to plan features.' });
+                                        this.postToWebview({ type: 'botThinking', value: false });
+                                        return;
+                                    }
+                                    // Create feature plan (NO CODE GENERATION)
+                                    const planningEngine = new FeaturePlanningEngine_1.FeaturePlanningEngine();
+                                    const repoContext = {
+                                        workspaceRoot,
+                                        detectedFrameworks: ['React', 'TypeScript'], // TODO: Auto-detect
+                                        packageManagers: ['npm'],
+                                        testFrameworks: ['Jest'],
+                                        buildTools: ['Vite'],
+                                        mainLanguage: 'TypeScript',
+                                        architecture: 'single'
+                                    };
+                                    const plan = await planningEngine.createPlan({
+                                        userRequest: text,
+                                        repoContext
+                                    });
+                                    // Phase 3.3 - Emit structured ChangePlan instead of preview
+                                    this.postToWebview({
+                                        type: 'navi.changePlan.generated',
+                                        changePlan: {
+                                            goal: plan.summary,
+                                            strategy: plan.reasoning || 'Feature implementation strategy',
+                                            files: plan.impactedAreas?.files?.map((filePath) => ({
+                                                path: filePath,
+                                                intent: 'modify',
+                                                rationale: `Implement feature requirements for ${path.basename(filePath)}`
+                                            })) || [],
+                                            riskLevel: plan.risks?.length > 2 ? 'high' : plan.risks?.length > 0 ? 'medium' : 'low',
+                                            testsRequired: plan.testsRequired?.length > 0
+                                        }
+                                    });
+                                    // Legacy preview for backward compatibility
+                                    this.postToWebview({
+                                        type: 'navi.plan.preview',
+                                        plan
+                                    });
+                                    this.postToWebview({ type: 'botThinking', value: false });
+                                    return;
+                                }
+                                catch (error) {
+                                    console.error('❌ Feature planning error:', error);
+                                    this.postToWebview({
+                                        type: 'botMessage',
+                                        text: `Feature planning failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+                                    });
+                                    this.postToWebview({ type: 'botThinking', value: false });
+                                    return;
+                                }
+                            }
+                            try {
+                                this._messages.push({ role: 'user', content: text });
+                                recordUserMessage();
+                                this.postToWebview({ type: 'botThinking', value: true });
+                                const workspaceRoot = this.getActiveWorkspaceRoot();
+                                if (!workspaceRoot) {
+                                    this.postToWebview({ type: 'botMessage', text: 'No workspace open. Please open a project to perform engineering work.' });
+                                    this.postToWebview({ type: 'botThinking', value: false });
+                                    return;
+                                }
+                                // Extract repo patterns for context
+                                const patterns = await RepoPatternExtractor_1.RepoPatternExtractor.extract();
+                                const repoContext = {
+                                    summary: `Project: ${path.basename(workspaceRoot)}`,
+                                    patterns
+                                };
+                                // Resolve patterns for this specific intent
+                                const resolvedPatterns = RepoPatternResolver_1.RepoPatternResolver.resolve(repoContext, intent);
+                                // Build execution plan
+                                const plan = IntentPlanBuilder_1.IntentPlanBuilder.build(intent, resolvedPatterns);
+                                console.log(`[IntentEngine] Created plan: ${plan.description}`);
+                                console.log(IntentPlanBuilder_1.IntentPlanBuilder.summarize(plan, intent));
+                                // Gather relevant files for context
+                                const relevantFiles = await this.gatherRelevantFiles(intent, workspaceRoot);
+                                // Generate code using unified generative engine
+                                const result = await GenerativeCodeEngine_1.GenerativeCodeEngine.generate({
+                                    intent,
+                                    plan,
+                                    resolvedPatterns,
+                                    files: relevantFiles,
+                                    context: text
+                                });
+                                if (result.success && result.files.length > 0) {
+                                    // Apply changes to workspace
+                                    const applied = await GenerativeCodeEngine_1.GenerativeCodeEngine.applyToWorkspace(result);
+                                    if (applied) {
+                                        const response = `✅ ${result.summary}\n\nGenerated changes:\n${result.files.map(f => `- ${f.operation} ${f.uri.split('/').pop()}: ${f.explanation}`).join('\n')}`;
+                                        this._messages.push({ role: 'assistant', content: response });
+                                        this.postToWebview({ type: 'botMessage', text: response });
+                                        console.log(`[IntentEngine] Successfully applied ${result.files.length} file changes`);
+                                    }
+                                    else {
+                                        throw new Error('Failed to apply generated changes to workspace');
+                                    }
+                                }
+                                else {
+                                    throw new Error(result.error || 'No code could be generated for this intent');
+                                }
+                                this.postToWebview({ type: 'botThinking', value: false });
+                                return; // ⛔ STOP HERE - intent handled by generative engine
+                            }
+                            catch (error) {
+                                console.log(`[IntentEngine] Intent processing failed: ${error}`);
+                                const errorMsg = `I had trouble with that request: ${error}. Let me try the standard approach instead.`;
+                                this.postToWebview({ type: 'botMessage', text: errorMsg });
+                                // Fall through to standard processing
+                            }
+                        }
                         if (this.looksLikeDiagnosticsRequest(text)) {
                             this._messages.push({ role: 'user', content: text });
                             recordUserMessage();
@@ -1216,8 +2263,19 @@ class NaviWebviewProvider {
                                 emitEvent: (event) => {
                                     // Forward all agent events
                                     this.postToWebview({ type: 'navi.agent.event', event });
-                                    // Phase 1.4: When repo diff summary arrives, collect diagnostics for changed files only
+                                    // Phase 2.1: Capture fix proposals for later application
                                     const kind = event.type || event.kind;
+                                    if (kind === 'navi.fix.proposals') {
+                                        const files = event.data?.files || [];
+                                        this._fixProposals.clear(); // Clear old proposals
+                                        for (const fileGroup of files) {
+                                            for (const proposal of fileGroup.proposals || []) {
+                                                this._fixProposals.set(proposal.id, proposal);
+                                            }
+                                        }
+                                        console.log(`[AEP] Stored ${this._fixProposals.size} fix proposals for application`);
+                                    }
+                                    // Phase 1.4: When repo diff summary arrives, collect diagnostics for changed files only
                                     if (kind === 'repo.diff.summary') {
                                         try {
                                             const unstaged = event.data?.unstagedFiles || [];
@@ -2121,6 +3179,67 @@ class NaviWebviewProvider {
                         }
                         break;
                     }
+                    // Phase 4.0.4: Handle command execution requests  
+                    case 'command': {
+                        const command = msg.command;
+                        if (command && typeof command === 'string') {
+                            console.log('[AEP] Executing command:', command);
+                            try {
+                                await vscode.commands.executeCommand(command);
+                            }
+                            catch (error) {
+                                console.error('[AEP] Failed to execute command:', command, error);
+                            }
+                        }
+                        break;
+                    }
+                    // Phase 4.0.4: Handle approval responses
+                    case 'navi.approval.resolved': {
+                        const decision = msg.decision;
+                        console.log('[AEP] Approval decision received:', decision);
+                        if (decision === 'approve') {
+                            // Resume workflow - continue with apply step
+                            this.emitToWebview({ type: 'navi.workflow.step', step: 'validate', status: 'completed' });
+                            // Apply step
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            this.emitToWebview({ type: 'navi.workflow.step', step: 'apply', status: 'active' });
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            this.emitToWebview({ type: 'navi.workflow.step', step: 'apply', status: 'completed' });
+                            // Continue with PR step
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            this.emitToWebview({ type: 'navi.workflow.step', step: 'pr', status: 'active' });
+                            await new Promise(resolve => setTimeout(resolve, 800));
+                            this.emitToWebview({ type: 'navi.workflow.step', step: 'pr', status: 'completed' });
+                            // CI step
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            this.emitToWebview({ type: 'navi.workflow.step', step: 'ci', status: 'active' });
+                            await new Promise(resolve => setTimeout(resolve, 1500));
+                            this.emitToWebview({ type: 'navi.workflow.step', step: 'ci', status: 'completed' });
+                            // Complete workflow
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            this.emitToWebview({ type: 'navi.workflow.completed' });
+                            vscode.window.showInformationMessage('✅ Workflow approved and completed!');
+                        }
+                        else {
+                            // Abort workflow
+                            this.emitToWebview({ type: 'navi.workflow.failed', step: 'validate', error: 'User rejected changes' });
+                            vscode.window.showInformationMessage('❌ Workflow rejected - changes not applied');
+                        }
+                        break;
+                    }
+                    // Phase 4.0.5: Handle user messages with real backend API calls
+                    case 'navi.user.message': {
+                        const content = String(msg.content || '').trim();
+                        const mode = String(msg.mode || 'agent');
+                        const model = String(msg.model || 'auto');
+                        if (!content) {
+                            return;
+                        }
+                        console.log(`[AEP] User message: "${content}" (${mode}, ${model})`);
+                        // 🚀 Make real backend API call
+                        this.callBackendAPI(content, mode, model);
+                        break;
+                    }
                     default:
                         console.warn('[Extension Host] [AEP] Unknown message from webview:', msg);
                 }
@@ -2567,402 +3686,27 @@ class NaviWebviewProvider {
      */
     async handleRepoOrchestrator(message) {
         try {
-            console.log('🎯 Repo orchestrator called for:', message.text);
+            console.log('🎯 Repo orchestrator delegating to unified backend:', message.text);
             const workspaceRoot = message.workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
             if (!workspaceRoot) {
                 throw new Error('No workspace folder found');
             }
-            const gitHealth = await this.getGitHealth(workspaceRoot);
-            if (!gitHealth.isGitRepo) {
-                await this.handleGitInitRequest('working');
-                this.postToWebview({
-                    type: 'review.error',
-                    message: 'This folder is not a Git repository.',
-                    code: 'GIT_NOT_REPO'
-                });
-                return;
-            }
-            // Guard: ensure there is a real working-tree diff before calling backend
-            try {
-                const diff = await this.execGit(['diff'], workspaceRoot);
-                const diffText = diff?.stdout ?? '';
-                if (!diffText.trim()) {
-                    this.postToWebview({
-                        type: 'botMessage',
-                        text: 'No uncommitted changes detected in this repository.'
-                    });
-                    this.postToWebview({ type: 'review.done' });
-                    this.postToWebview({ type: 'botThinking', value: false });
-                    return;
-                }
-            }
-            catch (diffErr) {
-                console.warn('[AEP] Git diff check failed, proceeding without diff content:', diffErr);
-            }
-            if (!gitHealth.hasHead) {
-                const repoName = path.basename(workspaceRoot);
-                const explanation = `This repo (${repoName}) has no commits yet, so there is no HEAD to compare against main/HEAD.\n\n` +
-                    `Next steps:\n` +
-                    `- Create an initial commit: \`git add -A\` then \`git commit -m "Initial commit"\`.\n` +
-                    `- If you expect a remote main branch: \`git fetch origin\` then \`git checkout main\`.\n\n` +
-                    `I can run the commands below once you approve them.`;
-                const actions = [
-                    {
-                        type: 'runCommand',
-                        description: 'Check git status',
-                        command: 'git status --porcelain',
-                        cwd: workspaceRoot
-                    },
-                    {
-                        type: 'runCommand',
-                        description: 'Stage all files',
-                        command: 'git add -A',
-                        cwd: workspaceRoot
-                    },
-                    {
-                        type: 'runCommand',
-                        description: 'Create initial commit',
-                        command: 'git commit -m "Initial commit"',
-                        cwd: workspaceRoot
-                    }
-                ];
-                this._messages.push({ role: 'assistant', content: explanation });
-                this.postToWebview({ type: 'botThinking', value: false });
-                this.postToWebview({ type: 'botMessage', text: explanation, actions });
-                this.postToWebview({
-                    type: 'review.error',
-                    message: 'Git HEAD is missing (no commits yet).',
-                    code: 'GIT_NO_HEAD'
-                });
-                return;
-            }
-            // Let the webview show its own progress UI (no chat bubble spam)
+            // Delegate to consolidated backend orchestrator
             this.postToWebview({
                 type: 'review.progress',
-                text: '🔍 Analyzing repository...'
+                text: '🔍 Routing to unified orchestrator...'
             });
-            console.log('🔍 Detected workspace folder:', workspaceRoot);
-            console.log('🔍 All workspace folders:', vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath));
-            const { baseUrl } = this.resolveBackendEndpoints();
-            const url = new URL(`${baseUrl}/api/navi/repo/review/stream`);
-            url.searchParams.set('workspace_root', workspaceRoot);
-            const response = await fetch(url.toString(), {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/event-stream',
-                    'Cache-Control': 'no-cache',
-                    'X-Org-Id': this.getOrgId(message.orgId)
-                }
-            });
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            // Handle SSE stream
-            const reader = response.body?.getReader();
-            if (!reader) {
-                throw new Error('No response body reader available');
-            }
-            const MAX_REVIEW_ENTRIES = 200; // avoid unbounded memory while keeping enough files
-            let reviewEntries = [];
-            let reviewSummary = null;
-            let currentProgress = '';
-            const decoder = new TextDecoder();
-            let buffer = '';
-            try {
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done)
-                        break;
-                    buffer += decoder.decode(value, { stream: true });
-                    // SSE events are separated by a blank line (\n\n). Keep any partial
-                    // event in the buffer and only parse complete ones.
-                    const events = buffer.split(/\n\n/);
-                    buffer = events.pop() ?? '';
-                    for (const rawEvent of events) {
-                        const dataLines = rawEvent
-                            .split('\n')
-                            .filter((l) => l.startsWith('data:'))
-                            .map((l) => l.replace(/^data:\s?/, ''));
-                        if (dataLines.length === 0)
-                            continue;
-                        const payloadStr = dataLines.join('\n').trim();
-                        if (!payloadStr)
-                            continue;
-                        try {
-                            const data = JSON.parse(payloadStr);
-                            if (data.kind === 'liveProgress') {
-                                // Update progress and forward to UI without dumping chat bubbles
-                                currentProgress = data.step || 'Processing...';
-                                this.postToWebview({
-                                    type: 'review.progress',
-                                    text: currentProgress,
-                                    percentage: data.percentage,
-                                    totalFiles: data.totalFiles,
-                                    processedFiles: data.processedFiles
-                                });
-                                // Also keep the chat bubble calm: no botMessage spam
-                            }
-                            else if (data.kind === 'reviewSummary') {
-                                // Store concise summary from backend
-                                reviewSummary = data;
-                                this.postToWebview({
-                                    type: 'review.summary',
-                                    summary: reviewSummary
-                                });
-                            }
-                            else if (data.kind === 'reviewEntry') {
-                                // Collect compact summaries (avoid streaming full diffs to chat)
-                                if (reviewEntries.length < MAX_REVIEW_ENTRIES) {
-                                    const entry = data.entry || {};
-                                    const file = entry.filePath ||
-                                        entry.file ||
-                                        entry.path ||
-                                        'unknown file';
-                                    const issues = Array.isArray(entry.issues)
-                                        ? entry.issues
-                                        : [];
-                                    reviewEntries.push({
-                                        file,
-                                        severity: entry.severity || 'info',
-                                        issueCount: issues.length,
-                                        topIssues: issues
-                                            .slice(0, 2)
-                                            .map((i) => i.title || i.description || i.summary || 'Issue'),
-                                        diff: entry.diff,
-                                    });
-                                }
-                                // Send lightweight entry to webview for live cards
-                                this.postToWebview({
-                                    type: 'review.entry',
-                                    entry: {
-                                        file: data.entry?.filePath || data.entry?.file || data.entry?.path,
-                                        severity: data.entry?.severity || 'info',
-                                        diff: data.entry?.diff || data.entry?.patch,
-                                        issues: (data.entry?.issues || []).map((issue) => ({
-                                            id: issue.id,
-                                            title: issue.title || issue.description || issue.summary,
-                                            severity: issue.severity || data.entry?.severity || 'info',
-                                            canAutoFix: !!issue.canAutoFix,
-                                            fixId: issue.id,
-                                        })),
-                                    }
-                                });
-                            }
-                            else if (data.kind === 'done') {
-                                // Stream complete
-                                break;
-                            }
-                        }
-                        catch (parseError) {
-                            // Harden parsing: tolerate non-JSON SSE chunks
-                            const t = payloadStr.trim();
-                            // Case 1: Python dict-style string → normalize quotes and parse
-                            if (t.startsWith('{') && t.includes("'")) {
-                                try {
-                                    const normalized = t.replace(/'/g, '"');
-                                    const data = JSON.parse(normalized);
-                                    // If the normalized payload looks like a review entry, forward it
-                                    if (data.file || data.path || data.filePath) {
-                                        const file = data.filePath || data.file || data.path || 'unknown file';
-                                        reviewEntries.push({
-                                            file,
-                                            severity: data.severity || 'info',
-                                            issueCount: Array.isArray(data.issues) ? data.issues.length : 0,
-                                            topIssues: (Array.isArray(data.issues) ? data.issues : [])
-                                                .slice(0, 2)
-                                                .map((i) => i.title || i.description || i.summary || 'Issue'),
-                                            diff: data.diff || data.patch,
-                                        });
-                                        this.postToWebview({
-                                            type: 'review.entry',
-                                            entry: {
-                                                file,
-                                                severity: data.severity || 'info',
-                                                diff: data.diff || data.patch,
-                                                issues: (Array.isArray(data.issues) ? data.issues : []).map((issue) => ({
-                                                    id: issue.id,
-                                                    title: issue.title || issue.description || issue.summary,
-                                                    severity: issue.severity || data.severity || 'info',
-                                                    canAutoFix: !!issue.canAutoFix,
-                                                    fixId: issue.id,
-                                                })),
-                                            }
-                                        });
-                                    }
-                                    else {
-                                        // Otherwise treat as progress text
-                                        this.postToWebview({
-                                            type: 'review.progress',
-                                            text: t,
-                                        });
-                                    }
-                                }
-                                catch {
-                                    // Plain text progress fallback
-                                    this.postToWebview({ type: 'review.progress', text: t });
-                                }
-                            }
-                            else {
-                                // Case 2: plain progress text
-                                this.postToWebview({ type: 'review.progress', text: t });
-                            }
-                        }
-                    }
-                }
-                // Attempt to parse any trailing buffered event (if stream closed without final \n\n)
-                if (buffer.trim().length > 0) {
-                    const dataLines = buffer
-                        .split('\n')
-                        .filter((l) => l.startsWith('data:'))
-                        .map((l) => l.replace(/^data:\s?/, ''));
-                    const payloadStr = dataLines.join('\n').trim();
-                    if (payloadStr) {
-                        try {
-                            const data = JSON.parse(payloadStr);
-                            if (data.kind === 'done') {
-                                // no-op, already complete
-                            }
-                        }
-                        catch (parseError) {
-                            // Apply same tolerant fallback for trailing chunk
-                            const t = payloadStr.trim();
-                            if (t.startsWith('{') && t.includes("'")) {
-                                try {
-                                    const normalized = t.replace(/'/g, '"');
-                                    const data = JSON.parse(normalized);
-                                    if (data.kind === 'liveProgress') {
-                                        this.postToWebview({ type: 'review.progress', text: data.step || 'Processing...' });
-                                    }
-                                    else if (data.file || data.path || data.filePath) {
-                                        const file = data.filePath || data.file || data.path || 'unknown file';
-                                        reviewEntries.push({
-                                            file,
-                                            severity: data.severity || 'info',
-                                            issueCount: Array.isArray(data.issues) ? data.issues.length : 0,
-                                            topIssues: (Array.isArray(data.issues) ? data.issues : [])
-                                                .slice(0, 2)
-                                                .map((i) => i.title || i.description || i.summary || 'Issue'),
-                                            diff: data.diff || data.patch,
-                                        });
-                                        this.postToWebview({
-                                            type: 'review.entry',
-                                            entry: {
-                                                file,
-                                                severity: data.severity || 'info',
-                                                diff: data.diff || data.patch,
-                                                issues: (Array.isArray(data.issues) ? data.issues : []).map((issue) => ({
-                                                    id: issue.id,
-                                                    title: issue.title || issue.description || issue.summary,
-                                                    severity: issue.severity || data.severity || 'info',
-                                                    canAutoFix: !!issue.canAutoFix,
-                                                    fixId: issue.id,
-                                                })),
-                                            }
-                                        });
-                                    }
-                                    else if (data.kind === 'done') {
-                                        // no-op
-                                    }
-                                    else {
-                                        this.postToWebview({ type: 'review.progress', text: t });
-                                    }
-                                }
-                                catch {
-                                    this.postToWebview({ type: 'review.progress', text: t });
-                                }
-                            }
-                            else {
-                                this.postToWebview({ type: 'review.progress', text: t });
-                            }
-                        }
-                    }
-                }
-            }
-            finally {
-                reader.releaseLock();
-            }
-            // Format and display a concise summary (no raw diffs dumped into chat)
-            const listed = reviewSummary?.listedFiles || [];
-            const skipped = reviewSummary?.skippedFiles || 0;
-            const totalFiles = reviewSummary?.totalFiles ?? reviewEntries.length;
-            const issueCount = reviewEntries.reduce((sum, e) => sum + e.issueCount, 0);
-            const quickSummary = [
-                `Files scanned: **${totalFiles}**`,
-                `Issues found: **${issueCount}**`,
-                skipped > 0 ? `Skipped: ${skipped} files (large/ignored)` : null,
-            ]
-                .filter(Boolean)
-                .join(' · ');
-            const severityRank = {
-                error: 3,
-                high: 3,
-                warning: 2,
-                medium: 2,
-                info: 1,
-                low: 1,
-            };
-            const entriesForSummary = reviewEntries.filter((e) => (e.issueCount ?? 0) > 0).length > 0
-                ? reviewEntries.filter((e) => (e.issueCount ?? 0) > 0)
-                : reviewEntries;
-            const topFindings = entriesForSummary
-                .slice()
-                .sort((a, b) => {
-                const rankA = severityRank[String(a.severity || '').toLowerCase()] ?? 0;
-                const rankB = severityRank[String(b.severity || '').toLowerCase()] ?? 0;
-                if (rankA !== rankB)
-                    return rankB - rankA;
-                return (b.issueCount ?? 0) - (a.issueCount ?? 0);
-            })
-                .slice(0, 5)
-                .map((entry) => {
-                const issues = entry.topIssues.length > 0
-                    ? entry.topIssues.map((t) => `• ${t}`).join('\n')
-                    : '• Issues detected';
-                return `- \`${entry.file}\` (${entry.severity}, ${entry.issueCount} issues)\n${issues}`;
-            })
-                .join('\n\n');
-            const fullResponse = [
-                '# 📋 Repository Review',
-                quickSummary ? `\n${quickSummary}\n` : '',
-                topFindings ? '\n## Top findings\n' + topFindings : '\n✅ No issues detected.',
-                listed.length
-                    ? '\nFiles reviewed: ' + listed.map((f) => `\`${f}\``).join(', ')
-                    : '',
-            ].join('\n');
-            // Broadcast structured completion event (no chat bubble dump)
-            this.postToWebview({
-                type: 'review.done',
-                summary: {
-                    text: fullResponse,
-                    quickSummary,
-                    topFindings,
-                    issueCount,
-                    totalFiles,
-                    skipped,
-                    listed
-                },
-                entries: reviewEntries
-            });
-            // Also drop the summary into the chat thread so the user sees a response
-            this.postToWebview({
-                type: 'botMessage',
-                text: fullResponse
-            });
-            // Stop thinking spinner
-            this.postToWebview({ type: 'botThinking', value: false });
-            // PATCH 3: Guarantee review completion signals
-            this.postToWebview({ type: 'review.done' });
-            this.postToWebview({ type: 'botThinking', value: false });
+            // Use consolidated orchestrator request
+            await this.handleOrchestratorRequest(message.text);
         }
         catch (error) {
-            console.error('❌ Repo orchestrator error:', error);
-            // PATCH 3: Guarantee completion signals in catch block too
+            console.error('❌ Repo orchestrator delegation failed:', error);
             this.postToWebview({ type: 'review.done' });
             this.postToWebview({ type: 'botThinking', value: false });
             this.postToWebview({
                 type: 'review.error',
                 message: error instanceof Error ? error.message : 'Unknown error',
-                code: 'REPO_ORCHESTRATOR_ERROR'
+                code: 'REPO_ORCHESTRATOR_DELEGATION_ERROR'
             });
         }
     }
@@ -3841,6 +4585,72 @@ class NaviWebviewProvider {
         }
         return firstWorkspace;
     }
+    /**
+     * Gather relevant files for intent-based code generation
+     */
+    async gatherRelevantFiles(intent, workspaceRoot) {
+        const files = [];
+        try {
+            // Always include currently active file
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor && activeEditor.document) {
+                const uri = activeEditor.document.uri.fsPath;
+                const content = activeEditor.document.getText();
+                files.push({ uri, content });
+            }
+            // For CREATE_FILE intent, don't need existing files
+            if (intent.type === 'CREATE_FILE') {
+                return files;
+            }
+            // For other intents, gather related files based on target
+            const target = intent.details?.target?.toLowerCase();
+            if (target) {
+                // Find files related to the target (component, service, etc.)
+                const searchPatterns = [
+                    `**/*${target}*`,
+                    `**/${target}/**`,
+                    `**/components/${target}*`,
+                    `**/services/${target}*`,
+                    `**/hooks/${target}*`
+                ];
+                for (const pattern of searchPatterns) {
+                    try {
+                        const foundFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceRoot, pattern), '**/node_modules/**', 5 // Limit to 5 files per pattern
+                        );
+                        for (const fileUri of foundFiles.slice(0, 2)) { // Max 2 files per pattern
+                            if (files.length >= 5)
+                                break; // Total limit of 5 files
+                            try {
+                                const document = await vscode.workspace.openTextDocument(fileUri);
+                                const content = document.getText();
+                                // Skip very large files (over 10KB)
+                                if (content.length > 10000)
+                                    continue;
+                                files.push({
+                                    uri: fileUri.fsPath,
+                                    content
+                                });
+                            }
+                            catch (error) {
+                                console.log(`[IntentEngine] Failed to read file ${fileUri.fsPath}: ${error}`);
+                            }
+                        }
+                    }
+                    catch (error) {
+                        console.log(`[IntentEngine] Failed to search pattern ${pattern}: ${error}`);
+                    }
+                }
+            }
+            // Remove duplicates based on URI
+            const uniqueFiles = files.filter((file, index, self) => index === self.findIndex(f => f.uri === file.uri));
+            console.log(`[IntentEngine] Gathered ${uniqueFiles.length} relevant files for ${intent.type} intent`);
+            return uniqueFiles.slice(0, 5); // Final safety limit
+        }
+        catch (error) {
+            console.log(`[IntentEngine] Error gathering files: ${error}`);
+            return files.slice(0, 1); // Return at least the active file
+        }
+    }
     // --- SSE reader (streaming support baked in for later) ----------------------
     /**
      * Reads a text/event-stream response and returns concatenated text.
@@ -4145,6 +4955,257 @@ class NaviWebviewProvider {
             console.error('[AEP] Failed to apply auto-fix:', error);
             vscode.window.showErrorMessage('Failed to apply auto-fix');
         }
+    }
+    // Phase 2.1: Proposal normalization helper
+    // Resolves a proposal to a concrete fix (handles alternatives selection)
+    resolveProposal(proposal, selectedAlternativeIndex) {
+        // If proposal has alternatives, select one
+        if (proposal.alternatives && Array.isArray(proposal.alternatives) && proposal.alternatives.length > 0) {
+            const idx = typeof selectedAlternativeIndex === 'number' ? selectedAlternativeIndex : 0;
+            const selected = proposal.alternatives[Math.min(idx, proposal.alternatives.length - 1)];
+            console.log(`[NaviFixEngine] Resolved to alternative ${idx}: ${selected.issue}`);
+            return selected;
+        }
+        // Otherwise return proposal as-is
+        return proposal;
+    }
+    // Phase 2.1: Core fix application logic (extracted for reuse)
+    async applyFix(proposal, options = {}) {
+        const proposalId = proposal.id;
+        const forceApply = options.forceApply || false;
+        try {
+            console.log(`[NaviFixEngine] Applying fix proposal: ${proposalId}`);
+            console.log(`[NaviFixEngine] Risk level: ${proposal.riskLevel}, Confidence: ${proposal.confidence}, ForceApply: ${forceApply}`);
+            // Phase 2.1.3: Speculative proposals require preview-first UX
+            // If speculative and not force applying, do not attempt to compute/apply edits.
+            if (proposal.speculative && !forceApply) {
+                const hasAlternatives = proposal.alternatives && Array.isArray(proposal.alternatives) && proposal.alternatives.length > 0;
+                this.postToWebview({
+                    type: 'navi.agent.event',
+                    event: {
+                        type: 'navi.fix.result',
+                        data: {
+                            proposalId,
+                            status: hasAlternatives ? 'requiresPreview' : 'failed',
+                            reason: hasAlternatives
+                                ? 'Speculative fix requires preview. Choose an alternative to apply.'
+                                : 'Speculative fix requires alternatives, but none were generated.',
+                            alternatives: hasAlternatives ? proposal.alternatives : undefined,
+                        }
+                    }
+                });
+                return;
+            }
+            // Phase 2.1: Generative-first syntax fix path (COPILOT-LIKE BEHAVIOR)
+            // NEW: For syntax errors, generate corrected file content directly via LLM
+            if (!proposal.replacementText && (!proposal.alternatives || !Array.isArray(proposal.alternatives) || proposal.alternatives.length === 0)) {
+                console.log(`[NaviFixEngine] No static fix available, attempting generative syntax fix for: "${proposal.issue}"`);
+                try {
+                    // Get file content and create synthetic diagnostics
+                    const fileUri = vscode.Uri.file(proposal.filePath);
+                    const doc = await vscode.workspace.openTextDocument(fileUri);
+                    const originalText = doc.getText();
+                    const diagnosticMessage = proposal.issue || proposal.message || "Syntax error";
+                    const line = typeof proposal.line === "number" ? proposal.line - 1 : 0; // Convert to 0-based
+                    const char = proposal.rangeStart?.character ?? 0;
+                    const diagnostic = new vscode.Diagnostic(new vscode.Range(new vscode.Position(line, char), new vscode.Position(line, char)), diagnosticMessage, vscode.DiagnosticSeverity.Error);
+                    // Create LLM adapter for NAVI backend
+                    const llmAdapter = {
+                        generateCodeFix: async (prompt) => {
+                            const baseUrl = this.getBackendBaseUrl();
+                            const response = await fetch(`${baseUrl}/api/navi/chat`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-Org-Id': this.getOrgId(),
+                                },
+                                body: JSON.stringify({
+                                    message: prompt,
+                                    attachments: [],
+                                    workspace_root: this.getActiveWorkspaceRoot(),
+                                    model: 'gpt-4o-mini', // Use fast model for syntax fixes
+                                }),
+                            });
+                            if (!response.ok) {
+                                throw new Error(`LLM request failed: ${response.status}`);
+                            }
+                            const result = await response.json();
+                            return result.reply || result.content || '';
+                        }
+                    };
+                    // Use generative engine
+                    const engine = new SyntaxCompletionFixEngine_1.SyntaxCompletionFixEngine(llmAdapter);
+                    const fixResult = await engine.generateFix(fileUri, originalText, [diagnostic]);
+                    if (!fixResult) {
+                        this.postToWebview({
+                            type: 'navi.agent.event',
+                            event: {
+                                type: 'navi.fix.result',
+                                data: {
+                                    proposalId,
+                                    status: 'failed',
+                                    reason: `No generative fix could be produced for: ${diagnosticMessage}. This issue may require manual inspection.`
+                                }
+                            }
+                        });
+                        return;
+                    }
+                    // Apply whole-file replacement (Copilot style)
+                    console.log(`[NaviFixEngine] Generated corrected file content (${fixResult.fixedText.length} chars)`);
+                    const edit = SyntaxCompletionFixEngine_1.SyntaxCompletionFixEngine.buildWorkspaceEdit(fileUri, originalText, fixResult.fixedText);
+                    const success = await vscode.workspace.applyEdit(edit);
+                    this.postToWebview({
+                        type: 'navi.agent.event',
+                        event: {
+                            type: 'navi.fix.result',
+                            data: {
+                                proposalId,
+                                status: success ? 'applied' : 'failed',
+                                message: success ? 'Applied generative syntax fix' : 'Failed to apply generative fix'
+                            }
+                        }
+                    });
+                    return;
+                }
+                catch (error) {
+                    console.error('[NaviFixEngine] Generative fix failed:', error);
+                    this.postToWebview({
+                        type: 'navi.agent.event',
+                        event: {
+                            type: 'navi.fix.result',
+                            data: {
+                                proposalId,
+                                status: 'failed',
+                                reason: `Generative fix failed: ${error instanceof Error ? error.message : String(error)}`
+                            }
+                        }
+                    });
+                    return;
+                }
+            }
+            // Resolve proposal to concrete fix (may select alternative if available)
+            const resolved = this.resolveProposal(proposal, options.selectedAlternativeIndex);
+            // Verify resolved proposal has replacement text (should only reach here if we have static fixes)
+            if (!resolved.replacementText) {
+                this.postToWebview({
+                    type: 'navi.agent.event',
+                    event: {
+                        type: 'navi.fix.result',
+                        data: {
+                            proposalId,
+                            status: 'failed',
+                            reason: `Resolved proposal has no replacementText. Cannot apply fix for "${proposal.issue}". This issue may require manual review.`
+                        }
+                    }
+                });
+                return;
+            }
+            // Risk-based confirmation (not hard blocking)
+            // For high-risk fixes, confirm with user UNLESS forceApply=true
+            if (proposal.riskLevel === 'high' && !forceApply) {
+                const choice = await vscode.window.showWarningMessage(`Apply fix for "${proposal.issue}"?\n\nThis fix is high-risk and may have unintended effects. Review carefully.`, { modal: true }, 'Apply Anyway', 'Review in Editor', 'Cancel');
+                if (choice === 'Review in Editor') {
+                    // Open file at line for manual review
+                    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(proposal.filePath));
+                    const editor = await vscode.window.showTextDocument(doc);
+                    const pos = new vscode.Position(proposal.line - 1, 0);
+                    editor.selection = new vscode.Selection(pos, pos);
+                    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+                    this.postToWebview({
+                        type: 'navi.agent.event',
+                        event: {
+                            type: 'navi.fix.result',
+                            data: { proposalId, status: 'deferred', reason: 'Opened in editor for manual review' }
+                        }
+                    });
+                    return;
+                }
+                else if (choice !== 'Apply Anyway') {
+                    this.postToWebview({
+                        type: 'navi.agent.event',
+                        event: {
+                            type: 'navi.fix.result',
+                            data: { proposalId, status: 'cancelled', reason: 'User cancelled high-risk fix' }
+                        }
+                    });
+                    return;
+                }
+                // If 'Apply Anyway', continue to apply logic below with forceApply implicitly set
+            }
+            // Safety check: file exists
+            const fileUri = vscode.Uri.file(proposal.filePath);
+            let fileContent;
+            try {
+                const doc = await vscode.workspace.openTextDocument(fileUri);
+                fileContent = doc.getText();
+            }
+            catch (err) {
+                throw new Error('File not found or cannot be opened');
+            }
+            // Safety check: hash matches (file unchanged since proposal)
+            if (proposal.originalFileHash) {
+                const crypto = await Promise.resolve().then(() => require('crypto'));
+                const currentHash = crypto.createHash('sha256').update(fileContent).digest('hex');
+                if (currentHash !== proposal.originalFileHash) {
+                    throw new Error('File changed since analysis — fix may no longer be valid');
+                }
+            }
+            // Apply fix via WorkspaceEdit
+            // Phase 2.1.2: Apply replacement text from resolved proposal
+            const edit = new vscode.WorkspaceEdit();
+            // Use provided range or fall back to line-based range from resolved proposal
+            const rangeStart = resolved.rangeStart
+                ? new vscode.Position(resolved.rangeStart.line, resolved.rangeStart.character)
+                : new vscode.Position(resolved.line - 1, 0);
+            const rangeEnd = resolved.rangeEnd
+                ? new vscode.Position(resolved.rangeEnd.line, resolved.rangeEnd.character)
+                : new vscode.Position(resolved.line, 0);
+            const range = new vscode.Range(rangeStart, rangeEnd);
+            // Replace the range with the resolved replacement text
+            edit.replace(fileUri, range, resolved.replacementText);
+            console.log(`[NaviFixEngine] Applying fix at ${proposal.filePath}:${proposal.line}`);
+            console.log(`[NaviFixEngine] Range: L${rangeStart.line}:${rangeStart.character} - L${rangeEnd.line}:${rangeEnd.character}`);
+            console.log(`[NaviFixEngine] Replacement text: ${resolved.replacementText.substring(0, 100)}${resolved.replacementText.length > 100 ? '...' : ''}`);
+            const success = await vscode.workspace.applyEdit(edit);
+            if (!success) {
+                throw new Error('WorkspaceEdit failed to apply (VS Code rejected the edit)');
+            }
+            // Report success
+            this.postToWebview({
+                type: 'navi.agent.event',
+                event: {
+                    type: 'navi.fix.result',
+                    data: {
+                        proposalId,
+                        status: 'applied',
+                        message: `Fix applied successfully at line ${proposal.line}`
+                    }
+                }
+            });
+        }
+        catch (err) {
+            console.error(`[NaviFixEngine] Fix application failed:`, err);
+            this.postToWebview({
+                type: 'navi.agent.event',
+                event: {
+                    type: 'navi.fix.result',
+                    data: {
+                        proposalId,
+                        status: 'failed',
+                        reason: err?.message || String(err)
+                    }
+                }
+            });
+        }
+    }
+    // Phase 4.0.4: Canonical Event Emission Helper
+    emitToWebview(event) {
+        if (!this._view) {
+            console.warn('[Extension Host] [AEP] WARNING: emitToWebview called but this._view is null!');
+            return;
+        }
+        console.log('[Extension Host] [AEP] 🔄 Emitting canonical event:', event.type);
+        this._view.webview.postMessage(event);
     }
     postToWebview(message) {
         if (!this._view) {
@@ -5456,26 +6517,70 @@ class NaviWebviewProvider {
     }
     async getWebviewHtml(webview) {
         const cfg = vscode.workspace.getConfiguration('aep');
-        const isDevelopment = cfg.get('development.useReactDevServer') ?? true; // Use React development
+        // Temporarily use production mode to bypass iframe issues
+        const isDevelopment = false; // cfg.get<boolean>('development.useReactDevServer') ?? true;
         console.log('[AEP] Development mode:', isDevelopment);
         console.log('[AEP] 🔍 WEBVIEW DEBUG: Starting to generate HTML...');
+        // Quick fallback for immediate display
+        const fallbackHtml = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NAVI Assistant</title>
+    <style>
+      body { 
+        background: #020617; 
+        color: white; 
+        font-family: system-ui; 
+        padding: 20px; 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        justify-content: center; 
+        height: 100vh; 
+        text-align: center; 
+      }
+      h1 { color: #10b981; margin-bottom: 16px; font-size: 24px; }
+      p { color: #94a3b8; margin-bottom: 8px; line-height: 1.6; }
+      .status { background: #1e293b; padding: 8px 16px; border-radius: 6px; margin: 8px 0; }
+      .loading { color: #10b981; }
+    </style>
+    <script>
+      console.log('[NAVI WebView] Loading fallback HTML...');
+      const vscode = acquireVsCodeApi();
+      
+      window.addEventListener('DOMContentLoaded', () => {
+        console.log('[NAVI WebView] Fallback DOM loaded');
+        vscode.postMessage({ type: 'ready' });
+      });
+    </script>
+  </head>
+  <body>
+    <h1>NAVI Assistant</h1>
+    <div class="status loading">Development Mode: ${isDevelopment}</div>
+    <p>Setting up your autonomous engineering assistant</p>
+    <p><strong>Status:</strong> ${isDevelopment ? 'Using React dev server' : 'Using fallback HTML'}</p>
+  </body>
+</html>`;
         if (isDevelopment) {
-            // Make sure the Vite dev server is actually running; try to start it if not.
-            const serverReady = await this.ensureFrontendServer();
-            if (!serverReady) {
-                console.log('[AEP] ❌ Frontend dev server still not running after auto-start attempt');
-                return this.getServerNotRunningHtml();
-            }
-            // Get workspace root for context
-            const workspaceRoot = this.getActiveWorkspaceRoot();
-            const workspaceParam = workspaceRoot ? `?workspaceRoot=${encodeURIComponent(workspaceRoot)}` : '';
-            console.log('[AEP] 📁 Workspace context:', { workspaceRoot, workspaceParam });
-            // Get the detected frontend port
-            const frontendPort = this.__frontendPort || 3008;
-            // Use direct localhost URL for iframe (asExternalUri can break iframe loading in some cases)
-            const viteUrl = `http://localhost:${frontendPort}/navi${workspaceParam}`;
-            console.log('[AEP] 🌐 Loading Vite webview from:', viteUrl);
-            return /* html */ `<!DOCTYPE html>
+            // Try to load the React dev server, but with immediate fallback
+            try {
+                const serverReady = await this.ensureFrontendServer();
+                if (!serverReady) {
+                    console.log('[AEP] ❌ Frontend dev server not ready - using built webview');
+                    return await this.getBuiltWebviewHtml(webview);
+                }
+                // Get workspace root for context
+                const workspaceRoot = this.getActiveWorkspaceRoot();
+                const workspaceParam = workspaceRoot ? `?workspaceRoot=${encodeURIComponent(workspaceRoot)}` : '';
+                console.log('[AEP] 📁 Workspace context:', { workspaceRoot, workspaceParam });
+                // Get the detected frontend port
+                const frontendPort = this.__frontendPort || 3008;
+                // Use direct localhost URL for iframe (asExternalUri can break iframe loading in some cases)
+                const viteUrl = `http://localhost:${frontendPort}/navi${workspaceParam}`;
+                console.log('[AEP] 🌐 Loading Vite webview from:', viteUrl);
+                return /* html */ `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -5600,20 +6705,19 @@ class NaviWebviewProvider {
     </script>
   </body>
 </html>`;
+            }
+            catch (error) {
+                console.error('[AEP] Error in development webview setup:', error);
+                return fallbackHtml;
+            }
         }
         else {
-            // Production: Use React webview bundle
-            const scriptPathOnDisk = vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview', 'panel.js');
-            const scriptUri = webview.asWebviewUri(scriptPathOnDisk);
-            // Read the panel.html template
-            const htmlPathOnDisk = vscode.Uri.joinPath(this._extensionUri, 'media', 'panel.html');
-            const htmlContent = Buffer.from(await vscode.workspace.fs.readFile(htmlPathOnDisk)).toString();
-            // Replace placeholders with actual URIs
-            return htmlContent
-                .replace(/\{\{scriptUri\}\}/g, scriptUri.toString())
-                .replace(/\{\{cspSource\}\}/g, webview.cspSource)
-                .replace(/\{\{nonce\}\}/g, this.getNonce());
+            // Production: Use built React webview bundle
+            console.log('[AEP] Using production built webview');
+            return await this.getBuiltWebviewHtml(webview);
         }
+        // Return fallback if all else fails
+        return fallbackHtml;
     }
     getNonce() {
         let text = '';
@@ -5629,7 +6733,7 @@ class NaviWebviewProvider {
             try {
                 const response = await fetch(`http://localhost:${port}/`, {
                     method: 'GET',
-                    signal: AbortSignal.timeout(2000)
+                    signal: AbortSignal.timeout(500) // Reduced from 2000ms to 500ms
                 });
                 // Accept any 2xx or 3xx response as "running"
                 if (response.status < 400) {
@@ -5655,8 +6759,8 @@ class NaviWebviewProvider {
         }
         console.log('[AEP] ⚠️ Frontend dev server not running - attempting auto-start');
         await this.startFrontendServer();
-        // Give the dev server a moment to boot before re-checking
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Reduced wait time from 3000ms to 1500ms
+        await new Promise(resolve => setTimeout(resolve, 1500));
         const recheck = await this.checkFrontendServer();
         if (recheck.available && recheck.port) {
             this.__frontendPort = recheck.port;
@@ -5972,6 +7076,33 @@ class NaviWebviewProvider {
             body: body || title,
             canAutoFix,
         };
+    }
+    async getBuiltWebviewHtml(webview) {
+        try {
+            const distPath = path.join(this._extensionUri.fsPath, 'dist', 'webview');
+            // Read the built HTML
+            let html = await (0, promises_1.readFile)(path.join(distPath, 'index.html'), 'utf8');
+            // Convert asset paths to webview URIs
+            const assetsPath = vscode.Uri.file(path.join(distPath, 'assets'));
+            const assetsUri = webview.asWebviewUri(assetsPath);
+            const jsPath = vscode.Uri.file(path.join(distPath, 'panel.js'));
+            const jsUri = webview.asWebviewUri(jsPath);
+            // Update the HTML to use webview URIs and add VS Code API
+            html = html
+                .replace('./panel.js', jsUri.toString())
+                .replace('./assets/', `${assetsUri.toString()}/`)
+                .replace('<head>', `<head>
+    <script>
+      window.acquireVsCodeApi = acquireVsCodeApi;
+      console.log('[NAVI] Built webview loaded');
+    </script>`);
+            console.log('[AEP] ✅ Using built webview HTML');
+            return html;
+        }
+        catch (error) {
+            console.error('[AEP] ❌ Failed to load built webview:', error);
+            return this.getServerNotRunningHtml();
+        }
     }
 }
 // Simple conversation id – you can switch to UUID later

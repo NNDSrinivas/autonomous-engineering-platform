@@ -19,6 +19,37 @@ import { UIAction } from "./uiStore";
  * - navi.validation.result
  */
 
+// Helper function for DOM fallback
+function addPlanDirectToDOM(plan: any) {
+  const planElement = document.createElement('div');
+  planElement.innerHTML = `
+    <div style="background: #1e2024; border: 1px solid #333; border-radius: 8px; padding: 16px; margin: 8px 0;">
+      <div style="color: #9cc3ff; font-weight: bold; margin-bottom: 8px;">📋 ${plan.goal}</div>
+      <div style="color: #7cc7a0; font-size: 12px; margin-bottom: 12px;">Confidence: ${Math.round(plan.confidence * 100)}%</div>
+      <div style="color: #dfe2ea;">
+        <strong>Plan Steps:</strong>
+        <ol style="margin: 8px 0; padding-left: 20px;">
+          ${plan.steps.map(step => `<li style="margin: 4px 0;">${step.title}</li>`).join('')}
+        </ol>
+      </div>
+      <button style="background: #0078d4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 8px;">
+        Approve Plan
+      </button>
+    </div>
+  `;
+
+  const chatContainer = document.querySelector('.flex-1.overflow-y-auto.p-4.space-y-4') ||
+    document.querySelector('[class*="chat"]') ||
+    document.body;
+
+  if (chatContainer) {
+    chatContainer.appendChild(planElement);
+    console.log('✅ Plan added directly to DOM');
+  } else {
+    console.error('❌ Could not find chat container');
+  }
+}
+
 export function routeEventToUI(
   event: any,
   dispatch: Dispatch<UIAction>
@@ -80,6 +111,52 @@ export function routeEventToUI(
       dispatch({ type: 'SET_THINKING', thinking: !!event.thinking });
       break;
 
+    // Phase 4.1.2: Plan-based responses
+    case 'navi.assistant.plan':
+      console.log('📋 Plan received:', event.plan);
+
+      // PROPER APPROACH: Try React state management first
+      console.log('🐛 Attempting React dispatch for ADD_PLAN...');
+      console.log('🐛 Dispatch function type:', typeof dispatch);
+      console.log('🐛 Dispatch function name:', dispatch.name);
+      console.log('🐛 Dispatch function toString:', dispatch.toString());
+      console.log('🐛 Plan data:', event.plan);
+
+      try {
+        console.log('🐛 About to call dispatch...');
+        dispatch({ type: 'ADD_PLAN', plan: event.plan, reasoning: event.reasoning, session_id: event.session_id });
+        console.log('✅ React dispatch called successfully');
+        console.log('🐛 Dispatch call completed, waiting for render...');        // Give React a moment to render, then check if it worked
+        setTimeout(() => {
+          const planMessages = document.querySelectorAll('[data-plan-message]');
+          console.log('🐛 Plan messages found after dispatch:', planMessages.length);
+
+          if (planMessages.length === 0) {
+            console.log('⚠️ React rendering failed, falling back to direct DOM...');
+            addPlanDirectToDOM(event.plan);
+          } else {
+            console.log('✅ React rendering successful!');
+          }
+        }, 100);
+
+      } catch (error) {
+        console.error('❌ React dispatch failed:', error);
+        console.log('⚠️ Falling back to direct DOM...');
+        addPlanDirectToDOM(event.plan);
+      }
+      break;
+
+    // Phase 4.1.2: Tool approval requests
+    case 'navi.tool.approval':
+      console.log('🔧 Tool approval required:', event.tool_request);
+      dispatch({ type: 'REQUEST_TOOL_APPROVAL', tool_request: event.tool_request, session_id: event.session_id });
+      break;
+
+    case 'navi.assistant.error':
+      console.log('❌ Assistant error:', event.content);
+      dispatch({ type: 'ADD_ASSISTANT_MESSAGE', content: event.content, error: event.error });
+      break;
+
     default:
       console.warn('⚠️ Unknown event type:', event.type);
       break;
@@ -117,9 +194,9 @@ export interface ApprovalResolvedEvent {
   decision: 'approve' | 'reject';
 }
 
-export type ExtensionEvent = 
+export type ExtensionEvent =
   | WorkflowStartedEvent
-  | WorkflowStepEvent  
+  | WorkflowStepEvent
   | ApprovalRequiredEvent
   | WorkflowCompletedEvent
   | WorkflowFailedEvent

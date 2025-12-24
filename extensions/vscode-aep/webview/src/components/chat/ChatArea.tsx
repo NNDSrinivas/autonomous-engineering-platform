@@ -1,6 +1,15 @@
 import React, { useState } from 'react';
 import { useUIState } from '../../state/uiStore';
 import { Message } from '../../state/uiStore';
+import { PlanRenderer } from './PlanRenderer';
+import { ToolApproval } from '../plan/ToolApproval';
+
+// TEMP: Stub feedback icons until Phase 4.2 feedback system
+const FeedbackIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
+  </svg>
+);
 
 // PHASE 4.0.2 DESIGN TOKENS - NAVI Font System & Colors
 const DESIGN_TOKENS = {
@@ -109,12 +118,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
             }}
           >
             {message.content}
-            
+
             {/* Inline Copy Button - Top Right Corner */}
             <button
               onClick={handleCopy}
               className="absolute top-2 right-3 p-1.5 rounded opacity-0 group-hover:opacity-100 transition-all duration-150"
-              style={{ 
+              style={{
                 color: DESIGN_TOKENS.actions.default,
                 minWidth: '28px',
                 minHeight: '28px'
@@ -132,11 +141,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               <CopyIcon />
             </button>
           </div>
-          
+
           {/* Timestamp outside bubble */}
-          <div 
-            className="mt-1.5 mr-1" 
-            style={{ 
+          <div
+            className="mt-1.5 mr-1"
+            style={{
               color: DESIGN_TOKENS.user.timestamp,
               fontSize: DESIGN_TOKENS.fonts.metaText,
               fontFamily: DESIGN_TOKENS.fonts.ui
@@ -147,7 +156,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
         </div>
       ) : (
         /* NAVI MESSAGE - Right-Aligned Vertical Action Rail */
-        <div 
+        <div
           className="flex max-w-[84%] group relative"
           onMouseEnter={() => setShowActions(true)}
           onMouseLeave={() => setShowActions(false)}
@@ -170,13 +179,54 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
                 N
               </div>
               <div className="flex-1">
-                <div className="whitespace-pre-wrap leading-relaxed">
-                  {message.content}
-                </div>
+                {/* DEBUG: Log message details */}
+                {console.log('🐛 ChatMessage:', message.id, 'type:', message.type, 'plan:', !!message.plan, 'role:', message.role)}
+                {console.log('🐛 ChatMessage full object:', message)}
+                {console.log('🐛 ChatMessage type check:', message.type === 'plan', 'plan check:', !!message.plan)}
+
+                {/* VISIBLE DEBUG */}
+                {message.type === 'plan' && (
+                  <div style={{ background: 'red', color: 'white', padding: '10px', margin: '5px' }}>
+                    DEBUG: Plan message detected! Type: {message.type}, Has plan: {message.plan ? 'YES' : 'NO'}
+                  </div>
+                )}
+
+                {/* Phase 4.1.2: Render structured plans and errors */}
+                {message.type === 'plan' && message.plan ? (
+                  <PlanRenderer
+                    plan={message.plan}
+                    reasoning={message.reasoning}
+                    session_id={message.session_id}
+                  />
+                ) : message.type === 'error' && message.error ? (
+                  <div className="plan-error p-3 rounded border-l-4 border-red-500 bg-red-500/10">
+                    <div className="text-red-400 font-medium mb-1">Error</div>
+                    <div className="text-red-300 text-sm">{message.error}</div>
+                    <div className="text-gray-400 text-sm mt-2">Message:</div>
+                    <div className="whitespace-pre-wrap leading-relaxed mt-1 text-gray-300">
+                      {message.content}
+                    </div>
+                  </div>
+                ) : message.plan ? (
+                  <PlanRenderer plan={message.plan} />
+                ) : message.planError ? (
+                  <div className="plan-error p-3 rounded border-l-4 border-red-500 bg-red-500/10">
+                    <div className="text-red-400 font-medium mb-1">Plan Generation Failed</div>
+                    <div className="text-red-300 text-sm">{message.planError}</div>
+                    <div className="text-gray-400 text-sm mt-2">Fallback response:</div>
+                    <div className="whitespace-pre-wrap leading-relaxed mt-1 text-gray-300">
+                      {message.content}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap leading-relaxed">
+                    {message.content}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-          
+
           {/* Right-Aligned Vertical Action Rail - Hover Only */}
           {showActions && (
             <div className="flex flex-col gap-2 ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -233,9 +283,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               </button>
             </div>
           )}
-          
+
           {/* Timestamp outside bubble - bottom left, show on hover or last message */}
-          <div 
+          <div
             className="ml-1 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
             style={{
               color: DESIGN_TOKENS.user.timestamp,
@@ -252,14 +302,28 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
 };
 
 const ChatArea: React.FC = () => {
-  const { state } = useUIState();
-  const { messages } = state;
+  const { state, dispatch } = useUIState();
+  const { messages, pendingToolApproval } = state;
+
+  const handleToolApprovalResolve = () => {
+    dispatch({ type: 'RESOLVE_TOOL_APPROVAL' });
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
       {messages.map((message) => (
         <ChatMessage key={message.id} message={message} />
       ))}
+
+      {/* Phase 4.1.2: Tool Approval UI */}
+      {pendingToolApproval && (
+        <ToolApproval
+          tool_request={pendingToolApproval.tool_request}
+          session_id={pendingToolApproval.session_id}
+          onResolve={handleToolApprovalResolve}
+        />
+      )}
+
       {messages.length === 0 && (
         <div className="flex items-center justify-center h-full text-[var(--vscode-descriptionForeground)]">
           <div className="text-center">

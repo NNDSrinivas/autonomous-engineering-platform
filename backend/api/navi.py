@@ -61,9 +61,71 @@ from backend.agent.intent_schema import (
 from backend.services.repo_service import RepoService
 from backend.services.git_service import GitService
 
+# Phase 4.1.2: Planner Engine Data Models
+class ContextPack(BaseModel):
+    """Context information collected by extension for planning"""
+    workspace: Dict[str, Any] = Field(default_factory=dict)
+    repo: Optional[Dict[str, Any]] = None
+    diagnostics: List[Dict[str, Any]] = Field(default_factory=list)
+    active_file: Optional[Dict[str, Any]] = None
+    selected_text: Optional[str] = None
+
+class PlanStep(BaseModel):
+    """Individual step in a plan"""
+    id: str
+    title: str
+    rationale: Optional[str] = None
+    requires_approval: bool = False
+    tool: Optional[str] = None
+    input: Optional[Dict[str, Any]] = None
+    verify: List[str] = Field(default_factory=list)  # verification rules
+    status: Literal["pending", "active", "completed", "failed", "skipped"] = "pending"
+
+class Plan(BaseModel):
+    """Multi-step execution plan"""
+    id: str
+    goal: str
+    steps: List[PlanStep]
+    requires_approval: bool = False
+    confidence: float = 0.0
+    reasoning: Optional[str] = None
+
+class RunState(BaseModel):
+    """Complete state of a NAVI run"""
+    run_id: str
+    user_message: str
+    intent: NaviIntent
+    context: ContextPack
+    plan: Optional[Plan] = None
+    current_step: int = 0
+    status: Literal["idle", "planning", "executing", "verifying", "done", "failed"] = "idle"
+    artifacts: List[Dict[str, Any]] = Field(default_factory=list)
+    created_at: float = Field(default_factory=time.time)
+
+class ToolRequest(BaseModel):
+    """Request for tool execution"""
+    run_id: str
+    request_id: str
+    tool: str
+    args: Dict[str, Any]
+    approval: Dict[str, Any]
+
+class ToolResult(BaseModel):
+    """Result of tool execution"""
+    run_id: str
+    request_id: str
+    tool: str
+    ok: bool
+    output: Any
+    error: Optional[str] = None
+
+# Global run state storage (in-memory for now)
+active_runs: Dict[str, RunState] = {}
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
+agent_router = APIRouter(prefix="/api/agent", tags=["agent-classify"])
 
 
 class ProgressTracker:
@@ -111,6 +173,27 @@ if OPENAI_ENABLED:
 
 # Initialize PlannerV3 for fast-path routing
 planner_v3 = PlannerV3()
+
+@agent_router.post("/classify")
+async def classify_intent(request: Dict[str, Any]):
+    """Classification endpoint that redirects to NAVI intent classification"""
+    message = request.get("message", "")
+    
+    # Use the same intent classification logic as /api/navi/intent
+    intent_map = {
+        "fix": ["error", "bug", "issue", "problem", "broken", "crash", "fail"],
+        "code": ["implement", "feature", "add", "create", "build", "develop", "code"],
+        "workspace": ["repo", "project", "workspace", "directory", "structure", "files"],
+        "git": ["commit", "branch", "merge", "pull", "push", "git", "version"],
+        "docs": ["document", "readme", "explain", "describe", "help", "guide"],
+    }
+    
+    message_lower = message.lower()
+    for intent, keywords in intent_map.items():
+        if any(keyword in message_lower for keyword in keywords):
+            return {"intent": intent}
+    
+    return {"intent": "general"}
 
 # Real repo scanning configuration
 REPO_EXPLAIN_IGNORE_DIRS = {
@@ -200,6 +283,514 @@ WORK_KEYWORDS = (
     "doc",
     "repo",
 )
+
+
+# Phase 4.1.2: Intent Classification Endpoint
+@router.post("/intent")
+async def classify_intent(
+    message: str,
+    context: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Classify user message into structured intent.
+    Returns IntentKind + confidence + metadata.
+    """
+    try:
+        progress = ProgressTracker()
+        progress.update_status("Classifying user intent...")
+        
+        # Simple rule-based classification for now
+        message_lower = message.lower().strip()
+        
+        # Diagnostic/error fixing intents
+        if any(word in message_lower for word in ["error", "errors", "problem", "problems", "fix", "bug", "issue"]):
+            if "problems tab" in message_lower or "diagnostics" in message_lower:
+                intent_kind = IntentKind.FIX_BUG
+                family = IntentFamily.ENGINEERING
+                confidence = 0.9
+            elif "file" in message_lower:
+                intent_kind = IntentKind.MODIFY_CODE  
+                family = IntentFamily.ENGINEERING
+                confidence = 0.8
+            else:
+                intent_kind = IntentKind.FIX_BUG
+                family = IntentFamily.ENGINEERING
+                confidence = 0.7
+        
+        # Repository inspection intents
+        elif any(word in message_lower for word in ["repo", "repository", "explain", "what", "overview"]):
+            intent_kind = IntentKind.INSPECT_REPO
+            family = IntentFamily.ENGINEERING
+            confidence = 0.85
+            
+        # Build/run intents
+        elif any(word in message_lower for word in ["build", "run", "start", "compile", "test"]):
+            if "test" in message_lower:
+                intent_kind = IntentKind.RUN_TESTS
+            else:
+                intent_kind = IntentKind.RUN_BUILD
+            family = IntentFamily.ENGINEERING
+            confidence = 0.8
+            
+        # Feature implementation intents
+        elif any(word in message_lower for word in ["implement", "feature", "add", "create"]):
+            intent_kind = IntentKind.IMPLEMENT_FEATURE
+            family = IntentFamily.ENGINEERING
+            confidence = 0.75
+            
+        # JIRA/ticket intents
+        elif any(word in message_lower for word in ["jira", "ticket", "issue", "task", "assigned"]):
+            intent_kind = IntentKind.LIST_MY_ITEMS
+            family = IntentFamily.PROJECT_MANAGEMENT
+            confidence = 0.8
+            
+        else:
+            # Default to general explanation
+            intent_kind = IntentKind.EXPLAIN_CODE
+            family = IntentFamily.ENGINEERING
+            confidence = 0.5
+            
+        intent = NaviIntent(
+            family=family,
+            kind=intent_kind,
+            priority=IntentPriority.NORMAL,
+            requires_approval=False,
+            target=None,
+            parameters={},
+            confidence=confidence,
+            raw_text=message
+        )
+        
+        return {
+            "success": True,
+            "intent": intent.dict(),
+            "reasoning": f"Classified as {intent_kind} based on keywords and context"
+        }
+        
+    except Exception as e:
+        logger.error(f"Intent classification error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "intent": None
+        }
+
+
+class PlanRequest(BaseModel):
+    message: str
+    intent: Dict[str, Any]
+    context: Dict[str, Any]
+
+# Phase 4.1.2: Plan Generation Endpoint  
+@router.post("/plan")
+async def generate_plan(request: PlanRequest) -> Dict[str, Any]:
+    """
+    Generate multi-step execution plan based on intent and context.
+    Uses strict planner contract for deterministic plans.
+    """
+    try:
+        from backend.planner import run_planner, Intent, PlannerRequest
+        
+        progress = ProgressTracker()
+        progress.update_status("Generating execution plan...")
+        
+        intent_kind = request.intent.get("kind")
+        run_id = f"plan_{int(time.time())}_{random.randint(1000, 9999)}"
+        
+        # Map intent to strict enum
+        try:
+            if intent_kind == "fix_diagnostics":
+                planner_intent = Intent.FIX_PROBLEMS
+            else:
+                # For now, only fix_diagnostics is supported in Phase 4.1 Step 1
+                return {
+                    "success": False,
+                    "error": f"Intent '{intent_kind}' not supported in Phase 4.1. Currently only fix_diagnostics is implemented.",
+                    "plan": None,
+                    "session_id": None
+                }
+                
+            # Create strict planner request
+            planner_request = PlannerRequest(
+                intent=planner_intent,
+                context={
+                    "workspaceRoot": request.context.get("workspace", {}).get("root", ""),
+                    "userMessage": request.message,
+                    "diagnostics": request.context.get("diagnostics", []),
+                    "active_file": request.context.get("active_file")
+                }
+            )
+            
+            # Run strict planner
+            planner_response = run_planner(planner_request)
+            
+            # Convert planner response to API format
+            plan = {
+                "goal": f"Execute {planner_response.intent.value} plan",
+                "confidence": 1.0,  # Deterministic plans have 100% confidence
+                "steps": [
+                    {
+                        "id": f"step_{i+1}",
+                        "title": step.tool,
+                        "rationale": step.reason,
+                        "tool": step.tool,
+                        "status": "pending",
+                        "requires_approval": False,  # Phase 4.1 Step 1: no approval needed
+                        "verify": []
+                    }
+                    for i, step in enumerate(planner_response.steps)
+                ],
+                "requires_approval": False
+            }
+            
+            return {
+                "success": True,
+                "plan": plan,
+                "reasoning": f"Generated deterministic {planner_response.intent.value} plan with {len(planner_response.steps)} steps",
+                "session_id": run_id
+            }
+            
+        except Exception as planner_error:
+            logger.error(f"Planner error: {planner_error}")
+            return {
+                "success": False,
+                "error": f"Planner validation failed: {str(planner_error)}",
+                "plan": None,
+                "session_id": None
+            }
+        
+    except Exception as e:
+        logger.error(f"Plan generation error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "plan": None,
+            "session_id": None
+        }
+
+
+# Phase 4.1.2: Next Step Execution Endpoint
+@router.post("/next")
+async def execute_next_step(
+    run_id: str,
+    tool_result: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Execute next step in plan or process tool result.
+    Returns either ToolRequest or AssistantMessage.
+    """
+    try:
+        if run_id not in active_runs:
+            raise HTTPException(status_code=404, detail="Run not found")
+            
+        run_state = active_runs[run_id]
+        
+        # Process previous tool result if provided
+        if tool_result:
+            await process_tool_result(run_state, tool_result)
+            
+        # Find next step to execute
+        next_step = find_next_step(run_state)
+        
+        if not next_step:
+            # Plan completed
+            run_state.status = "done"
+            return {
+                "type": "assistant_message",
+                "content": f"✅ Plan completed successfully! {run_state.plan.goal}",
+                "final": True
+            }
+            
+        # Execute step
+        if next_step.tool:
+            # Tool-based step - return tool request
+            tool_request = create_tool_request(run_state, next_step)
+            return {
+                "type": "tool_request",
+                "request": tool_request.dict()
+            }
+        else:
+            # Reasoning step - return progress message
+            next_step.status = "completed"
+            run_state.current_step += 1
+            return {
+                "type": "assistant_message", 
+                "content": f"🔄 {next_step.title}",
+                "final": False
+            }
+            
+    except Exception as e:
+        logger.error(f"Next step execution error: {e}", exc_info=True)
+        return {
+            "type": "error",
+            "error": str(e)
+        }
+
+
+# Phase 4.1.2: Plan Generation Helper Functions
+
+async def generate_fix_diagnostics_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+    """Generate plan for fixing diagnostics/problems"""
+    diagnostics = context.get("diagnostics", [])
+    
+    steps = [
+        PlanStep(
+            id=f"{run_id}_1",
+            title="Collect current diagnostics",
+            tool="vscode.getDiagnostics",
+            input={},
+            verify=["diagnostics_collected"]
+        ),
+        PlanStep(
+            id=f"{run_id}_2", 
+            title="Analyze error patterns",
+            rationale="Group errors by type and severity for efficient fixing"
+        )
+    ]
+    
+    # Add fix steps for each diagnostic
+    for i, diag in enumerate(diagnostics[:3]):  # Limit to first 3 for now
+        steps.append(PlanStep(
+            id=f"{run_id}_{i+3}",
+            title=f"Fix {diag.get('message', 'error')} in {diag.get('file', 'file')}",
+            tool="workspace.readFile",
+            input={"file": diag.get("file")},
+            requires_approval=True,
+            verify=["error_resolved"]
+        ))
+        
+    steps.append(PlanStep(
+        id=f"{run_id}_final",
+        title="Verify all fixes applied",
+        tool="vscode.getDiagnostics",
+        input={},
+        verify=["all_errors_resolved"]
+    ))
+    
+    return Plan(
+        id=run_id,
+        goal="Fix all diagnostics in Problems tab",
+        steps=steps,
+        requires_approval=True,
+        confidence=0.85,
+        reasoning="Systematic approach to fix diagnostics by reading files, generating patches, and verifying results"
+    )
+
+async def generate_repo_inspection_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+    """Generate plan for repository inspection"""
+    steps = [
+        PlanStep(
+            id=f"{run_id}_1",
+            title="Inspect workspace structure",
+            rationale="Understanding project layout and key files"
+        ),
+        PlanStep(
+            id=f"{run_id}_2",
+            title="Identify project type and technology stack", 
+            rationale="Analyzing package files and configuration"
+        ),
+        PlanStep(
+            id=f"{run_id}_3",
+            title="Summarize repository purpose and architecture",
+            rationale="High-level overview of what this codebase does"
+        )
+    ]
+    
+    return Plan(
+        id=run_id,
+        goal="Provide comprehensive repository overview", 
+        steps=steps,
+        requires_approval=False,
+        confidence=0.9,
+        reasoning="Repository inspection requires analyzing structure, technology stack, and purpose"
+    )
+
+async def generate_feature_implementation_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+    """Generate plan for feature implementation"""
+    steps = [
+        PlanStep(
+            id=f"{run_id}_1",
+            title="Analyze feature requirements",
+            rationale="Understanding what needs to be built"
+        ),
+        PlanStep(
+            id=f"{run_id}_2", 
+            title="Design implementation approach",
+            rationale="Planning architecture and file changes"
+        ),
+        PlanStep(
+            id=f"{run_id}_3",
+            title="Implement core functionality",
+            requires_approval=True,
+            tool="workspace.applyPatch",
+            verify=["feature_implemented"]
+        ),
+        PlanStep(
+            id=f"{run_id}_4",
+            title="Add tests for new feature", 
+            requires_approval=True,
+            tool="workspace.applyPatch",
+            verify=["tests_added"]
+        ),
+        PlanStep(
+            id=f"{run_id}_5",
+            title="Verify implementation works",
+            tool="tasks.run",
+            input={"task": "test"},
+            verify=["tests_pass"]
+        )
+    ]
+    
+    return Plan(
+        id=run_id,
+        goal="Implement requested feature with tests",
+        steps=steps, 
+        requires_approval=True,
+        confidence=0.75,
+        reasoning="Feature implementation requires analysis, coding, testing, and verification"
+    )
+
+async def generate_build_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+    """Generate plan for build/run tasks"""
+    steps = [
+        PlanStep(
+            id=f"{run_id}_1",
+            title="Check project build configuration",
+            rationale="Identifying available build scripts and tasks"
+        ),
+        PlanStep(
+            id=f"{run_id}_2", 
+            title="Execute build process",
+            tool="tasks.run",
+            input={"task": "build"},
+            verify=["build_success"]
+        ),
+        PlanStep(
+            id=f"{run_id}_3",
+            title="Report build results",
+            rationale="Summary of build outcome and any issues"
+        )
+    ]
+    
+    return Plan(
+        id=run_id,
+        goal="Build and run the project",
+        steps=steps,
+        requires_approval=False, 
+        confidence=0.8,
+        reasoning="Build process involves checking configuration and executing build tasks"
+    )
+
+async def generate_test_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+    """Generate plan for running tests"""
+    steps = [
+        PlanStep(
+            id=f"{run_id}_1",
+            title="Identify test configuration",
+            rationale="Finding test scripts and setup"
+        ),
+        PlanStep(
+            id=f"{run_id}_2",
+            title="Execute test suite", 
+            tool="tasks.run",
+            input={"task": "test"},
+            verify=["tests_completed"]
+        ),
+        PlanStep(
+            id=f"{run_id}_3",
+            title="Analyze test results",
+            rationale="Report on test outcomes and any failures"
+        )
+    ]
+    
+    return Plan(
+        id=run_id,
+        goal="Run project tests and report results",
+        steps=steps,
+        requires_approval=False,
+        confidence=0.85,
+        reasoning="Test execution involves configuration check, running tests, and reporting results"
+    )
+    
+async def generate_explanation_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+    """Generate plan for general explanations"""
+    steps = [
+        PlanStep(
+            id=f"{run_id}_1",
+            title="Analyze user question",
+            rationale="Understanding what information is being requested"
+        ),
+        PlanStep(
+            id=f"{run_id}_2",
+            title="Provide comprehensive explanation",
+            rationale="Detailed response based on available context"
+        )
+    ]
+    
+    return Plan(
+        id=run_id,
+        goal="Provide helpful explanation",
+        steps=steps,
+        requires_approval=False,
+        confidence=0.7,
+        reasoning="General explanation based on user question and context"
+    )
+
+# Helper functions for step execution
+def find_next_step(run_state: RunState) -> Optional[PlanStep]:
+    """Find next pending step in plan"""
+    if not run_state.plan:
+        return None
+        
+    for step in run_state.plan.steps:
+        if step.status == "pending":
+            step.status = "active"
+            return step
+    return None
+
+def create_tool_request(run_state: RunState, step: PlanStep) -> ToolRequest:
+    """Create tool request for step execution"""
+    request_id = f"{step.id}_req_{int(time.time())}"
+    
+    approval = {
+        "required": step.requires_approval,
+        "reason": step.rationale or f"Execute {step.title}",
+        "risk": "high" if step.requires_approval else "low"
+    }
+    
+    # Phase 4.1 Step 3: Include previous tool result for chaining
+    args = step.input or {}
+    if run_state.artifacts:
+        # Get the most recent tool result as previousResult
+        latest_artifact = run_state.artifacts[-1]
+        args["previousResult"] = latest_artifact["result"]
+    
+    return ToolRequest(
+        run_id=run_state.run_id,
+        request_id=request_id,
+        tool=step.tool,
+        args=args,
+        approval=approval
+    )
+    
+async def process_tool_result(run_state: RunState, tool_result: Dict[str, Any]):
+    """Process result from tool execution"""
+    # Find the corresponding step and update status
+    for step in run_state.plan.steps:
+        if step.status == "active":
+            if tool_result.get("ok", False):
+                step.status = "completed"
+                run_state.current_step += 1
+                # Store result as artifact
+                run_state.artifacts.append({
+                    "step_id": step.id,
+                    "tool": tool_result.get("tool"),
+                    "result": tool_result.get("output")
+                })
+            else:
+                step.status = "failed"
+                run_state.status = "failed"
+            break
 
 
 @router.post("/analyze-changes")

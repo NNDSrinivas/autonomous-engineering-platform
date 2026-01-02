@@ -39,7 +39,7 @@ def simulate_vscode_request():
                         elif data.get("type") == "result":
                             result = data.get("result", {})
                             files = result.get("files", [])
-                            print(\"\\n🎉 Analysis Complete!\")
+                            print("\n🎉 Analysis Complete!")
                             print(f"   📁 Files Analyzed: {len(files)}")
                             
                             if files:

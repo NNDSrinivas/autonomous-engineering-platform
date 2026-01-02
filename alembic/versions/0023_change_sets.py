@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),
-            # Note: SQLite.s CURRENT_TIMESTAMP returns a naive UTC timestamp
+            # Note: SQLite's CURRENT_TIMESTAMP returns a naive UTC timestamp
             # (no timezone offset is stored). Our application always treats
             # these values as UTC and converts them to timezone-aware datetimes
             # in the application/ORM layer before use or display. Any

@@ -684,7 +684,7 @@ class RiskPredictionEngine:
         """Load performance bottleneck detection patterns."""
         return {
             "nested_loops": {
-                "pattern": r"for\s+.*:\s*\n\s*for\s+.*:",
+                "pattern": r"for\s+.*:\s*[\r\n]+\s*for\s+.*:",
                 "description": "Nested loops that may cause O(n²) complexity",
                 "confidence": 0.6,
                 "severity": 0.5

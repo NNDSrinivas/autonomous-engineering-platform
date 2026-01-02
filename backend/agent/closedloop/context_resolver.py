@@ -766,9 +766,20 @@ class ContextResolver:
     def _is_cache_valid(self, context: ResolvedContext) -> bool:
         """Check if cached context is still valid"""
         
-        # Simple TTL check - could be enhanced with more sophisticated invalidation
-        cache_age = (datetime.now() - datetime.fromisoformat(context.event_id.split(":")[-1])).total_seconds()
-        return cache_age < self.cache_ttl_seconds
+        # Simple TTL check based on a real timestamp field if available.
+        # We no longer attempt to parse timestamps from event_id, since its format
+        # is not guaranteed to be an ISO timestamp.
+        resolved_at = getattr(context, "resolved_at", None)
+        
+        if isinstance(resolved_at, datetime):
+            # Use the same timezone as the stored timestamp if present
+            now = datetime.now(tz=resolved_at.tzinfo) if resolved_at.tzinfo else datetime.now()
+            cache_age = (now - resolved_at).total_seconds()
+            return cache_age < self.cache_ttl_seconds
+        
+        # If we don't have a reliable timestamp, treat the cache as not valid
+        # to avoid serving potentially stale data.
+        return False
     
     # Additional helper methods for other event types...
     

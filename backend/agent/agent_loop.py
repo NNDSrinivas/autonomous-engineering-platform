@@ -37,6 +37,51 @@ from backend.services.llm import call_llm
 logger = logging.getLogger(__name__)
 
 
+def _generate_approval_message(grounding_result, plan) -> str:
+    """
+    Generate an intelligent approval message based on grounded task and plan.
+    
+    Args:
+        grounding_result: The grounding result from task grounder
+        plan: The generated plan
+        
+    Returns:
+        Formatted approval message for user
+    """
+    # Default fallback message
+    approval_message = plan.summary or "I have a workspace plan to help with that. Should I proceed?"
+    
+    if grounding_result.type == "ready" and grounding_result.task.intent == "FIX_PROBLEMS":
+        # Enhanced message for fix problems tasks
+        task = grounding_result.task
+        inputs = task.inputs
+        
+        total_count = inputs.get('total_count', 0)
+        error_count = inputs.get('error_count', 0)
+        warning_count = inputs.get('warning_count', 0)
+        affected_files = inputs.get('affected_files', [])
+        
+        # Generate intelligent message
+        problem_desc = []
+        if error_count > 0:
+            problem_desc.append(f"{error_count} error{'s' if error_count != 1 else ''}")
+        if warning_count > 0:
+            problem_desc.append(f"{warning_count} warning{'s' if warning_count != 1 else ''}")
+        
+        problem_text = " and ".join(problem_desc) if problem_desc else f"{total_count} problem{'s' if total_count != 1 else ''}"
+        
+        approval_message = f"I found {problem_text} in your workspace."
+        
+        if affected_files:
+            approval_message += "\n\nAffected files:\n" + "\n".join(f"• {file}" for file in affected_files[:5])
+            if len(affected_files) > 5:
+                approval_message += f"\n• ...and {len(affected_files) - 5} more"
+        
+        approval_message += "\n\nI can analyze these issues and propose fixes.\n\nDo you want me to proceed?"
+    
+    return approval_message
+
+
 def _shape_actions_from_plan(plan) -> List[Dict[str, Any]]:
     """
     Convert planner steps into workspace-ready actions.
@@ -605,34 +650,7 @@ async def run_agent_loop(
                        grounding_result.task.intent if grounding_result.type == "ready" else "unknown")
             
             # Generate intelligent approval message from grounded task
-            approval_message = plan.summary or "I have a workspace plan to help with that. Should I proceed?"
-            if grounding_result.type == "ready" and grounding_result.task.intent == "FIX_PROBLEMS":
-                # Enhanced message for fix problems tasks
-                task = grounding_result.task
-                inputs = task.inputs
-                
-                total_count = inputs.get('total_count', 0)
-                error_count = inputs.get('error_count', 0)
-                warning_count = inputs.get('warning_count', 0)
-                affected_files = inputs.get('affected_files', [])
-                
-                # Generate intelligent message
-                problem_desc = []
-                if error_count > 0:
-                    problem_desc.append(f"{error_count} error{'s' if error_count != 1 else ''}")
-                if warning_count > 0:
-                    problem_desc.append(f"{warning_count} warning{'s' if warning_count != 1 else ''}")
-                
-                problem_text = " and ".join(problem_desc) if problem_desc else f"{total_count} problem{'s' if total_count != 1 else ''}"
-                
-                approval_message = f"I found {problem_text} in your workspace."
-                
-                if affected_files:
-                    approval_message += "\n\nAffected files:\n" + "\n".join(f"• {file}" for file in affected_files[:5])
-                    if len(affected_files) > 5:
-                        approval_message += f"\n• ...and {len(affected_files) - 5} more"
-                
-                approval_message += "\n\nI can analyze these issues and propose fixes.\n\nDo you want me to proceed?"
+            approval_message = _generate_approval_message(grounding_result, plan)
             
             elapsed_ms = int((time.monotonic() - started) * 1000)
             return {

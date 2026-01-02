@@ -5,7 +5,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "0022_chat_sessions"
-down_revision = "0020_chat_history"
+down_revision = "0021_merge_heads"
 branch_labels = None
 depends_on = None
 

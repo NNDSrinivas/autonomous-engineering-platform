@@ -27,6 +27,8 @@ def upgrade() -> None:
         sa.Column(
             "created_at",
             sa.TIMESTAMP(timezone=True),
+            # Note: CURRENT_TIMESTAMP in SQLite doesn't include timezone by default
+            # This may require explicit timezone handling in application logic
             server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
         ),

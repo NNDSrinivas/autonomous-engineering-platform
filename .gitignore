@@ -24,17 +24,28 @@ wheels/
 .venv/
 venv/
 env/
+aep-venv/
 
 # Environment Variables
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
+
+# Supabase local state
+.supabase/
+supabase/.temp/
+supabase/.branches/
+supabase/.cache/
+supabase/.env
+supabase/config.toml.bak
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
 file:memdb*
+.pytest_cache/
+.ruff_cache/
 
 # Vector Store Data
 data/
@@ -53,18 +64,39 @@ Thumbs.db
 # Logs
 logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Temporary files
 tmp/
 temp/
+coverage/
+.nyc_output/
 
 # Node.js
 node_modules/
 web/.next/
+dist/
+build/
+out/
+.vite/
+.turbo/
+.next/
+.parcel-cache/
+*.tsbuildinfo
+*.vsix
 
 # VS Code Extension Testing
 extensions/**/.vscode-test/
 extensions/**/out/test/
+# VS Code extension build output
+extensions/vscode-aep/out/
+extensions/vscode-aep/webview/dist/
+extensions/vscode-aep/webview/node_modules/
+extensions/**/dist/
+extensions/**/out/
 
 # Frontend Configuration (generated from template + env vars)
 frontend/auth_config.json

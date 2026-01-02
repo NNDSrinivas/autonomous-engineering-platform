@@ -24,16 +24,23 @@ class JiraService:
         db: Session,
         base_url: str,
         access_token: str,
+        token_type: str | None = None,
+        refresh_token: str | None = None,
+        expires_at: dt.datetime | None = None,
+        scopes: list[str] | None = None,
         user_id: str | None = None,
         org_id: str | None = None,
     ) -> JiraConnection:
         conn = JiraConnection(
             id=JiraService._id(),
             cloud_base_url=base_url,
+            token_type=token_type,
             access_token=encrypt_token(access_token),
+            refresh_token=encrypt_token(refresh_token) if refresh_token else None,
+            expires_at=expires_at,
             user_id=user_id,
             org_id=org_id,
-            scopes=["read"],
+            scopes=scopes or ["read"],
         )
         db.add(conn)
         db.commit()
@@ -313,6 +320,99 @@ class JiraService:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.put(
                 url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            resp.raise_for_status()
+            return {"status": "ok"}
+
+    @staticmethod
+    async def create_subtask(
+        db: Session,
+        parent_key: str,
+        summary: str,
+        description: str = "",
+        issue_type_name: str = "Sub-task",
+        user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a Jira subtask under a parent issue.
+        """
+        conn = JiraService._select_connection(db, user_id=user_id, org_id=org_id)
+        if not conn:
+            raise ValueError("No Jira connection available for this user/org")
+
+        token = decrypt_token(conn.access_token)
+
+        # Fetch parent issue to get project key
+        async with httpx.AsyncClient(timeout=15) as client:
+            parent_resp = await client.get(
+                f"{conn.cloud_base_url}/rest/api/3/issue/{parent_key}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                },
+            )
+            parent_resp.raise_for_status()
+            parent_data = parent_resp.json()
+            project_key = parent_data.get("fields", {}).get("project", {}).get("key")
+
+            if not project_key:
+                raise ValueError("Unable to resolve project key for parent issue")
+
+            payload = {
+                "fields": {
+                    "project": {"key": project_key},
+                    "summary": summary,
+                    "description": description,
+                    "issuetype": {"name": issue_type_name},
+                    "parent": {"key": parent_key},
+                }
+            }
+
+            create_resp = await client.post(
+                f"{conn.cloud_base_url}/rest/api/3/issue",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            create_resp.raise_for_status()
+            return create_resp.json()
+
+    @staticmethod
+    async def link_issues(
+        db: Session,
+        source_key: str,
+        target_key: str,
+        link_type: str = "Relates",
+        user_id: Optional[str] = None,
+        org_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Link two Jira issues with the given link type.
+        """
+        conn = JiraService._select_connection(db, user_id=user_id, org_id=org_id)
+        if not conn:
+            raise ValueError("No Jira connection available for this user/org")
+
+        token = decrypt_token(conn.access_token)
+        payload = {
+            "type": {"name": link_type},
+            "inwardIssue": {"key": source_key},
+            "outwardIssue": {"key": target_key},
+        }
+
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{conn.cloud_base_url}/rest/api/3/issueLink",
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Accept": "application/json",

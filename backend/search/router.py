@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..core.db import get_db
+from ..services import connectors as connectors_service
 from .constants import (
     MAX_CHANNELS_PER_SYNC,
     SLACK_HISTORY_LIMIT,
@@ -105,10 +106,20 @@ def semantic_search(
     """Semantic search across memory: JIRA, meetings, code"""
     org = request.headers.get("X-Org-Id")
     if not org:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=401, detail="X-Org-Id header required")
+        # Default to "default" org for compatibility
+        org = "default"
     return {"hits": do_search(db, org, req.q, k=req.k)}
+
+@router.get("/", response_model=SearchResponse)
+def semantic_search_get(
+    q: str = "",
+    k: int = 10,
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
+    """GET version of semantic search for simple queries"""
+    org = request.headers.get("X-Org-Id", "default")
+    return {"hits": do_search(db, org, q, k=k)}
 
 
 @router.post("/reindex/jira")
@@ -240,24 +251,33 @@ def reindex_slack(request: Request = None, db: Session = Depends(get_db)):
     if not org:
         raise HTTPException(status_code=401, detail="X-Org-Id header required")
 
-    row = (
-        db.execute(
-            text(
-                "SELECT bot_token FROM slack_connection WHERE org_id=:o ORDER BY id DESC LIMIT 1"
-            ),
-            {"o": org},
-        )
-        .mappings()
-        .first()
+    token = None
+    connector = connectors_service.get_connector_for_context(
+        db, user_id=None, org_id=org, provider="slack"
     )
-    if not row:
+    if connector:
+        token = (connector.get("secrets") or {}).get("bot_token")
+    if not token:
+        row = (
+            db.execute(
+                text(
+                    "SELECT bot_token FROM slack_connection WHERE org_id=:o ORDER BY id DESC LIMIT 1"
+                ),
+                {"o": org},
+            )
+            .mappings()
+            .first()
+        )
+        if row:
+            token = row.get("bot_token")
+    if not token:
         return {"ok": False, "reason": "no slack connection"}
 
     async def run():
         from ..integrations_ext.slack_read import SlackReader
 
         async with httpx.AsyncClient(timeout=30) as client:
-            sr = SlackReader(row["bot_token"])
+            sr = SlackReader(token)
             chans = await sr.list_channels(client)
             # incremental cursor
             cur = db.execute(
@@ -353,24 +373,39 @@ def reindex_confluence(
     if not org:
         raise HTTPException(status_code=401, detail="X-Org-Id header required")
 
-    row = (
-        db.execute(
-            text(
-                "SELECT base_url, access_token, email FROM confluence_connection WHERE org_id=:o ORDER BY id DESC LIMIT 1"
-            ),
-            {"o": org},
-        )
-        .mappings()
-        .first()
+    conf_base = None
+    conf_token = None
+    conf_email = None
+    conf_connector = connectors_service.get_connector_for_context(
+        db, user_id=None, org_id=org, provider="confluence"
     )
-    if not row:
+    if conf_connector:
+        conf_base = (conf_connector.get("config") or {}).get("base_url")
+        conf_token = (conf_connector.get("secrets") or {}).get("access_token")
+        conf_email = (conf_connector.get("config") or {}).get("email")
+    if not conf_token or not conf_base:
+        row = (
+            db.execute(
+                text(
+                    "SELECT base_url, access_token, email FROM confluence_connection WHERE org_id=:o ORDER BY id DESC LIMIT 1"
+                ),
+                {"o": org},
+            )
+            .mappings()
+            .first()
+        )
+        if row:
+            conf_base = row.get("base_url")
+            conf_token = row.get("access_token")
+            conf_email = row.get("email")
+    if not conf_token or not conf_base:
         return {"ok": False, "reason": "no confluence connection"}
 
     async def run():
         from ..integrations_ext.confluence_read import ConfluenceReader
 
         async with httpx.AsyncClient(timeout=30) as client:
-            cr = ConfluenceReader(row["base_url"], row["access_token"], row["email"])
+            cr = ConfluenceReader(conf_base, conf_token, conf_email)
             pages = await cr.pages(
                 client, space_key=space_key, start=0, limit=CONFLUENCE_PAGE_LIMIT
             )

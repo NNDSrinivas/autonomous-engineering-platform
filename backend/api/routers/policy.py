@@ -116,6 +116,7 @@ def upsert_policy(
         "branches_protected",
         "required_reviewers",
         "require_review_for",
+        "test_coverage_min",
     }
 
     # Prepare fields for upsert - only allow whitelisted fields

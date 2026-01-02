@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -135,13 +135,17 @@ def _get_config(db: Session, org_id: str, user_id: str) -> dict:
     return state.get("config_json") or {}
 
 
-def _current_user_id(user) -> str:
-    return getattr(user, "user_id", None) or "default_user"
+def _resolve_ids(user, x_org_id: Optional[str], x_user_id: Optional[str]) -> tuple[str, str]:
+    org_id = getattr(user, "org_id", None) or (x_org_id or "default")
+    user_id = getattr(user, "user_id", None) or (x_user_id or "default_user")
+    return org_id, user_id
 
 
 @router.post("/consent")
 def give_consent(
     allow_secrets: bool = False,
+    x_org_id: Optional[str] = Header(default=None, alias="X-Org-Id"),
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
@@ -149,8 +153,7 @@ def give_consent(
     Record user consent to scan the repo/org docs.
     allow_secrets=false means scanners must skip secret/keys paths.
     """
-    org_id = "org_vscode_extension"
-    user_id = _current_user_id(user)
+    org_id, user_id = _resolve_ids(user, x_org_id, x_user_id)
     _upsert_state(
         db, org_id, user_id, consent=True, allow_secrets=allow_secrets, state="ready"
     )
@@ -159,22 +162,24 @@ def give_consent(
 
 @router.post("/revoke")
 def revoke_consent(
+    x_org_id: Optional[str] = Header(default=None, alias="X-Org-Id"),
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    org_id = "org_vscode_extension"
-    user_id = _current_user_id(user)
+    org_id, user_id = _resolve_ids(user, x_org_id, x_user_id)
     _upsert_state(db, org_id, user_id, consent=False, state="revoked")
     return {"consent": False}
 
 
 @router.post("/pause")
 def pause_scan(
+    x_org_id: Optional[str] = Header(default=None, alias="X-Org-Id"),
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    org_id = "org_vscode_extension"
-    user_id = _current_user_id(user)
+    org_id, user_id = _resolve_ids(user, x_org_id, x_user_id)
     _upsert_state(
         db, org_id, user_id, paused_at=datetime.now(timezone.utc), state="paused"
     )
@@ -183,11 +188,12 @@ def pause_scan(
 
 @router.post("/resume")
 def resume_scan(
+    x_org_id: Optional[str] = Header(default=None, alias="X-Org-Id"),
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    org_id = "org_vscode_extension"
-    user_id = _current_user_id(user)
+    org_id, user_id = _resolve_ids(user, x_org_id, x_user_id)
     _upsert_state(db, org_id, user_id, paused_at=None, state="ready")
     return {"paused": False}
 
@@ -195,6 +201,8 @@ def resume_scan(
 @router.post("/config")
 def save_scan_config(
     config: dict,
+    x_org_id: Optional[str] = Header(default=None, alias="X-Org-Id"),
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
@@ -203,8 +211,7 @@ def save_scan_config(
     Expected keys: confluence_space_keys, slack_channels, teams, teams_channels, zoom_user,
     zoom_lookback_days, zoom_max_meetings.
     """
-    org_id = "org_vscode_extension"
-    user_id = _current_user_id(user)
+    org_id, user_id = _resolve_ids(user, x_org_id, x_user_id)
     # Normalize lists
     normalized = {}
     for key in ("confluence_space_keys", "slack_channels", "teams", "teams_channels"):
@@ -232,11 +239,12 @@ def save_scan_config(
 
 @router.get("/config")
 def get_scan_config(
+    x_org_id: Optional[str] = Header(default=None, alias="X-Org-Id"),
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    org_id = "org_vscode_extension"
-    user_id = _current_user_id(user)
+    org_id, user_id = _resolve_ids(user, x_org_id, x_user_id)
     return {"config": _get_config(db, org_id, user_id)}
 
 
@@ -244,14 +252,15 @@ def get_scan_config(
 def trigger_scan(
     include_secrets: bool = False,
     workspace_root: Optional[str] = None,
+    x_org_id: Optional[str] = Header(default=None, alias="X-Org-Id"),
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
     """
     Trigger a lightweight repo/org scan (synchronous placeholder).
     """
-    org_id = "org_vscode_extension"
-    user_id = _current_user_id(user)
+    org_id, user_id = _resolve_ids(user, x_org_id, x_user_id)
     state = _get_state(db, org_id, user_id)
     if not state.get("consent"):
         raise HTTPException(status_code=403, detail="Consent required before scanning")
@@ -306,16 +315,19 @@ def trigger_scan(
 
 @router.get("/status")
 def scan_status(
+    x_org_id: Optional[str] = Header(default=None, alias="X-Org-Id"),
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
-    org_id = "org_vscode_extension"
-    user_id = _current_user_id(user)
+    org_id, user_id = _resolve_ids(user, x_org_id, x_user_id)
     return _get_state(db, org_id, user_id)
 
 
 @router.post("/clear")
 def clear_org_memory(
+    x_org_id: Optional[str] = Header(default=None, alias="X-Org-Id"),
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
     db: Session = Depends(get_db),
     user=Depends(get_current_user_optional),
 ):
@@ -323,8 +335,7 @@ def clear_org_memory(
     Clears scan metadata; does not remove other memories yet.
     """
     _ensure_table(db)
-    org_id = "org_vscode_extension"
-    user_id = _current_user_id(user)
+    org_id, user_id = _resolve_ids(user, x_org_id, x_user_id)
     db.execute(
         text("DELETE FROM navi_org_scan WHERE org_id = :org_id AND user_id = :user_id"),
         {"org_id": org_id, "user_id": user_id},

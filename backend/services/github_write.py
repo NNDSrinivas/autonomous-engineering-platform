@@ -87,6 +87,7 @@ class GitHubWriteService:
         title: str,
         body: str,
         ticket_key: Optional[str] = None,
+        draft: bool = True,
         dry_run: bool = True,
     ) -> Dict[str, Any]:
         """
@@ -115,7 +116,7 @@ class GitHubWriteService:
                 "head": head,
                 "base": base,
                 "body": formatted_body,
-                "draft": True,
+                "draft": bool(draft),
             }
 
             if dry_run:
@@ -123,9 +124,9 @@ class GitHubWriteService:
                     "preview": {
                         "endpoint": f"POST /repos/{repo_full_name}/pulls",
                         "payload": payload,
-                        "description": f"Create draft PR from {head} to {base}",
-                    }
+                    "description": f"Create PR from {head} to {base}",
                 }
+            }
 
             async with self._client() as client:
                 # Check for existing PR with same head/base
@@ -152,7 +153,7 @@ class GitHubWriteService:
                     }
 
                 # Create new PR
-                logger.info(f"Creating new draft PR: {formatted_title}")
+                logger.info(f"Creating new PR: {formatted_title}")
                 create_response = await client.post(
                     f"/repos/{repo_full_name}/pulls", json=payload
                 )
@@ -175,6 +176,106 @@ class GitHubWriteService:
         except Exception as e:
             logger.error(f"Unexpected error in draft_pr: {e}")
             raise ValueError(f"Failed to create PR: {str(e)}")
+
+    async def create_issue(
+        self,
+        repo_full_name: str,
+        title: str,
+        body: str,
+        labels: Optional[list[str]] = None,
+        assignees: Optional[list[str]] = None,
+        ticket_key: Optional[str] = None,
+        dry_run: bool = True,
+    ) -> Dict[str, Any]:
+        """Create a GitHub issue (or return preview when dry_run)."""
+        try:
+            formatted_body = self._format_pr_body(body, ticket_key)
+            payload: Dict[str, Any] = {
+                "title": title,
+                "body": formatted_body,
+            }
+            if labels:
+                payload["labels"] = labels
+            if assignees:
+                payload["assignees"] = assignees
+
+            if dry_run:
+                return {
+                    "preview": {
+                        "endpoint": f"POST /repos/{repo_full_name}/issues",
+                        "payload": payload,
+                        "description": "Create GitHub issue",
+                    }
+                }
+
+            async with self._client() as client:
+                response = await client.post(
+                    f"/repos/{repo_full_name}/issues", json=payload
+                )
+                response.raise_for_status()
+                issue_data = response.json()
+                return {
+                    "url": issue_data.get("html_url"),
+                    "number": issue_data.get("number"),
+                    "state": issue_data.get("state"),
+                }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"GitHub API error: {e.response.status_code} {e.response.text}"
+            )
+            raise ValueError(f"GitHub API error: {e.response.status_code}")
+        except Exception as e:
+            logger.error(f"Unexpected error in create_issue: {e}")
+            raise ValueError(f"Failed to create issue: {str(e)}")
+
+    async def merge_pr(
+        self,
+        repo_full_name: str,
+        pr_number: int,
+        merge_method: str = "merge",
+        commit_title: Optional[str] = None,
+        commit_message: Optional[str] = None,
+        dry_run: bool = True,
+    ) -> Dict[str, Any]:
+        """Merge a pull request (or return preview when dry_run)."""
+        try:
+            payload: Dict[str, Any] = {"merge_method": merge_method}
+            if commit_title:
+                payload["commit_title"] = commit_title
+            if commit_message:
+                payload["commit_message"] = commit_message
+
+            if dry_run:
+                return {
+                    "preview": {
+                        "endpoint": f"PUT /repos/{repo_full_name}/pulls/{pr_number}/merge",
+                        "payload": payload,
+                        "description": "Merge pull request",
+                    }
+                }
+
+            async with self._client() as client:
+                response = await client.put(
+                    f"/repos/{repo_full_name}/pulls/{pr_number}/merge",
+                    json=payload,
+                )
+                response.raise_for_status()
+                merge_data = response.json()
+                return {
+                    "merged": merge_data.get("merged"),
+                    "message": merge_data.get("message"),
+                    "sha": merge_data.get("sha"),
+                }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"GitHub API error: {e.response.status_code} {e.response.text}"
+            )
+            raise ValueError(f"GitHub API error: {e.response.status_code}")
+        except Exception as e:
+            logger.error(f"Unexpected error in merge_pr: {e}")
+            raise ValueError(f"Failed to merge PR: {str(e)}")
 
     async def get_pr_status(
         self, repo_full_name: str, pr_number: int

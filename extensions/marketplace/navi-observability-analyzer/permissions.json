@@ -1,0 +1,26 @@
+{
+    "permissions": [
+        "METRICS_READ",
+        "LOGS_READ",
+        "TRACES_READ",
+        "REPO_READ",
+        "REQUEST_APPROVAL",
+        "PROPOSE_ACTIONS"
+    ],
+    "restrictions": {
+        "INFRA_WRITE": false,
+        "AUTO_SCALE": false,
+        "AUTO_DEPLOY": false,
+        "CONFIG_MUTATION": false,
+        "NETWORK_ACCESS": [
+            "metrics-endpoints",
+            "log-aggregators",
+            "trace-collectors"
+        ]
+    },
+    "security": {
+        "sandboxed": true,
+        "requires_approval": true,
+        "audit_trail": true
+    }
+}

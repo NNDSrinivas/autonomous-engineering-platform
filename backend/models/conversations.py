@@ -4,7 +4,7 @@ Conversation models for Slack/Teams ingestion.
 
 from datetime import datetime, timezone
 from sqlalchemy import Column, BigInteger, String, Text, TIMESTAMP, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB
+from backend.database.types import PortableJSONB as JSONB
 from sqlalchemy.orm import relationship
 
 from backend.core.db import Base

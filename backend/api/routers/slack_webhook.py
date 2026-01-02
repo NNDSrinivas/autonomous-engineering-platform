@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from backend.core.db import get_db
 from backend.core.config import settings
 from backend.core.webhooks import verify_slack_signature
-from backend.core.auth_org import require_org
+from backend.services import connectors as connectors_service
 import re
 from backend.models.memory_graph import MemoryNode
 from backend.models.conversations import ConversationMessage, ConversationReply
@@ -35,7 +35,7 @@ async def ingest(
         None, alias="X-Slack-Request-Timestamp"
     ),
     x_slack_signature: str | None = Header(None, alias="X-Slack-Signature"),
-    org_ctx: dict = Depends(require_org),
+    x_org_id: str | None = Header(None, alias="X-Org-Id"),
 ):
     """
     Ingest Slack/Teams events (messages, threads) for context hydration.
@@ -59,6 +59,18 @@ async def ingest(
     if not event_type:
         raise HTTPException(status_code=400, detail="Missing event type")
 
+    org_id = x_org_id
+    if not org_id:
+        team_id = payload.get("team_id") or payload.get("team") or event.get("team")
+        if team_id:
+            connector = connectors_service.find_connector_by_config(
+                db, provider="slack", key="team_id", value=team_id
+            )
+            if connector:
+                org_id = (connector.get("config") or {}).get("org_id")
+    if not org_id:
+        raise HTTPException(status_code=404, detail="Org mapping not found for Slack team")
+
     # Persist message/threads into memory graph for retrieval
     if event_type in ("message", "app_mention"):
         text = event.get("text", "")
@@ -72,7 +84,7 @@ async def ingest(
             parent = (
                 db.query(ConversationMessage)
                 .filter(
-                    ConversationMessage.org_id == org_ctx["org_id"],
+                    ConversationMessage.org_id == org_id,
                     ConversationMessage.platform == "slack",
                     ConversationMessage.channel == channel,
                     ConversationMessage.message_ts == thread_ts,
@@ -81,7 +93,7 @@ async def ingest(
             )
             if parent:
                 reply = ConversationReply(
-                    org_id=org_ctx["org_id"],
+                    org_id=org_id,
                     parent_id=parent.id,
                     message_ts=ts,
                     user=user,
@@ -92,7 +104,7 @@ async def ingest(
                 db.add(reply)
         else:
             msg = ConversationMessage(
-                org_id=org_ctx["org_id"],
+                org_id=org_id,
                 platform="slack",
                 channel=channel,
                 thread_ts=thread_ts,
@@ -105,7 +117,7 @@ async def ingest(
             db.add(msg)
 
         node = MemoryNode(
-            org_id=org_ctx["org_id"],
+            org_id=org_id,
             node_type="slack_msg",
             title=f"{channel}#{ts}",
             text=text,
@@ -125,7 +137,7 @@ async def ingest(
         "slack_webhook.event",
         extra={
             "event_type": event_type,
-            "org": org_ctx["org_id"],
+            "org": org_id,
             "channel": event.get("channel"),
         },
     )
@@ -134,6 +146,6 @@ async def ingest(
     for match in re.findall(
         r"\b[A-Z][A-Z0-9]+-\d+\b", payload.get("event", {}).get("text", "")
     ):
-        invalidate_context_packet_cache(match, org_ctx["org_id"])
+        invalidate_context_packet_cache(match, org_id)
 
     return {"status": "ok"}

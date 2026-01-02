@@ -151,6 +151,31 @@
     font-size: 11px;
 }
 
+.navi-connector-toolbar {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.navi-connector-sync-all-btn {
+    border-radius: 999px;
+    border: 1px solid rgba(55, 65, 81, 0.9);
+    background: rgba(59, 130, 246, 0.2);
+    color: #e5e7eb;
+    font-size: 11px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.navi-connector-sync-all-btn:hover {
+    background: rgba(59, 130, 246, 0.35);
+}
+
+.navi-connector-sync-all-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
 .navi-connector-toggle {
     display: flex;
     align-items: center;
@@ -161,6 +186,44 @@
 
 .navi-connector-toggle input[type="checkbox"] {
     cursor: pointer;
+}
+
+.navi-connector-sync-btn {
+    border-radius: 999px;
+    border: 1px solid rgba(55, 65, 81, 0.9);
+    background: rgba(30, 64, 175, 0.9);
+    color: #e5e7eb;
+    font-size: 11px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.navi-connector-sync-btn:hover {
+    background: rgba(59, 130, 246, 0.95);
+}
+
+.navi-connector-sync-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.navi-connector-sync-status {
+    font-size: 11px;
+    color: #86efac;
+    padding: 4px 6px;
+    border-radius: 8px;
+    background: rgba(22, 163, 74, 0.12);
+    border: 1px solid rgba(22, 163, 74, 0.25);
+}
+
+.navi-connector-sync-error {
+    font-size: 11px;
+    color: #fca5a5;
+    padding: 4px 6px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
 /* MCP cards */
@@ -290,4 +353,110 @@
 
 .navi-policies-list li {
     margin-bottom: 4px;
+}
+
+.navi-policies-grid {
+    display: grid;
+    gap: 10px;
+    margin: 8px 0 10px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.navi-policy-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.navi-policy-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #e5e7eb;
+}
+
+.navi-policy-toggle input {
+    cursor: pointer;
+}
+
+.navi-policy-label {
+    font-size: 11px;
+    color: #9ca3af;
+}
+
+.navi-policy-input {
+    border-radius: 8px;
+    border: 1px solid rgba(55, 65, 81, 0.9);
+    background: rgba(15, 23, 42, 0.95);
+    color: #e5e7eb;
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+.navi-policy-input:focus {
+    outline: none;
+    border-color: rgba(59, 130, 246, 0.9);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.45);
+}
+
+.navi-policy-hint {
+    font-size: 10px;
+    color: #6b7280;
+}
+
+.navi-policy-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.navi-policy-org {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6b7280;
+}
+
+.navi-policy-save-btn {
+    border-radius: 999px;
+    border: 1px solid rgba(55, 65, 81, 0.9);
+    background: rgba(30, 64, 175, 0.9);
+    color: #e5e7eb;
+    font-size: 11px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.navi-policy-save-btn:hover {
+    background: rgba(59, 130, 246, 0.95);
+}
+
+.navi-policy-save-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.navi-policy-error {
+    margin: 6px 0 0;
+    font-size: 11px;
+    color: #fca5a5;
+}
+
+.navi-policy-status {
+    margin: 6px 0 0;
+    font-size: 11px;
+    color: #86efac;
+}
+
+.navi-policy-meta {
+    margin-top: 6px;
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
 }

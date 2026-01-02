@@ -23,6 +23,8 @@ import httpx
 import git
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from datetime import datetime, timezone
+import uuid
 
 from backend.core.ai.llm_service import LLMService
 from backend.models.integrations import JiraIssue, JiraConnection
@@ -420,6 +422,39 @@ class EnhancedAutonomousCodingEngine:
 
         self.active_tasks[task.id] = task
         logger.info(f"Task created: {task.id} with {len(task.steps)} steps")
+
+        return task
+
+    async def create_task(
+        self,
+        title: str,
+        description: str,
+        task_type: TaskType,
+        repository_path: str,
+        user_id: Optional[str] = None,
+    ) -> CodingTask:
+        """
+        Create a coding task from a free-form request (non-Jira).
+        """
+        task_id = f"task-{uuid.uuid4().hex[:12]}"
+        task = CodingTask(
+            id=task_id,
+            title=title,
+            description=description,
+            task_type=task_type,
+            repository_path=repository_path,
+            related_files=await self._analyze_related_files(description, ""),
+            team_context={"user_id": user_id} if user_id else {},
+            branch_name=f"aep/{task_id}",
+            created_at=datetime.now(timezone.utc).isoformat(),
+            updated_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+        # Generate initial implementation plan
+        await self._generate_implementation_plan(task)
+
+        self.active_tasks[task_id] = task
+        self.task_queue.append(task_id)
 
         return task
 

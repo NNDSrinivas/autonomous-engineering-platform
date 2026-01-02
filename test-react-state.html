@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>React State Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-results { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+    </style>
+</head>
+<body>
+    <h1>React State Management Test</h1>
+    <div id="root"></div>
+    
+    <h2>Test Controls</h2>
+    <button onclick="testPlanGeneration()">Test Plan Generation</button>
+    <button onclick="checkReactState()">Check React State</button>
+    
+    <div id="test-results" class="test-results info">
+        <h3>Test Results:</h3>
+        <div id="results-content">Loading...</div>
+    </div>
+
+    <!-- Load the compiled React bundle -->
+    <script src="extensions/vscode-aep/dist/webview/assets/index.css"></script>
+    <script src="extensions/vscode-aep/dist/webview/panel.js"></script>
+    
+    <script>
+        // Mock the VS Code API
+        window.vscode = {
+            postMessage: function(message) {
+                console.log('Mock vscode.postMessage called:', message);
+            }
+        };
+
+        // Set up test message event handler
+        let messageHandler = null;
+        window.addEventListener('message', function(event) {
+            if (messageHandler) {
+                messageHandler(event);
+            }
+        });
+
+        function updateResults(message, type = 'info') {
+            const resultsContent = document.getElementById('results-content');
+            const timestamp = new Date().toLocaleTimeString();
+            resultsContent.innerHTML = `<strong>[${timestamp}]</strong> ${message}`;
+            
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.className = 'test-results ' + type;
+        }
+
+        function testPlanGeneration() {
+            updateResults('Testing plan generation...', 'info');
+            
+            // Simulate the exact message that would come from the extension
+            const testEvent = {
+                data: {
+                    type: 'navi.assistant.plan',
+                    plan: {
+                        goal: "Test plan goal",
+                        confidence: 0.95,
+                        steps: [
+                            {
+                                id: "step_1",
+                                title: "Test Step 1",
+                                rationale: "This is a test step",
+                                tool: "testTool",
+                                status: "pending",
+                                requires_approval: false
+                            }
+                        ],
+                        requires_approval: false
+                    },
+                    reasoning: "Test reasoning for plan generation",
+                    session_id: "test-session-" + Date.now()
+                }
+            };
+            
+            console.log('🧪 Simulating plan event:', testEvent);
+            
+            // Dispatch the event
+            window.dispatchEvent(new MessageEvent('message', testEvent));
+            
+            // Check results after a short delay
+            setTimeout(() => {
+                checkReactState();
+            }, 1000);
+        }
+
+        function checkReactState() {
+            try {
+                // Check if React rendered any plan messages
+                const planMessages = document.querySelectorAll('[data-plan-message]');
+                const chatMessages = document.querySelectorAll('[role="assistant"]');
+                
+                let resultMessage = '';
+                if (planMessages.length > 0) {
+                    resultMessage = `SUCCESS: Found ${planMessages.length} plan message(s) rendered by React!`;
+                    updateResults(resultMessage, 'success');
+                } else if (chatMessages.length > 0) {
+                    resultMessage = `PARTIAL: Found ${chatMessages.length} chat message(s) but no plan-specific elements`;
+                    updateResults(resultMessage, 'info');
+                } else {
+                    resultMessage = 'FALLBACK: No React messages found - check if DOM fallback was used';
+                    
+                    // Check for DOM fallback elements
+                    const fallbackElements = document.querySelectorAll('.plan-message');
+                    if (fallbackElements.length > 0) {
+                        resultMessage += ` (Found ${fallbackElements.length} DOM fallback elements)`;
+                    }
+                    updateResults(resultMessage, 'error');
+                }
+                
+                // Also log React root state if available
+                console.log('🔍 DOM inspection complete:', resultMessage);
+                console.log('🔍 All elements with data-plan-message:', planMessages);
+                console.log('🔍 All assistant role elements:', chatMessages);
+                
+            } catch (error) {
+                updateResults(`ERROR: ${error.message}`, 'error');
+            }
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', () => {
+            updateResults('Page loaded. React bundle should be initializing...', 'info');
+            
+            // Give React a moment to initialize
+            setTimeout(() => {
+                const root = document.getElementById('root');
+                if (root && root.innerHTML.trim() !== '') {
+                    updateResults('React appears to have rendered content!', 'success');
+                } else {
+                    updateResults('React root is empty or not found', 'error');
+                }
+            }, 2000);
+        });
+    </script>
+</body>
+</html>

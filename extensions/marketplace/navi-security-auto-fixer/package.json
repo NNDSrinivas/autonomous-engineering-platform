@@ -1,0 +1,47 @@
+{
+    "name": "navi-security-auto-fixer",
+    "version": "1.0.0",
+    "description": "Enterprise-grade security vulnerability auto-fixer for NAVI - detects real vulnerabilities and proposes safe minimal fixes",
+    "main": "index.js",
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "scripts": {
+        "build": "tsc",
+        "watch": "tsc --watch",
+        "test": "jest --config jest.config.json",
+        "test:watch": "jest --watch --config jest.config.json",
+        "test:coverage": "jest --coverage --config jest.config.json",
+        "lint": "eslint . --ext .ts",
+        "lint:fix": "eslint . --ext .ts --fix",
+        "bundle": "./build-bundle.sh",
+        "clean": "rm -rf lib/ coverage/ *.zip",
+        "audit": "npm audit --audit-level moderate",
+        "dev": "npm run build && npm run test",
+        "ci": "npm run lint && npm run build && npm run test && npm run audit"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "@types/jest": "^29.0.0",
+        "@typescript-eslint/eslint-plugin": "^6.0.0",
+        "@typescript-eslint/parser": "^6.0.0",
+        "eslint": "^8.0.0",
+        "jest": "^29.0.0",
+        "ts-jest": "^29.0.0",
+        "typescript": "^5.0.0"
+    },
+    "dependencies": {
+        "semver": "^7.5.0",
+        "yaml": "^2.3.0"
+    },
+    "keywords": [
+        "navi",
+        "security",
+        "vulnerability",
+        "cve",
+        "automation",
+        "enterprise"
+    ],
+    "author": "Navra Labs",
+    "license": "PROPRIETARY"
+}

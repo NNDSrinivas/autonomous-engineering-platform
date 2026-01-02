@@ -25,7 +25,6 @@ from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole 
 config = context.config
 # Always use settings.sqlalchemy_url if DATABASE_URL environment variable is set
 # This allows environment variables to override alembic.ini configuration
-import os
 
 if os.environ.get("DATABASE_URL"):
     config.set_main_option("sqlalchemy.url", settings.sqlalchemy_url)

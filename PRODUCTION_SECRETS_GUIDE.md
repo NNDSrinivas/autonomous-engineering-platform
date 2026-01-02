@@ -6,6 +6,23 @@ Your OpenAI API key is now securely stored in `.env` which is **protected by .gi
 
 ---
 
+## ✅ Production Secrets Are NOT In This Repo
+
+Use the committed templates as references only:
+- `.env.production.template` (recommended baseline)
+- `.env.example` (full list, including connector OAuth settings)
+
+**Minimum required in production:**
+- `DATABASE_URL`
+- `OPENAI_API_KEY`
+- `BACKEND_PUBLIC_URL`
+
+**Required when enabling OAuth connectors:**
+- `<PROVIDER>_CLIENT_ID` and `<PROVIDER>_CLIENT_SECRET` (per provider)
+- `<PROVIDER>_WEBHOOK_SECRET` where applicable
+
+---
+
 ## 🏠 Local Development (What You Just Did)
 
 **File Structure:**
@@ -30,9 +47,65 @@ OPENAI_API_KEY=sk-proj-ozLgKIn...
 
 ---
 
-## 🚀 Production Deployment Options
+## 🚀 Production Deployment Standard
 
-### Option 1: Docker / Docker Compose (Recommended)
+Standard for GA: Kubernetes (EKS/GKE/AKS) with External Secrets or Sealed Secrets.
+Docker Compose is supported for local dev and POC only.
+
+### Option 1: Kubernetes (Recommended for GA)
+
+**Create Kubernetes Secret:**
+```bash
+kubectl create secret generic navi-backend-secrets \
+  --from-literal=OPENAI_API_KEY="sk-proj-your-prod-key" \
+  --from-literal=DATABASE_URL="postgresql://..." \
+  --from-literal=JWT_SECRET="your-jwt-secret" \
+  --namespace=navi-prod
+```
+
+**Reference in Deployment:**
+```yaml
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: navi-backend
+spec:
+  template:
+    spec:
+      containers:
+      - name: backend
+        image: your-registry/aep-backend:latest
+        env:
+          - name: OPENAI_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: navi-backend-secrets
+                key: OPENAI_API_KEY
+          - name: DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: navi-backend-secrets
+                key: DATABASE_URL
+```
+
+**Best Practice: Use Sealed Secrets or External Secrets Operator**
+```bash
+# Install sealed-secrets controller
+kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.18.0/controller.yaml
+
+# Create encrypted secret (safe to commit!)
+echo "sk-proj-your-key" | kubectl create secret generic navi-backend-secrets \
+  --dry-run=client --from-file=OPENAI_API_KEY=/dev/stdin -o yaml | \
+  kubeseal -o yaml > sealed-secret.yaml
+
+# Commit sealed-secret.yaml to git (encrypted, safe!)
+git add sealed-secret.yaml
+```
+
+---
+
+### Option 2: Docker / Docker Compose (Dev/POC only)
 
 **Method A: Environment Variables in docker-compose.yml**
 ```yaml
@@ -78,59 +151,6 @@ secrets:
 **Create secrets:**
 ```bash
 echo "sk-proj-your-prod-key" | docker secret create openai_api_key -
-```
-
----
-
-### Option 2: Kubernetes (Cloud-Native)
-
-**Create Kubernetes Secret:**
-```bash
-kubectl create secret generic aep-secrets \
-  --from-literal=OPENAI_API_KEY="sk-proj-your-prod-key" \
-  --from-literal=DATABASE_URL="postgresql://..." \
-  --from-literal=JWT_SECRET="your-jwt-secret" \
-  --namespace=production
-```
-
-**Reference in Deployment:**
-```yaml
-# deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: aep-backend
-spec:
-  template:
-    spec:
-      containers:
-      - name: backend
-        image: your-registry/aep-backend:latest
-        env:
-          - name: OPENAI_API_KEY
-            valueFrom:
-              secretKeyRef:
-                name: aep-secrets
-                key: OPENAI_API_KEY
-          - name: DATABASE_URL
-            valueFrom:
-              secretKeyRef:
-                name: aep-secrets
-                key: DATABASE_URL
-```
-
-**Best Practice: Use Sealed Secrets or External Secrets Operator**
-```bash
-# Install sealed-secrets controller
-kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.18.0/controller.yaml
-
-# Create encrypted secret (safe to commit!)
-echo "sk-proj-your-key" | kubectl create secret generic aep-secrets \
-  --dry-run=client --from-file=OPENAI_API_KEY=/dev/stdin -o yaml | \
-  kubeseal -o yaml > sealed-secret.yaml
-
-# Commit sealed-secret.yaml to git (encrypted, safe!)
-git add sealed-secret.yaml
 ```
 
 ---

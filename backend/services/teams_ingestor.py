@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 import structlog
 
 from backend.integrations.teams_client import TeamsClient
+from backend.services import connectors as connectors_service
 from backend.services.navi_memory_service import store_memory
 
 # Load environment variables
@@ -171,7 +172,18 @@ async def ingest_teams(
         "Starting Teams ingestion", user_id=user_id, team_names=team_names, limit=limit
     )
 
-    tc = TeamsClient()
+    connector = connectors_service.get_connector_for_context(
+        db, user_id=user_id, org_id=None, provider="teams"
+    )
+    token = None
+    tenant_id = None
+    if connector:
+        cfg = connector.get("config") or {}
+        secrets = connector.get("secrets") or {}
+        token = secrets.get("access_token") or secrets.get("token")
+        tenant_id = cfg.get("tenant_id")
+
+    tc = TeamsClient(access_token=token, tenant_id=tenant_id)
     processed_channel_keys: List[str] = []
 
     for tname in team_names:

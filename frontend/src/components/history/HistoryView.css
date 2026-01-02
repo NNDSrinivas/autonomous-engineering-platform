@@ -9,6 +9,13 @@
     margin-bottom: 12px;
 }
 
+.navi-history-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
 .navi-history-title {
     margin: 0;
     font-size: 16px;
@@ -65,4 +72,21 @@
     font-size: 11px;
     color: #6b7280;
     margin-top: 2px;
+}
+
+.navi-history-preview {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.navi-history-empty {
+    margin-top: 12px;
+    color: #9ca3af;
+    font-size: 12px;
 }

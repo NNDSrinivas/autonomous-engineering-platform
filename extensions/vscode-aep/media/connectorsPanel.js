@@ -68,8 +68,18 @@
       category: "chat",
       tags: ["Chat", "Meetings"],
       description: "Teams chats, channels, and meetings.",
-      status: "coming_soon",
+      status: "not_connected",
       icon: "teams.svg",
+    },
+    {
+      id: "meet",
+      name: "Google Meet",
+      vendor: "Google",
+      category: "meetings",
+      tags: ["Meetings"],
+      description: "Meet calls, recordings, and transcripts.",
+      status: "not_connected",
+      icon: "http.svg",
     },
     {
       id: "zoom",
@@ -78,7 +88,7 @@
       category: "meetings",
       tags: ["Meetings"],
       description: "Meetings, recordings, and transcripts.",
-      status: "coming_soon",
+      status: "not_connected",
       icon: "zoom.svg",
     },
     {
@@ -88,7 +98,7 @@
       category: "docs",
       tags: ["Docs / Knowledge"],
       description: "Design docs, specs, and architecture pages.",
-      status: "coming_soon",
+      status: "not_connected",
       icon: "confluence.svg",
     },
     {
@@ -312,15 +322,16 @@
       row.appendChild(main);
       row.appendChild(side);
 
-      const btn = row.querySelector("button[data-connector-id]");
-      if (btn) {
+      const buttons = row.querySelectorAll("button[data-connector-id]");
+      buttons.forEach((btn) => {
         btn.addEventListener("click", () => {
           const id = btn.getAttribute("data-connector-id");
           if (!id) return;
           if (c.status === "coming_soon") return;
-          vscode.postMessage({ type: "connect", connectorId: id });
+          const action = btn.getAttribute("data-action") || "connect";
+          vscode.postMessage({ type: "action", connectorId: id, action });
         });
-      }
+      });
 
       list.appendChild(row);
     });
@@ -346,10 +357,48 @@
     }
 
     if (c.status === "connected") {
-      return `<button class="aep-connectors-connect-btn" data-connector-id="${c.id}">Reconnect</button>`;
+      if (c.id === "slack") {
+        return `
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="sync">Sync</button>
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="connect">Reconnect</button>
+        `;
+      }
+      if (c.id === "github") {
+        return `
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="index">Index Repo</button>
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="connect">Reconnect</button>
+        `;
+      }
+      if (c.id === "confluence") {
+        return `
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="sync">Sync</button>
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="subscribe">Subscribe</button>
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="connect">Reconnect</button>
+        `;
+      }
+      if (c.id === "teams") {
+        return `
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="subscribe">Subscribe</button>
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="connect">Reconnect</button>
+        `;
+      }
+      if (c.id === "zoom") {
+        return `
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="sync">Sync</button>
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="connect">Reconnect</button>
+        `;
+      }
+      if (c.id === "meet") {
+        return `
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="subscribe">Subscribe</button>
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="sync">Sync</button>
+          <button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="connect">Reconnect</button>
+        `;
+      }
+      return `<button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="connect">Reconnect</button>`;
     }
 
-    return `<button class="aep-connectors-connect-btn" data-connector-id="${c.id}">Connect</button>`;
+    return `<button class="aep-connectors-connect-btn" data-connector-id="${c.id}" data-action="connect">Connect</button>`;
   }
 
   // -----------------------------------------------------------------------
@@ -380,6 +429,15 @@
           showToast(`Failed to connect ${connectorId}: ${error}`);
         } else if (ok) {
           showToast(`Connected ${connectorId}`);
+        }
+        break;
+      }
+      case "syncResult": {
+        const { connectorId, ok, error, details } = message.payload || {};
+        if (!ok && error) {
+          showToast(`Sync failed (${connectorId}): ${error}`);
+        } else if (ok) {
+          showToast(`Synced ${connectorId}${details ? `: ${details}` : ""}`);
         }
         break;
       }

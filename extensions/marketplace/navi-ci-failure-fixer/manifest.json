@@ -1,0 +1,18 @@
+{
+    "id": "navi-ci-failure-fixer",
+    "name": "CI Failure Fixer",
+    "author": "Navra Labs",
+    "version": "1.0.0",
+    "category": "CI/CD",
+    "trust": "CORE",
+    "description": "Analyzes CI failures and proposes safe, approval-gated fixes",
+    "entry": "index.ts",
+    "permissions": [
+        "CI_ACCESS",
+        "ANALYZE_PROJECT",
+        "FIX_PROBLEMS",
+        "WRITE_FILES"
+    ],
+    "hash": "",
+    "created_at": ""
+}

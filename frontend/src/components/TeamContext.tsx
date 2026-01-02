@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { CORE_API } from '../api/client'
 
 const TeamContext: React.FC = () => {
   const [query, setQuery] = useState('')
@@ -10,7 +11,7 @@ const TeamContext: React.FC = () => {
     
     setLoading(true)
     try {
-      const response = await fetch('http://localhost:8000/api/team-context', {
+      const response = await fetch(`${CORE_API}/api/team-context`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

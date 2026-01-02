@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: navi-worker
+  namespace: navi-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: navi-worker
+  template:
+    metadata:
+      labels:
+        app: navi-worker
+    spec:
+      containers:
+        - name: worker
+          image: your-registry/aep-backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "backend.workers.queue"]
+          envFrom:
+            - configMapRef:
+                name: navi-backend-config
+            - secretRef:
+                name: navi-backend-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"

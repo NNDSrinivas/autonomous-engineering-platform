@@ -496,33 +496,40 @@ body {
   padding: 8px;
   background: #0f121b;
 }
+
 .navi-progress-item {
   padding: 6px 8px;
   border-radius: 6px;
   margin-bottom: 6px;
   border: 1px solid #1f2635;
 }
+
 .navi-progress-title {
   font-weight: 600;
   color: #e6e6e6;
 }
+
 .navi-progress-detail {
   font-size: 12px;
   color: #a9afbf;
   margin-top: 2px;
 }
+
 .navi-progress-done {
   border-color: #25a18e;
   background: rgba(37, 161, 142, 0.08);
 }
+
 .navi-progress-in_progress {
   border-color: #6f8cff;
   background: rgba(111, 140, 255, 0.08);
 }
+
 .navi-progress-error {
   border-color: #ff5e7e;
   background: rgba(255, 94, 126, 0.08);
 }
+
 .navi-progress-pending {
   opacity: 0.8;
 }
@@ -2533,4 +2540,248 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phase 2: Structured Diff Review Rendering
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* File-by-file review container */
+.navi-diff-review {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 12px 0;
+}
+
+/* Summary section at top */
+.navi-review-summary {
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.navi-review-summary strong {
+  color: #60a5fa;
+}
+
+/* Per-file collapsible block */
+.navi-file-review-block {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.navi-file-review-block:hover {
+  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* File header (clickable to toggle) */
+.navi-file-review-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(30, 30, 35, 0.8);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  transition: background 0.2s ease;
+}
+
+.navi-file-review-header:hover {
+  background: rgba(40, 40, 45, 0.8);
+}
+
+/* Toggle chevron icon */
+.navi-file-review-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  transition: transform 0.2s ease;
+  color: #94a3b8;
+}
+
+.navi-file-review-block.collapsed .navi-file-review-chevron {
+  transform: rotate(-90deg);
+}
+
+/* Severity badge with icon */
+.navi-file-severity-icon {
+  font-size: 16px;
+  min-width: 24px;
+  text-align: center;
+}
+
+/* File path styling */
+.navi-file-path {
+  flex: 1;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  color: #e5e7eb;
+  font-weight: 500;
+}
+
+/* Severity indicator (left border) */
+.navi-file-review-block.severity-error {
+  border-left: 4px solid #ef4444;
+}
+
+.navi-file-review-block.severity-warning {
+  border-left: 4px solid #f59e0b;
+}
+
+.navi-file-review-block.severity-info {
+  border-left: 4px solid #3b82f6;
+}
+
+.navi-file-review-block.severity-none {
+  border-left: 4px solid #10b981;
+}
+
+/* File content section (expandable) */
+.navi-file-review-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 800px;
+  overflow-y: auto;
+  transition: max-height 0.3s ease;
+}
+
+.navi-file-review-block.collapsed .navi-file-review-content {
+  max-height: 0;
+  overflow: hidden;
+}
+
+/* Issues list */
+.navi-issues-list {
+  padding: 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.navi-issue-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #d1d5db;
+}
+
+.navi-issue-item:last-child {
+  margin-bottom: 0;
+}
+
+.navi-issue-severity-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  width: 16px;
+}
+
+.navi-issue-message {
+  flex: 1;
+}
+
+.navi-issue-message strong {
+  color: #f9fafb;
+}
+
+/* Diff block styling */
+.navi-diff-block {
+  background: #0a0e27;
+  border: none;
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.navi-diff-block code {
+  display: block;
+  color: #e5e7eb;
+}
+
+/* Diff line styling with syntax highlighting */
+.navi-diff-line-added {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.navi-diff-line-removed {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.navi-diff-line-context {
+  color: #9ca3af;
+}
+
+.navi-diff-line-hunk {
+  color: #60a5fa;
+  font-weight: 500;
+}
+
+/* Auto-fix button */
+.navi-autofix-button {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin: 12px;
+  align-self: flex-start;
+}
+
+.navi-autofix-button:hover {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border-color: rgba(59, 130, 246, 0.8);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.navi-autofix-button:active {
+  transform: translateY(0);
+}
+
+.navi-autofix-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Metadata comment (hidden but present for phase 3) */
+.navi-issue-metadata {
+
+  .navi-autofix-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .navi-autofix-status {
+    font-size: 0.9rem;
+    color: #4b5563;
+  }
+
+  .navi-autofix-status-done {
+    color: #15803d;
+    font-weight: 600;
+  }
+
+  display: none;
 }

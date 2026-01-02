@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: navi-backend-config
+  namespace: navi-prod
+
+# Non-secret settings only. Use a Secret or External Secrets for credentials.
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "info"
+  BACKEND_PUBLIC_URL: "https://api.navi.example.com"
+  JWT_ENABLED: "true"
+  JWT_ISSUER: "https://auth.example.com/"
+  JWT_AUDIENCE: "navi-api"

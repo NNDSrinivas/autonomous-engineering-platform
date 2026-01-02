@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.api.main import app
 from backend.core.db import Base
+from backend.core.auth.deps import _get_db_for_auth
 from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole
 from backend.database.session import get_db
 
@@ -43,7 +44,16 @@ def db() -> Generator[Session, None, None]:
     engine = create_engine(test_database_url, connect_args={"check_same_thread": False})
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    Base.metadata.create_all(bind=engine)
+    # Create only the tables needed for RBAC tests to avoid heavy schema and PG-only bits
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            DBRole.__table__,
+            DBUser.__table__,
+            Organization.__table__,
+            UserRole.__table__,
+        ],
+    )
 
     # Clear in-memory cache before each test
     from backend.infra.cache.redis_cache import cache
@@ -60,7 +70,15 @@ def db() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
+        Base.metadata.drop_all(
+            bind=engine,
+            tables=[
+                DBRole.__table__,
+                DBUser.__table__,
+                Organization.__table__,
+                UserRole.__table__,
+            ],
+        )
 
 
 @pytest.fixture(scope="function")
@@ -74,6 +92,7 @@ def client(db: Session) -> Generator[TestClient, None, None]:
             pass
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[_get_db_for_auth] = override_get_db
 
     # Use dev auth mode for tests
     os.environ["JWT_ENABLED"] = "false"

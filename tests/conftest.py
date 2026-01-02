@@ -1,8 +1,8 @@
-"""Pytest configuration and fixtures for PR-17 Memory Graph tests
+"""Pytest configuration and fixtures for memory graph tests
 
 Provides:
 - api_client: HTTP client for testing API endpoints
-- seeded_graph: Ensures PR-17 fixture is loaded before tests
+- seeded_graph: Ensures memory graph fixture is loaded before tests
 - test_db: Database session for direct queries
 """
 
@@ -23,7 +23,7 @@ from backend.database.models.memory_graph import MemoryNode, MemoryEdge
 # Test configuration
 TEST_ORG_ID = "default"
 TEST_BASE_URL = "http://localhost:8000"
-FIXTURE_PATH = "data/seed/pr17_fixture.json"
+FIXTURE_PATH = "data/seed/memory_graph_fixture.json"
 
 
 @pytest.fixture(scope="session")
@@ -47,7 +47,7 @@ def test_db_session(test_engine):
 
 @pytest.fixture(scope="session")
 def seeded_graph(test_db_session):
-    """Seed PR-17 fixture data once per test session
+    """Seed memory graph fixture data once per test session
 
     This fixture ensures the test database has the 6-node chain loaded:
     Meeting → Issue → PR → Deploy → Incident → Hotfix
@@ -56,7 +56,7 @@ def seeded_graph(test_db_session):
     - 6 nodes (meeting, jira_issue, pr, run, incident, pr)
     - 12 edges (derived_from, implements, fixes, next, previous, caused_by, references)
     """
-    print("\n🌱 Seeding PR-17 fixture data...")
+    print("\n🌱 Seeding memory graph fixture data...")
 
     # Run seed script
     result = subprocess.run(
@@ -67,7 +67,7 @@ def seeded_graph(test_db_session):
 
     if result.returncode != 0:
         print(f"❌ Seed script failed:\n{result.stdout}\n{result.stderr}")
-        pytest.fail("Failed to seed PR-17 fixture data")
+        pytest.fail("Failed to seed memory graph fixture data")
 
     print(result.stdout)
 

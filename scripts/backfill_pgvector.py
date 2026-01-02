@@ -3,7 +3,7 @@
 Backfill pgvector embeddings from JSON column
 
 Migrates existing embeddings stored as JSON LOBs in the `embedding` column
-to the new `embedding_vec` vector column for ANN search (PR-16).
+to the new `embedding_vec` vector column for ANN search.
 
 Usage:
     python scripts/backfill_pgvector.py

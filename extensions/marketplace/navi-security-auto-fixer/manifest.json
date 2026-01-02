@@ -1,0 +1,33 @@
+{
+    "id": "navi-security-auto-fixer",
+    "name": "Security Vulnerability Auto-Fixer",
+    "author": "Navra Labs",
+    "version": "1.0.0",
+    "category": "Security",
+    "trust": "CORE",
+    "description": "Detect real security vulnerabilities, correlate findings across scanners, and propose safe minimal fixes with approval workflows",
+    "icon": "🔐",
+    "keywords": [
+        "security",
+        "vulnerabilities",
+        "cve",
+        "scanning",
+        "automation",
+        "enterprise"
+    ],
+    "compatibility": {
+        "naviVersion": ">=1.0.0",
+        "platforms": [
+            "linux",
+            "darwin",
+            "win32"
+        ]
+    },
+    "triggers": [
+        "FIX_SECURITY",
+        "SECURITY_AUTO_FIX",
+        "SCAN_VULNERABILITIES",
+        "RESOLVE_CVE"
+    ],
+    "entryPoint": "./index.js"
+}

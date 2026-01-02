@@ -25,22 +25,37 @@ class JiraClient:
         base_url: Optional[str] = None,
         email: Optional[str] = None,
         api_token: Optional[str] = None,
+        access_token: Optional[str] = None,
+        token_type: Optional[str] = None,
     ):
         self.base_url = (base_url or os.getenv("AEP_JIRA_BASE_URL", "")).rstrip("/")
         self.email = email or os.getenv("AEP_JIRA_EMAIL", "")
         self.api_token = api_token or os.getenv("AEP_JIRA_API_TOKEN", "")
+        self.access_token = access_token
+        self.token_type = token_type or "Bearer"
 
-        if not self.base_url or not self.email or not self.api_token:
+        if not self.base_url:
             raise RuntimeError(
                 "JiraClient is not configured. "
-                "Set AEP_JIRA_BASE_URL, AEP_JIRA_EMAIL, AEP_JIRA_API_TOKEN."
+                "Set AEP_JIRA_BASE_URL or pass base_url."
             )
 
-        self.client = httpx.AsyncClient(
-            auth=(self.email, self.api_token),
-            headers={"Accept": "application/json"},
-            timeout=30.0,
-        )
+        use_bearer = bool(self.access_token)
+        if not use_bearer and (not self.email or not self.api_token):
+            raise RuntimeError(
+                "JiraClient is not configured. "
+                "Provide access_token (OAuth) or AEP_JIRA_EMAIL + AEP_JIRA_API_TOKEN."
+            )
+
+        headers = {"Accept": "application/json"}
+        auth = None
+        if use_bearer:
+            token_type = (self.token_type or "Bearer").strip()
+            headers["Authorization"] = f"{token_type} {self.access_token}"
+        else:
+            auth = (self.email, self.api_token)
+
+        self.client = httpx.AsyncClient(headers=headers, auth=auth, timeout=30.0)
 
         logger.info("JiraClient initialized", base_url=self.base_url)
 
@@ -115,6 +130,13 @@ class JiraClient:
         """
         logger.info("Fetching Jira issue", key=key)
         return await self._get(f"/rest/api/3/issue/{key}")
+
+    async def get_myself(self) -> Dict[str, Any]:
+        """
+        Fetch the current Jira user profile to validate credentials.
+        """
+        logger.info("Fetching Jira current user profile")
+        return await self._get("/rest/api/3/myself")
 
     async def get_issues_by_project(
         self,

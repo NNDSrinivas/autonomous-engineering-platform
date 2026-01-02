@@ -4,6 +4,11 @@
   "private": true,
   "description": "Autonomous Engineering Intelligence Platform - E2E Tests",
   "scripts": {
+    "install:all": "npm install && npm install --prefix frontend && npm install --prefix extensions/vscode-aep && npm install --prefix extensions/vscode-aep/webview",
+    "build": "npm run build --prefix frontend && npm run build --prefix extensions/vscode-aep/webview && npm run compile --prefix extensions/vscode-aep",
+    "dev": "echo 'run package-level dev scripts: e.g., npm run dev --prefix frontend'",
+    "lint": "echo 'root lint: add package-level lint when ready'",
+    "typecheck": "echo 'root typecheck: add package-level checks when ready'",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug"

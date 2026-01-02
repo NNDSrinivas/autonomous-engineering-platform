@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: navi-backend
+  namespace: navi-prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: navi-backend
+  template:
+    metadata:
+      labels:
+        app: navi-backend
+    spec:
+      containers:
+        - name: backend
+          image: your-registry/aep-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8787
+          envFrom:
+            - configMapRef:
+                name: navi-backend-config
+            - secretRef:
+                name: navi-backend-secrets
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8787
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8787
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"

@@ -4,7 +4,7 @@ set -euo pipefail
 CORE=${CORE:-http://localhost:8002}
 ORG_ID=${ORG_ID:-default}
 
-echo "🚀 [SMOKE] Testing PR-11: Delivery Actions (Draft PR + JIRA Write)"
+echo "🚀 [SMOKE] Testing delivery actions (Draft PR + Jira write)"
 echo "📡 Core API: $CORE"
 echo "🏢 Org ID: $ORG_ID"
 echo
@@ -56,7 +56,7 @@ echo
 echo "💬 [SMOKE] Testing JIRA Comment (dry-run)..."
 JIRA_COMMENT_PAYLOAD='{
   "issue_key": "AEP-123",
-  "comment": "Automated comment from smoke test: PR-11 delivery functionality is working correctly.",
+  "comment": "Automated comment from smoke test: delivery functionality is working correctly.",
   "transition": "In Progress",
   "dry_run": true
 }'
@@ -132,7 +132,7 @@ echo "   ✅ Status transitions supported in JIRA"
 echo
 
 # Comprehensive feature validation
-echo "🔍 [SMOKE] Validating PR-11 core features..."
+echo "🔍 [SMOKE] Validating delivery core features..."
 
 # Check for proper error response structure
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$CORE/api/deliver/github/draft-pr" \
@@ -146,7 +146,7 @@ else
 fi
 
 echo
-echo "🎉 [SMOKE] PR-11 delivery actions smoke test completed!"
+echo "🎉 [SMOKE] Delivery actions smoke test completed!"
 echo "🚢 Key capabilities validated:"
 echo "   • Ask-before-do consent modals in VS Code"
 echo "   • Dry-run preview for all write operations"
@@ -156,9 +156,9 @@ echo "   • Full audit trail and metrics integration"
 echo "   • RBAC protection via org credentials"
 echo
 echo "📝 Next steps:"
-echo "   1. Configure GitHub/JIRA connections via PR-4 setup"
+echo "   1. Configure GitHub/Jira connections via connectors setup"
 echo "   2. Test real PR creation with valid credentials"
 echo "   3. Verify VS Code extension UI in development"
 echo "   4. Review audit logs for delivery actions"
 echo
-echo "✨ Ready for PR-12: IntelliJ adapter!"
+echo "✨ Ready for IntelliJ adapter coverage"

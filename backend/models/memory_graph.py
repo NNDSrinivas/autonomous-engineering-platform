@@ -15,7 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     TIMESTAMP,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from backend.database.types import PortableJSONB as JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from backend.core.db import Base

@@ -1,0 +1,55 @@
+{
+    "id": "navi-cost-optimizer",
+    "name": "Cost & Usage Optimization",
+    "author": "Navra Labs",
+    "version": "1.0.0",
+    "category": "FinOps",
+    "trust": "CORE",
+    "description": "Analyze cloud costs, detect waste, and propose safe optimizations to save money while maintaining performance",
+    "entrypoint": "index.ts",
+    "triggers": {
+        "phrases": [
+            "Why is AWS bill so high?",
+            "Analyze cloud costs",
+            "Reduce infrastructure cost",
+            "Why did spend increase?",
+            "Check cost optimization",
+            "Find cost savings",
+            "Optimize cloud spending",
+            "Reduce monthly bill",
+            "Infrastructure waste analysis"
+        ],
+        "mappings": {
+            "ANALYZE_COST": "COST_OPTIMIZER",
+            "OPTIMIZE_SPEND": "COST_OPTIMIZER",
+            "DETECT_WASTE": "COST_OPTIMIZER"
+        }
+    },
+    "platforms": [
+        "win32",
+        "darwin",
+        "linux"
+    ],
+    "engines": {
+        "navi": ">= 1.0.0"
+    },
+    "marketplace": {
+        "featured": true,
+        "tags": [
+            "finops",
+            "cost",
+            "optimization",
+            "aws",
+            "gcp",
+            "azure",
+            "kubernetes"
+        ]
+    },
+    "capabilities": {
+        "costAnalysis": true,
+        "wasteDetection": true,
+        "savingsEstimation": true,
+        "approvalWorkflow": true,
+        "rollbackSupport": true
+    }
+}

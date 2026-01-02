@@ -237,7 +237,6 @@ The React app (`frontend/src/pages/NaviSearchPage.tsx`) includes:
 - **Router Registration**: `backend/api/main.py`
 - **Memory Service**: `backend/services/navi_memory_service.py`
 - **Test HTML**: `test_navi_search.html` (standalone)
-- **Test Script**: `scripts/test_step3_rag.py` (Python)
 
 ## 🚀 Next Steps
 

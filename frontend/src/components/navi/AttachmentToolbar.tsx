@@ -47,6 +47,7 @@ export const AttachmentToolbar: React.FC<AttachmentToolbarProps> = ({
         type="button"
         className="navi-pill navi-pill--ghost navi-attachment-btn"
         onClick={handleLocalFile}
+        data-testid="attach-file-btn"
       >
         Local file…
       </button>

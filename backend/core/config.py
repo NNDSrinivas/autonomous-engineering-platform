@@ -161,6 +161,7 @@ class Settings(BaseSettings):
 
     # API Configuration
     api_v1_prefix: str = "/api"
+    public_base_url: Optional[str] = None  # External base URL for OAuth callbacks
 
     # Auth0 Configuration
     auth0_domain: Optional[str] = None
@@ -183,6 +184,31 @@ class Settings(BaseSettings):
     teams_webhook_secret: Optional[str] = None
     docs_webhook_secret: Optional[str] = None
     ci_webhook_secret: Optional[str] = None
+    zoom_webhook_secret: Optional[str] = None
+    meet_webhook_secret: Optional[str] = None
+
+    # OAuth connector settings
+    oauth_state_ttl_seconds: int = 600
+    slack_client_id: Optional[str] = None
+    slack_client_secret: Optional[str] = None
+    slack_oauth_scopes: Optional[str] = None
+    slack_user_scopes: Optional[str] = None
+    github_client_id: Optional[str] = None
+    github_client_secret: Optional[str] = None
+    github_oauth_scopes: Optional[str] = None
+    confluence_client_id: Optional[str] = None
+    confluence_client_secret: Optional[str] = None
+    confluence_oauth_scopes: Optional[str] = None
+    teams_client_id: Optional[str] = None
+    teams_client_secret: Optional[str] = None
+    teams_tenant_id: Optional[str] = None
+    teams_oauth_scopes: Optional[str] = None
+    zoom_account_id: Optional[str] = None
+    zoom_client_id: Optional[str] = None
+    zoom_client_secret: Optional[str] = None
+    google_client_id: Optional[str] = None
+    google_client_secret: Optional[str] = None
+    google_oauth_scopes: Optional[str] = None
 
     # Development Authentication
     dev_user_id: Optional[str] = None

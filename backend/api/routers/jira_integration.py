@@ -4,10 +4,12 @@ Jira Integration API for VS Code Extension
 Provides endpoints for accessing user's Jira tasks and integration data.
 """
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from backend.api.routers.oauth_device import get_current_user
+from backend.core.db import get_db
+from sqlalchemy.orm import Session
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,14 +31,42 @@ class JiraIssue(BaseModel):
     updated: Optional[str] = Field(description="Last update timestamp")
 
 
+def _build_assignee_jql(status: Optional[str], project: Optional[str]) -> str:
+    clauses = ["assignee = currentUser()"]
+    if status:
+        clauses.append(f'status = "{status}"')
+    else:
+        clauses.append("statusCategory != Done")
+    if project:
+        clauses.append(f'project = "{project}"')
+    return " AND ".join(clauses) + " ORDER BY updated DESC"
+
+
+def _issue_to_model(issue: Dict[str, Any], base_url: str) -> JiraIssue:
+    fields = issue.get("fields", {}) or {}
+    key = issue.get("key", "") or ""
+    return JiraIssue(
+        id=str(issue.get("id") or ""),
+        key=key,
+        summary=fields.get("summary") or "",
+        status=(fields.get("status") or {}).get("name", "Unknown"),
+        priority=(fields.get("priority") or {}).get("name"),
+        assignee=(fields.get("assignee") or {}).get("displayName"),
+        url=f"{base_url}/browse/{key}" if base_url and key else None,
+        project=(fields.get("project") or {}).get("key"),
+        issue_type=(fields.get("issuetype") or {}).get("name"),
+        created=fields.get("created"),
+        updated=fields.get("updated"),
+    )
+
+
 @router.get("/my-issues", response_model=List[JiraIssue])
 async def get_my_jira_issues(
     authorization: str = Header(None),
     limit: int = 10,
     status: Optional[str] = None,
     project: Optional[str] = None,
-    # TODO: Add database dependency when replacing mock data with real Jira integration
-    # db: Session = Depends(get_db),
+    db: Session = Depends(get_db),
 ):
     """
     Get Jira issues assigned to the authenticated user.
@@ -49,67 +79,20 @@ async def get_my_jira_issues(
         user = await get_current_user(authorization)
         user_id = user["user_id"]
 
-        # For MVP, return mock data
-        # In production, integrate with your Jira service
-        mock_issues = [
-            JiraIssue(
-                id="10001",
-                key="AEP-123",
-                summary="Implement VS Code extension OAuth authentication",
-                status="In Progress",
-                priority="High",
-                assignee=user_id,
-                url="https://jira.company.com/browse/AEP-123",
-                project="AEP",
-                issue_type="Story",
-                created="2024-11-05T10:00:00Z",
-                updated="2024-11-05T15:30:00Z",
-            ),
-            JiraIssue(
-                id="10002",
-                key="AEP-124",
-                summary="Add enterprise intelligence integration to morning briefings",
-                status="To Do",
-                priority="Medium",
-                assignee=user_id,
-                url="https://jira.company.com/browse/AEP-124",
-                project="AEP",
-                issue_type="Epic",
-                created="2024-11-04T09:15:00Z",
-                updated="2024-11-04T16:45:00Z",
-            ),
-            JiraIssue(
-                id="10003",
-                key="AEP-125",
-                summary="Fix plan execution engine approval workflow",
-                status="Review",
-                priority="High",
-                assignee=user_id,
-                url="https://jira.company.com/browse/AEP-125",
-                project="AEP",
-                issue_type="Bug",
-                created="2024-11-03T14:20:00Z",
-                updated="2024-11-05T11:00:00Z",
-            ),
-        ]
+        from backend.services.org_ingestor import _get_jira_client_for_user
 
-        # Apply filters
-        filtered_issues = mock_issues
+        jira_client = await _get_jira_client_for_user(db, user_id)
+        if not jira_client:
+            raise HTTPException(
+                status_code=404,
+                detail="No Jira connection configured for this user.",
+            )
 
-        if status:
-            filtered_issues = [
-                issue
-                for issue in filtered_issues
-                if issue.status.lower() == status.lower()
-            ]
+        jql = _build_assignee_jql(status=status, project=project)
+        async with jira_client as jira:
+            issues = await jira.get_assigned_issues(jql=jql, max_results=limit)
 
-        if project:
-            filtered_issues = [
-                issue for issue in filtered_issues if issue.project == project
-            ]
-
-        # Apply limit
-        return filtered_issues[:limit]
+        return [_issue_to_model(issue, jira_client.base_url) for issue in issues]
 
     except HTTPException:
         raise
@@ -124,35 +107,39 @@ async def get_my_jira_issues(
 async def get_jira_issue(
     issue_key: str,
     authorization: str = Header(None),
-    # TODO: Add database dependency when replacing mock data with real Jira integration
-    # db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Get detailed information about a specific Jira issue.
     """
     try:
         user = await get_current_user(authorization)
+        user_id = user["user_id"]
+        issue_key = issue_key.strip().upper()
 
-        # For MVP, return mock data based on issue key
-        if issue_key == "AEP-123":
-            return JiraIssue(
-                id="10001",
-                key="AEP-123",
-                summary="Implement VS Code extension OAuth authentication",
-                status="In Progress",
-                priority="High",
-                assignee=user["user_id"],
-                url="https://jira.company.com/browse/AEP-123",
-                project="AEP",
-                issue_type="Story",
-                created="2024-11-05T10:00:00Z",
-                updated="2024-11-05T15:30:00Z",
+        from backend.services.org_ingestor import _get_jira_client_for_user
+
+        jira_client = await _get_jira_client_for_user(db, user_id)
+        if not jira_client:
+            raise HTTPException(
+                status_code=404,
+                detail="No Jira connection configured for this user.",
             )
-        else:
-            raise HTTPException(status_code=404, detail="Issue not found")
+
+        async with jira_client as jira:
+            issue = await jira.get_issue(issue_key)
+
+        return _issue_to_model(issue, jira_client.base_url)
 
     except HTTPException:
         raise
+    except RuntimeError as e:
+        if " 404 " in str(e) or "404" in str(e):
+            raise HTTPException(status_code=404, detail="Issue not found") from e
+        logger.error(f"Jira API error for {issue_key}: {e}")
+        raise HTTPException(
+            status_code=502, detail="Failed to fetch Jira issue from Jira API"
+        ) from e
     except Exception as e:
         logger.error(f"Failed to fetch Jira issue {issue_key}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch issue: {str(e)}")

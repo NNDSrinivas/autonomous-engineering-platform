@@ -63,6 +63,7 @@ class OrgPolicy(Base):
     branches_protected = Column(Text)  # JSON array of protected branch names
     required_reviewers = Column(Integer)  # Number of required approvals
     require_review_for = Column(Text)  # JSON array of action kinds requiring review
+    test_coverage_min = Column(Integer)  # Minimum test coverage percentage
 
 
 class ChangeRequest(Base):

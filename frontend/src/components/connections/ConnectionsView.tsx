@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, ORG, USER_ID } from "../../api/client";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import "./ConnectionsView.css";

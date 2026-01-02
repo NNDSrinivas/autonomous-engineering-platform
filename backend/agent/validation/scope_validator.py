@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterable, Set
+from typing import Iterable, Set, List
 
 from backend.agent.codegen.types import CodeChange
 from backend.agent.validation.result import (

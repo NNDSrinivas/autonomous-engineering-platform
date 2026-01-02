@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import json
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, List, Optional
 
@@ -89,7 +90,9 @@ async def build_context_packet(
     - Add webhook-driven cache invalidation + on-demand refresh
     """
 
-    cache_key = f"context_packet:{org_id}:{task_key}" if use_cache and org_id else None
+    cache_key = None
+    if use_cache and (org_id or user_id):
+        cache_key = f"context_packet:{org_id or 'none'}:{user_id or 'none'}:{task_key}"
 
     async def _build() -> Dict[str, Any]:
         packet = ContextPacket(task_key=task_key)
@@ -150,6 +153,7 @@ async def build_context_packet(
                 )
 
         if include_related:
+            _hydrate_navi_memory(db, packet, user_id, task_key, related_limit)
             _hydrate_slack_messages(db, packet, org_id, task_key, related_limit)
             _hydrate_github_signals(db, packet, org_id, task_key, related_limit)
             _hydrate_docs(db, packet, org_id, task_key, related_limit)
@@ -165,26 +169,33 @@ async def build_context_packet(
     return _packet_from_dict(raw)
 
 
-def invalidate_context_packet_cache(task_key: str, org_id: Optional[str]) -> None:
+def invalidate_context_packet_cache(
+    task_key: str,
+    org_id: Optional[str],
+    user_id: Optional[str] = None,
+) -> None:
     """
     Evict cached context packet for this task/org.
     """
-    if not org_id:
-        return
-    key = f"context_packet:{org_id}:{task_key}"
+    org_key = org_id or "none"
+    if user_id:
+        pattern = f"context_packet:{org_key}:{user_id}:{task_key}"
+    else:
+        pattern = f"context_packet:{org_key}:*:{task_key}"
     logger.info(
-        "context_packet.invalidate", extra={"task_key": task_key, "org_id": org_id}
+        "context_packet.invalidate",
+        extra={"task_key": task_key, "org_id": org_id, "user_id": user_id},
     )
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(cache_service.del_key(key))
+        loop.create_task(cache_service.clear_pattern(pattern))
     except RuntimeError:
         try:
-            asyncio.run(cache_service.del_key(key))
+            asyncio.run(cache_service.clear_pattern(pattern))
         except Exception:
             logger.warning(
                 "context_packet.invalidate_failed",
-                extra={"task_key": task_key, "org_id": org_id},
+                extra={"task_key": task_key, "org_id": org_id, "user_id": user_id},
             )
 
 
@@ -204,6 +215,121 @@ def _packet_from_dict(data: Dict[str, Any]) -> ContextPacket:
         for s in sources_data
     ]
     return packet
+
+
+def _parse_meta_json(meta_raw: Any) -> Dict[str, Any]:
+    if isinstance(meta_raw, dict):
+        return meta_raw
+    if isinstance(meta_raw, str):
+        try:
+            return json.loads(meta_raw)
+        except Exception:
+            return {}
+    return {}
+
+
+def _hydrate_navi_memory(
+    db: Session,
+    packet: ContextPacket,
+    user_id: Optional[str],
+    task_key: str,
+    limit: int,
+) -> None:
+    if not user_id:
+        return
+
+    rows = (
+        db.execute(
+            text(
+                """
+                SELECT title, content, meta_json, scope, created_at
+                FROM navi_memory
+                WHERE user_id = :user_id
+                  AND (
+                       scope = :task_key
+                    OR title ILIKE :pattern
+                    OR content ILIKE :pattern
+                  )
+                ORDER BY created_at DESC
+                LIMIT :limit
+                """
+            ),
+            {
+                "user_id": str(user_id),
+                "task_key": task_key,
+                "pattern": f"%{task_key}%",
+                "limit": limit,
+            },
+        )
+        .mappings()
+        .all()
+    )
+
+    for r in rows:
+        meta = _parse_meta_json(r.get("meta_json"))
+        source = (meta.get("source") or "").lower()
+        title = r.get("title")
+        content = r.get("content") or ""
+        created_at = r.get("created_at")
+        created_iso = created_at.isoformat() if hasattr(created_at, "isoformat") else None
+
+        if source in {"slack", "teams"}:
+            packet.conversations.append(
+                {
+                    "title": title,
+                    "text": content,
+                    "channel": meta.get("channel"),
+                    "team": meta.get("team"),
+                    "ts": meta.get("thread_ts"),
+                    "created_at": created_iso,
+                }
+            )
+            packet.sources.append(
+                SourceRef(
+                    name=title or f"{source} conversation",
+                    type=source,
+                    connector=source,
+                    url=meta.get("url"),
+                    meta=meta,
+                )
+            )
+        elif source in {"meet", "zoom", "meet_transcript"}:
+            packet.meetings.append(
+                {
+                    "title": title,
+                    "summary": content,
+                    "link": meta.get("meet_link"),
+                    "meeting_id": meta.get("meeting_id") or meta.get("event_id"),
+                    "created_at": created_iso,
+                }
+            )
+            packet.sources.append(
+                SourceRef(
+                    name=title or "meeting",
+                    type="meeting",
+                    connector=source,
+                    url=meta.get("meet_link") or meta.get("web_view_link"),
+                    meta=meta,
+                )
+            )
+        elif source in {"confluence", "notion"}:
+            packet.docs.append(
+                {
+                    "title": title,
+                    "excerpt": content[:300],
+                    "source": source,
+                    "page_id": meta.get("page_id"),
+                }
+            )
+            packet.sources.append(
+                SourceRef(
+                    name=title or source,
+                    type="doc",
+                    connector=source,
+                    url=meta.get("url"),
+                    meta=meta,
+                )
+            )
 
 
 def _hydrate_slack_messages(

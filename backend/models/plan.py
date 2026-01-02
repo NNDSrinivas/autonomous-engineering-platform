@@ -85,6 +85,11 @@ class ExecutionResult(BaseModel):
     files_modified: List[str] = []
     execution_time: float = 0.0
     metadata: Dict[str, Any] = {}
+    
+    @property
+    def ok(self) -> bool:
+        """Phase 4.1.2 compatibility property"""
+        return self.success
 
 class Plan(BaseModel):
     """

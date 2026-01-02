@@ -1,4 +1,4 @@
--- Create pgvector indexes for ANN search (PR-16)
+-- Create pgvector indexes for ANN search
 -- 
 -- This script creates the appropriate index type based on PGVECTOR_INDEX env variable.
 -- 

@@ -58,6 +58,9 @@ SAFE_COMMANDS = {
     "git branch",
     "git show",
     # Info commands
+    "echo",  # Safe output command
+    "ls",    # Directory listing
+    "pwd",   # Print working directory
     "node",
     "python",
     "python3",

@@ -30,6 +30,11 @@
           "default": "default_user",
           "description": "User id sent to NAVI backend for scans and memory context"
         },
+        "aep.navi.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "Bearer token for JWT-enabled NAVI backend (device-code login token)"
+        },
         "aep.navi.autoScanEnabled": {
           "type": "boolean",
           "default": true,

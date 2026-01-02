@@ -6,10 +6,8 @@ import subprocess
 import json
 import logging
 import os
-import re
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from pathlib import Path
-from datetime import datetime
 
 # Import LLM router for AI analysis
 from backend.ai.llm_router import smart_auto_chat, LLMRouter
@@ -229,6 +227,24 @@ class RealReviewService:
             summary=f"Found {len(issues)} issues in {filepath}" if issues else f"No issues found in {filepath}",
             status=change.get("status")
         )
+
+    def analyze_file_change_comprehensive(self, change: Dict[str, Any]) -> Dict[str, Any]:
+        """Compatibility wrapper for legacy comprehensive analysis callers."""
+        async def _run() -> ReviewEntry:
+            return await self.analyze_file_change(change)
+
+        try:
+            review_entry = asyncio.run(_run())
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            try:
+                asyncio.set_event_loop(loop)
+                review_entry = loop.run_until_complete(_run())
+            finally:
+                asyncio.set_event_loop(None)
+                loop.close()
+
+        return {"analysis_results": {"review": review_entry}}
         
     async def _analyze_with_llm(self, file_path: str, diff: str, content: str) -> List[ReviewIssue]:
         """Use LLM to find complex issues in real code changes"""
@@ -779,7 +795,7 @@ async def generate_review_stream(workspace_path: str = ".") -> AsyncGenerator[Di
                                         "hunk": content[:200],
                                         "severity": "info",
                                         "title": "✅ No issues detected",
-                                        "body": f"File scanned successfully - looks good!",
+                                        "body": "File scanned successfully - looks good!",
                                         "fixId": f"clean-{rel_path.replace('/', '-')}"
                                     }
                                 }

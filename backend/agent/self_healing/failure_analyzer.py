@@ -158,7 +158,7 @@ class FailureAnalyzer:
             logs = ci_payload.get("logs", "")
             status = ci_payload.get("status", "")
             conclusion = ci_payload.get("conclusion", "")
-            check_name = ci_payload.get("check_name", "")
+            ci_payload.get("check_name", "")
             
             if not logs and not status:
                 logger.warning("No logs or status provided for failure analysis")

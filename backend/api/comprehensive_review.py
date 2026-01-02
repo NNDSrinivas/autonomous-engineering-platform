@@ -10,7 +10,6 @@ from typing import Optional
 from pathlib import Path
 
 from backend.services.review_service import RealReviewService
-from backend.models.review import ReviewEntry
 
 logger = logging.getLogger(__name__)
 
@@ -106,19 +105,19 @@ async def comprehensive_analysis_stream(
             yield f"event: live-progress\ndata: Starting {analysis_depth} analysis of working tree…\n\n"
             
             # Get repository context
-            yield f"event: live-progress\ndata: Analyzing repository structure and context…\n\n"
+            yield "event: live-progress\ndata: Analyzing repository structure and context…\n\n"
             repo_context = await review_service.analyze_repository_context()
             
             # Get changes
             changes = review_service.repo_service.get_working_tree_changes()
             
             if not changes:
-                yield f"event: live-progress\ndata: No changes detected in working tree\n\n"
-                yield f"event: done\ndata: Analysis complete - no changes found\n\n"
+                yield "event: live-progress\ndata: No changes detected in working tree\n\n"
+                yield "event: done\ndata: Analysis complete - no changes found\n\n"
                 return
                 
             yield f"event: live-progress\ndata: Found {len(changes)} changed files for analysis\n\n"
-            yield f"event: live-progress\ndata: Beginning comprehensive file analysis…\n\n"
+            yield "event: live-progress\ndata: Beginning comprehensive file analysis…\n\n"
             
             # Collect all analysis results
             file_analyses = []
@@ -171,13 +170,13 @@ async def comprehensive_analysis_stream(
             
             # Cross-file architecture analysis
             if len(file_analyses) > 1 and review_service.config.get("enable_architecture_analysis", False):
-                yield f"event: live-progress\ndata: Analyzing cross-file architecture patterns…\n\n"
+                yield "event: live-progress\ndata: Analyzing cross-file architecture patterns…\n\n"
                 architecture_insights = await review_service._analyze_architecture_patterns(file_analyses, repo_context)
             else:
                 architecture_insights = []
             
             # Calculate scores
-            yield f"event: live-progress\ndata: Calculating quality scores and generating summary…\n\n"
+            yield "event: live-progress\ndata: Calculating quality scores and generating summary…\n\n"
             scores = review_service._calculate_quality_scores(
                 review_entries, all_security_findings, all_performance_issues, all_technical_debt
             )

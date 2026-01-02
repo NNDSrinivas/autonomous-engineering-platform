@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 from backend.core.db import get_db
 from backend.core.config import settings
 from backend.core.webhooks import verify_hmac_signature
-from backend.core.auth_org import require_org
 from backend.services import github as ghsvc
 from backend.models.integrations import GhConnection, GhRepo
 from backend.agent.context_packet import invalidate_context_packet_cache
@@ -27,7 +26,7 @@ async def ingest(
     request: Request,
     x_hub_signature_256: str | None = Header(None),
     db: Session = Depends(get_db),
-    org_ctx: dict = Depends(require_org),
+    x_org_id: str | None = Header(None, alias="X-Org-Id"),
 ):
     """
     Ingest GitHub webhooks (PRs, issues, comments, status).
@@ -52,25 +51,9 @@ async def ingest(
     if not repo_full_name:
         raise HTTPException(status_code=400, detail="Missing repository info")
 
-    # Find connection by repo if available
-    gh_conn = (
-        db.query(GhConnection)
-        .filter(GhConnection.org_id == org_ctx["org_id"])
-        .order_by(GhConnection.id.desc())
-        .first()
-    )
-    if not gh_conn:
-        logger.warning(
-            "github_webhook.no_connection",
-            extra={"repo": repo_full_name, "event": event},
-        )
-        raise HTTPException(status_code=202, detail="No GitHub connection found")
-
     repo_row = (
         db.query(GhRepo)
-        .filter(
-            GhRepo.connection_id == gh_conn.id, GhRepo.repo_full_name == repo_full_name
-        )
+        .filter(GhRepo.repo_full_name == repo_full_name)
         .order_by(GhRepo.id.desc())
         .first()
     )
@@ -81,17 +64,28 @@ async def ingest(
         raise HTTPException(
             status_code=202, detail="Repo not indexed for this connection"
         )
+    gh_conn = db.get(GhConnection, repo_row.connection_id) if repo_row else None
+    org_id = gh_conn.org_id if gh_conn else x_org_id
+    if not org_id:
+        logger.warning(
+            "github_webhook.no_connection",
+            extra={"repo": repo_full_name, "event": event},
+        )
+        raise HTTPException(status_code=202, detail="No GitHub connection found")
 
     try:
         # Handle core event types
-        if event in ("pull_request", "pull_request_review", "issue_comment"):
+        if event in ("pull_request", "pull_request_review", "issue_comment", "issues"):
             pr = payload.get("pull_request") or payload.get("issue") or {}
             if pr:
+                is_pr = event in ("pull_request", "pull_request_review") or bool(
+                    pr.get("pull_request")
+                )
                 ghsvc.upsert_issuepr(
                     db,
                     repo_id=repo_row.id,
                     number=pr.get("number"),
-                    typ="pr" if "pull_request" in payload else "issue",
+                    type_="pr" if is_pr else "issue",
                     title=pr.get("title", ""),
                     body=pr.get("body", ""),
                     state=pr.get("state", "open"),
@@ -104,7 +98,7 @@ async def ingest(
                 from backend.models.memory_graph import MemoryNode
 
                 node = MemoryNode(
-                    org_id=org_ctx["org_id"],
+                    org_id=org_id,
                     node_type="github_pr_review",
                     title=f"{repo_full_name} PR#{pr.get('number')} review",
                     text=review.get("body", "") or review.get("state", ""),
@@ -119,9 +113,7 @@ async def ingest(
                 )
                 db.add(node)
                 db.commit()
-            invalidate_context_packet_cache(
-                pr.get("title") or pr.get("html_url"), org_ctx["org_id"]
-            )
+            invalidate_context_packet_cache(pr.get("title") or pr.get("html_url"), org_id)
         elif event == "status":
             # Store status as memory nodes for packet hydration
             commit = payload.get("commit") or {}
@@ -132,7 +124,7 @@ async def ingest(
             from backend.models.memory_graph import MemoryNode
 
             node = MemoryNode(
-                org_id=org_ctx["org_id"],
+                org_id=org_id,
                 node_type="github_status",
                 title=f"{repo_full_name}:{context}",
                 text=description or state or "",
@@ -147,7 +139,7 @@ async def ingest(
             )
             db.add(node)
             db.commit()
-            invalidate_context_packet_cache(sha, org_ctx["org_id"])
+            invalidate_context_packet_cache(sha, org_id)
         else:
             logger.info("github_webhook.unhandled_event", extra={"event": event})
     except Exception as exc:

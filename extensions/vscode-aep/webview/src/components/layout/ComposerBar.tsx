@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { useUIState } from '../../state/uiStore';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useUIState, type Attachment } from '../../state/uiStore';
 import { postMessage } from '../../utils/vscodeApi';
 import { ModeSelector, type Mode } from '../input/ModeSelector';
 import { ModelSelector, type Model } from '../input/ModelSelector';
+// Phase 4.2.1: Dual-Path Intelligence
+import { DecisionRouter } from '../../services/decisionRouter';
 
 // PHASE 4.0.2 DESIGN TOKENS - NAVI Font System & Composer
 const DESIGN_TOKENS = {
@@ -68,10 +70,48 @@ export function ComposerBar() {
   const [isFocused, setIsFocused] = useState(false);
   const [mode, setMode] = useState<Mode>('agent');
   const [model, setModel] = useState<Model>('auto');
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const attachMenuRef = useRef<HTMLDivElement | null>(null);
+  const attachButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Check if thinking (from UI state)
   const isThinking = state.isThinking;
   const isDisabled = isThinking;
+  const attachments = state.attachments;
+
+  const buildAttachmentKey = (attachment: Attachment) =>
+    `${attachment.kind}:${attachment.path}:${attachment.content.length}`;
+
+  const getAttachmentLabel = (attachment: Attachment) => {
+    if (attachment.kind === 'selection') return 'Selection';
+    if (attachment.kind === 'currentFile') return 'Current file';
+    if (attachment.kind === 'pickedFile') return 'File';
+    return attachment.kind || 'Attachment';
+  };
+
+  const getAttachmentName = (attachment: Attachment) => {
+    const path = attachment.path || '';
+    const name = path.split(/[\\/]/).pop() || path || 'untitled';
+    return name.length > 48 ? `${name.slice(0, 45)}...` : name;
+  };
+
+  const requestAttachment = (kind: string) => {
+    if (isDisabled) return;
+    postMessage({ type: 'requestAttachment', kind });
+    setShowAttachMenu(false);
+  };
+
+  const removeAttachment = (attachment: Attachment) => {
+    const key = buildAttachmentKey(attachment);
+    dispatch({ type: 'REMOVE_ATTACHMENT', attachmentKey: key });
+    postMessage({ type: 'removeAttachment', attachmentKey: key });
+  };
+
+  const clearAttachments = () => {
+    dispatch({ type: 'CLEAR_ATTACHMENTS' });
+    postMessage({ type: 'clearAttachments' });
+  };
 
   const getPlaceholder = () => {
     if (isThinking) return 'NAVI is thinking...';
@@ -84,23 +124,45 @@ export function ComposerBar() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (message.trim() && !isDisabled) {
-      // Add user message to UI immediately (optimistic)
-      dispatch({ type: 'ADD_USER_MESSAGE', content: message.trim() });
-      
-      // CANONICAL PIPELINE: Always use extension backend
-      postMessage({
-        type: 'navi.user.message',
-        content: message.trim(),
-        mode,
-        model
-      });
-      
-      console.log('✅ User message sent:', { message: message.trim(), mode, model });
-      setMessage('');
+  const sendMessage = useCallback(async (input: string) => {
+    if (!input.trim() || isDisabled) {
+      return;
     }
+
+    const userInput = input.trim();
+
+    // Add user message to UI immediately (optimistic)
+    dispatch({ type: 'ADD_USER_MESSAGE', content: userInput });
+    setMessage('');
+
+    // Phase 4.2.1: DUAL-PATH INTELLIGENCE
+    // Decision Router determines: Agent Path vs Conversational Path
+    const decision = DecisionRouter.route(userInput);
+    console.log('🧠 Decision Router:', decision);
+
+    // Always delegate to the extension so chat responses are real LLM outputs.
+    dispatch({ type: 'SET_THINKING', thinking: true });
+
+    postMessage({
+      type: 'navi.user.message',
+      content: userInput,
+      mode,
+      model,
+      routingDecision: decision
+    });
+
+    console.log('✅ Message routed:', {
+      input: userInput,
+      path: decision.path,
+      confidence: decision.confidence,
+      mode,
+      model
+    });
+  }, [dispatch, isDisabled, mode, model]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await sendMessage(message);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -119,7 +181,7 @@ export function ComposerBar() {
   // Auto-resize textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
-    
+
     // Auto-resize textarea
     const textarea = e.target;
     textarea.style.height = 'auto';
@@ -127,12 +189,50 @@ export function ComposerBar() {
     textarea.style.height = `${newHeight}px`;
   };
 
+  useEffect(() => {
+    const handleSuggestion = (event: Event) => {
+      const customEvent = event as CustomEvent<{ text?: string; autoSend?: boolean }>;
+      const suggestion = customEvent.detail?.text?.trim();
+
+      if (!suggestion) {
+        return;
+      }
+
+      setMessage(suggestion);
+      textareaRef.current?.focus();
+
+      if (customEvent.detail?.autoSend) {
+        void sendMessage(suggestion);
+      }
+    };
+
+    window.addEventListener('navi:composer-suggest', handleSuggestion as EventListener);
+    return () => window.removeEventListener('navi:composer-suggest', handleSuggestion as EventListener);
+  }, [sendMessage]);
+
+  useEffect(() => {
+    if (!showAttachMenu) return;
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const menu = attachMenuRef.current;
+      const button = attachButtonRef.current;
+
+      if (menu && menu.contains(target)) return;
+      if (button && button.contains(target)) return;
+      setShowAttachMenu(false);
+    };
+
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showAttachMenu]);
+
   return (
     <div className="border-t border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)]" data-composer-panel>
       {/* NAVI Command Surface - Frosted Command Capsule */}
       <div className="p-4">
         <form onSubmit={handleSubmit}>
-          <div 
+          <div
             className="navi-composer relative rounded-[14px] transition-all duration-150"
             style={{
               background: DESIGN_TOKENS.composer.bg,
@@ -142,7 +242,41 @@ export function ComposerBar() {
               minHeight: DESIGN_TOKENS.composer.minHeight
             }}
           >
+            {attachments.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {attachments.map((attachment) => {
+                  const key = buildAttachmentKey(attachment);
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-[var(--vscode-foreground)]"
+                    >
+                      <span className="text-[var(--vscode-descriptionForeground)]">
+                        {getAttachmentLabel(attachment)}
+                      </span>
+                      <span className="truncate max-w-[160px]">{getAttachmentName(attachment)}</span>
+                      <button
+                        type="button"
+                        className="rounded-full px-1 text-[var(--vscode-descriptionForeground)] hover:text-[var(--vscode-foreground)]"
+                        onClick={() => removeAttachment(attachment)}
+                        aria-label="Remove attachment"
+                      >
+                        x
+                      </button>
+                    </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  className="text-xs text-[var(--vscode-textLink-foreground)] hover:text-[var(--vscode-textLink-activeForeground)]"
+                  onClick={clearAttachments}
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
             <textarea
+              ref={textareaRef}
               value={message}
               onChange={(e) => {
                 setMessage(e.target.value);
@@ -167,35 +301,66 @@ export function ComposerBar() {
                 lineHeight: '1.5'
               }}
             />
-            
+
             {/* Bottom-Pinned Icon Rail */}
-            <div 
+            <div
               className="absolute bottom-0 left-0 right-0 flex justify-between items-center px-3 pb-3"
             >
               {/* Left: Attachment */}
-              <button
-                type="button"
-                onClick={() => {
-                  console.log('Context injection clicked');
-                  // TODO: Open context picker
-                }}
-                title="Add context"
-                className="navi-icon-btn transition-all duration-120"
-                style={{
-                  color: DESIGN_TOKENS.icons.default
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = DESIGN_TOKENS.icons.hover;
-                  e.currentTarget.style.boxShadow = DESIGN_TOKENS.icons.glow;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = DESIGN_TOKENS.icons.default;
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
-                <AttachIcon />
-              </button>
-              
+              <div className="relative">
+                <button
+                  ref={attachButtonRef}
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={() => setShowAttachMenu((prev) => !prev)}
+                  title="Add context"
+                  className="navi-icon-btn transition-all duration-120"
+                  style={{
+                    color: isDisabled ? DESIGN_TOKENS.icons.disabled : DESIGN_TOKENS.icons.default
+                  }}
+                  onMouseEnter={(e) => {
+                    if (isDisabled) return;
+                    e.currentTarget.style.color = DESIGN_TOKENS.icons.hover;
+                    e.currentTarget.style.boxShadow = DESIGN_TOKENS.icons.glow;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = isDisabled ? DESIGN_TOKENS.icons.disabled : DESIGN_TOKENS.icons.default;
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  <AttachIcon />
+                </button>
+
+                {showAttachMenu && (
+                  <div
+                    ref={attachMenuRef}
+                    className="absolute left-0 bottom-10 z-10 min-w-[200px] rounded-lg border border-white/10 bg-[#16181f]/95 p-2 text-xs text-[var(--vscode-foreground)] shadow-lg"
+                  >
+                    <button
+                      type="button"
+                      className="w-full rounded px-3 py-2 text-left hover:bg-white/10"
+                      onClick={() => requestAttachment('selection')}
+                    >
+                      Attach selection
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full rounded px-3 py-2 text-left hover:bg-white/10"
+                      onClick={() => requestAttachment('current-file')}
+                    >
+                      Attach current file
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full rounded px-3 py-2 text-left hover:bg-white/10"
+                      onClick={() => requestAttachment('pick-file')}
+                    >
+                      Pick a file
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Right: Send */}
               <button
                 type="submit"
@@ -203,8 +368,8 @@ export function ComposerBar() {
                 title="Execute"
                 className="navi-icon-btn navi-send transition-all duration-120"
                 style={{
-                  color: message.trim() && !isDisabled 
-                    ? DESIGN_TOKENS.icons.active 
+                  color: message.trim() && !isDisabled
+                    ? DESIGN_TOKENS.icons.active
                     : DESIGN_TOKENS.icons.disabled,
                   opacity: message.trim() && !isDisabled ? 1 : 0.35,
                   cursor: message.trim() && !isDisabled ? 'pointer' : 'default'
@@ -238,7 +403,7 @@ export function ComposerBar() {
           <div className="h-[28px]">
             <ModelSelector value={model} onChange={setModel} />
           </div>
-          
+
           {/* Context indicator (only if files actually selected) */}
           {/* TODO: Replace with real contextFiles count */}
           {false && (

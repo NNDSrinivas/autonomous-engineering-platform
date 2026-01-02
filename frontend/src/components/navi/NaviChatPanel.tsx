@@ -38,7 +38,7 @@ import Prism from 'prismjs';
 // Temporarily commenting out components with missing dependencies
 // import { LiveProgressDiagnostics } from '../ui/LiveProgressDiagnostics';
 // import { Toaster } from '../ui/toaster';
-import EnhancedLiveReview from '../ui/EnhancedLiveReview';
+// import EnhancedLiveReview from '../ui/EnhancedLiveReview';
 
 /* ---------- Types ---------- */
 
@@ -528,16 +528,16 @@ export default function NaviChatPanel() {
 
   const [toast, setToast] = useState<ToastState | null>(null);
   const [structuredReview, setStructuredReview] = useState<StructuredReview | null>(null);
-  const [reviewViewMode, setReviewViewMode] = useState<"issues" | "diffs" | "live">("issues");
+  const [reviewViewMode, setReviewViewMode] = useState<"issues" | "diffs">("issues");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState<string[]>([]);
   const [currentProgress, setCurrentProgress] = useState(0);
-  const [analysisSummary, setAnalysisSummary] = useState<{
-    total_files: number;
-    detailed_files: number;
-    skipped_files: number;
-    highlights: string[];
-  } | null>(null);
+  // const [analysisSummary, setAnalysisSummary] = useState<{
+  // total_files: number;
+  // detailed_files: number;
+  // skipped_files: number;
+  // highlights: string[];
+  // } | null>(null);
 
   // NEW: Repo diff summary from agent (Phase 1.2)
   const [repoSummary, setRepoSummary] = useState<{
@@ -1168,9 +1168,9 @@ export default function NaviChatPanel() {
           setAnalysisProgress([]);
           setCurrentProgress(0);
           setStructuredReview(null);
-          setAnalysisSummary(null);
+          // setAnalysisSummary(null);
           // Ensure user sees the live stream immediately
-          setReviewViewMode('live');
+          // setReviewViewMode('live');
         }
 
         if (kind === 'liveProgress') {
@@ -1241,8 +1241,8 @@ export default function NaviChatPanel() {
           const committed = Number(data.committedFiles) || 0;
           const uncommitted = Number(data.uncommittedFiles) || 0;
           const baseBranch = data.baseBranch || 'main';
-          const listed = Array.isArray(data.listedFiles) ? data.listedFiles.length : undefined;
-          const severities = data.severityCounts || {};
+          // const listed = Array.isArray(data.listedFiles) ? data.listedFiles.length : undefined;
+          // const severities = data.severityCounts || {};
           const totalIssues = Number(data.totalIssues) || 0;
           const highlights: string[] = Array.isArray(data.highlights) ? data.highlights : [];
 
@@ -1262,12 +1262,12 @@ export default function NaviChatPanel() {
             summaryHighlights.push('No issues detected.');
           }
 
-          setAnalysisSummary({
-            total_files: total,
-            detailed_files: listed ?? total,
-            skipped_files: listed ? Math.max(0, total - listed) : 0,
-            highlights: summaryHighlights,
-          });
+          // setAnalysisSummary({
+          //   total_files: total,
+          //   detailed_files: listed ?? total,
+          //   skipped_files: listed ? Math.max(0, total - listed) : 0,
+          //   highlights: summaryHighlights,
+          // });
           return;
         }
 
@@ -1275,19 +1275,19 @@ export default function NaviChatPanel() {
           setIsAnalyzing(false);
           setCurrentProgress((prev) => Math.max(prev, 100));
           // If no summary arrived, synthesize a minimal one so completion is visible
-          setAnalysisSummary((prev) => {
-            if (prev) return prev;
-            const filesLen = (structuredReview?.files?.length ?? 0);
-            const highlights = filesLen > 0
-              ? [`${filesLen} files analyzed${filesLen ? '' : ''}`]
-              : ['No high-risk issues detected.'];
-            return {
-              total_files: filesLen,
-              detailed_files: filesLen,
-              skipped_files: 0,
-              highlights,
-            };
-          });
+          // setAnalysisSummary((prev) => {
+          //   if (prev) return prev;
+          //   const filesLen = (structuredReview?.files?.length ?? 0);
+          //   const highlights = filesLen > 0
+          //     ? [`${filesLen} files analyzed${filesLen ? '' : ''}`]
+          //     : ['No high-risk issues detected.'];
+          //   return {
+          //     total_files: filesLen,
+          //     detailed_files: filesLen,
+          //     skipped_files: 0,
+          //     highlights,
+          //   };
+          // });
           showToast('Analysis complete.', 'info');
           return;
         }
@@ -1410,7 +1410,7 @@ export default function NaviChatPanel() {
           } else if (status === 'pending') {
             showToast(reason || 'Fix application pending', 'info');
           } else if (status === 'applied') {
-            showToast('Fix applied successfully! ✅', 'success');
+            showToast('Fix applied successfully! ✅', 'info');
           }
           return;
         }
@@ -2060,7 +2060,7 @@ export default function NaviChatPanel() {
     setAttachments([]);
     setStructuredReview(null);
     setAnalysisProgress([]);
-    setAnalysisSummary(null);
+    // setAnalysisSummary(null);
     setCurrentProgress(0);
     setIsAnalyzing(false);
     setCoverageGate(null);
@@ -2137,19 +2137,17 @@ export default function NaviChatPanel() {
   };
 
   const handleAutoFix = (fileName: string, issue: any) => {
-    showToast(`Applying auto-fix for ${fileName}...`, "info");
+    if (!vscodeApi.hasVsCodeHost()) {
+      showToast("Auto-fix requires the VS Code host.", "warning");
+      return;
+    }
 
-    // Send auto-fix request to extension
+    showToast(`Applying auto-fix for ${fileName}...`, "info");
     vscodeApi.postMessage({
       type: "autoFix",
       fileName,
-      issue
+      issue,
     });
-
-    // Simulate progress feedback
-    setTimeout(() => {
-      showToast(`✅ Auto-fix applied to ${fileName}`, "info");
-    }, 2000);
   };
 
   const startRealTimeAnalysis = async () => {
@@ -2157,7 +2155,8 @@ export default function NaviChatPanel() {
     setAnalysisProgress([]);
     setCurrentProgress(0);
     setStructuredReview(null);
-    setAnalysisSummary(null);
+    setReviewViewMode("issues");
+    // setAnalysisSummary(null);
 
     try {
       if (analysisAbortRef.current) {
@@ -2210,12 +2209,12 @@ export default function NaviChatPanel() {
             if (data.step) appendStep(String(data.step));
             updateProgress(data.progress);
           } else if (data.type === 'summary') {
-            setAnalysisSummary({
-              total_files: data.total_files ?? 0,
-              detailed_files: data.detailed_files ?? 0,
-              skipped_files: data.skipped_files ?? 0,
-              highlights: Array.isArray(data.highlights) ? data.highlights : [],
-            });
+            // setAnalysisSummary({
+            //   total_files: data.total_files ?? 0,
+            //   detailed_files: data.detailed_files ?? 0,
+            //   skipped_files: data.skipped_files ?? 0,
+            //   highlights: Array.isArray(data.highlights) ? data.highlights : [],
+            // });
           } else if (data.type === 'review') {
             const reviewData = JSON.parse(data.payload);
             setStructuredReview(reviewData);
@@ -2237,28 +2236,28 @@ export default function NaviChatPanel() {
                   : [],
               }));
 
-              const issueCount = files.reduce(
-                (sum: number, file: StructuredReviewFile) => sum + (file.issues?.length || 0),
-                0
-              );
+              // const issueCount = files.reduce(
+              //   (sum: number, file: StructuredReviewFile) => sum + (file.issues?.length || 0),
+              //   0
+              // );
 
-              const warning =
-                typeof data.warning === "string" && data.warning.trim()
-                  ? data.warning.trim()
-                  : "";
+              // const warning =
+              //   typeof data.warning === "string" && data.warning.trim()
+              //     ? data.warning.trim()
+              //     : "";
 
               setStructuredReview({ files });
-              setAnalysisSummary({
-                total_files: files.length,
-                detailed_files: files.length,
-                skipped_files: 0,
-                highlights: [
-                  ...(warning ? [warning] : []),
-                  ...(issueCount
-                    ? [`${issueCount} issues detected across ${files.length} files`]
-                    : ["No issues detected in changed files"]),
-                ],
-              });
+              // setAnalysisSummary({
+              //   total_files: files.length,
+              //   detailed_files: files.length,
+              //   skipped_files: 0,
+              //   highlights: [
+              //     ...(warning ? [warning] : []),
+              //     ...(issueCount
+              //       ? [`${issueCount} issues detected across ${files.length} files`]
+              //       : ["No issues detected in changed files"]),
+              //   ],
+              // });
             }
             showToast('Analysis complete.', 'info');
           } else if (data.type === 'error') {
@@ -2306,6 +2305,9 @@ export default function NaviChatPanel() {
   };
 
   /* ---------- render ---------- */
+
+  const scopeIsChangedFiles = scopeDecision === "changed-files";
+  const scopeIsWorkspace = scopeDecision === "workspace";
 
   return (
     <div className="navi-chat-root" data-testid="navi-interface">
@@ -2641,6 +2643,41 @@ export default function NaviChatPanel() {
           />
         )}
 
+        {structuredReview && structuredReview.files.length > 0 && (
+          <div className="mt-2 space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-100">🧾 Review Results</h3>
+              <div className="flex items-center gap-1 text-xs">
+                <button
+                  type="button"
+                  className={`px-2 py-1 rounded text-xs font-medium transition-all duration-200 ${reviewViewMode === "issues"
+                    ? "bg-gray-700 text-white shadow-sm"
+                    : "text-gray-400 hover:text-gray-200"
+                    }`}
+                  onClick={() => setReviewViewMode("issues")}
+                >
+                  📋 Issues
+                </button>
+                <button
+                  type="button"
+                  className={`px-2 py-1 rounded text-xs font-medium transition-all duration-200 ${reviewViewMode === "diffs"
+                    ? "bg-gray-700 text-white shadow-sm"
+                    : "text-gray-400 hover:text-gray-200"
+                    }`}
+                  onClick={() => setReviewViewMode("diffs")}
+                >
+                  🔍 Diffs
+                </button>
+              </div>
+            </div>
+            {reviewViewMode === "diffs" ? (
+              <VisualDiffViewer review={structuredReview} onAutoFix={handleAutoFix} />
+            ) : (
+              <StructuredReviewComponent review={structuredReview} onAutoFix={handleAutoFix} />
+            )}
+          </div>
+        )}
+
         {/* PHASE 1.2: Minimal repo diff summary (NO defaults, ONLY real agent data) */}
         {repoSummary && (
           <div className="p-3 bg-gray-900/70 border border-gray-700 rounded-lg mt-2 space-y-2">
@@ -2722,7 +2759,7 @@ export default function NaviChatPanel() {
         )}
 
         {/* PHASE 1.4: Consent Card for Scope Expansion */}
-        {assessment && assessment.hasGlobalIssuesOutsideChanged && scopeDecision === 'changed-files' && (
+        {assessment && assessment.hasGlobalIssuesOutsideChanged && scopeIsChangedFiles && (
           <div className="mt-2 p-3 bg-blue-950/40 border border-blue-700/60 rounded-lg space-y-3">
             <div className="flex items-start gap-2">
               <div className="text-blue-400 text-sm mt-0.5">💭</div>
@@ -2736,7 +2773,7 @@ export default function NaviChatPanel() {
             <div className="flex gap-2">
               <button
                 onClick={() => setScopeDecision('changed-files')}
-                className={`text-xs px-3 py-2 rounded border transition ${scopeDecision === 'changed-files'
+                className={`text-xs px-3 py-2 rounded border transition ${scopeIsChangedFiles
                   ? 'bg-blue-700/60 border-blue-500 text-blue-100'
                   : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
                   }`}
@@ -2745,7 +2782,7 @@ export default function NaviChatPanel() {
               </button>
               <button
                 onClick={() => setScopeDecision('workspace')}
-                className={`text-xs px-3 py-2 rounded border transition ${scopeDecision === 'workspace'
+                className={`text-xs px-3 py-2 rounded border transition ${scopeIsWorkspace
                   ? 'bg-blue-700/60 border-blue-500 text-blue-100'
                   : 'bg-gray-800 border-gray-600 text-gray-300 hover:bg-gray-700'
                   }`}
@@ -2891,7 +2928,7 @@ export default function NaviChatPanel() {
                 <div key={`proposal-file-${idx}`} className="border-t border-blue-700/30 pt-2">
                   <div className="text-xs font-mono text-blue-200 mb-2">{fileGroup.filePath}</div>
                   <div className="space-y-3">
-                    {fileGroup.proposals.map((proposal, j) => {
+                    {fileGroup.proposals.map((proposal, _j) => {
                       const isExpanded = expandedProposals.has(proposal.id);
                       const state = approvalState.get(proposal.id);
                       const isApproved = state === 'approved';
@@ -3175,14 +3212,14 @@ export default function NaviChatPanel() {
                     </div>
                     <div className="flex gap-2 ml-2">
                       <span className={`text-xs px-2 py-0.5 rounded ${alt.riskLevel === 'low' ? 'bg-green-900/50 text-green-300' :
-                          alt.riskLevel === 'medium' ? 'bg-yellow-900/50 text-yellow-300' :
-                            'bg-red-900/50 text-red-300'
+                        alt.riskLevel === 'medium' ? 'bg-yellow-900/50 text-yellow-300' :
+                          'bg-red-900/50 text-red-300'
                         }`}>
                         {alt.riskLevel === 'low' ? '🟢 Low' : alt.riskLevel === 'medium' ? '🟡 Medium' : '🔴 High'} Risk
                       </span>
                       <span className={`text-xs px-2 py-0.5 rounded ${alt.confidence === 'high' ? 'bg-green-900/50 text-green-300' :
-                          alt.confidence === 'medium' ? 'bg-yellow-900/50 text-yellow-300' :
-                            'bg-gray-700 text-gray-300'
+                        alt.confidence === 'medium' ? 'bg-yellow-900/50 text-yellow-300' :
+                          'bg-gray-700 text-gray-300'
                         }`}>
                         {alt.confidence} confidence
                       </span>
@@ -3283,120 +3320,120 @@ interface DiffViewerProps {
 }
 
 function VisualDiffViewer({ review, onAutoFix }: DiffViewerProps) {
-  const [openFiles, setOpenFiles] = useState<Set<string>>(new Set());
+const [openFiles, setOpenFiles] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    // Trigger PrismJS highlighting after component mounts/updates
-    setTimeout(() => {
-      Prism.highlightAll();
-    }, 100);
-  }, [review, openFiles]);
+useEffect(() => {
+  // Trigger PrismJS highlighting after component mounts/updates
+  setTimeout(() => {
+    Prism.highlightAll();
+  }, 100);
+}, [review, openFiles]);
 
-  const toggleFile = (path: string) => {
-    setOpenFiles(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(path)) {
-        newSet.delete(path);
-      } else {
-        newSet.add(path);
-      }
-      return newSet;
-    });
-  };
+const toggleFile = (path: string) => {
+  setOpenFiles(prev => {
+    const newSet = new Set(prev);
+    if (newSet.has(path)) {
+      newSet.delete(path);
+    } else {
+      newSet.add(path);
+    }
+    return newSet;
+  });
+};
 
-  return (
-    <div className="p-2 space-y-2">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-sm font-medium text-gray-100">🔍 Visual Diff Viewer</h3>
-        <div className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded-full text-xs border border-purple-500/30">
-          {review.files.length} files
-        </div>
+return (
+  <div className="p-2 space-y-2">
+    <div className="flex justify-between items-center mb-3">
+      <h3 className="text-sm font-medium text-gray-100">🔍 Visual Diff Viewer</h3>
+      <div className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded-full text-xs border border-purple-500/30">
+        {review.files.length} files
       </div>
-
-      {review.files.map((file, fileIndex) => {
-        const isOpen = openFiles.has(file.path);
-
-        return (
-          <div key={fileIndex} className="border border-gray-800 rounded-lg bg-gray-950">
-            <div
-              className="flex justify-between items-center p-2 cursor-pointer hover:bg-gray-900/50 rounded-t-lg"
-              onClick={() => toggleFile(file.path)}
-            >
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-400 transition-transform duration-200 text-xs">
-                  {isOpen ? '▼' : '▶'}
-                </span>
-                <span className="font-mono text-xs text-gray-300 truncate">
-                  📄 {file.path}
-                </span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <div className="px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded text-xs border border-gray-700">
-                  {file.issues?.length || 0}
-                </div>
-              </div>
-            </div>            {isOpen && (
-              <div className="border-t border-gray-800 p-2">
-                {/* Real diff display */}
-                {file.diff ? (
-                  <div className="bg-gray-900/50 rounded border border-gray-700 overflow-hidden">
-                    <div className="bg-gray-800 px-2 py-1 text-xs text-gray-400 border-b border-gray-700">
-                      Changes in {file.path}
-                    </div>
-                    <div className="max-h-48 overflow-y-auto">
-                      <pre className="font-mono text-xs leading-tight p-2 text-gray-300">
-                        <code className="language-diff">{file.diff}</code>
-                      </pre>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-gray-900/50 rounded border border-gray-700 p-2 text-center">
-                    <div className="text-gray-400 text-xs">
-                      📄 {file.path} - No diff available
-                    </div>
-                    <div className="text-gray-500 text-xs mt-1">
-                      File may be newly added or binary
-                    </div>
-                  </div>
-                )}
-
-                {/* Issues for this file */}
-                <div className="mt-2 space-y-2">
-                  {(file.issues || []).map((issue, issueIndex) => (
-                    <div key={issueIndex} className="bg-gray-900/30 rounded p-2 border border-gray-800">
-                      <div className="flex justify-between items-start mb-1">
-                        <div className="text-xs font-semibold text-gray-200">
-                          {issue.title || "Issue found"}
-                        </div>
-                        {issue.canAutoFix && (
-                          <div className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs border border-green-500/30">
-                            🔧
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-400 mb-2">
-                        💡 {issue.body || "No description available"}
-                      </div>
-                      <button
-                        className={`px-2 py-1 rounded text-xs font-medium transition-all duration-200 ${issue.canAutoFix
-                          ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white'
-                          : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                          }`}
-                        onClick={() => onAutoFix(file.path, issue)}
-                        disabled={!issue.canAutoFix}
-                      >
-                        ✨ Auto-fix
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
     </div>
-  );
+
+    {review.files.map((file, fileIndex) => {
+      const isOpen = openFiles.has(file.path);
+
+      return (
+        <div key={fileIndex} className="border border-gray-800 rounded-lg bg-gray-950">
+          <div
+            className="flex justify-between items-center p-2 cursor-pointer hover:bg-gray-900/50 rounded-t-lg"
+            onClick={() => toggleFile(file.path)}
+          >
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400 transition-transform duration-200 text-xs">
+                {isOpen ? '▼' : '▶'}
+              </span>
+              <span className="font-mono text-xs text-gray-300 truncate">
+                📄 {file.path}
+              </span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <div className="px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded text-xs border border-gray-700">
+                {file.issues?.length || 0}
+              </div>
+            </div>
+          </div>            {isOpen && (
+            <div className="border-t border-gray-800 p-2">
+              {/* Real diff display */}
+              {file.diff ? (
+                <div className="bg-gray-900/50 rounded border border-gray-700 overflow-hidden">
+                  <div className="bg-gray-800 px-2 py-1 text-xs text-gray-400 border-b border-gray-700">
+                    Changes in {file.path}
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    <pre className="font-mono text-xs leading-tight p-2 text-gray-300">
+                      <code className="language-diff">{file.diff}</code>
+                    </pre>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gray-900/50 rounded border border-gray-700 p-2 text-center">
+                  <div className="text-gray-400 text-xs">
+                    📄 {file.path} - No diff available
+                  </div>
+                  <div className="text-gray-500 text-xs mt-1">
+                    File may be newly added or binary
+                  </div>
+                </div>
+              )}
+
+              {/* Issues for this file */}
+              <div className="mt-2 space-y-2">
+                {(file.issues || []).map((issue, issueIndex) => (
+                  <div key={issueIndex} className="bg-gray-900/30 rounded p-2 border border-gray-800">
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="text-xs font-semibold text-gray-200">
+                        {issue.title || "Issue found"}
+                      </div>
+                      {issue.canAutoFix && (
+                        <div className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs border border-green-500/30">
+                          🔧
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400 mb-2">
+                      💡 {issue.body || "No description available"}
+                    </div>
+                    <button
+                      className={`px-2 py-1 rounded text-xs font-medium transition-all duration-200 ${issue.canAutoFix
+                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white'
+                        : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        }`}
+                      onClick={() => onAutoFix(file.path, issue)}
+                      disabled={!issue.canAutoFix}
+                    >
+                      ✨ Auto-fix
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+);
 }
 
 /* ---------- Structured Review Component ---------- */
@@ -3407,125 +3444,125 @@ interface StructuredReviewComponentProps {
 }
 
 function StructuredReviewComponent({ review, onAutoFix }: StructuredReviewComponentProps) {
-  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
+const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    // Trigger PrismJS highlighting after component mounts/updates
-    setTimeout(() => {
-      Prism.highlightAll();
-    }, 100);
-  }, [review]);
+useEffect(() => {
+  // Trigger PrismJS highlighting after component mounts/updates
+  setTimeout(() => {
+    Prism.highlightAll();
+  }, 100);
+}, [review]);
 
-  const toggleFileCollapse = (filePath: string) => {
-    setCollapsedFiles(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(filePath)) {
-        newSet.delete(filePath);
-      } else {
-        newSet.add(filePath);
-      }
-      return newSet;
-    });
-  };
-
-  const getSeverityBadgeClass = (severity: string) => {
-    switch (severity?.toLowerCase()) {
-      case "high": return "bg-red-500/20 text-red-400 border-red-500/30";
-      case "medium": return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
-      case "low": return "bg-blue-500/20 text-blue-400 border-blue-500/30";
-      default: return "bg-gray-500/20 text-gray-400 border-gray-500/30";
+const toggleFileCollapse = (filePath: string) => {
+  setCollapsedFiles(prev => {
+    const newSet = new Set(prev);
+    if (newSet.has(filePath)) {
+      newSet.delete(filePath);
+    } else {
+      newSet.add(filePath);
     }
-  };
+    return newSet;
+  });
+};
 
-  const getSeverityIcon = (severity: string) => {
-    switch (severity?.toLowerCase()) {
-      case "high": return "🔴";
-      case "medium": return "🟡";
-      case "low": return "🟢";
-      default: return "📝";
-    }
-  };
+const getSeverityBadgeClass = (severity: string) => {
+  switch (severity?.toLowerCase()) {
+    case "high": return "bg-red-500/20 text-red-400 border-red-500/30";
+    case "medium": return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+    case "low": return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+    default: return "bg-gray-500/20 text-gray-400 border-gray-500/30";
+  }
+};
 
-  return (
-    <div className="p-2 space-y-2">
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="text-sm font-medium text-gray-100">📋 Code Review Results</h3>
-        <div
-          className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs border border-blue-500/30"
-          data-testid="files-analyzed"
-        >
-          {review.files.length} files
-        </div>
+const getSeverityIcon = (severity: string) => {
+  switch (severity?.toLowerCase()) {
+    case "high": return "🔴";
+    case "medium": return "🟡";
+    case "low": return "🟢";
+    default: return "📝";
+  }
+};
+
+return (
+  <div className="p-2 space-y-2">
+    <div className="flex justify-between items-center mb-3">
+      <h3 className="text-sm font-medium text-gray-100">📋 Code Review Results</h3>
+      <div
+        className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs border border-blue-500/30"
+        data-testid="files-analyzed"
+      >
+        {review.files.length} files
       </div>
+    </div>
 
-      {review.files.map((file, fileIndex) => {
-        const isCollapsed = collapsedFiles.has(file.path);
+    {review.files.map((file, fileIndex) => {
+      const isCollapsed = collapsedFiles.has(file.path);
 
-        return (
-          <div key={fileIndex} className="border border-gray-800 rounded-lg bg-gray-950">
-            <div
-              className="flex justify-between items-center p-2 cursor-pointer hover:bg-gray-900/50 rounded-t-lg"
-              onClick={() => toggleFileCollapse(file.path)}
-            >
-              <div className="flex items-center space-x-2">
-                <span className="text-gray-400 transition-transform duration-200 text-xs">
-                  {isCollapsed ? '▶' : '▼'}
-                </span>
-                <span className="font-mono text-xs text-gray-300 truncate">
-                  📄 {file.path || "Unknown file"}
-                </span>
+      return (
+        <div key={fileIndex} className="border border-gray-800 rounded-lg bg-gray-950">
+          <div
+            className="flex justify-between items-center p-2 cursor-pointer hover:bg-gray-900/50 rounded-t-lg"
+            onClick={() => toggleFileCollapse(file.path)}
+          >
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400 transition-transform duration-200 text-xs">
+                {isCollapsed ? '▶' : '▼'}
+              </span>
+              <span className="font-mono text-xs text-gray-300 truncate">
+                📄 {file.path || "Unknown file"}
+              </span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <div className="px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded text-xs border border-gray-700">
+                {file.issues?.length || 0}
               </div>
-              <div className="flex items-center space-x-1">
-                <div className="px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded text-xs border border-gray-700">
-                  {file.issues?.length || 0}
+              {file.severity && (
+                <div className={`px-1.5 py-0.5 rounded text-xs border ${getSeverityBadgeClass(file.severity)}`}>
+                  {getSeverityIcon(file.severity)}
                 </div>
-                {file.severity && (
-                  <div className={`px-1.5 py-0.5 rounded text-xs border ${getSeverityBadgeClass(file.severity)}`}>
-                    {getSeverityIcon(file.severity)}
-                  </div>
-                )}
-              </div>
-            </div>            {!isCollapsed && (
-              <div className="border-t border-gray-800">
-                {(file.issues || []).map((issue, issueIndex) => (
-                  <div key={issueIndex} className="p-2 border-b border-gray-800 last:border-b-0 bg-gray-900/30">
-                    <div className="flex justify-between items-start mb-1.5">
-                      <div className="flex-1">
-                        {issue.title && (
-                          <div className="text-xs font-semibold text-gray-200 mb-1">
-                            {issue.title}
-                          </div>
-                        )}
-                        <div className="text-xs text-gray-400 whitespace-pre-wrap leading-tight">
-                          {issue.body || issue.title || "No description available"}
-                        </div>
-                      </div>
-                      {issue.canAutoFix && (
-                        <div className="ml-2 px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs border border-green-500/30">
-                          🔧
+              )}
+            </div>
+          </div>            {!isCollapsed && (
+            <div className="border-t border-gray-800">
+              {(file.issues || []).map((issue, issueIndex) => (
+                <div key={issueIndex} className="p-2 border-b border-gray-800 last:border-b-0 bg-gray-900/30">
+                  <div className="flex justify-between items-start mb-1.5">
+                    <div className="flex-1">
+                      {issue.title && (
+                        <div className="text-xs font-semibold text-gray-200 mb-1">
+                          {issue.title}
                         </div>
                       )}
+                      <div className="text-xs text-gray-400 whitespace-pre-wrap leading-tight">
+                        {issue.body || issue.title || "No description available"}
+                      </div>
                     </div>
-
-                    <div className="flex justify-end mt-2">
-                      <button
-                        className={`px-2 py-1 rounded text-xs font-medium transition-all duration-200 ${issue.canAutoFix
-                          ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white'
-                          : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                          }`}
-                        onClick={() => onAutoFix(file.path, issue)}
-                        disabled={!issue.canAutoFix}
-                      >
-                        ✨ Auto-fix
-                      </button>
-                    </div>
+                    {issue.canAutoFix && (
+                      <div className="ml-2 px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs border border-green-500/30">
+                        🔧
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+
+                  <div className="flex justify-end mt-2">
+                    <button
+                      className={`px-2 py-1 rounded text-xs font-medium transition-all duration-200 ${issue.canAutoFix
+                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white'
+                        : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        }`}
+                      onClick={() => onAutoFix(file.path, issue)}
+                      disabled={!issue.canAutoFix}
+                    >
+                      ✨ Auto-fix
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+);
 }

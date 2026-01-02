@@ -30,6 +30,30 @@ class ConnectorsPanel {
         this._setWebviewMessageListener(this._panel.webview);
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     }
+    _getAuthToken() {
+        const config = vscode.workspace.getConfiguration("aep");
+        const configured = config.get("navi.authToken");
+        if (configured && configured.trim()) {
+            return configured.trim();
+        }
+        const envToken = process.env.AEP_AUTH_TOKEN ||
+            process.env.AEP_SESSION_TOKEN ||
+            process.env.AEP_ACCESS_TOKEN;
+        if (envToken && envToken.trim()) {
+            return envToken.trim();
+        }
+        return undefined;
+    }
+    _buildHeaders(extra) {
+        const headers = { ...(extra || {}) };
+        const authToken = this._getAuthToken();
+        if (authToken) {
+            headers["Authorization"] = authToken.startsWith("Bearer ")
+                ? authToken
+                : `Bearer ${authToken}`;
+        }
+        return headers;
+    }
     dispose() {
         ConnectorsPanel.currentPanel = undefined;
         while (this._disposables.length) {
@@ -49,6 +73,9 @@ class ConnectorsPanel {
                 case "getStatus":
                     await this._handleGetStatus();
                     return;
+                case "action":
+                    await this._handleAction(message.action, message.connectorId);
+                    return;
                 case "connect":
                     await this._handleConnect(message.connectorId);
                     return;
@@ -63,10 +90,10 @@ class ConnectorsPanel {
         try {
             const res = await fetch(url, {
                 method: "GET",
-                headers: {
+                headers: this._buildHeaders({
                     "Content-Type": "application/json",
                     "User-Agent": "VSCode-AEP-Extension/1.0"
-                },
+                }),
             });
             console.log("[AEP] Fetch response status:", res.status, res.statusText);
             if (!res.ok) {
@@ -104,7 +131,19 @@ class ConnectorsPanel {
                 await this._connectSlack();
                 break;
             case "github":
-                await this._connectGeneric("github");
+                await this._connectGitHub();
+                break;
+            case "confluence":
+                await this._connectConfluence();
+                break;
+            case "teams":
+                await this._connectTeams();
+                break;
+            case "zoom":
+                await this._connectZoom();
+                break;
+            case "meet":
+                await this._connectMeet();
                 break;
             case "gitlab":
                 await this._connectGeneric("gitlab");
@@ -118,6 +157,398 @@ class ConnectorsPanel {
         }
         // After connecting, refresh status
         await this._handleGetStatus();
+    }
+    async _handleAction(action, connectorId) {
+        if (action === "sync") {
+            await this._handleSync(connectorId);
+            return;
+        }
+        if (action === "subscribe") {
+            await this._handleSubscribe(connectorId);
+            return;
+        }
+        if (action === "index") {
+            await this._indexGitHubRepo();
+            return;
+        }
+        await this._handleConnect(connectorId);
+    }
+    async _handleSync(connectorId) {
+        switch (connectorId) {
+            case "slack":
+                await this._syncSlack();
+                break;
+            case "confluence":
+                await this._syncConfluence();
+                break;
+            case "zoom":
+                await this._syncZoom();
+                break;
+            case "meet":
+                await this._syncMeet();
+                break;
+            default:
+                vscode.window.showWarningMessage(`Sync is not yet implemented for ${connectorId}.`);
+                return;
+        }
+    }
+    async _handleSubscribe(connectorId) {
+        switch (connectorId) {
+            case "confluence":
+                await this._subscribeConfluence();
+                break;
+            case "teams":
+                await this._subscribeTeams();
+                break;
+            case "meet":
+                await this._subscribeMeet();
+                break;
+            default:
+                vscode.window.showWarningMessage(`Subscribe is not yet implemented for ${connectorId}.`);
+                return;
+        }
+    }
+    async _startOAuthFlow(connectorId, path, label) {
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const url = `${this._backendBaseUrl}${path}?install=org`;
+        try {
+            const res = await fetch(url, {
+                method: "GET",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
+            });
+            if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error(`${label} OAuth start failed: ${errorText}`);
+            }
+            const json = (await res.json());
+            if (!json?.auth_url) {
+                throw new Error(`${label} OAuth did not return an auth_url`);
+            }
+            await vscode.env.openExternal(vscode.Uri.parse(json.auth_url));
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: { connectorId, ok: true },
+            });
+            vscode.window.showInformationMessage(`Complete ${label} OAuth in the browser, then return here to refresh status.`);
+        }
+        catch (err) {
+            const msg = err?.message || String(err);
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId,
+                    ok: false,
+                    error: msg,
+                },
+            });
+            vscode.window.showErrorMessage(`Failed to connect ${label}: ${msg}`);
+        }
+    }
+    async _connectConfluence() {
+        await this._startOAuthFlow("confluence", "/api/connectors/confluence/oauth/start", "Confluence");
+    }
+    async _connectTeams() {
+        await this._startOAuthFlow("teams", "/api/connectors/teams/oauth/start", "Teams");
+    }
+    async _connectZoom() {
+        await this._startOAuthFlow("zoom", "/api/connectors/zoom/oauth/start", "Zoom");
+    }
+    async _connectMeet() {
+        await this._startOAuthFlow("meet", "/api/connectors/meet/oauth/start", "Google Meet");
+    }
+    async _syncConfluence() {
+        const spaceKey = await vscode.window.showInputBox({
+            title: "Confluence space key",
+            prompt: "Example: ENG",
+            ignoreFocusOut: true,
+        });
+        if (!spaceKey) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: { connectorId: "confluence", ok: false, error: "User cancelled" },
+            });
+            return;
+        }
+        const limitInput = await vscode.window.showInputBox({
+            title: "Max pages to sync",
+            prompt: "Default 20",
+            ignoreFocusOut: true,
+        });
+        const limit = limitInput ? Math.min(Math.max(parseInt(limitInput, 10), 1), 200) : 20;
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const url = `${this._backendBaseUrl}/api/connectors/confluence/sync`;
+        try {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
+                body: JSON.stringify({ space_key: spaceKey, limit }),
+            });
+            const json = (await res.json());
+            const ok = res.ok && json?.processed_page_ids;
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "confluence",
+                    ok,
+                    error: ok ? undefined : json?.detail || json?.error || "Sync failed",
+                    details: ok ? `${json.total} pages` : undefined,
+                },
+            });
+        }
+        catch (err) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: { connectorId: "confluence", ok: false, error: err?.message || String(err) },
+            });
+        }
+    }
+    async _syncZoom() {
+        const zoomUser = await vscode.window.showInputBox({
+            title: "Zoom user email",
+            prompt: "Email or user ID to sync recordings for",
+            ignoreFocusOut: true,
+        });
+        if (!zoomUser) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: { connectorId: "zoom", ok: false, error: "User cancelled" },
+            });
+            return;
+        }
+        const daysInput = await vscode.window.showInputBox({
+            title: "Lookback window (days)",
+            prompt: "Default 7",
+            ignoreFocusOut: true,
+        });
+        const days = daysInput ? Math.min(Math.max(parseInt(daysInput, 10), 1), 90) : 7;
+        const toDate = new Date();
+        const fromDate = new Date();
+        fromDate.setDate(toDate.getDate() - days);
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const url = `${this._backendBaseUrl}/api/connectors/zoom/sync`;
+        try {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
+                body: JSON.stringify({
+                    zoom_user: zoomUser,
+                    from_date: fromDate.toISOString().slice(0, 10),
+                    to_date: toDate.toISOString().slice(0, 10),
+                    max_meetings: 20,
+                }),
+            });
+            const json = (await res.json());
+            const ok = res.ok && json?.processed_meeting_ids;
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "zoom",
+                    ok,
+                    error: ok ? undefined : json?.detail || json?.error || "Sync failed",
+                    details: ok ? `${json.total} meetings` : undefined,
+                },
+            });
+        }
+        catch (err) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: { connectorId: "zoom", ok: false, error: err?.message || String(err) },
+            });
+        }
+    }
+    async _syncMeet() {
+        const calendarId = await vscode.window.showInputBox({
+            title: "Google Calendar ID",
+            prompt: "Default: primary",
+            ignoreFocusOut: true,
+        });
+        const daysInput = await vscode.window.showInputBox({
+            title: "Lookback window (days)",
+            prompt: "Default 7",
+            ignoreFocusOut: true,
+        });
+        const days = daysInput ? Math.min(Math.max(parseInt(daysInput, 10), 1), 90) : 7;
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const url = `${this._backendBaseUrl}/api/connectors/meet/sync`;
+        try {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
+                body: JSON.stringify({
+                    calendar_id: calendarId || "primary",
+                    days_back: days,
+                }),
+            });
+            const json = (await res.json());
+            const ok = res.ok && json?.processed_event_ids;
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "meet",
+                    ok,
+                    error: ok ? undefined : json?.detail || json?.error || "Sync failed",
+                    details: ok ? `${json.total} events` : undefined,
+                },
+            });
+        }
+        catch (err) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: { connectorId: "meet", ok: false, error: err?.message || String(err) },
+            });
+        }
+    }
+    async _subscribeConfluence() {
+        const spaceKey = await vscode.window.showInputBox({
+            title: "Confluence space key (optional)",
+            prompt: "Leave empty to subscribe to all spaces",
+            ignoreFocusOut: true,
+        });
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const url = `${this._backendBaseUrl}/api/connectors/confluence/subscribe`;
+        try {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
+                body: JSON.stringify({ space_key: spaceKey || null }),
+            });
+            const json = (await res.json());
+            const ok = res.ok && json?.ok;
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "confluence",
+                    ok,
+                    error: ok ? undefined : json?.detail || json?.error || "Subscribe failed",
+                    details: ok ? "webhook registered" : undefined,
+                },
+            });
+        }
+        catch (err) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: { connectorId: "confluence", ok: false, error: err?.message || String(err) },
+            });
+        }
+    }
+    async _subscribeTeams() {
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const teamsUrl = `${this._backendBaseUrl}/api/connectors/teams/teams`;
+        const teamsRes = await fetch(teamsUrl, {
+            method: "GET",
+            headers: this._buildHeaders({
+                "Content-Type": "application/json",
+                "X-Org-Id": orgId,
+            }),
+        });
+        if (!teamsRes.ok) {
+            const text = await teamsRes.text();
+            vscode.window.showErrorMessage(`Failed to list Teams: ${text}`);
+            return;
+        }
+        const teamsJson = (await teamsRes.json());
+        const teams = (teamsJson.items || []).map((t) => ({ label: t.display_name, id: t.id }));
+        const teamPick = await vscode.window.showQuickPick(teams, { title: "Select a Team" });
+        if (!teamPick) {
+            return;
+        }
+        const channelsUrl = `${this._backendBaseUrl}/api/connectors/teams/channels?team_id=${encodeURIComponent(teamPick.id)}`;
+        const channelsRes = await fetch(channelsUrl, {
+            method: "GET",
+            headers: this._buildHeaders({
+                "Content-Type": "application/json",
+                "X-Org-Id": orgId,
+            }),
+        });
+        if (!channelsRes.ok) {
+            const text = await channelsRes.text();
+            vscode.window.showErrorMessage(`Failed to list channels: ${text}`);
+            return;
+        }
+        const channelsJson = (await channelsRes.json());
+        const channels = (channelsJson.items || []).map((c) => ({ label: c.display_name, id: c.id }));
+        const channelPick = await vscode.window.showQuickPick(channels, { title: "Select a Channel" });
+        if (!channelPick) {
+            return;
+        }
+        const subscribeUrl = `${this._backendBaseUrl}/api/connectors/teams/subscribe`;
+        const subscribeRes = await fetch(subscribeUrl, {
+            method: "POST",
+            headers: this._buildHeaders({
+                "Content-Type": "application/json",
+                "X-Org-Id": orgId,
+            }),
+            body: JSON.stringify({ team_id: teamPick.id, channel_id: channelPick.id }),
+        });
+        const subscribeJson = (await subscribeRes.json());
+        const ok = subscribeRes.ok && subscribeJson?.ok;
+        this._panel.webview.postMessage({
+            type: "syncResult",
+            payload: {
+                connectorId: "teams",
+                ok,
+                error: ok ? undefined : subscribeJson?.detail || subscribeJson?.error || "Subscribe failed",
+                details: ok ? "subscription created" : undefined,
+            },
+        });
+    }
+    async _subscribeMeet() {
+        const calendarId = await vscode.window.showInputBox({
+            title: "Google Calendar ID",
+            prompt: "Default: primary",
+            ignoreFocusOut: true,
+        });
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const url = `${this._backendBaseUrl}/api/connectors/meet/subscribe`;
+        try {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
+                body: JSON.stringify({ calendar_id: calendarId || "primary" }),
+            });
+            const json = (await res.json());
+            const ok = res.ok && json?.ok;
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "meet",
+                    ok,
+                    error: ok ? undefined : json?.detail || json?.error || "Subscribe failed",
+                    details: ok ? "watch registered" : undefined,
+                },
+            });
+        }
+        catch (err) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: { connectorId: "meet", ok: false, error: err?.message || String(err) },
+            });
+        }
     }
     async _connectJira() {
         const baseUrl = await vscode.window.showInputBox({
@@ -176,7 +607,7 @@ class ConnectorsPanel {
         try {
             const res = await fetch(url, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: this._buildHeaders({ "Content-Type": "application/json" }),
                 body: JSON.stringify({
                     base_url: baseUrl,
                     email,
@@ -211,44 +642,31 @@ class ConnectorsPanel {
         }
     }
     async _connectSlack() {
-        const botToken = await vscode.window.showInputBox({
-            title: "Slack bot token",
-            prompt: "Paste your Slack bot token (xoxb-…)",
-            password: true,
-            ignoreFocusOut: true,
-            validateInput: (value) => value.trim().length === 0 ? "Bot token is required" : undefined,
-        });
-        if (!botToken) {
-            this._panel.webview.postMessage({
-                type: "connectResult",
-                payload: {
-                    connectorId: "slack",
-                    ok: false,
-                    error: "User cancelled",
-                },
-            });
-            return;
-        }
-        const url = `${this._backendBaseUrl}/api/connectors/slack/connect`;
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const url = `${this._backendBaseUrl}/api/connectors/slack/oauth/start?install=org`;
         try {
             const res = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ bot_token: botToken }),
+                method: "GET",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
             });
-            const json = await res.json();
-            const ok = res.ok && json.ok !== false;
+            if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error(`Slack OAuth start failed: ${errorText}`);
+            }
+            const json = (await res.json());
+            if (!json?.auth_url) {
+                throw new Error("Slack OAuth did not return an auth_url");
+            }
+            await vscode.env.openExternal(vscode.Uri.parse(json.auth_url));
             this._panel.webview.postMessage({
                 type: "connectResult",
-                payload: {
-                    connectorId: "slack",
-                    ok,
-                    error: ok ? undefined : json.detail || json.error || "Failed to connect",
-                },
+                payload: { connectorId: "slack", ok: true },
             });
-            if (!ok) {
-                vscode.window.showErrorMessage(`Failed to connect Slack: ${json.detail || json.error || "Unknown error"}`);
-            }
+            vscode.window.showInformationMessage("Complete Slack OAuth in the browser, then return here to refresh status.");
         }
         catch (err) {
             const msg = err?.message || String(err);
@@ -261,6 +679,177 @@ class ConnectorsPanel {
                 },
             });
             vscode.window.showErrorMessage(`Failed to connect Slack: ${msg}`);
+        }
+    }
+    async _syncSlack() {
+        const channelsInput = await vscode.window.showInputBox({
+            title: "Slack channels to sync",
+            prompt: "Comma-separated channel names (e.g., eng-backend, general)",
+            ignoreFocusOut: true,
+        });
+        if (!channelsInput) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "slack",
+                    ok: false,
+                    error: "User cancelled",
+                },
+            });
+            return;
+        }
+        const channels = channelsInput
+            .split(",")
+            .map((c) => c.trim())
+            .filter(Boolean);
+        if (channels.length === 0) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "slack",
+                    ok: false,
+                    error: "Provide at least one channel name",
+                },
+            });
+            return;
+        }
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const url = `${this._backendBaseUrl}/api/connectors/slack/sync`;
+        try {
+            const res = await fetch(url, {
+                method: "POST",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
+                body: JSON.stringify({ channels, limit: 200 }),
+            });
+            const json = (await res.json());
+            const ok = res.ok && json?.processed_channel_ids;
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "slack",
+                    ok,
+                    error: ok ? undefined : json?.detail || json?.error || "Sync failed",
+                    details: ok ? `${json.total} channels` : undefined,
+                },
+            });
+        }
+        catch (err) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "slack",
+                    ok: false,
+                    error: err?.message || String(err),
+                },
+            });
+        }
+    }
+    async _connectGitHub() {
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const url = `${this._backendBaseUrl}/api/connectors/github/oauth/start?install=org`;
+        try {
+            const res = await fetch(url, {
+                method: "GET",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
+            });
+            if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error(`GitHub OAuth start failed: ${errorText}`);
+            }
+            const json = (await res.json());
+            if (!json?.auth_url) {
+                throw new Error("GitHub OAuth did not return an auth_url");
+            }
+            await vscode.env.openExternal(vscode.Uri.parse(json.auth_url));
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: { connectorId: "github", ok: true },
+            });
+            vscode.window.showInformationMessage("Complete GitHub OAuth in the browser, then return here to refresh status.");
+        }
+        catch (err) {
+            const msg = err?.message || String(err);
+            this._panel.webview.postMessage({
+                type: "connectResult",
+                payload: {
+                    connectorId: "github",
+                    ok: false,
+                    error: msg,
+                },
+            });
+            vscode.window.showErrorMessage(`Failed to connect GitHub: ${msg}`);
+        }
+    }
+    async _indexGitHubRepo() {
+        const config = vscode.workspace.getConfiguration("aep");
+        const orgId = config.get("navi.orgId") || "default";
+        const listUrl = `${this._backendBaseUrl}/api/connectors/github/repos`;
+        try {
+            const res = await fetch(listUrl, {
+                method: "GET",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
+            });
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`Failed to list repos: ${errText}`);
+            }
+            const json = (await res.json());
+            const repos = (json.items || []).map((r) => r.full_name).filter(Boolean);
+            if (repos.length === 0) {
+                throw new Error("No repositories available for this GitHub connection");
+            }
+            const choice = await vscode.window.showQuickPick(repos, {
+                title: "Select a GitHub repo to index",
+                canPickMany: false,
+            });
+            if (!choice) {
+                this._panel.webview.postMessage({
+                    type: "syncResult",
+                    payload: { connectorId: "github", ok: false, error: "User cancelled" },
+                });
+                return;
+            }
+            const indexUrl = `${this._backendBaseUrl}/api/connectors/github/index`;
+            const indexRes = await fetch(indexUrl, {
+                method: "POST",
+                headers: this._buildHeaders({
+                    "Content-Type": "application/json",
+                    "X-Org-Id": orgId,
+                }),
+                body: JSON.stringify({ repo_full_name: choice }),
+            });
+            const indexJson = (await indexRes.json());
+            const ok = indexRes.ok && indexJson?.ok;
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "github",
+                    ok,
+                    error: ok ? undefined : indexJson?.detail || indexJson?.error || "Index failed",
+                    details: ok ? "Index queued" : undefined,
+                },
+            });
+        }
+        catch (err) {
+            this._panel.webview.postMessage({
+                type: "syncResult",
+                payload: {
+                    connectorId: "github",
+                    ok: false,
+                    error: err?.message || String(err),
+                },
+            });
         }
     }
     async _connectGeneric(provider) {
@@ -295,7 +884,7 @@ class ConnectorsPanel {
         try {
             const res = await fetch(url, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: this._buildHeaders({ "Content-Type": "application/json" }),
                 body: JSON.stringify({
                     provider,
                     base_url: baseUrl,
@@ -329,6 +918,7 @@ class ConnectorsPanel {
     _getHtmlForWebview(webview) {
         // Add cache busting timestamp
         const cacheBust = Date.now();
+        const authToken = this._getAuthToken() || "";
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "connectorsPanel.js"));
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "panel.css"));
         const iconBaseUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "media", "icons"));
@@ -338,7 +928,7 @@ class ConnectorsPanel {
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource}; connect-src http://127.0.0.1:8787 http://localhost:8787;">
+    content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource}; connect-src http://127.0.0.1:8788 http://localhost:8788;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link href="${styleUri}?v=${cacheBust}" rel="stylesheet" />
   <title>Connections</title>
@@ -353,7 +943,12 @@ class ConnectorsPanel {
     console.log("[AEP] Testing fetch capability...");
     
     // Immediate test to see if webview can make requests
-    fetch("http://127.0.0.1:8787/api/connectors/marketplace/status")
+    const authToken = ${JSON.stringify(authToken)};
+        const authHeader = authToken
+            ? (authToken.startsWith("Bearer ") ? authToken : "Bearer " + authToken)
+            : "";
+    const headers = authHeader ? { Authorization: authHeader } : {};
+    fetch("http://127.0.0.1:8787/api/connectors/marketplace/status", { headers })
       .then(r => {
         console.log("[AEP] Immediate fetch test - status:", r.status);
         return r.json();

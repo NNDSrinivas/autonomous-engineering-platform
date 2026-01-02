@@ -2,7 +2,7 @@
 import subprocess
 import os
 from pathlib import Path
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)

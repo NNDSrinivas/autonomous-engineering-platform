@@ -73,7 +73,7 @@ class NaviPart15Integration {
     private outputChannel: vscode.OutputChannel;
 
     constructor(context: vscode.ExtensionContext) {
-        this.backendUrl = vscode.workspace.getConfiguration('navi').get('backendUrl', 'http://localhost:8787');
+        this.backendUrl = vscode.workspace.getConfiguration('navi').get('backendUrl', 'http://localhost:8788');
         this.outputChannel = vscode.window.createOutputChannel('Navi Autonomous Engineering');
 
         this.registerCommands(context);

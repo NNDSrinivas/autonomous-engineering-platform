@@ -1,0 +1,17 @@
+{
+    "permissions": [
+        "REPO_READ",
+        "SECURITY_REPORTS_READ",
+        "DEPENDENCY_GRAPH_READ",
+        "PROPOSE_CODE_CHANGES",
+        "REQUEST_APPROVAL"
+    ],
+    "restrictions": {
+        "noSilentWrites": true,
+        "noProductionDeploy": true,
+        "noPrivilegeEscalation": true
+    },
+    "auditLevel": "COMPREHENSIVE",
+    "rollbackRequired": true,
+    "signatureRequired": true
+}

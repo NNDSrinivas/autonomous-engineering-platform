@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Protocol
 
 from .intent_schema import NaviIntent
-from .orchestrator import PlannedStep
+from ..orchestrator import PlannedStep
 
 
 @dataclass

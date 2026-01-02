@@ -32,7 +32,6 @@ Flow:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, asdict
 from typing import Dict, Any, Optional, Callable, Awaitable
@@ -40,7 +39,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 
 from .failure_analyzer import FailureAnalyzer, FailureCause
-from .fix_planner import FixPlanner, FixPlan, FixStrategy
+from .fix_planner import FixPlanner, FixPlan
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,87 @@
+{
+    "id": "navi-observability-analyzer",
+    "name": "Observability & Metrics Analyzer",
+    "version": "1.0.0",
+    "description": "Production-ready observability extension that analyzes runtime metrics, logs, and traces to detect anomalies, explain issues, and propose safe remediation steps",
+    "author": "Navra Labs",
+    "category": "Observability",
+    "trust": "CORE",
+    "main": "index.js",
+    "triggers": [
+        {
+            "name": "ANALYZE_RUNTIME",
+            "description": "Analyze runtime metrics and observability signals",
+            "patterns": [
+                "analyze observability",
+                "check production health",
+                "why is latency high",
+                "analyze service performance",
+                "check runtime metrics",
+                "investigate performance",
+                "production debugging",
+                "system health check",
+                "performance regression",
+                "error rate analysis"
+            ]
+        },
+        {
+            "name": "OBSERVABILITY_ANALYZER",
+            "description": "Comprehensive observability and metrics analysis",
+            "patterns": [
+                "observability analysis",
+                "metrics analyzer",
+                "production monitoring",
+                "runtime analysis"
+            ]
+        }
+    ],
+    "platforms": [
+        "vscode",
+        "jetbrains",
+        "web"
+    ],
+    "engines": {
+        "navi": ">=1.0.0"
+    },
+    "dependencies": {
+        "typescript": "^5.0.0"
+    },
+    "scripts": {
+        "build": "tsc",
+        "test": "jest",
+        "lint": "eslint ."
+    },
+    "marketplace": {
+        "featured": true,
+        "tags": [
+            "observability",
+            "metrics",
+            "monitoring",
+            "production",
+            "sre",
+            "performance"
+        ],
+        "pricing": "free",
+        "rating": 5.0,
+        "downloads": 0,
+        "publisher": "navra-labs",
+        "license": "MIT",
+        "repository": "https://github.com/navra-labs/navi-extensions",
+        "homepage": "https://navi.navra.ai",
+        "keywords": [
+            "observability",
+            "metrics",
+            "monitoring",
+            "logs",
+            "traces",
+            "prometheus",
+            "datadog",
+            "cloudwatch",
+            "grafana",
+            "sre",
+            "production",
+            "performance",
+            "anomaly-detection"
+        ]
+    }
+}

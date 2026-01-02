@@ -50,6 +50,7 @@ def _base_catalog() -> List[ConnectorStatus]:
         ConnectorStatus(id="github", name="GitHub", category="code"),
         ConnectorStatus(id="gitlab", name="GitLab", category="code"),
         ConnectorStatus(id="teams", name="Microsoft Teams", category="chat"),
+        ConnectorStatus(id="meet", name="Google Meet", category="meetings"),
         ConnectorStatus(id="zoom", name="Zoom", category="meetings"),
         ConnectorStatus(id="confluence", name="Confluence", category="wiki"),
         ConnectorStatus(id="jenkins", name="Jenkins", category="ci_cd"),
@@ -258,8 +259,12 @@ def delete_connector(
 def save_jira_connection(
     user_id: str,
     base_url: str,
-    email: str,
-    api_token: str,
+    email: Optional[str] = None,
+    api_token: Optional[str] = None,
+    access_token: Optional[str] = None,
+    refresh_token: Optional[str] = None,
+    token_type: Optional[str] = None,
+    expires_at: Optional[str] = None,
     db: Optional[Session] = None,
 ) -> None:
     """
@@ -270,41 +275,372 @@ def save_jira_connection(
     - validate credentials by doing a test Jira call,
     - encrypt the token with KMS / secrets manager.
     """
+    config: Dict[str, Any] = {"base_url": base_url}
+    if email:
+        config["email"] = email
+    if token_type:
+        config["token_type"] = token_type
+    if expires_at:
+        config["expires_at"] = expires_at
+
+    secrets: Dict[str, Any] = {}
+    if api_token:
+        secrets["api_token"] = api_token
+    if access_token:
+        secrets["access_token"] = access_token
+    if refresh_token:
+        secrets["refresh_token"] = refresh_token
+
     upsert_connector(
         db=db,
         user_id=user_id,
         provider="jira",
         name="default",
-        config={"base_url": base_url, "email": email},
-        secrets={"api_token": api_token},
+        config=config,
+        secrets=secrets,
     )
 
 
-def save_slack_connection(user_id: str, bot_token: str, db: Optional[Session] = None) -> None:
+def save_slack_connection(
+    user_id: str,
+    bot_token: str,
+    db: Optional[Session] = None,
+    *,
+    org_id: Optional[str] = None,
+    team_id: Optional[str] = None,
+    team_name: Optional[str] = None,
+    bot_user_id: Optional[str] = None,
+    token_type: Optional[str] = None,
+    scope: Optional[str] = None,
+    install_scope: Optional[str] = None,
+    user_token: Optional[str] = None,
+    refresh_token: Optional[str] = None,
+    user_refresh_token: Optional[str] = None,
+    expires_at: Optional[str] = None,
+) -> None:
     """
     Save Slack connection (bot token) for a user.
     """
+    config: Dict[str, Any] = {}
+    if org_id:
+        config["org_id"] = org_id
+    if team_id:
+        config["team_id"] = team_id
+    if team_name:
+        config["team_name"] = team_name
+    if bot_user_id:
+        config["bot_user_id"] = bot_user_id
+    if token_type:
+        config["token_type"] = token_type
+    if scope:
+        config["scope"] = scope
+    if install_scope:
+        config["install_scope"] = install_scope
+    if expires_at:
+        config["expires_at"] = expires_at
+
+    secrets: Dict[str, Any] = {"bot_token": bot_token}
+    if user_token:
+        secrets["user_token"] = user_token
+    if refresh_token:
+        secrets["refresh_token"] = refresh_token
+    if user_refresh_token:
+        secrets["user_refresh_token"] = user_refresh_token
+
     upsert_connector(
         db=db,
         user_id=user_id,
         provider="slack",
-        name="default",
-        config={},
-        secrets={"bot_token": bot_token},
+        name=team_id or "default",
+        config=config,
+        secrets=secrets,
     )
 
 
-def save_github_connection(user_id: str, access_token: str) -> None:
+def save_github_connection(
+    user_id: str,
+    access_token: str,
+    db: Optional[Session] = None,
+    *,
+    org_id: Optional[str] = None,
+    base_url: Optional[str] = None,
+    token_type: Optional[str] = None,
+    scopes: Optional[list[str]] = None,
+    refresh_token: Optional[str] = None,
+    expires_at: Optional[str] = None,
+    connection_id: Optional[str] = None,
+) -> None:
     """
     Save GitHub connection for a user.
     """
+    config: Dict[str, Any] = {}
+    if org_id:
+        config["org_id"] = org_id
+    if base_url:
+        config["base_url"] = base_url
+    if token_type:
+        config["token_type"] = token_type
+    if scopes:
+        config["scopes"] = scopes
+    if expires_at:
+        config["expires_at"] = expires_at
+    if connection_id:
+        config["connection_id"] = connection_id
+
+    secrets: Dict[str, Any] = {
+        "access_token": access_token,
+        "token": access_token,
+    }
+    if refresh_token:
+        secrets["refresh_token"] = refresh_token
+
     upsert_connector(
-        db=None,
+        db=db,
         user_id=user_id,
         provider="github",
         name="default",
-        config={},
-        secrets={"access_token": access_token},
+        config=config,
+        secrets=secrets,
+    )
+
+
+def save_confluence_connection(
+    user_id: str,
+    db: Optional[Session] = None,
+    *,
+    org_id: Optional[str] = None,
+    base_url: Optional[str] = None,
+    cloud_id: Optional[str] = None,
+    scopes: Optional[list[str]] = None,
+    access_token: Optional[str] = None,
+    refresh_token: Optional[str] = None,
+    expires_at: Optional[str] = None,
+    email: Optional[str] = None,
+    api_token: Optional[str] = None,
+) -> None:
+    config: Dict[str, Any] = {}
+    if org_id:
+        config["org_id"] = org_id
+    if base_url:
+        config["base_url"] = base_url
+    if cloud_id:
+        config["cloud_id"] = cloud_id
+    if scopes:
+        config["scopes"] = scopes
+    if expires_at:
+        config["expires_at"] = expires_at
+    if email:
+        config["email"] = email
+
+    secrets: Dict[str, Any] = {}
+    if access_token:
+        secrets["access_token"] = access_token
+        secrets["token"] = access_token
+    if refresh_token:
+        secrets["refresh_token"] = refresh_token
+    if api_token:
+        secrets["api_token"] = api_token
+
+    upsert_connector(
+        db=db,
+        user_id=user_id,
+        provider="confluence",
+        name=cloud_id or "default",
+        config=config,
+        secrets=secrets,
+    )
+
+
+def save_teams_connection(
+    user_id: str,
+    db: Optional[Session] = None,
+    *,
+    org_id: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    scopes: Optional[list[str]] = None,
+    access_token: Optional[str] = None,
+    refresh_token: Optional[str] = None,
+    expires_at: Optional[str] = None,
+    install_scope: Optional[str] = None,
+    subscription_id: Optional[str] = None,
+) -> None:
+    config: Dict[str, Any] = {}
+    if org_id:
+        config["org_id"] = org_id
+    if tenant_id:
+        config["tenant_id"] = tenant_id
+    if scopes:
+        config["scopes"] = scopes
+    if expires_at:
+        config["expires_at"] = expires_at
+    if install_scope:
+        config["install_scope"] = install_scope
+    if subscription_id:
+        config["subscription_id"] = subscription_id
+
+    secrets: Dict[str, Any] = {}
+    if access_token:
+        secrets["access_token"] = access_token
+        secrets["token"] = access_token
+    if refresh_token:
+        secrets["refresh_token"] = refresh_token
+
+    upsert_connector(
+        db=db,
+        user_id=user_id,
+        provider="teams",
+        name=tenant_id or "default",
+        config=config,
+        secrets=secrets,
+    )
+
+
+def save_zoom_connection(
+    user_id: str,
+    db: Optional[Session] = None,
+    *,
+    org_id: Optional[str] = None,
+    account_id: Optional[str] = None,
+    scopes: Optional[list[str]] = None,
+    access_token: Optional[str] = None,
+    refresh_token: Optional[str] = None,
+    token_type: Optional[str] = None,
+    expires_at: Optional[str] = None,
+) -> None:
+    config: Dict[str, Any] = {}
+    if org_id:
+        config["org_id"] = org_id
+    if account_id:
+        config["account_id"] = account_id
+    if scopes:
+        config["scopes"] = scopes
+    if token_type:
+        config["token_type"] = token_type
+    if expires_at:
+        config["expires_at"] = expires_at
+
+    secrets: Dict[str, Any] = {}
+    if access_token:
+        secrets["access_token"] = access_token
+        secrets["token"] = access_token
+    if refresh_token:
+        secrets["refresh_token"] = refresh_token
+
+    upsert_connector(
+        db=db,
+        user_id=user_id,
+        provider="zoom",
+        name=account_id or "default",
+        config=config,
+        secrets=secrets,
+    )
+
+
+def save_meet_connection(
+    user_id: str,
+    db: Optional[Session] = None,
+    *,
+    org_id: Optional[str] = None,
+    calendar_id: Optional[str] = None,
+    scopes: Optional[list[str]] = None,
+    access_token: Optional[str] = None,
+    refresh_token: Optional[str] = None,
+    expires_at: Optional[str] = None,
+    channel_id: Optional[str] = None,
+    resource_id: Optional[str] = None,
+    channel_token: Optional[str] = None,
+    last_sync: Optional[str] = None,
+) -> None:
+    config: Dict[str, Any] = {}
+    if org_id:
+        config["org_id"] = org_id
+    if calendar_id:
+        config["calendar_id"] = calendar_id
+    if scopes:
+        config["scopes"] = scopes
+    if expires_at:
+        config["expires_at"] = expires_at
+    if channel_id:
+        config["channel_id"] = channel_id
+    if resource_id:
+        config["resource_id"] = resource_id
+    if channel_token:
+        config["channel_token"] = channel_token
+    if last_sync:
+        config["last_sync"] = last_sync
+
+    secrets: Dict[str, Any] = {}
+    if access_token:
+        secrets["access_token"] = access_token
+        secrets["token"] = access_token
+    if refresh_token:
+        secrets["refresh_token"] = refresh_token
+
+    upsert_connector(
+        db=db,
+        user_id=user_id,
+        provider="meet",
+        name=calendar_id or "default",
+        config=config,
+        secrets=secrets,
+    )
+
+
+def save_oauth_app_config(
+    *,
+    db: Optional[Session],
+    org_id: str,
+    provider: str,
+    client_id: str,
+    client_secret: str,
+    scopes: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    account_id: Optional[str] = None,
+    extra: Optional[Dict[str, Any]] = None,
+    updated_by: Optional[str] = None,
+) -> Optional[int]:
+    """
+    Save per-org OAuth app credentials for a provider.
+    Stored in connectors table under provider 'oauth_app'.
+    """
+    config: Dict[str, Any] = {"org_id": org_id, "client_id": client_id}
+    if scopes:
+        config["scopes"] = scopes
+    if tenant_id:
+        config["tenant_id"] = tenant_id
+    if account_id:
+        config["account_id"] = account_id
+    if extra:
+        config["extra"] = extra
+    if updated_by:
+        config["updated_by"] = updated_by
+
+    secrets: Dict[str, Any] = {"client_secret": client_secret}
+
+    return upsert_connector(
+        db=db,
+        user_id=f"org:{org_id}",
+        provider="oauth_app",
+        name=provider.lower(),
+        config=config,
+        secrets=secrets,
+    )
+
+
+def get_oauth_app_config(
+    *,
+    db: Optional[Session],
+    org_id: str,
+    provider: str,
+) -> Optional[Dict[str, Any]]:
+    """Fetch per-org OAuth app config for provider."""
+    if not db or not _table_exists(db, "connectors"):
+        return None
+    return get_connector(
+        db,
+        user_id=f"org:{org_id}",
+        provider="oauth_app",
+        name=provider.lower(),
     )
 
 
@@ -367,6 +703,122 @@ def get_connector(
         except Exception:
             secrets = {}
     return {"config": cfg, "secrets": secrets, "id": row.id}
+
+
+def get_connector_for_org(
+    db: Session,
+    org_id: str,
+    provider: str,
+    name: str | None = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Best-effort lookup for an org-scoped connector stored in config_json.
+    """
+    if not _table_exists(db, "connectors"):
+        return None
+    try:
+        rows = (
+            db.query(Connector)
+            .filter(Connector.provider == provider.lower())
+            .all()
+        )
+    except Exception:
+        return None
+    for row in rows:
+        if name and row.name != name:
+            continue
+        cfg = {}
+        try:
+            cfg = json.loads(row.config_json or "{}")
+        except Exception:
+            cfg = {}
+        if cfg.get("org_id") != org_id:
+            continue
+        secrets = {}
+        if row.secret_json:
+            try:
+                decoded = json.loads(row.secret_json.decode("utf-8"))
+                for k, v in decoded.items():
+                    try:
+                        secrets[k] = decrypt_token(v)
+                    except Exception:
+                        secrets[k] = None
+            except Exception:
+                secrets = {}
+        return {
+            "config": cfg,
+            "secrets": secrets,
+            "id": row.id,
+            "user_id": row.user_id,
+            "provider": row.provider,
+            "name": row.name,
+        }
+    return None
+
+
+def get_connector_for_context(
+    db: Optional[Session],
+    *,
+    user_id: Optional[str],
+    org_id: Optional[str],
+    provider: str,
+    name: str | None = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Lookup connector by user_id first, then fall back to org-scoped config.
+    """
+    if not db:
+        return None
+    if user_id:
+        row = get_connector(db, user_id=str(user_id), provider=provider, name=name or "default")
+        if row:
+            return row
+    if org_id:
+        return get_connector_for_org(db, org_id=org_id, provider=provider, name=name)
+    return None
+
+
+def find_connector_by_config(
+    db: Optional[Session],
+    *,
+    provider: str,
+    key: str,
+    value: str,
+) -> Optional[Dict[str, Any]]:
+    """
+    Find a connector by a specific config key/value (e.g., Slack team_id).
+    """
+    if not db or not value or not _table_exists(db, "connectors"):
+        return None
+    try:
+        rows = (
+            db.query(Connector)
+            .filter(Connector.provider == provider.lower())
+            .all()
+        )
+    except Exception:
+        return None
+    for row in rows:
+        cfg = {}
+        try:
+            cfg = json.loads(row.config_json or "{}")
+        except Exception:
+            cfg = {}
+        if str(cfg.get(key)) != str(value):
+            continue
+        secrets = {}
+        if row.secret_json:
+            try:
+                decoded = json.loads(row.secret_json.decode("utf-8"))
+                for k, v in decoded.items():
+                    try:
+                        secrets[k] = decrypt_token(v)
+                    except Exception:
+                        secrets[k] = None
+            except Exception:
+                secrets = {}
+        return {"config": cfg, "secrets": secrets, "id": row.id}
+    return None
 
 
 def connectors_available(db: Optional[Session]) -> bool:

@@ -10,11 +10,17 @@ import { useUIState } from '../../state/uiStore';
  * - No mode toggle (moved to composer)
  * - Minimal, professional look
  */
-export function HeaderBar() {
-  const { state, dispatch } = useUIState();
+interface HeaderBarProps {
+  onOpenConnectors?: () => void;
+}
+
+export function HeaderBar({ onOpenConnectors }: HeaderBarProps) {
+  const { state } = useUIState();
+  const agentStatus = state.workflow?.agentStatus ?? "idle";
+  const [menuOpen, setMenuOpen] = useState(false);
   
   const getStatusColor = () => {
-    switch (state.agentStatus) {
+    switch (agentStatus) {
       case 'idle': return 'bg-blue-500';
       case 'running': return 'bg-yellow-500'; 
       case 'awaiting_approval': return 'bg-orange-500';
@@ -24,7 +30,7 @@ export function HeaderBar() {
   };
 
   const getStatusText = () => {
-    switch (state.agentStatus) {
+    switch (agentStatus) {
       case 'idle': return 'Idle';
       case 'running': return 'Thinking';
       case 'awaiting_approval': return 'Awaiting Approval';
@@ -33,7 +39,7 @@ export function HeaderBar() {
     }
   };
 
-  const shouldPulse = state.agentStatus === 'running';
+  const shouldPulse = agentStatus === 'running';
 
   return (
     <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--vscode-panel-border)] bg-[var(--vscode-sideBar-background)]">
@@ -55,7 +61,7 @@ export function HeaderBar() {
       </div>
 
       {/* Right: New Chat, History, Settings + overflow with hover states */}
-      <div className="flex items-center gap-1">
+      <div className="relative flex items-center gap-1">
         {/* New Chat Button */}
         <button 
           onClick={() => {
@@ -88,8 +94,7 @@ export function HeaderBar() {
         {/* Settings Button */}
         <button 
           onClick={() => {
-            console.log('Settings button clicked - feature placeholder');
-            // TODO: Implement settings panel
+            setMenuOpen((prev) => !prev);
           }}
           title="Settings"
           className="p-1.5 rounded opacity-70 hover:opacity-100 hover:bg-[var(--vscode-toolbar-hoverBackground)] transition-all duration-150 text-[var(--vscode-foreground)]"
@@ -113,6 +118,29 @@ export function HeaderBar() {
             <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
           </svg>
         </button>
+
+        {menuOpen && (
+          <div className="absolute right-0 top-9 z-50 w-44 rounded-lg border border-[var(--vscode-panel-border)] bg-[var(--vscode-editorWidget-background)] shadow-lg">
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                onOpenConnectors?.();
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--vscode-foreground)] hover:bg-[var(--vscode-list-hoverBackground)]"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 7v10M7 12h10" />
+              </svg>
+              Connectors
+            </button>
+            <button
+              onClick={() => setMenuOpen(false)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[var(--vscode-descriptionForeground)] hover:bg-[var(--vscode-list-hoverBackground)]"
+            >
+              Preferences
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

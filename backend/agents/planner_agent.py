@@ -49,17 +49,28 @@ class PlannerAgent:
         # Calculate estimated execution time
         total_time = sum(step.estimated_duration for step in validated_steps)
         
-        plan = Plan(
+        return Plan(
             id=f"plan_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            user_instruction=instruction,
             steps=validated_steps,
-            created_at=datetime.now(),
-            estimated_total_time=total_time,
+            estimated_duration=total_time,
             complexity_score=complexity_score,
-            repo_context=repo_map
+            status="ready"
         )
+
+    async def plan(self, intent: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Phase 4.1.2 compatibility method for orchestrator
+        """
+        instruction = getattr(intent, 'raw_text', str(intent))
+        repo_map = context.get('repo_map', {})
         
-        return plan
+        plan_result = await self.generate_plan(instruction, repo_map, context)
+        
+        return {
+            'success': True,
+            'plan': plan_result,
+            'reasoning': f'Generated plan with {len(plan_result.steps)} steps'
+        }
     
     async def _analyze_instruction_complexity(
         self, 

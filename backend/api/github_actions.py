@@ -57,8 +57,8 @@ async def create_pr(req: CreatePROptions, db: Session = Depends(get_db)) -> Dict
             conn = get_connector(
                 db, user_id="default_user", provider="github", name=req.connector_name
             )
-            if conn and conn.get("secrets", {}).get("token"):
-                token = conn["secrets"]["token"]
+            if conn:
+                token = conn.get("secrets", {}).get("token") or conn.get("secrets", {}).get("access_token") or token
         svc = GitHubWriteService(token=token)
         result = await svc.draft_pr(
           repo_full_name=req.repo_full_name,
@@ -88,8 +88,8 @@ async def pr_status(req: PRStatusRequest, db: Session = Depends(get_db)) -> Dict
             conn = get_connector(
                 db, user_id="default_user", provider="github", name=req.connector_name
             )
-            if conn and conn.get("secrets", {}).get("token"):
-                token = conn["secrets"]["token"]
+            if conn:
+                token = conn.get("secrets", {}).get("token") or conn.get("secrets", {}).get("access_token") or token
         svc = GitHubWriteService(token=token)
         result = await svc.get_pr_status(req.repo_full_name, req.pr_number)
         return {"status": "ok", "pr": result}

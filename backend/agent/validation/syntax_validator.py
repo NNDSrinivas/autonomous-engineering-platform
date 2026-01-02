@@ -180,7 +180,7 @@ class SyntaxValidator:
         - This is a simplified implementation.
         - It relies on git apply to materialize content safely.
         """
-        abs_path = os.path.join(self._repo_root, change.file_path)
+        os.path.join(self._repo_root, change.file_path)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_repo = os.path.join(tmpdir, "repo")

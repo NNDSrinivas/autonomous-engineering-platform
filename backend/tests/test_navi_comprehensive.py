@@ -4,16 +4,12 @@ Tests all capabilities: git operations, code analysis, generation, testing, revi
 """
 import pytest
 import asyncio
-import json
 import tempfile
 import subprocess
 from pathlib import Path
-from typing import Dict, Any, List
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
 
 from backend.services.review_service import RealReviewService
 from backend.services.git_service import GitService
-from backend.services.repo_service import RepoService
 from backend.models.review import ReviewEntry, ReviewIssue
 
 
@@ -61,7 +57,7 @@ class TestGitOperations:
             check=True
         )
         
-        git_service = GitService(str(temp_git_repo))
+        GitService(str(temp_git_repo))
         service = RealReviewService(str(temp_git_repo))
         
         changes = service.get_working_tree_changes()
@@ -246,10 +242,6 @@ class TestCodeGeneration:
     async def test_generate_unit_test_structure(self):
         """Test generating test case boilerplate"""
         # This would call a code generation endpoint
-        test_code = """
-def add(a, b):
-    return a + b
-"""
         
         # Mock LLM response for test generation
         expected_test = """
@@ -353,15 +345,6 @@ class TestTestCaseGeneration:
     
     def test_generate_test_cases_from_function(self):
         """Test generating test cases from source code"""
-        source_code = """
-def validate_email(email):
-    '''Validate email format'''
-    if '@' not in email:
-        return False
-    if '.' not in email.split('@')[1]:
-        return False
-    return True
-"""
         
         expected_tests = [
             "test_valid_email",

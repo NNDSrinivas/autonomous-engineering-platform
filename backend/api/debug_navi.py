@@ -2,7 +2,7 @@
 """
 Debug endpoint for NAVI analysis
 """
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 import json
 import asyncio

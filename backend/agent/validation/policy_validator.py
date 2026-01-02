@@ -17,7 +17,7 @@ import json
 import os
 from typing import Iterable, List
 
-from backend.agent.codegen.types import CodeChange, ChangeType
+from backend.agent.codegen.types import CodeChange
 from backend.agent.validation.result import (
     ValidationIssue,
     ValidationResult,

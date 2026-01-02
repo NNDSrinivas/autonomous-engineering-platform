@@ -22,11 +22,6 @@ export function ActionCard() {
   const workflow = state.workflow;
   const [isHovered, setIsHovered] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  
-  // Only show when state indicates approval is needed
-  if (!state.showActionCard) {
-    return null;
-  }
 
   return (
     <div 
@@ -101,6 +96,7 @@ export function ActionCard() {
         <div className="flex gap-2">
           <button 
             onClick={() => {
+              dispatch({ type: 'REJECT' });
               postMessage({
                 type: 'navi.approval.resolved',
                 decision: 'reject'
@@ -117,6 +113,7 @@ export function ActionCard() {
         {/* Primary action with emphasis */}
         <button 
           onClick={() => {
+            dispatch({ type: 'APPROVE' });
             postMessage({
               type: 'navi.approval.resolved',
               decision: 'approve'

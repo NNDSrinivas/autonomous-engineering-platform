@@ -1,6 +1,12 @@
 import { RepoContext } from '../fix/generative/GenerativeRepairEngine';
 import { RepoPatterns } from './patterns/RepoPatternExtractor';
-import type { Intent } from '../intent/IntentClassifier';
+
+// Phase 4.1.2: Updated to work with new structured planning system
+export interface Intent {
+    type: string;
+    confidence: number;
+    raw: string;
+}
 
 /**
  * Repository patterns resolved for specific intent context

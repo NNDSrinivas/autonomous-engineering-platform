@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, asdict
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any
 from enum import Enum
 
 from .failure_analyzer import FailureCause, FailureCategory

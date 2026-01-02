@@ -1,5 +1,5 @@
 // frontend/src/components/navi/QuickActionsBar.tsx
-import React from "react";
+// import React from "react";
 import * as vscodeApi from "../../utils/vscodeApi";
 
 interface QuickActionsBarProps {

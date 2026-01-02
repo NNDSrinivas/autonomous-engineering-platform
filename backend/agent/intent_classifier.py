@@ -371,6 +371,23 @@ class IntentClassifier:
                 ):
                     return IntentKind.GREET
 
+            # Phase 4.1.2: Problems tab / VS Code diagnostics
+            if _contains_any(
+                text,
+                (
+                    "problems tab",
+                    "fix errors",
+                    "fix problems",
+                    "diagnostics",
+                    "errors in problems",
+                    "fix all errors",
+                    "problems panel",
+                    "vs code errors",
+                    "compilation errors"
+                ),
+            ):
+                return IntentKind.FIX_DIAGNOSTICS
+
             if _contains_any(
                 text,
                 (

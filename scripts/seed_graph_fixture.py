@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Seed PR-17 test fixture into memory graph database
+"""Seed memory graph fixture into the database
 
 Loads fixture JSON with 6-node chain (Meeting → Issue → PR → Deploy → Incident → Hotfix)
 into memory_node and memory_edge tables for testing and demonstration.
 
 Usage:
-    python scripts/seed_graph_fixture.py data/seed/pr17_fixture.json
+    python scripts/seed_graph_fixture.py data/seed/memory_graph_fixture.json
 
-    # Or via Makefile:
-    make pr17-seed
 """
 
 import json
@@ -99,7 +97,7 @@ def seed_edges(
 
 
 def clear_existing_data(session, org_id: str):
-    """Remove existing PR-17 test data"""
+    """Remove existing fixture data for the org"""
     print(f"\n🗑️  Clearing existing data for org '{org_id}'...")
 
     # Delete edges first (foreign key constraints)
@@ -142,7 +140,7 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python scripts/seed_graph_fixture.py <fixture_json_path>")
         print(
-            "Example: python scripts/seed_graph_fixture.py data/seed/pr17_fixture.json"
+            "Example: python scripts/seed_graph_fixture.py data/seed/memory_graph_fixture.json"
         )
         sys.exit(1)
 
@@ -152,7 +150,7 @@ def main():
         print(f"❌ Fixture file not found: {fixture_path}")
         sys.exit(1)
 
-    print("🌱 PR-17 Graph Fixture Seeder")
+    print("🌱 Memory Graph Fixture Seeder")
     print("=" * 60)
     print(f"Fixture: {fixture_path}")
 
@@ -197,9 +195,8 @@ def main():
         if success:
             print("\n✅ SUCCESS: Fixture seeded successfully!")
             print("\nNext steps:")
-            print("  1. Run smoke tests:  make pr17-smoke")
-            print("  2. Run test suite:   pytest tests/test_graph_*.py")
-            print("  3. View in VS Code:  aep.openTimeline (ENG-102)")
+            print("  1. Run test suite:   pytest tests/test_graph_*.py")
+            print("  2. View in VS Code:  aep.openTimeline (ENG-102)")
         else:
             print("\n⚠️  Seeding completed with warnings")
 

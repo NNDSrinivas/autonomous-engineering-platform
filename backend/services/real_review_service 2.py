@@ -4,15 +4,11 @@ REAL Git-Based Review Service - NO FAKE/SYNTHETIC ANALYSIS
 Provides ACTUAL git diff analysis with LLM-powered issue detection
 """
 import logging
-import asyncio
 import json
-import re
 import subprocess
-import os
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Union, Tuple
-from datetime import datetime
-from dataclasses import dataclass, asdict
+from typing import List, Dict, Any
+from dataclasses import dataclass
 
 from backend.services.git_service import GitService
 from backend.models.review import ReviewEntry, ReviewIssue
@@ -130,7 +126,7 @@ class RealReviewService:
         """Analyze a file change with REAL issue detection"""
         filepath = change["path"]
         diff = change.get("diff", "")
-        content = change.get("content", "")
+        change.get("content", "")
         
         logger.info(f"[REAL REVIEW] Analyzing {filepath}")
         

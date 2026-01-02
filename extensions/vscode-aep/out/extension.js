@@ -12,6 +12,7 @@ const child_process = require("child_process");
 const util = require("util");
 const diffUtils_1 = require("./diffUtils");
 const connectorsPanel_1 = require("./connectorsPanel");
+const executeTool_1 = require("./tools/executeTool");
 const sseClient_1 = require("./sse/sseClient");
 const smartModeCommands_1 = require("./commands/smartModeCommands");
 const smartModeClient_1 = require("./sse/smartModeClient");
@@ -838,6 +839,7 @@ class NaviWebviewProvider {
         this._messages = [];
         this._agentActions = new Map(); // PR-6: Track agent actions
         this._fixProposals = new Map(); // Phase 2.1: Store fix proposals for application
+        this._pendingPlans = new Map();
         this._currentModelId = DEFAULT_MODEL.id;
         this._currentModelLabel = DEFAULT_MODEL.label;
         this._currentModeId = DEFAULT_MODE.id;
@@ -931,6 +933,509 @@ class NaviWebviewProvider {
             });
         }
     }
+    // Phase 4.1 Step 1.5: Planner Intent Gate
+    isPlannerSupportedIntent(intentKind) {
+        // Only FIX_PROBLEMS is supported in Phase 4.1 Step 1
+        return intentKind === 'fix_problems' || intentKind === 'FIX_PROBLEMS';
+    }
+    // Phase 4.1 Step 4: Intent Normalization Bridge
+    mapToPlannerIntent(intentKind) {
+        if (!intentKind)
+            return null;
+        switch (intentKind) {
+            case "fix_debug":
+            case "fix_problems":
+            case "FIX_PROBLEMS":
+                return "FIX_PROBLEMS";
+            default:
+                return null;
+        }
+    }
+    // Generate varied, natural greeting responses
+    getRandomGreeting() {
+        const greetings = [
+            "👋 Hey there! I'm ready to help with any code issues you're working on.",
+            "🚀 Hello! What code challenges can I help you tackle today?",
+            "✨ Hi! I'm here to assist with debugging, fixes, and code improvements.",
+            "💡 Hey! Ready to dive into some code analysis and problem-solving?",
+            "🔧 Hello! I can help you fix issues, debug problems, and improve your code.",
+            "🎯 Hi there! Let me know when you'd like to work on code diagnostics or fixes.",
+            "⚡ Hey! I'm your coding assistant - ready to help with any technical challenges.",
+            "🛠️ Hello! I specialize in code analysis, debugging, and fixing issues."
+        ];
+        return greetings[Math.floor(Math.random() * greetings.length)];
+    }
+    // Phase 4.1.2: Context Pack Collection for Intelligent Planning
+    async collectContextPack() {
+        try {
+            const workspaceRoot = this.getActiveWorkspaceRoot();
+            if (!workspaceRoot) {
+                return {
+                    workspace: { name: 'unknown', root: '' },
+                    diagnostics: [],
+                    active_file: null
+                };
+            }
+            // Collect workspace info
+            const workspaceName = path.basename(workspaceRoot);
+            const workspace = {
+                name: workspaceName,
+                root: workspaceRoot
+            };
+            // Collect diagnostics from Problems tab
+            const diagnostics = [];
+            const allDiagnostics = vscode.languages.getDiagnostics();
+            for (const [uri, fileDiagnostics] of allDiagnostics) {
+                if (fileDiagnostics.length > 0) {
+                    const relativePath = vscode.workspace.asRelativePath(uri);
+                    for (const diag of fileDiagnostics) {
+                        diagnostics.push({
+                            file: relativePath,
+                            severity: diag.severity === vscode.DiagnosticSeverity.Error ? 'error' :
+                                diag.severity === vscode.DiagnosticSeverity.Warning ? 'warn' : 'info',
+                            message: diag.message,
+                            source: diag.source || 'unknown',
+                            code: diag.code || '',
+                            range: {
+                                startLine: diag.range.start.line,
+                                startChar: diag.range.start.character,
+                                endLine: diag.range.end.line,
+                                endChar: diag.range.end.character
+                            }
+                        });
+                    }
+                }
+            }
+            // Collect active file info
+            let active_file = null;
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor) {
+                const activeUri = activeEditor.document.uri;
+                const relativePath = vscode.workspace.asRelativePath(activeUri);
+                const selection = activeEditor.selection;
+                active_file = {
+                    path: relativePath,
+                    language: activeEditor.document.languageId,
+                    selection: selection.isEmpty ? null : activeEditor.document.getText(selection)
+                };
+            }
+            // Optional: Basic repo info
+            let repo = null;
+            try {
+                const gitExtension = vscode.extensions.getExtension('vscode.git');
+                if (gitExtension?.exports?.enabled) {
+                    const git = gitExtension.exports.getAPI(1);
+                    const gitRepo = git.repositories[0];
+                    if (gitRepo) {
+                        repo = {
+                            branch: gitRepo.state.HEAD?.name || 'unknown',
+                            dirty: gitRepo.state.workingTreeChanges.length > 0 || gitRepo.state.indexChanges.length > 0
+                        };
+                    }
+                }
+            }
+            catch (error) {
+                console.log('[AEP] Could not collect git info:', error);
+            }
+            const context = {
+                workspace,
+                repo,
+                diagnostics: diagnostics.slice(0, 10), // Limit to first 10 diagnostics
+                active_file
+            };
+            console.log(`[AEP] 📊 Context collected:`, {
+                workspace: workspace.name,
+                diagnostics_count: diagnostics.length,
+                active_file: active_file?.path || 'none',
+                repo_branch: repo?.branch || 'none'
+            });
+            return context;
+        }
+        catch (error) {
+            console.error('[AEP] Context collection error:', error);
+            return {
+                workspace: { name: 'error', root: '' },
+                diagnostics: [],
+                active_file: null
+            };
+        }
+    }
+    // Phase 4.1.2: Call planning API with context and classified intent
+    async callPlanningAPI(content, intent, intentKind, mode, model) {
+        try {
+            const baseUrl = this.getBackendBaseUrl().replace('/api/navi/chat', '');
+            console.log(`[AEP] 🧠 Starting intelligent planning for: "${content}" (${intentKind})`);
+            // Show thinking state
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: true
+            });
+            // Step 1: Collect context pack
+            console.log(`[AEP] 📊 Collecting context...`);
+            const contextPack = await this.collectContextPack();
+            // Phase 4.1: Hard map all gated intents to fix_diagnostics  
+            // No trust in classifiers yet - deterministic routing only
+            const backendIntentKind = 'fix_diagnostics'; // Step 2: Generate execution plan using new planning API
+            console.log(`[AEP] 📋 Generating execution plan...`);
+            const planResponse = await fetch(`${baseUrl}/api/navi/plan`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: content,
+                    intent: {
+                        raw_text: content,
+                        kind: backendIntentKind,
+                        confidence: intent.confidence || 0.7,
+                        source: "chat",
+                        context: intent.context || {}
+                    },
+                    context: contextPack
+                })
+            });
+            if (!planResponse.ok) {
+                throw new Error(`Planning API error: ${planResponse.status} ${planResponse.statusText}`);
+            }
+            const planData = await planResponse.json();
+            console.log(`[AEP] ✅ Plan generated:`, planData);
+            // Hide thinking state
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: false
+            });
+            // Step 3: Send structured plan to UI
+            if (planData.success && planData.plan) {
+                // Add plan message to conversation history
+                const planContent = `I've generated a ${planData.plan.steps.length}-step plan to fix the diagnostics.`;
+                this._messages.push({ role: 'assistant', content: planContent });
+                this.postToWebview({
+                    type: 'navi.assistant.plan',
+                    plan: planData.plan,
+                    reasoning: planData.reasoning,
+                    session_id: planData.session_id
+                });
+                // Step 4: Start execution if plan doesn't require approval
+                if (!planData.plan.requires_approval) {
+                    console.log(`[AEP] 🚀 Auto-starting plan execution...`);
+                    await this.executeNextPlanStep(planData.session_id);
+                }
+            }
+            else {
+                // Add error message to conversation history
+                const errorContent = 'I encountered an issue generating a plan. Let me try to help anyway.';
+                this._messages.push({ role: 'assistant', content: errorContent });
+                this.postToWebview({
+                    type: 'navi.assistant.error',
+                    content: errorContent,
+                    error: planData.error || 'Unknown planning error'
+                });
+            }
+        }
+        catch (error) {
+            console.error(`[AEP] ❌ Planning API error:`, error);
+            // Hide thinking state
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: false
+            });
+            // Fallback to basic chat API
+            console.log(`[AEP] 🔄 Falling back to basic chat API...`);
+            this.callBackendAPI(content, mode, model);
+        }
+    }
+    // Phase 4.1.2: Execute next step in plan
+    async executeNextPlanStep(sessionId, toolResult) {
+        try {
+            const baseUrl = this.getBackendBaseUrl().replace('/api/navi/chat', '');
+            console.log(`[AEP] 🔄 Executing next plan step for session: ${sessionId}`);
+            // Call next step API
+            const nextResponse = await fetch(`${baseUrl}/api/navi/next`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    run_id: sessionId,
+                    tool_result: toolResult
+                })
+            });
+            if (!nextResponse.ok) {
+                throw new Error(`Next step API error: ${nextResponse.status} ${nextResponse.statusText}`);
+            }
+            const nextData = await nextResponse.json();
+            console.log(`[AEP] 📤 Next step response:`, nextData);
+            if (nextData.type === 'tool_request') {
+                // Handle tool execution request
+                await this.handleToolRequest(nextData.request, sessionId);
+            }
+            else if (nextData.type === 'assistant_message') {
+                // Send progress message to UI
+                this.postToWebview({
+                    type: 'navi.assistant.message',
+                    content: nextData.content
+                });
+                // Continue to next step if not final
+                if (!nextData.final) {
+                    await this.executeNextPlanStep(sessionId);
+                }
+            }
+            else if (nextData.type === 'error') {
+                this.postToWebview({
+                    type: 'navi.assistant.error',
+                    content: 'Plan execution encountered an error.',
+                    error: nextData.error
+                });
+            }
+        }
+        catch (error) {
+            console.error(`[AEP] ❌ Plan step execution error:`, error);
+            this.postToWebview({
+                type: 'navi.assistant.error',
+                content: 'Failed to execute plan step.',
+                error: String(error)
+            });
+        }
+    }
+    // Phase 4.1.2: Handle tool execution requests
+    async handleToolRequest(toolRequest, sessionId) {
+        try {
+            console.log(`[AEP] 🔧 Tool request:`, toolRequest);
+            const { tool, args, approval } = toolRequest;
+            // Check if approval is required
+            if (approval.required) {
+                // Send approval request to UI
+                this.postToWebview({
+                    type: 'navi.tool.approval',
+                    tool_request: toolRequest,
+                    session_id: sessionId
+                });
+                return;
+            }
+            // Execute tool directly for low-risk tools
+            const toolResult = await this.executeTool(tool, args);
+            // Continue with next step
+            await this.executeNextPlanStep(sessionId, toolResult);
+        }
+        catch (error) {
+            console.error(`[AEP] ❌ Tool request error:`, error);
+            // Send error result and continue
+            const errorResult = {
+                run_id: sessionId,
+                request_id: toolRequest.request_id,
+                tool: toolRequest.tool,
+                ok: false,
+                error: String(error)
+            };
+            await this.executeNextPlanStep(sessionId, errorResult);
+        }
+    }
+    // Phase 4.1 Step 2: Tool Execution Engine
+    async executeTool(tool, args) {
+        console.log(`[AEP] 🛠️  Executing tool: ${tool}`, args);
+        if (tool === 'workspace.applyPatch') {
+            return this.toolApplyPatch(args);
+        }
+        if (tool === 'tasks.run') {
+            return this.toolRunTask(args);
+        }
+        // Get workspace root for tool context
+        const workspaceRoot = this.getActiveWorkspaceRoot() || '';
+        // Get previous tool result from args if available
+        const previousResult = args?.previousResult;
+        // Execute using new tool engine
+        const result = await (0, executeTool_1.executeTool)(tool, {
+            workspaceRoot,
+            previousResult
+        });
+        if (!result.success) {
+            throw new Error(result.error || `Tool ${tool} failed`);
+        }
+        // Phase 4.1 Step 2: Temporary UI feedback for scanProblems
+        if (tool === 'scanProblems' && result.data) {
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: `🔍 Found ${result.data.count} problems in this workspace.`
+            });
+        }
+        // Phase 4.1 Step 3: Temporary UI feedback for analyzeProblems
+        if (tool === 'analyzeProblems' && result.data) {
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: `📊 Problems grouped across ${result.data.totalFiles} files.`
+            });
+        }
+        // Phase 4.1 Step 4: Temporary UI feedback for applyFixes
+        if (tool === 'applyFixes' && result.data) {
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: `🛠 Prepared fix plan for ${result.data.filesAffected} file(s).`
+            });
+        }
+        // Phase 4.1 Step 5: Final verification result
+        if (tool === 'verifyProblems' && result.data) {
+            const verification = result.data;
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: verification.status === 'PASS'
+                    ? '✅ Verification complete. No remaining problems detected.'
+                    : `⚠️ Verification complete. ${verification.remainingProblems} problems still remain.`
+            });
+        }
+        // Convert to legacy format for compatibility
+        return {
+            ok: true,
+            output: result.data,
+            tool
+        };
+    } // Tool implementations
+    async toolGetDiagnostics(args) {
+        const diagnostics = [];
+        const allDiagnostics = vscode.languages.getDiagnostics();
+        for (const [uri, fileDiagnostics] of allDiagnostics) {
+            if (fileDiagnostics.length > 0) {
+                const relativePath = vscode.workspace.asRelativePath(uri);
+                for (const diag of fileDiagnostics) {
+                    diagnostics.push({
+                        file: relativePath,
+                        severity: diag.severity,
+                        message: diag.message,
+                        range: diag.range
+                    });
+                }
+            }
+        }
+        return {
+            ok: true,
+            output: diagnostics,
+            tool: 'vscode.getDiagnostics'
+        };
+    }
+    async toolReadFile(args) {
+        try {
+            const workspaceRoot = this.getActiveWorkspaceRoot();
+            if (!workspaceRoot || !args.file) {
+                throw new Error('No workspace or file specified');
+            }
+            const filePath = path.join(workspaceRoot, args.file);
+            const content = await (0, promises_1.readFile)(filePath, 'utf8');
+            return {
+                ok: true,
+                output: { path: args.file, content: content.slice(0, 10000) }, // Limit content
+                tool: 'workspace.readFile'
+            };
+        }
+        catch (error) {
+            return {
+                ok: false,
+                error: String(error),
+                tool: 'workspace.readFile'
+            };
+        }
+    }
+    async toolApplyPatch(args) {
+        const patch = typeof args?.patch === 'string'
+            ? args.patch
+            : typeof args?.diff === 'string'
+                ? args.diff
+                : typeof args?.content === 'string'
+                    ? args.content
+                    : '';
+        const filePath = typeof args?.filePath === 'string' ? args.filePath : undefined;
+        if (!patch) {
+            return {
+                ok: false,
+                error: 'No patch content provided',
+                tool: 'workspace.applyPatch'
+            };
+        }
+        try {
+            const { applyUnifiedPatch } = await Promise.resolve().then(() => require('./repo/applyPatch'));
+            const success = await applyUnifiedPatch(patch, filePath);
+            if (!success) {
+                return {
+                    ok: false,
+                    error: 'Patch application failed',
+                    tool: 'workspace.applyPatch'
+                };
+            }
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: '✅ Patch applied to workspace.'
+            });
+            return {
+                ok: true,
+                output: {
+                    applied: true,
+                    filePath: filePath ?? null
+                },
+                tool: 'workspace.applyPatch'
+            };
+        }
+        catch (error) {
+            return {
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+                tool: 'workspace.applyPatch'
+            };
+        }
+    }
+    async toolRunTask(args) {
+        const resolved = await this.resolveTaskCommand(args);
+        if (!resolved) {
+            return {
+                ok: false,
+                error: 'No runnable task or command resolved',
+                tool: 'tasks.run'
+            };
+        }
+        const result = await this.applyRunCommandAction({ command: resolved.command, cwd: resolved.cwd, meta: resolved.meta }, { skipConfirm: true });
+        if (!result) {
+            return {
+                ok: false,
+                error: 'Task execution failed to start',
+                tool: 'tasks.run'
+            };
+        }
+        return {
+            ok: true,
+            output: {
+                command: resolved.command,
+                cwd: resolved.cwd,
+                exitCode: result.exitCode,
+                stdout: result.stdout,
+                stderr: result.stderr,
+                durationMs: result.durationMs
+            },
+            tool: 'tasks.run'
+        };
+    }
+    async resolveTaskCommand(args) {
+        const rawCommand = typeof args?.command === 'string' ? args.command.trim() : '';
+        const rawTask = typeof args?.task === 'string' ? args.task.trim() : '';
+        const workspaceRoot = this.getActiveWorkspaceRoot();
+        const cwd = typeof args?.cwd === 'string' && args.cwd.trim() ? args.cwd.trim() : (workspaceRoot || process.cwd());
+        const meta = args?.meta && typeof args.meta === 'object' ? args.meta : undefined;
+        if (rawCommand) {
+            return { command: rawCommand, cwd, meta };
+        }
+        if (!rawTask) {
+            return null;
+        }
+        let resolvedCommand = null;
+        if (workspaceRoot) {
+            try {
+                const candidates = await detectDiagnosticsCommands(workspaceRoot);
+                const taskLower = rawTask.toLowerCase();
+                resolvedCommand = candidates.find(cmd => cmd.toLowerCase().includes(taskLower)) || null;
+            }
+            catch (error) {
+                console.warn('[AEP] Failed to resolve diagnostics commands:', error);
+            }
+        }
+        const finalCommand = resolvedCommand ?? (workspaceRoot ? `npm run ${rawTask}` : rawTask);
+        return { command: finalCommand, cwd, meta };
+    }
     getOrgId(explicit) {
         const trimmed = (explicit || '').trim();
         if (trimmed)
@@ -952,6 +1457,42 @@ class NaviWebviewProvider {
             return configured.trim();
         }
         return 'default_user';
+    }
+    getAuthToken(explicit) {
+        const trimmed = (explicit || '').trim();
+        if (trimmed)
+            return trimmed;
+        const config = vscode.workspace.getConfiguration('aep');
+        const configured = config.get('navi.authToken');
+        if (configured && configured.trim()) {
+            return configured.trim();
+        }
+        const envToken = process.env.AEP_AUTH_TOKEN ||
+            process.env.AEP_SESSION_TOKEN ||
+            process.env.AEP_ACCESS_TOKEN;
+        if (envToken && envToken.trim()) {
+            return envToken.trim();
+        }
+        return undefined;
+    }
+    buildAuthHeaders(orgId, userId, contentType) {
+        const headers = {};
+        if (contentType) {
+            headers['Content-Type'] = contentType;
+        }
+        if (orgId) {
+            headers['X-Org-Id'] = orgId;
+        }
+        if (userId) {
+            headers['X-User-Id'] = userId;
+        }
+        const authToken = this.getAuthToken();
+        if (authToken) {
+            headers.Authorization = authToken.startsWith('Bearer ')
+                ? authToken
+                : `Bearer ${authToken}`;
+        }
+        return headers;
     }
     getAutoScanConfig() {
         const config = vscode.workspace.getConfiguration('aep');
@@ -2084,7 +2625,19 @@ class NaviWebviewProvider {
                         // 🚀 INTENT-BASED ENGINEERING WORK (Step 4 - Copilot-class intelligence)
                         const intent = IntentClassifier_1.IntentClassifier.classify(text);
                         console.log(`[IntentEngine] Classified intent: ${intent.type} (confidence: ${intent.confidence})`);
-                        // Handle non-diagnostic intents with generative coding engine
+                        // Phase 4.1.2: Route to new planning system for specific intents
+                        if (text.toLowerCase().includes('problems tab') ||
+                            text.toLowerCase().includes('fix errors') ||
+                            text.toLowerCase().includes('fix problems') ||
+                            text.toLowerCase().includes('diagnostics')) {
+                            console.log(`[Phase4.1.2] Routing diagnostics request to planner`);
+                            // Add to message history
+                            this._messages.push({ role: 'user', content: text });
+                            recordUserMessage();
+                            // Call planner with FIX_PROBLEMS intent
+                            await this.callPlanningAPI(text, { kind: 'FIX_PROBLEMS' }, 'FIX_PROBLEMS', this._currentModeId, this._currentModelId);
+                            return; // Exit early for Phase 4.1.2 flow
+                        } // Handle non-diagnostic intents with generative coding engine
                         if (intent.type !== 'FIX_ERRORS' && intent.type !== 'UNKNOWN' && intent.confidence >= 0.6) {
                             console.log(`[IntentEngine] Processing ${intent.type} intent with generative engine`);
                             // 🔥 PHASE 3.1 - FEATURE PLANNING ENGINE
@@ -2305,6 +2858,16 @@ class NaviWebviewProvider {
                         await this.handleAttachmentRequest(webviewView.webview, msg.kind);
                         break;
                     }
+                    case 'removeAttachment': {
+                        if (msg.attachmentKey) {
+                            this.removeAttachment(String(msg.attachmentKey));
+                        }
+                        break;
+                    }
+                    case 'clearAttachments': {
+                        this.clearAttachments();
+                        break;
+                    }
                     case 'getDiagnostics': {
                         await this.handleDiagnosticsRequest();
                         break;
@@ -2521,10 +3084,10 @@ class NaviWebviewProvider {
                         // Proxy connector status request to backend
                         try {
                             const baseUrl = this.getBackendBaseUrl();
+                            const orgId = this.getOrgId(msg?.orgId);
+                            const userId = this.getUserId(msg?.userId);
                             const response = await fetch(`${baseUrl}/api/connectors/status`, {
-                                headers: {
-                                    'X-Org-Id': 'org_aep_platform_4538597546e6fec6',
-                                },
+                                headers: this.buildAuthHeaders(orgId, userId),
                             });
                             if (!response.ok) {
                                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -2545,6 +3108,8 @@ class NaviWebviewProvider {
                         // Proxy Jira connection request to backend
                         try {
                             const baseUrl = this.getBackendBaseUrl();
+                            const orgId = this.getOrgId(msg?.orgId);
+                            const userId = this.getUserId(msg?.userId);
                             const endpoint = `${baseUrl}/api/connectors/jira/connect`;
                             console.log('[AEP] Jira connect - Backend base URL:', baseUrl);
                             console.log('[AEP] Jira connect - Full endpoint:', endpoint);
@@ -2555,10 +3120,7 @@ class NaviWebviewProvider {
                             });
                             const response = await fetch(endpoint, {
                                 method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-Org-Id': 'org_aep_platform_4538597546e6fec6',
-                                },
+                                headers: this.buildAuthHeaders(orgId, userId, 'application/json'),
                                 body: JSON.stringify({
                                     base_url: msg.baseUrl,
                                     email: msg.email || undefined,
@@ -2608,14 +3170,13 @@ class NaviWebviewProvider {
                     case 'connectors.jiraSyncNow': {
                         try {
                             const baseUrl = this.getBackendBaseUrl();
+                            const orgId = this.getOrgId(msg?.orgId);
+                            const userId = this.getUserId(msg?.userId);
                             const endpoint = `${baseUrl}/api/org/sync/jira`;
                             console.log('[AEP] Jira sync-now – calling enhanced endpoint', endpoint);
                             const response = await fetch(endpoint, {
                                 method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-Org-Id': 'org_aep_platform_4538597546e6fec6',
-                                },
+                                headers: this.buildAuthHeaders(orgId, userId, 'application/json'),
                                 body: JSON.stringify({
                                     user_id: 'default_user',
                                     max_issues: 20
@@ -3198,33 +3759,113 @@ class NaviWebviewProvider {
                         const decision = msg.decision;
                         console.log('[AEP] Approval decision received:', decision);
                         if (decision === 'approve') {
-                            // Resume workflow - continue with apply step
-                            this.emitToWebview({ type: 'navi.workflow.step', step: 'validate', status: 'completed' });
-                            // Apply step
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                            this.emitToWebview({ type: 'navi.workflow.step', step: 'apply', status: 'active' });
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                            this.emitToWebview({ type: 'navi.workflow.step', step: 'apply', status: 'completed' });
-                            // Continue with PR step
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                            this.emitToWebview({ type: 'navi.workflow.step', step: 'pr', status: 'active' });
-                            await new Promise(resolve => setTimeout(resolve, 800));
-                            this.emitToWebview({ type: 'navi.workflow.step', step: 'pr', status: 'completed' });
-                            // CI step
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                            this.emitToWebview({ type: 'navi.workflow.step', step: 'ci', status: 'active' });
-                            await new Promise(resolve => setTimeout(resolve, 1500));
-                            this.emitToWebview({ type: 'navi.workflow.step', step: 'ci', status: 'completed' });
-                            // Complete workflow
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                            this.emitToWebview({ type: 'navi.workflow.completed' });
-                            vscode.window.showInformationMessage('✅ Workflow approved and completed!');
+                            this.postToWebview({
+                                type: 'navi.assistant.message',
+                                content: '✅ Approval received. Please approve a concrete plan to execute changes.'
+                            });
                         }
                         else {
-                            // Abort workflow
-                            this.emitToWebview({ type: 'navi.workflow.failed', step: 'validate', error: 'User rejected changes' });
-                            vscode.window.showInformationMessage('❌ Workflow rejected - changes not applied');
+                            this.postToWebview({
+                                type: 'navi.assistant.message',
+                                content: '❌ Approval rejected. No changes were applied.'
+                            });
                         }
+                        break;
+                    }
+                    case 'navi.plan.approval': {
+                        const approved = !!msg.approved;
+                        const taskId = String(msg.task_id || msg.plan_id || '');
+                        const sessionId = String(msg.session_id || `session-${Date.now()}`);
+                        if (!taskId) {
+                            this.postToWebview({
+                                type: 'navi.assistant.message',
+                                content: '⚠️ Missing task id for execution. Please regenerate the plan.'
+                            });
+                            break;
+                        }
+                        if (!approved) {
+                            this.postToWebview({
+                                type: 'navi.assistant.message',
+                                content: '❌ Plan execution cancelled. No changes were applied.'
+                            });
+                            break;
+                        }
+                        const pendingPlan = this._pendingPlans.get(taskId);
+                        if (pendingPlan) {
+                            await this.executePendingPlan(taskId, pendingPlan, sessionId);
+                            break;
+                        }
+                        await this.executeApprovedTask(taskId, sessionId);
+                        break;
+                    }
+                    // Phase 4.2: Handle FIX_PROBLEMS approval actions
+                    case 'approval.approve': {
+                        const planId = msg.plan_id;
+                        const plan = msg.plan;
+                        console.log('[AEP] [Phase 4.2] Approval approved for plan:', planId);
+                        this.postToWebview({
+                            type: 'botMessage',
+                            text: `✅ **Analysis approved!**\n\nStarting systematic fix process for ${plan?.diagnostics?.total_count || 'the'} problems...\n\n🔄 This will analyze error patterns and generate fixes with confidence scoring.`,
+                            actions: []
+                        });
+                        const taskId = plan?.execution?.task_id || planId;
+                        if (!taskId) {
+                            this.postToWebview({
+                                type: 'navi.assistant.message',
+                                content: '⚠️ Missing task id for execution. Please regenerate the plan.'
+                            });
+                            break;
+                        }
+                        await this.executeApprovedTask(taskId, String(plan?.session_id || `session-${Date.now()}`));
+                        break;
+                    }
+                    case 'approval.explain': {
+                        const planId = msg.plan_id;
+                        const plan = msg.plan;
+                        console.log('[AEP] [Phase 4.2] Explanation requested for plan:', planId);
+                        let explanationText = `📋 **Fix Plan Explanation**\n\n`;
+                        if (plan?.diagnostics) {
+                            explanationText += `**Problems Found:**\n`;
+                            explanationText += `• Total: ${plan.diagnostics.total_count} issues\n`;
+                            explanationText += `• Errors: ${plan.diagnostics.error_count} \n`;
+                            explanationText += `• Warnings: ${plan.diagnostics.warning_count}\n\n`;
+                        }
+                        explanationText += `**What I'll do:**\n`;
+                        if (plan?.steps) {
+                            plan.steps.forEach((step, index) => {
+                                explanationText += `${index + 1}. ${step.title}\n   ${step.description}\n\n`;
+                            });
+                        }
+                        explanationText += `**Confidence:** ${Math.round((plan?.confidence || 0) * 100)}%\n\n`;
+                        explanationText += `This approach is deterministic and safe - I'll analyze each problem individually and propose fixes for your review.`;
+                        this.postToWebview({
+                            type: 'botMessage',
+                            text: explanationText,
+                            actions: [
+                                {
+                                    type: 'approval.approve',
+                                    description: 'Proceed with Analysis',
+                                    label: 'Proceed',
+                                    plan_id: planId,
+                                    plan: plan
+                                },
+                                {
+                                    type: 'approval.cancel',
+                                    description: 'Cancel',
+                                    label: 'Cancel'
+                                }
+                            ]
+                        });
+                        break;
+                    }
+                    case 'approval.cancel': {
+                        const planId = msg.plan_id;
+                        console.log('[AEP] [Phase 4.2] Approval cancelled for plan:', planId);
+                        this.postToWebview({
+                            type: 'botMessage',
+                            text: `❌ **Analysis cancelled**\n\nNo changes were made. The problems are still there if you want to try again later.`,
+                            actions: []
+                        });
                         break;
                     }
                     // Phase 4.0.5: Handle user messages with real backend API calls
@@ -3232,12 +3873,137 @@ class NaviWebviewProvider {
                         const content = String(msg.content || '').trim();
                         const mode = String(msg.mode || 'agent');
                         const model = String(msg.model || 'auto');
+                        const routingDecision = msg.routingDecision;
+                        const routingPath = routingDecision?.path;
                         if (!content) {
                             return;
                         }
                         console.log(`[AEP] User message: "${content}" (${mode}, ${model})`);
+                        if (routingPath === 'conversation') {
+                            await this.handleConversationalRequest(content, mode, model);
+                            return;
+                        }
+                        const suggestedIntent = typeof routingDecision?.suggestedIntent === 'string'
+                            ? routingDecision.suggestedIntent
+                            : undefined;
+                        const inferredIntent = suggestedIntent || this.inferCoreIntent(content);
+                        if (inferredIntent === 'FIX_PROBLEMS' || this.looksLikeDiagnosticsRequest(content)) {
+                            await this.handleDiagnosticsRequest(content);
+                            return;
+                        }
+                        const coreIntents = new Set([
+                            'RUN_TESTS',
+                            'REFACTOR_CODE',
+                            'OPTIMIZE_PERFORMANCE',
+                            'EXPLAIN_CODE',
+                            'REVIEW_PR'
+                        ]);
+                        if (inferredIntent && coreIntents.has(inferredIntent)) {
+                            await this.handleCoreIntentRequest(content, inferredIntent, mode, model);
+                            return;
+                        }
                         // 🚀 Make real backend API call
                         this.callBackendAPI(content, mode, model);
+                        break;
+                    }
+                    // Phase 4.1.1: Handle intent-aware agent messages
+                    case 'navi.agent.message': {
+                        const content = String(msg.content || '').trim();
+                        const intent = msg.intent;
+                        const proposal = msg.proposal;
+                        const mode = String(msg.mode || 'agent');
+                        const model = String(msg.model || 'auto');
+                        const requiresApproval = msg.requiresApproval || false;
+                        if (!content || !intent) {
+                            return;
+                        }
+                        console.log(`[AEP] Intent-aware message: "${content}" - Intent: ${intent.kind} (${intent.confidence})`);
+                        // Phase 4.1.2: Handle action proposals
+                        if (proposal && !requiresApproval) {
+                            console.log(`[AEP] Auto-executing low-risk proposal: ${proposal.title}`);
+                            // For low-risk proposals, execute automatically
+                            await this.executeAgentActions(proposal.actions, content, intent);
+                        }
+                        else if (proposal && requiresApproval) {
+                            console.log(`[AEP] Presenting proposal for approval: ${proposal.title}`);
+                            // For high-risk proposals, present to user for approval
+                            await this.presentProposalForApproval(proposal, content, intent);
+                        }
+                        else {
+                            // No proposal - fall back to basic agent response
+                            console.log(`[AEP] No proposal generated, using basic agent flow`);
+                            this.callBackendAPI(content, mode, model);
+                        }
+                        break;
+                    }
+                    // Phase 4.1.2: Handle plan-based agent messages with IntentKind
+                    case 'navi.agent.plan.message': {
+                        const content = String(msg.content || '').trim();
+                        const intent = msg.intent;
+                        const intentKind = msg.intentKind;
+                        const mode = String(msg.mode || 'agent');
+                        const model = String(msg.model || 'auto');
+                        const requiresApproval = msg.requiresApproval || false;
+                        if (!content || !intent || !intentKind) {
+                            return;
+                        }
+                        console.log(`[AEP] Plan-based message: "${content}" - IntentKind: ${intentKind}`);
+                        // Phase 4.1 Step 4: Intent Normalization Bridge
+                        const plannerIntent = this.mapToPlannerIntent(intentKind);
+                        if (!plannerIntent) {
+                            console.log(`[AEP] Intent "${intentKind}" not supported by planner - sending simple response`);
+                            const greetingResponse = this.getRandomGreeting();
+                            // Add to message history
+                            this._messages.push({ role: 'user', content: content });
+                            this._messages.push({ role: 'assistant', content: greetingResponse });
+                            // Send simple response without planner
+                            this.postToWebview({
+                                type: 'navi.assistant.message',
+                                content: greetingResponse
+                            });
+                            return;
+                        }
+                        console.log(`[AEP] Intent normalized: "${intentKind}" → "${plannerIntent}"`);
+                        // Call the planning API with the normalized intent
+                        await this.callPlanningAPI(content, intent, plannerIntent, mode, model);
+                        break;
+                    }
+                    // Phase 4.1.2: Handle tool approval decisions
+                    case 'navi.tool.approval': {
+                        const { decision, tool_request, session_id } = msg;
+                        console.log(`[AEP] Tool approval decision: ${decision} for ${tool_request?.tool}`);
+                        if (decision === 'approve') {
+                            try {
+                                // Execute the approved tool
+                                const toolResult = await this.executeTool(tool_request.tool, tool_request.args);
+                                // Continue with next step
+                                await this.executeNextPlanStep(session_id, toolResult);
+                            }
+                            catch (error) {
+                                console.error(`[AEP] Approved tool execution failed:`, error);
+                                // Send error result and continue
+                                const errorResult = {
+                                    run_id: session_id,
+                                    request_id: tool_request.request_id,
+                                    tool: tool_request.tool,
+                                    ok: false,
+                                    error: String(error)
+                                };
+                                await this.executeNextPlanStep(session_id, errorResult);
+                            }
+                        }
+                        else {
+                            // User rejected tool execution - skip step
+                            console.log(`[AEP] Tool execution rejected by user`);
+                            const skipResult = {
+                                run_id: session_id,
+                                request_id: tool_request.request_id,
+                                tool: tool_request.tool,
+                                ok: false,
+                                error: 'User rejected tool execution'
+                            };
+                            await this.executeNextPlanStep(session_id, skipResult);
+                        }
                         break;
                     }
                     default:
@@ -3280,7 +4046,7 @@ class NaviWebviewProvider {
             // Use real backend analysis instead of mock data
             console.log('[AEP] DEBUG: About to call backend API...');
             try {
-                const response = await fetch('http://localhost:8787/api/navi/analyze-changes', {
+                const response = await fetch('http://localhost:8788/api/navi/analyze-changes', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -3364,7 +4130,7 @@ class NaviWebviewProvider {
                         category: 'system',
                         summary: 'Backend Analysis Unavailable',
                         description: `Could not connect to analysis backend: ${fetchError?.message || fetchError}`,
-                        suggestion: 'Ensure the backend is running on localhost:8787'
+                        suggestion: 'Ensure the backend is running on localhost:8788'
                     }
                 });
             }
@@ -3500,13 +4266,37 @@ class NaviWebviewProvider {
         if (/\b(lint|eslint|tsc|typecheck|mypy|flake8|pylint|ruff|diagnostic)\b/.test(msg)) {
             return true;
         }
-        const errorPhrase = /\b(check|find|scan|look for|list|show)\b.*\b(error|errors|warnings|issues|problems)\b/.test(msg);
+        const errorPhrase = /\b(check|find|scan|look for|list|show|fix|resolve|address)\b.*\b(error|errors|warnings|issues|problems)\b/.test(msg);
         const scopeHint = /\b(repo|repository|project|codebase|workspace|file|current file|this file)\b/.test(msg);
         if (errorPhrase && scopeHint)
             return true;
-        if (/\b(check|find|scan)\b.*\berrors?\b/.test(msg))
+        if (/\b(check|find|scan|fix|resolve)\b.*\berrors?\b/.test(msg))
             return true;
         return false;
+    }
+    inferCoreIntent(text) {
+        const msg = (text || '').toLowerCase();
+        if (!msg.trim())
+            return undefined;
+        if (/\bfix\b.*\b(errors?|warnings?|issues?|problems?)\b/.test(msg)) {
+            return 'FIX_PROBLEMS';
+        }
+        if (/\b(run|execute)\b.*\btests?\b/.test(msg)) {
+            return 'RUN_TESTS';
+        }
+        if (/\brefactor\b/.test(msg)) {
+            return 'REFACTOR_CODE';
+        }
+        if (/\boptimi[sz]e\b|\bperformance\b/.test(msg)) {
+            return 'OPTIMIZE_PERFORMANCE';
+        }
+        if (/\bexplain\b|\bwalk me through\b/.test(msg)) {
+            return 'EXPLAIN_CODE';
+        }
+        if (/\breview\b|\bcode review\b|\bdiff\b|\bpull request\b|\bpr\b/.test(msg)) {
+            return 'REVIEW_PR';
+        }
+        return undefined;
     }
     looksLikeGitCommand(text) {
         const trimmed = (text || "").trim();
@@ -3563,12 +4353,16 @@ class NaviWebviewProvider {
         }
     }
     async handleDiagnosticsRequest(text) {
-        console.log('[AEP] Getting diagnostics for current workspace');
+        console.log('[AEP] [Phase 4.2] Using NAVI analyze-problems endpoint for diagnostic handling');
         const workspaceRoot = this.getActiveWorkspaceRoot();
         const lower = (text || '').toLowerCase();
         const restrictToActiveFile = /\b(current file|this file|active file|open file)\b/.test(lower);
-        let actions = [];
         try {
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: true
+            });
+            // Step 1: Collect VS Code diagnostics
             const allDiagnostics = vscode.languages.getDiagnostics();
             const activeEditor = vscode.window.activeTextEditor;
             const activePath = activeEditor?.document?.uri.fsPath;
@@ -3577,89 +4371,628 @@ class NaviWebviewProvider {
                 : allDiagnostics;
             const errorCount = diagnostics.reduce((count, [_, diags]) => count + diags.length, 0);
             const fileCount = diagnostics.length;
-            const diagnosticsCommandsArray = workspaceRoot
-                ? await detectDiagnosticsCommands(workspaceRoot)
-                : [];
-            if (diagnosticsCommandsArray.length > 0 && workspaceRoot) {
-                const seen = new Set();
-                actions = diagnosticsCommandsArray
-                    .filter((cmd) => {
-                    const normalized = String(cmd || '').trim();
-                    if (!normalized || seen.has(normalized))
-                        return false;
-                    seen.add(normalized);
-                    return true;
-                })
-                    .slice(0, 5)
-                    .map((cmd) => ({
-                    type: 'runCommand',
-                    description: `Run ${cmd}`,
-                    command: cmd,
-                    cwd: workspaceRoot,
-                    meta: { kind: 'diagnostics' },
-                }));
-            }
-            if (errorCount === 0) {
-                const followUp = actions.length
-                    ? "\n\nNo VS Code diagnostics found. Want me to run lint or test commands to double-check?"
-                    : "";
+            // Step 2: Transform diagnostics for analyze-problems API
+            const diagnosticsData = Array.from(diagnostics).map(([uri, diags]) => {
+                const filePath = workspaceRoot
+                    ? path.relative(workspaceRoot, uri.fsPath)
+                    : uri.fsPath;
+                return {
+                    uri: uri.toString(),
+                    path: filePath,
+                    diagnostics: diags.map(d => ({
+                        message: d.message,
+                        severity: d.severity,
+                        line: d.range.start.line,
+                        character: d.range.start.character,
+                        source: d.source,
+                        code: d.code
+                    }))
+                };
+            });
+            const affectedFiles = Array.from(diagnostics).map(([uri]) => workspaceRoot ? path.relative(workspaceRoot, uri.fsPath) : path.basename(uri.fsPath));
+            // Step 3: Call NAVI analyze-problems endpoint
+            const response = await this.callAnalyzeProblemsEndpoint({
+                user_input: text || 'fix problems in workspace',
+                session_id: `session-${Date.now()}`,
+                workspace: workspaceRoot || 'workspace',
+                diagnostics: diagnosticsData,
+                diagnostics_count: errorCount,
+                active_file: activePath ? path.relative(workspaceRoot || '', activePath) : undefined
+            });
+            // Step 4: Handle grounding result
+            if (!response.success) {
+                // Grounding rejected or failed
                 this.postToWebview({
-                    type: 'botMessage',
-                    text: `✅ **No diagnostic errors found**\n\n` +
-                        `${restrictToActiveFile ? "The current file" : "Your workspace"} appears clean ` +
-                        `(no lint or compiler issues reported).${followUp}`,
-                    actions,
+                    type: 'navi.assistant.message',
+                    content: `❌ Unable to process diagnostic request.\n\n${response.error || 'Unknown error'}`
                 });
                 return;
             }
-            // Collect detailed diagnostic info
-            let diagnosticDetails = '';
-            let errorsByFile = 0;
-            for (const [uri, diags] of diagnostics) {
-                if (diags.length > 0 && errorsByFile < 5) { // Show max 5 files
-                    const fileName = path.basename(uri.fsPath);
-                    const errors = diags.filter(d => d.severity === vscode.DiagnosticSeverity.Error).length;
-                    const warnings = diags.filter(d => d.severity === vscode.DiagnosticSeverity.Warning).length;
-                    const info = diags.length - errors - warnings;
-                    diagnosticDetails += `\n- **${fileName}**: `;
-                    if (errors > 0)
-                        diagnosticDetails += `${errors} error${errors > 1 ? 's' : ''}`;
-                    if (warnings > 0) {
-                        if (errors > 0)
-                            diagnosticDetails += ', ';
-                        diagnosticDetails += `${warnings} warning${warnings > 1 ? 's' : ''}`;
-                    }
-                    if (info > 0) {
-                        if (errors > 0 || warnings > 0)
-                            diagnosticDetails += ', ';
-                        diagnosticDetails += `${info} info`;
-                    }
-                    errorsByFile++;
+            if (!response.plan) {
+                this.postToWebview({
+                    type: 'navi.assistant.message',
+                    content: `⚠️ No plan generated. The task grounding system did not generate a plan.`
+                });
+                return;
+            }
+            // Step 5: Handle successful grounding with approval workflow
+            const plan = response.plan;
+            const executionTaskId = plan?.execution?.task_id || response.execution_result?.task_id;
+            if (executionTaskId) {
+                plan.execution = plan.execution || {};
+                plan.execution.task_id = executionTaskId;
+            }
+            if (!plan.id && executionTaskId) {
+                plan.id = executionTaskId;
+            }
+            const requiresApproval = plan.requires_approval;
+            this.postToWebview({
+                type: 'navi.assistant.plan',
+                plan,
+                reasoning: response.reasoning,
+                session_id: response.session_id
+            });
+            if (!requiresApproval) {
+                this.postToWebview({
+                    type: 'navi.assistant.message',
+                    content: `✅ Analysis complete.\n\n${response.reasoning || 'Plan generated.'}`
+                });
+            }
+        }
+        catch (error) {
+            console.error('[AEP] [Phase 4.2] Error in handleDiagnosticsRequest:', error);
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: `⚠️ Could not connect to NAVI analysis system.\n\n` +
+                    `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
+                    `Please ensure the backend is running and try again.`
+            });
+        }
+        finally {
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: false
+            });
+        }
+    }
+    createPlanId(prefix) {
+        return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+    normalizeBackendActions(actions) {
+        if (!actions || actions.length === 0) {
+            return [];
+        }
+        const normalized = [];
+        for (const action of actions) {
+            const tool = (action.tool || '').toLowerCase();
+            const args = action.arguments || {};
+            const explicitType = action.type;
+            let type = null;
+            if (explicitType === 'runCommand' || explicitType === 'editFile' || explicitType === 'createFile') {
+                type = explicitType;
+            }
+            else if (tool.includes('run_command')) {
+                type = 'runCommand';
+            }
+            else if (tool.includes('edit_file')) {
+                type = 'editFile';
+            }
+            else if (tool.includes('create_file')) {
+                type = 'createFile';
+            }
+            if (!type) {
+                continue;
+            }
+            const filePath = action.filePath ||
+                (typeof args.filePath === 'string' ? args.filePath : undefined) ||
+                (typeof args.path === 'string' ? args.path : undefined);
+            const command = typeof args.command === 'string'
+                ? args.command
+                : undefined;
+            normalized.push({
+                type,
+                filePath,
+                description: action.description || action.title,
+                command,
+                content: action.content || (typeof args.content === 'string' ? args.content : undefined),
+                diff: typeof args.diff === 'string' ? args.diff : undefined,
+                meta: {
+                    tool: action.tool,
+                    arguments: action.arguments
+                }
+            });
+        }
+        return normalized;
+    }
+    buildPlanFromActions(goal, actions, reasoning, planId, confidence) {
+        const steps = actions.map((action, index) => {
+            const tool = action.type === 'runCommand'
+                ? 'code.run_command'
+                : action.type === 'createFile'
+                    ? 'code.create_file'
+                    : action.type === 'editFile'
+                        ? 'code.edit_file'
+                        : 'task';
+            const title = action.description ||
+                (action.type === 'runCommand'
+                    ? `Run ${action.command}`
+                    : action.type === 'createFile'
+                        ? `Create ${action.filePath}`
+                        : action.type === 'editFile'
+                            ? `Edit ${action.filePath}`
+                            : `Step ${index + 1}`);
+            return {
+                id: `step-${index + 1}`,
+                title,
+                tool,
+                requires_approval: false,
+                input: {
+                    filePath: action.filePath,
+                    command: action.command,
+                    description: action.description
+                }
+            };
+        });
+        return {
+            id: planId,
+            goal,
+            steps,
+            requires_approval: true,
+            confidence,
+            reasoning,
+            execution: {
+                task_id: planId
+            }
+        };
+    }
+    buildPlanFromAutonomousSteps(goal, steps, reasoning, planId, confidence) {
+        const uiSteps = steps.map((step, index) => ({
+            id: step.id || `step-${index + 1}`,
+            title: step.description || `Step ${index + 1}`,
+            rationale: step.reasoning,
+            tool: step.operation === 'create'
+                ? 'code.create_file'
+                : step.operation === 'modify'
+                    ? 'code.edit_file'
+                    : 'code.change',
+            requires_approval: false,
+            input: {
+                filePath: step.file_path,
+                operation: step.operation
+            }
+        }));
+        return {
+            id: planId,
+            goal,
+            steps: uiSteps,
+            requires_approval: true,
+            confidence,
+            reasoning,
+            execution: {
+                task_id: planId
+            }
+        };
+    }
+    async handleCoreIntentRequest(content, suggestedIntent, mode, model) {
+        switch (suggestedIntent) {
+            case 'RUN_TESTS':
+                await this.planRunTests(content);
+                return;
+            case 'REFACTOR_CODE':
+                await this.planAutonomousCoding(content, 'refactor', 'Refactor code');
+                return;
+            case 'OPTIMIZE_PERFORMANCE':
+                await this.planAutonomousCoding(content, 'refactor', 'Optimize performance');
+                return;
+            case 'EXPLAIN_CODE':
+                await this.planBackendExplanation(content, mode, model);
+                return;
+            case 'REVIEW_PR':
+                await this.planBackendReview(content, mode, model);
+                return;
+            default:
+                this.callBackendAPI(content, mode, model);
+        }
+    }
+    async handleConversationalRequest(content, mode, model, attachmentsOverride) {
+        let attachments = attachmentsOverride ?? this.getCurrentAttachments();
+        const repoOverview = this.isRepoOverviewQuestion(content);
+        let autoSummary = null;
+        this.postToWebview({
+            type: 'navi.assistant.thinking',
+            thinking: true
+        });
+        try {
+            if (repoOverview) {
+                await this.handleLocalExplainRepo(content);
+                return;
+            }
+            if (!attachments || attachments.length === 0) {
+                const auto = this.buildAutoAttachments(content);
+                if (auto) {
+                    attachments = auto.attachments;
+                    autoSummary = auto.summary;
                 }
             }
-            if (fileCount > 5) {
-                diagnosticDetails += `\n- ...and ${fileCount - 5} more files`;
-            }
+            this.emitReadOnlyContext(attachments, autoSummary || undefined);
+            await this.callNaviBackend(content, model, mode, attachments);
+        }
+        finally {
             this.postToWebview({
-                type: 'botMessage',
-                text: `🔍 **Found ${errorCount} diagnostic issues** across ${fileCount} files:\n` +
-                    `${diagnosticDetails}\n\n` +
-                    `If you want, I can run lint/test commands or start fixing them.`,
-                actions,
+                type: 'navi.assistant.thinking',
+                thinking: false
+            });
+        }
+    }
+    isRepoOverviewQuestion(message) {
+        const text = (message || '').toLowerCase();
+        if (!text.trim()) {
+            return false;
+        }
+        const repoKeyword = /(repo|repository|codebase|project|architecture|structure|overview|summary)/.test(text);
+        const intentKeyword = /(analy[sz]e|explain|overview|summary|describe|walk\s+me\s+through)/.test(text);
+        return repoKeyword && intentKeyword;
+    }
+    emitReadOnlyContext(attachments, summary) {
+        const files = (attachments || [])
+            .map((attachment) => ({
+            path: attachment.path,
+            kind: attachment.kind,
+            language: attachment.language
+        }))
+            .filter((entry) => entry.path);
+        const seen = new Set();
+        const deduped = files.filter((entry) => {
+            const key = `${entry.kind}:${entry.path}`;
+            if (seen.has(key))
+                return false;
+            seen.add(key);
+            return true;
+        });
+        this.postToWebview({
+            type: 'navi.readonly.context',
+            files: deduped,
+            summary: summary || (deduped.length ? 'Using local context to answer.' : 'No local files were attached.')
+        });
+    }
+    async planRunTests(message) {
+        const workspaceRoot = this.getActiveWorkspaceRoot();
+        if (!workspaceRoot) {
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: 'Open a workspace so I can detect and run your test commands.'
+            });
+            return;
+        }
+        const commands = await detectDiagnosticsCommands(workspaceRoot);
+        const testCommands = commands.filter((cmd) => /(pytest|jest|vitest|mocha|go test|cargo test|mvn test|gradle test|npm test|yarn test|pnpm test|tox|nosetests|phpunit|dotnet test)/i.test(cmd));
+        if (testCommands.length === 0) {
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: 'I could not find a test command in this repo. Tell me which command to run and I will execute it.'
+            });
+            return;
+        }
+        const actions = testCommands.map((command) => ({
+            type: 'runCommand',
+            command,
+            cwd: workspaceRoot,
+            description: `Run ${command}`
+        }));
+        const planId = this.createPlanId('tests');
+        const reasoning = `Detected ${testCommands.length} test command(s) in your repo. I will run them sequentially after approval.`;
+        const plan = this.buildPlanFromActions('Run tests', actions, reasoning, planId, 0.82);
+        this._pendingPlans.set(planId, { kind: 'actions', actions });
+        this.postToWebview({
+            type: 'navi.assistant.plan',
+            plan,
+            reasoning,
+            session_id: planId
+        });
+    }
+    async planAutonomousCoding(message, taskType, goalLabel) {
+        const workspaceRoot = this.getActiveWorkspaceRoot();
+        if (!workspaceRoot) {
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: 'Open a workspace so I can plan and apply code changes.'
+            });
+            return;
+        }
+        const baseUrl = this.getBackendBaseUrl();
+        const url = `${baseUrl}/api/autonomous/generate-code`;
+        this.postToWebview({
+            type: 'navi.assistant.thinking',
+            thinking: true
+        });
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message,
+                    workspace_root: workspaceRoot,
+                    user_id: 'default_user',
+                    task_type: taskType
+                })
+            });
+            if (!response.ok) {
+                const detail = await response.text().catch(() => '');
+                throw new Error(`HTTP ${response.status}: ${detail}`);
+            }
+            const data = await response.json();
+            const steps = Array.isArray(data.steps) ? data.steps : [];
+            if (steps.length === 0) {
+                this.postToWebview({
+                    type: 'navi.assistant.message',
+                    content: 'The autonomous engine did not return any steps. Try rephrasing with more detail.'
+                });
+                return;
+            }
+            const planId = data.task_id || this.createPlanId('autonomous');
+            const reasoning = data.message || `Prepared ${steps.length} autonomous step(s) for approval.`;
+            const plan = this.buildPlanFromAutonomousSteps(goalLabel || (taskType === 'refactor' ? 'Refactor code' : 'Implement changes'), steps, reasoning, planId, 0.68);
+            this._pendingPlans.set(planId, { kind: 'autonomous', taskId: planId, steps });
+            this.postToWebview({
+                type: 'navi.assistant.plan',
+                plan,
+                reasoning,
+                session_id: planId
             });
         }
         catch (error) {
-            console.error('[AEP] Error getting diagnostics:', error);
+            console.error('[AEP] Autonomous plan failed:', error);
             this.postToWebview({
-                type: 'botMessage',
-                text: `⚠️ **Could not retrieve diagnostics**\n\n` +
-                    `Make sure you have:\n` +
-                    `- Language servers installed (TypeScript, ESLint, etc)\n` +
-                    `- Linting tools configured for your project\n` +
-                    `- Files open in VS Code for analysis`,
-                actions,
+                type: 'navi.assistant.message',
+                content: `Autonomous planning failed: ${error instanceof Error ? error.message : 'Unknown error'}`
             });
         }
+        finally {
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: false
+            });
+        }
+    }
+    async planBackendExplanation(message, mode, model) {
+        let attachments = this.getCurrentAttachments();
+        let autoSummary = null;
+        if (attachments.length === 0) {
+            const auto = this.buildAutoAttachments(message);
+            if (auto) {
+                attachments = auto.attachments;
+                autoSummary = auto.summary;
+            }
+        }
+        const summary = autoSummary ||
+            (attachments.length
+                ? 'Using local context to explain the code.'
+                : 'No editor context detected; answering based on your description.');
+        this.emitReadOnlyContext(attachments, summary);
+        this.postToWebview({ type: 'navi.assistant.thinking', thinking: true });
+        try {
+            await this.callNaviBackend(message, model, mode, attachments);
+        }
+        finally {
+            this.postToWebview({ type: 'navi.assistant.thinking', thinking: false });
+        }
+    }
+    async planBackendReview(message, mode, model) {
+        let reasoning = 'I will review the relevant changes, look for issues, and summarize recommendations now.';
+        let attachments = this.getCurrentAttachments();
+        if (attachments.length > 0) {
+            reasoning = `${reasoning}\n\nUsing attached context provided in the panel.`;
+        }
+        else {
+            const diff = await getGitDiff('working', this);
+            if (diff) {
+                reasoning = 'I will capture the current diff, review it for issues, and summarize recommendations.';
+                attachments = [
+                    {
+                        kind: 'diff',
+                        path: 'git:diff:working',
+                        language: 'diff',
+                        content: diff
+                    }
+                ];
+            }
+            else {
+                const auto = this.buildAutoAttachments(message);
+                if (!auto) {
+                    this.postToWebview({
+                        type: 'navi.assistant.message',
+                        content: 'There are no working tree changes to review. Attach a file or select code, then try again.'
+                    });
+                    return;
+                }
+                attachments = auto.attachments;
+                reasoning = `${reasoning}\n\n${auto.summary}`;
+            }
+        }
+        this.emitReadOnlyContext(attachments, reasoning);
+        this.postToWebview({ type: 'navi.assistant.thinking', thinking: true });
+        try {
+            await this.callNaviBackend(message, model, mode, attachments);
+        }
+        finally {
+            this.postToWebview({ type: 'navi.assistant.thinking', thinking: false });
+        }
+    }
+    async executePendingPlan(planId, pendingPlan, sessionId) {
+        this.postToWebview({ type: 'navi.assistant.thinking', thinking: true });
+        try {
+            if (pendingPlan.kind === 'actions') {
+                await this.executeActionPlan(pendingPlan.actions);
+            }
+            else if (pendingPlan.kind === 'backend') {
+                await this.callNaviBackend(pendingPlan.message, pendingPlan.model, pendingPlan.mode, pendingPlan.attachments);
+            }
+            else if (pendingPlan.kind === 'autonomous') {
+                await this.executeAutonomousPlan(pendingPlan.taskId, pendingPlan.steps);
+            }
+        }
+        catch (error) {
+            console.error('[AEP] Plan execution failed:', error);
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: `❌ Plan execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+            });
+        }
+        finally {
+            this._pendingPlans.delete(planId);
+            this.postToWebview({ type: 'navi.assistant.thinking', thinking: false });
+        }
+    }
+    async executeActionPlan(actions) {
+        for (const [index, action] of actions.entries()) {
+            const label = action.description || `Step ${index + 1}`;
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: `▶️ ${label}`
+            });
+            if (action.type === 'runCommand') {
+                await this.applyRunCommandAction(action, { skipConfirm: true });
+                this.postToWebview({
+                    type: 'navi.assistant.message',
+                    content: `✅ Finished command: ${action.command || 'run command'} (check the terminal output)`
+                });
+                continue;
+            }
+            if (action.type === 'createFile') {
+                await this.applyCreateFileAction(action);
+                continue;
+            }
+            if (action.type === 'editFile') {
+                await this.applyEditFileAction(action);
+                continue;
+            }
+        }
+        this.postToWebview({
+            type: 'navi.assistant.message',
+            content: '✅ Plan execution complete.'
+        });
+    }
+    async executeAutonomousPlan(taskId, steps) {
+        const baseUrl = this.getBackendBaseUrl();
+        for (const [index, step] of steps.entries()) {
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: `⚙️ Executing step ${index + 1}/${steps.length}: ${step.description}`
+            });
+            const response = await fetch(`${baseUrl}/api/autonomous/tasks/${taskId}/steps/${step.id}/approve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ approved: true })
+            });
+            if (!response.ok) {
+                const detail = await response.text().catch(() => '');
+                throw new Error(`Step ${step.id} failed: HTTP ${response.status} ${detail}`);
+            }
+            const result = await response.json().catch(() => null);
+            if (result?.step_result?.status === 'failed') {
+                throw new Error(result.step_result?.error || `Step ${step.id} failed`);
+            }
+        }
+        this.postToWebview({
+            type: 'navi.assistant.message',
+            content: '✅ Autonomous plan completed successfully.'
+        });
+    }
+    /**
+     * Call the NAVI analyze-problems endpoint
+     */
+    async callAnalyzeProblemsEndpoint(request) {
+        try {
+            const backendUrl = this.getBackendBaseUrl();
+            const url = `${backendUrl}/api/v1/navi/analyze-problems`;
+            console.log('[AEP] [Phase 4.2] Calling NAVI analyze-problems:', url);
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(request),
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            const result = await response.json();
+            const status = result.success ? 'SUCCESS' : 'FAILED';
+            console.log('[AEP] [Phase 4.2] NAVI analyze-problems response:', status);
+            return result;
+        }
+        catch (error) {
+            console.error('[AEP] [Phase 4.2] Failed to call analyze-problems endpoint:', error);
+            throw error;
+        }
+    }
+    async executeApprovedTask(taskId, sessionId) {
+        const workspaceRoot = this.getActiveWorkspaceRoot();
+        this.postToWebview({
+            type: 'navi.assistant.thinking',
+            thinking: true
+        });
+        try {
+            const result = await this.callExecuteTaskEndpoint({
+                task_id: taskId,
+                session_id: sessionId,
+                approved: true,
+                workspace_root: workspaceRoot || undefined
+            });
+            const execution = result?.execution_result;
+            const finalReport = execution?.final_report ||
+                execution?.message ||
+                (result?.success ? '✅ Execution complete.' : '❌ Execution failed.');
+            const detailLines = [];
+            const applyResult = execution?.apply_result;
+            const verification = execution?.verification;
+            if (applyResult?.files_updated?.length) {
+                detailLines.push(`• Updated ${applyResult.files_updated.length} file(s)`);
+            }
+            if (applyResult?.files_failed?.length) {
+                detailLines.push(`• Failed to update ${applyResult.files_failed.length} file(s)`);
+            }
+            if (verification?.status) {
+                detailLines.push(`• Verification: ${verification.status}`);
+            }
+            const details = detailLines.length ? `\n\n${detailLines.join('\n')}` : '';
+            const content = result?.success
+                ? `${finalReport}${details}`
+                : `❌ Execution failed.\n\n${result?.error || finalReport}${details}`;
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content
+            });
+        }
+        catch (error) {
+            console.error('[AEP] [Phase 4.3] execute-task failed:', error);
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: `❌ Execution failed.\n\n${error instanceof Error ? error.message : 'Unknown error'}`
+            });
+        }
+        finally {
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: false
+            });
+        }
+    }
+    async callExecuteTaskEndpoint(request) {
+        const backendUrl = this.getBackendBaseUrl();
+        const url = `${backendUrl}/api/v1/navi/execute-task`;
+        console.log('[AEP] [Phase 4.3] Calling NAVI execute-task:', url);
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(request),
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return await response.json();
     }
     /**
      * Get git diff - simplified and non-blocking version
@@ -3773,7 +5106,10 @@ class NaviWebviewProvider {
             this._messages.push({ role: 'assistant', content });
             const messageId = `msg-${Date.now()}`;
             if (Array.isArray(data.actions) && data.actions.length > 0) {
-                this._agentActions.set(messageId, { actions: data.actions });
+                const normalizedActions = this.normalizeBackendActions(data.actions);
+                if (normalizedActions.length > 0) {
+                    this._agentActions.set(messageId, { actions: normalizedActions });
+                }
             }
             this.postToWebview({ type: 'botThinking', value: false });
             this.postToWebview({
@@ -3826,6 +5162,7 @@ class NaviWebviewProvider {
             return;
         }
         const rootUri = vscode.Uri.file(workspaceRootPath);
+        const readFiles = [];
         // Helper to read package.json at root or subfolder (e.g. "frontend", "backend")
         const readPkg = async (subdir) => {
             try {
@@ -3833,6 +5170,7 @@ class NaviWebviewProvider {
                 const pkgUri = vscode.Uri.joinPath(rootUri, ...segments);
                 const bytes = await vscode.workspace.fs.readFile(pkgUri);
                 const text = new TextDecoder().decode(bytes);
+                readFiles.push({ path: segments.join('/'), kind: 'file' });
                 return JSON.parse(text);
             }
             catch {
@@ -3882,6 +5220,7 @@ class NaviWebviewProvider {
                 const bytes = await vscode.workspace.fs.readFile(uri);
                 const text = new TextDecoder().decode(bytes);
                 readme = text.trim();
+                readFiles.push({ path: name, kind: 'file' });
             }
             catch {
                 // no README at this path, continue
@@ -4035,6 +5374,13 @@ class NaviWebviewProvider {
             hasExtensionEntrypoint,
         });
         this._messages.push({ role: 'assistant', content: answer });
+        if (readFiles.length > 0) {
+            this.postToWebview({
+                type: 'navi.readonly.context',
+                files: readFiles,
+                summary: 'Local repo overview context'
+            });
+        }
         this.postToWebview({ type: 'botThinking', value: false });
         this.postToWebview({ type: 'botMessage', text: answer });
     }
@@ -4417,7 +5763,10 @@ class NaviWebviewProvider {
                     return;
                 }
                 if (json.actions && json.actions.length > 0) {
-                    this._agentActions.set(messageId, { actions: json.actions });
+                    const normalizedActions = this.normalizeBackendActions(json.actions);
+                    if (normalizedActions.length > 0) {
+                        this._agentActions.set(messageId, { actions: normalizedActions });
+                    }
                     this.postToWebview({ type: 'botMessage', text: content, messageId, actions: json.actions, sources, agentRun: json.agentRun || null });
                 }
                 else {
@@ -5748,6 +7097,17 @@ class NaviWebviewProvider {
             attachment,
         });
     }
+    removeAttachment(attachmentKey) {
+        const beforeCount = this._attachments.length;
+        this._attachments = this._attachments.filter(att => `${att.kind}:${att.path}:${att.content.length}` !== attachmentKey);
+        if (this._attachments.length === beforeCount) {
+            return;
+        }
+        this.postToWebview({
+            type: 'removeAttachment',
+            attachmentKey
+        });
+    }
     /**
      * Automatically attach a lightweight workspace snapshot to help answer workspace-related questions.
      * This includes key project files like package.json, README.md, etc.
@@ -6288,7 +7648,7 @@ class NaviWebviewProvider {
     async applyRunCommandAction(action, options) {
         const command = typeof action.command === 'string' ? action.command.trim() : '';
         if (!command)
-            return;
+            return null;
         const workspaceRoot = this.getActiveWorkspaceRoot();
         const cwd = action.cwd || workspaceRoot || process.cwd();
         const meta = action.meta && typeof action.meta === 'object' ? action.meta : undefined;
@@ -6298,7 +7658,7 @@ class NaviWebviewProvider {
         if (!options?.skipConfirm) {
             const confirmed = await vscode.window.showWarningMessage(`NAVI wants to run the following command:\\n\\n${displayCommand}\\n\\nAre you sure?`, { modal: true }, 'Run Command');
             if (confirmed !== 'Run Command')
-                return;
+                return null;
         }
         const commandId = `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         this.postToWebview({
@@ -6315,10 +7675,19 @@ class NaviWebviewProvider {
                 shell: true,
                 env: process.env,
             });
+            let stdout = '';
+            let stderr = '';
+            const maxChars = 24000;
             const sendOutput = (chunk, stream) => {
                 const text = chunk ? chunk.toString() : '';
                 if (!text)
                     return;
+                if (stream === 'stdout') {
+                    stdout = (stdout + text).slice(-maxChars);
+                }
+                else {
+                    stderr = (stderr + text).slice(-maxChars);
+                }
                 this.postToWebview({
                     type: 'command.output',
                     commandId,
@@ -6345,6 +7714,14 @@ class NaviWebviewProvider {
                 exitCode,
                 durationMs,
             });
+            return {
+                command,
+                cwd,
+                exitCode,
+                stdout,
+                stderr,
+                durationMs,
+            };
         }
         catch (err) {
             this.postToWebview({
@@ -6352,6 +7729,7 @@ class NaviWebviewProvider {
                 commandId,
                 error: err?.message || String(err),
             });
+            return null;
         }
     }
     // ---- editFile with diff view & apply (PR-10) -------------------------------
@@ -7087,6 +8465,12 @@ class NaviWebviewProvider {
             const assetsUri = webview.asWebviewUri(assetsPath);
             const jsPath = vscode.Uri.file(path.join(distPath, 'panel.js'));
             const jsUri = webview.asWebviewUri(jsPath);
+            const webviewConfig = {
+                backendBaseUrl: this.getBackendBaseUrl(),
+                orgId: this.getOrgId(),
+                userId: this.getUserId(),
+                authToken: this.getAuthToken()
+            };
             // Update the HTML to use webview URIs and add VS Code API
             html = html
                 .replace('./panel.js', jsUri.toString())
@@ -7094,6 +8478,7 @@ class NaviWebviewProvider {
                 .replace('<head>', `<head>
     <script>
       window.acquireVsCodeApi = acquireVsCodeApi;
+      window.__AEP_CONFIG__ = ${JSON.stringify(webviewConfig)};
       console.log('[NAVI] Built webview loaded');
     </script>`);
             console.log('[AEP] ✅ Using built webview HTML');
@@ -7103,6 +8488,189 @@ class NaviWebviewProvider {
             console.error('[AEP] ❌ Failed to load built webview:', error);
             return this.getServerNotRunningHtml();
         }
+    }
+    // --- Phase 4.1: Intent-Aware Agent Methods -----------------------------------
+    /**
+     * Phase 4.1.2: Execute agent actions automatically for low-risk proposals
+     */
+    async executeAgentActions(actions, userMessage, intent) {
+        console.log(`[AEP] Executing ${actions.length} actions for intent: ${intent.kind}`);
+        try {
+            // Show agent thinking
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: true
+            });
+            let response = '';
+            for (const action of actions) {
+                console.log(`[AEP] Executing action: ${action.description}`);
+                switch (action.tool) {
+                    case 'readFile':
+                        response = await this.handleReadFileAction(action);
+                        break;
+                    case 'searchWorkspace':
+                        response = await this.handleSearchWorkspaceAction(action, userMessage);
+                        break;
+                    case 'getProblems':
+                        response = await this.handleGetProblemsAction(action);
+                        break;
+                    case 'explain':
+                        response = await this.handleExplainAction(action, userMessage, intent);
+                        break;
+                    default:
+                        console.warn(`[AEP] Unknown action tool: ${action.tool}`);
+                        response = `I understand you want help with: ${userMessage}. Let me analyze this for you.`;
+                }
+            }
+            // Hide thinking and send response
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: false
+            });
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: response || 'I\'ve completed the requested analysis.'
+            });
+        }
+        catch (error) {
+            console.error('[AEP] Action execution failed:', error);
+            this.postToWebview({
+                type: 'navi.assistant.thinking',
+                thinking: false
+            });
+            this.postToWebview({
+                type: 'navi.assistant.message',
+                content: 'I encountered an issue while processing your request. Let me try a different approach.'
+            });
+            // Fallback to basic backend API
+            this.callBackendAPI(userMessage, 'agent', 'auto');
+        }
+    }
+    /**
+     * Phase 4.1.2: Present high-risk proposals for user approval
+     */
+    async presentProposalForApproval(proposal, userMessage, intent) {
+        console.log(`[AEP] Presenting proposal for approval: ${proposal.title}`);
+        // Create approval message with structured response
+        const approvalMessage = this.generateApprovalMessage(proposal, intent);
+        this.postToWebview({
+            type: 'navi.assistant.message',
+            content: approvalMessage,
+            proposal: proposal,
+            requiresApproval: true
+        });
+    }
+    /**
+     * Phase 4.1.5: Generate "Would you like me to..." approval messages
+     */
+    generateApprovalMessage(proposal, intent) {
+        const intentKind = intent.kind;
+        const confidence = Math.round(intent.confidence * 100);
+        let message = `I understand you want to ${this.getIntentDescription(intentKind)}.\n\n`;
+        message += `**Here's what I can do:**\n`;
+        message += `• ${proposal.description}\n\n`;
+        if (proposal.actions.length > 1) {
+            message += `**Steps I'll take:**\n`;
+            proposal.actions.forEach((action, index) => {
+                message += `${index + 1}. ${action.description}\n`;
+            });
+            message += `\n`;
+        }
+        message += `**Risk Level:** ${proposal.estimatedRisk}\n`;
+        message += `**Confidence:** ${confidence}%\n\n`;
+        message += `Would you like me to proceed?`;
+        return message;
+    }
+    /**
+     * Convert intent kind to user-friendly description
+     */
+    getIntentDescription(intentKind) {
+        switch (intentKind) {
+            case 'fix_bug': return 'debug and fix the issue';
+            case 'implement_feature': return 'implement this feature';
+            case 'explain_code': return 'explain how this code works';
+            case 'search_code': return 'search your codebase';
+            case 'run_tests': return 'run your tests';
+            case 'modify_code': return 'modify the code';
+            default: return 'help with this task';
+        }
+    }
+    /**
+     * Action handlers for different tool types
+     */
+    async handleReadFileAction(action) {
+        try {
+            const filePath = action.arguments.path;
+            if (!filePath)
+                return 'No file path specified.';
+            const workspaceRoot = this.getActiveWorkspaceRoot();
+            if (!workspaceRoot)
+                return 'No workspace found.';
+            const fullPath = path.join(workspaceRoot, filePath);
+            const content = await (0, promises_1.readFile)(fullPath, 'utf8');
+            // Analyze the file content
+            const lines = content.split('\n').length;
+            const size = content.length;
+            return `I've analyzed the file \`${filePath}\`:\n\n` +
+                `• **Size:** ${size} characters, ${lines} lines\n` +
+                `• **Type:** ${path.extname(filePath)} file\n\n` +
+                `The file contains implementation code. Would you like me to explain specific parts or analyze for issues?`;
+        }
+        catch (error) {
+            return `I couldn't read the file: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        }
+    }
+    async handleSearchWorkspaceAction(action, userMessage) {
+        try {
+            const query = action.arguments.query || userMessage;
+            // For now, provide a helpful response about what we would search for
+            return `I would search your workspace for: "${query}"\n\n` +
+                `This would include:\n` +
+                `• Function and class definitions\n` +
+                `• Variable usage patterns\n` +
+                `• Similar code patterns\n` +
+                `• Related files and dependencies\n\n` +
+                `Would you like me to perform a specific type of search?`;
+        }
+        catch (error) {
+            return `Search functionality is being prepared. Please describe what you're looking for and I'll help analyze it.`;
+        }
+    }
+    async handleGetProblemsAction(action) {
+        try {
+            const workspaceRoot = this.getActiveWorkspaceRoot();
+            if (!workspaceRoot)
+                return 'No workspace found to analyze.';
+            // Get VS Code diagnostics
+            const diagnostics = vscode.languages.getDiagnostics();
+            const issues = [];
+            for (const [uri, diags] of diagnostics) {
+                if (diags.length > 0) {
+                    const relativePath = path.relative(workspaceRoot, uri.fsPath);
+                    issues.push(`**${relativePath}:** ${diags.length} issues`);
+                }
+            }
+            if (issues.length === 0) {
+                return 'Great! I don\'t see any active problems in your workspace.';
+            }
+            return `I found issues in your workspace:\n\n${issues.slice(0, 10).join('\n')}\n\n` +
+                `${issues.length > 10 ? '... and more.\n\n' : ''}` +
+                `Would you like me to help fix these issues?`;
+        }
+        catch (error) {
+            return `I couldn't analyze workspace problems: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        }
+    }
+    async handleExplainAction(action, userMessage, intent) {
+        // For explain actions, provide helpful analysis of what the user is asking
+        const confidence = Math.round(intent.confidence * 100);
+        return `I understand you want an explanation about: "${userMessage}"\n\n` +
+            `Based on my analysis (${confidence}% confidence), I can help explain:\n` +
+            `• Code functionality and structure\n` +
+            `• Error messages and their causes\n` +
+            `• Architecture and design patterns\n` +
+            `• Best practices and improvements\n\n` +
+            `Please share the specific code or area you'd like me to explain, and I'll provide a detailed analysis.`;
     }
 }
 // Simple conversation id – you can switch to UUID later

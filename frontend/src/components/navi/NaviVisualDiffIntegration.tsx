@@ -1,5 +1,5 @@
-import React from 'react';
-import VisualDiffViewer from './ui/VisualDiffViewer';
+// import React from 'react';
+// import VisualDiffViewer from './ui/VisualDiffViewer';
 
 export interface NaviVisualDiffIntegrationProps {
     isVisible?: boolean;
@@ -17,7 +17,7 @@ export function NaviVisualDiffIntegration({
 
     return (
         <div className={`navi-visual-diff-integration ${className}`}>
-            <VisualDiffViewer />
+            {/* <VisualDiffViewer /> */}
         </div>
     );
 }

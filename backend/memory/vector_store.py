@@ -24,12 +24,30 @@ except ImportError:
     FAISS_AVAILABLE = False
     logging.warning("FAISS not available, using fallback similarity search")
 
-try:
-    from sentence_transformers import SentenceTransformer
+SentenceTransformer = None
+SENTENCE_TRANSFORMERS_AVAILABLE = False
+_SENTENCE_TRANSFORMERS_CHECKED = False
+
+
+def _load_sentence_transformer():
+    """Lazy import to avoid heavy torch/transformers startup on module import."""
+    global SentenceTransformer, SENTENCE_TRANSFORMERS_AVAILABLE, _SENTENCE_TRANSFORMERS_CHECKED
+    if SentenceTransformer is not None:
+        return SentenceTransformer
+    if _SENTENCE_TRANSFORMERS_CHECKED:
+        return None
+
+    _SENTENCE_TRANSFORMERS_CHECKED = True
+    try:
+        from sentence_transformers import SentenceTransformer as _SentenceTransformer
+    except ImportError:
+        SENTENCE_TRANSFORMERS_AVAILABLE = False
+        logging.warning("SentenceTransformers not available, using basic embeddings")
+        return None
+
+    SentenceTransformer = _SentenceTransformer
     SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
-    logging.warning("SentenceTransformers not available, using basic embeddings")
+    return SentenceTransformer
 
 class VectorStore:
     """
@@ -56,16 +74,16 @@ class VectorStore:
         self.metadata: List[Dict[str, Any]] = []
         self.texts: List[str] = []
         
-        # Initialize embedding model
-        if SENTENCE_TRANSFORMERS_AVAILABLE:
+        # Initialize embedding model (lazy import to keep startup fast)
+        self.encoder = None
+        sentence_transformer = _load_sentence_transformer()
+        if sentence_transformer is not None:
             try:
-                self.encoder = SentenceTransformer(embedding_model)
+                self.encoder = sentence_transformer(embedding_model)
                 self.dimension = self.encoder.get_sentence_embedding_dimension()
             except Exception as e:
                 logging.warning(f"Failed to load {embedding_model}: {e}, using fallback")
                 self.encoder = None
-        else:
-            self.encoder = None
             
         # Initialize FAISS index (use only when library is available)
         self.use_faiss = FAISS_AVAILABLE and faiss is not None

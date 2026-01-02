@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { UIProvider, useUIState } from "./state/uiStore";
 import { routeEventToUI } from "./state/eventRouter";
 import { onMessage } from "./utils/vscodeApi";
@@ -9,6 +9,7 @@ import { ActionCard } from "./components/actions/ActionCard";
 import { WorkflowTimeline } from "./components/workflow/WorkflowTimeline";
 import { AgentWorkflowPanel } from "./components/workflow/AgentWorkflowPanel";
 import ChatArea from "./components/chat/ChatArea";
+import { ConnectorsPanel } from "./components/connectors/ConnectorsPanel";
 import "./globals.css";
 
 /**
@@ -25,6 +26,7 @@ import "./globals.css";
  */
 function AppContent() {
   const { dispatch } = useUIState();
+  const [connectorsOpen, setConnectorsOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onMessage((event) => {
@@ -35,21 +37,23 @@ function AppContent() {
 
   return (
     <PanelContainer>
-      <HeaderBar />
-      
+      <HeaderBar onOpenConnectors={() => setConnectorsOpen(true)} />
+
       {/* Agent workflow panel (only visible when agent is active) */}
       <AgentWorkflowPanel />
-      
+
       <ChatArea />
-        
+
       {/* State-driven workflow components */}
       <WorkflowTimeline />
       <ActionCard />
 
       <ComposerBar />
+
+      <ConnectorsPanel open={connectorsOpen} onClose={() => setConnectorsOpen(false)} />
     </PanelContainer>
   );
-}function App() {
+} function App() {
   return (
     <UIProvider>
       <AppContent />

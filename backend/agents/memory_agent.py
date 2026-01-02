@@ -97,6 +97,15 @@ class MemoryAgent:
         
         return event
     
+    async def retrieve(self, intent: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Retrieve relevant memory context for an intent and context
+        Phase 4.1.2 compatibility method
+        """
+        # Simple implementation for now - just return recent context
+        user_id = context.get('user_id', 'default')
+        return await self.load_context(user_id, limit=10)
+
     async def search_memory(
         self, 
         user_id: str, 

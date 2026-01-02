@@ -8,11 +8,17 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from backend.integrations.slack_client import SlackClient
+from backend.services import connectors as connectors_service
 
 logger = logging.getLogger(__name__)
 
 
-def _get_client() -> Optional[SlackClient]:
+def _get_client(
+    db: Optional[Session] = None,
+    *,
+    user_id: Optional[str] = None,
+    org_id: Optional[str] = None,
+) -> Optional[SlackClient]:
     """
     Safe helper to construct a SlackClient instance.
 
@@ -20,7 +26,14 @@ def _get_client() -> Optional[SlackClient]:
     even when AEP_SLACK_BOT_TOKEN is missing.
     """
     try:
-        return SlackClient()
+        token = None
+        if db and (user_id or org_id):
+            connector = connectors_service.get_connector_for_context(
+                db, user_id=user_id, org_id=org_id, provider="slack"
+            )
+            if connector:
+                token = (connector.get("secrets") or {}).get("bot_token")
+        return SlackClient(bot_token=token) if token else SlackClient()
     except Exception as e:
         # Most common case: AEP_SLACK_BOT_TOKEN not set
         logger.info("SlackClient not available: %s", e)
@@ -55,7 +68,7 @@ def search_messages_for_user(
             "permalink": str | None,
         }
     """
-    client = _get_client()
+    client = _get_client(db, user_id=user_id)
     if client is None:
         return []
 

@@ -1,58 +1,95 @@
-export interface ReviewEntry {
-  path: string;
-  line?: number;
-  severity: 'error' | 'warning' | 'info';
-  category: string;
+// User types
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  full_name?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// JIRA Task types
+export interface JiraTask {
+  id: string;
+  key: string;
   summary: string;
   description?: string;
-  suggestion?: string;
-  diff?: {
-    before: string;
-    after: string;
+  status: string;
+  priority: string;
+  assignee?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  reporter?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  created: string;
+  updated: string;
+  labels?: string[];
+  components?: string[];
+  project: {
+    id: string;
+    key: string;
+    name: string;
   };
 }
 
-export interface AutoFixResult {
-  success: boolean;
-  message: string;
-  applied?: boolean;
+// Chat types
+export interface ChatMessage {
+  id: string;
+  content: string;
+  role: 'user' | 'assistant';
+  timestamp: string;
+  metadata?: Record<string, any>;
 }
 
-// VS Code API interface
-interface VsCodeApi {
-  postMessage: (message: any) => void;
-  getState: () => any;
-  setState: (state: any) => void;
+export interface ChatSession {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  created_at: string;
+  updated_at: string;
+  user_id: string;
 }
 
-declare global {
-  function acquireVsCodeApi(): VsCodeApi;
+// Project types
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  status: 'active' | 'inactive' | 'completed';
+  created_at: string;
+  updated_at: string;
+  owner_id: string;
 }
 
-// VS Code API singleton - ensure it's only acquired once
-let vsCodeApiInstance: VsCodeApi | null = null;
+// API Response types
+export interface ApiResponse<T = any> {
+  data?: T;
+  message?: string;
+  error?: string;
+  status: number;
+}
 
-export const vscode: VsCodeApi = (() => {
-  if (vsCodeApiInstance) {
-    return vsCodeApiInstance;
-  }
+// Search types
+export interface SearchResult {
+  type: 'file' | 'commit' | 'pr' | 'issue' | 'doc';
+  title: string;
+  description: string;
+  path?: string;
+  url?: string;
+  score: number;
+  metadata?: Record<string, any>;
+}
 
-  if (typeof acquireVsCodeApi !== 'undefined') {
-    try {
-      vsCodeApiInstance = acquireVsCodeApi();
-      return vsCodeApiInstance;
-    } catch (error) {
-      console.warn('Failed to acquire VS Code API, using fallback:', error);
-    }
-  }
-
-  // Fallback for development or if acquisition fails
-  const fallbackApi = {
-    postMessage: (message: any) => console.log('Mock VS Code API:', message),
-    getState: () => null,
-    setState: () => { }
-  };
-
-  vsCodeApiInstance = fallbackApi;
-  return fallbackApi;
-})();
+export interface SearchFilters {
+  files: boolean;
+  commits: boolean;
+  prs: boolean;
+  issues: boolean;
+  docs: boolean;
+}

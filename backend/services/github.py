@@ -17,11 +17,26 @@ class GitHubService:
         return str(uuid.uuid4())
 
     @staticmethod
-    def save_connection(db: Session, access_token: str) -> GhConnection:
+    def save_connection(
+        db: Session,
+        access_token: str,
+        *,
+        org_id: str | None = None,
+        user_id: str | None = None,
+        token_type: str | None = None,
+        scopes: list[str] | None = None,
+        refresh_token: str | None = None,
+        expires_at: dt.datetime | None = None,
+    ) -> GhConnection:
         conn = GhConnection(
             id=GitHubService._id(),
+            org_id=org_id,
+            user_id=user_id,
+            token_type=token_type,
             access_token=encrypt_token(access_token),
-            scopes=["repo", "read:org"],
+            refresh_token=encrypt_token(refresh_token) if refresh_token else None,
+            expires_at=expires_at,
+            scopes=scopes or ["repo", "read:org"],
         )
         db.add(conn)
         db.commit()

@@ -8,7 +8,7 @@ import threading
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
-    from backend.navi.workflows.navi_orchestrator import NaviOrchestrator
+    from backend.orchestrator import NaviOrchestrator
 
 from fastapi import Header
 
@@ -154,18 +154,20 @@ def get_orchestrator() -> "NaviOrchestrator":
         try:
             from backend.orchestrator import NaviOrchestrator
             from backend.agent.planner_v3 import SimplePlanner
-            from backend.agent.tool_executor_simple import SimpleToolExecutor
+            from backend.agent.tool_executor_real import RealToolExecutor
             from backend.ai.intent_llm_classifier import LLMIntentClassifier
+            from backend.core.db import get_db
 
-            # Create production orchestrator with full LLM support
+            # Create production orchestrator with real tool execution
+            db = next(get_db())  # Get database session for tools
             _orchestrator_instance = NaviOrchestrator(
                 planner=SimplePlanner(),
-                tool_executor=SimpleToolExecutor(),
+                tool_executor=RealToolExecutor(db=db),
                 llm_classifier=LLMIntentClassifier(),
                 # Optional components will be auto-initialized if available
             )
 
-            logger.info("[Deps] Created production NAVI orchestrator with LLM support")
+            logger.info("[Deps] Created production NAVI orchestrator with real tool execution")
 
         except ImportError as e:
             logger.warning(f"[Deps] Could not create production orchestrator: {e}")
@@ -173,11 +175,13 @@ def get_orchestrator() -> "NaviOrchestrator":
             # Fallback to minimal orchestrator with simple components
             from backend.orchestrator import NaviOrchestrator
             from backend.agent.planner_v3 import SimplePlanner
-            from backend.agent.tool_executor_simple import SimpleToolExecutor
+            from backend.agent.tool_executor_real import RealToolExecutor
+            from backend.core.db import get_db
 
+            db = next(get_db())  # Get database session for tools
             _orchestrator_instance = NaviOrchestrator(
                 planner=SimplePlanner(),
-                tool_executor=SimpleToolExecutor(),
+                tool_executor=RealToolExecutor(db=db),
                 # No LLM classifier - will use heuristic fallback
             )
 

@@ -4,7 +4,6 @@ Provides context-aware responses with team intelligence + Navi diff review
 """
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
 from typing import List, Dict, Any, Optional, Tuple
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
@@ -159,6 +158,13 @@ class ChatResponse(BaseModel):
     content: str
     context: Optional[Dict[str, Any]] = None
     suggestions: Optional[List[str]] = None
+    # Add autonomous coding support fields
+    actions: Optional[List[Dict[str, Any]]] = None
+    agentRun: Optional[Dict[str, Any]] = None
+    state: Optional[Dict[str, Any]] = None
+    should_stream: Optional[bool] = None
+    duration_ms: Optional[int] = None
+    reply: Optional[str] = None
 
 
 class ProactiveSuggestionsRequest(BaseModel):
@@ -289,8 +295,55 @@ async def navi_chat(request: NaviChatRequest, db: Session = Depends(get_db)) -> 
         print(f"DEBUG NAVI CHAT - Is code analysis: {is_code_analysis}")
         print(f"DEBUG NAVI CHAT - Should trigger comprehensive: {is_code_analysis and workspace_root}")
         
+        # 🤖 AUTONOMOUS CODING DETECTION - Add this before comprehensive analysis
+        autonomous_keywords = ["create", "implement", "build", "generate", "add", "write", "make", "develop", "code"]
+        message_lower = message.lower()
+        has_autonomous_keywords = any(keyword in message_lower for keyword in autonomous_keywords)
+        
+        print(f"DEBUG AUTONOMOUS - Has keywords: {has_autonomous_keywords}")
+        print(f"DEBUG AUTONOMOUS - Has workspace: {bool(workspace_root)}")
+        
+        if has_autonomous_keywords and workspace_root:
+            print("DEBUG AUTONOMOUS - TRIGGERING AUTONOMOUS CODING")
+            
+            # Return autonomous coding response
+            reply = f"""🤖 **Autonomous Coding Mode Activated**
+
+I'll help you implement that autonomously, like Cline, Copilot, and other AI coding assistants:
+
+**Your Request:** "{message}"
+**Workspace:** `{workspace_root}`
+
+**My Autonomous Workflow:**
+1. **📋 Analyze** your request and codebase structure
+2. **🎯 Plan** step-by-step implementation approach  
+3. **⚙️ Generate** code with your approval at each step
+4. **🔄 Apply** changes safely to your workspace
+5. **✅ Test** and verify the implementation works
+
+**🚀 Ready to proceed?** I'll start by analyzing your workspace and breaking down the implementation into manageable steps. Each step will require your approval before proceeding.
+
+Would you like me to begin the autonomous coding process?"""
+
+            actions = [{
+                "type": "startAutonomousTask",
+                "description": "Start autonomous implementation",
+                "workspace_root": workspace_root,
+                "request": message
+            }]
+            
+            return ChatResponse(
+                content=reply,
+                actions=actions,
+                agentRun={"mode": "autonomous_coding", "task": "code_implementation"},
+                reply=reply,
+                should_stream=False,
+                state={"autonomous_coding": True, "workspace": workspace_root, "request": message},
+                duration_ms=100,
+            )
+        
         if is_code_analysis and workspace_root:
-            print(f"DEBUG NAVI CHAT - ENTERING comprehensive analysis branch")
+            print("DEBUG NAVI CHAT - ENTERING comprehensive analysis branch")
             try:
                 try:
                     git_service = GitService(workspace_root)
@@ -319,46 +372,44 @@ async def navi_chat(request: NaviChatRequest, db: Session = Depends(get_db)) -> 
                     )
 
                 from backend.services.review_service import RealReviewService
-                
-                # Initialize advanced analysis service
-                service = AdvancedRealReviewService(workspace_root, analysis_depth='quick')
-                
-                # Get repository summary first
-                summary = service.get_repository_summary()
-                total_changes = summary.get('total_changes', 0)
-                
-                if total_changes == 0:
-                    content = "🔍 **Repository Analysis Complete**\n\nNo changes detected in your working tree. Your repository is clean!\n\n" + \
-                             f"📊 **Repository Status:**\n" + \
-                             f"- Current branch: {summary.get('current_branch', 'unknown')}\n" + \
-                             f"- Status files: {summary.get('status_files', 0)}\n" + \
-                             f"- Repository path: `{summary.get('repo_path', 'unknown')}`"
+
+                service = RealReviewService(workspace_root, analysis_depth="quick")
+                changes = service.get_working_tree_changes()
+
+                if not changes:
+                    content = (
+                        "🔍 **Repository Analysis Complete**\n\n"
+                        "No changes detected in your working tree. Your repository is clean!"
+                    )
                 else:
-                    # Run comprehensive analysis
-                    analysis = await service.analyze_working_tree_comprehensive()
-                    
-                    # Format results for user
-                    content = f"🎯 **Comprehensive Code Analysis Complete**\n\n"
-                    content += f"📊 **Quality Scores:**\n"
-                    content += f"- 🔒 Security: {analysis.security_score:.1f}/100\n"
-                    content += f"- ⚡ Performance: {analysis.performance_score:.1f}/100\n"
-                    content += f"- 🔧 Maintainability: {analysis.maintainability_score:.1f}/100\n"
-                    content += f"- 🎯 **Overall Quality: {analysis.overall_quality_score:.1f}/100**\n\n"
-                    
-                    content += f"📋 **Analysis Summary:**\n"
-                    content += f"- Files analyzed: {analysis.files_analyzed}\n"
-                    content += f"- Total issues: {analysis.total_issues}\n"
-                    content += f"- Security findings: {len(analysis.security_findings)}\n"
-                    content += f"- Performance issues: {len(analysis.performance_issues)}\n"
-                    content += f"- Technical debt items: {len(analysis.technical_debt)}\n\n"
-                    
-                    if analysis.executive_summary:
-                        content += f"📝 **Executive Summary:**\n{analysis.executive_summary}\n\n"
-                    
-                    if analysis.recommendations:
-                        content += f"💡 **Top Recommendations:**\n"
-                        for i, rec in enumerate(analysis.recommendations[:3], 1):
-                            content += f"{i}. {rec}\n"
+                    review_entries = await service.analyze_working_tree()
+                    total_issues = sum(len(entry.issues) for entry in review_entries)
+                    severity_counts: Dict[str, int] = {}
+                    for entry in review_entries:
+                        for issue in entry.issues:
+                            severity_counts[issue.severity] = severity_counts.get(issue.severity, 0) + 1
+
+                    content = "🎯 **Code Analysis Complete**\n\n"
+                    content += "📋 **Summary:**\n"
+                    content += f"- Files analyzed: {len(review_entries)}\n"
+                    content += f"- Total issues: {total_issues}\n"
+
+                    if severity_counts:
+                        content += "\n**Issues by Severity:**\n"
+                        for severity, count in sorted(severity_counts.items()):
+                            content += f"- {severity.title()}: {count}\n"
+
+                    # Show a few example issues
+                    top_issues = []
+                    for entry in review_entries:
+                        for issue in entry.issues:
+                            top_issues.append((entry.file, issue))
+                        if len(top_issues) >= 3:
+                            break
+                    if top_issues:
+                        content += "\n**Top Findings:**\n"
+                        for idx, (file_path, issue) in enumerate(top_issues[:3], 1):
+                            content += f"{idx}. {file_path}: {issue.title}\n"
                 
                 # Return comprehensive analysis result
                 return ChatResponse(

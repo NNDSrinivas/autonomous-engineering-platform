@@ -1,5 +1,5 @@
 # backend/services/repo_service.py
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import os
 import logging
 from pathlib import Path

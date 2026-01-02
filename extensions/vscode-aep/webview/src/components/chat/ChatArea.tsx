@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useUIState } from '../../state/uiStore';
 import { Message } from '../../state/uiStore';
 import { PlanRenderer } from './PlanRenderer';
+import { ArtifactCard } from '../artifacts/ArtifactCard';
 import { ToolApproval } from '../plan/ToolApproval';
 
 // TEMP: Stub feedback icons until Phase 4.2 feedback system
@@ -100,7 +101,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
   };
 
   return (
-    <div className={`mb-6 ${message.role === 'user' ? 'flex justify-end' : 'mr-12'}`}>
+    <div className={`mb-6 ${message.role === 'user' ? 'flex justify-end' : 'mr-12'} animate-fade-in-up`}>
       {message.role === 'user' ? (
         /* USER MESSAGE - Inline Copy Button (Fixed UX) */
         <div className="flex flex-col items-end max-w-[78%] group relative">
@@ -179,25 +180,42 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
                 N
               </div>
               <div className="flex-1">
-                {/* DEBUG: Log message details */}
-                {console.log('🐛 ChatMessage:', message.id, 'type:', message.type, 'plan:', !!message.plan, 'role:', message.role)}
-                {console.log('🐛 ChatMessage full object:', message)}
-                {console.log('🐛 ChatMessage type check:', message.type === 'plan', 'plan check:', !!message.plan)}
-
-                {/* VISIBLE DEBUG */}
-                {message.type === 'plan' && (
-                  <div style={{ background: 'red', color: 'white', padding: '10px', margin: '5px' }}>
-                    DEBUG: Plan message detected! Type: {message.type}, Has plan: {message.plan ? 'YES' : 'NO'}
-                  </div>
-                )}
-
-                {/* Phase 4.1.2: Render structured plans and errors */}
-                {message.type === 'plan' && message.plan ? (
+                {/* Phase 4.1.2 & 4.2.1: Render structured plans, conversations, and errors */}
+                {message.artifact ? (
+                  <ArtifactCard artifact={message.artifact} />
+                ) : message.type === 'plan' && message.plan ? (
                   <PlanRenderer
                     plan={message.plan}
                     reasoning={message.reasoning}
                     session_id={message.session_id}
                   />
+                ) : message.type === 'conversation' || message.conversationType ? (
+                  // Phase 4.2.1: Conversation messages with suggestions
+                  <div className="conversation-message">
+                    <div className="whitespace-pre-wrap leading-relaxed text-gray-300">
+                      {message.content}
+                    </div>
+                    {message.suggestions && message.suggestions.length > 0 && (
+                      <div className="suggestions mt-4 flex flex-wrap gap-2">
+                        {message.suggestions.map((suggestion, index) => (
+                          <button
+                            key={index}
+                            className="px-3 py-1.5 text-xs bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-full border border-blue-500/30 transition-colors"
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent('navi:composer-suggest', {
+                                detail: {
+                                  text: suggestion,
+                                  autoSend: true
+                                }
+                              }));
+                            }}
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ) : message.type === 'error' && message.error ? (
                   <div className="plan-error p-3 rounded border-l-4 border-red-500 bg-red-500/10">
                     <div className="text-red-400 font-medium mb-1">Error</div>
@@ -303,7 +321,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
 
 const ChatArea: React.FC = () => {
   const { state, dispatch } = useUIState();
-  const { messages, pendingToolApproval } = state;
+  const { messages, pendingToolApproval, isThinking } = state;
 
   const handleToolApprovalResolve = () => {
     dispatch({ type: 'RESOLVE_TOOL_APPROVAL' });
@@ -322,6 +340,38 @@ const ChatArea: React.FC = () => {
           session_id={pendingToolApproval.session_id}
           onResolve={handleToolApprovalResolve}
         />
+      )}
+
+      {isThinking && (
+        <div className="flex mr-12 animate-fade-in-up">
+          <div
+            className="navi-assistant-bubble flex-1"
+            style={{
+              background: DESIGN_TOKENS.navi.bg,
+              backdropFilter: 'blur(14px)',
+              border: `1px solid ${DESIGN_TOKENS.navi.border}`,
+              borderRadius: '12px',
+              color: DESIGN_TOKENS.navi.text,
+              fontSize: DESIGN_TOKENS.fonts.chatBody,
+              fontFamily: DESIGN_TOKENS.fonts.ui,
+              padding: '14px 16px'
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-5 h-5 rounded-full bg-[var(--vscode-charts-blue)] flex-shrink-0 flex items-center justify-center text-xs font-medium text-white">
+                N
+              </div>
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span>Working</span>
+                <div className="navi-typing-dots">
+                  <span className="navi-typing-dot" />
+                  <span className="navi-typing-dot" />
+                  <span className="navi-typing-dot" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {messages.length === 0 && (

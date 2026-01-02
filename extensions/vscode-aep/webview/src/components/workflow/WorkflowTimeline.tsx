@@ -19,6 +19,26 @@ export function WorkflowTimeline() {
   }
   
   const workflow = state.workflow;
+  const stepEntries = Object.entries(workflow.steps);
+  const totalSteps = stepEntries.length;
+  const completedSteps = stepEntries.filter(([, status]) => status === 'completed').length;
+  const progressPercent = totalSteps === 0 ? 0 : Math.round((completedSteps / totalSteps) * 100);
+
+  const statusLabel = workflow.agentStatus === 'awaiting_approval'
+    ? 'Awaiting approval'
+    : workflow.agentStatus === 'error'
+      ? 'Action required'
+      : workflow.agentStatus === 'running'
+        ? 'Running'
+        : 'Idle';
+
+  const statusTone = workflow.agentStatus === 'awaiting_approval'
+    ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
+    : workflow.agentStatus === 'error'
+      ? 'bg-red-500/20 text-red-300 border-red-500/30'
+      : workflow.agentStatus === 'running'
+        ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+        : 'bg-gray-500/10 text-gray-400 border-gray-500/30';
   
   // Map canonical step names to display labels
   const stepLabels: Record<string, string> = {
@@ -44,7 +64,7 @@ export function WorkflowTimeline() {
   };
   
   // Only show steps that are not pending (unless agent is running)
-  const visibleSteps = Object.entries(workflow.steps).filter(([stepId, status]) => {
+  const visibleSteps = stepEntries.filter(([stepId, status]) => {
     return status !== 'pending' || workflow.agentStatus === 'running' || workflow.currentStep === stepId;
   });
 
@@ -110,11 +130,16 @@ export function WorkflowTimeline() {
 
   return (
     <div className="bg-[var(--vscode-editor-background)] border border-[var(--vscode-panel-border)] rounded-lg p-3">
-      <div className="text-sm font-medium mb-3 opacity-90 flex items-center gap-2">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-        </svg>
-        Workflow Progress
+      <div className="text-sm font-medium mb-3 opacity-90 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+          </svg>
+          Workflow Progress
+        </div>
+        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${statusTone}`}>
+          {statusLabel}
+        </span>
       </div>
       
       <div className="text-xs space-y-2">
@@ -150,12 +175,12 @@ export function WorkflowTimeline() {
       <div className="mt-3 pt-3 border-t border-[var(--vscode-panel-border)]">
         <div className="flex items-center justify-between text-xs text-[var(--vscode-descriptionForeground)] mb-2">
           <span>Progress</span>
-          <span>2/5</span>
+          <span>{completedSteps}/{totalSteps}</span>
         </div>
         <div className="w-full bg-[var(--vscode-input-background)] rounded-full h-1.5">
           <div 
             className="bg-gradient-to-r from-green-400 to-blue-400 h-1.5 rounded-full transition-all duration-500 ease-out"
-            style={{ width: '40%' }}
+            style={{ width: `${progressPercent}%` }}
           />
         </div>
       </div>

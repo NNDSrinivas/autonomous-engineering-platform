@@ -11,7 +11,6 @@ from typing import Optional
 from pathlib import Path
 
 from backend.services.review_service import RealReviewService
-from backend.models.review import StreamingReviewEvent
 
 logger = logging.getLogger(__name__)
 
@@ -45,17 +44,17 @@ async def review_stream_real(
                 return
                 
             # Start analysis
-            yield f"event: live-progress\ndata: Scanning working tree for changes…\n\n"
+            yield "event: live-progress\ndata: Scanning working tree for changes…\n\n"
             
             # Get real working tree changes
             changes = review_service.repo_service.get_working_tree_changes()
             
             if not changes:
-                yield f"event: live-progress\ndata: No changes detected in working tree\n\n"
-                yield f"event: done\ndata: Review complete - no changes found\n\n"
+                yield "event: live-progress\ndata: No changes detected in working tree\n\n"
+                yield "event: done\ndata: Review complete - no changes found\n\n"
                 return
                 
-            yield f"event: live-progress\ndata: Parsing diff hunks for analysis…\n\n"
+            yield "event: live-progress\ndata: Parsing diff hunks for analysis…\n\n"
             yield f"event: live-progress\ndata: Analyzing {len(changes)} file changes with AI…\n\n"
             
             # Process each file

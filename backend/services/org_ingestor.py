@@ -16,6 +16,7 @@ import structlog
 
 from backend.integrations.jira_client import JiraClient
 from backend.integrations.confluence_client import ConfluenceClient
+from backend.services import connectors as connectors_service
 from backend.services.navi_memory_service import store_memory
 from backend.services.jira import JiraService
 from backend.core.crypto import decrypt_token
@@ -44,20 +45,64 @@ def _get_openai_client() -> AsyncOpenAI:
 
 async def _get_jira_client_for_user(db: Session, user_id: str) -> Optional[JiraClient]:
     """Get JiraClient for user - prefer saved connection over env vars."""
+    # Prefer connectors table (per-user config + secrets)
+    if connectors_service.connectors_available(db):
+        connector = connectors_service.get_connector(
+            db, user_id=str(user_id), provider="jira", name="default"
+        )
+        if connector:
+            cfg = connector.get("config") or {}
+            secrets = connector.get("secrets") or {}
+            base_url = (cfg.get("base_url") or "").rstrip("/")
+            email = cfg.get("email") or os.getenv("AEP_JIRA_EMAIL", "")
+            token_type = cfg.get("token_type")
+            access_token = secrets.get("access_token") or secrets.get("token")
+            api_token = secrets.get("api_token")
+
+            if base_url and access_token:
+                return JiraClient(
+                    base_url=base_url,
+                    access_token=access_token,
+                    token_type=token_type,
+                )
+            if base_url and api_token and email:
+                return JiraClient(
+                    base_url=base_url,
+                    email=email,
+                    api_token=api_token,
+                )
+
     # First try to get saved connection
     connection = JiraService.get_connection_for_user(db, user_id)
     if connection:
         try:
             # Decrypt the token (access_token is encrypted)
             decrypted_token = decrypt_token(connection.access_token)
-
-            # Create client with saved credentials
-            # Note: The model doesn't have email field, use env var as fallback
+            token_type_raw = (connection.token_type or "").strip().lower()
             email = os.getenv("AEP_JIRA_EMAIL", "")
+
+            # If explicitly basic/api token, prefer email+token auth
+            if token_type_raw in {"basic", "api_token"} and email:
+                return JiraClient(
+                    base_url=connection.cloud_base_url,
+                    email=email,
+                    api_token=decrypted_token,
+                )
+
+            # If no token_type and email is present, preserve legacy behavior
+            if not token_type_raw and email:
+                return JiraClient(
+                    base_url=connection.cloud_base_url,
+                    email=email,
+                    api_token=decrypted_token,
+                )
+
+            # Otherwise treat as bearer/OAuth token
+            token_type = connection.token_type or "Bearer"
             return JiraClient(
                 base_url=connection.cloud_base_url,
-                email=email,
-                api_token=decrypted_token,
+                access_token=decrypted_token,
+                token_type=token_type,
             )
         except Exception as e:
             logger.warning("Failed to decrypt saved connection", error=str(e))
@@ -302,7 +347,23 @@ async def ingest_confluence_space(
     )
 
     try:
-        async with ConfluenceClient() as conf:
+        connector = connectors_service.get_connector_for_context(
+            db, user_id=user_id, org_id=None, provider="confluence"
+        )
+        if connector:
+            cfg = connector.get("config") or {}
+            secrets = connector.get("secrets") or {}
+            conf = ConfluenceClient(
+                base_url=cfg.get("base_url"),
+                email=cfg.get("email"),
+                api_token=secrets.get("api_token"),
+                access_token=secrets.get("access_token") or secrets.get("token"),
+                cloud_id=cfg.get("cloud_id"),
+            )
+        else:
+            conf = ConfluenceClient()
+
+        async with conf:
             pages = await conf.get_pages_in_space(space_key=space_key, limit=limit)
 
         processed_ids: List[str] = []
@@ -367,6 +428,63 @@ async def ingest_confluence_space(
             space_key=space_key,
         )
         raise
+
+
+async def ingest_confluence_page(
+    db: Session,
+    user_id: str,
+    page_id: str,
+) -> str:
+    """
+    Fetch a single Confluence page by ID and store as NAVI memory.
+    """
+    logger.info("Ingesting Confluence page", user_id=user_id, page_id=page_id)
+
+    connector = connectors_service.get_connector_for_context(
+        db, user_id=user_id, org_id=None, provider="confluence"
+    )
+    if connector:
+        cfg = connector.get("config") or {}
+        secrets = connector.get("secrets") or {}
+        conf = ConfluenceClient(
+            base_url=cfg.get("base_url"),
+            email=cfg.get("email"),
+            api_token=secrets.get("api_token"),
+            access_token=secrets.get("access_token") or secrets.get("token"),
+            cloud_id=cfg.get("cloud_id"),
+        )
+    else:
+        conf = ConfluenceClient()
+
+    async with conf:
+        page = await conf.get_page(page_id)
+
+    title = (page.get("title") or "").strip()
+    space_key = page.get("space", {}).get("key") or "CONFLUENCE"
+    body_storage = page.get("body", {}).get("storage", {}).get("value", "")
+    text = ConfluenceClient.html_to_text(body_storage)
+
+    raw_text = f"Confluence page: {title}\n\n{text}"
+    summary_text = await summarize_for_memory(title, raw_text)
+
+    await store_memory(
+        db,
+        user_id=user_id,
+        category="workspace",
+        scope=space_key,
+        title=f"[Confluence:{space_key}] {title}",
+        content=summary_text,
+        tags={
+            "source": "confluence",
+            "space": space_key,
+            "page_id": page_id,
+            "title": title,
+        },
+        importance=4,
+    )
+
+    logger.info("Ingested Confluence page", page_id=page_id, title=title)
+    return page_id
 
 
 def _extract_text_from_adf(adf_doc: Dict[str, Any]) -> str:

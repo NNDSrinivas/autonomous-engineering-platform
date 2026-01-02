@@ -1,7 +1,27 @@
 import * as vscode from 'vscode';
 import { Intent } from '../intent/IntentClassifier';
 import { IntentPlan } from '../intent/IntentPlanBuilder';
-import { ResolvedPatterns } from '../context/RepoPatternResolver';
+
+// Phase 4.1.2: Updated to work with new structured planning system
+export interface CodeGenerationRequest {
+    description: string;
+    context: any;
+    targetFile?: string;
+}
+
+export interface ResolvedPatterns {
+    language: string;
+    framework?: string;
+    patterns: any;
+    architecture: string;
+    conventions: {
+        fileNaming: string;
+        folderStructure: string;
+        exportStyle: string;
+        typeDefinition: string;
+    };
+    examples?: Record<string, string>;
+}
 
 /**
  * Result of generative code operation

@@ -36,18 +36,20 @@ class TeamsClient:
         tenant_id: Optional[str] = None,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
+        access_token: Optional[str] = None,
     ) -> None:
         self.tenant_id = tenant_id or os.getenv("AEP_MS_TENANT_ID", "")
         self.client_id = client_id or os.getenv("AEP_MS_CLIENT_ID", "")
         self.client_secret = client_secret or os.getenv("AEP_MS_CLIENT_SECRET", "")
+        self._token = access_token
 
-        if not self.tenant_id or not self.client_id or not self.client_secret:
+        if not self._token and (
+            not self.tenant_id or not self.client_id or not self.client_secret
+        ):
             raise RuntimeError(
-                "TeamsClient requires AEP_MS_TENANT_ID, AEP_MS_CLIENT_ID, "
-                "AEP_MS_CLIENT_SECRET to be set."
+                "TeamsClient requires either an access token or "
+                "AEP_MS_TENANT_ID, AEP_MS_CLIENT_ID, AEP_MS_CLIENT_SECRET."
             )
-
-        self._token = None
         logger.info("TeamsClient initialized", tenant_id=self.tenant_id)
 
     def _acquire_token(self) -> str:
@@ -112,7 +114,7 @@ class TeamsClient:
         Returns:
             List of team dictionaries with id, displayName, etc.
         """
-        data = self._get("/teams")
+        data = self._get("/me/joinedTeams")
         teams = data.get("value", [])
         logger.info("Listed Teams teams", count=len(teams))
         return teams
@@ -217,3 +219,14 @@ class TeamsClient:
             raise
 
         return messages
+
+    def get_channel_message(
+        self,
+        team_id: str,
+        channel_id: str,
+        message_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Fetch a single message by ID from a Teams channel.
+        """
+        return self._get(f"/teams/{team_id}/channels/{channel_id}/messages/{message_id}")

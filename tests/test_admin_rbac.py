@@ -24,7 +24,6 @@ from backend.core.db import Base
 from backend.core.auth.deps import _get_db_for_auth
 from backend.database.models.rbac import DBRole, DBUser, Organization, UserRole
 from backend.database.session import get_db
-from backend.database.types import PortableJSONB  # ensure JSONB fallback is imported early
 
 # Test database setup - each test gets a unique database
 # Unique identifier prevents cross-test contamination

@@ -43,6 +43,10 @@ export const NaviChatMessageList: React.FC<NaviChatMessageListProps> = ({
       {messages.map((message) => {
         const isUser = message.role === "user";
         const sources = (message as any).sources ?? (message as any).meta?.sources;
+        const messageText =
+          message.content ??
+          (message as any).text ??
+          String((message as any).intent ?? "");
 
         return (
           <div
@@ -59,9 +63,7 @@ export const NaviChatMessageList: React.FC<NaviChatMessageListProps> = ({
                 }
               >
                 <p className="whitespace-pre-wrap leading-relaxed">
-                  {message.kind === "text"
-                    ? message.text
-                    : message.text ?? String((message as any).intent ?? "")}
+                  {messageText}
                 </p>
               </div>
 

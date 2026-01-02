@@ -3,9 +3,7 @@ NAVI API Integration Tests
 Tests the actual HTTP endpoints and workflows
 """
 import pytest
-import asyncio
-import json
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from backend.api.main import app
@@ -172,16 +170,6 @@ class TestTestCaseGeneration:
     
     def test_generate_test_for_simple_function(self):
         """Test generating tests for a simple function"""
-        source_function = """
-def calculate_discount(price, discount_percent):
-    '''Calculate final price after discount'''
-    if price < 0 or discount_percent < 0:
-        raise ValueError("Invalid inputs")
-    
-    discount_amount = price * (discount_percent / 100)
-    final_price = price - discount_amount
-    return round(final_price, 2)
-"""
         
         # Expected test scenarios
         test_scenarios = [

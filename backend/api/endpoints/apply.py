@@ -19,10 +19,8 @@ Response:
 """
 
 from typing import List, Dict, Any, Optional
-from fastapi import HTTPException
 from pydantic import BaseModel
 
-from backend.agent.codegen.types import CodeChange 
 from backend.agent.validation import ValidationPipeline, ValidationStatus
 
 

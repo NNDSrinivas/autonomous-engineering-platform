@@ -149,7 +149,7 @@ class ChangePlanGenerator:
         """
         
         # Extract relevant repo context
-        file_structure = repo_context.get('file_structure', {})
+        repo_context.get('file_structure', {})
         key_files = repo_context.get('key_files', [])
         languages = repo_context.get('languages', [])
         frameworks = repo_context.get('frameworks', [])

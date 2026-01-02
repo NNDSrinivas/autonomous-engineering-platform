@@ -3,17 +3,38 @@ import React, { createContext, useContext, useReducer, ReactNode } from "react";
 // Canonical types locked for Phase 4 baseline
 export type AgentStatus = "idle" | "running" | "awaiting_approval" | "error";
 export type StepStatus = "pending" | "active" | "completed" | "failed";
+export type ArtifactKind = "changePlan" | "diffs" | "validation" | "apply" | "pr" | "ci" | "command" | "context";
+
+export interface Attachment {
+  kind: string;
+  path: string;
+  language?: string;
+  content: string;
+}
+
+export interface ArtifactPayload {
+  kind: ArtifactKind;
+  title?: string;
+  data: any;
+}
 
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: number;
-  type?: 'text' | 'thinking' | 'step' | 'command' | 'result' | 'proposal' | 'plan' | 'error';
-  plan?: any; // Phase 4.1.2: Plan data
-  reasoning?: string; // Phase 4.1.2: Plan reasoning
-  session_id?: string; // Phase 4.1.2: Planning session
-  error?: string; // Phase 4.1.2: Error details
+  type?: 'text' | 'thinking' | 'step' | 'command' | 'result' | 'proposal' | 'plan' | 'error' | 'conversation';
+  // Phase 4.1.2: Plan data
+  plan?: any;
+  reasoning?: string;
+  session_id?: string;
+  error?: string;
+  planError?: string;
+  // Phase 4.2.1: Conversation data
+  conversationType?: 'greeting' | 'explanation' | 'capability' | 'clarification' | 'help';
+  suggestions?: string[];
+  // Phase 4.3: Artifact rendering
+  artifact?: ArtifactPayload;
 }
 
 export interface TodoItem {
@@ -46,6 +67,8 @@ export interface AgentWorkflowState {
 export interface UIState {
   // Chat state
   messages: Message[];
+  // Attachments selected in the panel
+  attachments: Attachment[];
   // Thinking state for input disabling
   isThinking: boolean;
   // Workflow state (starts as null - no default workflow!)
@@ -69,6 +92,7 @@ export interface WorkflowState {
 // Initial UI state - ZERO DEFAULTS (no fake context, todos, or workflows)
 const initialUIState: UIState = {
   messages: [],
+  attachments: [],
   isThinking: false,
   workflow: null, // ⭐ CRITICAL: No workflow by default
   agentWorkflow: {
@@ -101,6 +125,11 @@ export type UIAction =
   | { type: "ADD_ASSISTANT_MESSAGE"; content: string; messageType?: 'text' | 'thinking' | 'step' | 'command' | 'result' | 'proposal'; error?: string }
   | { type: "SET_THINKING"; thinking: boolean }
   | { type: "CLEAR_MESSAGES" }
+  | { type: "ADD_ATTACHMENT"; attachment: Attachment }
+  | { type: "REMOVE_ATTACHMENT"; attachmentKey: string }
+  | { type: "CLEAR_ATTACHMENTS" }
+  | { type: "ADD_ARTIFACT_MESSAGE"; artifact: ArtifactPayload }
+  | { type: "CLEAR_WORKFLOW" }
   | { type: "START_WORKFLOW" }
   | { type: "STEP_ACTIVE"; step: string }
   | { type: "STEP_COMPLETE"; step: string }
@@ -113,6 +142,8 @@ export type UIAction =
   | { type: "ADD_PLAN"; plan: any; reasoning?: string; session_id?: string }
   | { type: "REQUEST_TOOL_APPROVAL"; tool_request: any; session_id: string }
   | { type: "RESOLVE_TOOL_APPROVAL" }
+  // Phase 4.2.1: Conversation actions
+  | { type: "ADD_CONVERSATION"; content: string; conversationType: 'greeting' | 'explanation' | 'capability' | 'clarification' | 'help'; suggestions?: string[] }
   // Agent workflow actions (NEW)
   | { type: "AGENT_START" }
   | { type: "AGENT_ADD_TODO"; todo: TodoItem }
@@ -122,9 +153,6 @@ export type UIAction =
   | { type: "AGENT_STOP" };
 
 function reducer(state: UIState, action: UIAction): UIState {
-  console.log('🐛 REDUCER CALLED with action:', action.type, action);
-  console.log('🐛 Action type exact string:', JSON.stringify(action.type));
-  console.log('🐛 Checking if action.type === "ADD_PLAN":', action.type === "ADD_PLAN");
   switch (action.type) {
     case "ADD_USER_MESSAGE":
       return {
@@ -166,12 +194,65 @@ function reducer(state: UIState, action: UIAction): UIState {
       return {
         ...state,
         messages: [],
+        attachments: [],
         workflow: null, // Also clear workflow
         agentWorkflow: {
           todos: [],
           filesChanged: [],
           isActive: false
-        }
+        },
+        pendingToolApproval: undefined
+      };
+
+    case "ADD_ATTACHMENT": {
+      const key = `${action.attachment.kind}:${action.attachment.path}:${action.attachment.content.length}`;
+      const existingIndex = state.attachments.findIndex(att =>
+        `${att.kind}:${att.path}:${att.content.length}` === key
+      );
+
+      const nextAttachments = existingIndex >= 0
+        ? state.attachments.map((att, idx) => idx === existingIndex ? action.attachment : att)
+        : [...state.attachments, action.attachment];
+
+      return {
+        ...state,
+        attachments: nextAttachments
+      };
+    }
+
+    case "REMOVE_ATTACHMENT":
+      return {
+        ...state,
+        attachments: state.attachments.filter(att =>
+          `${att.kind}:${att.path}:${att.content.length}` !== action.attachmentKey
+        )
+      };
+
+    case "CLEAR_ATTACHMENTS":
+      return {
+        ...state,
+        attachments: []
+      };
+
+    case "ADD_ARTIFACT_MESSAGE": {
+      const artifactMessage: Message = {
+        id: `artifact-${Date.now()}`,
+        role: "assistant",
+        content: action.artifact.title || "Artifact update",
+        timestamp: Date.now(),
+        type: 'proposal',
+        artifact: action.artifact
+      };
+      return {
+        ...state,
+        messages: [...state.messages, artifactMessage]
+      };
+    }
+
+    case "CLEAR_WORKFLOW":
+      return {
+        ...state,
+        workflow: null
       };
 
     // Agent workflow cases
@@ -216,6 +297,9 @@ function reducer(state: UIState, action: UIAction): UIState {
       };
 
     case "START_WORKFLOW":
+      if (state.workflow) {
+        return state;
+      }
       return {
         ...state,
         workflow: {
@@ -301,10 +385,6 @@ function reducer(state: UIState, action: UIAction): UIState {
 
     // Phase 4.1.2: Plan-based reducer cases
     case "ADD_PLAN":
-      console.log('🐛 REACHED ADD_PLAN CASE! [UNIQUE_ID: 2024-12-24-REDUCER-TEST]');
-      console.log('🐛 ADD_PLAN action:', action.plan, 'reasoning:', action.reasoning);
-      // VISIBLE DEBUG - Add alert
-      console.log(`🐛 ADD_PLAN: Goal="${action.plan?.goal}", Steps=${action.plan?.steps?.length}`);
       const newMessage = {
         id: `plan-${Date.now()}`,
         role: "assistant" as const,
@@ -315,7 +395,6 @@ function reducer(state: UIState, action: UIAction): UIState {
         reasoning: action.reasoning,
         session_id: action.session_id
       };
-      console.log('🐛 Created plan message:', newMessage);
       const newState = {
         ...state,
         messages: [
@@ -323,8 +402,24 @@ function reducer(state: UIState, action: UIAction): UIState {
           newMessage,
         ],
       };
-      console.log('🐛 New state after ADD_PLAN:', newState);
       return newState;
+
+    // Phase 4.2.1: Conversation-based reducer case
+    case "ADD_CONVERSATION":
+      const conversationMessage: Message = {
+        id: `conversation-${Date.now()}`,
+        role: "assistant",
+        content: action.content,
+        timestamp: Date.now(),
+        type: 'conversation',
+        conversationType: action.conversationType,
+        suggestions: action.suggestions
+      };
+      return {
+        ...state,
+        messages: [...state.messages, conversationMessage],
+        isThinking: false
+      };
 
     case "REQUEST_TOOL_APPROVAL":
       return {
@@ -342,7 +437,6 @@ function reducer(state: UIState, action: UIAction): UIState {
       };
 
     default:
-      console.log('🐛 DEFAULT CASE REACHED! Unknown action type:', action.type);
       return state;
   }
 }
@@ -355,37 +449,12 @@ interface UIContextType {
 const UIContext = createContext<UIContextType | null>(null);
 
 export function UIProvider({ children }: { children: ReactNode }) {
-  const timestamp = new Date().toISOString();
-  console.log(`🚨 ENTRY: UIProvider function called! ${timestamp}`);
-
-  try {
-    console.log(`🐛 UIProvider initializing... ${timestamp}`);
-    const [state, dispatch] = useReducer(reducer, initialUIState);
-    console.log(`✅ useReducer completed successfully ${timestamp}`);
-
-    // Wrap dispatch with debug logging
-    const debugDispatch = (action: UIAction) => {
-      console.log(`🐛 DISPATCH CALLED with action: ${action.type}`, action, `at ${new Date().toISOString()}`);
-      return dispatch(action);
-    };
-
-    console.log(`🐛 UIProvider initialized with state: ${timestamp}`, state);
-    console.log(`🔍 UIProvider raw dispatch: ${timestamp}`, dispatch);
-    console.log(`🔍 UIProvider raw dispatch name: ${dispatch.name} ${timestamp}`);
-    console.log(`🔍 UIProvider debugDispatch: ${timestamp}`, debugDispatch);
-    console.log(`🔍 UIProvider debugDispatch name: ${debugDispatch.name} ${timestamp}`);
-
-    return (
-      <UIContext.Provider value={{ state, dispatch: debugDispatch }}>
-        {children}
-      </UIContext.Provider>
-    );
-
-  } catch (error) {
-    console.error(`❌ UIProvider initialization failed: ${timestamp}`, error);
-    console.error(`❌ Error stack: ${timestamp}`, error.stack);
-    throw error;
-  }
+  const [state, dispatch] = useReducer(reducer, initialUIState);
+  return (
+    <UIContext.Provider value={{ state, dispatch }}>
+      {children}
+    </UIContext.Provider>
+  );
 }
 
 export function useUIState() {

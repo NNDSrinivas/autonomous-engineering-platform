@@ -1,8 +1,7 @@
-from typing import Dict, Any, List, Optional, Union, Literal
+from typing import Dict, Any, List, Optional, Literal
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
-import json
 
 
 # ============================================================================
@@ -159,6 +158,8 @@ class ChangePlan:
     estimated_duration_minutes: int = 5
     total_complexity: float = field(default=0.0)
     overall_risk: Literal["low", "medium", "high"] = "medium"
+    reasoning: str = ""  # Phase 4.1.2 compatibility
+    complexity: str = "medium"  # Phase 4.1.2 compatibility
     
     # Context
     workspace_root: str = ""

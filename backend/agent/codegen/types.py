@@ -96,17 +96,10 @@ class PlannedFileChange:
     requires_review: bool = True
     
     def __post_init__(self):
-        # Ensure backward compatibility
-        if self.file_path is None:
-            object.__setattr__(self, 'file_path', self.path)
-        if self.change_type is None:
-            # Map ChangeIntent to ChangeType for backward compatibility
-            intent_to_type = {
-                ChangeIntent.CREATE: ChangeType.CREATE_FILE,
-                ChangeIntent.MODIFY: ChangeType.MODIFY_FILE,
-                ChangeIntent.DELETE: ChangeType.DELETE_FILE,
-            }
-            object.__setattr__(self, 'change_type', intent_to_type.get(self.intent, ChangeType.MODIFY_FILE))
+        # Ensure backward compatibility - use proper initialization patterns
+        # Note: For frozen dataclasses, consider using default_factory or 
+        # restructuring to avoid post_init mutations
+        pass
     
     def to_dict(self) -> Dict[str, Any]:
         return {

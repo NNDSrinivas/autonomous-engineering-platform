@@ -2,7 +2,6 @@
 
 import requests
 import json
-import time
 
 def test_quick_analysis():
     """Test a quick analysis with limited scope"""

@@ -581,17 +581,6 @@ class FixProblemsExecutor(Executor[GroundedTask]):
         logger.info(f"Phase 4.3 Diff proposal generated: {len(proposal.files_changed)} files, +{proposal.total_additions}/-{proposal.total_deletions} lines")
         return proposal
         
-        # Fix 2: Add console.log for undefined variables (temporary debugging aid)
-        # This is a placeholder - real fixes would analyze the actual diagnostics
-        undefined_vars = re.findall(r"'(\w+)' is not defined", content)
-        for var in undefined_vars:
-            # Add a comment suggesting the variable needs to be defined
-            modified = modified.replace(
-                f"// '{var}' is not defined",
-                f"// TODO: Define variable '{var}'\n// const {var} = /* provide value */;"
-            )
-        
-        return modified
     
     def _generate_diff_explanation(self, plan: FixPlan, files_changed: List[FileDiff]) -> str:
         """Generate explanation of what the diffs accomplish"""

@@ -400,14 +400,14 @@ def validate_input(inputs: Dict[str, Any], schema: Dict[str, Any]) -> bool:
     properties = schema.get("properties", {})
     
     # Check required fields
-    for field in required:
-        if field not in inputs:
+    for required_field in required:
+        if required_field not in inputs:
             return False
     
     # Check field types (basic validation)
-    for field, value in inputs.items():
-        if field in properties:
-            expected_type = properties[field].get("type")
+    for field_name, value in inputs.items():
+        if field_name in properties:
+            expected_type = properties[field_name].get("type")
             if expected_type == "string" and not isinstance(value, str):
                 return False
             elif expected_type == "number" and not isinstance(value, (int, float)):

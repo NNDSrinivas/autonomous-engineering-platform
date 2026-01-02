@@ -320,7 +320,7 @@ class PRCreator:
                 error_data = resp.json()
                 if "message" in error_data:
                     error_msg += f": {error_data['message']}"
-            except:
+            except Exception:
                 error_msg += f": {resp.text[:200]}"
                 
             raise PRCreationError(error_msg)

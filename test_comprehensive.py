@@ -2,7 +2,6 @@
 
 import requests
 import json
-import time
 
 def test_comprehensive_analysis():
     """Test the comprehensive analysis with longer timeout"""

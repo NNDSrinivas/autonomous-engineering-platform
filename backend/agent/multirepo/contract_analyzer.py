@@ -195,7 +195,7 @@ class ContractAnalyzer:
                     return "openapi"
                 elif '$schema' in content and 'json-schema' in content:
                     return "json_schema"
-            except:
+            except Exception:
                 pass
         
         return "unknown"
@@ -420,7 +420,7 @@ class ContractAnalyzer:
         
         # Newly required fields are breaking
         newly_required = new_required - old_required
-        for field in newly_required:
+        for required_field in newly_required:
             breaking_changes.append(BreakingChange(
                 change_type=BreakingChangeType.FIELD_MADE_REQUIRED,
                 field_path=f"{path}.{field}",

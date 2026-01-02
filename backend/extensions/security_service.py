@@ -400,7 +400,7 @@ class ExtensionSecurityService:
             try:
                 content = extension_content.decode('utf-8', errors='ignore')
                 extension_files['main.py'] = content
-            except:
+            except Exception:
                 extension_files['main.py'] = "# Could not decode content"
         
         return extension_files

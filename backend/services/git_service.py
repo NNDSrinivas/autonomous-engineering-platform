@@ -18,7 +18,7 @@ class GitService:
         try:
             self._run(["git", "rev-parse", "--git-dir"], check_errors=False)
             return True
-        except:
+        except Exception:
             return False
 
     def _run(self, cmd: List[str], check_errors: bool = True) -> str:

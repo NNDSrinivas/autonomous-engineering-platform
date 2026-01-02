@@ -13,6 +13,7 @@ os.environ["DEV_ORG_ID"] = "test-org"
 import pytest
 import uuid
 from fastapi.testclient import TestClient
+from backend.api.main import app
 from sqlalchemy.orm import sessionmaker
 
 from backend.core.auth.deps import _get_db_for_auth
@@ -24,7 +25,6 @@ import backend.api.routers.plan as plan_router
 # Use file-based SQLite to keep a shared test database and avoid Postgres dependencies
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
 
-from backend.api.main import app
 
 # Create a dedicated engine/session factory for tests and wire it into core_db helpers
 core_db.settings.database_url = TEST_DATABASE_URL  # force config to use test DB

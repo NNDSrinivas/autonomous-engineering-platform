@@ -13,6 +13,8 @@ Tests all major components:
 
 import pytest
 import json
+from backend.agents.autonomous_pr_reviewer import ReviewSeverity, ReviewCategory
+from backend.memory.memory_layer import Memory, MemoryLayer, MemoryType, MemoryImportance
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -31,8 +33,6 @@ class ItemType(Enum):
     BUG = "bug"
     TASK = "task"
 
-# Import these from the proper location
-from backend.agents.autonomous_pr_reviewer import ReviewSeverity, ReviewCategory
 
 class BacklogItem:
     def __init__(self, id, title, description=None, priority=Priority.MEDIUM, item_type=None, estimated_hours=0, **kwargs):
@@ -66,8 +66,6 @@ class KPIEngine:
     def __init__(self): 
         self.db: Any = None
 
-# Import from existing memory layer
-from backend.memory.memory_layer import Memory, MemoryLayer, MemoryType, MemoryImportance
 
 class RepoType(Enum):
     FRONTEND = "frontend"

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Test the simple streaming endpoint"""
 import requests
-import json
 
 url = "http://localhost:8787/api/navi/test-stream"
 print(f"Testing: {url}")

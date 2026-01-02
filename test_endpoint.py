@@ -4,7 +4,6 @@ Simple test script to verify the analyze-changes endpoint returns real analysis
 """
 import requests
 import json
-import os
 
 def test_analyze_endpoint():
     url = "http://localhost:8787/api/navi/analyze-changes"

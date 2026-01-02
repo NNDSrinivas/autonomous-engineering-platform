@@ -165,7 +165,7 @@ class ImpactAnalyzer:
         # Get all repositories first
         try:
             repos = await self.repo_registry.list_repositories() if hasattr(self.repo_registry, 'list_repositories') else []
-        except:
+        except Exception:
             repos = []
             
         repo_graph = await self.graph_builder.build_dependency_graph(repos)

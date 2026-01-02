@@ -14,6 +14,7 @@ trust management, certificate validation, and automated vulnerability detection.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import logging
 import re
@@ -59,8 +60,6 @@ except ImportError:
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric.types import CertificateIssuerPrivateKeyTypes
 
-# Security scanning
-import ast
 
 logger = logging.getLogger(__name__)
 

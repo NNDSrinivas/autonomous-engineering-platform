@@ -486,9 +486,7 @@ def build_repo_graph(repos: List[RepoMeta]) -> RepoGraph:
     builder = RepoGraphBuilder()
     return builder.build_repo_graph(repos)
 
-# Add missing methods to RepoGraphBuilder for compatibility
-class RepoGraphBuilder:
-    """Enhanced repository graph builder with missing methods"""
+
     
     def __init__(self, repo_registry: Optional[RepoRegistry] = None):
         """

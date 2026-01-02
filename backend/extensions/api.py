@@ -543,6 +543,8 @@ async def validate_extension_manifest(manifest: Dict[str, Any]):
             validation_result["warnings"].append("Extension defines no capabilities")
         
         # Permission validation
+        from .runtime import PermissionManager  # Import here to avoid circular imports
+
         permission_manager = PermissionManager()
         for perm in extension_manifest.permissions:
             if perm not in permission_manager.permissions:
@@ -1035,7 +1037,6 @@ async def _mock_extension_review_workflow(extension_id: str):
     except Exception as e:
         logger.error(f"Review workflow failed for {extension_id}: {str(e)}")
 
-# Import permission manager here to avoid circular imports
-from .runtime import PermissionManager
+# Note: PermissionManager import moved to function level to avoid circular imports
 
 __all__ = ["router"]

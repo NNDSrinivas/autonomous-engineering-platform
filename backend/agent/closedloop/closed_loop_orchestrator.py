@@ -655,8 +655,8 @@ class ClosedLoopOrchestrator:
             # Recent performance
             recent_loops = list(self.completed_loops.values())[-10:]  # Last 10 loops
             if recent_loops:
-                recent_success_rate = len([l for l in recent_loops if l.final_status == "completed"]) / len(recent_loops)
-                avg_duration = sum(l.total_duration_seconds or 0 for l in recent_loops) / len(recent_loops)
+                recent_success_rate = len([loop for loop in recent_loops if loop.final_status == "completed"]) / len(recent_loops)
+                avg_duration = sum(loop.total_duration_seconds or 0 for loop in recent_loops) / len(recent_loops)
                 
                 metrics["recent_performance"] = {
                     "recent_success_rate": recent_success_rate,

@@ -20,12 +20,11 @@ from sqlalchemy.orm import Session
 import structlog
 
 from backend.database.session import get_db
-from backend.services.navi_memory_service import search_memory
+from backend.services.navi_memory_service import search_memory, get_recent_memories
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/navi", tags=["navi-search"])
-from backend.services.navi_memory_service import get_recent_memories
 
 
 # ============================================================================

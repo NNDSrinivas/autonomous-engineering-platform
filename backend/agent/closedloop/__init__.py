@@ -5,11 +5,9 @@ This module integrates all Phase 5.0 components into a cohesive autonomous engin
 It provides the main entry points and API integration for the closed-loop orchestration.
 """
 
-import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 import logging
-from pathlib import Path
 
 # Phase 5.0 Components
 from backend.agent.closedloop.event_ingestor import (
@@ -29,6 +27,20 @@ from backend.agent.closedloop.closed_loop_orchestrator import (
 from backend.core.db import get_db
 from backend.services.jira import JiraService
 from backend.integrations.slack_client import SlackClient
+
+# Explicit re-exports for external usage
+__all__ = [
+    "EventPriority",
+    "AutonomiTrigger", 
+    "EventSource",
+    "EventType",
+    "ClosedLoopOrchestrator",
+    "OrchestrationMode",
+    "OrchestrationConfig", 
+    "LoopExecution",
+    "JiraService",
+    "SlackClient"
+]
 
 
 logger = logging.getLogger(__name__)

@@ -211,7 +211,7 @@ class CommitEngine:
                     "rev-list", "--left-right", "--count", f"origin/{current_branch}...HEAD"
                 ])
                 behind, ahead = ahead_behind.stdout.strip().split('\t')
-            except:
+            except Exception:
                 ahead, behind = "0", "0"
             
             return {
@@ -342,5 +342,5 @@ class CommitEngine:
         try:
             result = await self._run_git_command(["branch", "--show-current"])
             return result.stdout.strip()
-        except:
+        except Exception:
             return "unknown"

@@ -16,7 +16,7 @@ Key Capabilities:
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from .incident_store import IncidentStore, Incident, IncidentType
 from .incident_graph import IncidentGraph, build_incident_graph

@@ -223,7 +223,7 @@ class CIRetryEngine:
                 
                 try:
                     response_data = await response.json()
-                except:
+                except Exception:
                     response_data = {"raw_response": await response.text()}
                 
                 attempt.response_data = response_data

@@ -195,7 +195,6 @@ def upgrade():
             "id",
             sa.String(36),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column("extension_id", sa.String(255), nullable=False),
         sa.Column("user_id", sa.String(255), nullable=False),
@@ -248,7 +247,6 @@ def upgrade():
             "id",
             sa.String(36),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "certificate_name",

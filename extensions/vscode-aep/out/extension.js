@@ -25,6 +25,8 @@ const RepoPatternResolver_1 = require("./navi-core/context/RepoPatternResolver")
 const GenerativeCodeEngine_1 = require("./navi-core/generation/GenerativeCodeEngine");
 const DiagnosticsPerception_1 = require("./navi-core/perception/DiagnosticsPerception");
 const GenerativeStructuralFixEngine_1 = require("./navi-core/fix/GenerativeStructuralFixEngine");
+// NEW: Import shared contracts for intent classification
+const contracts_1 = require("@navi/contracts");
 const FixConfidencePolicy_1 = require("./navi-core/fix/FixConfidencePolicy");
 const FixTransactionManager_1 = require("./navi-core/fix/FixTransactionManager");
 const FeaturePlanEngine_1 = require("./navi-core/planning/FeaturePlanEngine");
@@ -935,14 +937,24 @@ class NaviWebviewProvider {
     }
     // Phase 4.1 Step 1.5: Planner Intent Gate
     isPlannerSupportedIntent(intentKind) {
-        // Only FIX_PROBLEMS is supported in Phase 4.1 Step 1
-        return intentKind === 'fix_problems' || intentKind === 'FIX_PROBLEMS';
+        // Use shared contracts for intent validation
+        return intentKind === contracts_1.IntentKind.FIX_DIAGNOSTICS ||
+            intentKind === contracts_1.IntentKind.FIX_BUG ||
+            intentKind === contracts_1.IntentKind.FIX ||
+            // Legacy support
+            intentKind === 'fix_problems' ||
+            intentKind === 'FIX_PROBLEMS';
     }
     // Phase 4.1 Step 4: Intent Normalization Bridge
     mapToPlannerIntent(intentKind) {
         if (!intentKind)
             return null;
+        // Use shared contracts for intent mapping
         switch (intentKind) {
+            case contracts_1.IntentKind.FIX_DIAGNOSTICS:
+            case contracts_1.IntentKind.FIX_BUG:
+            case contracts_1.IntentKind.FIX:
+            // Legacy support
             case "fix_debug":
             case "fix_problems":
             case "FIX_PROBLEMS":

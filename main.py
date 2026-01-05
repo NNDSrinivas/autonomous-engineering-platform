@@ -135,7 +135,9 @@ app.include_router(agent_planning_router, prefix="/api")
 app.include_router(ai_codegen_router, prefix="/api")
 app.include_router(ai_feedback_router, prefix="/api")
 app.include_router(navi_router)  # STEP K: NAVI chat with agent orchestrator
-app.include_router(navi_analyze_router)  # Phase 4.2: NAVI analyze problems with task grounding
+app.include_router(
+    navi_analyze_router
+)  # Phase 4.2: NAVI analyze problems with task grounding
 app.include_router(navi_search_router)  # Step 3: NAVI RAG Search
 app.include_router(navi_brief_router)  # Step 4: NAVI Task Brief (org-aware context)
 app.include_router(

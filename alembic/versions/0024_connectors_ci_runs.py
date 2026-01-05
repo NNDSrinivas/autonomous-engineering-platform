@@ -23,7 +23,7 @@ def upgrade():
     op.execute("DROP INDEX IF EXISTS ix_connectors_workspace_user")
     op.execute("DROP INDEX IF EXISTS ix_connectors_workspace_root")
     op.execute("DROP INDEX IF EXISTS ix_connectors_user_id")
-    
+
     op.create_table(
         "connectors",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -46,7 +46,9 @@ def upgrade():
         ),
     )
     op.create_index("ix_connectors_provider", "connectors", ["provider"])
-    op.create_index("ix_connectors_workspace_user", "connectors", ["workspace_root", "user_id"])
+    op.create_index(
+        "ix_connectors_workspace_user", "connectors", ["workspace_root", "user_id"]
+    )
 
     op.create_table(
         "ci_runs",

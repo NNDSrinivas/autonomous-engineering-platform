@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 import logging
 
-from ...core.security import get_current_user
+from ...api.deps import get_current_user
 from ...models.user import User
 
 logger = logging.getLogger(__name__)

@@ -39,8 +39,17 @@ export interface IntentResponse {
 /**
  * Fallback handler for unknown or ambiguous intents
  */
-export function getFallbackIntent(message: string): IntentResponse {
+export function getFallbackIntent(message?: string): IntentResponse {
   // Simple heuristics for fallback - never let "hi" break anything
+  if (!message) {
+    return {
+      kind: IntentKind.GENERAL_CHAT,
+      confidence: 0.8,
+      reasoning: 'No message provided, defaulting to general chat',
+      fallbackApplied: true
+    };
+  }
+  
   const lowerMessage = message.toLowerCase().trim();
   
   if (lowerMessage.includes('fix') || lowerMessage.includes('error') || lowerMessage.includes('problem')) {

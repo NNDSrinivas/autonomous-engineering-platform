@@ -195,7 +195,7 @@
     "@types/vscode": "^1.85.0",
     "cors": "^2.8.5",
     "eslint": "^9.0.0",
-    "express": "^4.21.2",
+    "express": "^4.22.1",
     "typescript": "^5.4.0"
   }
 }

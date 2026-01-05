@@ -38,7 +38,7 @@ class ToolExecutor(Protocol):
 class RealToolExecutor(ToolExecutor):
     """
     Production tool executor that integrates with the actual NAVI tool system.
-    
+
     This executor bridges the orchestrator with the real tool implementations
     (file operations, command execution, etc.)
     """
@@ -52,7 +52,7 @@ class RealToolExecutor(ToolExecutor):
         *args,  # Handle both positional and keyword arguments
         intent: Optional[NaviIntent] = None,
         context: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs,
     ) -> StepResult:
         """Execute a planned step using real NAVI tools."""
         try:
@@ -64,28 +64,28 @@ class RealToolExecutor(ToolExecutor):
                     intent = intent or intent_arg
                     context = context or context_arg
                 elif len(args) >= 2:
-                    workspace_root, context_arg = args[0], args[1]  
+                    workspace_root, context_arg = args[0], args[1]
                     context = context or context_arg
                 elif len(args) >= 1:
                     workspace_root = args[0]
-                    
+
                 # Ensure context has workspace_root if provided
                 if context is None:
                     context = {}
-                if 'workspace_root' not in context and 'workspace_root' in locals():
-                    context['workspace_root'] = workspace_root
-            
+                if "workspace_root" not in context and "workspace_root" in locals():
+                    context["workspace_root"] = workspace_root
+
             # Default context if not provided
             if context is None:
                 context = {}
-            
+
             logger.info(f"[RealToolExecutor] Executing step {step.id}: {step.tool}")
-            
+
             # Extract user context
             user_id = context.get("user_id", "default_user")
             workspace = context.get("workspace", {})
             attachments = context.get("attachments", [])
-            
+
             # Execute the actual tool
             tool_result = await execute_tool(
                 user_id=user_id,
@@ -95,21 +95,23 @@ class RealToolExecutor(ToolExecutor):
                 attachments=attachments,
                 workspace=workspace,
             )
-            
+
             # Check if tool execution was successful
-            success = tool_result.get("success", True)  # Default to True if not specified
-            
+            success = tool_result.get(
+                "success", True
+            )  # Default to True if not specified
+
             # Some tools don't have explicit success field, check for error
             if "error" in tool_result and tool_result["error"]:
                 success = False
-                
+
             return StepResult(
                 step_id=step.id,
                 ok=success,
                 output=tool_result,
                 error=tool_result.get("error"),
             )
-            
+
         except Exception as e:
             logger.error(f"[RealToolExecutor] Step {step.id} failed: {e}")
             return StepResult(

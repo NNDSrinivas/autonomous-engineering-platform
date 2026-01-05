@@ -37,7 +37,7 @@ class ApplyResponse(BaseModel):
 async def handle_apply_changes(request: ApplyRequest) -> ApplyResponse:
     """
     Phase 3.4 - Apply changes with full validation pipeline.
-    
+
     This is the production implementation that the VS Code extension calls.
     """
     try:
@@ -46,84 +46,83 @@ async def handle_apply_changes(request: ApplyRequest) -> ApplyResponse:
         for change_data in request.codeChanges:
             # Convert dict to CodeChange (simplified - implement proper conversion)
             code_changes.append(change_data)
-        
+
         # Initialize Phase 3.4 validation pipeline
         validator = ValidationPipeline(repo_root=request.repoRoot)
-        
+
         # Run validation
         validation_result = validator.validate(code_changes)
-        
+
         validation_dict = {
-            'status': validation_result.status.value,
-            'issues': [{
-                'validator': issue.validator,
-                'file_path': getattr(issue, 'file_path', None),
-                'line_number': getattr(issue, 'line_number', None), 
-                'message': issue.message
-            } for issue in validation_result.issues],
-            'canProceed': validation_result.status == ValidationStatus.PASSED
+            "status": validation_result.status.value,
+            "issues": [
+                {
+                    "validator": issue.validator,
+                    "file_path": getattr(issue, "file_path", None),
+                    "line_number": getattr(issue, "line_number", None),
+                    "message": issue.message,
+                }
+                for issue in validation_result.issues
+            ],
+            "canProceed": validation_result.status == ValidationStatus.PASSED,
         }
-        
+
         # If validation failed, return only validation result
-        if not validation_dict['canProceed']:
-            return ApplyResponse(
-                validationResult=validation_dict
-            )
-        
+        if not validation_dict["canProceed"]:
+            return ApplyResponse(validationResult=validation_dict)
+
         # Validation passed - apply changes
         applied_files = []
         success_count = 0
-        
+
         for change in code_changes:
             try:
                 # Apply the change (implement actual file operations)
                 # This is where you'd integrate with file system operations
-                
-                applied_files.append({
-                    'file_path': change.get('file_path', ''),
-                    'operation': change.get('change_type', 'modify'),
-                    'success': True
-                })
+
+                applied_files.append(
+                    {
+                        "file_path": change.get("file_path", ""),
+                        "operation": change.get("change_type", "modify"),
+                        "success": True,
+                    }
+                )
                 success_count += 1
-                
+
             except Exception as e:
-                applied_files.append({
-                    'file_path': change.get('file_path', ''),
-                    'operation': change.get('change_type', 'modify'), 
-                    'success': False,
-                    'error': str(e)
-                })
-        
+                applied_files.append(
+                    {
+                        "file_path": change.get("file_path", ""),
+                        "operation": change.get("change_type", "modify"),
+                        "success": False,
+                        "error": str(e),
+                    }
+                )
+
         overall_success = success_count == len(code_changes)
-        
+
         apply_result = {
-            'success': overall_success,
-            'appliedFiles': applied_files,
-            'summary': {
-                'totalFiles': len(code_changes),
-                'successfulFiles': success_count,
-                'failedFiles': len(code_changes) - success_count,
-                'rollbackAvailable': overall_success  # Simplified
+            "success": overall_success,
+            "appliedFiles": applied_files,
+            "summary": {
+                "totalFiles": len(code_changes),
+                "successfulFiles": success_count,
+                "failedFiles": len(code_changes) - success_count,
+                "rollbackAvailable": overall_success,  # Simplified
             },
-            'rollbackAvailable': overall_success
+            "rollbackAvailable": overall_success,
         }
-        
-        return ApplyResponse(
-            validationResult=validation_dict,
-            applyResult=apply_result
-        )
-        
+
+        return ApplyResponse(validationResult=validation_dict, applyResult=apply_result)
+
     except Exception as e:
         # System error - return validation failure
         validation_dict = {
-            'status': 'FAILED',
-            'issues': [{
-                'validator': 'ApplyEndpoint',
-                'message': f'System error: {str(e)}'
-            }],
-            'canProceed': False
+            "status": "FAILED",
+            "issues": [
+                {"validator": "ApplyEndpoint", "message": f"System error: {str(e)}"}
+            ],
+            "canProceed": False,
         }
-        
-        return ApplyResponse(
-            validationResult=validation_dict
-        )
+
+        return ApplyResponse(validationResult=validation_dict)

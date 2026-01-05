@@ -22,13 +22,18 @@ logger = logging.getLogger(__name__)
 def _token_from_env() -> str:
     token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN") or ""
     if not token:
-        raise HTTPException(status_code=500, detail="GITHUB_TOKEN (or GH_TOKEN) is required or configure a GitHub connector.")
+        raise HTTPException(
+            status_code=500,
+            detail="GITHUB_TOKEN (or GH_TOKEN) is required or configure a GitHub connector.",
+        )
     return token
 
 
 class CITrigger(BaseModel):
     repo_full_name: str = Field(..., description="owner/repo")
-    workflow: str = Field(..., description="workflow file name (e.g., ci.yml) or workflow id")
+    workflow: str = Field(
+        ..., description="workflow file name (e.g., ci.yml) or workflow id"
+    )
     ref: str = Field(..., description="branch/tag to run")
     inputs: Dict[str, Any] = Field(default_factory=dict)
     connector_name: Optional[str] = Field(None, description="Connector name (default)")
@@ -62,7 +67,9 @@ def _resolve_token_and_base(
             db, user_id=user_id, provider="github", name=connector_name
         )
         if conn:
-            token = conn.get("secrets", {}).get("token") or conn.get("secrets", {}).get("access_token")
+            token = conn.get("secrets", {}).get("token") or conn.get("secrets", {}).get(
+                "access_token"
+            )
             base_url = conn.get("config", {}).get("base_url", base_url)
 
     if not token:
@@ -85,12 +92,18 @@ async def _client(base_url: str, token: str):
 
 
 @router.post("/dispatch")
-async def dispatch(req: CITrigger, db: Session = Depends(get_db), user_id: str = Depends(_resolve_user_id)):
+async def dispatch(
+    req: CITrigger,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_resolve_user_id),
+):
     """
     Trigger a GitHub Actions workflow dispatch and return the latest run for that ref/workflow.
     """
     try:
-        resolved = _resolve_token_and_base(db, user_id=user_id, connector_name=req.connector_name)
+        resolved = _resolve_token_and_base(
+            db, user_id=user_id, connector_name=req.connector_name
+        )
         async with await _client(resolved["base_url"], resolved["token"]) as client:
             resp = await client.post(
                 f"/repos/{req.repo_full_name}/actions/workflows/{req.workflow}/dispatches",
@@ -144,12 +157,18 @@ async def dispatch(req: CITrigger, db: Session = Depends(get_db), user_id: str =
 
 
 @router.post("/status")
-async def status(req: CIStatus, db: Session = Depends(get_db), user_id: str = Depends(_resolve_user_id)):
+async def status(
+    req: CIStatus,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_resolve_user_id),
+):
     """
     Get status of a GitHub Actions run by run_id.
     """
     try:
-        resolved = _resolve_token_and_base(db, user_id=user_id, connector_name=req.connector_name)
+        resolved = _resolve_token_and_base(
+            db, user_id=user_id, connector_name=req.connector_name
+        )
         async with await _client(resolved["base_url"], resolved["token"]) as client:
             resp = await client.get(
                 f"/repos/{req.repo_full_name}/actions/runs/{req.run_id}"

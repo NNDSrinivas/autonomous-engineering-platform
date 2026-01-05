@@ -2,11 +2,11 @@
 Phase 4.9 — Autonomous Planning & Long-Horizon Execution
 
 This module enables NAVI to graduate from 'smart executor' to a **true engineering OS**
-with initiative-level autonomy, multi-step plans, pause/resume capabilities, and 
+with initiative-level autonomy, multi-step plans, pause/resume capabilities, and
 org-scale execution.
 
 Key Components:
-- InitiativeStore: Durable state management (weeks, not minutes) 
+- InitiativeStore: Durable state management (weeks, not minutes)
 - TaskDecomposer: Smart goal → executable steps conversion
 - PlanGraph: DAG execution with dependency resolution
 - ExecutionScheduler: Orchestrates task execution with human collaboration
@@ -18,80 +18,79 @@ This transforms NAVI into: Tech Lead + TPM + Staff Engineer combined.
 """
 
 # Core components for Phase 4.9
-from .initiative_store import InitiativeStore, Initiative, InitiativeStatus, InitiativeModel
+from .initiative_store import (
+    InitiativeStore,
+    Initiative,
+    InitiativeStatus,
+    InitiativeModel,
+)
 from .task_decomposer import (
-    TaskDecomposer, 
-    DecomposedTask, 
+    TaskDecomposer,
+    DecomposedTask,
     DecompositionResult,
     TaskPriority,
-    TaskType
+    TaskType,
 )
 from .plan_graph import PlanGraph, TaskNode, TaskStatus
 from .execution_scheduler import (
-    ExecutionScheduler, 
-    ExecutionContext, 
+    ExecutionScheduler,
+    ExecutionContext,
     ExecutionMode,
     TaskExecutor,
     AnalysisTaskExecutor,
-    CoordinationTaskExecutor
+    CoordinationTaskExecutor,
 )
 from .checkpoint_engine import (
-    CheckpointEngine, 
-    CheckpointType, 
+    CheckpointEngine,
+    CheckpointType,
     CheckpointModel,
-    CheckpointMetadata
+    CheckpointMetadata,
 )
 from .adaptive_replanner import (
-    AdaptiveReplanner, 
+    AdaptiveReplanner,
     ReplanTrigger,
     ReplanContext,
     ReplanResult,
-    ReplanAnalyzer
+    ReplanAnalyzer,
 )
 from .long_horizon_orchestrator import (
-    LongHorizonOrchestrator, 
+    LongHorizonOrchestrator,
     OrchestrationMode,
-    InitiativeConfig
+    InitiativeConfig,
 )
 
 __all__ = [
     # Main orchestrator
     "LongHorizonOrchestrator",
-    "OrchestrationMode", 
+    "OrchestrationMode",
     "InitiativeConfig",
-    
     # Initiative management
     "InitiativeStore",
-    "Initiative", 
+    "Initiative",
     "InitiativeStatus",
     "InitiativeModel",
-    
     # Task planning
     "TaskDecomposer",
     "DecomposedTask",
     "DecompositionResult",
     "TaskPriority",
     "TaskType",
-    
     # Execution graph
     "PlanGraph",
-    "TaskNode", 
+    "TaskNode",
     "TaskStatus",
-    
     # Execution control
     "ExecutionScheduler",
     "ExecutionContext",
     "ExecutionMode",
     "TaskExecutor",
-    "AnalysisTaskExecutor", 
+    "AnalysisTaskExecutor",
     "CoordinationTaskExecutor",
-    
     # State persistence
-    "CheckpointEngine", 
+    "CheckpointEngine",
     "CheckpointType",
     "CheckpointModel",
     "CheckpointMetadata",
-    
     # Adaptive planning
     "AdaptiveReplanner",
     "ReplanTrigger",

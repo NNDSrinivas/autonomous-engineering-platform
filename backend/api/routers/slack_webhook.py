@@ -69,7 +69,9 @@ async def ingest(
             if connector:
                 org_id = (connector.get("config") or {}).get("org_id")
     if not org_id:
-        raise HTTPException(status_code=404, detail="Org mapping not found for Slack team")
+        raise HTTPException(
+            status_code=404, detail="Org mapping not found for Slack team"
+        )
 
     # Persist message/threads into memory graph for retrieval
     if event_type in ("message", "app_mention"):

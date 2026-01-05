@@ -7,6 +7,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class GitService:
     def __init__(self, repo_path: str):
         self.repo_path = Path(repo_path)
@@ -30,10 +31,12 @@ class GitService:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=30
+                timeout=30,
             )
             if check_errors and result.returncode != 0:
-                logger.error(f"Git command failed: {' '.join(cmd)}, stderr: {result.stderr}")
+                logger.error(
+                    f"Git command failed: {' '.join(cmd)}, stderr: {result.stderr}"
+                )
                 raise RuntimeError(f"Git command failed: {result.stderr}")
             return result.stdout
         except subprocess.TimeoutExpired:
@@ -44,115 +47,139 @@ class GitService:
         Check whether the repository has at least one commit (HEAD exists).
         """
         try:
-            output = self._run(["git", "rev-parse", "--verify", "HEAD"], check_errors=False)
+            output = self._run(
+                ["git", "rev-parse", "--verify", "HEAD"], check_errors=False
+            )
             return bool(output.strip())
         except Exception:
             return False
 
-    def execute_safe_command(self, command: List[str], description: str = "") -> Dict[str, Any]:
+    def execute_safe_command(
+        self, command: List[str], description: str = ""
+    ) -> Dict[str, Any]:
         """Execute a git command with safety checks"""
         try:
             # Safety check - only allow safe git commands
             if not command or command[0] != "git":
                 return {"success": False, "error": "Not a git command"}
-            
+
             # Whitelist of safe git commands
             safe_commands = {
-                "status", "log", "diff", "show", "branch", "remote", 
-                "add", "commit", "push", "pull", "fetch", "checkout",
-                "merge", "rebase", "stash", "reset", "clean"
+                "status",
+                "log",
+                "diff",
+                "show",
+                "branch",
+                "remote",
+                "add",
+                "commit",
+                "push",
+                "pull",
+                "fetch",
+                "checkout",
+                "merge",
+                "rebase",
+                "stash",
+                "reset",
+                "clean",
             }
-            
+
             if len(command) < 2 or command[1] not in safe_commands:
-                return {"success": False, "error": f"Command '{command[1]}' not allowed"}
-            
+                return {
+                    "success": False,
+                    "error": f"Command '{command[1]}' not allowed",
+                }
+
             # Block dangerous operations
             dangerous_patterns = ["--force", "-f", "--hard", "rm", "clean -fd"]
             command_str = " ".join(command)
             for pattern in dangerous_patterns:
                 if pattern in command_str.lower():
-                    return {"success": False, "error": f"Dangerous operation blocked: {pattern}"}
-            
+                    return {
+                        "success": False,
+                        "error": f"Dangerous operation blocked: {pattern}",
+                    }
+
             # Execute the command
             logger.info(f"[GIT EXEC] Running: {' '.join(command)}")
             output = self._run(command)
-            
+
             return {
                 "success": True,
                 "output": output,
                 "command": " ".join(command),
-                "description": description or f"Execute {command[1]}"
+                "description": description or f"Execute {command[1]}",
             }
-            
+
         except subprocess.CalledProcessError as e:
             return {
                 "success": False,
                 "error": f"Command failed: {e.stderr or e.stdout}",
-                "exit_code": e.returncode
+                "exit_code": e.returncode,
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     def create_file(self, filepath: str, content: str) -> Dict[str, Any]:
         """Create a new file with content"""
         try:
             full_path = os.path.join(self.repo_root, filepath)
-            
+
             # Create directory if needed
             dir_path = os.path.dirname(full_path)
             if dir_path and not os.path.exists(dir_path):
                 os.makedirs(dir_path, exist_ok=True)
-            
+
             # Create the file
-            with open(full_path, 'w', encoding='utf-8') as f:
+            with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            
+
             return {
                 "success": True,
                 "message": f"Created file: {filepath}",
-                "path": filepath
+                "path": filepath,
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     def edit_file(self, filepath: str, new_content: str) -> Dict[str, Any]:
         """Edit an existing file"""
         try:
             full_path = os.path.join(self.repo_root, filepath)
-            
+
             # Backup original content
             backup_content = ""
             if os.path.exists(full_path):
-                with open(full_path, 'r', encoding='utf-8') as f:
+                with open(full_path, "r", encoding="utf-8") as f:
                     backup_content = f.read()
-            
+
             # Write new content
-            with open(full_path, 'w', encoding='utf-8') as f:
+            with open(full_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
-            
+
             return {
                 "success": True,
                 "message": f"Modified file: {filepath}",
                 "path": filepath,
-                "backup": backup_content
+                "backup": backup_content,
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     def delete_file(self, filepath: str) -> Dict[str, Any]:
         """Delete a file"""
         try:
             full_path = os.path.join(self.repo_root, filepath)
-            
+
             if not os.path.exists(full_path):
                 return {"success": False, "error": f"File does not exist: {filepath}"}
-            
+
             os.remove(full_path)
-            
+
             return {
                 "success": True,
                 "message": f"Deleted file: {filepath}",
-                "path": filepath
+                "path": filepath,
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -166,22 +193,24 @@ class GitService:
             for line in output.splitlines():
                 if len(line) < 3:
                     continue
-                    
+
                 status = line[:2]
                 path = line[3:].strip()
-                
+
                 # Skip if path is empty or invalid
                 if not path:
                     continue
-                    
-                files.append({
-                    "path": path,
-                    "staged": status[0] not in [' ', '?'],
-                    "unstaged": status[1] not in [' ', '?'],
-                    "status": status,
-                    "is_new": status[0] == 'A' or status == '??',
-                    "is_deleted": status[0] == 'D' or status[1] == 'D'
-                })
+
+                files.append(
+                    {
+                        "path": path,
+                        "staged": status[0] not in [" ", "?"],
+                        "unstaged": status[1] not in [" ", "?"],
+                        "status": status,
+                        "is_new": status[0] == "A" or status == "??",
+                        "is_deleted": status[0] == "D" or status[1] == "D",
+                    }
+                )
             return files
         except Exception as e:
             logger.error(f"Failed to get git status: {e}")

@@ -9,8 +9,8 @@ from .safety_types import SafetyStatus, RollbackTrigger
 
 __all__ = [
     "SnapshotEngine",
-    "Snapshot", 
+    "Snapshot",
     "RollbackEngine",
     "SafetyStatus",
-    "RollbackTrigger"
+    "RollbackTrigger",
 ]

@@ -23,17 +23,17 @@ from .types import (
     FixPlan,
     DiffProposal,
     VerificationResult,
-    ExecutionStatus
+    ExecutionStatus,
 )
 
 __all__ = [
     "ExecutionEngine",
-    "Executor", 
+    "Executor",
     "ExecutionResult",
     "FixProblemsExecutor",
     "AnalysisResult",
-    "FixPlan", 
+    "FixPlan",
     "DiffProposal",
     "VerificationResult",
-    "ExecutionStatus"
+    "ExecutionStatus",
 ]

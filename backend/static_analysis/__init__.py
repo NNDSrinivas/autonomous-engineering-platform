@@ -19,22 +19,22 @@ from .incremental_analyzer import (
     CodeHasher,
     AnalysisType,
     Severity,
-    ChangeType
+    ChangeType,
 )
 
 __all__ = [
-    'IncrementalStaticAnalyzer',
-    'IncrementalAnalysisService',
-    'CodeChange',
-    'AnalysisIssue',
-    'AnalysisResult',
-    'FunctionSignature',
-    'DependencyInfo',
-    'PythonAnalyzer',
-    'JavaScriptAnalyzer',
-    'ChangeDetector',
-    'CodeHasher',
-    'AnalysisType',
-    'Severity',
-    'ChangeType'
+    "IncrementalStaticAnalyzer",
+    "IncrementalAnalysisService",
+    "CodeChange",
+    "AnalysisIssue",
+    "AnalysisResult",
+    "FunctionSignature",
+    "DependencyInfo",
+    "PythonAnalyzer",
+    "JavaScriptAnalyzer",
+    "ChangeDetector",
+    "CodeHasher",
+    "AnalysisType",
+    "Severity",
+    "ChangeType",
 ]

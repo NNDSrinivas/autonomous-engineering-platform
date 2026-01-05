@@ -121,7 +121,9 @@ class ConfluenceSyncResponse(BaseModel):
 
 
 class ConfluenceSubscribeRequest(BaseModel):
-    space_key: Optional[str] = Field(None, description="Optional space key to scope webhooks")
+    space_key: Optional[str] = Field(
+        None, description="Optional space key to scope webhooks"
+    )
 
 
 class ConfluenceSubscribeResponse(BaseModel):
@@ -184,7 +186,9 @@ class MeetSubscribeResponse(BaseModel):
 class MeetSyncRequest(BaseModel):
     calendar_id: str = Field("primary", description="Google Calendar ID")
     days_back: int = Field(7, ge=1, le=90)
-    include_transcripts: bool = Field(False, description="Attempt to ingest Meet transcripts")
+    include_transcripts: bool = Field(
+        False, description="Attempt to ingest Meet transcripts"
+    )
 
 
 class MeetSyncResponse(BaseModel):

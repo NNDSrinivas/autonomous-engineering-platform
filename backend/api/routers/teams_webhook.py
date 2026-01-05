@@ -106,9 +106,14 @@ async def ingest(
                 pass
 
     if not text and connector and message_id and team_id and channel:
-        token = (connector.get("secrets") or {}).get("access_token") or (connector.get("secrets") or {}).get("token")
+        token = (connector.get("secrets") or {}).get("access_token") or (
+            connector.get("secrets") or {}
+        ).get("token")
         if token:
-            tc = TeamsClient(access_token=token, tenant_id=(connector.get("config") or {}).get("tenant_id"))
+            tc = TeamsClient(
+                access_token=token,
+                tenant_id=(connector.get("config") or {}).get("tenant_id"),
+            )
             msg = tc.get_channel_message(team_id, channel, message_id)
             body = msg.get("body", {}) or {}
             text = body.get("content") or msg.get("summary") or ""
@@ -159,7 +164,5 @@ async def ingest(
     for match in re.findall(r"\b[A-Z][A-Z0-9]+-\d+\b", text):
         invalidate_context_packet_cache(match, org_id)
 
-    logger.info(
-        "teams_webhook.event", extra={"org": org_id, "channel": channel}
-    )
+    logger.info("teams_webhook.event", extra={"org": org_id, "channel": channel})
     return {"status": "ok"}

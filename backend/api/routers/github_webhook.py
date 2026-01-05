@@ -113,7 +113,9 @@ async def ingest(
                 )
                 db.add(node)
                 db.commit()
-            invalidate_context_packet_cache(pr.get("title") or pr.get("html_url"), org_id)
+            invalidate_context_packet_cache(
+                pr.get("title") or pr.get("html_url"), org_id
+            )
         elif event == "status":
             # Store status as memory nodes for packet hydration
             commit = payload.get("commit") or {}

@@ -25,12 +25,16 @@ class GoogleDriveClient:
         self.expires_at: Optional[datetime] = None
         if expires_at:
             try:
-                self.expires_at = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+                self.expires_at = datetime.fromisoformat(
+                    str(expires_at).replace("Z", "+00:00")
+                )
             except Exception:
                 self.expires_at = None
 
         if not self.access_token and not self.refresh_token:
-            raise RuntimeError("GoogleDriveClient requires access_token or refresh_token")
+            raise RuntimeError(
+                "GoogleDriveClient requires access_token or refresh_token"
+            )
 
     def _token_expired(self) -> bool:
         if not self.expires_at:
@@ -39,7 +43,9 @@ class GoogleDriveClient:
 
     async def _refresh_access_token(self) -> str:
         if not self.refresh_token or not self.client_id or not self.client_secret:
-            raise RuntimeError("Google token refresh requires client_id, client_secret, refresh_token")
+            raise RuntimeError(
+                "Google token refresh requires client_id, client_secret, refresh_token"
+            )
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
@@ -53,7 +59,9 @@ class GoogleDriveClient:
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
         if resp.status_code >= 400:
-            raise RuntimeError(f"Google refresh token failed: {resp.status_code} {resp.text[:200]}")
+            raise RuntimeError(
+                f"Google refresh token failed: {resp.status_code} {resp.text[:200]}"
+            )
 
         data = resp.json()
         token = data.get("access_token")
@@ -63,7 +71,9 @@ class GoogleDriveClient:
         expires_in = data.get("expires_in")
         if expires_in:
             try:
-                self.expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+                self.expires_at = datetime.now(timezone.utc) + timedelta(
+                    seconds=int(expires_in)
+                )
             except Exception:
                 self.expires_at = None
         return token
@@ -94,7 +104,9 @@ class GoogleDriveClient:
                 headers={"Authorization": f"Bearer {token}"},
             )
         if resp.status_code >= 400:
-            raise RuntimeError(f"Google Drive list failed: {resp.status_code} {resp.text[:200]}")
+            raise RuntimeError(
+                f"Google Drive list failed: {resp.status_code} {resp.text[:200]}"
+            )
         data = resp.json()
         return data.get("files", []) or []
 

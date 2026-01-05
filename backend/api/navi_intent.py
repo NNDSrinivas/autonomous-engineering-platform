@@ -43,15 +43,21 @@ async def get_intent_docs():
         "system": "NAVI Intent Classification",
         "description": "Classifies user messages into actionable intents",
         "supported_intents": [
-            "greeting", "jira_list", "jira_ticket", "jira_priority",
-            "code", "workspace", "general", "other"
+            "greeting",
+            "jira_list",
+            "jira_ticket",
+            "jira_priority",
+            "code",
+            "workspace",
+            "general",
+            "other",
         ],
         "usage": {
             "method": "POST",
             "endpoint": "/api/navi/intent/classify",
-            "body": {"message": "your message", "user_id": "optional"}
+            "body": {"message": "your message", "user_id": "optional"},
         },
-        "status": "ready"
+        "status": "ready",
     }
 
 

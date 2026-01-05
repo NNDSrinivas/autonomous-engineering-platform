@@ -8,60 +8,62 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class CodeCompanionAdapter:
     """
     Adapter class to bridge code-companion functionality with AEP systems
     """
-    
+
     @staticmethod
-    def adapt_supabase_to_fastapi_response(supabase_response: Dict[str, Any]) -> Dict[str, Any]:
+    def adapt_supabase_to_fastapi_response(
+        supabase_response: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """
         Adapt Supabase function responses to FastAPI format
         """
-        if 'error' in supabase_response:
+        if "error" in supabase_response:
             return {
                 "success": False,
-                "error": supabase_response['error'],
-                "details": supabase_response.get('details', '')
+                "error": supabase_response["error"],
+                "details": supabase_response.get("details", ""),
             }
-        
+
         return {
             "success": True,
             "data": supabase_response,
-            "timestamp": supabase_response.get('timestamp')
+            "timestamp": supabase_response.get("timestamp"),
         }
-    
+
     @staticmethod
     def convert_memory_types(code_companion_type: str) -> str:
         """
         Convert code-companion memory types to AEP memory types
         """
         type_mapping = {
-            'user_preference': 'USER_PREFERENCE',
-            'task_context': 'TASK_CONTEXT',
-            'code_snippet': 'CODE_SNIPPET',
-            'meeting_note': 'MEETING_NOTE',
-            'conversation': 'CONVERSATION',
-            'documentation': 'DOCUMENTATION',
-            'slack_message': 'SLACK_MESSAGE',
-            'jira_ticket': 'JIRA_TICKET'
+            "user_preference": "USER_PREFERENCE",
+            "task_context": "TASK_CONTEXT",
+            "code_snippet": "CODE_SNIPPET",
+            "meeting_note": "MEETING_NOTE",
+            "conversation": "CONVERSATION",
+            "documentation": "DOCUMENTATION",
+            "slack_message": "SLACK_MESSAGE",
+            "jira_ticket": "JIRA_TICKET",
         }
-        return type_mapping.get(code_companion_type, 'UNKNOWN')
-    
+        return type_mapping.get(code_companion_type, "UNKNOWN")
+
     @staticmethod
-    def format_chat_message(message: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def format_chat_message(
+        message: str, context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
         Format chat messages for the enhanced NAVI system
         """
         return {
             "content": message,
             "context": context or {},
-            "metadata": {
-                "source": "code-companion-migration",
-                "enhanced": True
-            }
+            "metadata": {"source": "code-companion-migration", "enhanced": True},
         }
-    
+
     @staticmethod
     def extract_jira_task_info(task_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -82,14 +84,15 @@ class CodeCompanionAdapter:
             "updated": task_data.get("updated"),
             "due_date": task_data.get("dueDate"),
             "story_points": task_data.get("storyPoints"),
-            "components": task_data.get("components", [])
+            "components": task_data.get("components", []),
         }
+
 
 class UIComponentMapper:
     """
     Maps code-companion UI components to AEP component structure
     """
-    
+
     @staticmethod
     def map_morning_briefing_props(props: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -101,9 +104,9 @@ class UIComponentMapper:
             "onTaskClick": props.get("onTaskClick"),
             "onDismiss": props.get("onDismiss"),
             "compact": props.get("compact", False),
-            "enhanced": True  # Mark as enhanced version
+            "enhanced": True,  # Mark as enhanced version
         }
-    
+
     @staticmethod
     def map_universal_search_props(props: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -114,9 +117,9 @@ class UIComponentMapper:
             "placeholder": props.get("placeholder", "Search across all platforms..."),
             "sources": props.get("sources", ["jira", "confluence", "slack", "github"]),
             "maxResults": props.get("maxResults", 50),
-            "enhanced": True
+            "enhanced": True,
         }
-    
+
     @staticmethod
     def map_workflow_props(props: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -129,33 +132,36 @@ class UIComponentMapper:
             "onStepComplete": props.get("onStepComplete"),
             "onWorkflowComplete": props.get("onWorkflowComplete"),
             "approvalRequired": props.get("approvalRequired", True),
-            "enhanced": True
+            "enhanced": True,
         }
+
 
 class IntegrationHelper:
     """
     Helper functions for integration tasks
     """
-    
+
     @staticmethod
-    def merge_configurations(aep_config: Dict[str, Any], cc_config: Dict[str, Any]) -> Dict[str, Any]:
+    def merge_configurations(
+        aep_config: Dict[str, Any], cc_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Merge AEP and code-companion configurations
         """
         merged = aep_config.copy()
-        
+
         # Add code-companion specific configurations
         if "supabase" in cc_config:
             merged["integrations"]["supabase"] = cc_config["supabase"]
-        
+
         if "ui_components" in cc_config:
             merged["ui"]["enhanced_components"] = cc_config["ui_components"]
-        
+
         if "memory" in cc_config:
             merged["memory"]["enhanced_features"] = cc_config["memory"]
-        
+
         return merged
-    
+
     @staticmethod
     def validate_migration_compatibility(component_name: str, version: str) -> bool:
         """
@@ -167,18 +173,21 @@ class IntegrationHelper:
             "TaskCorrelationPanel": ["1.0.0"],
             "EndToEndWorkflowPanel": ["1.0.0"],
             "QuickActionsButton": ["1.0.0", "1.1.0"],
-            "ApprovalDialog": ["1.0.0"]
+            "ApprovalDialog": ["1.0.0"],
         }
-        
-        return component_name in compatible_components and version in compatible_components[component_name]
-    
+
+        return (
+            component_name in compatible_components
+            and version in compatible_components[component_name]
+        )
+
     @staticmethod
     def log_migration_status(component: str, status: str, details: str = ""):
         """
         Log migration status for tracking
         """
         logger.info(f"Migration [{component}]: {status} - {details}")
-    
+
     @staticmethod
     def create_migration_report() -> Dict[str, Any]:
         """
@@ -190,32 +199,22 @@ class IntegrationHelper:
             "target": "autonomous-engineering-platform",
             "components_migrated": [
                 "MorningBriefing",
-                "UniversalSearch", 
+                "UniversalSearch",
                 "TaskCorrelationPanel",
                 "EndToEndWorkflowPanel",
                 "QuickActionsButton",
-                "ApprovalDialog"
+                "ApprovalDialog",
             ],
-            "backend_apis_migrated": [
-                "navi-chat-enhanced",
-                "memory-enhanced"
-            ],
-            "hooks_migrated": [
-                "useMemory",
-                "useNaviChat",
-                "useSmartPrompts"
-            ],
+            "backend_apis_migrated": ["navi-chat-enhanced", "memory-enhanced"],
+            "hooks_migrated": ["useMemory", "useNaviChat", "useSmartPrompts"],
             "status": "in-progress",
             "next_steps": [
                 "Update VS Code extension",
                 "Test integration",
-                "Deploy to staging"
-            ]
+                "Deploy to staging",
+            ],
         }
 
+
 # Export commonly used functions
-__all__ = [
-    "CodeCompanionAdapter",
-    "UIComponentMapper", 
-    "IntegrationHelper"
-]
+__all__ = ["CodeCompanionAdapter", "UIComponentMapper", "IntegrationHelper"]

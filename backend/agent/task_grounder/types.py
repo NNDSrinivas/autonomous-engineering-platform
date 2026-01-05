@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 class Diagnostic(BaseModel):
     """Represents a code diagnostic (error/warning)"""
+
     file: str
     message: str
     severity: Literal["error", "warning", "info"]
@@ -22,6 +23,7 @@ class Diagnostic(BaseModel):
 
 class Clarification(BaseModel):
     """Request for user clarification when grounding is ambiguous"""
+
     message: str
     options: List[str]
     context: Dict[str, Any]
@@ -29,6 +31,7 @@ class Clarification(BaseModel):
 
 class GroundedTask(BaseModel):
     """A fully grounded task ready for planner execution"""
+
     intent: Literal["FIX_PROBLEMS", "DEPLOY"]  # Extensible for future intents
     scope: str  # "workspace", "file", "project", etc.
     target: str  # "diagnostics", "tests", "deployment", etc.
@@ -40,6 +43,7 @@ class GroundedTask(BaseModel):
 
 class FixProblemsTask(GroundedTask):
     """Specific grounded task for fixing problems"""
+
     intent: Literal["FIX_PROBLEMS"] = "FIX_PROBLEMS"
     scope: Literal["workspace"] = "workspace"
     target: Literal["diagnostics"] = "diagnostics"
@@ -48,6 +52,7 @@ class FixProblemsTask(GroundedTask):
 
 class DeployTask(GroundedTask):
     """Specific grounded task for deployment"""
+
     intent: Literal["DEPLOY"] = "DEPLOY"
     scope: Literal["repo"] = "repo"
     target: Literal["deployment"] = "deployment"
@@ -56,6 +61,7 @@ class DeployTask(GroundedTask):
 
 class GroundingResult(BaseModel):
     """Result of task grounding attempt"""
+
     type: Literal["ready", "clarification", "rejected"]
     task: Optional[GroundedTask] = None
     clarification: Optional[Clarification] = None

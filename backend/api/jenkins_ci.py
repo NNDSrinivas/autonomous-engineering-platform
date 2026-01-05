@@ -25,7 +25,9 @@ def _resolve_user_id(current_user: Any = Depends(get_current_user)) -> str:  # t
     return str(current_user)
 
 
-def _resolve_connector(db: Session, user_id: str, connector_name: Optional[str]) -> Dict[str, str]:
+def _resolve_connector(
+    db: Session, user_id: str, connector_name: Optional[str]
+) -> Dict[str, str]:
     from os import getenv
 
     base_url = getenv("JENKINS_BASE_URL", "")
@@ -33,7 +35,9 @@ def _resolve_connector(db: Session, user_id: str, connector_name: Optional[str])
     token = getenv("JENKINS_TOKEN", "")
 
     if connector_name and connectors_service.connectors_available(db):
-        conn = connectors_service.get_connector(db, user_id=user_id, provider="jenkins", name=connector_name)
+        conn = connectors_service.get_connector(
+            db, user_id=user_id, provider="jenkins", name=connector_name
+        )
         if conn:
             cfg = conn.get("config", {}) or {}
             secrets = conn.get("secrets", {}) or {}
@@ -42,7 +46,10 @@ def _resolve_connector(db: Session, user_id: str, connector_name: Optional[str])
             token = secrets.get("token") or secrets.get("api_token") or token
 
     if not base_url or not token:
-        raise HTTPException(status_code=500, detail="Configure Jenkins connector or set JENKINS_BASE_URL/JENKINS_TOKEN")
+        raise HTTPException(
+            status_code=500,
+            detail="Configure Jenkins connector or set JENKINS_BASE_URL/JENKINS_TOKEN",
+        )
 
     return {"base_url": base_url.rstrip("/"), "username": username, "token": token}
 
@@ -70,10 +77,18 @@ async def _client(base_url: str, username: str, token: str):
 
 
 @router.post("/dispatch")
-async def dispatch(req: JenkinsDispatch, db: Session = Depends(get_db), user_id: str = Depends(_resolve_user_id)):
-    resolved = _resolve_connector(db, user_id=user_id, connector_name=req.connector_name)
+async def dispatch(
+    req: JenkinsDispatch,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_resolve_user_id),
+):
+    resolved = _resolve_connector(
+        db, user_id=user_id, connector_name=req.connector_name
+    )
     try:
-        async with await _client(resolved["base_url"], resolved["username"], resolved["token"]) as client:
+        async with await _client(
+            resolved["base_url"], resolved["username"], resolved["token"]
+        ) as client:
             endpoint = f"/job/{req.job_path}/buildWithParameters"
             resp = await client.post(endpoint, data=req.parameters or {})
             if resp.status_code not in (200, 201, 202):
@@ -102,10 +117,18 @@ async def dispatch(req: JenkinsDispatch, db: Session = Depends(get_db), user_id:
 
 
 @router.post("/status")
-async def status(req: JenkinsStatus, db: Session = Depends(get_db), user_id: str = Depends(_resolve_user_id)):
-    resolved = _resolve_connector(db, user_id=user_id, connector_name=req.connector_name)
+async def status(
+    req: JenkinsStatus,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_resolve_user_id),
+):
+    resolved = _resolve_connector(
+        db, user_id=user_id, connector_name=req.connector_name
+    )
     try:
-        async with await _client(resolved["base_url"], resolved["username"], resolved["token"]) as client:
+        async with await _client(
+            resolved["base_url"], resolved["username"], resolved["token"]
+        ) as client:
             endpoint = f"/job/{req.job_path}/{req.build_number}/api/json"
             resp = await client.get(endpoint)
             resp.raise_for_status()

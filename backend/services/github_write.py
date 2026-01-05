@@ -124,9 +124,9 @@ class GitHubWriteService:
                     "preview": {
                         "endpoint": f"POST /repos/{repo_full_name}/pulls",
                         "payload": payload,
-                    "description": f"Create PR from {head} to {base}",
+                        "description": f"Create PR from {head} to {base}",
+                    }
                 }
-            }
 
             async with self._client() as client:
                 # Check for existing PR with same head/base

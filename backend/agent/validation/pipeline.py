@@ -3,7 +3,7 @@ ValidationPipeline for NAVI Phase 3.4.
 
 This orchestrator runs all validators in sequence:
 1. ScopeValidator (boundary checks)
-2. SyntaxValidator (parsing validation) 
+2. SyntaxValidator (parsing validation)
 3. SecurityValidator (vulnerability detection)
 4. PolicyValidator (governance enforcement)
 
@@ -40,7 +40,7 @@ class ValidationPipeline:
         Run all validators in sequence. Stop at first failure.
         """
         changes_list = list(changes)
-        
+
         if not changes_list:
             return ValidationResult(
                 status=ValidationStatus.PASSED,

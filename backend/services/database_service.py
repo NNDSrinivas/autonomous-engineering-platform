@@ -1,7 +1,7 @@
 """
 Database Service for Memory Agent
 
-Provides async database operations using SQLAlchemy with the existing 
+Provides async database operations using SQLAlchemy with the existing
 database session management from backend/database/session.py
 """
 
@@ -19,19 +19,21 @@ class DatabaseService:
     Async database service that wraps SQLAlchemy operations
     for use by the Memory Agent and other async components.
     """
-    
+
     def __init__(self):
         """Initialize the database service."""
         pass
-    
-    async def fetch_all(self, query: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
+
+    async def fetch_all(
+        self, query: str, params: Optional[List[Any]] = None
+    ) -> List[Dict[str, Any]]:
         """
         Execute a SELECT query and return all results as a list of dictionaries.
-        
+
         Args:
             query: SQL query string
             params: Query parameters
-            
+
         Returns:
             List of row dictionaries
         """
@@ -45,15 +47,17 @@ class DatabaseService:
             logger.error(f"Query: {query}")
             logger.error(f"Params: {params}")
             raise
-    
-    async def fetch_one(self, query: str, params: Optional[List[Any]] = None) -> Optional[Dict[str, Any]]:
+
+    async def fetch_one(
+        self, query: str, params: Optional[List[Any]] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Execute a SELECT query and return the first result as a dictionary.
-        
+
         Args:
             query: SQL query string
             params: Query parameters
-            
+
         Returns:
             Row dictionary or None if no results
         """
@@ -67,11 +71,11 @@ class DatabaseService:
             logger.error(f"Query: {query}")
             logger.error(f"Params: {params}")
             raise
-    
+
     async def execute(self, query: str, params: Optional[List[Any]] = None) -> None:
         """
         Execute an INSERT, UPDATE, or DELETE query.
-        
+
         Args:
             query: SQL query string
             params: Query parameters
@@ -86,15 +90,15 @@ class DatabaseService:
             logger.error(f"Query: {query}")
             logger.error(f"Params: {params}")
             raise
-    
+
     def _sync_fetch_all(self, query: str, params: List[Any]) -> List[Dict[str, Any]]:
         """
         Synchronous fetch_all implementation.
-        
+
         Args:
             query: SQL query string
             params: Query parameters
-            
+
         Returns:
             List of row dictionaries
         """
@@ -109,15 +113,17 @@ class DatabaseService:
                     row_dict[column] = row[i]
                 rows.append(row_dict)
             return rows
-    
-    def _sync_fetch_one(self, query: str, params: List[Any]) -> Optional[Dict[str, Any]]:
+
+    def _sync_fetch_one(
+        self, query: str, params: List[Any]
+    ) -> Optional[Dict[str, Any]]:
         """
         Synchronous fetch_one implementation.
-        
+
         Args:
             query: SQL query string
             params: Query parameters
-            
+
         Returns:
             Row dictionary or None if no results
         """
@@ -126,18 +132,18 @@ class DatabaseService:
             row = result.fetchone()
             if row is None:
                 return None
-            
+
             # Convert row to dictionary
             columns = result.keys()
             row_dict = {}
             for i, column in enumerate(columns):
                 row_dict[column] = row[i]
             return row_dict
-    
+
     def _sync_execute(self, query: str, params: List[Any]) -> None:
         """
         Synchronous execute implementation.
-        
+
         Args:
             query: SQL query string
             params: Query parameters

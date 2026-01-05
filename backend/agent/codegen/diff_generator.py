@@ -30,22 +30,23 @@ def validate_unified_diff(diff: str) -> bool:
     """Validate that a string is a proper unified diff."""
     if not diff.strip():
         return False
-    
+
     lines = diff.splitlines()
     if not lines:
         return False
-    
+
     # Check for unified diff headers
-    has_from_file = any(line.startswith('---') for line in lines[:10])
-    has_to_file = any(line.startswith('+++') for line in lines[:10])
-    has_hunk_header = any(line.startswith('@@') for line in lines)
-    
+    has_from_file = any(line.startswith("---") for line in lines[:10])
+    has_to_file = any(line.startswith("+++") for line in lines[:10])
+    has_hunk_header = any(line.startswith("@@") for line in lines)
+
     return has_from_file and has_to_file and has_hunk_header
 
 
 # ---------------------------------------------------------------------------
 # Protocols (Model-Agnostic)
 # ---------------------------------------------------------------------------
+
 
 class DiffSynthesisBackend(Protocol):
     """
@@ -78,6 +79,7 @@ class DiffGenerationError(RuntimeError):
 # ---------------------------------------------------------------------------
 # Diff Generator
 # ---------------------------------------------------------------------------
+
 
 class DiffGenerator:
     """
@@ -114,9 +116,7 @@ class DiffGenerator:
         for planned in plan.file_changes:
             ctx = file_contexts.get(planned.path)
             if not ctx:
-                raise DiffGenerationError(
-                    f"Missing FileContext for {planned.path}"
-                )
+                raise DiffGenerationError(f"Missing FileContext for {planned.path}")
 
             diff = self._generate_diff_for_file(
                 planned_change=planned,
@@ -138,9 +138,9 @@ class DiffGenerator:
             changes.append(
                 CodeChange(
                     line_start=0,  # Will be parsed from diff
-                    line_end=0,    # Will be parsed from diff
+                    line_end=0,  # Will be parsed from diff
                     original_code="",  # Will be extracted from diff
-                    new_code="",      # Will be extracted from diff
+                    new_code="",  # Will be extracted from diff
                     change_type="replace",  # Default, can be refined
                     reasoning=planned.reasoning,
                     confidence=0.8,
@@ -177,9 +177,7 @@ class DiffGenerator:
         )
 
         if not diff.strip():
-            raise DiffGenerationError(
-                f"Empty diff generated for {planned_change.path}"
-            )
+            raise DiffGenerationError(f"Empty diff generated for {planned_change.path}")
 
         return diff
 

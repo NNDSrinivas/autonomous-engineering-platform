@@ -271,7 +271,9 @@ def _hydrate_navi_memory(
         title = r.get("title")
         content = r.get("content") or ""
         created_at = r.get("created_at")
-        created_iso = created_at.isoformat() if hasattr(created_at, "isoformat") else None
+        created_iso = (
+            created_at.isoformat() if hasattr(created_at, "isoformat") else None
+        )
 
         if source in {"slack", "teams"}:
             packet.conversations.append(

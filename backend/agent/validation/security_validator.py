@@ -41,16 +41,16 @@ class SecurityValidator:
         (re.compile(r"\beval\s*\("), "Use of eval() is unsafe"),
         (re.compile(r"\bexec\s*\("), "Use of exec() is unsafe"),
         (re.compile(r"\bcompile\s*\("), "Dynamic compile() is unsafe"),
-
         # Python-specific
         (re.compile(r"\bpickle\.loads?\s*\("), "pickle deserialization is unsafe"),
         (re.compile(r"\bos\.system\s*\("), "os.system() is unsafe"),
-        (re.compile(r"\bsubprocess\.Popen\s*\("), "subprocess.Popen may allow injection"),
-
+        (
+            re.compile(r"\bsubprocess\.Popen\s*\("),
+            "subprocess.Popen may allow injection",
+        ),
         # JS / TS
         (re.compile(r"\bnew Function\s*\("), "new Function() is unsafe"),
         (re.compile(r"\bchild_process\.exec\s*\("), "child_process.exec is unsafe"),
-
         # Shell injection
         (re.compile(r"\$\{.*\}"), "Possible shell interpolation"),
     ]
@@ -60,8 +60,10 @@ class SecurityValidator:
         (re.compile(r"AKIA[0-9A-Z]{16}"), "Possible AWS Access Key"),
         (re.compile(r"AIza[0-9A-Za-z\-_]{35}"), "Possible Google API Key"),
         (re.compile(r"sk-[0-9a-zA-Z]{32,}"), "Possible OpenAI API Key"),
-        (re.compile(r"-----BEGIN (RSA|EC|DSA) PRIVATE KEY-----"),
-         "Embedded private key detected"),
+        (
+            re.compile(r"-----BEGIN (RSA|EC|DSA) PRIVATE KEY-----"),
+            "Embedded private key detected",
+        ),
     ]
 
     def __init__(self, *, repo_root: str) -> None:

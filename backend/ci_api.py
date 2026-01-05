@@ -18,8 +18,10 @@ from .core.tenancy import require_tenant
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ci", tags=["ci"])
 
+
 class CIFailureResponse(BaseModel):
     """CI failure information"""
+
     job: str
     step: str
     error_message: str
@@ -29,25 +31,26 @@ class CIFailureResponse(BaseModel):
     failure_type: str
     full_logs: str
 
+
 class CIFailureRequest(BaseModel):
     """Request CI failure analysis"""
+
     project: str
     repo_url: Optional[str]
     ci_provider: str = "github"
 
+
 @router.get("/failures/latest")
 async def get_latest_failure(
-    project: str,
-    repo_url: Optional[str] = None,
-    tenant=Depends(require_tenant)
+    project: str, repo_url: Optional[str] = None, tenant=Depends(require_tenant)
 ) -> Optional[CIFailureResponse]:
     """Get the latest CI failure for a project"""
     try:
         # For now, we'll return a mock failure since we don't have real CI integration
         # In production, this would query the actual CI provider
-        
+
         analyzer = CIFailureAnalyzer()
-        
+
         # Mock CI log for testing
         mock_ci_log = """
         [2024-12-25T10:30:00.000Z] Starting npm install...
@@ -61,15 +64,17 @@ async def get_latest_failure(
         [2024-12-25T10:30:02.000Z] npm ERR! this command with --force, or --legacy-peer-deps
         [2024-12-25T10:30:02.000Z] npm install failed with exit code 1
         """
-        
+
         # Analyze the mock failure
-        failures = analyzer.analyze_ci_failure(mock_ci_log, "build", "install-dependencies")
-        
+        failures = analyzer.analyze_ci_failure(
+            mock_ci_log, "build", "install-dependencies"
+        )
+
         if not failures:
             return None
-            
+
         failure = failures[0]  # Return first failure
-        
+
         return CIFailureResponse(
             job=failure.job,
             step=failure.step,
@@ -78,25 +83,26 @@ async def get_latest_failure(
             file_path=failure.file_path,
             line_number=failure.line_number,
             failure_type=failure.failure_type,
-            full_logs=mock_ci_log
+            full_logs=mock_ci_log,
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to get latest CI failure: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch CI failure data")
+
 
 @router.post("/failures/analyze")
 async def analyze_ci_logs(
     ci_logs: str,
     job_name: str = "build",
     step_name: str = "unknown",
-    tenant=Depends(require_tenant)
+    tenant=Depends(require_tenant),
 ) -> List[CIFailureResponse]:
     """Analyze CI logs and extract failure information"""
     try:
         analyzer = CIFailureAnalyzer()
         failures = analyzer.analyze_ci_failure(ci_logs, job_name, step_name)
-        
+
         return [
             CIFailureResponse(
                 job=failure.job,
@@ -106,11 +112,11 @@ async def analyze_ci_logs(
                 file_path=failure.file_path,
                 line_number=failure.line_number,
                 failure_type=failure.failure_type,
-                full_logs=ci_logs
+                full_logs=ci_logs,
             )
             for failure in failures
         ]
-        
+
     except Exception as e:
         logger.error(f"Failed to analyze CI logs: {e}")
         raise HTTPException(status_code=500, detail="Failed to analyze CI logs")

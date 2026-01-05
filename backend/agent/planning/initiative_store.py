@@ -17,6 +17,7 @@ from backend.core.db import Base
 
 class InitiativeStatus(Enum):
     """Status of an initiative"""
+
     PLANNED = "PLANNED"
     IN_PROGRESS = "IN_PROGRESS"
     PAUSED = "PAUSED"
@@ -28,6 +29,7 @@ class InitiativeStatus(Enum):
 @dataclass
 class Initiative:
     """Represents a long-horizon initiative"""
+
     id: str
     title: str
     goal: str
@@ -41,7 +43,7 @@ class Initiative:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return {
@@ -57,15 +59,17 @@ class Initiative:
             "metadata": self.metadata or {},
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
         }
 
 
 class InitiativeModel(Base):
     """Database model for initiatives"""
-    
+
     __tablename__ = "initiatives"
-    
+
     id = Column(String, primary_key=True)
     org_id = Column(String, nullable=False, index=True)
     title = Column(String, nullable=False)
@@ -77,20 +81,22 @@ class InitiativeModel(Base):
     jira_key = Column(String, nullable=True, index=True)
     initiative_metadata = Column(JSON, default=lambda: {})
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False
+    )
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    
+
     __table_args__ = (
         Index("ix_initiatives_org_status", "org_id", "status"),
         Index("ix_initiatives_owner_status", "owner", "status"),
     )
-    
+
     def to_initiative(self) -> Initiative:
         """Convert to Initiative dataclass"""
         # Access the actual values from database row
         checkpoints_val = self.checkpoints
         metadata_val = self.initiative_metadata
-        
+
         return Initiative(
             id=str(self.id),
             title=str(self.title),
@@ -110,14 +116,14 @@ class InitiativeModel(Base):
 
 class InitiativeStore:
     """Store for managing initiatives with database persistence"""
-    
+
     def __init__(self, db_session):
         self.db = db_session
-    
+
     def save_initiative(self, initiative: Initiative) -> None:
         """Save or update an initiative"""
         model = self.db.query(InitiativeModel).filter_by(id=initiative.id).first()
-        
+
         if model:
             # Update existing
             model.title = initiative.title
@@ -146,34 +152,36 @@ class InitiativeStore:
                 completed_at=initiative.completed_at,
             )
             self.db.add(model)
-        
+
         self.db.commit()
-    
+
     def get_initiative(self, initiative_id: str) -> Optional[Initiative]:
         """Get an initiative by ID"""
         model = self.db.query(InitiativeModel).filter_by(id=initiative_id).first()
         return model.to_initiative() if model else None
-    
+
     def list_initiatives(
-        self, 
+        self,
         org_id: str,
         owner: Optional[str] = None,
         status: Optional[InitiativeStatus] = None,
-        limit: int = 50
+        limit: int = 50,
     ) -> List[Initiative]:
         """List initiatives with optional filters"""
         query = self.db.query(InitiativeModel).filter_by(org_id=org_id)
-        
+
         if owner:
             query = query.filter_by(owner=owner)
-        
+
         if status:
             query = query.filter_by(status=status.value)
-        
+
         models = query.order_by(InitiativeModel.created_at.desc()).limit(limit).all()
         return [model.to_initiative() for model in models]
-    
-    def list_active_initiatives(self, org_id: str, owner: Optional[str] = None) -> List[Initiative]:
+
+    def list_active_initiatives(
+        self, org_id: str, owner: Optional[str] = None
+    ) -> List[Initiative]:
         """List active (non-completed, non-cancelled) initiatives"""
         active_statuses = [
             InitiativeStatus.PLANNED.value,
@@ -181,46 +189,46 @@ class InitiativeStore:
             InitiativeStatus.PAUSED.value,
             InitiativeStatus.BLOCKED.value,
         ]
-        
+
         query = self.db.query(InitiativeModel).filter(
             InitiativeModel.org_id == org_id,
-            InitiativeModel.status.in_(active_statuses)
+            InitiativeModel.status.in_(active_statuses),
         )
-        
+
         if owner:
             query = query.filter_by(owner=owner)
-        
+
         models = query.order_by(InitiativeModel.created_at.desc()).all()
         return [model.to_initiative() for model in models]
-    
+
     def update_initiative_status(
-        self, 
-        initiative_id: str, 
+        self,
+        initiative_id: str,
         status: InitiativeStatus,
-        completed_at: Optional[datetime] = None
+        completed_at: Optional[datetime] = None,
     ) -> bool:
         """Update initiative status"""
         model = self.db.query(InitiativeModel).filter_by(id=initiative_id).first()
         if not model:
             return False
-        
+
         model.status = status.value
         if completed_at:
             model.completed_at = completed_at
-        
+
         self.db.commit()
         return True
-    
+
     def add_checkpoint(self, initiative_id: str, checkpoint_id: str) -> bool:
         """Add a checkpoint to an initiative"""
         model = self.db.query(InitiativeModel).filter_by(id=initiative_id).first()
         if not model:
             return False
-        
+
         checkpoints = model.checkpoints or []
         if checkpoint_id not in checkpoints:
             checkpoints.append(checkpoint_id)
             model.checkpoints = checkpoints
             self.db.commit()
-        
+
         return True

@@ -15,7 +15,7 @@ from .pipeline import ValidationPipeline
 
 __all__ = [
     "ValidationResult",
-    "ValidationIssue", 
+    "ValidationIssue",
     "ValidationStatus",
     "ScopeValidator",
     "SyntaxValidator",

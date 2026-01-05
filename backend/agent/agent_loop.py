@@ -40,45 +40,58 @@ logger = logging.getLogger(__name__)
 def _generate_approval_message(grounding_result, plan) -> str:
     """
     Generate an intelligent approval message based on grounded task and plan.
-    
+
     Args:
         grounding_result: The grounding result from task grounder
         plan: The generated plan
-        
+
     Returns:
         Formatted approval message for user
     """
     # Default fallback message
-    approval_message = plan.summary or "I have a workspace plan to help with that. Should I proceed?"
-    
-    if grounding_result.type == "ready" and grounding_result.task.intent == "FIX_PROBLEMS":
+    approval_message = (
+        plan.summary or "I have a workspace plan to help with that. Should I proceed?"
+    )
+
+    if (
+        grounding_result.type == "ready"
+        and grounding_result.task.intent == "FIX_PROBLEMS"
+    ):
         # Enhanced message for fix problems tasks
         task = grounding_result.task
         inputs = task.inputs
-        
-        total_count = inputs.get('total_count', 0)
-        error_count = inputs.get('error_count', 0)
-        warning_count = inputs.get('warning_count', 0)
-        affected_files = inputs.get('affected_files', [])
-        
+
+        total_count = inputs.get("total_count", 0)
+        error_count = inputs.get("error_count", 0)
+        warning_count = inputs.get("warning_count", 0)
+        affected_files = inputs.get("affected_files", [])
+
         # Generate intelligent message
         problem_desc = []
         if error_count > 0:
             problem_desc.append(f"{error_count} error{'s' if error_count != 1 else ''}")
         if warning_count > 0:
-            problem_desc.append(f"{warning_count} warning{'s' if warning_count != 1 else ''}")
-        
-        problem_text = " and ".join(problem_desc) if problem_desc else f"{total_count} problem{'s' if total_count != 1 else ''}"
-        
+            problem_desc.append(
+                f"{warning_count} warning{'s' if warning_count != 1 else ''}"
+            )
+
+        problem_text = (
+            " and ".join(problem_desc)
+            if problem_desc
+            else f"{total_count} problem{'s' if total_count != 1 else ''}"
+        )
+
         approval_message = f"I found {problem_text} in your workspace."
-        
+
         if affected_files:
-            approval_message += "\n\nAffected files:\n" + "\n".join(f"• {file}" for file in affected_files[:5])
+            approval_message += "\n\nAffected files:\n" + "\n".join(
+                f"• {file}" for file in affected_files[:5]
+            )
             if len(affected_files) > 5:
                 approval_message += f"\n• ...and {len(affected_files) - 5} more"
-        
+
         approval_message += "\n\nI can analyze these issues and propose fixes.\n\nDo you want me to proceed?"
-    
+
     return approval_message
 
 
@@ -564,38 +577,46 @@ async def run_agent_loop(
         # ---------------------------------------------------------
         logger.info("[AGENT] Starting task grounding...")
         from backend.agent.task_grounder import ground_task
-        
+
         # Extract VS Code diagnostics from workspace context if available
         workspace_root = workspace.get("workspace_root") if workspace else None
         diagnostics_count = 0
         if workspace and "diagnostics" in workspace:
             diagnostics_count = len(workspace.get("diagnostics", []))
-        
+
         # Ground the task with intelligent validation
         grounding_context = {
             "workspace": workspace_root,
             "diagnostics_count": diagnostics_count,
             "workspace_data": workspace,
             "message": message,
-            "user_id": user_id
+            "user_id": user_id,
         }
-        
+
         grounding_result = ground_task(intent, grounding_context)
-        
+
         # Handle grounding results
         if grounding_result.type == "rejected":
-            logger.info("[AGENT] Task rejected by grounding: %s", grounding_result.reason)
+            logger.info(
+                "[AGENT] Task rejected by grounding: %s", grounding_result.reason
+            )
             elapsed_ms = int((time.monotonic() - started) * 1000)
             return {
                 "reply": grounding_result.reason,
                 "actions": [],
                 "should_stream": False,
-                "state": {"grounded": False, "rejection_reason": grounding_result.reason},
+                "state": {
+                    "grounded": False,
+                    "rejection_reason": grounding_result.reason,
+                },
                 "duration_ms": elapsed_ms,
             }
-        
+
         if grounding_result.type == "clarification":
-            logger.info("[AGENT] Task needs clarification: %s", grounding_result.clarification.question)
+            logger.info(
+                "[AGENT] Task needs clarification: %s",
+                grounding_result.clarification.question,
+            )
             elapsed_ms = int((time.monotonic() - started) * 1000)
             return {
                 "reply": grounding_result.clarification.question,
@@ -604,20 +625,26 @@ async def run_agent_loop(
                 "state": {"grounded": False, "needs_clarification": True},
                 "duration_ms": elapsed_ms,
             }
-        
+
         # Task is ready - now generate plan from structured task
-        logger.info("[AGENT] Task grounded successfully, generating plan from structured task...")
+        logger.info(
+            "[AGENT] Task grounded successfully, generating plan from structured task..."
+        )
         from backend.agent.planner_v3 import PlannerV3
 
         planner = PlannerV3()
-        
+
         # Use grounded task for enhanced planning
         enhanced_context = dict(full_context)
         enhanced_context["grounded_task"] = grounding_result.task.__dict__
         enhanced_context["grounding_confidence"] = grounding_result.confidence
-        
+
         plan = await planner.plan(intent, enhanced_context)
-        logger.info("[AGENT] Plan generated with %d steps (grounding confidence: %.2f)", len(plan.steps), grounding_result.confidence)
+        logger.info(
+            "[AGENT] Plan generated with %d steps (grounding confidence: %.2f)",
+            len(plan.steps),
+            grounding_result.confidence,
+        )
 
         # Prepare shaped actions once so all branches can reuse them
         planned_actions = _shape_actions_from_plan(plan)
@@ -630,9 +657,11 @@ async def run_agent_loop(
             step.tool in ["code.apply_patch", "pm.create_ticket", "pm.update_ticket"]
             for step in plan.steps
         )
-        
+
         # Override with grounded task approval requirement (Phase 4.2 enhancement)
-        if grounding_result.type == "ready" and hasattr(grounding_result.task, 'requiresApproval'):
+        if grounding_result.type == "ready" and hasattr(
+            grounding_result.task, "requiresApproval"
+        ):
             requires_approval = grounding_result.task.requiresApproval
 
         if requires_approval:
@@ -642,16 +671,26 @@ async def run_agent_loop(
                 {
                     "pending_plan": asdict(plan),
                     "pending_intent": intent.model_dump(),
-                    "grounded_task": grounding_result.task.__dict__ if grounding_result.type == "ready" else None,
+                    "grounded_task": (
+                        grounding_result.task.__dict__
+                        if grounding_result.type == "ready"
+                        else None
+                    ),
                     "last_plan": asdict(plan),
                 },
             )
-            logger.info("[AGENT] Plan requires approval (grounded task: %s), waiting for user", 
-                       grounding_result.task.intent if grounding_result.type == "ready" else "unknown")
-            
+            logger.info(
+                "[AGENT] Plan requires approval (grounded task: %s), waiting for user",
+                (
+                    grounding_result.task.intent
+                    if grounding_result.type == "ready"
+                    else "unknown"
+                ),
+            )
+
             # Generate intelligent approval message from grounded task
             approval_message = _generate_approval_message(grounding_result, plan)
-            
+
             elapsed_ms = int((time.monotonic() - started) * 1000)
             return {
                 "reply": approval_message,
@@ -659,9 +698,9 @@ async def run_agent_loop(
                 "actions": planned_actions,
                 "should_stream": False,
                 "state": {
-                    "pending_approval": True, 
+                    "pending_approval": True,
                     "grounded": True,
-                    "grounding_confidence": grounding_result.confidence
+                    "grounding_confidence": grounding_result.confidence,
                 },
                 "duration_ms": elapsed_ms,
             }

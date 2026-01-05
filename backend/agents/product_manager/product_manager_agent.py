@@ -113,56 +113,68 @@ class ProductRequirementsDocument:
 class ProductManagerAgent:
     """
     Autonomous Product Manager that converts high-level goals into actionable engineering plans.
-    
+
     This agent acts as a virtual Product Manager, Tech Lead, and Requirements Analyst all in one,
     providing capabilities that no existing AI coding assistant currently offers.
     """
-    
+
     def __init__(self):
         self.llm_router = LLMRouter()
         self.episodic_memory = EpisodicMemory()
         self.memory_manager = MemoryManager()
-        
-    async def interpret_goal(self, user_goal: str, context: Dict[str, Any] = None) -> ProductRequirementsDocument:
+
+    async def interpret_goal(
+        self, user_goal: str, context: Dict[str, Any] = None
+    ) -> ProductRequirementsDocument:
         """
         Main entry point: converts a high-level user request into comprehensive product requirements.
-        
+
         Args:
             user_goal: The user's high-level request or goal
             context: Additional context like existing codebase, constraints, etc.
-            
+
         Returns:
             Complete ProductRequirementsDocument with all specifications
         """
-        
+
         # Record the goal interpretation session
         session_id = f"pm_interpret_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
+
         try:
             # Step 1: Analyze and clarify the goal
             clarified_goal = await self._clarify_goal(user_goal, context)
-            
+
             # Step 2: Extract requirements
             requirements = await self._extract_requirements(clarified_goal, context)
-            
+
             # Step 3: Generate user stories
-            user_stories = await self._generate_user_stories(clarified_goal, requirements)
-            
+            user_stories = await self._generate_user_stories(
+                clarified_goal, requirements
+            )
+
             # Step 4: Create technical design
-            technical_design = await self._create_technical_design(clarified_goal, requirements, context)
-            
+            technical_design = await self._create_technical_design(
+                clarified_goal, requirements, context
+            )
+
             # Step 5: Break down into engineering tasks
-            engineering_tasks = await self._create_engineering_tasks(clarified_goal, requirements, technical_design)
-            
+            engineering_tasks = await self._create_engineering_tasks(
+                clarified_goal, requirements, technical_design
+            )
+
             # Step 6: Risk assessment
-            risks = await self._assess_risks(clarified_goal, technical_design, engineering_tasks)
-            
+            risks = await self._assess_risks(
+                clarified_goal, technical_design, engineering_tasks
+            )
+
             # Step 7: Timeline estimation
             timeline = await self._estimate_timeline(engineering_tasks)
-            
+
             # Step 8: Success metrics
-            success_metrics = await self._define_success_metrics(clarified_goal, requirements)
-            
+            success_metrics = await self._define_success_metrics(
+                clarified_goal, requirements
+            )
+
             # Create comprehensive PRD
             prd = ProductRequirementsDocument(
                 goal=clarified_goal,
@@ -173,9 +185,9 @@ class ProductManagerAgent:
                 risks=risks,
                 timeline=timeline,
                 success_metrics=success_metrics,
-                created_at=datetime.now()
+                created_at=datetime.now(),
             )
-            
+
             # Record in episodic memory
             await self.episodic_memory.record_event(
                 session_id=session_id,
@@ -187,26 +199,28 @@ class ProductManagerAgent:
                         "num_requirements": len(requirements),
                         "num_user_stories": len(user_stories),
                         "num_engineering_tasks": len(engineering_tasks),
-                        "estimated_timeline": timeline.get("total_days", 0)
-                    }
+                        "estimated_timeline": timeline.get("total_days", 0),
+                    },
                 },
-                success=True
+                success=True,
             )
-            
+
             return prd
-            
+
         except Exception as e:
             await self.episodic_memory.record_event(
                 session_id=session_id,
                 event_type="goal_interpretation",
                 content={"error": str(e), "original_goal": user_goal},
-                success=False
+                success=False,
             )
             raise
-    
-    async def _clarify_goal(self, user_goal: str, context: Dict[str, Any] = None) -> str:
+
+    async def _clarify_goal(
+        self, user_goal: str, context: Dict[str, Any] = None
+    ) -> str:
         """Clarify and expand the user's goal into a detailed specification."""
-        
+
         context_info = ""
         if context:
             context_info = f"""
@@ -216,7 +230,7 @@ class ProductManagerAgent:
             - Target users: {context.get('target_users', 'Not specified')}
             - Timeline: {context.get('timeline', 'Not specified')}
             """
-        
+
         prompt = f"""
         You are Navi-PM, an elite Product Manager with expertise in requirements analysis,
         user experience design, and technical product strategy.
@@ -239,13 +253,15 @@ class ProductManagerAgent:
         Write this as a clear, detailed product specification that any engineer
         could understand and implement.
         """
-        
+
         response = await self.llm_router.run(prompt=prompt, use_smart_auto=True)
         return response.text
-    
-    async def _extract_requirements(self, clarified_goal: str, context: Dict[str, Any] = None) -> List[Requirement]:
+
+    async def _extract_requirements(
+        self, clarified_goal: str, context: Dict[str, Any] = None
+    ) -> List[Requirement]:
         """Extract detailed functional and non-functional requirements."""
-        
+
         prompt = f"""
         You are Navi-PM, an expert Product Manager specializing in requirements engineering.
         
@@ -284,38 +300,42 @@ class ProductManagerAgent:
           }
         ]
         """
-        
+
         response = await self.llm_router.run(prompt=prompt, use_smart_auto=True)
-        
+
         try:
             requirements_data = json.loads(response.text)
             requirements = []
-            
+
             for req_data in requirements_data:
                 requirement = Requirement(
-                    id=req_data['id'],
-                    description=req_data['description'],
-                    priority=Priority(req_data['priority']),
-                    category=req_data['category'],
-                    must_have=req_data['must_have'],
-                    acceptance_criteria=req_data['acceptance_criteria']
+                    id=req_data["id"],
+                    description=req_data["description"],
+                    priority=Priority(req_data["priority"]),
+                    category=req_data["category"],
+                    must_have=req_data["must_have"],
+                    acceptance_criteria=req_data["acceptance_criteria"],
                 )
                 requirements.append(requirement)
-                
+
             return requirements
-            
+
         except (json.JSONDecodeError, KeyError):
             # Fallback to manual parsing if JSON fails
             return await self._parse_requirements_fallback(response.text)
-    
-    async def _generate_user_stories(self, clarified_goal: str, requirements: List[Requirement]) -> List[UserStory]:
+
+    async def _generate_user_stories(
+        self, clarified_goal: str, requirements: List[Requirement]
+    ) -> List[UserStory]:
         """Generate user stories from requirements using proper agile format."""
-        
-        requirements_text = "\n".join([
-            f"- {req.id}: {req.description} (Priority: {req.priority.value})"
-            for req in requirements[:10]  # Limit to avoid token overflow
-        ])
-        
+
+        requirements_text = "\n".join(
+            [
+                f"- {req.id}: {req.description} (Priority: {req.priority.value})"
+                for req in requirements[:10]  # Limit to avoid token overflow
+            ]
+        )
+
         prompt = f"""
         You are Navi-PM, an expert Agile Product Manager who writes excellent user stories.
         
@@ -353,41 +373,48 @@ class ProductManagerAgent:
           }
         ]
         """
-        
+
         response = await self.llm_router.run(prompt=prompt, use_smart_auto=True)
-        
+
         try:
             stories_data = json.loads(response.text)
             user_stories = []
-            
+
             for story_data in stories_data:
                 story = UserStory(
-                    id=story_data['id'],
-                    title=story_data['title'],
-                    description=story_data['description'],
-                    as_a=story_data['as_a'],
-                    i_want=story_data['i_want'],
-                    so_that=story_data['so_that'],
-                    acceptance_criteria=story_data['acceptance_criteria'],
-                    priority=Priority(story_data['priority']),
-                    story_points=story_data['story_points'],
-                    dependencies=story_data.get('dependencies', [])
+                    id=story_data["id"],
+                    title=story_data["title"],
+                    description=story_data["description"],
+                    as_a=story_data["as_a"],
+                    i_want=story_data["i_want"],
+                    so_that=story_data["so_that"],
+                    acceptance_criteria=story_data["acceptance_criteria"],
+                    priority=Priority(story_data["priority"]),
+                    story_points=story_data["story_points"],
+                    dependencies=story_data.get("dependencies", []),
                 )
                 user_stories.append(story)
-                
+
             return user_stories
-            
+
         except (json.JSONDecodeError, KeyError):
             return await self._parse_user_stories_fallback(response.text)
-    
-    async def _create_technical_design(self, clarified_goal: str, requirements: List[Requirement], context: Dict[str, Any] = None) -> TechnicalDesign:
+
+    async def _create_technical_design(
+        self,
+        clarified_goal: str,
+        requirements: List[Requirement],
+        context: Dict[str, Any] = None,
+    ) -> TechnicalDesign:
         """Create comprehensive technical design and architecture decisions."""
-        
-        requirements_summary = "\n".join([
-            f"- {req.description} ({req.priority.value} priority)"
-            for req in requirements[:15]
-        ])
-        
+
+        requirements_summary = "\n".join(
+            [
+                f"- {req.description} ({req.priority.value} priority)"
+                for req in requirements[:15]
+            ]
+        )
+
         context_info = ""
         if context:
             context_info = f"""
@@ -397,7 +424,7 @@ class ProductManagerAgent:
             - Scale requirements: {context.get('scale', 'Small to medium')}
             - Integration needs: {context.get('integrations', 'None specified')}
             """
-        
+
         prompt = f"""
         You are Navi-Architect, a senior Technical Architect and System Designer.
         
@@ -456,28 +483,36 @@ class ProductManagerAgent:
         
         Write this as a comprehensive technical specification that engineers can follow.
         """
-        
+
         response = await self.llm_router.run(prompt=prompt, use_smart_auto=True)
         design_text = response.text
-        
+
         # Parse the technical design (simplified structure)
         return TechnicalDesign(
-            architecture_overview=self._extract_section(design_text, "ARCHITECTURE OVERVIEW"),
+            architecture_overview=self._extract_section(
+                design_text, "ARCHITECTURE OVERVIEW"
+            ),
             components=self._parse_components(design_text),
             data_models=self._parse_data_models(design_text),
             apis=self._parse_apis(design_text),
             dependencies=self._parse_dependencies(design_text),
             risk_mitigation=self._parse_risks(design_text),
             performance_considerations=self._parse_performance(design_text),
-            security_considerations=self._parse_security(design_text)
+            security_considerations=self._parse_security(design_text),
         )
-    
-    async def _create_engineering_tasks(self, goal: str, requirements: List[Requirement], 
-                                       technical_design: TechnicalDesign) -> List[EngineeringTask]:
+
+    async def _create_engineering_tasks(
+        self,
+        goal: str,
+        requirements: List[Requirement],
+        technical_design: TechnicalDesign,
+    ) -> List[EngineeringTask]:
         """Break down the work into specific engineering tasks for different agents."""
-        
-        requirements_summary = "\n".join([f"- {req.description}" for req in requirements[:10]])
-        
+
+        requirements_summary = "\n".join(
+            [f"- {req.description}" for req in requirements[:10]]
+        )
+
         prompt = f"""
         You are Navi-TechLead, an experienced Engineering Manager who excels at task breakdown.
         
@@ -532,37 +567,38 @@ class ProductManagerAgent:
           }
         ]
         """
-        
+
         response = await self.llm_router.run(prompt=prompt, use_smart_auto=True)
-        
+
         try:
             tasks_data = json.loads(response.text)
             engineering_tasks = []
-            
+
             for task_data in tasks_data:
                 task = EngineeringTask(
-                    id=task_data['id'],
-                    title=task_data['title'],
-                    description=task_data['description'],
-                    type=TaskType(task_data['type']),
-                    priority=Priority(task_data['priority']),
-                    estimated_hours=task_data['estimated_hours'],
-                    assigned_agent=task_data['assigned_agent'],
-                    dependencies=task_data.get('dependencies', []),
-                    acceptance_criteria=task_data['acceptance_criteria'],
-                    technical_notes=task_data['technical_notes']
+                    id=task_data["id"],
+                    title=task_data["title"],
+                    description=task_data["description"],
+                    type=TaskType(task_data["type"]),
+                    priority=Priority(task_data["priority"]),
+                    estimated_hours=task_data["estimated_hours"],
+                    assigned_agent=task_data["assigned_agent"],
+                    dependencies=task_data.get("dependencies", []),
+                    acceptance_criteria=task_data["acceptance_criteria"],
+                    technical_notes=task_data["technical_notes"],
                 )
                 engineering_tasks.append(task)
-                
+
             return engineering_tasks
-            
+
         except (json.JSONDecodeError, KeyError):
             return await self._parse_tasks_fallback(response.text)
-    
-    async def _assess_risks(self, goal: str, technical_design: TechnicalDesign, 
-                           tasks: List[EngineeringTask]) -> List[Dict[str, Any]]:
+
+    async def _assess_risks(
+        self, goal: str, technical_design: TechnicalDesign, tasks: List[EngineeringTask]
+    ) -> List[Dict[str, Any]]:
         """Assess technical and product risks with mitigation strategies."""
-        
+
         prompt = f"""
         You are Navi-RiskAnalyst, an expert in product and technical risk assessment.
         
@@ -587,43 +623,47 @@ class ProductManagerAgent:
         
         Return as JSON array.
         """
-        
+
         response = await self.llm_router.run(prompt=prompt, use_smart_auto=True)
-        
+
         try:
             return json.loads(response.text)
         except json.JSONDecodeError:
             # Fallback to structured text parsing
             return self._parse_risks_fallback(response.text)
-    
+
     async def _estimate_timeline(self, tasks: List[EngineeringTask]) -> Dict[str, Any]:
         """Estimate project timeline based on tasks and dependencies."""
-        
+
         total_hours = sum(task.estimated_hours for task in tasks)
-        
+
         # Simple critical path analysis
         task_graph = {}
         for task in tasks:
             task_graph[task.id] = {
-                'hours': task.estimated_hours,
-                'dependencies': task.dependencies,
-                'priority': task.priority.value
+                "hours": task.estimated_hours,
+                "dependencies": task.dependencies,
+                "priority": task.priority.value,
             }
-        
+
         # Calculate parallel work streams
         critical_path_hours = self._calculate_critical_path(task_graph)
-        
+
         return {
             "total_hours": total_hours,
             "critical_path_hours": critical_path_hours,
-            "total_days": max(total_hours // 8, critical_path_hours // 8),  # 8-hour work days
+            "total_days": max(
+                total_hours // 8, critical_path_hours // 8
+            ),  # 8-hour work days
             "parallel_work_streams": len([t for t in tasks if not t.dependencies]),
-            "milestone_estimates": self._create_milestones(tasks)
+            "milestone_estimates": self._create_milestones(tasks),
         }
-    
-    async def _define_success_metrics(self, goal: str, requirements: List[Requirement]) -> List[str]:
+
+    async def _define_success_metrics(
+        self, goal: str, requirements: List[Requirement]
+    ) -> List[str]:
         """Define measurable success criteria for the project."""
-        
+
         prompt = f"""
         You are Navi-MetricsAnalyst, expert in defining product success metrics.
         
@@ -647,17 +687,18 @@ class ProductManagerAgent:
         
         Return as a simple list of metric descriptions.
         """
-        
+
         response = await self.llm_router.run(prompt=prompt, use_smart_auto=True)
         metrics_text = response.text
-        
+
         # Extract metrics from response
         return self._parse_metrics(metrics_text)
-    
-    async def validate_against_requirements(self, implementation: Dict[str, Any], 
-                                           prd: ProductRequirementsDocument) -> Dict[str, Any]:
+
+    async def validate_against_requirements(
+        self, implementation: Dict[str, Any], prd: ProductRequirementsDocument
+    ) -> Dict[str, Any]:
         """Validate final implementation against original requirements."""
-        
+
         prompt = f"""
         You are Navi-QA, an expert Quality Assurance analyst.
         
@@ -680,136 +721,170 @@ class ProductManagerAgent:
         
         Return detailed validation report.
         """
-        
+
         response = await self.llm_router.run(prompt=prompt, use_smart_auto=True)
-        
+
         return {
             "validation_report": response.text,
-            "requirements_met": self._calculate_requirements_coverage(implementation, prd),
+            "requirements_met": self._calculate_requirements_coverage(
+                implementation, prd
+            ),
             "overall_score": self._calculate_overall_score(implementation, prd),
-            "recommendations": self._extract_recommendations(response.text)
+            "recommendations": self._extract_recommendations(response.text),
         }
-    
+
     # Helper methods for parsing and analysis
-    
+
     def _extract_section(self, text: str, section_name: str) -> str:
         """Extract a specific section from structured text."""
-        lines = text.split('\n')
+        lines = text.split("\n")
         section_lines = []
         in_section = False
-        
+
         for line in lines:
             if section_name.upper() in line.upper():
                 in_section = True
                 continue
-            elif in_section and line.strip() and not line.startswith(' ') and line.isupper():
+            elif (
+                in_section
+                and line.strip()
+                and not line.startswith(" ")
+                and line.isupper()
+            ):
                 break
             elif in_section:
                 section_lines.append(line)
-        
-        return '\n'.join(section_lines).strip()
-    
+
+        return "\n".join(section_lines).strip()
+
     def _parse_components(self, text: str) -> List[Dict[str, Any]]:
         """Parse component information from technical design."""
         # Simplified parsing - in production, use more sophisticated NLP
-        return [{"name": "frontend", "type": "react_app"}, {"name": "backend", "type": "fastapi_service"}]
-    
+        return [
+            {"name": "frontend", "type": "react_app"},
+            {"name": "backend", "type": "fastapi_service"},
+        ]
+
     def _parse_data_models(self, text: str) -> List[Dict[str, Any]]:
         """Parse data model information."""
-        return [{"name": "User", "fields": ["id", "email", "password_hash"]}, 
-                {"name": "Session", "fields": ["id", "user_id", "token", "expires_at"]}]
-    
+        return [
+            {"name": "User", "fields": ["id", "email", "password_hash"]},
+            {"name": "Session", "fields": ["id", "user_id", "token", "expires_at"]},
+        ]
+
     def _parse_apis(self, text: str) -> List[Dict[str, Any]]:
         """Parse API information."""
-        return [{"endpoint": "/auth/login", "method": "POST"}, 
-                {"endpoint": "/auth/logout", "method": "POST"}]
-    
+        return [
+            {"endpoint": "/auth/login", "method": "POST"},
+            {"endpoint": "/auth/logout", "method": "POST"},
+        ]
+
     def _parse_dependencies(self, text: str) -> List[str]:
         """Parse dependency information."""
         return ["fastapi", "sqlalchemy", "bcrypt", "pyjwt", "react", "typescript"]
-    
+
     def _parse_risks(self, text: str) -> List[str]:
         """Parse risk mitigation strategies."""
         return ["Implement comprehensive error handling", "Add monitoring and alerting"]
-    
+
     def _parse_performance(self, text: str) -> List[str]:
         """Parse performance considerations."""
         return ["Use database indexing", "Implement caching layer"]
-    
+
     def _parse_security(self, text: str) -> List[str]:
         """Parse security considerations."""
         return ["Hash all passwords", "Use HTTPS only", "Implement rate limiting"]
-    
+
     def _calculate_critical_path(self, task_graph: Dict[str, Any]) -> int:
         """Calculate critical path through task dependencies."""
         # Simplified critical path calculation
-        return max(task['hours'] for task in task_graph.values()) * 2
-    
+        return max(task["hours"] for task in task_graph.values()) * 2
+
     def _create_milestones(self, tasks: List[EngineeringTask]) -> List[Dict[str, Any]]:
         """Create project milestones from tasks."""
         return [
-            {"name": "MVP", "tasks": len([t for t in tasks if t.priority in [Priority.CRITICAL, Priority.HIGH]])},
-            {"name": "Beta", "tasks": len([t for t in tasks if t.priority == Priority.MEDIUM])},
-            {"name": "Release", "tasks": len(tasks)}
+            {
+                "name": "MVP",
+                "tasks": len(
+                    [
+                        t
+                        for t in tasks
+                        if t.priority in [Priority.CRITICAL, Priority.HIGH]
+                    ]
+                ),
+            },
+            {
+                "name": "Beta",
+                "tasks": len([t for t in tasks if t.priority == Priority.MEDIUM]),
+            },
+            {"name": "Release", "tasks": len(tasks)},
         ]
-    
+
     def _parse_metrics(self, text: str) -> List[str]:
         """Parse success metrics from text."""
-        lines = text.split('\n')
+        lines = text.split("\n")
         metrics = []
-        
+
         for line in lines:
             line = line.strip()
-            if line and (line.startswith('-') or line.startswith('•') or line[0].isdigit()):
-                metric = line.lstrip('- •0123456789.')
+            if line and (
+                line.startswith("-") or line.startswith("•") or line[0].isdigit()
+            ):
+                metric = line.lstrip("- •0123456789.")
                 if metric:
                     metrics.append(metric.strip())
-        
+
         return metrics[:10]  # Limit to top 10 metrics
-    
-    def _calculate_requirements_coverage(self, implementation: Dict[str, Any], 
-                                       prd: ProductRequirementsDocument) -> float:
+
+    def _calculate_requirements_coverage(
+        self, implementation: Dict[str, Any], prd: ProductRequirementsDocument
+    ) -> float:
         """Calculate percentage of requirements met."""
         # Simplified calculation - in production, use more sophisticated analysis
         return 0.85  # 85% coverage
-    
-    def _calculate_overall_score(self, implementation: Dict[str, Any], 
-                                prd: ProductRequirementsDocument) -> float:
+
+    def _calculate_overall_score(
+        self, implementation: Dict[str, Any], prd: ProductRequirementsDocument
+    ) -> float:
         """Calculate overall implementation quality score."""
         return 0.88  # 88% overall score
-    
+
     def _extract_recommendations(self, text: str) -> List[str]:
         """Extract improvement recommendations from validation report."""
         # Simplified extraction
-        return ["Add more comprehensive test coverage", "Improve error handling", "Add performance monitoring"]
-    
+        return [
+            "Add more comprehensive test coverage",
+            "Improve error handling",
+            "Add performance monitoring",
+        ]
+
     # Fallback parsing methods for when JSON parsing fails
-    
+
     async def _parse_requirements_fallback(self, text: str) -> List[Requirement]:
         """Fallback parser for requirements when JSON parsing fails."""
         requirements = []
-        lines = text.split('\n')
-        
+        lines = text.split("\n")
+
         current_req = None
         for line in lines:
             line = line.strip()
-            if line.startswith('REQ-'):
+            if line.startswith("REQ-"):
                 if current_req:
                     requirements.append(current_req)
                 current_req = Requirement(
-                    id=line.split(':')[0],
-                    description=line.split(':', 1)[1] if ':' in line else line,
+                    id=line.split(":")[0],
+                    description=line.split(":", 1)[1] if ":" in line else line,
                     priority=Priority.MEDIUM,
                     category="general",
                     must_have=True,
-                    acceptance_criteria=[]
+                    acceptance_criteria=[],
                 )
-        
+
         if current_req:
             requirements.append(current_req)
-        
+
         return requirements[:20]  # Limit to prevent overflow
-    
+
     async def _parse_user_stories_fallback(self, text: str) -> List[UserStory]:
         """Fallback parser for user stories."""
         return [
@@ -823,10 +898,10 @@ class ProductManagerAgent:
                 acceptance_criteria=["System works as expected"],
                 priority=Priority.HIGH,
                 story_points=5,
-                dependencies=[]
+                dependencies=[],
             )
         ]
-    
+
     async def _parse_tasks_fallback(self, text: str) -> List[EngineeringTask]:
         """Fallback parser for engineering tasks."""
         return [
@@ -840,10 +915,10 @@ class ProductManagerAgent:
                 assigned_agent="CodeGenerationAgent",
                 dependencies=[],
                 acceptance_criteria=["Feature works as specified"],
-                technical_notes="Follow best practices"
+                technical_notes="Follow best practices",
             )
         ]
-    
+
     def _parse_risks_fallback(self, text: str) -> List[Dict[str, Any]]:
         """Fallback parser for risks."""
         return [
@@ -852,35 +927,42 @@ class ProductManagerAgent:
                 "impact": "medium",
                 "probability": "medium",
                 "mitigation": "Break down into smaller tasks",
-                "early_warning_signs": "Tasks taking longer than estimated"
+                "early_warning_signs": "Tasks taking longer than estimated",
             }
         ]
 
 
 class ProductManagerService:
     """Service layer for integrating Product Manager Agent with the rest of the platform."""
-    
+
     def __init__(self):
         self.agent = ProductManagerAgent()
-        
-    async def create_project_from_goal(self, user_goal: str, context: Dict[str, Any] = None) -> ProductRequirementsDocument:
+
+    async def create_project_from_goal(
+        self, user_goal: str, context: Dict[str, Any] = None
+    ) -> ProductRequirementsDocument:
         """Main service method for creating complete project specifications."""
         return await self.agent.interpret_goal(user_goal, context)
-    
-    async def validate_implementation(self, implementation: Dict[str, Any], 
-                                    prd: ProductRequirementsDocument) -> Dict[str, Any]:
+
+    async def validate_implementation(
+        self, implementation: Dict[str, Any], prd: ProductRequirementsDocument
+    ) -> Dict[str, Any]:
         """Validate implementation against requirements."""
         return await self.agent.validate_against_requirements(implementation, prd)
-    
-    async def get_project_summary(self, prd: ProductRequirementsDocument) -> Dict[str, Any]:
+
+    async def get_project_summary(
+        self, prd: ProductRequirementsDocument
+    ) -> Dict[str, Any]:
         """Get a summary of the project for dashboards."""
         return {
             "goal": prd.goal,
             "total_requirements": len(prd.requirements),
-            "critical_requirements": len([r for r in prd.requirements if r.priority == Priority.CRITICAL]),
+            "critical_requirements": len(
+                [r for r in prd.requirements if r.priority == Priority.CRITICAL]
+            ),
             "user_stories": len(prd.user_stories),
             "engineering_tasks": len(prd.engineering_tasks),
             "estimated_timeline": prd.timeline.get("total_days", 0),
             "success_metrics_count": len(prd.success_metrics),
-            "created_at": prd.created_at.isoformat()
+            "created_at": prd.created_at.isoformat(),
         }

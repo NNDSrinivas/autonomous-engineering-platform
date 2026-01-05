@@ -45,7 +45,9 @@ def _get_token() -> str:
 
 
 @router.post("/pr/create")
-async def create_pr(req: CreatePROptions, db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def create_pr(
+    req: CreatePROptions, db: Session = Depends(get_db)
+) -> Dict[str, Any]:
     """
     Create a draft PR (or preview payload if dry_run=True).
     """
@@ -58,16 +60,20 @@ async def create_pr(req: CreatePROptions, db: Session = Depends(get_db)) -> Dict
                 db, user_id="default_user", provider="github", name=req.connector_name
             )
             if conn:
-                token = conn.get("secrets", {}).get("token") or conn.get("secrets", {}).get("access_token") or token
+                token = (
+                    conn.get("secrets", {}).get("token")
+                    or conn.get("secrets", {}).get("access_token")
+                    or token
+                )
         svc = GitHubWriteService(token=token)
         result = await svc.draft_pr(
-          repo_full_name=req.repo_full_name,
-          base=req.base,
-          head=req.head,
-          title=req.title,
-          body=req.body,
-          ticket_key=req.ticket_key,
-          dry_run=req.dry_run,
+            repo_full_name=req.repo_full_name,
+            base=req.base,
+            head=req.head,
+            title=req.title,
+            body=req.body,
+            ticket_key=req.ticket_key,
+            dry_run=req.dry_run,
         )
         return {"status": "ok", "result": result}
     except Exception as e:
@@ -76,7 +82,9 @@ async def create_pr(req: CreatePROptions, db: Session = Depends(get_db)) -> Dict
 
 
 @router.post("/pr/status")
-async def pr_status(req: PRStatusRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def pr_status(
+    req: PRStatusRequest, db: Session = Depends(get_db)
+) -> Dict[str, Any]:
     """
     Get PR status (open/draft/state) for a repo.
     """
@@ -89,7 +97,11 @@ async def pr_status(req: PRStatusRequest, db: Session = Depends(get_db)) -> Dict
                 db, user_id="default_user", provider="github", name=req.connector_name
             )
             if conn:
-                token = conn.get("secrets", {}).get("token") or conn.get("secrets", {}).get("access_token") or token
+                token = (
+                    conn.get("secrets", {}).get("token")
+                    or conn.get("secrets", {}).get("access_token")
+                    or token
+                )
         svc = GitHubWriteService(token=token)
         result = await svc.get_pr_status(req.repo_full_name, req.pr_number)
         return {"status": "ok", "pr": result}

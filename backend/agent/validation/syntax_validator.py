@@ -29,6 +29,7 @@ from backend.agent.validation.result import (
 
 try:
     import yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -51,7 +52,7 @@ class SyntaxValidator:
 
         for change in changes:
             # Only validate files that result in actual content
-            if not hasattr(change, 'diff') or not change.diff.strip():
+            if not hasattr(change, "diff") or not change.diff.strip():
                 continue
 
             ext = os.path.splitext(change.file_path)[1].lower()
@@ -99,9 +100,7 @@ class SyntaxValidator:
         try:
             ast.parse(content)
         except SyntaxError as e:
-            raise SyntaxError(
-                f"Python syntax error at line {e.lineno}: {e.msg}"
-            ) from e
+            raise SyntaxError(f"Python syntax error at line {e.lineno}: {e.msg}") from e
 
     def _validate_json(self, change: CodeChange) -> None:
         """
@@ -111,9 +110,7 @@ class SyntaxValidator:
         try:
             json.loads(content)
         except json.JSONDecodeError as e:
-            raise ValueError(
-                f"JSON syntax error at line {e.lineno}: {e.msg}"
-            ) from e
+            raise ValueError(f"JSON syntax error at line {e.lineno}: {e.msg}") from e
 
     def _validate_yaml(self, change: CodeChange) -> None:
         """
@@ -121,14 +118,12 @@ class SyntaxValidator:
         """
         if not YAML_AVAILABLE:
             raise RuntimeError("YAML validation unavailable (PyYAML not installed)")
-            
+
         content = self._apply_diff_to_temp_file(change)
         try:
             yaml.safe_load(content)
         except yaml.YAMLError as e:
-            raise ValueError(
-                f"YAML syntax error: {e}"
-            ) from e
+            raise ValueError(f"YAML syntax error: {e}") from e
 
     def _validate_javascript(self, change: CodeChange) -> None:
         """
@@ -163,9 +158,7 @@ class SyntaxValidator:
                 pass
 
         if result.returncode != 0:
-            raise SyntaxError(
-                f"JS/TS syntax error:\n{result.stderr.strip()}"
-            )
+            raise SyntaxError(f"JS/TS syntax error:\n{result.stderr.strip()}")
 
     # ------------------------------------------------------------------
     # Helpers

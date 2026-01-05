@@ -24,7 +24,7 @@ from .types import (
     PlannedFileChange,
     ChangePlan,
     ChangeResult,
-    PlanExecutionResult
+    PlanExecutionResult,
 )
 
 from .change_plan_generator import ChangePlanGenerator
@@ -33,7 +33,7 @@ from .diff_generator import DiffGenerator, DiffSynthesisBackend, DiffGenerationE
 
 __all__ = [
     "ChangeType",
-    "ChangeIntent", 
+    "ChangeIntent",
     "ValidationLevel",
     "CodeChange",
     "PlannedFileChange",
@@ -46,5 +46,5 @@ __all__ = [
     "ContextAssemblyError",
     "DiffGenerator",
     "DiffSynthesisBackend",
-    "DiffGenerationError"
+    "DiffGenerationError",
 ]

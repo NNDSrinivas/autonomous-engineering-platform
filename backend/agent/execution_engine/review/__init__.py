@@ -10,11 +10,11 @@ from .review_types import CommentType, FixAction, ReviewContext
 
 __all__ = [
     "PrCommentFetcher",
-    "PrCommentAnalyzer", 
+    "PrCommentAnalyzer",
     "CommentClassification",
     "PrFixExecutor",
     "FixResult",
     "CommentType",
     "FixAction",
-    "ReviewContext"
+    "ReviewContext",
 ]

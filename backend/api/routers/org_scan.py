@@ -135,7 +135,9 @@ def _get_config(db: Session, org_id: str, user_id: str) -> dict:
     return state.get("config_json") or {}
 
 
-def _resolve_ids(user, x_org_id: Optional[str], x_user_id: Optional[str]) -> tuple[str, str]:
+def _resolve_ids(
+    user, x_org_id: Optional[str], x_user_id: Optional[str]
+) -> tuple[str, str]:
     org_id = getattr(user, "org_id", None) or (x_org_id or "default")
     user_id = getattr(user, "user_id", None) or (x_user_id or "default_user")
     return org_id, user_id

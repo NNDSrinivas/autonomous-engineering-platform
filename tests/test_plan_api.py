@@ -3,6 +3,7 @@ Tests for Live Plan Mode API endpoints
 """
 
 import os
+
 os.environ["APP_ENV"] = "test"
 os.environ["DATABASE_URL"] = "sqlite:///./data/test_plan_api.db"
 os.environ["JWT_ENABLED"] = "false"
@@ -53,6 +54,7 @@ def test_client():
     Base.metadata.create_all(bind=engine, tables=[LivePlan.__table__])
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[_get_db_for_auth] = override_get_db
+
     # Stub out Postgres-only event store functions for SQLite test runs
     async def _noop_append(*args, **kwargs):
         return None

@@ -70,11 +70,7 @@ def get_connector_status_for_user(
     """
     items: List[ConnectorStatus] = []
     if db and _table_exists(db, "connectors"):
-        db_items = (
-            db.query(Connector)
-            .filter(Connector.user_id == str(user_id))
-            .all()
-        )
+        db_items = db.query(Connector).filter(Connector.user_id == str(user_id)).all()
         connected_map = {(c.provider or "").lower(): True for c in db_items}
         for base in _base_catalog():
             if connected_map.get(base.id):
@@ -168,7 +164,11 @@ def upsert_connector(
             db.refresh(new)
             return new.id
         except Exception as e:
-            logger.error("DB upsert connector failed, falling back to memory: %s", e, exc_info=True)
+            logger.error(
+                "DB upsert connector failed, falling back to memory: %s",
+                e,
+                exc_info=True,
+            )
             db.rollback()
 
     # fallback in-memory
@@ -192,7 +192,11 @@ def list_connectors(
     """
     List connectors (excluding secrets). If DB is available, use it; else fallback.
     """
-    provider_filter = (lambda c: True) if not provider else (lambda c: (c or "").lower() == provider.lower())
+    provider_filter = (
+        (lambda c: True)
+        if not provider
+        else (lambda c: (c or "").lower() == provider.lower())
+    )
     results: List[Dict[str, Any]] = []
     if db and _table_exists(db, "connectors"):
         try:
@@ -218,7 +222,9 @@ def list_connectors(
                 )
             return results
         except Exception as e:
-            logger.error("DB list connectors failed, falling back: %s", e, exc_info=True)
+            logger.error(
+                "DB list connectors failed, falling back: %s", e, exc_info=True
+            )
 
     # fallback in-memory
     _warn_once()
@@ -238,9 +244,7 @@ def list_connectors(
     return results
 
 
-def delete_connector(
-    db: Optional[Session], user_id: str, connector_id: int
-) -> bool:
+def delete_connector(db: Optional[Session], user_id: str, connector_id: int) -> bool:
     if db and _table_exists(db, "connectors"):
         try:
             deleted = (
@@ -717,11 +721,7 @@ def get_connector_for_org(
     if not _table_exists(db, "connectors"):
         return None
     try:
-        rows = (
-            db.query(Connector)
-            .filter(Connector.provider == provider.lower())
-            .all()
-        )
+        rows = db.query(Connector).filter(Connector.provider == provider.lower()).all()
     except Exception:
         return None
     for row in rows:
@@ -770,7 +770,9 @@ def get_connector_for_context(
     if not db:
         return None
     if user_id:
-        row = get_connector(db, user_id=str(user_id), provider=provider, name=name or "default")
+        row = get_connector(
+            db, user_id=str(user_id), provider=provider, name=name or "default"
+        )
         if row:
             return row
     if org_id:
@@ -791,11 +793,7 @@ def find_connector_by_config(
     if not db or not value or not _table_exists(db, "connectors"):
         return None
     try:
-        rows = (
-            db.query(Connector)
-            .filter(Connector.provider == provider.lower())
-            .all()
-        )
+        rows = db.query(Connector).filter(Connector.provider == provider.lower()).all()
     except Exception:
         return None
     for row in rows:

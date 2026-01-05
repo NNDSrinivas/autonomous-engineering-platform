@@ -30,12 +30,14 @@ except ImportError:
 
 class PRCreationError(RuntimeError):
     """Raised when PR creation fails"""
+
     pass
 
 
 @dataclass(frozen=True)
 class PRInfo:
     """PR information result"""
+
     number: int
     title: str
     body: str
@@ -47,6 +49,7 @@ class PRInfo:
 @dataclass(frozen=True)
 class PRResult:
     """Complete PR creation result for UI emission"""
+
     success: bool
     pr_number: Optional[int]
     pr_title: str
@@ -61,7 +64,7 @@ class PRResult:
 class PRCreator:
     """
     Creates Pull Requests for NAVI workflows.
-    
+
     This is production-grade code with GitHub API integration,
     structured metadata generation, and clean error handling.
     """
@@ -74,21 +77,23 @@ class PRCreator:
     ) -> None:
         """
         Initialize PRCreator for a repository.
-        
+
         Args:
             repo_root: Absolute path to git repository root
             github_token: GitHub API token (falls back to GITHUB_TOKEN env var)
         """
         self.repo_root = os.path.abspath(repo_root)
         self.github_token = github_token or os.getenv("GITHUB_TOKEN")
-        
+
         self._validate_dependencies()
-        
+
         if self.github_token:
             try:
                 self.repo_owner, self.repo_name = self._detect_github_repo()
                 self.provider = "github"
-                logger.info(f"[PR_CREATOR] Initialized for {self.repo_owner}/{self.repo_name}")
+                logger.info(
+                    f"[PR_CREATOR] Initialized for {self.repo_owner}/{self.repo_name}"
+                )
             except Exception as e:
                 logger.warning(f"[PR_CREATOR] GitHub repo detection failed: {e}")
                 self.repo_owner = None
@@ -115,22 +120,22 @@ class PRCreator:
     ) -> PRResult:
         """
         Create a PR for NAVI autonomous changes.
-        
+
         This is the main entry point for Phase 3.5.3.
-        
+
         Args:
             branch: Head branch name
             base: Base branch name
             change_plan: Structured ChangePlan used to generate PR content
             commit_message: Full commit message
             commit_sha: Optional commit SHA for reference
-            
+
         Returns:
             PRResult with success status and PR info
         """
         try:
             logger.info(f"[PR_CREATOR] Creating PR: {branch} -> {base}")
-            
+
             if not self._can_create_pr():
                 return PRResult(
                     success=False,
@@ -141,15 +146,15 @@ class PRCreator:
                     base_branch=base,
                     head_branch=branch,
                     provider=self.provider,
-                    error="PR creation not available - missing GitHub token or invalid repository"
+                    error="PR creation not available - missing GitHub token or invalid repository",
                 )
-            
+
             # Generate PR metadata
             title = self._generate_title(change_plan)
             body = self._generate_body(change_plan, commit_message, commit_sha)
-            
+
             logger.info(f"[PR_CREATOR] Generated PR title: {title[:50]}...")
-            
+
             # Create the PR via GitHub API
             pr_data = self._github_create_pr(
                 title=title,
@@ -157,9 +162,9 @@ class PRCreator:
                 head=branch,
                 base=base,
             )
-            
+
             logger.info(f"[PR_CREATOR] Successfully created PR #{pr_data['number']}")
-            
+
             return PRResult(
                 success=True,
                 pr_number=pr_data["number"],
@@ -168,9 +173,9 @@ class PRCreator:
                 pr_body=pr_data["body"],
                 base_branch=base,
                 head_branch=branch,
-                provider="github"
+                provider="github",
             )
-            
+
         except Exception as e:
             logger.error(f"[PR_CREATOR] PR creation failed: {str(e)}")
             return PRResult(
@@ -182,7 +187,7 @@ class PRCreator:
                 base_branch=base,
                 head_branch=branch,
                 provider=self.provider,
-                error=str(e)
+                error=str(e),
             )
 
     def create_pr(
@@ -195,7 +200,7 @@ class PRCreator:
     ) -> PRInfo:
         """
         Create a Pull Request.
-        
+
         Legacy API - use create_navi_pr for new code.
 
         Args:
@@ -203,10 +208,10 @@ class PRCreator:
             base: Base branch name
             change_plan: Structured ChangePlan
             commit_message: Full commit message
-            
+
         Returns:
             PRInfo with PR details
-            
+
         Raises:
             PRCreationError on failure
         """
@@ -239,21 +244,21 @@ class PRCreator:
         """Get information about an existing PR."""
         if not self._can_create_pr():
             return None
-            
+
         try:
             url = f"https://api.github.com/repos/{self.repo_owner}/{self.repo_name}/pulls/{pr_number}"
             headers = {
                 "Authorization": f"token {self.github_token}",
                 "Accept": "application/vnd.github+json",
             }
-            
+
             resp = requests.get(url, headers=headers)
             if resp.status_code == 200:
                 return resp.json()
             else:
                 logger.error(f"[PR_CREATOR] Failed to get PR info: {resp.status_code}")
                 return None
-                
+
         except Exception as e:
             logger.error(f"[PR_CREATOR] Error getting PR info: {e}")
             return None
@@ -270,10 +275,10 @@ class PRCreator:
     def _can_create_pr(self) -> bool:
         """Check if PR creation is possible."""
         return (
-            requests is not None and
-            self.github_token is not None and
-            self.repo_owner is not None and
-            self.repo_name is not None
+            requests is not None
+            and self.github_token is not None
+            and self.repo_owner is not None
+            and self.repo_name is not None
         )
 
     # ------------------------------------------------------------------
@@ -297,7 +302,7 @@ class PRCreator:
         headers = {
             "Authorization": f"token {self.github_token}",
             "Accept": "application/vnd.github+json",
-            "User-Agent": "NAVI-Autonomous-PR-System/1.0"
+            "User-Agent": "NAVI-Autonomous-PR-System/1.0",
         }
 
         payload = {
@@ -322,7 +327,7 @@ class PRCreator:
                     error_msg += f": {error_data['message']}"
             except Exception:
                 error_msg += f": {resp.text[:200]}"
-                
+
             raise PRCreationError(error_msg)
 
         return resp.json()
@@ -334,7 +339,7 @@ class PRCreator:
     def _detect_github_repo(self) -> tuple[str, str]:
         """
         Detect GitHub owner/repo from git remote.
-        
+
         Returns:
             Tuple of (owner, repo_name)
         """
@@ -362,9 +367,9 @@ class PRCreator:
 
         owner = match.group(1)
         repo = match.group(2)
-        
+
         # Clean up repo name
-        if repo.endswith('.git'):
+        if repo.endswith(".git"):
             repo = repo[:-4]
 
         return owner, repo
@@ -376,18 +381,18 @@ class PRCreator:
     def _generate_title(self, change_plan: Dict[str, Any]) -> str:
         """Generate PR title from change plan."""
         title = change_plan.get("goal", "Automated changes by NAVI")
-        
+
         # Ensure title isn't too long (GitHub limit is ~256 chars)
         if len(title) > 72:
             title = title[:69] + "..."
-            
+
         return title
 
     def _generate_body(
-        self, 
-        change_plan: Dict[str, Any], 
-        commit_message: str, 
-        commit_sha: Optional[str] = None
+        self,
+        change_plan: Dict[str, Any],
+        commit_message: str,
+        commit_sha: Optional[str] = None,
     ) -> str:
         """Generate PR body from change plan and commit info."""
         lines = []
@@ -406,10 +411,10 @@ class PRCreator:
             lines.append("## 📝 Changes")
             lines.append("")
             for f in files:
-                file_path = f.get('path', 'unknown')
-                intent = f.get('intent', 'modified')
-                rationale = f.get('rationale', '')
-                
+                file_path = f.get("path", "unknown")
+                intent = f.get("intent", "modified")
+                rationale = f.get("rationale", "")
+
                 if rationale:
                     lines.append(f"- `{file_path}` ({intent}) - {rationale}")
                 else:
@@ -437,12 +442,16 @@ class PRCreator:
         # Add tests required notice if applicable
         tests_required = change_plan.get("testsRequired", False)
         if tests_required:
-            lines.append("⚠️ **Tests Required:** This change may require additional testing.")
+            lines.append(
+                "⚠️ **Tests Required:** This change may require additional testing."
+            )
             lines.append("")
 
         # Add footer
         lines.append("---")
         lines.append("")
-        lines.append("🤖 _Generated automatically by [NAVI](https://github.com/navi-ai/navi) autonomous PR system_")
+        lines.append(
+            "🤖 _Generated automatically by [NAVI](https://github.com/navi-ai/navi) autonomous PR system_"
+        )
 
         return "\n".join(lines)

@@ -48,9 +48,9 @@ class ConsolidateRequest(BaseModel):
 
 @router.post("/event")
 def record_event(
-    req: SessionEventRequest, 
+    req: SessionEventRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Record episodic memory event
 
@@ -108,9 +108,9 @@ def record_event(
 
 @router.post("/consolidate", response_model=AgentNoteOut)
 def consolidate_memory(
-    req: ConsolidateRequest, 
+    req: ConsolidateRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Consolidate session events into agent note
 
@@ -193,9 +193,9 @@ def consolidate_memory(
 
 @router.get("/notes/{task_key}", response_model=List[AgentNoteOut])
 def get_notes(
-    task_key: str, 
+    task_key: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     """Fetch agent notes for task"""
     # Extract org_id from authenticated user context for proper tenant isolation

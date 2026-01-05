@@ -31,6 +31,7 @@ class FileContext:
     """
     Bounded context for a single file.
     """
+
     path: str
     intent: ChangeIntent
     content: Optional[str]
@@ -68,9 +69,7 @@ class ContextAssembler:
     ) -> None:
         self._repo_root = os.path.abspath(repo_root)
         self._max_file_bytes = max_file_bytes or self.DEFAULT_MAX_FILE_BYTES
-        self._allowed_extensions = (
-            allowed_extensions or self.DEFAULT_ALLOWED_EXTENSIONS
-        )
+        self._allowed_extensions = allowed_extensions or self.DEFAULT_ALLOWED_EXTENSIONS
 
     # ------------------------------------------------------------------
     # Public API
@@ -136,9 +135,7 @@ class ContextAssembler:
         """
         abs_path = os.path.abspath(os.path.join(self._repo_root, relative_path))
         if not abs_path.startswith(self._repo_root):
-            raise ContextAssemblyError(
-                f"Path traversal detected: {relative_path}"
-            )
+            raise ContextAssemblyError(f"Path traversal detected: {relative_path}")
         return abs_path
 
     def _validate_extension(self, path: str) -> None:
@@ -153,9 +150,7 @@ class ContextAssembler:
             with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
                 return f.read()
         except OSError as e:
-            raise ContextAssemblyError(
-                f"Failed to read file: {abs_path}"
-            ) from e
+            raise ContextAssemblyError(f"Failed to read file: {abs_path}") from e
 
     def _infer_language(self, path: str) -> Optional[str]:
         """

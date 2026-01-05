@@ -40,7 +40,11 @@ async def ingest(
     page = payload.get("page") or payload.get("content") or {}
     page_id = page.get("id") or payload.get("page_id") or payload.get("content_id")
     cloud_id = payload.get("cloudId") or payload.get("cloud_id")
-    base_url = payload.get("baseUrl") or payload.get("base_url") or page.get("_links", {}).get("base")
+    base_url = (
+        payload.get("baseUrl")
+        or payload.get("base_url")
+        or page.get("_links", {}).get("base")
+    )
     if base_url and not str(base_url).rstrip("/").endswith("/wiki"):
         base_url = f"{str(base_url).rstrip('/')}/wiki"
 

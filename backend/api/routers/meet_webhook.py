@@ -29,7 +29,10 @@ async def ingest(
     x_goog_channel_token: str | None = Header(None, alias="X-Goog-Channel-Token"),
     x_goog_resource_state: str | None = Header(None, alias="X-Goog-Resource-State"),
 ):
-    if settings.meet_webhook_secret and x_goog_channel_token != settings.meet_webhook_secret:
+    if (
+        settings.meet_webhook_secret
+        and x_goog_channel_token != settings.meet_webhook_secret
+    ):
         raise HTTPException(status_code=401, detail="Invalid Meet webhook token")
 
     connector = None
@@ -54,7 +57,9 @@ async def ingest(
     last_sync = None
     if last_sync_raw:
         try:
-            last_sync = datetime.fromisoformat(str(last_sync_raw).replace("Z", "+00:00"))
+            last_sync = datetime.fromisoformat(
+                str(last_sync_raw).replace("Z", "+00:00")
+            )
         except Exception:
             last_sync = None
 

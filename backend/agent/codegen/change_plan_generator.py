@@ -4,8 +4,12 @@ import uuid
 from datetime import datetime
 
 from .types import (
-    ChangePlan, ChangeIntent, ChangeType, PlannedFileChange, 
-    CodeChange, ValidationLevel
+    ChangePlan,
+    ChangeIntent,
+    ChangeType,
+    PlannedFileChange,
+    CodeChange,
+    ValidationLevel,
 )
 
 try:
@@ -24,43 +28,43 @@ logger = logging.getLogger(__name__)
 class ChangePlanGenerator:
     """
     Phase 3.3 - Core engine for generating detailed change plans.
-    
+
     This is the authoritative code generation planner that converts
     user requests and NaviIntents into executable ChangePlans.
-    
+
     Integration:
     - Called by planner_v3.py when intent.kind indicates code generation
-    - Provides detailed file-by-file change specifications  
+    - Provides detailed file-by-file change specifications
     - Output feeds into existing tool_executor via apply_diff tools
     """
-    
+
     def __init__(self, llm_router: Optional[LLMRouter] = None):
         self.llm_router = llm_router or LLMRouter()
         self.settings = get_settings()
-        
+
     async def generate_plan(
         self,
         intent: NaviIntent,
         user_request: str,
         workspace_root: str,
         repo_context: Dict[str, Any],
-        user_preferences: Dict[str, Any] = None
+        user_preferences: Dict[str, Any] = None,
     ) -> ChangePlan:
         """
         Generate a comprehensive ChangePlan from user intent.
-        
+
         Args:
             intent: Classified user intent
             user_request: Original user request
             workspace_root: Path to workspace root
             repo_context: Repository analysis and context
             user_preferences: User preferences for validation, etc.
-            
+
         Returns:
             Detailed ChangePlan ready for execution
         """
         logger.info(f"[CODEGEN] Generating change plan for intent: {intent.kind}")
-        
+
         # Create base plan structure
         plan = ChangePlan(
             plan_id=str(uuid.uuid4()),
@@ -69,52 +73,49 @@ class ChangePlanGenerator:
             user_request=user_request,
             workspace_root=workspace_root,
             repo_context=repo_context,
-            user_preferences=user_preferences or {}
+            user_preferences=user_preferences or {},
         )
-        
+
         # Generate detailed analysis prompt
         analysis_prompt = self._build_analysis_prompt(
             intent, user_request, repo_context
         )
-        
+
         try:
             # Get LLM analysis of required changes
             analysis_response = await self.llm_router.run(
-                prompt=analysis_prompt,
-                use_smart_auto=True
+                prompt=analysis_prompt, use_smart_auto=True
             )
-            
+
             # Parse LLM response into structured changes
             file_changes = await self._parse_analysis_to_changes(
-                analysis_response.text,
-                repo_context,
-                workspace_root
+                analysis_response.text, repo_context, workspace_root
             )
-            
+
             # Add file changes to plan
             for file_change in file_changes:
                 plan.add_file_change(file_change)
-            
+
             # Optimize execution order based on dependencies
             plan.optimize_execution_order()
-            
+
             # Set validation level based on user preferences and risk
             plan.validation_level = self._determine_validation_level(
                 plan, user_preferences
             )
-            
+
             logger.info(
                 f"[CODEGEN] Generated plan with {plan.total_files_affected} files, "
                 f"{plan.total_lines_affected} lines affected"
             )
-            
+
             return plan
-            
+
         except Exception as e:
             logger.error(f"[CODEGEN] Failed to generate change plan: {e}")
             # Return minimal plan with error context
             return self._create_error_plan(plan, str(e))
-    
+
     def _map_intent(self, intent: NaviIntent) -> ChangeIntent:
         """Map NaviIntent to ChangeIntent."""
         intent_mapping = {
@@ -126,34 +127,35 @@ class ChangePlanGenerator:
             "ADD_TESTS": ChangeIntent.ADD_TESTS,
             "IMPROVE_PERFORMANCE": ChangeIntent.IMPROVE_PERFORMANCE,
             "ENHANCE_SECURITY": ChangeIntent.ENHANCE_SECURITY,
-            "ADD_DOCUMENTATION": ChangeIntent.ADD_DOCUMENTATION
+            "ADD_DOCUMENTATION": ChangeIntent.ADD_DOCUMENTATION,
         }
-        
-        intent_str = str(intent.kind.value).upper() if hasattr(intent, 'kind') else "IMPLEMENT_FEATURE"
+
+        intent_str = (
+            str(intent.kind.value).upper()
+            if hasattr(intent, "kind")
+            else "IMPLEMENT_FEATURE"
+        )
         return intent_mapping.get(intent_str, ChangeIntent.IMPLEMENT_FEATURE)
-    
+
     def _build_analysis_prompt(
-        self,
-        intent: NaviIntent, 
-        user_request: str,
-        repo_context: Dict[str, Any]
+        self, intent: NaviIntent, user_request: str, repo_context: Dict[str, Any]
     ) -> str:
         """
         Build comprehensive analysis prompt for LLM.
-        
+
         This prompt is designed to extract:
         1. Files that need to be created/modified
         2. Specific changes within each file
         3. Dependencies between changes
         4. Risk assessment
         """
-        
+
         # Extract relevant repo context
-        repo_context.get('file_structure', {})
-        key_files = repo_context.get('key_files', [])
-        languages = repo_context.get('languages', [])
-        frameworks = repo_context.get('frameworks', [])
-        
+        repo_context.get("file_structure", {})
+        key_files = repo_context.get("key_files", [])
+        languages = repo_context.get("languages", [])
+        frameworks = repo_context.get("frameworks", [])
+
         prompt = f"""
 You are an expert software engineer analyzing a code change request.
 
@@ -206,39 +208,38 @@ IMPORTANT:
 5. For modifications, be precise about what to change
 6. Include reasoning for each change
 """
-        
+
         return prompt
-    
+
     async def _parse_analysis_to_changes(
-        self,
-        llm_response: str,
-        repo_context: Dict[str, Any],
-        workspace_root: str
+        self, llm_response: str, repo_context: Dict[str, Any], workspace_root: str
     ) -> List[PlannedFileChange]:
         """
         Parse LLM analysis response into PlannedFileChange objects.
         """
         import json
-        
+
         try:
             # Parse JSON response
             analysis = json.loads(llm_response)
             file_changes = []
-            
+
             for fc_data in analysis.get("file_changes", []):
                 # Parse individual code changes
                 changes = []
                 for change_data in fc_data.get("changes", []):
-                    changes.append(CodeChange(
-                        line_start=change_data.get("line_start", 1),
-                        line_end=change_data.get("line_end", 1),
-                        original_code=change_data.get("original_code", ""),
-                        new_code=change_data.get("new_code", ""),
-                        change_type=change_data.get("change_type", "insert"),
-                        reasoning=change_data.get("reasoning", ""),
-                        confidence=change_data.get("confidence", 0.8)
-                    ))
-                
+                    changes.append(
+                        CodeChange(
+                            line_start=change_data.get("line_start", 1),
+                            line_end=change_data.get("line_end", 1),
+                            original_code=change_data.get("original_code", ""),
+                            new_code=change_data.get("new_code", ""),
+                            change_type=change_data.get("change_type", "insert"),
+                            reasoning=change_data.get("reasoning", ""),
+                            confidence=change_data.get("confidence", 0.8),
+                        )
+                    )
+
                 # Create PlannedFileChange
                 file_change = PlannedFileChange(
                     file_path=fc_data["file_path"],
@@ -249,22 +250,22 @@ IMPORTANT:
                     dependencies=fc_data.get("dependencies", []),
                     estimated_complexity=fc_data.get("estimated_complexity", 0.5),
                     risk_level=fc_data.get("risk_level", "medium"),
-                    requires_review=fc_data.get("risk_level", "medium") != "low"
+                    requires_review=fc_data.get("risk_level", "medium") != "low",
                 )
-                
+
                 file_changes.append(file_change)
-            
+
             return file_changes
-            
+
         except json.JSONDecodeError as e:
             logger.error(f"[CODEGEN] Failed to parse LLM response as JSON: {e}")
             logger.error(f"[CODEGEN] Raw response: {llm_response[:500]}...")
             return self._create_fallback_changes(workspace_root)
-        
+
         except Exception as e:
             logger.error(f"[CODEGEN] Error parsing analysis: {e}")
             return self._create_fallback_changes(workspace_root)
-    
+
     def _create_fallback_changes(self, workspace_root: str) -> List[PlannedFileChange]:
         """Create minimal fallback changes when LLM parsing fails."""
         return [
@@ -279,31 +280,29 @@ IMPORTANT:
                         new_code="# Updated by Navi\n",
                         change_type="insert",
                         reasoning="Fallback change - LLM analysis failed",
-                        confidence=0.1
+                        confidence=0.1,
                     )
                 ],
                 reasoning="Fallback change due to analysis parsing failure",
-                risk_level="low"
+                risk_level="low",
             )
         ]
-    
+
     def _determine_validation_level(
-        self,
-        plan: ChangePlan,
-        user_preferences: Optional[Dict[str, Any]]
+        self, plan: ChangePlan, user_preferences: Optional[Dict[str, Any]]
     ) -> ValidationLevel:
         """Determine appropriate validation level based on plan risk and user preferences."""
         if not user_preferences:
             return ValidationLevel.FULL
-        
+
         # Check user preference
-        pref_level = user_preferences.get('validation_level')
+        pref_level = user_preferences.get("validation_level")
         if pref_level:
             try:
                 return ValidationLevel(pref_level)
             except ValueError:
                 pass
-        
+
         # Determine based on risk
         if plan.overall_risk == "high":
             return ValidationLevel.FULL
@@ -311,17 +310,15 @@ IMPORTANT:
             return ValidationLevel.TYPE_CHECK
         else:
             return ValidationLevel.SYNTAX_ONLY
-    
+
     def _create_error_plan(
-        self, 
-        base_plan: ChangePlan, 
-        error_message: str
+        self, base_plan: ChangePlan, error_message: str
     ) -> ChangePlan:
         """Create an error plan when generation fails."""
         base_plan.description = f"Error: {error_message}"
         base_plan.overall_risk = "high"
         base_plan.validation_level = ValidationLevel.NONE
-        
+
         # Add a comment change to indicate the error
         error_change = PlannedFileChange(
             file_path=".navi_error.md",
@@ -338,8 +335,8 @@ Please review the request and try again.
 """,
             reasoning=f"Created due to generation error: {error_message}",
             risk_level="low",
-            requires_review=True
+            requires_review=True,
         )
-        
+
         base_plan.add_file_change(error_change)
         return base_plan

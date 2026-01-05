@@ -6,6 +6,7 @@ from backend.services.review_service import generate_review_stream
 
 router = APIRouter(prefix="/api/review")
 
+
 @router.get("/stream")
 async def review_stream(request: Request):
     async def event_generator() -> AsyncGenerator[str, None]:

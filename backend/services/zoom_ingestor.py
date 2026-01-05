@@ -187,11 +187,15 @@ async def ingest_zoom_meetings(
         expires_raw = cfg.get("expires_at")
         if expires_raw:
             try:
-                expires_at = datetime.fromisoformat(str(expires_raw).replace("Z", "+00:00"))
+                expires_at = datetime.fromisoformat(
+                    str(expires_raw).replace("Z", "+00:00")
+                )
             except Exception:
                 expires_at = None
 
-    client_id, client_secret, org_account_id = _resolve_zoom_oauth_app(db, resolved_org_id)
+    client_id, client_secret, org_account_id = _resolve_zoom_oauth_app(
+        db, resolved_org_id
+    )
     zc = ZoomClient(
         account_id=account_id or org_account_id,
         client_id=client_id,

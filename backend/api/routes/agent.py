@@ -395,8 +395,10 @@ async def health_check() -> Dict[str, Any]:
 # Phase 4.1.2 - Planning Engine API
 # ============================================================================
 
+
 class PlanRequest(BaseModel):
     """Request for creating a plan from a classified intent."""
+
     intent: Dict[str, Any]  # NaviIntent as dict
     context: Optional[Dict[str, Any]] = None
     session_id: Optional[str] = None
@@ -404,6 +406,7 @@ class PlanRequest(BaseModel):
 
 class PlanResponse(BaseModel):
     """Response from plan creation."""
+
     success: bool
     plan: Optional[Dict[str, Any]] = None
     reasoning: Optional[str] = None
@@ -418,13 +421,13 @@ async def create_plan(
 ) -> PlanResponse:
     """
     Create a structured plan from a classified intent.
-    
+
     This is Phase 4.1.2 - the Planning Engine.
     Takes an intent and returns a structured plan with steps.
     """
     try:
         from ...agent.intent_schema import NaviIntent
-        
+
         # Convert dict back to NaviIntent object
         intent_data = request.intent
         intent = NaviIntent(
@@ -435,14 +438,14 @@ async def create_plan(
             priority=intent_data.get("priority", "normal"),
             slots=intent_data.get("slots", {}),
         )
-        
+
         # Create plan using orchestrator
         plan_result = await orchestrator.create_plan(
             intent,
             context=request.context,
             session_id=request.session_id,
         )
-        
+
         return PlanResponse(
             success=plan_result["success"],
             plan=plan_result.get("plan"),

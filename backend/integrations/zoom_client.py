@@ -56,7 +56,9 @@ class ZoomClient:
 
     def _refresh_access_token(self) -> str:
         if not self.refresh_token or not self.client_id or not self.client_secret:
-            raise RuntimeError("Zoom refresh requires client_id, client_secret, refresh_token")
+            raise RuntimeError(
+                "Zoom refresh requires client_id, client_secret, refresh_token"
+            )
 
         auth_bytes = f"{self.client_id}:{self.client_secret}".encode("utf-8")
         basic_auth = base64.b64encode(auth_bytes).decode("utf-8")
@@ -89,7 +91,9 @@ class ZoomClient:
         expires_in = data.get("expires_in")
         if expires_in:
             try:
-                self.expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+                self.expires_at = datetime.now(timezone.utc) + timedelta(
+                    seconds=int(expires_in)
+                )
             except Exception:
                 self.expires_at = None
         return token

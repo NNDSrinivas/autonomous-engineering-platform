@@ -19,16 +19,20 @@ try:
 except ImportError:  # pragma: no cover
     # Fallback minimal definitions if backend.orchestrator is unavailable.
     from dataclasses import dataclass
+
     @dataclass
     class PlannedStep:
         id: Any
         description: str
         tool: str
         arguments: Dict[str, Any]
+
     @dataclass
     class PlanResult:
         steps: Any
         summary: str
+
+
 from .intent_schema import NaviIntent, IntentFamily, IntentKind, Provider
 
 logger = logging.getLogger(__name__)

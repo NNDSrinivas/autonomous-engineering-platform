@@ -90,6 +90,7 @@ def _clean_slack_text(text: str) -> str:
     text = re.sub(r"&gt;", ">", text)
     return text.strip()
 
+
 def _should_fetch_file(file_info: Dict[str, Any]) -> bool:
     mimetype = (file_info.get("mimetype") or "").lower()
     if mimetype.startswith("text/"):
@@ -208,9 +209,7 @@ async def ingest_slack(
 
     # Map channel names to channel objects
     all_channels = sc.list_channels()
-    name_to_channel = {
-        c["name"].lower(): c for c in all_channels if c.get("name")
-    }
+    name_to_channel = {c["name"].lower(): c for c in all_channels if c.get("name")}
 
     user_name_cache: Dict[str, str] = {}
 
@@ -317,9 +316,7 @@ async def ingest_slack(
                         for message in thread_msgs:
                             for file_info in message.get("files", []) or []:
                                 file_id = str(
-                                    file_info.get("id")
-                                    or file_info.get("name")
-                                    or ""
+                                    file_info.get("id") or file_info.get("name") or ""
                                 )
                                 if file_id and file_id in seen_files:
                                     continue

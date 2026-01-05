@@ -229,4 +229,6 @@ class TeamsClient:
         """
         Fetch a single message by ID from a Teams channel.
         """
-        return self._get(f"/teams/{team_id}/channels/{channel_id}/messages/{message_id}")
+        return self._get(
+            f"/teams/{team_id}/channels/{channel_id}/messages/{message_id}"
+        )

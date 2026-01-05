@@ -383,7 +383,7 @@ class IntentClassifier:
                     "fix all errors",
                     "problems panel",
                     "vs code errors",
-                    "compilation errors"
+                    "compilation errors",
                 ),
             ):
                 return IntentKind.FIX_DIAGNOSTICS

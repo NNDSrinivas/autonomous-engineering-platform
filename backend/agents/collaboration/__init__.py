@@ -14,17 +14,17 @@ from .collaboration_engine import (
     TaskDelegation,
     MessageType,
     AgentRole,
-    Priority
+    Priority,
 )
 
 __all__ = [
-    'CollaborationEngine',
-    'MultiAgentOrchestrator',
-    'BaseCollaborativeAgent',
-    'AgentMessage',
-    'CollaborationContext',
-    'TaskDelegation',
-    'MessageType',
-    'AgentRole',
-    'Priority'
+    "CollaborationEngine",
+    "MultiAgentOrchestrator",
+    "BaseCollaborativeAgent",
+    "AgentMessage",
+    "CollaborationContext",
+    "TaskDelegation",
+    "MessageType",
+    "AgentRole",
+    "Priority",
 ]

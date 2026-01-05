@@ -7,15 +7,18 @@ from .git_service import GitService
 
 logger = logging.getLogger(__name__)
 
+
 class RepoService:
     """Service for repository operations combining git and file system access"""
-    
+
     def __init__(self, repo_path: str):
         self.git = GitService(repo_path)
         self.repo_path = repo_path
         self.last_skip_summary: Dict[str, Any] = {}
 
-    def get_working_tree_changes(self, max_files: int | None = None) -> List[Dict[str, Any]]:
+    def get_working_tree_changes(
+        self, max_files: int | None = None
+    ) -> List[Dict[str, Any]]:
         """
         Get all working tree changes with diffs and content
         """
@@ -64,7 +67,7 @@ class RepoService:
 
             for file_info in files if limit is None else files[:limit]:
                 path = file_info["path"]
-                
+
                 # Skip directories
                 full_path = Path(self.repo_path) / path
                 if full_path.exists() and full_path.is_dir():
@@ -93,19 +96,19 @@ class RepoService:
                     except Exception:
                         # If stat fails, continue with best-effort diff/content
                         pass
-                
+
                 # Get the appropriate diff (staged vs unstaged)
                 if file_info["staged"]:
                     diff = self.git.get_file_diff(path, staged=True)
                 else:
                     diff = self.git.get_file_diff(path, staged=False)
-                
+
                 # Get current file content
                 content = self.git.get_file_content(path)
-                
+
                 # Determine file type for better analysis
-                file_ext = path.split('.')[-1] if '.' in path else ''
-                
+                file_ext = path.split(".")[-1] if "." in path else ""
+
                 entry = {
                     "path": path,
                     "staged": file_info["staged"],
@@ -116,9 +119,9 @@ class RepoService:
                     "diff": diff,
                     "content": content,
                     "file_type": file_ext,
-                    "size": len(content) if content else 0
+                    "size": len(content) if content else 0,
                 }
-                
+
                 result.append(entry)
                 logger.debug(
                     "Processed file: %s, diff_length: %s, content_length: %s",
@@ -143,7 +146,7 @@ class RepoService:
 
             logger.info(f"Found {len(result)} modified files in working tree")
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to get working tree changes: {e}")
             return []
@@ -156,14 +159,14 @@ class RepoService:
             return {
                 "root": self.git.get_repo_root(),
                 "current_branch": self.git.get_current_branch(),
-                "repo_path": self.repo_path
+                "repo_path": self.repo_path,
             }
         except Exception as e:
             logger.error(f"Failed to get repo info: {e}")
             return {
                 "root": self.repo_path,
                 "current_branch": "unknown",
-                "repo_path": self.repo_path
+                "repo_path": self.repo_path,
             }
 
     def get_file_analysis_context(self, file_path: str) -> Dict[str, Any]:
@@ -176,7 +179,9 @@ class RepoService:
                 "content": self.git.get_file_content(file_path),
                 "diff": self.git.get_file_diff(file_path),
                 "staged_diff": self.git.get_file_diff(file_path, staged=True),
-                "file_type": file_path.split('.')[-1] if '.' in file_path else 'unknown'
+                "file_type": (
+                    file_path.split(".")[-1] if "." in file_path else "unknown"
+                ),
             }
         except Exception as e:
             logger.error(f"Failed to get analysis context for {file_path}: {e}")
@@ -185,5 +190,5 @@ class RepoService:
                 "content": "",
                 "diff": "",
                 "staged_diff": "",
-                "file_type": "unknown"
+                "file_type": "unknown",
             }

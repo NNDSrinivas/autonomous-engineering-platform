@@ -15,4 +15,6 @@ class Connector(Base):
     workspace_root = Column(String(500), index=True, nullable=True)
     user_id = Column(String(200), index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(
+        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )

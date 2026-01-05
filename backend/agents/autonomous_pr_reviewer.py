@@ -23,7 +23,7 @@ from pathlib import Path
 
 try:
     from ..services.llm_router import LLMRouter
-    from ..services.database_service import DatabaseService  
+    from ..services.database_service import DatabaseService
     from ..memory.memory_layer import MemoryLayer, MemoryType, MemoryImportance
     from ..core.config import get_settings
 except ImportError:
@@ -35,15 +35,17 @@ except ImportError:
 
 class ReviewSeverity(Enum):
     """Severity levels for review comments."""
+
     CRITICAL = "critical"  # Security, data loss, breaking changes
-    HIGH = "high"         # Performance, bugs, architecture violations
-    MEDIUM = "medium"     # Code quality, maintainability
-    LOW = "low"          # Style, minor improvements
-    INFO = "info"        # Suggestions, best practices
+    HIGH = "high"  # Performance, bugs, architecture violations
+    MEDIUM = "medium"  # Code quality, maintainability
+    LOW = "low"  # Style, minor improvements
+    INFO = "info"  # Suggestions, best practices
 
 
 class ReviewCategory(Enum):
     """Categories of review feedback."""
+
     SECURITY = "security"
     PERFORMANCE = "performance"
     BUGS = "bugs"
@@ -58,8 +60,9 @@ class ReviewCategory(Enum):
 
 class FileChangeType(Enum):
     """Types of file changes in PR."""
+
     ADDED = "added"
-    MODIFIED = "modified" 
+    MODIFIED = "modified"
     DELETED = "deleted"
     RENAMED = "renamed"
 
@@ -67,6 +70,7 @@ class FileChangeType(Enum):
 @dataclass
 class FileChange:
     """Represents a file change in a PR."""
+
     file_path: str
     change_type: FileChangeType
     additions: int
@@ -80,6 +84,7 @@ class FileChange:
 @dataclass
 class ReviewComment:
     """Individual review comment with suggestions."""
+
     file_path: str
     line_number: Optional[int]
     severity: ReviewSeverity
@@ -95,6 +100,7 @@ class ReviewComment:
 @dataclass
 class SecurityIssue:
     """Security vulnerability found in code."""
+
     file_path: str
     line_number: int
     vulnerability_type: str
@@ -108,6 +114,7 @@ class SecurityIssue:
 @dataclass
 class PatchSuggestion:
     """Automated code patch suggestion."""
+
     file_path: str
     start_line: int
     end_line: int
@@ -121,6 +128,7 @@ class PatchSuggestion:
 @dataclass
 class PRAnalysis:
     """Comprehensive PR analysis results."""
+
     pr_id: str
     title: str
     description: str
@@ -141,19 +149,19 @@ class AutonomousPRReviewer:
     Advanced AI-powered pull request reviewer that provides comprehensive
     code analysis, security scanning, and automated patch suggestions.
     """
-    
+
     def __init__(self):
         """Initialize the Autonomous PR Reviewer."""
         self.llm = LLMRouter()
         self.db = DatabaseService()
         self.memory = MemoryLayer()
         self.settings = get_settings()
-        
+
         # Review configuration
         self.max_files_per_review = 50
         self.max_diff_size = 10000  # lines
         self.confidence_threshold = 0.7
-        
+
         # Security patterns to check
         self.security_patterns = {
             "sql_injection": [
@@ -173,9 +181,9 @@ class AutonomousPRReviewer:
             "path_traversal": [
                 r"open\s*\(\s*.*?\+.*?[\"']\.\.\/",
                 r"file\s*=\s*.*?request.*?[\"']\.\.\/",
-            ]
+            ],
         }
-    
+
     async def review_pull_request(
         self,
         pr_id: str,
@@ -183,11 +191,11 @@ class AutonomousPRReviewer:
         pr_description: str,
         author: str,
         file_changes: List[Dict[str, Any]],
-        repository_context: Optional[Dict[str, Any]] = None
+        repository_context: Optional[Dict[str, Any]] = None,
     ) -> PRAnalysis:
         """
         Perform comprehensive review of a pull request.
-        
+
         Args:
             pr_id: Pull request identifier
             pr_title: PR title
@@ -195,11 +203,11 @@ class AutonomousPRReviewer:
             author: PR author
             file_changes: List of file changes with diffs
             repository_context: Additional context about the repository
-            
+
         Returns:
             Complete PR analysis with comments and suggestions
         """
-        
+
         # Parse file changes
         parsed_changes = []
         for change in file_changes:
@@ -211,45 +219,49 @@ class AutonomousPRReviewer:
                 diff_content=change.get("diff_content", ""),
                 language=self._detect_language(change["file_path"]),
                 is_test_file=self._is_test_file(change["file_path"]),
-                is_config_file=self._is_config_file(change["file_path"])
+                is_config_file=self._is_config_file(change["file_path"]),
             )
             parsed_changes.append(file_change)
-        
+
         # Retrieve relevant memories for context
-        context_memories = await self._get_review_context(parsed_changes, repository_context or {})
-        
+        context_memories = await self._get_review_context(
+            parsed_changes, repository_context or {}
+        )
+
         # Perform security analysis
         security_issues = await self._analyze_security(parsed_changes)
-        
+
         # Generate review comments
         review_comments = await self._generate_review_comments(
             parsed_changes, context_memories, repository_context
         )
-        
+
         # Generate patch suggestions
         patch_suggestions = await self._generate_patch_suggestions(
             parsed_changes, review_comments
         )
-        
+
         # Calculate complexity and risk scores
         complexity_score = self._calculate_complexity_score(parsed_changes)
         overall_score = self._calculate_overall_score(
             review_comments, security_issues, complexity_score
         )
-        
+
         # Generate risk assessment
         risk_assessment = await self._generate_risk_assessment(
             parsed_changes, security_issues, complexity_score
         )
-        
+
         # Generate approval recommendation
         approval_recommendation = await self._generate_approval_recommendation(
             overall_score, security_issues, review_comments
         )
-        
+
         # Estimate review time
-        estimated_review_time = self._estimate_review_time(parsed_changes, review_comments)
-        
+        estimated_review_time = self._estimate_review_time(
+            parsed_changes, review_comments
+        )
+
         # Create analysis object
         analysis = PRAnalysis(
             pr_id=pr_id,
@@ -264,31 +276,28 @@ class AutonomousPRReviewer:
             complexity_score=complexity_score,
             risk_assessment=risk_assessment,
             approval_recommendation=approval_recommendation,
-            estimated_review_time=estimated_review_time
+            estimated_review_time=estimated_review_time,
         )
-        
+
         # Store review results
         await self._save_review_analysis(analysis)
-        
+
         # Store learning in memory
         await self._store_review_learning(analysis, context_memories)
-        
+
         return analysis
-    
-    async def generate_review_summary(
-        self,
-        analysis: PRAnalysis
-    ) -> str:
+
+    async def generate_review_summary(self, analysis: PRAnalysis) -> str:
         """
         Generate human-readable review summary.
-        
+
         Args:
             analysis: PR analysis results
-            
+
         Returns:
             Formatted review summary
         """
-        
+
         summary_prompt = f"""
         You are Navi-ReviewSummarizer, an expert at creating clear, actionable PR review summaries.
         
@@ -327,16 +336,22 @@ class AutonomousPRReviewer:
         
         Use professional tone suitable for team collaboration.
         """
-        
+
         try:
             response = await self.llm.run(prompt=summary_prompt, use_smart_auto=True)
             return response.text
-            
+
         except Exception:
             # Fallback summary
-            critical_count = len([c for c in analysis.review_comments if c.severity == ReviewSeverity.CRITICAL])
+            critical_count = len(
+                [
+                    c
+                    for c in analysis.review_comments
+                    if c.severity == ReviewSeverity.CRITICAL
+                ]
+            )
             security_count = len(analysis.security_issues)
-            
+
             return f"""
 ## PR Review Summary
 
@@ -354,110 +369,109 @@ class AutonomousPRReviewer:
 
 **Estimated Review Time:** {analysis.estimated_review_time} minutes
             """.strip()
-    
+
     async def apply_automated_fixes(
-        self,
-        analysis: PRAnalysis,
-        confidence_threshold: float = 0.8
+        self, analysis: PRAnalysis, confidence_threshold: float = 0.8
     ) -> Dict[str, Any]:
         """
         Apply automated fixes for high-confidence patch suggestions.
-        
+
         Args:
             analysis: PR analysis with patch suggestions
             confidence_threshold: Minimum confidence for auto-application
-            
+
         Returns:
             Results of automated fix application
         """
-        
+
         applicable_patches = [
-            patch for patch in analysis.patch_suggestions
+            patch
+            for patch in analysis.patch_suggestions
             if patch.confidence >= confidence_threshold
         ]
-        
+
         results = {
             "total_patches": len(analysis.patch_suggestions),
             "applied_patches": [],
             "skipped_patches": [],
-            "errors": []
+            "errors": [],
         }
-        
+
         for patch in applicable_patches:
             try:
                 # Apply the patch (in a real implementation, this would modify files)
                 fix_result = await self._apply_patch(patch)
-                
+
                 if fix_result["success"]:
-                    results["applied_patches"].append({
-                        "file": patch.file_path,
-                        "lines": f"{patch.start_line}-{patch.end_line}",
-                        "category": patch.category.value,
-                        "reasoning": patch.reasoning
-                    })
+                    results["applied_patches"].append(
+                        {
+                            "file": patch.file_path,
+                            "lines": f"{patch.start_line}-{patch.end_line}",
+                            "category": patch.category.value,
+                            "reasoning": patch.reasoning,
+                        }
+                    )
                 else:
-                    results["errors"].append({
-                        "file": patch.file_path,
-                        "error": fix_result.get("error", "Unknown error")
-                    })
-                    
+                    results["errors"].append(
+                        {
+                            "file": patch.file_path,
+                            "error": fix_result.get("error", "Unknown error"),
+                        }
+                    )
+
             except Exception as e:
-                results["errors"].append({
-                    "file": patch.file_path,
-                    "error": str(e)
-                })
-        
+                results["errors"].append({"file": patch.file_path, "error": str(e)})
+
         # Store applied fixes in memory
         if results["applied_patches"]:
             await self.memory.store_memory(
                 memory_type=MemoryType.PROCESS_LEARNING,
                 title=f"Automated PR Fixes Applied: {analysis.pr_id}",
                 content=f"Applied {len(results['applied_patches'])} automated fixes to PR {analysis.pr_id}. "
-                       f"Categories: {', '.join(set(p['category'] for p in results['applied_patches']))}",
+                f"Categories: {', '.join(set(p['category'] for p in results['applied_patches']))}",
                 importance=MemoryImportance.MEDIUM,
                 tags=["pr-review", "automated-fixes", "code-quality"],
                 context={
                     "pr_id": analysis.pr_id,
-                    "fixes_applied": len(results["applied_patches"])
-                }
+                    "fixes_applied": len(results["applied_patches"]),
+                },
             )
-        
+
         return results
-    
+
     async def _analyze_security(
-        self,
-        file_changes: List[FileChange]
+        self, file_changes: List[FileChange]
     ) -> List[SecurityIssue]:
         """Analyze code changes for security vulnerabilities."""
-        
+
         security_issues = []
-        
+
         for file_change in file_changes:
             if file_change.change_type == FileChangeType.DELETED:
                 continue
-            
+
             # Pattern-based security scanning
             issues = self._scan_security_patterns(file_change)
             security_issues.extend(issues)
-            
+
             # AI-powered security analysis for critical files
             if self._is_security_critical_file(file_change.file_path):
                 ai_issues = await self._ai_security_analysis(file_change)
                 security_issues.extend(ai_issues)
-        
+
         return security_issues
-    
+
     def _scan_security_patterns(self, file_change: FileChange) -> List[SecurityIssue]:
         """Scan for known security vulnerability patterns."""
-        
+
         issues = []
-        lines = file_change.diff_content.split('\n')
-        
+        lines = file_change.diff_content.split("\n")
+
         for line_num, line in enumerate(lines, 1):
             # Skip deleted lines
-            if line.startswith('-'):
+            if line.startswith("-"):
                 continue
-            
+
             # Check each security pattern category
             for vuln_type, patterns in self.security_patterns.items():
                 for pattern in patterns:
@@ -468,15 +482,17 @@ class AutonomousPRReviewer:
                             vulnerability_type=vuln_type,
                             severity=ReviewSeverity.HIGH,
                             description=f"Potential {vuln_type.replace('_', ' ')} vulnerability detected",
-                            mitigation=self._get_security_mitigation(vuln_type)
+                            mitigation=self._get_security_mitigation(vuln_type),
                         )
                         issues.append(issue)
-        
+
         return issues
-    
-    async def _ai_security_analysis(self, file_change: FileChange) -> List[SecurityIssue]:
+
+    async def _ai_security_analysis(
+        self, file_change: FileChange
+    ) -> List[SecurityIssue]:
         """Use AI to analyze code for security issues."""
-        
+
         security_prompt = f"""
         You are Navi-SecurityAnalyzer, an expert at identifying security vulnerabilities.
         
@@ -512,11 +528,11 @@ class AutonomousPRReviewer:
         
         Return empty array [] if no issues found.
         """
-        
+
         try:
             response = await self.llm.run(prompt=security_prompt, use_smart_auto=True)
             issues_data = json.loads(response.text)
-            
+
             security_issues = []
             for issue_data in issues_data:
                 issue = SecurityIssue(
@@ -526,57 +542,59 @@ class AutonomousPRReviewer:
                     severity=ReviewSeverity(issue_data["severity"]),
                     description=issue_data["description"],
                     cwe_id=issue_data.get("cwe_id"),
-                    mitigation=issue_data.get("mitigation", "")
+                    mitigation=issue_data.get("mitigation", ""),
                 )
                 security_issues.append(issue)
-            
+
             return security_issues
-            
+
         except Exception:
             return []
-    
+
     async def _generate_review_comments(
         self,
         file_changes: List[FileChange],
         context_memories: List[Any],
-        repository_context: Optional[Dict[str, Any]] = None
+        repository_context: Optional[Dict[str, Any]] = None,
     ) -> List[ReviewComment]:
         """Generate comprehensive review comments using AI analysis."""
-        
+
         all_comments = []
-        
+
         for file_change in file_changes:
             if file_change.change_type == FileChangeType.DELETED:
                 continue
-            
+
             # Generate comments for this file
             file_comments = await self._analyze_file_change(
                 file_change, context_memories, repository_context or {}
             )
             all_comments.extend(file_comments)
-        
+
         # Deduplicate and prioritize comments
         all_comments = self._deduplicate_comments(all_comments)
         all_comments.sort(key=lambda c: (c.severity.value, -c.confidence))
-        
+
         return all_comments
-    
+
     async def _analyze_file_change(
         self,
         file_change: FileChange,
         context_memories: List[Any],
-        repository_context: Dict[str, Any]
+        repository_context: Dict[str, Any],
     ) -> List[ReviewComment]:
         """Analyze a single file change and generate comments."""
-        
+
         # Prepare context from memories
         memory_context = ""
         if context_memories:
-            memory_context = "\n".join([
-                f"- {mem.title}: {mem.content[:100]}..."
-                for mem in context_memories[:5]
-            ])
-        
+            memory_context = "\n".join(
+                [
+                    f"- {mem.title}: {mem.content[:100]}..."
+                    for mem in context_memories[:5]
+                ]
+            )
+
         review_prompt = f"""
         You are Navi-CodeReviewer, an expert software engineer and code reviewer.
         
@@ -627,11 +645,11 @@ class AutonomousPRReviewer:
         
         Focus on actionable feedback. Return empty array [] if no issues.
         """
-        
+
         try:
             response = await self.llm.run(prompt=review_prompt, use_smart_auto=True)
             comments_data = json.loads(response.text)
-            
+
             comments = []
             for comment_data in comments_data:
                 comment = ReviewComment(
@@ -643,60 +661,60 @@ class AutonomousPRReviewer:
                     message=comment_data["message"],
                     suggested_fix=comment_data.get("suggested_fix"),
                     confidence=comment_data.get("confidence", 0.7),
-                    auto_fixable=comment_data.get("auto_fixable", False)
+                    auto_fixable=comment_data.get("auto_fixable", False),
                 )
                 comments.append(comment)
-            
+
             return comments
-            
+
         except Exception as e:
             # Fallback comment for analysis failure
-            return [ReviewComment(
-                file_path=file_change.file_path,
-                line_number=None,
-                severity=ReviewSeverity.INFO,
-                category=ReviewCategory.CODE_QUALITY,
-                title="Review Analysis Incomplete",
-                message=f"Automated review analysis failed: {str(e)}. Manual review recommended.",
-                confidence=0.1
-            )]
-    
+            return [
+                ReviewComment(
+                    file_path=file_change.file_path,
+                    line_number=None,
+                    severity=ReviewSeverity.INFO,
+                    category=ReviewCategory.CODE_QUALITY,
+                    title="Review Analysis Incomplete",
+                    message=f"Automated review analysis failed: {str(e)}. Manual review recommended.",
+                    confidence=0.1,
+                )
+            ]
+
     async def _generate_patch_suggestions(
-        self,
-        file_changes: List[FileChange],
-        review_comments: List[ReviewComment]
+        self, file_changes: List[FileChange], review_comments: List[ReviewComment]
     ) -> List[PatchSuggestion]:
         """Generate automated patch suggestions for fixable issues."""
-        
+
         patch_suggestions = []
-        
+
         # Group auto-fixable comments by file
         auto_fixable_comments = [c for c in review_comments if c.auto_fixable]
         comments_by_file = {}
-        
+
         for comment in auto_fixable_comments:
             if comment.file_path not in comments_by_file:
                 comments_by_file[comment.file_path] = []
             comments_by_file[comment.file_path].append(comment)
-        
+
         # Generate patches for each file
         for file_path, comments in comments_by_file.items():
-            file_change = next((fc for fc in file_changes if fc.file_path == file_path), None)
+            file_change = next(
+                (fc for fc in file_changes if fc.file_path == file_path), None
+            )
             if not file_change:
                 continue
-            
+
             patches = await self._generate_file_patches(file_change, comments)
             patch_suggestions.extend(patches)
-        
+
         return patch_suggestions
-    
+
     async def _generate_file_patches(
-        self,
-        file_change: FileChange,
-        comments: List[ReviewComment]
+        self, file_change: FileChange, comments: List[ReviewComment]
     ) -> List[PatchSuggestion]:
         """Generate patch suggestions for a specific file."""
-        
+
         patch_prompt = f"""
         You are Navi-PatchGenerator, an expert at creating precise code patches.
         
@@ -736,11 +754,11 @@ class AutonomousPRReviewer:
         
         Only suggest patches you are confident about. Return [] if no safe patches.
         """
-        
+
         try:
             response = await self.llm.run(prompt=patch_prompt, use_smart_auto=True)
             patches_data = json.loads(response.text)
-            
+
             patches = []
             for patch_data in patches_data:
                 if patch_data.get("confidence", 0) >= self.confidence_threshold:
@@ -752,101 +770,116 @@ class AutonomousPRReviewer:
                         suggested_code=patch_data["suggested_code"],
                         reasoning=patch_data["reasoning"],
                         confidence=patch_data["confidence"],
-                        category=ReviewCategory(patch_data["category"])
+                        category=ReviewCategory(patch_data["category"]),
                     )
                     patches.append(patch)
-            
+
             return patches
-            
+
         except Exception:
             return []
-    
+
     # Utility methods
     def _detect_language(self, file_path: str) -> Optional[str]:
         """Detect programming language from file extension."""
-        
+
         extension_map = {
-            '.py': 'python',
-            '.js': 'javascript',
-            '.ts': 'typescript', 
-            '.jsx': 'jsx',
-            '.tsx': 'tsx',
-            '.java': 'java',
-            '.go': 'go',
-            '.rs': 'rust',
-            '.cpp': 'cpp',
-            '.c': 'c',
-            '.php': 'php',
-            '.rb': 'ruby',
-            '.swift': 'swift',
-            '.kt': 'kotlin'
+            ".py": "python",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".jsx": "jsx",
+            ".tsx": "tsx",
+            ".java": "java",
+            ".go": "go",
+            ".rs": "rust",
+            ".cpp": "cpp",
+            ".c": "c",
+            ".php": "php",
+            ".rb": "ruby",
+            ".swift": "swift",
+            ".kt": "kotlin",
         }
-        
+
         ext = Path(file_path).suffix.lower()
         return extension_map.get(ext)
-    
+
     def _is_test_file(self, file_path: str) -> bool:
         """Check if file is a test file."""
-        test_indicators = ['test', 'spec', '__test__', '.test.', '.spec.']
+        test_indicators = ["test", "spec", "__test__", ".test.", ".spec."]
         return any(indicator in file_path.lower() for indicator in test_indicators)
-    
+
     def _is_config_file(self, file_path: str) -> bool:
         """Check if file is a configuration file."""
         config_files = [
-            'package.json', 'requirements.txt', 'Dockerfile', 'docker-compose.yml',
-            '.gitignore', '.eslintrc', 'tsconfig.json', 'webpack.config.js'
+            "package.json",
+            "requirements.txt",
+            "Dockerfile",
+            "docker-compose.yml",
+            ".gitignore",
+            ".eslintrc",
+            "tsconfig.json",
+            "webpack.config.js",
         ]
-        config_patterns = ['.config.', '.conf', '.ini', '.yaml', '.yml', '.toml']
-        
+        config_patterns = [".config.", ".conf", ".ini", ".yaml", ".yml", ".toml"]
+
         filename = Path(file_path).name
-        return (filename in config_files or 
-                any(pattern in filename for pattern in config_patterns))
-    
+        return filename in config_files or any(
+            pattern in filename for pattern in config_patterns
+        )
+
     def _is_security_critical_file(self, file_path: str) -> bool:
         """Check if file contains security-critical code."""
         critical_indicators = [
-            'auth', 'login', 'password', 'token', 'crypto', 'security',
-            'permission', 'admin', 'api_key', 'secret'
+            "auth",
+            "login",
+            "password",
+            "token",
+            "crypto",
+            "security",
+            "permission",
+            "admin",
+            "api_key",
+            "secret",
         ]
         return any(indicator in file_path.lower() for indicator in critical_indicators)
-    
+
     def _get_security_mitigation(self, vuln_type: str) -> str:
         """Get mitigation advice for security vulnerability type."""
-        
+
         mitigations = {
             "sql_injection": "Use parameterized queries or ORM methods to prevent SQL injection",
             "xss": "Sanitize and escape user input before rendering in HTML",
             "hardcoded_secrets": "Move secrets to environment variables or secure configuration",
-            "path_traversal": "Validate and sanitize file paths, use safe path joining functions"
+            "path_traversal": "Validate and sanitize file paths, use safe path joining functions",
         }
-        
+
         return mitigations.get(vuln_type, "Review code for security best practices")
-    
+
     def _calculate_complexity_score(self, file_changes: List[FileChange]) -> float:
         """Calculate complexity score based on changes."""
-        
+
         total_changes = sum(fc.additions + fc.deletions for fc in file_changes)
         num_files = len(file_changes)
-        
+
         # Basic complexity calculation
         if total_changes == 0:
             return 0.0
-        
+
         base_score = min(total_changes / 100, 10)  # Cap at 10
-        file_multiplier = min(num_files / 10, 2)   # More files = more complex
-        
+        file_multiplier = min(num_files / 10, 2)  # More files = more complex
+
         return min(base_score * file_multiplier, 10.0)
-    
+
     def _calculate_overall_score(
         self,
         comments: List[ReviewComment],
         security_issues: List[SecurityIssue],
-        complexity_score: float
+        complexity_score: float,
     ) -> float:
         """Calculate overall quality score for the PR."""
-        
+
         base_score = 10.0
-        
+
         # Deduct points for issues
         for comment in comments:
             if comment.severity == ReviewSeverity.CRITICAL:
@@ -857,7 +890,7 @@ class AutonomousPRReviewer:
                 base_score -= 0.5
             elif comment.severity == ReviewSeverity.LOW:
                 base_score -= 0.2
-        
+
         # Deduct points for security issues
         for issue in security_issues:
             if issue.severity == ReviewSeverity.CRITICAL:
@@ -866,89 +899,95 @@ class AutonomousPRReviewer:
                 base_score -= 1.5
             else:
                 base_score -= 0.5
-        
+
         # Factor in complexity
         complexity_penalty = complexity_score * 0.1
         base_score -= complexity_penalty
-        
+
         return max(base_score, 0.0)
-    
+
     def _estimate_review_time(
-        self,
-        file_changes: List[FileChange],
-        comments: List[ReviewComment]
+        self, file_changes: List[FileChange], comments: List[ReviewComment]
     ) -> int:
         """Estimate time needed for manual review in minutes."""
-        
+
         base_time = 0
-        
+
         for file_change in file_changes:
             # Base time per file
             base_time += 3
-            
+
             # Additional time based on changes
             lines_changed = file_change.additions + file_change.deletions
             base_time += lines_changed * 0.1  # 0.1 minutes per line
-        
+
         # Additional time for issues found
         base_time += len(comments) * 2  # 2 minutes per comment
-        
+
         return min(int(base_time), 480)  # Cap at 8 hours
-    
-    def _deduplicate_comments(self, comments: List[ReviewComment]) -> List[ReviewComment]:
+
+    def _deduplicate_comments(
+        self, comments: List[ReviewComment]
+    ) -> List[ReviewComment]:
         """Remove duplicate comments."""
-        
+
         seen_comments = set()
         unique_comments = []
-        
+
         for comment in comments:
             # Create hash based on file, line, and title
             comment_hash = hashlib.md5(
                 f"{comment.file_path}:{comment.line_number}:{comment.title}".encode()
             ).hexdigest()
-            
+
             if comment_hash not in seen_comments:
                 seen_comments.add(comment_hash)
                 unique_comments.append(comment)
-        
+
         return unique_comments
-    
+
     async def _get_review_context(
-        self,
-        file_changes: List[FileChange],
-        repository_context: Dict[str, Any]
+        self, file_changes: List[FileChange], repository_context: Dict[str, Any]
     ) -> List[Any]:
         """Retrieve relevant context from memory for review."""
-        
+
         # Get file paths and create search query
         file_paths = [fc.file_path for fc in file_changes]
         context_query = f"code review patterns {' '.join(file_paths[:5])}"
-        
+
         from ..memory.memory_layer import MemoryQuery, MemoryType
-        
+
         query = MemoryQuery(
             query_text=context_query,
-            memory_types=[MemoryType.CODING_STYLE, MemoryType.ARCHITECTURE_DECISION, MemoryType.BUG_PATTERN],
-            max_results=10
+            memory_types=[
+                MemoryType.CODING_STYLE,
+                MemoryType.ARCHITECTURE_DECISION,
+                MemoryType.BUG_PATTERN,
+            ],
+            max_results=10,
         )
-        
+
         try:
             memories_with_scores = await self.memory.recall_memories(query)
             return [memory for memory, _ in memories_with_scores]
         except Exception:
             return []
-    
+
     async def _generate_risk_assessment(
         self,
         file_changes: List[FileChange],
         security_issues: List[SecurityIssue],
-        complexity_score: float
+        complexity_score: float,
     ) -> str:
         """Generate risk assessment for the PR."""
-        
-        critical_security = len([si for si in security_issues if si.severity == ReviewSeverity.CRITICAL])
-        high_security = len([si for si in security_issues if si.severity == ReviewSeverity.HIGH])
-        
+
+        critical_security = len(
+            [si for si in security_issues if si.severity == ReviewSeverity.CRITICAL]
+        )
+        high_security = len(
+            [si for si in security_issues if si.severity == ReviewSeverity.HIGH]
+        )
+
         if critical_security > 0:
             return f"HIGH RISK: {critical_security} critical security issues detected"
         elif high_security > 2 or complexity_score > 8:
@@ -957,18 +996,20 @@ class AutonomousPRReviewer:
             return f"LOW RISK: Medium complexity changes (score {complexity_score:.1f})"
         else:
             return "LOW RISK: Straightforward changes with no major concerns"
-    
+
     async def _generate_approval_recommendation(
         self,
         overall_score: float,
         security_issues: List[SecurityIssue],
-        comments: List[ReviewComment]
+        comments: List[ReviewComment],
     ) -> str:
         """Generate approval recommendation."""
-        
+
         critical_issues = [c for c in comments if c.severity == ReviewSeverity.CRITICAL]
-        critical_security = [si for si in security_issues if si.severity == ReviewSeverity.CRITICAL]
-        
+        critical_security = [
+            si for si in security_issues if si.severity == ReviewSeverity.CRITICAL
+        ]
+
         if critical_security or critical_issues:
             return "REQUEST CHANGES - Critical issues must be resolved"
         elif overall_score < 6.0:
@@ -977,7 +1018,7 @@ class AutonomousPRReviewer:
             return "APPROVE WITH COMMENTS - Good to merge with minor improvements"
         else:
             return "APPROVE - Excellent code quality"
-    
+
     # Database operations and patch application
     async def _save_review_analysis(self, analysis: PRAnalysis) -> None:
         """Save review analysis to database."""
@@ -988,15 +1029,22 @@ class AutonomousPRReviewer:
              risk_assessment, approval_recommendation, analysis_data, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
-            
-            await self.db.execute(query, [
-                analysis.pr_id, analysis.title, analysis.author,
-                analysis.overall_score, analysis.complexity_score,
-                analysis.risk_assessment, analysis.approval_recommendation,
-                json.dumps(asdict(analysis), default=str),
-                datetime.now().isoformat()
-            ])
-            
+
+            await self.db.execute(
+                query,
+                [
+                    analysis.pr_id,
+                    analysis.title,
+                    analysis.author,
+                    analysis.overall_score,
+                    analysis.complexity_score,
+                    analysis.risk_assessment,
+                    analysis.approval_recommendation,
+                    json.dumps(asdict(analysis), default=str),
+                    datetime.now().isoformat(),
+                ],
+            )
+
         except Exception:
             # Create table if doesn't exist
             create_query = """
@@ -1014,55 +1062,60 @@ class AutonomousPRReviewer:
             """
             await self.db.execute(create_query, [])
             # Retry insert
-            await self.db.execute(query, [
-                analysis.pr_id, analysis.title, analysis.author,
-                analysis.overall_score, analysis.complexity_score,
-                analysis.risk_assessment, analysis.approval_recommendation,
-                json.dumps(asdict(analysis), default=str),
-                datetime.now().isoformat()
-            ])
-    
+            await self.db.execute(
+                query,
+                [
+                    analysis.pr_id,
+                    analysis.title,
+                    analysis.author,
+                    analysis.overall_score,
+                    analysis.complexity_score,
+                    analysis.risk_assessment,
+                    analysis.approval_recommendation,
+                    json.dumps(asdict(analysis), default=str),
+                    datetime.now().isoformat(),
+                ],
+            )
+
     async def _store_review_learning(
-        self,
-        analysis: PRAnalysis,
-        context_memories: List[Any]
+        self, analysis: PRAnalysis, context_memories: List[Any]
     ) -> None:
         """Store learnings from this review in memory."""
-        
+
         # Store patterns found in this review
         if analysis.review_comments:
             common_categories = {}
             for comment in analysis.review_comments:
                 cat = comment.category.value
                 common_categories[cat] = common_categories.get(cat, 0) + 1
-            
+
             most_common = max(common_categories.items(), key=lambda x: x[1])
-            
+
             await self.memory.store_memory(
                 memory_type=MemoryType.PROCESS_LEARNING,
                 title=f"PR Review Pattern: {most_common[0]}",
                 content=f"In PR {analysis.pr_id} by {analysis.author}, found {most_common[1]} "
-                       f"{most_common[0]} issues. Common problems included: "
-                       f"{', '.join([c.title for c in analysis.review_comments[:3]])}",
+                f"{most_common[0]} issues. Common problems included: "
+                f"{', '.join([c.title for c in analysis.review_comments[:3]])}",
                 importance=MemoryImportance.MEDIUM,
                 tags=["pr-review", "patterns", most_common[0]],
                 context={
                     "pr_id": analysis.pr_id,
                     "author": analysis.author,
-                    "overall_score": analysis.overall_score
-                }
+                    "overall_score": analysis.overall_score,
+                },
             )
-    
+
     async def _apply_patch(self, patch: PatchSuggestion) -> Dict[str, Any]:
         """Apply a code patch (placeholder implementation)."""
-        
+
         # In a real implementation, this would:
         # 1. Read the file
         # 2. Apply the patch
         # 3. Write back to file
         # 4. Run tests to verify
-        
+
         return {
             "success": True,
-            "message": f"Patch applied to {patch.file_path} lines {patch.start_line}-{patch.end_line}"
+            "message": f"Patch applied to {patch.file_path} lines {patch.start_line}-{patch.end_line}",
         }

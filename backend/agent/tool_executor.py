@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 # Import actual tool implementations
 from .tools.create_file import create_file
-from .tools.edit_file import edit_file  
+from .tools.edit_file import edit_file
 from .tools.apply_diff import apply_diff
 from .tools.run_command import run_command
 
@@ -997,26 +997,27 @@ async def _tool_github_rerun_check(
 # CODE TOOL IMPLEMENTATIONS
 # ==============================================================================
 
+
 async def _tool_code_create_file(user_id: str, args: Dict[str, Any]) -> Dict[str, Any]:
     """Create new file with content."""
     path = args.get("path")
     content = args.get("content", "")
-    
+
     if not path:
         return {
             "tool": "code.create_file",
             "text": "❌ Path is required",
-            "error": "Missing path parameter"
+            "error": "Missing path parameter",
         }
-    
+
     result = await create_file(user_id=user_id, path=path, content=content)
-    
+
     return {
         "tool": "code.create_file",
         "text": result["message"],
         "success": result["success"],
         "path": result.get("path"),
-        "error": result.get("error")
+        "error": result.get("error"),
     }
 
 
@@ -1024,22 +1025,22 @@ async def _tool_code_edit_file(user_id: str, args: Dict[str, Any]) -> Dict[str, 
     """Edit existing file with content."""
     path = args.get("path")
     content = args.get("content", "")
-    
+
     if not path:
         return {
-            "tool": "code.edit_file", 
+            "tool": "code.edit_file",
             "text": "❌ Path is required",
-            "error": "Missing path parameter"
+            "error": "Missing path parameter",
         }
-    
+
     result = await edit_file(user_id=user_id, path=path, new_content=content)
-    
+
     return {
         "tool": "code.edit_file",
         "text": result["message"],
         "success": result["success"],
         "path": result.get("path"),
-        "error": result.get("error")
+        "error": result.get("error"),
     }
 
 
@@ -1048,23 +1049,25 @@ async def _tool_code_apply_diff(user_id: str, args: Dict[str, Any]) -> Dict[str,
     path = args.get("path")
     diff = args.get("diff")
     old_content = args.get("old_content")
-    
+
     if not path or not diff:
         return {
             "tool": "code.apply_diff",
-            "text": "❌ Path and diff are required", 
-            "error": "Missing path or diff parameter"
+            "text": "❌ Path and diff are required",
+            "error": "Missing path or diff parameter",
         }
-    
-    result = await apply_diff(user_id=user_id, path=path, diff=diff, old_content=old_content)
-    
+
+    result = await apply_diff(
+        user_id=user_id, path=path, diff=diff, old_content=old_content
+    )
+
     return {
         "tool": "code.apply_diff",
         "text": result["message"],
         "success": result["success"],
         "path": result.get("path"),
         "lines_changed": result.get("lines_changed"),
-        "error": result.get("error")
+        "error": result.get("error"),
     }
 
 
@@ -1073,22 +1076,24 @@ async def _tool_code_run_command(user_id: str, args: Dict[str, Any]) -> Dict[str
     command = args.get("command")
     cwd = args.get("cwd")
     timeout = args.get("timeout", 30)
-    
+
     if not command:
         return {
             "tool": "code.run_command",
             "text": "❌ Command is required",
-            "error": "Missing command parameter"
+            "error": "Missing command parameter",
         }
-    
-    result = await run_command(user_id=user_id, command=command, cwd=cwd, timeout=timeout)
-    
+
+    result = await run_command(
+        user_id=user_id, command=command, cwd=cwd, timeout=timeout
+    )
+
     return {
-        "tool": "code.run_command", 
+        "tool": "code.run_command",
         "text": result["message"],
         "success": result["success"],
         "stdout": result.get("stdout"),
         "stderr": result.get("stderr"),
         "exit_code": result.get("exit_code"),
-        "error": result.get("error")
+        "error": result.get("error"),
     }

@@ -110,6 +110,7 @@ def semantic_search(
         org = "default"
     return {"hits": do_search(db, org, req.q, k=req.k)}
 
+
 @router.get("/", response_model=SearchResponse)
 def semantic_search_get(
     q: str = "",

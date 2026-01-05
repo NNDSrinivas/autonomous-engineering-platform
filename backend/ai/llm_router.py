@@ -199,7 +199,9 @@ class LLMRouter:
         default_api_key = os.getenv(provider_env_key) if provider_env_key else None
         api_key = api_key or default_api_key
 
-        allow_offline = offline_configured or (env in {"dev", "test", "local"} and not api_key)
+        allow_offline = offline_configured or (
+            env in {"dev", "test", "local"} and not api_key
+        )
         offline_reason: Optional[str] = None
 
         if not api_key and not allow_offline:
@@ -245,7 +247,10 @@ class LLMRouter:
         except Exception as exc:
             if allow_offline:
                 offline_reason = offline_reason or f"LLM call failed: {exc}"
-                logger.warning("[LLM] %s – returning deterministic offline response", offline_reason)
+                logger.warning(
+                    "[LLM] %s – returning deterministic offline response",
+                    offline_reason,
+                )
                 return self._offline_response(
                     prompt=prompt,
                     model=model_info.model_id,
@@ -387,13 +392,15 @@ class LLMRouter:
                 "temperature": temperature,
                 "messages": self._build_openai_messages(prompt, system_prompt, images),
             }
-            
+
             # Use max_completion_tokens for newer OpenAI models (GPT-4o, GPT-5.x)
-            if provider == "openai" and any(x in model for x in ["gpt-4o", "gpt-5", "o1"]):
+            if provider == "openai" and any(
+                x in model for x in ["gpt-4o", "gpt-5", "o1"]
+            ):
                 payload["max_completion_tokens"] = max_tokens
             else:
                 payload["max_tokens"] = max_tokens
-                
+
             return payload
 
         # Anthropic Claude

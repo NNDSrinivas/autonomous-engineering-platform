@@ -14,17 +14,17 @@ from .product_manager_agent import (
     TechnicalDesign,
     EngineeringTask,
     Priority,
-    TaskType
+    TaskType,
 )
 
 __all__ = [
-    'ProductManagerAgent',
-    'ProductManagerService', 
-    'ProductRequirementsDocument',
-    'UserStory',
-    'Requirement',
-    'TechnicalDesign',
-    'EngineeringTask',
-    'Priority',
-    'TaskType'
+    "ProductManagerAgent",
+    "ProductManagerService",
+    "ProductRequirementsDocument",
+    "UserStory",
+    "Requirement",
+    "TechnicalDesign",
+    "EngineeringTask",
+    "Priority",
+    "TaskType",
 ]

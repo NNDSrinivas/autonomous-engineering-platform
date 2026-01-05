@@ -143,7 +143,9 @@ def _expires_at_iso(expires_in: Any) -> str | None:
     if not expires_in:
         return None
     try:
-        return (datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))).isoformat()
+        return (
+            datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+        ).isoformat()
     except Exception:
         return None
 
@@ -240,10 +242,19 @@ async def _refresh_teams_token_if_needed(
         fallback_client_secret=settings.teams_client_secret,
         fallback_scopes=settings.teams_oauth_scopes,
     )
-    if not refresh_token or not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+    if (
+        not refresh_token
+        or not oauth_cfg["client_id"]
+        or not oauth_cfg["client_secret"]
+    ):
         return token
 
-    tenant = cfg.get("tenant_id") or oauth_cfg["tenant_id"] or settings.teams_tenant_id or "common"
+    tenant = (
+        cfg.get("tenant_id")
+        or oauth_cfg["tenant_id"]
+        or settings.teams_tenant_id
+        or "common"
+    )
     scopes = oauth_cfg["scopes"] or (
         "offline_access openid profile email "
         "ChannelMessage.Read.All Group.Read.All Team.ReadBasic.All"
@@ -338,7 +349,9 @@ def get_oauth_app_config(
 ) -> OAuthAppConfigResponse:
     org_id = getattr(current_user, "org_id", None)
     if not org_id:
-        raise HTTPException(status_code=400, detail="Missing org_id for OAuth config lookup")
+        raise HTTPException(
+            status_code=400, detail="Missing org_id for OAuth config lookup"
+        )
 
     stored = connectors_service.get_oauth_app_config(
         db=db,
@@ -373,7 +386,9 @@ def set_oauth_app_config(
     db: Session = Depends(get_db),
 ) -> OAuthAppConfigResponse:
     if getattr(current_user, "role", None) != Role.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin role required to configure OAuth apps")
+        raise HTTPException(
+            status_code=403, detail="Admin role required to configure OAuth apps"
+        )
 
     org_id = getattr(current_user, "org_id", None)
     if not org_id:
@@ -389,9 +404,13 @@ def set_oauth_app_config(
 
     client_secret = payload.client_secret or existing_secrets.get("client_secret")
     if not client_secret:
-        raise HTTPException(status_code=400, detail="client_secret is required for first-time setup")
+        raise HTTPException(
+            status_code=400, detail="client_secret is required for first-time setup"
+        )
 
-    scopes = payload.scopes if payload.scopes is not None else existing_config.get("scopes")
+    scopes = (
+        payload.scopes if payload.scopes is not None else existing_config.get("scopes")
+    )
     extra = payload.extra if payload.extra is not None else existing_config.get("extra")
     tenant_id = payload.tenant_id or existing_config.get("tenant_id")
     account_id = payload.account_id or existing_config.get("account_id")
@@ -406,7 +425,8 @@ def set_oauth_app_config(
         tenant_id=tenant_id,
         account_id=account_id,
         extra=extra,
-        updated_by=getattr(current_user, "user_id", None) or getattr(current_user, "id", None),
+        updated_by=getattr(current_user, "user_id", None)
+        or getattr(current_user, "id", None),
     )
 
     return OAuthAppConfigResponse(
@@ -432,7 +452,9 @@ def get_ui_config(
 ) -> OrgUiConfigResponse:
     org_key = getattr(current_user, "org_id", None)
     if not org_key:
-        raise HTTPException(status_code=400, detail="Missing org_id for UI config lookup")
+        raise HTTPException(
+            status_code=400, detail="Missing org_id for UI config lookup"
+        )
 
     config = get_org_ui_config(db=db, org_key=str(org_key))
     return OrgUiConfigResponse(
@@ -454,7 +476,9 @@ def set_ui_config(
     db: Session = Depends(get_db),
 ) -> OrgUiConfigResponse:
     if getattr(current_user, "role", None) != Role.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin role required to configure UI settings")
+        raise HTTPException(
+            status_code=403, detail="Admin role required to configure UI settings"
+        )
 
     org_key = getattr(current_user, "org_id", None)
     if not org_key:
@@ -624,7 +648,8 @@ def slack_oauth_start(
     state = create_state(
         {
             "provider": "slack",
-            "user_id": getattr(current_user, "user_id", None) or getattr(current_user, "id", None),
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
             "org_id": getattr(current_user, "org_id", None),
             "install": install,
             "ui_origin": ui_origin or None,
@@ -714,7 +739,9 @@ async def slack_oauth_callback(
         if not expires_in:
             return None
         try:
-            return (datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))).isoformat()
+            return (
+                datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+            ).isoformat()
         except Exception:
             return None
 
@@ -730,12 +757,19 @@ async def slack_oauth_callback(
         ) from exc
 
     connectors_service.save_slack_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         bot_token=bot_token,
         team_id=team.get("id") or auth_payload.get("team_id"),
         team_name=team.get("name") or auth_payload.get("team"),
-        bot_user_id=(data.get("bot_user_id") or auth_payload.get("bot_id") or auth_payload.get("user_id") or ""),
+        bot_user_id=(
+            data.get("bot_user_id")
+            or auth_payload.get("bot_id")
+            or auth_payload.get("user_id")
+            or ""
+        ),
         token_type=token_type,
         scope=scope,
         install_scope=payload.get("install"),
@@ -825,7 +859,8 @@ def confluence_oauth_start(
     state = create_state(
         {
             "provider": "confluence",
-            "user_id": getattr(current_user, "user_id", None) or getattr(current_user, "id", None),
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
             "org_id": getattr(current_user, "org_id", None),
             "install": install,
             "ui_origin": ui_origin or None,
@@ -905,7 +940,9 @@ async def confluence_oauth_callback(
     token_data = token_resp.json()
     access_token = token_data.get("access_token")
     if not access_token:
-        raise HTTPException(status_code=400, detail="Confluence OAuth did not return access_token")
+        raise HTTPException(
+            status_code=400, detail="Confluence OAuth did not return access_token"
+        )
 
     refresh_token = token_data.get("refresh_token")
     expires_at = _expires_at_iso(token_data.get("expires_in"))
@@ -926,7 +963,9 @@ async def confluence_oauth_callback(
         base_url = f"{base_url.rstrip('/')}/wiki"
 
     connectors_service.save_confluence_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         base_url=base_url,
         cloud_id=cloud_id,
@@ -987,7 +1026,9 @@ async def confluence_subscribe(
         provider="confluence",
     )
     if not connector:
-        raise HTTPException(status_code=404, detail="Confluence connector not configured")
+        raise HTTPException(
+            status_code=404, detail="Confluence connector not configured"
+        )
 
     cfg = connector.get("config") or {}
     secrets = connector.get("secrets") or {}
@@ -997,7 +1038,9 @@ async def confluence_subscribe(
     if cloud_id and not base_url:
         base_url = f"https://api.atlassian.com/ex/confluence/{cloud_id}/wiki"
     if not token or not base_url:
-        raise HTTPException(status_code=400, detail="Confluence OAuth token or base URL missing")
+        raise HTTPException(
+            status_code=400, detail="Confluence OAuth token or base URL missing"
+        )
 
     webhook_url = _oauth_redirect("/api/webhooks/docs")
     webhook_payload: Dict[str, Any] = {
@@ -1011,16 +1054,23 @@ async def confluence_subscribe(
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{base_url}/rest/api/webhook",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
             json=webhook_payload,
         )
     if resp.status_code >= 400:
-        raise HTTPException(status_code=400, detail=f"Confluence webhook failed: {resp.text}")
+        raise HTTPException(
+            status_code=400, detail=f"Confluence webhook failed: {resp.text}"
+        )
 
     webhook = resp.json()
     webhook_id = webhook.get("id") or webhook.get("webhookId")
 
-    return ConfluenceSubscribeResponse(ok=True, webhook_id=str(webhook_id) if webhook_id else None)
+    return ConfluenceSubscribeResponse(
+        ok=True, webhook_id=str(webhook_id) if webhook_id else None
+    )
 
 
 @router.get(
@@ -1057,7 +1107,8 @@ def teams_oauth_start(
     state = create_state(
         {
             "provider": "teams",
-            "user_id": getattr(current_user, "user_id", None) or getattr(current_user, "id", None),
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
             "org_id": getattr(current_user, "org_id", None),
             "install": install,
             "tenant": tenant,
@@ -1118,7 +1169,12 @@ async def teams_oauth_callback(
             detail="Teams OAuth not configured. Set org app config or TEAMS_CLIENT_ID/TEAMS_CLIENT_SECRET.",
         )
 
-    tenant = payload.get("tenant") or oauth_cfg["tenant_id"] or settings.teams_tenant_id or "common"
+    tenant = (
+        payload.get("tenant")
+        or oauth_cfg["tenant_id"]
+        or settings.teams_tenant_id
+        or "common"
+    )
     redirect_uri = _oauth_redirect("/api/connectors/teams/oauth/callback")
     scopes = oauth_cfg["scopes"] or (
         "offline_access openid profile email "
@@ -1154,7 +1210,9 @@ async def teams_oauth_callback(
     tenant_id = id_claims.get("tid")
 
     connectors_service.save_teams_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         tenant_id=tenant_id,
         scopes=scopes_list,
@@ -1206,7 +1264,9 @@ async def teams_list_teams(
     if not token:
         raise HTTPException(status_code=404, detail="Teams token missing")
 
-    client = TeamsClient(access_token=token, tenant_id=(connector.get("config") or {}).get("tenant_id"))
+    client = TeamsClient(
+        access_token=token, tenant_id=(connector.get("config") or {}).get("tenant_id")
+    )
     teams = client.list_teams()
     items = [
         {"id": t.get("id"), "display_name": t.get("displayName")}
@@ -1245,7 +1305,9 @@ async def teams_list_channels(
     if not token:
         raise HTTPException(status_code=404, detail="Teams token missing")
 
-    client = TeamsClient(access_token=token, tenant_id=(connector.get("config") or {}).get("tenant_id"))
+    client = TeamsClient(
+        access_token=token, tenant_id=(connector.get("config") or {}).get("tenant_id")
+    )
     channels = client.list_channels(team_id)
     items = [
         {"id": c.get("id"), "display_name": c.get("displayName")}
@@ -1287,12 +1349,17 @@ async def teams_subscribe(
 
     webhook_url = _oauth_redirect("/api/webhooks/teams")
     expiration = datetime.now(timezone.utc) + timedelta(minutes=55)
-    payload_resource = f"/teams/{payload.team_id}/channels/{payload.channel_id}/messages"
+    payload_resource = (
+        f"/teams/{payload.team_id}/channels/{payload.channel_id}/messages"
+    )
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             "https://graph.microsoft.com/v1.0/subscriptions",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
             json={
                 "changeType": "created,updated",
                 "notificationUrl": webhook_url,
@@ -1302,16 +1369,21 @@ async def teams_subscribe(
             },
         )
     if resp.status_code >= 400:
-        raise HTTPException(status_code=400, detail=f"Teams subscription failed: {resp.text}")
+        raise HTTPException(
+            status_code=400, detail=f"Teams subscription failed: {resp.text}"
+        )
 
     data = resp.json()
     subscription_id = data.get("id")
     if not subscription_id:
-        raise HTTPException(status_code=400, detail="Teams subscription response missing id")
+        raise HTTPException(
+            status_code=400, detail="Teams subscription response missing id"
+        )
 
     connectors_service.save_teams_connection(
         user_id=str(user_id),
-        org_id=(connector.get("config") or {}).get("org_id") or getattr(current_user, "org_id", None),
+        org_id=(connector.get("config") or {}).get("org_id")
+        or getattr(current_user, "org_id", None),
         tenant_id=(connector.get("config") or {}).get("tenant_id"),
         scopes=(connector.get("config") or {}).get("scopes"),
         access_token=token,
@@ -1321,7 +1393,9 @@ async def teams_subscribe(
         db=db,
     )
 
-    return TeamsSubscribeResponse(ok=True, subscription_id=subscription_id, expires_at=expiration.isoformat())
+    return TeamsSubscribeResponse(
+        ok=True, subscription_id=subscription_id, expires_at=expiration.isoformat()
+    )
 
 
 @router.get(
@@ -1352,7 +1426,8 @@ def github_oauth_start(
     state = create_state(
         {
             "provider": "github",
-            "user_id": getattr(current_user, "user_id", None) or getattr(current_user, "id", None),
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
             "org_id": getattr(current_user, "org_id", None),
             "install": install,
             "ui_origin": ui_origin or None,
@@ -1436,7 +1511,9 @@ async def github_oauth_callback(
     expires_at_dt = None
     if expires_in:
         try:
-            expires_at_dt = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+            expires_at_dt = datetime.now(timezone.utc) + timedelta(
+                seconds=int(expires_in)
+            )
         except Exception:
             expires_at_dt = None
 
@@ -1463,7 +1540,9 @@ async def github_oauth_callback(
         db,
         access_token,
         org_id=payload.get("org_id"),
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         token_type=token_type,
         scopes=scopes,
         refresh_token=refresh_token,
@@ -1471,7 +1550,9 @@ async def github_oauth_callback(
     )
 
     connectors_service.save_github_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         access_token=access_token,
         db=db,
@@ -1516,7 +1597,9 @@ async def github_list_repos(
     token_type = None
     base_url = "https://api.github.com"
     if connector:
-        token = (connector.get("secrets") or {}).get("token") or (connector.get("secrets") or {}).get("access_token")
+        token = (connector.get("secrets") or {}).get("token") or (
+            connector.get("secrets") or {}
+        ).get("access_token")
         token_type = (connector.get("config") or {}).get("token_type")
         base_url = (connector.get("config") or {}).get("base_url") or base_url
     if not token:
@@ -1585,7 +1668,13 @@ async def _ensure_github_webhook(
         payload = {
             "name": "web",
             "active": True,
-            "events": ["issues", "issue_comment", "pull_request", "pull_request_review", "status"],
+            "events": [
+                "issues",
+                "issue_comment",
+                "pull_request",
+                "pull_request_review",
+                "status",
+            ],
             "config": {
                 "url": webhook_url,
                 "content_type": "json",
@@ -1625,15 +1714,21 @@ async def github_index_repo(
     if not connector:
         raise HTTPException(status_code=404, detail="GitHub connector not configured")
 
-    token = (connector.get("secrets") or {}).get("token") or (connector.get("secrets") or {}).get("access_token")
+    token = (connector.get("secrets") or {}).get("token") or (
+        connector.get("secrets") or {}
+    ).get("access_token")
     token_type = (connector.get("config") or {}).get("token_type")
     connection_id = (connector.get("config") or {}).get("connection_id")
-    base_url = (connector.get("config") or {}).get("base_url") or "https://api.github.com"
+    base_url = (connector.get("config") or {}).get(
+        "base_url"
+    ) or "https://api.github.com"
 
     if not connection_id:
         conn_q = db.query(GhConnection)
         if getattr(current_user, "org_id", None):
-            conn_q = conn_q.filter(GhConnection.org_id == getattr(current_user, "org_id", None))
+            conn_q = conn_q.filter(
+                GhConnection.org_id == getattr(current_user, "org_id", None)
+            )
         elif user_id:
             conn_q = conn_q.filter(GhConnection.user_id == user_id)
         conn = conn_q.order_by(GhConnection.id.desc()).first()
@@ -1703,7 +1798,8 @@ def zoom_oauth_start(
     state = create_state(
         {
             "provider": "zoom",
-            "user_id": getattr(current_user, "user_id", None) or getattr(current_user, "id", None),
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
             "org_id": getattr(current_user, "org_id", None),
             "install": install,
             "ui_origin": ui_origin or None,
@@ -1758,7 +1854,9 @@ async def zoom_oauth_callback(
         )
 
     redirect_uri = _oauth_redirect("/api/connectors/zoom/oauth/callback")
-    auth_bytes = f"{oauth_cfg['client_id']}:{oauth_cfg['client_secret']}".encode("utf-8")
+    auth_bytes = f"{oauth_cfg['client_id']}:{oauth_cfg['client_secret']}".encode(
+        "utf-8"
+    )
     basic_auth = base64.b64encode(auth_bytes).decode("utf-8")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -1798,7 +1896,9 @@ async def zoom_oauth_callback(
         pass
 
     connectors_service.save_zoom_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         account_id=account_id,
         scopes=scopes,
@@ -1879,7 +1979,8 @@ def meet_oauth_start(
     state = create_state(
         {
             "provider": "meet",
-            "user_id": getattr(current_user, "user_id", None) or getattr(current_user, "id", None),
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
             "org_id": getattr(current_user, "org_id", None),
             "install": install,
             "ui_origin": ui_origin or None,
@@ -1962,7 +2063,9 @@ async def meet_oauth_callback(
     scopes = _parse_scopes(data.get("scope"), delimiter=" ")
 
     connectors_service.save_meet_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         scopes=scopes,
         access_token=access_token,
@@ -2158,7 +2261,9 @@ def delete_connector(
     user_id: str = Depends(_current_user_id),
     db: Session = Depends(get_db),
 ):
-    deleted = connectors_service.delete_connector(db=db, user_id=user_id, connector_id=connector_id)
+    deleted = connectors_service.delete_connector(
+        db=db, user_id=user_id, connector_id=connector_id
+    )
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     return {"ok": True}

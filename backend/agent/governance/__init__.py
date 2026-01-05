@@ -27,29 +27,33 @@ logger = logging.getLogger(__name__)
 
 class ActionRisk(Enum):
     """Risk levels for actions"""
-    LOW = "low"      # 0.0 - 0.3
+
+    LOW = "low"  # 0.0 - 0.3
     MEDIUM = "medium"  # 0.3 - 0.7
-    HIGH = "high"    # 0.7 - 1.0
+    HIGH = "high"  # 0.7 - 1.0
 
 
 class DecisionType(Enum):
     """Decision types for actions"""
-    AUTO = "auto"           # Execute immediately
-    APPROVAL = "approval"   # Requires human approval
-    BLOCKED = "blocked"     # Not allowed
+
+    AUTO = "auto"  # Execute immediately
+    APPROVAL = "approval"  # Requires human approval
+    BLOCKED = "blocked"  # Not allowed
 
 
 class AutonomyLevel(Enum):
     """User autonomy levels"""
-    MINIMAL = "minimal"     # Most actions require approval
-    STANDARD = "standard"   # Balanced autonomy
-    ELEVATED = "elevated"   # High autonomy for senior devs
-    FULL = "full"          # Maximum autonomy (platform team)
+
+    MINIMAL = "minimal"  # Most actions require approval
+    STANDARD = "standard"  # Balanced autonomy
+    ELEVATED = "elevated"  # High autonomy for senior devs
+    FULL = "full"  # Maximum autonomy (platform team)
 
 
 @dataclass
 class ActionContext:
     """Context for an action being evaluated"""
+
     action_type: str
     target_files: Optional[List[str]] = None
     repo: Optional[str] = None
@@ -67,6 +71,7 @@ class ActionContext:
 @dataclass
 class ApprovalRequest:
     """Represents a pending approval request"""
+
     id: str
     action_type: str
     context: ActionContext
@@ -83,6 +88,7 @@ class ApprovalRequest:
 @dataclass
 class AutonomyPolicy:
     """Per-user autonomy policy configuration"""
+
     user_id: str
     org_id: str = "default"
     repo: Optional[str] = None  # If None, applies globally
@@ -98,6 +104,7 @@ class AutonomyPolicy:
 @dataclass
 class AuditEntry:
     """Immutable audit record"""
+
     id: str
     timestamp: datetime
     user_id: str

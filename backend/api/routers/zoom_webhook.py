@@ -65,7 +65,9 @@ async def ingest(
         ).hexdigest()
         return {"plainToken": plain_token, "encryptedToken": encrypted}
 
-    account_id = payload.get("payload", {}).get("account_id") or payload.get("account_id")
+    account_id = payload.get("payload", {}).get("account_id") or payload.get(
+        "account_id"
+    )
     connector = None
     if account_id:
         connector = connectors_service.find_connector_by_config(

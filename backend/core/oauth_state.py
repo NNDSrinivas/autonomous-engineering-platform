@@ -28,7 +28,9 @@ def _b64url_decode(data: str) -> bytes:
 
 
 def _sign(secret: str, payload: str) -> str:
-    return hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.new(
+        secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
 
 
 def create_state(payload: Dict[str, Any], secret: str, ttl_seconds: int) -> str:
@@ -60,4 +62,3 @@ def parse_state(state: str, secret: str) -> Dict[str, Any]:
     if now > int(payload.get("exp", 0)):
         raise OAuthStateError("State token has expired")
     return payload
-

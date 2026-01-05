@@ -15,7 +15,7 @@ The self-healing system provides:
 
 Integration with existing phases:
 - Uses Phase 3.3 ChangePlan system for code generation
-- Uses Phase 3.4 validation pipeline for fix validation  
+- Uses Phase 3.4 validation pipeline for fix validation
 - Uses Phase 3.5 PR lifecycle for commit and monitoring
 """
 
@@ -23,37 +23,30 @@ from .failure_analyzer import (
     FailureAnalyzer,
     FailureCause,
     FailureCategory,
-    FailureAnalysisError
+    FailureAnalysisError,
 )
 
-from .fix_planner import (
-    FixPlanner,
-    FixPlan,
-    FixStrategy,
-    FixPlanningError
-)
+from .fix_planner import FixPlanner, FixPlan, FixStrategy, FixPlanningError
 
 from .self_healing_engine import (
     SelfHealingEngine,
     HealingSession,
     HealingAttempt,
     HealingStatus,
-    SelfHealingError
+    SelfHealingError,
 )
 
 __all__ = [
     # Failure Analysis (Phase 3.6.1)
     "FailureAnalyzer",
-    "FailureCause", 
+    "FailureCause",
     "FailureCategory",
     "FailureAnalysisError",
-    
     # Fix Planning (Phase 3.6.2)
     "FixPlanner",
     "FixPlan",
-    "FixStrategy", 
+    "FixStrategy",
     "FixPlanningError",
-    
     # Self-Healing Engine (Phase 3.6.3)
     "SelfHealingEngine",
     "HealingSession",

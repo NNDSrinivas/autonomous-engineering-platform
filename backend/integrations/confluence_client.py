@@ -38,8 +38,12 @@ class ConfluenceClient:
         self.api_token = api_token or os.getenv("AEP_CONFLUENCE_API_TOKEN", "")
 
         if self.access_token:
-            if self.cloud_id and (not self.base_url or "atlassian.net" in self.base_url):
-                self.base_url = f"https://api.atlassian.com/ex/confluence/{self.cloud_id}/wiki"
+            if self.cloud_id and (
+                not self.base_url or "atlassian.net" in self.base_url
+            ):
+                self.base_url = (
+                    f"https://api.atlassian.com/ex/confluence/{self.cloud_id}/wiki"
+                )
             elif self.base_url and not self.base_url.rstrip("/").endswith("/wiki"):
                 self.base_url = f"{self.base_url.rstrip('/')}/wiki"
             if not self.base_url:

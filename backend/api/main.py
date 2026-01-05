@@ -90,20 +90,36 @@ from .apply_fix import router as apply_fix_router  # Batch 6: Auto-Fix Engine
 from .routers import presence as presence_router
 from .routers.admin_rbac import router as admin_rbac_router
 from backend.marketplace import marketplace_router  # Phase 7.2: Extension Platform
-from backend.extensions.api import router as extensions_router  # Phase 7.2: Extension Execution API
+from backend.extensions.api import (
+    router as extensions_router,
+)  # Phase 7.2: Extension Execution API
 from .routers.rate_limit_admin import router as rate_limit_admin_router
 from .routers.github_webhook import router as github_webhook_router
 from .review_stream import router as review_stream_router  # SSE streaming for reviews
-from .real_review_stream import router as real_review_stream_router  # Real git-based review streaming
-from .test_real_review import router as test_real_review_router  # Test real review service
-from .comprehensive_review import router as comprehensive_review_router  # Advanced comprehensive analysis
+from .real_review_stream import (
+    router as real_review_stream_router,
+)  # Real git-based review streaming
+from .test_real_review import (
+    router as test_real_review_router,
+)  # Test real review service
+from .comprehensive_review import (
+    router as comprehensive_review_router,
+)  # Advanced comprehensive analysis
 from .debug_navi import router as debug_navi_router  # Debug NAVI analysis
 from .simple_navi_test import router as simple_navi_test_router  # Simple NAVI test
-from .navi_analyze import router as navi_analyze_router  # Phase 4.2: Task grounding for FIX_PROBLEMS
-from .routes.navi_multirepo import router as navi_multirepo_router  # Phase 4.8: Multi-repository intelligence
-from .governance import router as governance_router  # Phase 5.1: Human-in-the-Loop Governance
+from .navi_analyze import (
+    router as navi_analyze_router,
+)  # Phase 4.2: Task grounding for FIX_PROBLEMS
+from .routes.navi_multirepo import (
+    router as navi_multirepo_router,
+)  # Phase 4.8: Multi-repository intelligence
+from .governance import (
+    router as governance_router,
+)  # Phase 5.1: Human-in-the-Loop Governance
 from ..ci_api import router as ci_api_router  # CI Failure Analysis API
-from .autonomous_navi import router as autonomous_navi_router  # Autonomous coding integration
+from .autonomous_navi import (
+    router as autonomous_navi_router,
+)  # Autonomous coding integration
 
 # VS Code Extension API endpoints
 from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
@@ -126,6 +142,7 @@ from .routers.zoom_webhook import router as zoom_webhook_router
 from .routers.meet_webhook import router as meet_webhook_router
 from .routers.navi_chat_enhanced import router as navi_chat_enhanced_router
 from .routers.memory_enhanced import router as memory_enhanced_router
+
 # from .refactor_stream_api import router as refactor_stream_router  # Batch 8 Part 4: SSE Live Refactor Streaming - TODO: Implement
 # from .orchestrator import router as orchestrator_router  # Multi-Agent Orchestrator API
 
@@ -340,10 +357,12 @@ def _load_all_optional_routers(app: FastAPI) -> None:
 
 
 if settings.DEFER_OPTIONAL_ROUTERS:
+
     @app.middleware("http")
     async def deferred_optional_router_loader(request: Request, call_next):
         _maybe_load_optional_routers(request.app, request.url.path)
         return await call_next(request)
+
 else:
     _load_all_optional_routers(app)
 
@@ -356,8 +375,12 @@ app.include_router(policy_router)
 app.include_router(change_router)
 app.include_router(chat_router)  # Enhanced conversational interface
 app.include_router(navi_chat_router)  # Diff-aware Navi chat (/api/navi/chat)
-app.include_router(navi_chat_enhanced_router)  # Enhanced NAVI chat with multi-LLM support
-app.include_router(memory_enhanced_router)  # Enhanced memory management from code-companion
+app.include_router(
+    navi_chat_enhanced_router
+)  # Enhanced NAVI chat with multi-LLM support
+app.include_router(
+    memory_enhanced_router
+)  # Enhanced memory management from code-companion
 app.include_router(navi_router)  # PR-5B/PR-6: NAVI VS Code extension
 app.include_router(navi_analyze_router)  # Phase 4.2: Task grounding for FIX_PROBLEMS
 app.include_router(navi_multirepo_router)  # Phase 4.8: Multi-repository intelligence
@@ -381,8 +404,12 @@ app.include_router(
 app.include_router(providers_api_router)  # BYOK provider management API
 app.include_router(agent_api_router, prefix="/api")  # Complete NAVI agent API
 app.include_router(tools_api_router)  # NAVI tools execution API
-app.include_router(apply_fix_router)  # Batch 6: Auto-Fix Engine with AI patch generation
-app.include_router(autonomous_navi_router, prefix="/api")  # Autonomous coding integration
+app.include_router(
+    apply_fix_router
+)  # Batch 6: Auto-Fix Engine with AI patch generation
+app.include_router(
+    autonomous_navi_router, prefix="/api"
+)  # Autonomous coding integration
 app.include_router(search_router)
 app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
@@ -390,9 +417,13 @@ app.include_router(memory_router, prefix="/api")
 app.include_router(events_router, prefix="/api")  # Universal event ingestion
 app.include_router(internal_router, prefix="/api")  # System info and diagnostics
 app.include_router(review_stream_router)  # SSE streaming for code reviews
-app.include_router(real_review_stream_router, prefix="/api")  # Real git-based review streaming
+app.include_router(
+    real_review_stream_router, prefix="/api"
+)  # Real git-based review streaming
 app.include_router(test_real_review_router, prefix="/api")  # Test real review service
-app.include_router(comprehensive_review_router, prefix="/api")  # Advanced comprehensive analysis
+app.include_router(
+    comprehensive_review_router, prefix="/api"
+)  # Advanced comprehensive analysis
 app.include_router(debug_navi_router, prefix="/api")  # Debug NAVI analysis
 app.include_router(simple_navi_test_router, prefix="/api")  # Simple NAVI test
 # app.include_router(refactor_stream_router)  # Batch 8 Part 4: SSE Live Refactor Streaming - TODO: Implement

@@ -167,7 +167,9 @@ def get_orchestrator() -> "NaviOrchestrator":
                 # Optional components will be auto-initialized if available
             )
 
-            logger.info("[Deps] Created production NAVI orchestrator with real tool execution")
+            logger.info(
+                "[Deps] Created production NAVI orchestrator with real tool execution"
+            )
 
         except ImportError as e:
             logger.warning(f"[Deps] Could not create production orchestrator: {e}")

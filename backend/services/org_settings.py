@@ -52,13 +52,17 @@ def _ensure_org_schema(db: Session) -> None:
         if "ui_allowed_domains" not in existing:
             add_column("ALTER TABLE organizations ADD COLUMN ui_allowed_domains TEXT")
         if "ui_redirect_path" not in existing:
-            add_column("ALTER TABLE organizations ADD COLUMN ui_redirect_path VARCHAR(255)")
+            add_column(
+                "ALTER TABLE organizations ADD COLUMN ui_redirect_path VARCHAR(255)"
+            )
     finally:
         _SCHEMA_READY = True
 
 
 def _is_local_host(hostname: str) -> bool:
-    return hostname in {"localhost", "127.0.0.1", "::1"} or hostname.endswith(".localhost")
+    return hostname in {"localhost", "127.0.0.1", "::1"} or hostname.endswith(
+        ".localhost"
+    )
 
 
 def _normalize_origin(raw: Optional[str]) -> Optional[str]:

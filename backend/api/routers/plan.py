@@ -274,7 +274,9 @@ async def add_step(
     # - PostgreSQL's native jsonb_set/jsonb_insert for atomic updates
     # - Optimistic locking with a version field to detect conflicts
     current_steps = getattr(plan, "steps", []) or []
-    new_steps = list(current_steps) + [step]  # copy to ensure change detection on JSON columns
+    new_steps = list(current_steps) + [
+        step
+    ]  # copy to ensure change detection on JSON columns
     setattr(plan, "steps", new_steps)
     setattr(plan, "updated_at", datetime.now(timezone.utc))
 

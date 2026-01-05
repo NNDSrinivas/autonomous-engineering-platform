@@ -75,7 +75,9 @@ class SlackClient:
             logger.info("Listed Slack conversations", count=len(channels), types=types)
             return channels
         except SlackApiError as e:
-            logger.error("Failed to list Slack conversations", error=e.response["error"])
+            logger.error(
+                "Failed to list Slack conversations", error=e.response["error"]
+            )
             raise RuntimeError(f"Slack API error: {e.response['error']}")
 
     def fetch_channel_messages(

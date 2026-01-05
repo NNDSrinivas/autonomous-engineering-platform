@@ -26,8 +26,12 @@ _openai_client: Optional[AsyncOpenAI] = None
 
 
 def _event_start_end(event: Dict[str, Any]) -> tuple[str | None, str | None]:
-    start = (event.get("start") or {}).get("dateTime") or (event.get("start") or {}).get("date")
-    end = (event.get("end") or {}).get("dateTime") or (event.get("end") or {}).get("date")
+    start = (event.get("start") or {}).get("dateTime") or (
+        event.get("start") or {}
+    ).get("date")
+    end = (event.get("end") or {}).get("dateTime") or (event.get("end") or {}).get(
+        "date"
+    )
     return start, end
 
 
@@ -230,7 +234,11 @@ async def list_meet_events(
             scopes=cfg.get("scopes"),
             access_token=client.access_token,
             refresh_token=secrets.get("refresh_token"),
-            expires_at=client.expires_at.isoformat() if client.expires_at else cfg.get("expires_at"),
+            expires_at=(
+                client.expires_at.isoformat()
+                if client.expires_at
+                else cfg.get("expires_at")
+            ),
             channel_id=cfg.get("channel_id"),
             resource_id=cfg.get("resource_id"),
             channel_token=cfg.get("channel_token"),
@@ -259,7 +267,9 @@ async def store_meet_events(
         summary = event.get("summary") or "Google Meet"
         description = event.get("description") or ""
         organizer = (event.get("organizer") or {}).get("email")
-        attendees = [a.get("email") for a in (event.get("attendees") or []) if a.get("email")]
+        attendees = [
+            a.get("email") for a in (event.get("attendees") or []) if a.get("email")
+        ]
         start, end = _event_start_end(event)
 
         content = (
@@ -311,7 +321,9 @@ async def store_meet_transcripts(
 
     resolved_org_id = org_id or (connector.get("config") or {}).get("org_id")
     client_id, client_secret = _resolve_google_oauth_app(db, resolved_org_id)
-    drive_client = _build_drive_client(connector, client_id=client_id, client_secret=client_secret)
+    drive_client = _build_drive_client(
+        connector, client_id=client_id, client_secret=client_secret
+    )
     cfg = connector.get("config") or {}
     secrets = connector.get("secrets") or {}
 
@@ -329,9 +341,13 @@ async def store_meet_transcripts(
 
         query = _build_transcript_query(title=summary, start=start_dt, end=end_dt)
         try:
-            files = await drive_client.list_files(query=query, page_size=max_files_per_event)
+            files = await drive_client.list_files(
+                query=query, page_size=max_files_per_event
+            )
         except Exception as exc:
-            logger.warning("Drive transcript search failed", error=str(exc), event_id=event_id)
+            logger.warning(
+                "Drive transcript search failed", error=str(exc), event_id=event_id
+            )
             continue
 
         for file_info in files:
@@ -387,7 +403,9 @@ async def store_meet_transcripts(
             )
             processed_files.append(file_id)
 
-    if drive_client.access_token and drive_client.access_token != secrets.get("access_token"):
+    if drive_client.access_token and drive_client.access_token != secrets.get(
+        "access_token"
+    ):
         connectors_service.save_meet_connection(
             user_id=str(user_id),
             org_id=org_id or cfg.get("org_id"),
@@ -395,7 +413,11 @@ async def store_meet_transcripts(
             scopes=cfg.get("scopes"),
             access_token=drive_client.access_token,
             refresh_token=secrets.get("refresh_token"),
-            expires_at=drive_client.expires_at.isoformat() if drive_client.expires_at else cfg.get("expires_at"),
+            expires_at=(
+                drive_client.expires_at.isoformat()
+                if drive_client.expires_at
+                else cfg.get("expires_at")
+            ),
             channel_id=cfg.get("channel_id"),
             resource_id=cfg.get("resource_id"),
             channel_token=cfg.get("channel_token"),
@@ -434,7 +456,9 @@ async def create_meet_watch(
     expires_at_iso = None
     if response.get("expiration"):
         try:
-            expires_at_iso = datetime.fromtimestamp(int(response["expiration"]) / 1000, tz=timezone.utc).isoformat()
+            expires_at_iso = datetime.fromtimestamp(
+                int(response["expiration"]) / 1000, tz=timezone.utc
+            ).isoformat()
         except Exception:
             expires_at_iso = None
 

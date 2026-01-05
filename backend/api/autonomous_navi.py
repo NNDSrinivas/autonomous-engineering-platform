@@ -19,7 +19,10 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 import structlog
 
-from backend.autonomous.enhanced_coding_engine import EnhancedAutonomousCodingEngine, TaskType
+from backend.autonomous.enhanced_coding_engine import (
+    EnhancedAutonomousCodingEngine,
+    TaskType,
+)
 from backend.core.ai.llm_service import LLMService
 from backend.core.memory_system.vector_store import VectorStore
 from backend.core.db import get_db
@@ -39,21 +42,28 @@ async def autonomous_docs():
         "version": "1.0.0",
         "capabilities": [
             "Natural language to code generation",
-            "File editing and modification", 
+            "File editing and modification",
             "Workspace analysis and understanding",
             "Step-by-step autonomous workflows",
             "User approval and safety gates",
-            "Multi-file project understanding"
+            "Multi-file project understanding",
         ],
         "endpoints": {
             "/generate": "Start autonomous code generation task",
-            "/status/{task_id}": "Get task status and progress", 
+            "/status/{task_id}": "Get task status and progress",
             "/approve/{task_id}": "Approve or reject next step",
             "/workspace/analyze": "Analyze workspace structure",
-            "/docs": "This documentation endpoint"
+            "/docs": "This documentation endpoint",
         },
         "status": "ready",
-        "competitive_with": ["Cline", "Copilot", "CodeX", "KiloCode", "Claude", "Gemini"]
+        "competitive_with": [
+            "Cline",
+            "Copilot",
+            "CodeX",
+            "KiloCode",
+            "Claude",
+            "Gemini",
+        ],
     }
 
 
@@ -82,7 +92,9 @@ _ENGINE_CACHE: Dict[str, EnhancedAutonomousCodingEngine] = {}
 _TASK_ENGINE_MAP: Dict[str, EnhancedAutonomousCodingEngine] = {}
 
 
-def _get_autonomous_engine(workspace_root: str, db: Session) -> EnhancedAutonomousCodingEngine:
+def _get_autonomous_engine(
+    workspace_root: str, db: Session
+) -> EnhancedAutonomousCodingEngine:
     """Get or create autonomous coding engine instance per workspace."""
     engine = _ENGINE_CACHE.get(workspace_root)
     if not engine:
@@ -107,12 +119,12 @@ async def generate_code(
 ) -> CodeGenerationResponse:
     """
     Generate code from natural language description - core NAVI autonomous feature
-    
+
     This is what makes NAVI competitive with Cline, Copilot, etc.
     """
     try:
         logger.info("Starting autonomous code generation", message=request.message)
-        
+
         engine = _get_autonomous_engine(request.workspace_root, db)
         task_type_map = {
             "code_implementation": TaskType.FEATURE,
@@ -133,27 +145,29 @@ async def generate_code(
             user_id=request.user_id,
         )
         _TASK_ENGINE_MAP[task.id] = engine
-        
+
         # Return task with steps for user approval
         steps_data = []
         for step in task.steps:
-            steps_data.append({
-                "id": step.id,
-                "description": step.description,
-                "file_path": step.file_path,
-                "operation": step.operation,
-                "preview": step.content_preview,
-                "reasoning": step.reasoning
-            })
-        
+            steps_data.append(
+                {
+                    "id": step.id,
+                    "description": step.description,
+                    "file_path": step.file_path,
+                    "operation": step.operation,
+                    "preview": step.content_preview,
+                    "reasoning": step.reasoning,
+                }
+            )
+
         return CodeGenerationResponse(
             task_id=task.id,
             status=task.status,
             message=f"Generated {len(task.steps)} steps for implementation",
             steps=steps_data,
-            next_action="approve_step" if steps_data else "complete"
+            next_action="approve_step" if steps_data else "complete",
         )
-        
+
     except Exception as e:
         logger.error("Code generation failed", error=str(e))
         raise HTTPException(status_code=500, detail=f"Code generation failed: {str(e)}")
@@ -168,12 +182,17 @@ async def approve_step(
 ) -> Dict[str, Any]:
     """
     Approve and execute a step - core safety feature
-    
+
     This is the human-in-the-loop approval that makes NAVI safe for production
     """
     try:
-        logger.info("Processing step approval", task_id=task_id, step_id=step_id, approved=approval.approved)
-        
+        logger.info(
+            "Processing step approval",
+            task_id=task_id,
+            step_id=step_id,
+            approved=approval.approved,
+        )
+
         engine = _TASK_ENGINE_MAP.get(task_id)
         if not engine:
             raise HTTPException(status_code=404, detail="Task not found or expired")
@@ -181,19 +200,23 @@ async def approve_step(
 
         # Execute step with user approval
         result = await engine.execute_step(
-            task_id=task_id,
-            step_id=step_id,
-            user_approved=approval.approved
+            task_id=task_id, step_id=step_id, user_approved=approval.approved
         )
-        
+
         return {
             "success": True,
             "step_result": result,
-            "message": "Step executed successfully" if approval.approved else "Step skipped by user"
+            "message": (
+                "Step executed successfully"
+                if approval.approved
+                else "Step skipped by user"
+            ),
         }
-        
+
     except Exception as e:
-        logger.error("Step execution failed", task_id=task_id, step_id=step_id, error=str(e))
+        logger.error(
+            "Step execution failed", task_id=task_id, step_id=step_id, error=str(e)
+        )
         raise HTTPException(status_code=500, detail=f"Step execution failed: {str(e)}")
 
 
@@ -211,20 +234,28 @@ async def get_task_status(
         task = engine.active_tasks.get(task_id)
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
-        
+
         return {
             "task_id": task.id,
             "title": task.title,
             "status": task.status,
             "current_step": task.current_step_index,
             "total_steps": len(task.steps),
-            "completed_steps": sum(1 for step in task.steps if step.status == "completed"),
-            "next_step": task.steps[task.current_step_index] if task.current_step_index < len(task.steps) else None
+            "completed_steps": sum(
+                1 for step in task.steps if step.status == "completed"
+            ),
+            "next_step": (
+                task.steps[task.current_step_index]
+                if task.current_step_index < len(task.steps)
+                else None
+            ),
         }
-        
+
     except Exception as e:
         logger.error("Failed to get task status", task_id=task_id, error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get task status: {str(e)}"
+        )
 
 
 @router.post("/analyze-workspace")
@@ -235,13 +266,13 @@ async def analyze_workspace(
 ) -> Dict[str, Any]:
     """
     Analyze workspace context - essential for intelligent code generation
-    
+
     This gives NAVI understanding of the codebase like Copilot/Cline
     """
     try:
         logger.info("Analyzing workspace", workspace_root=workspace_root)
         _get_autonomous_engine(workspace_root, db)
-        
+
         # This would use the existing workspace analysis from the search results
         # For now, return a structured response
         analysis = {
@@ -253,16 +284,18 @@ async def analyze_workspace(
             "suggestions": [
                 "Ready for autonomous code generation",
                 "Workspace structure detected",
-                "Dependencies analyzed"
-            ]
+                "Dependencies analyzed",
+            ],
         }
-        
+
         return {
             "success": True,
             "analysis": analysis,
-            "message": "Workspace analysis complete"
+            "message": "Workspace analysis complete",
         }
-        
+
     except Exception as e:
         logger.error("Workspace analysis failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Workspace analysis failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Workspace analysis failed: {str(e)}"
+        )

@@ -60,17 +60,21 @@ from backend.agent.intent_schema import (
 )
 from backend.services.git_service import GitService
 
+
 # Phase 4.1.2: Planner Engine Data Models
 class ContextPack(BaseModel):
     """Context information collected by extension for planning"""
+
     workspace: Dict[str, Any] = Field(default_factory=dict)
     repo: Optional[Dict[str, Any]] = None
     diagnostics: List[Dict[str, Any]] = Field(default_factory=list)
     active_file: Optional[Dict[str, Any]] = None
     selected_text: Optional[str] = None
 
+
 class PlanStep(BaseModel):
     """Individual step in a plan"""
+
     id: str
     title: str
     rationale: Optional[str] = None
@@ -80,8 +84,10 @@ class PlanStep(BaseModel):
     verify: List[str] = Field(default_factory=list)  # verification rules
     status: Literal["pending", "active", "completed", "failed", "skipped"] = "pending"
 
+
 class Plan(BaseModel):
     """Multi-step execution plan"""
+
     id: str
     goal: str
     steps: List[PlanStep]
@@ -89,34 +95,43 @@ class Plan(BaseModel):
     confidence: float = 0.0
     reasoning: Optional[str] = None
 
+
 class RunState(BaseModel):
     """Complete state of a NAVI run"""
+
     run_id: str
     user_message: str
     intent: NaviIntent
     context: ContextPack
     plan: Optional[Plan] = None
     current_step: int = 0
-    status: Literal["idle", "planning", "executing", "verifying", "done", "failed"] = "idle"
+    status: Literal["idle", "planning", "executing", "verifying", "done", "failed"] = (
+        "idle"
+    )
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: float = Field(default_factory=time.time)
 
+
 class ToolRequest(BaseModel):
     """Request for tool execution"""
+
     run_id: str
     request_id: str
     tool: str
     args: Dict[str, Any]
     approval: Dict[str, Any]
 
+
 class ToolResult(BaseModel):
     """Result of tool execution"""
+
     run_id: str
     request_id: str
     tool: str
     ok: bool
     output: Any
     error: Optional[str] = None
+
 
 # Global run state storage (in-memory for now)
 active_runs: Dict[str, RunState] = {}
@@ -173,26 +188,35 @@ if OPENAI_ENABLED:
 # Initialize PlannerV3 for fast-path routing
 planner_v3 = PlannerV3()
 
+
 @agent_router.post("/classify")
 async def classify_intent_simple(request: Dict[str, Any]):
     """Classification endpoint that redirects to NAVI intent classification"""
     message = request.get("message", "")
-    
+
     # Use the same intent classification logic as /api/navi/intent
     intent_map = {
         "fix": ["error", "bug", "issue", "problem", "broken", "crash", "fail"],
         "code": ["implement", "feature", "add", "create", "build", "develop", "code"],
-        "workspace": ["repo", "project", "workspace", "directory", "structure", "files"],
+        "workspace": [
+            "repo",
+            "project",
+            "workspace",
+            "directory",
+            "structure",
+            "files",
+        ],
         "git": ["commit", "branch", "merge", "pull", "push", "git", "version"],
         "docs": ["document", "readme", "explain", "describe", "help", "guide"],
     }
-    
+
     message_lower = message.lower()
     for intent, keywords in intent_map.items():
         if any(keyword in message_lower for keyword in keywords):
             return {"intent": intent}
-    
+
     return {"intent": "general"}
+
 
 # Real repo scanning configuration
 REPO_EXPLAIN_IGNORE_DIRS = {
@@ -287,8 +311,7 @@ WORK_KEYWORDS = (
 # Phase 4.1.2: Intent Classification Endpoint
 @router.post("/intent")
 async def classify_intent(
-    message: str,
-    context: Optional[Dict[str, Any]] = None
+    message: str, context: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Classify user message into structured intent.
@@ -297,58 +320,80 @@ async def classify_intent(
     try:
         progress = ProgressTracker()
         progress.update_status("Classifying user intent...")
-        
+
         # Simple rule-based classification for now
         message_lower = message.lower().strip()
-        
+
         # Diagnostic/error fixing intents
-        if any(word in message_lower for word in ["error", "errors", "problem", "problems", "fix", "bug", "issue"]):
+        if any(
+            word in message_lower
+            for word in [
+                "error",
+                "errors",
+                "problem",
+                "problems",
+                "fix",
+                "bug",
+                "issue",
+            ]
+        ):
             if "problems tab" in message_lower or "diagnostics" in message_lower:
                 intent_kind = IntentKind.FIX_BUG
                 family = IntentFamily.ENGINEERING
                 confidence = 0.9
             elif "file" in message_lower:
-                intent_kind = IntentKind.MODIFY_CODE  
+                intent_kind = IntentKind.MODIFY_CODE
                 family = IntentFamily.ENGINEERING
                 confidence = 0.8
             else:
                 intent_kind = IntentKind.FIX_BUG
                 family = IntentFamily.ENGINEERING
                 confidence = 0.7
-        
+
         # Repository inspection intents
-        elif any(word in message_lower for word in ["repo", "repository", "explain", "what", "overview"]):
+        elif any(
+            word in message_lower
+            for word in ["repo", "repository", "explain", "what", "overview"]
+        ):
             intent_kind = IntentKind.INSPECT_REPO
             family = IntentFamily.ENGINEERING
             confidence = 0.85
-            
+
         # Build/run intents
-        elif any(word in message_lower for word in ["build", "run", "start", "compile", "test"]):
+        elif any(
+            word in message_lower
+            for word in ["build", "run", "start", "compile", "test"]
+        ):
             if "test" in message_lower:
                 intent_kind = IntentKind.RUN_TESTS
             else:
                 intent_kind = IntentKind.RUN_BUILD
             family = IntentFamily.ENGINEERING
             confidence = 0.8
-            
+
         # Feature implementation intents
-        elif any(word in message_lower for word in ["implement", "feature", "add", "create"]):
+        elif any(
+            word in message_lower for word in ["implement", "feature", "add", "create"]
+        ):
             intent_kind = IntentKind.IMPLEMENT_FEATURE
             family = IntentFamily.ENGINEERING
             confidence = 0.75
-            
+
         # JIRA/ticket intents
-        elif any(word in message_lower for word in ["jira", "ticket", "issue", "task", "assigned"]):
+        elif any(
+            word in message_lower
+            for word in ["jira", "ticket", "issue", "task", "assigned"]
+        ):
             intent_kind = IntentKind.LIST_MY_ITEMS
             family = IntentFamily.PROJECT_MANAGEMENT
             confidence = 0.8
-            
+
         else:
             # Default to general explanation
             intent_kind = IntentKind.EXPLAIN_CODE
             family = IntentFamily.ENGINEERING
             confidence = 0.5
-            
+
         intent = NaviIntent(
             family=family,
             kind=intent_kind,
@@ -357,22 +402,18 @@ async def classify_intent(
             target=None,
             parameters={},
             confidence=confidence,
-            raw_text=message
+            raw_text=message,
         )
-        
+
         return {
             "success": True,
             "intent": intent.dict(),
-            "reasoning": f"Classified as {intent_kind} based on keywords and context"
+            "reasoning": f"Classified as {intent_kind} based on keywords and context",
         }
-        
+
     except Exception as e:
         logger.error(f"Intent classification error: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error": str(e),
-            "intent": None
-        }
+        return {"success": False, "error": str(e), "intent": None}
 
 
 class PlanRequest(BaseModel):
@@ -380,7 +421,8 @@ class PlanRequest(BaseModel):
     intent: Dict[str, Any]
     context: Dict[str, Any]
 
-# Phase 4.1.2: Plan Generation Endpoint  
+
+# Phase 4.1.2: Plan Generation Endpoint
 @router.post("/plan")
 async def generate_plan(request: PlanRequest) -> Dict[str, Any]:
     """
@@ -389,13 +431,13 @@ async def generate_plan(request: PlanRequest) -> Dict[str, Any]:
     """
     try:
         from backend.planner import run_planner, Intent, PlannerRequest
-        
+
         progress = ProgressTracker()
         progress.update_status("Generating execution plan...")
-        
+
         intent_kind = request.intent.get("kind")
         run_id = f"plan_{int(time.time())}_{random.randint(1000, 9999)}"
-        
+
         # Map intent to strict enum
         try:
             if intent_kind == "fix_diagnostics":
@@ -406,23 +448,25 @@ async def generate_plan(request: PlanRequest) -> Dict[str, Any]:
                     "success": False,
                     "error": f"Intent '{intent_kind}' not supported in Phase 4.1. Currently only fix_diagnostics is implemented.",
                     "plan": None,
-                    "session_id": None
+                    "session_id": None,
                 }
-                
+
             # Create strict planner request
             planner_request = PlannerRequest(
                 intent=planner_intent,
                 context={
-                    "workspaceRoot": request.context.get("workspace", {}).get("root", ""),
+                    "workspaceRoot": request.context.get("workspace", {}).get(
+                        "root", ""
+                    ),
                     "userMessage": request.message,
                     "diagnostics": request.context.get("diagnostics", []),
-                    "active_file": request.context.get("active_file")
-                }
+                    "active_file": request.context.get("active_file"),
+                },
             )
-            
+
             # Run strict planner
             planner_response = run_planner(planner_request)
-            
+
             # Convert planner response to API format
             plan = {
                 "goal": f"Execute {planner_response.intent.value} plan",
@@ -435,44 +479,38 @@ async def generate_plan(request: PlanRequest) -> Dict[str, Any]:
                         "tool": step.tool,
                         "status": "pending",
                         "requires_approval": False,  # Phase 4.1 Step 1: no approval needed
-                        "verify": []
+                        "verify": [],
                     }
                     for i, step in enumerate(planner_response.steps)
                 ],
-                "requires_approval": False
+                "requires_approval": False,
             }
-            
+
             return {
                 "success": True,
                 "plan": plan,
                 "reasoning": f"Generated deterministic {planner_response.intent.value} plan with {len(planner_response.steps)} steps",
-                "session_id": run_id
+                "session_id": run_id,
             }
-            
+
         except Exception as planner_error:
             logger.error(f"Planner error: {planner_error}")
             return {
                 "success": False,
                 "error": f"Planner validation failed: {str(planner_error)}",
                 "plan": None,
-                "session_id": None
+                "session_id": None,
             }
-        
+
     except Exception as e:
         logger.error(f"Plan generation error: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error": str(e),
-            "plan": None,
-            "session_id": None
-        }
+        return {"success": False, "error": str(e), "plan": None, "session_id": None}
 
 
 # Phase 4.1.2: Next Step Execution Endpoint
 @router.post("/next")
 async def execute_next_step(
-    run_id: str,
-    tool_result: Optional[Dict[str, Any]] = None
+    run_id: str, tool_result: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Execute next step in plan or process tool result.
@@ -481,16 +519,16 @@ async def execute_next_step(
     try:
         if run_id not in active_runs:
             raise HTTPException(status_code=404, detail="Run not found")
-            
+
         run_state = active_runs[run_id]
-        
+
         # Process previous tool result if provided
         if tool_result:
             await process_tool_result(run_state, tool_result)
-            
+
         # Find next step to execute
         next_step = find_next_step(run_state)
-        
+
         if not next_step:
             # Plan completed
             run_state.status = "done"
@@ -499,255 +537,273 @@ async def execute_next_step(
             return {
                 "type": "assistant_message",
                 "content": f"✅ Plan completed successfully!{goal_suffix}",
-                "final": True
+                "final": True,
             }
-            
+
         # Execute step
         if next_step.tool:
             # Tool-based step - return tool request
             tool_request = create_tool_request(run_state, next_step)
-            return {
-                "type": "tool_request",
-                "request": tool_request.dict()
-            }
+            return {"type": "tool_request", "request": tool_request.dict()}
         else:
             # Reasoning step - return progress message
             next_step.status = "completed"
             run_state.current_step += 1
             return {
-                "type": "assistant_message", 
+                "type": "assistant_message",
                 "content": f"🔄 {next_step.title}",
-                "final": False
+                "final": False,
             }
-            
+
     except Exception as e:
         logger.error(f"Next step execution error: {e}", exc_info=True)
-        return {
-            "type": "error",
-            "error": str(e)
-        }
+        return {"type": "error", "error": str(e)}
 
 
 # Phase 4.1.2: Plan Generation Helper Functions
 
-async def generate_fix_diagnostics_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+
+async def generate_fix_diagnostics_plan(
+    run_id: str, message: str, context: Dict[str, Any]
+) -> Plan:
     """Generate plan for fixing diagnostics/problems"""
     diagnostics = context.get("diagnostics", [])
-    
+
     steps = [
         PlanStep(
             id=f"{run_id}_1",
             title="Collect current diagnostics",
             tool="vscode.getDiagnostics",
             input={},
-            verify=["diagnostics_collected"]
+            verify=["diagnostics_collected"],
         ),
         PlanStep(
-            id=f"{run_id}_2", 
+            id=f"{run_id}_2",
             title="Analyze error patterns",
-            rationale="Group errors by type and severity for efficient fixing"
-        )
+            rationale="Group errors by type and severity for efficient fixing",
+        ),
     ]
-    
+
     # Add fix steps for each diagnostic
     for i, diag in enumerate(diagnostics[:3]):  # Limit to first 3 for now
-        steps.append(PlanStep(
-            id=f"{run_id}_{i+3}",
-            title=f"Fix {diag.get('message', 'error')} in {diag.get('file', 'file')}",
-            tool="workspace.readFile",
-            input={"file": diag.get("file")},
-            requires_approval=True,
-            verify=["error_resolved"]
-        ))
-        
-    steps.append(PlanStep(
-        id=f"{run_id}_final",
-        title="Verify all fixes applied",
-        tool="vscode.getDiagnostics",
-        input={},
-        verify=["all_errors_resolved"]
-    ))
-    
+        steps.append(
+            PlanStep(
+                id=f"{run_id}_{i+3}",
+                title=f"Fix {diag.get('message', 'error')} in {diag.get('file', 'file')}",
+                tool="workspace.readFile",
+                input={"file": diag.get("file")},
+                requires_approval=True,
+                verify=["error_resolved"],
+            )
+        )
+
+    steps.append(
+        PlanStep(
+            id=f"{run_id}_final",
+            title="Verify all fixes applied",
+            tool="vscode.getDiagnostics",
+            input={},
+            verify=["all_errors_resolved"],
+        )
+    )
+
     return Plan(
         id=run_id,
         goal="Fix all diagnostics in Problems tab",
         steps=steps,
         requires_approval=True,
         confidence=0.85,
-        reasoning="Systematic approach to fix diagnostics by reading files, generating patches, and verifying results"
+        reasoning="Systematic approach to fix diagnostics by reading files, generating patches, and verifying results",
     )
 
-async def generate_repo_inspection_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+
+async def generate_repo_inspection_plan(
+    run_id: str, message: str, context: Dict[str, Any]
+) -> Plan:
     """Generate plan for repository inspection"""
     steps = [
         PlanStep(
             id=f"{run_id}_1",
             title="Inspect workspace structure",
-            rationale="Understanding project layout and key files"
+            rationale="Understanding project layout and key files",
         ),
         PlanStep(
             id=f"{run_id}_2",
-            title="Identify project type and technology stack", 
-            rationale="Analyzing package files and configuration"
+            title="Identify project type and technology stack",
+            rationale="Analyzing package files and configuration",
         ),
         PlanStep(
             id=f"{run_id}_3",
             title="Summarize repository purpose and architecture",
-            rationale="High-level overview of what this codebase does"
-        )
+            rationale="High-level overview of what this codebase does",
+        ),
     ]
-    
+
     return Plan(
         id=run_id,
-        goal="Provide comprehensive repository overview", 
+        goal="Provide comprehensive repository overview",
         steps=steps,
         requires_approval=False,
         confidence=0.9,
-        reasoning="Repository inspection requires analyzing structure, technology stack, and purpose"
+        reasoning="Repository inspection requires analyzing structure, technology stack, and purpose",
     )
 
-async def generate_feature_implementation_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+
+async def generate_feature_implementation_plan(
+    run_id: str, message: str, context: Dict[str, Any]
+) -> Plan:
     """Generate plan for feature implementation"""
     steps = [
         PlanStep(
             id=f"{run_id}_1",
             title="Analyze feature requirements",
-            rationale="Understanding what needs to be built"
+            rationale="Understanding what needs to be built",
         ),
         PlanStep(
-            id=f"{run_id}_2", 
+            id=f"{run_id}_2",
             title="Design implementation approach",
-            rationale="Planning architecture and file changes"
+            rationale="Planning architecture and file changes",
         ),
         PlanStep(
             id=f"{run_id}_3",
             title="Implement core functionality",
             requires_approval=True,
             tool="workspace.applyPatch",
-            verify=["feature_implemented"]
+            verify=["feature_implemented"],
         ),
         PlanStep(
             id=f"{run_id}_4",
-            title="Add tests for new feature", 
+            title="Add tests for new feature",
             requires_approval=True,
             tool="workspace.applyPatch",
-            verify=["tests_added"]
+            verify=["tests_added"],
         ),
         PlanStep(
             id=f"{run_id}_5",
             title="Verify implementation works",
             tool="tasks.run",
             input={"task": "test"},
-            verify=["tests_pass"]
-        )
+            verify=["tests_pass"],
+        ),
     ]
-    
+
     return Plan(
         id=run_id,
         goal="Implement requested feature with tests",
-        steps=steps, 
+        steps=steps,
         requires_approval=True,
         confidence=0.75,
-        reasoning="Feature implementation requires analysis, coding, testing, and verification"
+        reasoning="Feature implementation requires analysis, coding, testing, and verification",
     )
 
-async def generate_build_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+
+async def generate_build_plan(
+    run_id: str, message: str, context: Dict[str, Any]
+) -> Plan:
     """Generate plan for build/run tasks"""
     steps = [
         PlanStep(
             id=f"{run_id}_1",
             title="Check project build configuration",
-            rationale="Identifying available build scripts and tasks"
+            rationale="Identifying available build scripts and tasks",
         ),
         PlanStep(
-            id=f"{run_id}_2", 
+            id=f"{run_id}_2",
             title="Execute build process",
             tool="tasks.run",
             input={"task": "build"},
-            verify=["build_success"]
+            verify=["build_success"],
         ),
         PlanStep(
             id=f"{run_id}_3",
             title="Report build results",
-            rationale="Summary of build outcome and any issues"
-        )
+            rationale="Summary of build outcome and any issues",
+        ),
     ]
-    
+
     return Plan(
         id=run_id,
         goal="Build and run the project",
         steps=steps,
-        requires_approval=False, 
+        requires_approval=False,
         confidence=0.8,
-        reasoning="Build process involves checking configuration and executing build tasks"
+        reasoning="Build process involves checking configuration and executing build tasks",
     )
 
-async def generate_test_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+
+async def generate_test_plan(
+    run_id: str, message: str, context: Dict[str, Any]
+) -> Plan:
     """Generate plan for running tests"""
     steps = [
         PlanStep(
             id=f"{run_id}_1",
             title="Identify test configuration",
-            rationale="Finding test scripts and setup"
+            rationale="Finding test scripts and setup",
         ),
         PlanStep(
             id=f"{run_id}_2",
-            title="Execute test suite", 
+            title="Execute test suite",
             tool="tasks.run",
             input={"task": "test"},
-            verify=["tests_completed"]
+            verify=["tests_completed"],
         ),
         PlanStep(
             id=f"{run_id}_3",
             title="Analyze test results",
-            rationale="Report on test outcomes and any failures"
-        )
+            rationale="Report on test outcomes and any failures",
+        ),
     ]
-    
+
     return Plan(
         id=run_id,
         goal="Run project tests and report results",
         steps=steps,
         requires_approval=False,
         confidence=0.85,
-        reasoning="Test execution involves configuration check, running tests, and reporting results"
+        reasoning="Test execution involves configuration check, running tests, and reporting results",
     )
-    
-async def generate_explanation_plan(run_id: str, message: str, context: Dict[str, Any]) -> Plan:
+
+
+async def generate_explanation_plan(
+    run_id: str, message: str, context: Dict[str, Any]
+) -> Plan:
     """Generate plan for general explanations"""
     steps = [
         PlanStep(
             id=f"{run_id}_1",
             title="Analyze user question",
-            rationale="Understanding what information is being requested"
+            rationale="Understanding what information is being requested",
         ),
         PlanStep(
             id=f"{run_id}_2",
             title="Provide comprehensive explanation",
-            rationale="Detailed response based on available context"
-        )
+            rationale="Detailed response based on available context",
+        ),
     ]
-    
+
     return Plan(
         id=run_id,
         goal="Provide helpful explanation",
         steps=steps,
         requires_approval=False,
         confidence=0.7,
-        reasoning="General explanation based on user question and context"
+        reasoning="General explanation based on user question and context",
     )
+
 
 # Helper functions for step execution
 def find_next_step(run_state: RunState) -> Optional[PlanStep]:
     """Find next pending step in plan"""
     if not run_state.plan:
         return None
-        
+
     for step in run_state.plan.steps:
         if step.status == "pending":
             step.status = "active"
             return step
     return None
+
 
 def create_tool_request(run_state: RunState, step: PlanStep) -> ToolRequest:
     """Create tool request for step execution"""
@@ -755,28 +811,29 @@ def create_tool_request(run_state: RunState, step: PlanStep) -> ToolRequest:
     if not step.tool:
         raise ValueError(f"Tool name is required for step {step.id}")
     tool_name = step.tool
-    
+
     approval = {
         "required": step.requires_approval,
         "reason": step.rationale or f"Execute {step.title}",
-        "risk": "high" if step.requires_approval else "low"
+        "risk": "high" if step.requires_approval else "low",
     }
-    
+
     # Phase 4.1 Step 3: Include previous tool result for chaining
     args = step.input or {}
     if run_state.artifacts:
         # Get the most recent tool result as previousResult
         latest_artifact = run_state.artifacts[-1]
         args["previousResult"] = latest_artifact["result"]
-    
+
     return ToolRequest(
         run_id=run_state.run_id,
         request_id=request_id,
         tool=tool_name,
         args=args,
-        approval=approval
+        approval=approval,
     )
-    
+
+
 async def process_tool_result(run_state: RunState, tool_result: Dict[str, Any]):
     """Process result from tool execution"""
     if not run_state.plan:
@@ -788,11 +845,13 @@ async def process_tool_result(run_state: RunState, tool_result: Dict[str, Any]):
                 step.status = "completed"
                 run_state.current_step += 1
                 # Store result as artifact
-                run_state.artifacts.append({
-                    "step_id": step.id,
-                    "tool": tool_result.get("tool"),
-                    "result": tool_result.get("output")
-                })
+                run_state.artifacts.append(
+                    {
+                        "step_id": step.id,
+                        "tool": tool_result.get("tool"),
+                        "result": tool_result.get("output"),
+                    }
+                )
             else:
                 step.status = "failed"
                 run_state.status = "failed"
@@ -808,47 +867,49 @@ async def analyze_working_changes(
     Analyze working tree changes with real-time progress updates.
     Returns Server-Sent Events (SSE) for live progress streaming.
     """
-    
+
     async def generate_analysis_stream():
         import asyncio
         import json
         from concurrent.futures import ThreadPoolExecutor
-        
+
         try:
             # Send immediate response to show we're alive
             yield f"data: {json.dumps({'type': 'progress', 'step': '🔄 Starting analysis...', 'progress': 0})}\n\n"
-            
+
             # Get workspace root from query parameter or request body
             actual_workspace_root = workspace_root
             if not actual_workspace_root:
                 try:
                     body = await request.json()
-                    actual_workspace_root = body.get('workspace_root')
+                    actual_workspace_root = body.get("workspace_root")
                 except Exception as e:
                     logger.warning(f"Could not parse request body: {e}")
             actual_workspace_root = actual_workspace_root or os.getcwd()
-            
+
             yield f"data: {json.dumps({'type': 'progress', 'step': f'📁 Workspace: {actual_workspace_root}', 'progress': 5})}\n\n"
-            
+
             # Use thread pool to run blocking service initialization without blocking event loop
             loop = asyncio.get_event_loop()
             executor = ThreadPoolExecutor(max_workers=1)
-            
+
             def init_service_sync():
                 """Initialize service in thread pool"""
                 try:
                     from backend.services.review_service import RealReviewService
-                    return RealReviewService(repo_path=actual_workspace_root, analysis_depth='comprehensive')
+
+                    return RealReviewService(
+                        repo_path=actual_workspace_root, analysis_depth="comprehensive"
+                    )
                 except Exception as e:
                     logger.warning(f"Could not initialize RealReviewService: {e}")
                     return None
-            
+
             yield f"data: {json.dumps({'type': 'progress', 'step': 'Initializing analysis service...', 'progress': 10})}\n\n"
-            
+
             try:
                 service = await asyncio.wait_for(
-                    loop.run_in_executor(executor, init_service_sync),
-                    timeout=5.0
+                    loop.run_in_executor(executor, init_service_sync), timeout=5.0
                 )
                 if service:
                     yield f"data: {json.dumps({'type': 'progress', 'step': '✅ Analysis service ready', 'progress': 15})}\n\n"
@@ -859,16 +920,19 @@ async def analyze_working_changes(
                 logger.warning("Service initialization timeout, using basic analysis")
                 yield f"data: {json.dumps({'type': 'progress', 'step': '⚠️ Service init timeout, using basic mode', 'progress': 15})}\n\n"
                 service = None
-            
+
             # Get working tree changes
             yield f"data: {json.dumps({'type': 'progress', 'step': 'Scanning for changes...', 'progress': 20})}\n\n"
-            
+
             def get_changes_sync():
                 """Get changes in thread pool"""
                 try:
-                    repo_service = getattr(service, 'repo_service', None) if service else None
+                    repo_service = (
+                        getattr(service, "repo_service", None) if service else None
+                    )
                     if repo_service is None:
                         from backend.services.repo_service import RepoService
+
                         repo_service = RepoService(actual_workspace_root)
 
                     has_head = repo_service.git.has_head()
@@ -878,15 +942,19 @@ async def analyze_working_changes(
                 except Exception as e:
                     logger.warning(f"Could not get changes: {e}")
                     return [], None, str(e), {}
-            
+
             try:
                 changes, has_head, repo_error, skip_summary = await asyncio.wait_for(
-                    loop.run_in_executor(executor, get_changes_sync),
-                    timeout=10.0
+                    loop.run_in_executor(executor, get_changes_sync), timeout=10.0
                 )
             except asyncio.TimeoutError:
                 logger.error("Getting changes timed out")
-                changes, has_head, repo_error, skip_summary = [], None, "Timed out while scanning for changes.", {}
+                changes, has_head, repo_error, skip_summary = (
+                    [],
+                    None,
+                    "Timed out while scanning for changes.",
+                    {},
+                )
             except Exception as e:
                 logger.error(f"Error getting changes: {e}")
                 changes, has_head, repo_error, skip_summary = [], None, str(e), {}
@@ -900,7 +968,7 @@ async def analyze_working_changes(
             elif has_head is False:
                 head_warning = (
                     "This repo has no commits yet, so I cannot diff against main/HEAD. "
-                    "Create an initial commit (`git add -A` then `git commit -m \"Initial commit\"`), "
+                    'Create an initial commit (`git add -A` then `git commit -m "Initial commit"`), '
                     "or fetch and check out `main` if you expect a remote branch."
                 )
                 yield f"data: {json.dumps({'type': 'progress', 'step': head_warning, 'progress': 22})}\n\n"
@@ -919,23 +987,25 @@ async def analyze_working_changes(
                         f"Skipped {skip_summary.get('skipped_ignored')} ignored/binary files"
                     )
                 skip_warning = " · ".join(parts) if parts else None
-            
+
             if not changes:
                 warning = " ".join([w for w in [head_warning, skip_warning] if w])
                 yield f"data: {json.dumps({'type': 'progress', 'step': 'No changes found or unable to scan', 'progress': 100})}\n\n"
                 yield f"data: {json.dumps({'type': 'complete', 'results': [], 'warning': warning})}\n\n"
                 return
-            
+
             yield f"data: {json.dumps({'type': 'progress', 'step': f'Found {len(changes)} changed files', 'progress': 30})}\n\n"
-            
+
             # Analyze each file
             review_files = []
-            for i, change in enumerate(changes[:50]):  # Limit to prevent overwhelming response
+            for i, change in enumerate(
+                changes[:50]
+            ):  # Limit to prevent overwhelming response
                 progress = 30 + (i * 60 // min(len(changes), 50))
-                file_path = change.get('path', f'file_{i}')
-                
+                file_path = change.get("path", f"file_{i}")
+
                 yield f"data: {json.dumps({'type': 'progress', 'step': f'Analyzing {file_path}...', 'progress': progress})}\n\n"
-                
+
                 try:
                     if service:
                         # Run comprehensive analysis in thread pool
@@ -945,64 +1015,85 @@ async def analyze_working_changes(
                             except Exception as e:
                                 logger.warning(f"Error in comprehensive analysis: {e}")
                                 return {}
-                        
+
                         result = await asyncio.wait_for(
                             loop.run_in_executor(executor, analyze_file_sync),
-                            timeout=15.0
+                            timeout=15.0,
                         )
                     else:
                         result = {}
-                    
+
                     # Extract issues from result
                     issues = []
                     if isinstance(result, dict):
-                        analysis_results = result.get('analysis_results', {})
+                        analysis_results = result.get("analysis_results", {})
                         if isinstance(analysis_results, dict):
                             for analysis_type, analysis_obj in analysis_results.items():
-                                if hasattr(analysis_obj, 'issues'):
+                                if hasattr(analysis_obj, "issues"):
                                     for issue in analysis_obj.issues:
-                                        issues.append({
-                                            'id': f'issue-{i}-{len(issues)}',
-                                            'title': getattr(issue, 'title', 'Issue'),
-                                            'body': getattr(issue, 'message', str(issue)),
-                                            'severity': getattr(issue, 'severity', 'medium'),
-                                            'canAutoFix': bool(getattr(issue, 'suggestion', None)),
-                                        })
-                    
-                    review_files.append({
-                        'path': file_path,
-                        'severity': 'high' if any(i['severity'] == 'high' for i in issues) else 'medium' if issues else 'low',
-                        'issues': issues,
-                        'diff': change.get('diff', '')[:1000]
-                    })
-                    
+                                        issues.append(
+                                            {
+                                                "id": f"issue-{i}-{len(issues)}",
+                                                "title": getattr(
+                                                    issue, "title", "Issue"
+                                                ),
+                                                "body": getattr(
+                                                    issue, "message", str(issue)
+                                                ),
+                                                "severity": getattr(
+                                                    issue, "severity", "medium"
+                                                ),
+                                                "canAutoFix": bool(
+                                                    getattr(issue, "suggestion", None)
+                                                ),
+                                            }
+                                        )
+
+                    review_files.append(
+                        {
+                            "path": file_path,
+                            "severity": (
+                                "high"
+                                if any(i["severity"] == "high" for i in issues)
+                                else "medium" if issues else "low"
+                            ),
+                            "issues": issues,
+                            "diff": change.get("diff", "")[:1000],
+                        }
+                    )
+
                 except asyncio.TimeoutError:
                     logger.error(f"Analysis timeout for {file_path}")
-                    review_files.append({
-                        'path': file_path,
-                        'severity': 'low',
-                        'issues': [],
-                        'diff': change.get('diff', '')[:500]
-                    })
+                    review_files.append(
+                        {
+                            "path": file_path,
+                            "severity": "low",
+                            "issues": [],
+                            "diff": change.get("diff", "")[:500],
+                        }
+                    )
                 except Exception as e:
                     logger.error(f"Error analyzing {file_path}: {e}")
-                    review_files.append({
-                        'path': file_path,
-                        'severity': 'low',
-                        'issues': [],
-                        'diff': change.get('diff', '')[:500]
-                    })
-            
+                    review_files.append(
+                        {
+                            "path": file_path,
+                            "severity": "low",
+                            "issues": [],
+                            "diff": change.get("diff", "")[:500],
+                        }
+                    )
+
             yield f"data: {json.dumps({'type': 'progress', 'step': 'Analysis complete', 'progress': 95})}\n\n"
             warning = " ".join([w for w in [head_warning, skip_warning] if w])
             yield f"data: {json.dumps({'type': 'complete', 'results': review_files, 'progress': 100, 'warning': warning})}\n\n"
-            
+
         except Exception as e:
             import traceback
+
             error_msg = f"Error in analysis: {str(e)}"
             logger.error(f"{error_msg}\n{traceback.format_exc()}")
             yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
-    
+
     return StreamingResponse(
         generate_analysis_stream(),
         media_type="text/event-stream",
@@ -1010,7 +1101,7 @@ async def analyze_working_changes(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
-        }
+        },
     )
 
 
@@ -1023,57 +1114,64 @@ async def stream_repo_review(
     SSE endpoint to stream structured review with real file content.
     Follows the specification for live review streaming.
     """
-    
+
     async def generate_review_stream():
-        from backend.services.review_service import generate_review_stream as ai_review_stream
-        
+        from backend.services.review_service import (
+            generate_review_stream as ai_review_stream,
+        )
+
         try:
             actual_workspace_root = workspace_root or os.getcwd()
-            
+
             # Initial progress
             yield f"data: {json.dumps({'kind': 'liveProgress', 'step': '🔍 Starting AI analysis...', 'workspace': actual_workspace_root})}\n\n"
-            
+
             all_review_entries = []
             total_files = 0
-            
+
             # Stream AI-powered analysis
             async for event in ai_review_stream(actual_workspace_root):
-                event_type = event.get('type')
-                event_data = event.get('data') or {}
+                event_type = event.get("type")
+                event_data = event.get("data") or {}
                 if not isinstance(event_data, dict):
                     event_data = {}
-                
-                if event_type == 'live-progress':
+
+                if event_type == "live-progress":
                     # Convert to extension format
                     yield f"data: {json.dumps({'kind': 'liveProgress', 'step': event_data})}\n\n"
-                    
-                elif event_type == 'review-entry':
+
+                elif event_type == "review-entry":
                     # Convert AI review entry to extension format
                     total_files += 1
                     entry = {
                         "id": f"ai-entry-{total_files}",
-                        "filePath": event_data.get('file', 'unknown'),
-                        "diff": event_data.get('hunk', ''),
-                        "issues": [{
-                            "id": event_data.get('fixId', f"issue-{total_files}"),
-                            "title": event_data.get('title', 'Code issue'),
-                            "description": event_data.get('body', ''),
-                            "severity": event_data.get('severity', 'info'),
-                            "canAutoFix": True
-                        }],
-                        "severity": event_data.get('severity', 'info')
+                        "filePath": event_data.get("file", "unknown"),
+                        "diff": event_data.get("hunk", ""),
+                        "issues": [
+                            {
+                                "id": event_data.get("fixId", f"issue-{total_files}"),
+                                "title": event_data.get("title", "Code issue"),
+                                "description": event_data.get("body", ""),
+                                "severity": event_data.get("severity", "info"),
+                                "canAutoFix": True,
+                            }
+                        ],
+                        "severity": event_data.get("severity", "info"),
                     }
                     all_review_entries.append(entry)
-                    
+
                     # Stream each entry to frontend
                     yield f"data: {json.dumps({'kind': 'reviewEntry', 'entry': entry, 'processed': total_files, 'total': total_files})}\n\n"
-                    
-                elif event_type == 'done':
+
+                elif event_type == "done":
                     # Send final summary
                     summary_payload = {
                         "kind": "reviewSummary",
                         "totalFiles": total_files,
-                        "listedFiles": [e.get('filePath', 'unknown') for e in all_review_entries[:50]],
+                        "listedFiles": [
+                            e.get("filePath", "unknown")
+                            for e in all_review_entries[:50]
+                        ],
                         "skippedFiles": 0,
                         "message": f"AI analysis complete - {total_files} files reviewed",
                     }
@@ -1081,11 +1179,11 @@ async def stream_repo_review(
                     yield f"data: {json.dumps({'kind': 'liveProgress', 'step': f'✅ Review complete - {total_files} files analyzed!'})}\n\n"
                     yield f"data: {json.dumps({'kind': 'done', 'summary': summary_payload})}\n\n"
                     return
-                    
-                elif event_type == 'error':
+
+                elif event_type == "error":
                     yield f"data: {json.dumps({'kind': 'error', 'message': event_data.get('message', 'Analysis error')})}\n\n"
                     return
-            
+
             # Fallback if no done event
             if total_files == 0:
                 summary_payload = {
@@ -1101,9 +1199,10 @@ async def stream_repo_review(
         except Exception as e:
             logger.error(f"Error in AI review stream: {e}")
             import traceback
+
             traceback.print_exc()
             yield f"data: {json.dumps({'kind': 'error', 'message': str(e)})}\n\n"
-    
+
     return StreamingResponse(
         generate_review_stream(),
         media_type="text/event-stream",
@@ -1112,25 +1211,28 @@ async def stream_repo_review(
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "*",
-        }
+        },
     )
+
 
 @router.get("/test-auto-fix")
 async def test_auto_fix():
     """Test endpoint to verify router is working."""
     return {"status": "auto-fix router is working"}
 
+
 @router.get("/test-stream")
 async def test_stream():
     """Simple test streaming endpoint."""
-    
+
     async def generate_test_stream():
         import asyncio
+
         for i in range(5):
             yield f"data: {json.dumps({'type': 'progress', 'step': f'Test message {i+1}', 'progress': (i+1) * 20})}\n\n"
             await asyncio.sleep(0.5)  # Small delay
         yield f"data: {json.dumps({'type': 'complete', 'step': 'Test completed', 'progress': 100})}\n\n"
-    
+
     return StreamingResponse(
         generate_test_stream(),
         media_type="text/plain",
@@ -1139,8 +1241,9 @@ async def test_stream():
             "Connection": "keep-alive",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "*",
-        }
+        },
     )
+
 
 @router.post("/auto-fix")
 async def auto_fix_issues(
@@ -1159,91 +1262,91 @@ async def auto_fix_by_id(
 ) -> Dict[str, Any]:
     """Apply a single auto-fix by fix ID."""
     try:
-        body = await request.json() if hasattr(request, 'json') else {}
-        file_path = body.get('path') or body.get('filePath')
-        
+        body = await request.json() if hasattr(request, "json") else {}
+        file_path = body.get("path") or body.get("filePath")
+
         if not file_path:
             return {"success": False, "error": "Missing file path"}
-        
+
         # Use the existing auto-fix logic with a single fix
         # Create a mock request object
         class MockRequest:
             def __init__(self, body_data):
                 self._body = body_data
-            
+
             async def json(self):
                 return self._body
-        
+
         # mock_request = MockRequest(mock_request_body)
         # return await _apply_auto_fix(mock_request, workspace_root)  # Fix type mismatch
         return {"success": False, "error": "Auto-fix not implemented"}
-        
+
     except Exception as e:
         logger.error(f"Error in auto-fix by ID {fix_id}: {e}")
         return {"success": False, "error": str(e)}
 
 
-async def _apply_auto_fix(request: Request, workspace_root: Optional[str] = None) -> Dict[str, Any]:
+async def _apply_auto_fix(
+    request: Request, workspace_root: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Apply automated fixes to files based on fixId.
     """
     try:
         body = await request.json()
-        file_path = body.get('path') or body.get('filePath')
-        fix_ids = body.get('fixes', [])
-        
+        file_path = body.get("path") or body.get("filePath")
+        fix_ids = body.get("fixes", [])
+
         if not file_path or not fix_ids:
             return {"success": False, "error": "Missing path or fixes"}
-        
+
         # Get workspace root
-        actual_workspace = workspace_root or body.get('workspace_root') or os.getcwd()
-        
+        actual_workspace = workspace_root or body.get("workspace_root") or os.getcwd()
+
         full_path = os.path.join(actual_workspace, file_path)
-        
+
         if not os.path.exists(full_path):
             return {"success": False, "error": f"File not found: {file_path}"}
-        
+
         # Read current file content
-        with open(full_path, 'r', encoding='utf-8') as f:
+        with open(full_path, "r", encoding="utf-8") as f:
             content = f.read()
-        
+
         applied_fixes = []
-        
+
         # Apply fixes based on fixId using built-in implementation
         for fix_id in fix_ids:
             modified_content, success, description = await _apply_auto_fix_by_id(
                 content, fix_id, file_path, {"workspace_root": workspace_root}
             )
-            
+
             if success:
                 content = modified_content
-                applied_fixes.append({
-                    "fix_id": fix_id,
-                    "description": description,
-                    "success": True
-                })
+                applied_fixes.append(
+                    {"fix_id": fix_id, "description": description, "success": True}
+                )
             else:
-                applied_fixes.append({
-                    "fix_id": fix_id,
-                    "description": description,
-                    "success": False
-                })
-        
+                applied_fixes.append(
+                    {"fix_id": fix_id, "description": description, "success": False}
+                )
+
         # Check if any fixes were successfully applied
         successful_fixes = [fix for fix in applied_fixes if fix.get("success", False)]
-        
+
         # Write back the modified content if any fixes were applied
         if successful_fixes:
-            with open(full_path, 'w', encoding='utf-8') as f:
+            with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            
+
             return {
                 "success": True,
                 "applied_fixes": successful_fixes,
-                "failed_fixes": [fix for fix in applied_fixes if not fix.get("success", False)],
+                "failed_fixes": [
+                    fix for fix in applied_fixes if not fix.get("success", False)
+                ],
                 "file_path": file_path,
                 "changes_made": True,
-                "total_fixes": len(successful_fixes)
+                "total_fixes": len(successful_fixes),
             }
         else:
             return {
@@ -1252,9 +1355,9 @@ async def _apply_auto_fix(request: Request, workspace_root: Optional[str] = None
                 "failed_fixes": applied_fixes,
                 "file_path": file_path,
                 "changes_made": False,
-                "message": "No fixes could be applied successfully"
+                "message": "No fixes could be applied successfully",
             }
-            
+
     except Exception as e:
         logger.error(f"Error in auto-fix: {e}")
         return {"success": False, "error": str(e)}
@@ -1895,7 +1998,9 @@ def _detect_repo_diagnostic_commands(workspace_root: str) -> List[List[str]]:
         or (root / "pyproject.toml").exists()
         or (root / "setup.cfg").exists()
     )
-    has_py_tests = bool(list(root.glob("tests/**/*.py")) or list(root.glob("test_*.py")))
+    has_py_tests = bool(
+        list(root.glob("tests/**/*.py")) or list(root.glob("test_*.py"))
+    )
     if has_pytest or has_py_tests:
         cmds.append(["pytest", "-q"])
 
@@ -3845,8 +3950,10 @@ async def navi_chat(
     - Maps the result into the `{ content, actions, agentRun }` shape the
       VS Code panel expects.
     """
-    print(f"[TOP-LEVEL-DEBUG] NAVI CHAT ENTRY - message: '{request.message}', workspace_root: '{request.workspace_root}'")
-    
+    print(
+        f"[TOP-LEVEL-DEBUG] NAVI CHAT ENTRY - message: '{request.message}', workspace_root: '{request.workspace_root}'"
+    )
+
     print(
         f"[NAVI-ENTRY-DEBUG] Received request: message='{request.message[:50]}...', workspace={request.workspace}"
     )
@@ -3968,17 +4075,30 @@ async def navi_chat(
         # AUTONOMOUS CODING DETECTION - Check immediately after workspace detection
         # ------------------------------------------------------------------
         msg_lower = request.message.lower().strip()
-        coding_keywords = ["create", "implement", "build", "generate", "add", "write", "make", "develop"]
-        
+        coding_keywords = [
+            "create",
+            "implement",
+            "build",
+            "generate",
+            "add",
+            "write",
+            "make",
+            "develop",
+        ]
+
         print(f"[EARLY-DEBUG] Message: '{msg_lower}'")
         print(f"[EARLY-DEBUG] Workspace: '{workspace_root}'")
-        print(f"[EARLY-DEBUG] Keywords found: {[k for k in coding_keywords if k in msg_lower]}")
-        
+        print(
+            f"[EARLY-DEBUG] Keywords found: {[k for k in coding_keywords if k in msg_lower]}"
+        )
+
         # Check if this is an autonomous coding request
         if workspace_root and any(keyword in msg_lower for keyword in coding_keywords):
             print("[EARLY-DEBUG] AUTONOMOUS CODING TRIGGERED!")
-            logger.info(f"[NAVI-AUTONOMOUS] Early detection of coding request: {msg_lower}")
-            
+            logger.info(
+                f"[NAVI-AUTONOMOUS] Early detection of coding request: {msg_lower}"
+            )
+
             reply = f"""**AUTONOMOUS CODING MODE ACTIVATED**
 
 I'll help you implement: "{request.message}"
@@ -3994,20 +4114,26 @@ This is how I work like Cline, Copilot, and other AI coding assistants - with st
 
 Ready to start autonomous implementation?"""
 
-            actions = [{
-                "type": "startAutonomousTask",
-                "description": "Start autonomous coding implementation",
-                "workspace_root": workspace_root,
-                "message": request.message
-            }]
-            
+            actions = [
+                {
+                    "type": "startAutonomousTask",
+                    "description": "Start autonomous coding implementation",
+                    "workspace_root": workspace_root,
+                    "message": request.message,
+                }
+            ]
+
             return ChatResponse(
                 content=reply,
                 actions=actions,
                 agentRun={"mode": "autonomous_coding", "workspace": workspace_root},
                 reply=reply,
                 should_stream=False,
-                state={"autonomous_coding": True, "workspace_root": workspace_root, "request": request.message},
+                state={
+                    "autonomous_coding": True,
+                    "workspace_root": workspace_root,
+                    "request": request.message,
+                },
                 duration_ms=0,
             )
 
@@ -4026,8 +4152,22 @@ Ready to start autonomous implementation?"""
             and not is_work_question  # Don't treat work questions as smalltalk
         ):
             how_patterns = ("how are", "how r", "howre", "hru", "hw r", "hw ar")
-            whats_up_patterns = ("what's up", "whats up", "what is up", "wassup", "watsup", "sup")
-            time_patterns = ("good morning", "good afternoon", "good evening", "gm", "ga", "ge")
+            whats_up_patterns = (
+                "what's up",
+                "whats up",
+                "what is up",
+                "wassup",
+                "watsup",
+                "sup",
+            )
+            time_patterns = (
+                "good morning",
+                "good afternoon",
+                "good evening",
+                "gm",
+                "ga",
+                "ge",
+            )
 
             if any(p in msg_lower for p in how_patterns):
                 reply = random.choice(
@@ -4094,7 +4234,7 @@ Ready to start autonomous implementation?"""
                     "I cannot review changes because this folder does not look like a Git repository.\n\n"
                     "How to fix:\n"
                     "- Open the repo root that contains the `.git` folder.\n"
-                    "- Or initialize a repo: `git init`, then `git add -A`, then `git commit -m \"Initial commit\"`.\n"
+                    '- Or initialize a repo: `git init`, then `git add -A`, then `git commit -m "Initial commit"`.\n'
                     "- If this is a subfolder, reopen VS Code at the project root.\n\n"
                     "If you want, I can run the Git setup commands once you approve them."
                 )
@@ -4114,7 +4254,7 @@ Ready to start autonomous implementation?"""
                     {
                         "type": "runCommand",
                         "description": "Create initial commit",
-                        "command": "git commit -m \"Initial commit\"",
+                        "command": 'git commit -m "Initial commit"',
                         "cwd": workspace_root,
                     },
                 ]
@@ -4133,7 +4273,7 @@ Ready to start autonomous implementation?"""
                 reply = (
                     "This repository has no valid HEAD yet (no commits), so I cannot compare against main/HEAD.\n\n"
                     "How to fix:\n"
-                    "- Create an initial commit: `git add -A` then `git commit -m \"Initial commit\"`.\n"
+                    '- Create an initial commit: `git add -A` then `git commit -m "Initial commit"`.\n'
                     "- If you expect a remote main branch: `git fetch origin` then `git checkout main`.\n\n"
                     "If you want, I can run the Git commands below once you approve them."
                 )
@@ -4153,7 +4293,7 @@ Ready to start autonomous implementation?"""
                     {
                         "type": "runCommand",
                         "description": "Create initial commit",
-                        "command": "git commit -m \"Initial commit\"",
+                        "command": 'git commit -m "Initial commit"',
                         "cwd": workspace_root,
                     },
                 ]
@@ -4238,7 +4378,7 @@ Ready to start autonomous implementation?"""
                         "I cannot run that git command because this folder does not look like a Git repository.\n\n"
                         "How to fix:\n"
                         "- Open the repo root that contains the `.git` folder.\n"
-                        "- Or initialize a repo: `git init`, then `git add -A`, then `git commit -m \"Initial commit\"`.\n"
+                        '- Or initialize a repo: `git init`, then `git add -A`, then `git commit -m "Initial commit"`.\n'
                         "- If this is a subfolder, reopen VS Code at the project root.\n\n"
                         "If you want, I can run the Git setup commands once you approve them."
                     )
@@ -4258,7 +4398,7 @@ Ready to start autonomous implementation?"""
                         {
                             "type": "runCommand",
                             "description": "Create initial commit",
-                            "command": "git commit -m \"Initial commit\"",
+                            "command": 'git commit -m "Initial commit"',
                             "cwd": workspace_root,
                         },
                     ]
@@ -4277,7 +4417,7 @@ Ready to start autonomous implementation?"""
                     reply = (
                         "This repository has no valid HEAD yet (no commits), so I cannot run that comparison.\n\n"
                         "How to fix:\n"
-                        "- Create an initial commit: `git add -A` then `git commit -m \"Initial commit\"`.\n"
+                        '- Create an initial commit: `git add -A` then `git commit -m "Initial commit"`.\n'
                         "- If you expect a remote main branch: `git fetch origin` then `git checkout main`.\n\n"
                         "If you want, I can run the Git commands below once you approve them."
                     )
@@ -4297,7 +4437,7 @@ Ready to start autonomous implementation?"""
                         {
                             "type": "runCommand",
                             "description": "Create initial commit",
-                            "command": "git commit -m \"Initial commit\"",
+                            "command": 'git commit -m "Initial commit"',
                             "cwd": workspace_root,
                         },
                     ]
@@ -4663,15 +4803,30 @@ Ready to start autonomous implementation?"""
         # AUTONOMOUS CODING DETECTION - Check before agent loop
         # ------------------------------------------------------------------
         msg_lower = request.message.lower().strip()
-        coding_keywords = ["create", "implement", "build", "generate", "add", "write", "make", "develop"]
-        
+        coding_keywords = [
+            "create",
+            "implement",
+            "build",
+            "generate",
+            "add",
+            "write",
+            "make",
+            "develop",
+        ]
+
         print(f"[DEBUG-AUTONOMOUS] msg_lower: '{msg_lower}'")
         print(f"[DEBUG-AUTONOMOUS] workspace_root: '{workspace_root}'")
         print(f"[DEBUG-AUTONOMOUS] workspace_root is truthy: {bool(workspace_root)}")
-        print(f"[DEBUG-AUTONOMOUS] keywords check: {[k for k in coding_keywords if k in msg_lower]}")
-        print(f"[DEBUG-AUTONOMOUS] any keyword match: {any(keyword in msg_lower for keyword in coding_keywords)}")
-        print(f"[DEBUG-AUTONOMOUS] condition result: {workspace_root and any(keyword in msg_lower for keyword in coding_keywords)}")
-        
+        print(
+            f"[DEBUG-AUTONOMOUS] keywords check: {[k for k in coding_keywords if k in msg_lower]}"
+        )
+        print(
+            f"[DEBUG-AUTONOMOUS] any keyword match: {any(keyword in msg_lower for keyword in coding_keywords)}"
+        )
+        print(
+            f"[DEBUG-AUTONOMOUS] condition result: {workspace_root and any(keyword in msg_lower for keyword in coding_keywords)}"
+        )
+
         # Check if this is an autonomous coding request
         if workspace_root and any(keyword in msg_lower for keyword in coding_keywords):
             print("[DEBUG-AUTONOMOUS] ✅ TRIGGERING autonomous coding!")
@@ -4695,23 +4850,29 @@ This is how I work like Cline, Copilot, and other AI coding assistants - with st
 
 Ready to start autonomous implementation?"""
 
-                actions = [{
-                    "type": "startAutonomousTask",
-                    "description": "Start autonomous coding implementation",
-                    "workspace_root": workspace_root,
-                    "message": request.message
-                }]
-                
+                actions = [
+                    {
+                        "type": "startAutonomousTask",
+                        "description": "Start autonomous coding implementation",
+                        "workspace_root": workspace_root,
+                        "message": request.message,
+                    }
+                ]
+
                 return ChatResponse(
                     content=reply,
                     actions=actions,
                     agentRun={"mode": "autonomous_coding", "workspace": workspace_root},
                     reply=reply,
                     should_stream=False,
-                    state={"autonomous_coding": True, "workspace_root": workspace_root, "request": request.message},
+                    state={
+                        "autonomous_coding": True,
+                        "workspace_root": workspace_root,
+                        "request": request.message,
+                    },
                     duration_ms=0,
                 )
-                
+
             except Exception as e:
                 logger.error(f"[NAVI-AUTONOMOUS] Failed: {str(e)}")
                 # Fall through to regular agent loop
@@ -4728,14 +4889,14 @@ Ready to start autonomous implementation?"""
         progress_tracker.update_status("Initializing NAVI agent...")
         progress_tracker.complete_step("Workspace detected")
 
-        # Determine request type and check for code analysis requests  
+        # Determine request type and check for code analysis requests
         msg_lower = request.message.lower()
-        
+
         # Check for code analysis requests and route to comprehensive analysis
         # DISABLED: This was routing to fake synthetic analysis instead of real git diff
         # code_analysis_keywords = [
         #     "analyze",
-        #     "review", 
+        #     "review",
         #     "changes",
         #     "code",
         #     "diff",
@@ -4746,12 +4907,14 @@ Ready to start autonomous implementation?"""
         # ]
         # is_code_analysis = any(keyword in msg_lower for keyword in code_analysis_keywords)
         is_code_analysis = False  # Force disable fake analysis routing
-        
+
         print(f"DEBUG NAVI - Message: '{msg_lower}'")
         print(f"DEBUG NAVI - Workspace root: '{workspace_root}'")
         print(f"DEBUG NAVI - Is code analysis: {is_code_analysis}")
-        print(f"DEBUG NAVI - Should trigger comprehensive: {is_code_analysis and workspace_root}")
-        
+        print(
+            f"DEBUG NAVI - Should trigger comprehensive: {is_code_analysis and workspace_root}"
+        )
+
         if is_code_analysis and workspace_root:
             print("DEBUG NAVI - ENTERING comprehensive analysis branch")
             try:
@@ -4762,7 +4925,7 @@ Ready to start autonomous implementation?"""
                         "I cannot review changes because this folder does not look like a Git repository.\n\n"
                         "How to fix:\n"
                         "- Open the repo root that contains the `.git` folder.\n"
-                        "- Or initialize a repo: `git init`, then `git add -A`, then `git commit -m \"Initial commit\"`.\n"
+                        '- Or initialize a repo: `git init`, then `git add -A`, then `git commit -m "Initial commit"`.\n'
                         "- If this is a subfolder, reopen VS Code at the project root.\n\n"
                         "If you want, I can run the Git setup commands once you approve them."
                     )
@@ -4782,7 +4945,7 @@ Ready to start autonomous implementation?"""
                         {
                             "type": "runCommand",
                             "description": "Create initial commit",
-                            "command": "git commit -m \"Initial commit\"",
+                            "command": 'git commit -m "Initial commit"',
                             "cwd": workspace_root,
                         },
                     ]
@@ -4800,7 +4963,7 @@ Ready to start autonomous implementation?"""
                     reply = (
                         "This repository has no valid HEAD yet (no commits), so I cannot compare against main/HEAD.\n\n"
                         "How to fix:\n"
-                        "- Create an initial commit: `git add -A` then `git commit -m \"Initial commit\"`.\n"
+                        '- Create an initial commit: `git add -A` then `git commit -m "Initial commit"`.\n'
                         "- If you expect a remote main branch: `git fetch origin` then `git checkout main`.\n\n"
                         "If you want, I can run the Git commands below once you approve them."
                     )
@@ -4820,7 +4983,7 @@ Ready to start autonomous implementation?"""
                         {
                             "type": "runCommand",
                             "description": "Create initial commit",
-                            "command": "git commit -m \"Initial commit\"",
+                            "command": 'git commit -m "Initial commit"',
                             "cwd": workspace_root,
                         },
                     ]
@@ -4837,62 +5000,67 @@ Ready to start autonomous implementation?"""
                 # Use streaming SSE endpoint for real-time progress to frontend
                 async def generate_analysis_with_stream():
                     from backend.services.review_service import generate_review_stream
-                    
+
                     all_review_entries = []
-                    
+
                     try:
                         async for event in generate_review_stream(workspace_root):
-                            event_type = event.get('type')
-                            event_data = event.get('data') or {}
+                            event_type = event.get("type")
+                            event_data = event.get("data") or {}
                             if not isinstance(event_data, dict):
                                 event_data = {}
-                            
-                            if event_type == 'live-progress':
+
+                            if event_type == "live-progress":
                                 # Stream progress updates (canonical schema)
                                 yield f"data: {json.dumps({'kind': 'liveProgress', 'step': event_data})}\n\n"
-                            elif event_type == 'review-entry':
+                            elif event_type == "review-entry":
                                 # Stream review entries (canonical schema)
                                 all_review_entries.append(event_data)
                                 yield f"data: {json.dumps({'kind': 'reviewEntry', 'entry': event_data})}\n\n"
-                            elif event_type == 'done':
+                            elif event_type == "done":
                                 # Analysis complete
                                 break
-                            elif event_type == 'error':
+                            elif event_type == "error":
                                 # Stream error (canonical schema)
                                 yield f"data: {json.dumps({'kind': 'error', 'message': event_data.get('message')})}\n\n"
                                 return
-                        
+
                         # Generate final summary
                         if not all_review_entries:
                             summary = {
-                                'kind': 'reviewSummary',
-                                'message': '✅ No changes detected - your repository is clean!',
-                                'totalFiles': 0,
-                                'severityCounts': {'high': 0, 'medium': 0, 'low': 0},
-                                'listedFiles': []
+                                "kind": "reviewSummary",
+                                "message": "✅ No changes detected - your repository is clean!",
+                                "totalFiles": 0,
+                                "severityCounts": {"high": 0, "medium": 0, "low": 0},
+                                "listedFiles": [],
                             }
                         else:
-                            severity_counts = {'high': 0, 'medium': 0, 'low': 0}
+                            severity_counts = {"high": 0, "medium": 0, "low": 0}
                             for entry in all_review_entries:
-                                severity = entry.get('severity', 'low')
-                                severity_counts[severity] = severity_counts.get(severity, 0) + 1
-                            
+                                severity = entry.get("severity", "low")
+                                severity_counts[severity] = (
+                                    severity_counts.get(severity, 0) + 1
+                                )
+
                             summary = {
-                                'kind': 'reviewSummary',
-                                'message': f'Analysis complete - {len(all_review_entries)} files reviewed',
-                                'totalFiles': len(all_review_entries),
-                                'severityCounts': severity_counts,
-                                'listedFiles': [e.get('file', 'unknown') for e in all_review_entries[:50]],
-                                'entries': all_review_entries
+                                "kind": "reviewSummary",
+                                "message": f"Analysis complete - {len(all_review_entries)} files reviewed",
+                                "totalFiles": len(all_review_entries),
+                                "severityCounts": severity_counts,
+                                "listedFiles": [
+                                    e.get("file", "unknown")
+                                    for e in all_review_entries[:50]
+                                ],
+                                "entries": all_review_entries,
                             }
-                        
+
                         yield f"data: {json.dumps(summary)}\n\n"
                         yield f"data: {json.dumps({'kind': 'done', 'summary': summary})}\n\n"
-                    
+
                     except Exception as e:
                         logger.error(f"Analysis stream error: {e}")
                         yield f"data: {json.dumps({'kind': 'error', 'message': str(e)})}\n\n"
-                
+
                 # Return streaming response for orchestrator request
                 return StreamingResponse(
                     generate_analysis_with_stream(),
@@ -4901,13 +5069,13 @@ Ready to start autonomous implementation?"""
                         "Cache-Control": "no-cache",
                         "Connection": "keep-alive",
                         "Access-Control-Allow-Origin": "*",
-                    }
+                    },
                 )
-                
+
             except Exception as e:
                 logger.error(f"Comprehensive analysis failed: {e}")
                 # Fall through to standard processing
-        
+
         # Standard request processing
         print("[DEBUG-FLOW] Starting standard request processing")
         if any(word in msg_lower for word in ["review", "diff", "changes", "git"]):
@@ -4922,13 +5090,30 @@ Ready to start autonomous implementation?"""
             print("[DEBUG-FLOW] Matched fix/error/debug/issue")
             progress_tracker.update_status("Analyzing code issues...")
             progress_tracker.complete_step("Detected debugging request")
-        elif any(word in msg_lower for word in ["create", "implement", "build", "generate", "add", "write"]) and workspace_root:
-            print(f"[DEBUG-FLOW] Matched autonomous coding keywords with workspace_root={workspace_root}")
+        elif (
+            any(
+                word in msg_lower
+                for word in ["create", "implement", "build", "generate", "add", "write"]
+            )
+            and workspace_root
+        ):
+            print(
+                f"[DEBUG-FLOW] Matched autonomous coding keywords with workspace_root={workspace_root}"
+            )
             progress_tracker.update_status("Preparing autonomous coding...")
             progress_tracker.complete_step("Detected coding request")
-            
+
             # Check if this is an autonomous coding request
-            coding_keywords = ["create", "implement", "build", "generate", "add", "write", "make", "code"]
+            coding_keywords = [
+                "create",
+                "implement",
+                "build",
+                "generate",
+                "add",
+                "write",
+                "make",
+                "code",
+            ]
             if any(keyword in msg_lower for keyword in coding_keywords):
                 print("[DEBUG-FLOW] ENTERING AUTONOMOUS CODING BLOCK")
                 try:
@@ -4949,13 +5134,15 @@ I'll work like Cline, Copilot, and other AI coding assistants:
 
 To get started, I need to analyze your codebase and create a detailed implementation plan. Would you like me to proceed?"""
 
-                    actions = [{
-                        "type": "startAutonomousTask",
-                        "description": "Start autonomous implementation",
-                        "workspace_root": workspace_root,
-                        "request": request.message
-                    }]
-                    
+                    actions = [
+                        {
+                            "type": "startAutonomousTask",
+                            "description": "Start autonomous implementation",
+                            "workspace_root": workspace_root,
+                            "request": request.message,
+                        }
+                    ]
+
                     print("[DEBUG-FLOW] RETURNING AUTONOMOUS RESPONSE")
                     return ChatResponse(
                         content=reply,
@@ -4966,12 +5153,14 @@ To get started, I need to analyze your codebase and create a detailed implementa
                         state={"autonomous_coding": True, "workspace": workspace_root},
                         duration_ms=0,
                     )
-                        
+
                 except Exception as e:
                     print(f"[DEBUG-FLOW] AUTONOMOUS CODING EXCEPTION: {e}")
                     logger.error("Autonomous coding failed", error=str(e))
                     # Fall back to regular agent loop
-                    progress_tracker.update_status("Falling back to standard analysis...")
+                    progress_tracker.update_status(
+                        "Falling back to standard analysis..."
+                    )
             else:
                 print("[DEBUG-FLOW] Coding keywords check failed")
         else:
@@ -5139,16 +5328,18 @@ To get started, I need to analyze your codebase and create a detailed implementa
         )
 
 
-async def _apply_auto_fix_by_id(content: str, fix_id: str, file_path: str, context: Dict[str, Any]) -> Tuple[str, bool, str]:
+async def _apply_auto_fix_by_id(
+    content: str, fix_id: str, file_path: str, context: Dict[str, Any]
+) -> Tuple[str, bool, str]:
     """
     Apply auto-fix by ID implementation.
-    
+
     Args:
         content: File content to fix
-        fix_id: ID of the fix to apply  
+        fix_id: ID of the fix to apply
         file_path: Path to the file being fixed
         context: Additional context
-        
+
     Returns:
         Tuple of (modified_content, success, description)
     """
@@ -5159,7 +5350,7 @@ async def _apply_auto_fix_by_id(content: str, fix_id: str, file_path: str, conte
             if "import" not in content[:100]:
                 modified_content = f"import os\nimport sys\n\n{content}"
                 return modified_content, True, "Added missing imports"
-        
+
         elif fix_id == "fix_syntax":
             # Fix common syntax issues
             modified_content = content.replace("=None", " = None")
@@ -5167,14 +5358,16 @@ async def _apply_auto_fix_by_id(content: str, fix_id: str, file_path: str, conte
             modified_content = modified_content.replace("==None", " is None")
             if modified_content != content:
                 return modified_content, True, "Fixed syntax issues"
-        
+
         elif fix_id == "add_type_hints":
             # Add basic type hints
             if "from typing import" not in content:
-                modified_content = f"from typing import Optional, List, Dict, Any\n\n{content}"
+                modified_content = (
+                    f"from typing import Optional, List, Dict, Any\n\n{content}"
+                )
                 return modified_content, True, "Added type import"
-            
+
         return content, False, f"No implementation for fix_id: {fix_id}"
-        
+
     except Exception as e:
         return content, False, f"Fix failed: {str(e)}"

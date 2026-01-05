@@ -431,17 +431,15 @@ class NaviIntent(BaseModel):
         ...,
         description="Original user/system message that produced this intent.",
     )
-    
+
     # Phase 4.1.2 compatibility fields
     critical: bool = Field(
-        default=False,
-        description="Whether this intent is critical/urgent"
+        default=False, description="Whether this intent is critical/urgent"
     )
     description: Optional[str] = Field(
-        default=None,
-        description="Human-readable description of the intent"
+        default=None, description="Human-readable description of the intent"
     )
-    
+
     # structured/query arguments extracted by the classifier (free-form)
     slots: Dict[str, Any] = Field(
         default_factory=dict,

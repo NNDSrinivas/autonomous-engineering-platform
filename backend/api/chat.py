@@ -103,9 +103,19 @@ def _get_openai_config() -> Tuple[Optional[str], str, str]:
     Returns: (api_key, base_url, model)
     Defaults are chosen for compatibility.
     """
-    api_key = getattr(settings, "OPENAI_API_KEY", None) or os.environ.get("OPENAI_API_KEY")
-    base_url = getattr(settings, "OPENAI_BASE_URL", None) or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
-    model = getattr(settings, "OPENAI_MODEL", None) or os.environ.get("OPENAI_MODEL") or "gpt-3.5-turbo"
+    api_key = getattr(settings, "OPENAI_API_KEY", None) or os.environ.get(
+        "OPENAI_API_KEY"
+    )
+    base_url = (
+        getattr(settings, "OPENAI_BASE_URL", None)
+        or os.environ.get("OPENAI_BASE_URL")
+        or "https://api.openai.com/v1"
+    )
+    model = (
+        getattr(settings, "OPENAI_MODEL", None)
+        or os.environ.get("OPENAI_MODEL")
+        or "gpt-3.5-turbo"
+    )
     return api_key, base_url.rstrip("/"), model
 
 
@@ -132,6 +142,7 @@ class Attachment(BaseModel):
       "content": "diff --git a/... b/...\n..."
     }
     """
+
     kind: str
     content: str
     language: Optional[str] = None
@@ -179,6 +190,7 @@ class ProactiveSuggestionsRequest(BaseModel):
 
 # All fake review code removed to prevent conflicts with real review endpoint
 
+
 @navi_router.post("/repo/fix/{fix_id}")
 async def apply_auto_fix(fix_id: str) -> dict:
     """
@@ -186,42 +198,57 @@ async def apply_auto_fix(fix_id: str) -> dict:
     """
     try:
         # Parse fix ID to determine action
-        if fix_id.startswith('remove-console-'):
+        if fix_id.startswith("remove-console-"):
             # Remove console.log from specific line
-            line_num = int(fix_id.split('-')[-1])
+            line_num = int(fix_id.split("-")[-1])
             # This is a simplified implementation - in production you'd want more robust parsing
-            return {"success": True, "message": f"Console.log removal simulated for line {line_num}"}
-        
-        elif fix_id.startswith('fix-duplicate-'):
+            return {
+                "success": True,
+                "message": f"Console.log removal simulated for line {line_num}",
+            }
+
+        elif fix_id.startswith("fix-duplicate-"):
             # Remove duplicate JSON key
-            key_name = fix_id.replace('fix-duplicate-', '')
-            return {"success": True, "message": f"Duplicate key '{key_name}' removal simulated"}
-        
-        elif fix_id == 'fix-dep-overlap':
+            key_name = fix_id.replace("fix-duplicate-", "")
+            return {
+                "success": True,
+                "message": f"Duplicate key '{key_name}' removal simulated",
+            }
+
+        elif fix_id == "fix-dep-overlap":
             # Move overlapping deps to devDependencies
             return {"success": True, "message": "Dependency overlap fix simulated"}
-        
-        elif fix_id.startswith('remove-import-'):
+
+        elif fix_id.startswith("remove-import-"):
             # Remove unused import
-            line_num = int(fix_id.split('-')[-1])
-            return {"success": True, "message": f"Unused import removal simulated for line {line_num}"}
-        
-        elif fix_id.startswith('remove-print-'):
+            line_num = int(fix_id.split("-")[-1])
+            return {
+                "success": True,
+                "message": f"Unused import removal simulated for line {line_num}",
+            }
+
+        elif fix_id.startswith("remove-print-"):
             # Remove print statement
-            line_num = int(fix_id.split('-')[-1])
-            return {"success": True, "message": f"Print statement removal simulated for line {line_num}"}
-        
+            line_num = int(fix_id.split("-")[-1])
+            return {
+                "success": True,
+                "message": f"Print statement removal simulated for line {line_num}",
+            }
+
         else:
             return {"success": False, "message": f"Unknown fix ID: {fix_id}"}
-        
+
     except Exception as e:
         return {"success": False, "message": f"Fix failed: {str(e)}"}
+
 
 # ------------------------------------------------------------------------------
 # Navi entrypoint: /api/navi/chat
 # ------------------------------------------------------------------------------
 @navi_router.post("/chat", response_model=ChatResponse)
-async def navi_chat(request: NaviChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+async def navi_chat(
+    request: NaviChatRequest, db: Session = Depends(get_db)
+) -> ChatResponse:
     """
     Navi Chat API (Phase 1): Diff-aware code review + Comprehensive Analysis.
 
@@ -286,26 +313,40 @@ async def navi_chat(request: NaviChatRequest, db: Session = Depends(get_db)) -> 
             "failing",
         ]
         error_typo_pattern = re.compile(r"\berr+o?r?s?\b")
-        is_code_analysis = any(keyword in message_lower for keyword in code_analysis_keywords) or bool(
-            error_typo_pattern.search(message_lower)
-        )
-        
+        is_code_analysis = any(
+            keyword in message_lower for keyword in code_analysis_keywords
+        ) or bool(error_typo_pattern.search(message_lower))
+
         print(f"DEBUG NAVI CHAT - Message: '{message[:100]}'")
         print(f"DEBUG NAVI CHAT - Workspace root: '{workspace_root}'")
         print(f"DEBUG NAVI CHAT - Is code analysis: {is_code_analysis}")
-        print(f"DEBUG NAVI CHAT - Should trigger comprehensive: {is_code_analysis and workspace_root}")
-        
+        print(
+            f"DEBUG NAVI CHAT - Should trigger comprehensive: {is_code_analysis and workspace_root}"
+        )
+
         # 🤖 AUTONOMOUS CODING DETECTION - Add this before comprehensive analysis
-        autonomous_keywords = ["create", "implement", "build", "generate", "add", "write", "make", "develop", "code"]
+        autonomous_keywords = [
+            "create",
+            "implement",
+            "build",
+            "generate",
+            "add",
+            "write",
+            "make",
+            "develop",
+            "code",
+        ]
         message_lower = message.lower()
-        has_autonomous_keywords = any(keyword in message_lower for keyword in autonomous_keywords)
-        
+        has_autonomous_keywords = any(
+            keyword in message_lower for keyword in autonomous_keywords
+        )
+
         print(f"DEBUG AUTONOMOUS - Has keywords: {has_autonomous_keywords}")
         print(f"DEBUG AUTONOMOUS - Has workspace: {bool(workspace_root)}")
-        
+
         if has_autonomous_keywords and workspace_root:
             print("DEBUG AUTONOMOUS - TRIGGERING AUTONOMOUS CODING")
-            
+
             # Return autonomous coding response
             reply = f"""🤖 **Autonomous Coding Mode Activated**
 
@@ -325,23 +366,29 @@ I'll help you implement that autonomously, like Cline, Copilot, and other AI cod
 
 Would you like me to begin the autonomous coding process?"""
 
-            actions = [{
-                "type": "startAutonomousTask",
-                "description": "Start autonomous implementation",
-                "workspace_root": workspace_root,
-                "request": message
-            }]
-            
+            actions = [
+                {
+                    "type": "startAutonomousTask",
+                    "description": "Start autonomous implementation",
+                    "workspace_root": workspace_root,
+                    "request": message,
+                }
+            ]
+
             return ChatResponse(
                 content=reply,
                 actions=actions,
                 agentRun={"mode": "autonomous_coding", "task": "code_implementation"},
                 reply=reply,
                 should_stream=False,
-                state={"autonomous_coding": True, "workspace": workspace_root, "request": message},
+                state={
+                    "autonomous_coding": True,
+                    "workspace": workspace_root,
+                    "request": message,
+                },
                 duration_ms=100,
             )
-        
+
         if is_code_analysis and workspace_root:
             print("DEBUG NAVI CHAT - ENTERING comprehensive analysis branch")
             try:
@@ -356,7 +403,11 @@ Would you like me to begin the autonomous coding process?"""
                             "- Or initialize a repo: `git init`, then add and commit your files.\n"
                             "- If this is a subfolder, reopen VS Code at the project root.\n"
                         ),
-                        suggestions=["Open repo root", "Initialize git", "Retry review"],
+                        suggestions=[
+                            "Open repo root",
+                            "Initialize git",
+                            "Retry review",
+                        ],
                     )
 
                 if not git_service.has_head():
@@ -365,10 +416,14 @@ Would you like me to begin the autonomous coding process?"""
                             "I cannot compare against main/HEAD because this repository has no commits yet.\n\n"
                             "How to fix:\n"
                             "- Make sure you opened the repo root in VS Code.\n"
-                            "- Create an initial commit: `git add -A` then `git commit -m \"Initial commit\"`.\n"
+                            '- Create an initial commit: `git add -A` then `git commit -m "Initial commit"`.\n'
                             "- If you expect a remote main branch: `git fetch origin` and `git checkout main`.\n"
                         ),
-                        suggestions=["Create initial commit", "Fetch main branch", "Retry review"],
+                        suggestions=[
+                            "Create initial commit",
+                            "Fetch main branch",
+                            "Retry review",
+                        ],
                     )
 
                 from backend.services.review_service import RealReviewService
@@ -387,7 +442,9 @@ Would you like me to begin the autonomous coding process?"""
                     severity_counts: Dict[str, int] = {}
                     for entry in review_entries:
                         for issue in entry.issues:
-                            severity_counts[issue.severity] = severity_counts.get(issue.severity, 0) + 1
+                            severity_counts[issue.severity] = (
+                                severity_counts.get(issue.severity, 0) + 1
+                            )
 
                     content = "🎯 **Code Analysis Complete**\n\n"
                     content += "📋 **Summary:**\n"
@@ -410,13 +467,17 @@ Would you like me to begin the autonomous coding process?"""
                         content += "\n**Top Findings:**\n"
                         for idx, (file_path, issue) in enumerate(top_issues[:3], 1):
                             content += f"{idx}. {file_path}: {issue.title}\n"
-                
+
                 # Return comprehensive analysis result
                 return ChatResponse(
                     content=content,
-                    suggestions=["Get detailed analysis", "Review security findings", "View performance issues"]
+                    suggestions=[
+                        "Get detailed analysis",
+                        "Review security findings",
+                        "View performance issues",
+                    ],
                 )
-                
+
             except Exception as e:
                 print(f"DEBUG NAVI CHAT - Exception in comprehensive analysis: {e}")
                 logger.error(f"Comprehensive analysis failed: {e}")
@@ -453,13 +514,19 @@ Would you like me to begin the autonomous coding process?"""
                         break
                 if bullets:
                     memory_snippet = "\n\nContext I referenced:\n" + "\n".join(bullets)
-                    base_response.content = (base_response.content or "") + memory_snippet
+                    base_response.content = (
+                        base_response.content or ""
+                    ) + memory_snippet
         return base_response
     except Exception as e:
         logger.error(f"/api/navi/chat error: {e}")
         return ChatResponse(
             content="I ran into an error while processing that. Try again, or send a smaller diff.",
-            suggestions=["Review working changes", "Review staged changes", "Explain this repo"],
+            suggestions=[
+                "Review working changes",
+                "Review staged changes",
+                "Explain this repo",
+            ],
         )
 
 
@@ -475,7 +542,9 @@ def _has_diff_attachments(attachments: List[Attachment]) -> bool:
         if name.endswith(".diff") or name.endswith(".patch"):
             return True
         # Heuristic: content begins like a diff
-        if a.content and ("diff --git " in a.content or a.content.lstrip().startswith("--- ")):
+        if a.content and (
+            "diff --git " in a.content or a.content.lstrip().startswith("--- ")
+        ):
             return True
     return False
 
@@ -493,7 +562,9 @@ def _is_simple_greeting(message: str) -> bool:
 # Existing /api/chat/respond (kept)
 # ------------------------------------------------------------------------------
 @router.post("/respond", response_model=ChatResponse)
-async def generate_chat_response(request: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
+async def generate_chat_response(
+    request: ChatRequest, db: Session = Depends(get_db)
+) -> ChatResponse:
     """
     Generate context-aware chat response using team intelligence
     """
@@ -577,29 +648,78 @@ MAX_NEW_FILE_SIZE = 50_000  # Max bytes to read from a new file
 def _is_text_file(filename: str) -> bool:
     """Check if a file should be treated as text (safe to read and review)."""
     text_extensions = {
-        '.js', '.jsx', '.ts', '.tsx', '.json', '.md', '.txt', '.yaml', '.yml',
-        '.env', '.example', '.gitignore', '.gitattributes', '.eslintrc', '.prettierrc',
-        '.config', '.py', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp',
-        '.css', '.scss', '.sass', '.less', '.html', '.xml', '.toml', '.ini',
-        '.sh', '.bash', '.zsh', '.fish', '.vue', '.svelte', '.astro',
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".json",
+        ".md",
+        ".txt",
+        ".yaml",
+        ".yml",
+        ".env",
+        ".example",
+        ".gitignore",
+        ".gitattributes",
+        ".eslintrc",
+        ".prettierrc",
+        ".config",
+        ".py",
+        ".java",
+        ".go",
+        ".rs",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
+        ".html",
+        ".xml",
+        ".toml",
+        ".ini",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
+        ".vue",
+        ".svelte",
+        ".astro",
     }
-    
+
     name_lower = filename.lower()
-    
+
     # Check by extension
     for ext in text_extensions:
         if name_lower.endswith(ext):
             return True
-    
+
     # Check by name patterns
     text_names = {
-        '.env.local', '.env.development', '.env.production', '.env.test',
-        'dockerfile', 'makefile', 'rakefile', 'gemfile', 'podfile',
-        'package.json', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
-        'tsconfig.json', 'jsconfig.json', 'next.config.js', 'vite.config.js',
-        'tailwind.config.js', 'postcss.config.js', 'webpack.config.js',
+        ".env.local",
+        ".env.development",
+        ".env.production",
+        ".env.test",
+        "dockerfile",
+        "makefile",
+        "rakefile",
+        "gemfile",
+        "podfile",
+        "package.json",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "tsconfig.json",
+        "jsconfig.json",
+        "next.config.js",
+        "vite.config.js",
+        "tailwind.config.js",
+        "postcss.config.js",
+        "webpack.config.js",
     }
-    
+
     return name_lower in text_names or any(name_lower.endswith(n) for n in text_names)
 
 
@@ -608,25 +728,27 @@ def _extract_new_files_from_diff(diff_text: str) -> List[str]:
     new_files = []
     current_file = None
     is_new = False
-    
-    for line in diff_text.split('\n'):
-        if line.startswith('diff --git'):
+
+    for line in diff_text.split("\n"):
+        if line.startswith("diff --git"):
             # Reset for new file section
-            match = re.search(r'diff --git a/(.+?) b/(.+?)$', line)
+            match = re.search(r"diff --git a/(.+?) b/(.+?)$", line)
             if match:
                 current_file = match.group(2)  # b path is the new path
                 is_new = False
-        elif line.startswith('new file mode'):
+        elif line.startswith("new file mode"):
             is_new = True
-        elif line.startswith('---'):
+        elif line.startswith("---"):
             # Check if it's /dev/null (confirms new file)
-            if '/dev/null' in line and is_new and current_file:
+            if "/dev/null" in line and is_new and current_file:
                 new_files.append(current_file)
-    
+
     return new_files
 
 
-async def _read_new_file_content(filepath: str, workspace_root: Optional[str] = None) -> Optional[str]:
+async def _read_new_file_content(
+    filepath: str, workspace_root: Optional[str] = None
+) -> Optional[str]:
     """
     Attempt to read content of a newly added file from the workspace.
     Returns None if file doesn't exist, is binary, or is too large.
@@ -634,27 +756,29 @@ async def _read_new_file_content(filepath: str, workspace_root: Optional[str] = 
     if not workspace_root:
         logger.debug(f"[Navi] No workspace root provided, cannot read {filepath}")
         return None
-    
+
     if not _is_text_file(filepath):
         logger.debug(f"[Navi] Skipping binary/non-text file: {filepath}")
         return None
-    
+
     full_path = os.path.join(workspace_root, filepath)
-    
+
     try:
         # Check file size first
         stat_info = os.stat(full_path)
         if stat_info.st_size > MAX_NEW_FILE_SIZE:
-            logger.warning(f"[Navi] File too large ({stat_info.st_size} bytes): {filepath}")
+            logger.warning(
+                f"[Navi] File too large ({stat_info.st_size} bytes): {filepath}"
+            )
             return f"(File too large: {stat_info.st_size} bytes)"
-        
+
         # Read content
-        with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
-        
+
         logger.info(f"[Navi] Read new file content: {filepath} ({len(content)} chars)")
         return content
-    
+
     except FileNotFoundError:
         logger.debug(f"[Navi] File not found: {full_path}")
         return None
@@ -668,6 +792,7 @@ async def _read_new_file_content(filepath: str, workspace_root: Optional[str] = 
 
 # Phase 1 Formatting Helpers: Structure reviews with severity, metadata, and diffs
 # ================================================================================
+
 
 def _get_worst_severity(issues: List[Dict[str, Any]]) -> str:
     """Determine the worst severity from a list of issues."""
@@ -684,42 +809,43 @@ def _format_issues_markdown(issues: List[Dict[str, Any]]) -> str:
     """Convert a list of issue dicts to a Markdown bullet list."""
     if not issues:
         return "✅ No issues found."
-    
+
     bullets = []
     for issue in issues:
         severity = issue.get("severity", "info").upper()
         message = issue.get("message", "Unknown issue")
         bullets.append(f"- **{severity}**: {message}")
-    
+
     return "\n".join(bullets)
 
 
-def _format_diff_review_block(file_path: str, diff_text: str, issues: List[Dict[str, Any]]) -> str:
+def _format_diff_review_block(
+    file_path: str, diff_text: str, issues: List[Dict[str, Any]]
+) -> str:
     """
     Returns a Markdown-formatted review block for a single file.
     Includes diff, issues, and metadata comments for future auto-fix (Phase 3).
-    
+
     Args:
         file_path: The file being reviewed
         diff_text: The git diff for this file
         issues: List of issue dicts with 'severity', 'message', etc.
-    
+
     Returns:
         Formatted Markdown string with severity icon, diff block, issues, and metadata
     """
     severity = _get_worst_severity(issues)
-    severity_icon = {
-        "info": "ℹ️",
-        "warning": "⚠️",
-        "error": "🚨",
-        "none": "✅"
-    }.get(severity, "✅")
-    
+    severity_icon = {"info": "ℹ️", "warning": "⚠️", "error": "🚨", "none": "✅"}.get(
+        severity, "✅"
+    )
+
     issue_text = _format_issues_markdown(issues)
-    
+
     # Metadata comment for Phase 3 auto-fix (extension can parse this later)
-    metadata_comment = f"<!-- navi-issue: {json.dumps({'file': file_path, 'issues': issues})} -->"
-    
+    metadata_comment = (
+        f"<!-- navi-issue: {json.dumps({'file': file_path, 'issues': issues})} -->"
+    )
+
     return f"""### 📄 `{file_path}` {severity_icon}
 
 ```diff
@@ -742,15 +868,15 @@ def _parse_diff_by_file(diff_text: str) -> Dict[str, str]:
     files: Dict[str, str] = {}
     current_file: Optional[str] = None
     current_diff_lines: List[str] = []
-    
-    for line in diff_text.split('\n'):
-        if line.startswith('diff --git '):
+
+    for line in diff_text.split("\n"):
+        if line.startswith("diff --git "):
             # Save previous file if any
             if current_file and current_diff_lines:
-                files[current_file] = '\n'.join(current_diff_lines)
-            
+                files[current_file] = "\n".join(current_diff_lines)
+
             # Extract new file path
-            match = re.search(r'diff --git a/(.+?) b/(.+?)$', line)
+            match = re.search(r"diff --git a/(.+?) b/(.+?)$", line)
             if match:
                 current_file = match.group(2)  # Use b/ (new/target) path
                 current_diff_lines = [line]
@@ -760,53 +886,57 @@ def _parse_diff_by_file(diff_text: str) -> Dict[str, str]:
         else:
             if current_file:
                 current_diff_lines.append(line)
-    
+
     # Don't forget the last file
     if current_file and current_diff_lines:
-        files[current_file] = '\n'.join(current_diff_lines)
-    
+        files[current_file] = "\n".join(current_diff_lines)
+
     return files
 
 
 def _extract_issues_from_review(review_text: str) -> List[Dict[str, Any]]:
     """
     Parse LLM review text to extract issues with severity levels.
-    
+
     Looks for patterns like:
     - **ERROR**: message
     - **WARNING**: message
     - **INFO**: message
-    
+
     Returns a list of issue dicts.
     """
     issues = []
-    
+
     # Match patterns like "- **SEVERITY**: message"
-    pattern = r'^- \*\*(ERROR|WARNING|INFO)\*\*: (.+)$'
+    pattern = r"^- \*\*(ERROR|WARNING|INFO)\*\*: (.+)$"
     for match in re.finditer(pattern, review_text, re.MULTILINE):
         severity_str = match.group(1).lower()
         message = match.group(2).strip()
-        
+
         severity_map = {
-            'error': 'error',
-            'warning': 'warning',
-            'info': 'info',
+            "error": "error",
+            "warning": "warning",
+            "info": "info",
         }
-        
-        issues.append({
-            'severity': severity_map.get(severity_str, 'info'),
-            'message': message,
-            'type': 'review_comment',
-        })
-    
+
+        issues.append(
+            {
+                "severity": severity_map.get(severity_str, "info"),
+                "message": message,
+                "type": "review_comment",
+            }
+        )
+
     # If no issues found with that pattern, default to "no issues"
     if not issues:
-        issues.append({
-            'severity': 'none',
-            'message': 'No issues found',
-            'type': 'review_comment',
-        })
-    
+        issues.append(
+            {
+                "severity": "none",
+                "message": "No issues found",
+                "type": "review_comment",
+            }
+        )
+
     return issues
 
 
@@ -816,76 +946,84 @@ def _structure_review_output(merged_review: str, files_by_path: Dict[str, str]) 
     - Syntax-highlighted diffs
     - Severity indicators
     - Issue metadata for future auto-fix
-    
+
     For now, we parse per-file sections from the LLM's review text and
     reconstruct with proper formatting using _format_diff_review_block().
-    
+
     Args:
         merged_review: Raw LLM output (Markdown)
         files_by_path: Dict of {file_path: diff_text}
-    
+
     Returns:
         Enhanced Markdown with per-file structured blocks
     """
     output_lines = []
-    
+
     # Start with the summary from the LLM
-    lines = merged_review.split('\n')
+    lines = merged_review.split("\n")
     i = 0
-    
+
     # Extract summary section (usually before per-file notes)
-    while i < len(lines) and not lines[i].startswith('### '):
+    while i < len(lines) and not lines[i].startswith("### "):
         output_lines.append(lines[i])
         i += 1
-    
+
     # Now process per-file sections
     formatted_blocks = []
     for file_path, diff_text in files_by_path.items():
         # Extract issues for this file from merged_review if present
         # For Phase 1, we'll just pass an empty list; the LLM review is the main output
         issues = []
-        
+
         # Format with the new structured format
         block = _format_diff_review_block(file_path, diff_text, issues)
         formatted_blocks.append(block)
-    
+
     # Combine summary + formatted blocks + rest of review
     if formatted_blocks:
         output_lines.append("\n---\n")
         output_lines.extend(formatted_blocks)
-    
+
     # Add the LLM's per-file notes if they exist
     while i < len(lines):
         output_lines.append(lines[i])
         i += 1
-    
-    return '\n'.join(output_lines)
-    
-    
+
+    return "\n".join(output_lines)
+
+
 async def _handle_diff_review(request: NaviChatRequest) -> ChatResponse:
     diffs = [a.content for a in request.attachments if a.content]
     if not diffs:
         return ChatResponse(
-            content="I didn't receive a diff attachment. Try \"Review working changes\" again.",
-            suggestions=["Review working changes", "Review staged changes", "Review last commit"],
+            content='I didn\'t receive a diff attachment. Try "Review working changes" again.',
+            suggestions=[
+                "Review working changes",
+                "Review staged changes",
+                "Review last commit",
+            ],
         )
 
     combined_diff = "\n\n".join(diffs).strip()
     files = _extract_files_from_diff(combined_diff)
     new_files = _extract_new_files_from_diff(combined_diff)
-    
+
     # Get workspace root from request context if available
     workspace_root = None
-    if hasattr(request, 'workspace_root') and request.workspace_root:
+    if hasattr(request, "workspace_root") and request.workspace_root:
         workspace_root = request.workspace_root
     elif request.teamContext and isinstance(request.teamContext, dict):
-        workspace_root = request.teamContext.get('workspace_root')
-    
+        workspace_root = request.teamContext.get("workspace_root")
+
     # Read content of new files
     new_file_contents: Dict[str, str] = {}
     if workspace_root and new_files:
-        logger.info(f"[Navi] Found {len(new_files)} new files, attempting to read content")
-        for filepath in new_files[:10]:  # Limit to 10 files to avoid overwhelming context
+        logger.info(
+            f"[Navi] Found {len(new_files)} new files, attempting to read content"
+        )
+        for filepath in new_files[
+            :10
+        ]:  # Limit to 10 files to avoid overwhelming context
             content = await _read_new_file_content(filepath, workspace_root)
             if content:
                 new_file_contents[filepath] = content
@@ -911,7 +1049,7 @@ async def _handle_diff_review(request: NaviChatRequest) -> ChatResponse:
     )
 
     partial_reviews: List[str] = []
-    
+
     # If we have new file contents, add them to the first chunk or create a dedicated review
     if new_file_contents:
         new_files_prompt = "\n\n---\n\n**Newly Added Files (full content):**\n\n"
@@ -919,16 +1057,18 @@ async def _handle_diff_review(request: NaviChatRequest) -> ChatResponse:
             # Truncate very long files
             display_content = content[:5000] if len(content) > 5000 else content
             truncated = " (truncated)" if len(content) > 5000 else ""
-            new_files_prompt += f"### {filepath}{truncated}\n```\n{display_content}\n```\n\n"
-        
+            new_files_prompt += (
+                f"### {filepath}{truncated}\n```\n{display_content}\n```\n\n"
+            )
+
         # Review new files separately
         new_files_review = await _call_llm_for_review(
             system_prompt,
             f"{user_prompt}\n\nReview these newly added files. Check for: missing configurations, security issues, best practices, and potential improvements.",
-            new_files_prompt
+            new_files_prompt,
         )
         partial_reviews.append(new_files_review)
-    
+
     # Review the diff chunks
     for i, chunk in enumerate(chunks, start=1):
         chunk_header = f"[DIFF CHUNK {i}/{len(chunks)}]\n"
@@ -937,13 +1077,13 @@ async def _handle_diff_review(request: NaviChatRequest) -> ChatResponse:
         partial_reviews.append(review)
 
     merged = await _merge_partial_reviews(system_prompt, user_prompt, partial_reviews)
-    
+
     # Ensure merged is a clean string with no unexpected characters
     if not merged or not isinstance(merged, str):
         merged = "### Summary\n- No diff content to review."
-    
+
     merged = merged.strip()
-    
+
     # Phase 1: Structure the output with per-file blocks, diffs, and metadata
     files_by_path = _parse_diff_by_file(combined_diff)
     structured_output = _structure_review_output(merged, files_by_path)
@@ -954,7 +1094,9 @@ async def _handle_diff_review(request: NaviChatRequest) -> ChatResponse:
         "Explain the biggest behavior change",
     ]
 
-    logger.info(f"[Navi] Diff review completed: {len(files)} files ({len(new_files)} new), {len(chunks)} chunks, {len(structured_output)} chars in response")
+    logger.info(
+        f"[Navi] Diff review completed: {len(files)} files ({len(new_files)} new), {len(chunks)} chunks, {len(structured_output)} chars in response"
+    )
 
     return ChatResponse(
         content=structured_output,
@@ -972,7 +1114,9 @@ async def _handle_diff_review(request: NaviChatRequest) -> ChatResponse:
 def _extract_files_from_diff(diff_text: str) -> List[str]:
     # Typical: diff --git a/path b/path
     paths = []
-    for m in re.finditer(r"^diff --git a/(.+?) b/(.+?)$", diff_text, flags=re.MULTILINE):
+    for m in re.finditer(
+        r"^diff --git a/(.+?) b/(.+?)$", diff_text, flags=re.MULTILINE
+    ):
         a_path, b_path = m.group(1), m.group(2)
         # prefer b_path (new name) unless it's /dev/null
         chosen = b_path if b_path and b_path != "dev/null" else a_path
@@ -1019,7 +1163,9 @@ def _chunk_diff_by_file_boundaries(diff_text: str, max_chars: int) -> List[str]:
     return final_chunks
 
 
-async def _call_llm_for_review(system_prompt: str, user_prompt: str, diff_chunk: str) -> str:
+async def _call_llm_for_review(
+    system_prompt: str, user_prompt: str, diff_chunk: str
+) -> str:
     api_key, base_url, model = _get_openai_config()
     if not api_key:
         # Safe fallback: still return something useful without an LLM call.
@@ -1058,26 +1204,30 @@ async def _call_llm_for_review(system_prompt: str, user_prompt: str, diff_chunk:
         )
         resp.raise_for_status()
         data = resp.json()
-        content = (data.get("choices", [{}])[0].get("message", {}) or {}).get("content", "")
-        
+        content = (data.get("choices", [{}])[0].get("message", {}) or {}).get(
+            "content", ""
+        )
+
         # Ensure we always return a clean string
         if not content or not isinstance(content, str):
             logger.warning(f"LLM returned unexpected content type: {type(content)}")
             return "### Summary\n- LLM response was malformed."
-        
+
         return content.strip()
     except Exception as e:
         error_msg = f"{type(e).__name__}: {str(e)}"
         logger.error(f"LLM diff review call failed: {error_msg}")
         logger.error(f"  URL: {url}")
         logger.error(f"  Model: {model}")
-        logger.error(f"  Status code: {getattr(resp, 'status_code', 'N/A') if resp else 'N/A'}")
+        logger.error(
+            f"  Status code: {getattr(resp, 'status_code', 'N/A') if resp else 'N/A'}"
+        )
         if resp:
             try:
                 logger.error(f"  Response body: {resp.text[:500]}")
             except Exception:
                 pass
-        
+
         # Return a clean fallback message
         return (
             "### Summary\n"
@@ -1089,7 +1239,9 @@ async def _call_llm_for_review(system_prompt: str, user_prompt: str, diff_chunk:
         )
 
 
-async def _merge_partial_reviews(system_prompt: str, user_prompt: str, partials: List[str]) -> str:
+async def _merge_partial_reviews(
+    system_prompt: str, user_prompt: str, partials: List[str]
+) -> str:
     if not partials:
         return "### Summary\n- No diff content to review."
 
@@ -1134,13 +1286,17 @@ async def _merge_partial_reviews(system_prompt: str, user_prompt: str, partials:
         )
         resp.raise_for_status()
         data = resp.json()
-        content = (data.get("choices", [{}])[0].get("message", {}) or {}).get("content", "")
-        
+        content = (data.get("choices", [{}])[0].get("message", {}) or {}).get(
+            "content", ""
+        )
+
         # Ensure we always return a clean string
         if not content or not isinstance(content, str):
-            logger.warning(f"LLM merge returned unexpected content type: {type(content)}")
+            logger.warning(
+                f"LLM merge returned unexpected content type: {type(content)}"
+            )
             return "\n\n---\n\n".join(partials)
-        
+
         return content.strip()
     except Exception as e:
         logger.error(f"LLM merge call failed: {e}")
@@ -1154,22 +1310,52 @@ async def _merge_partial_reviews(system_prompt: str, user_prompt: str, partials:
 async def _analyze_user_intent(message: str) -> Dict[str, Any]:
     message_lower = message.lower()
 
-    if any(keyword in message_lower for keyword in ["task", "jira", "ticket", "assigned", "priority"]):
-        return {"type": "task_query", "keywords": ["task", "jira", "priority"], "confidence": 0.9}
+    if any(
+        keyword in message_lower
+        for keyword in ["task", "jira", "ticket", "assigned", "priority"]
+    ):
+        return {
+            "type": "task_query",
+            "keywords": ["task", "jira", "priority"],
+            "confidence": 0.9,
+        }
 
-    if any(keyword in message_lower for keyword in ["team", "colleague", "teammate", "working on", "activity"]):
-        return {"type": "team_query", "keywords": ["team", "activity", "collaboration"], "confidence": 0.8}
+    if any(
+        keyword in message_lower
+        for keyword in ["team", "colleague", "teammate", "working on", "activity"]
+    ):
+        return {
+            "type": "team_query",
+            "keywords": ["team", "activity", "collaboration"],
+            "confidence": 0.8,
+        }
 
-    if any(keyword in message_lower for keyword in ["plan", "how", "implement", "steps", "approach"]):
-        return {"type": "plan_request", "keywords": ["plan", "implementation", "steps"], "confidence": 0.85}
+    if any(
+        keyword in message_lower
+        for keyword in ["plan", "how", "implement", "steps", "approach"]
+    ):
+        return {
+            "type": "plan_request",
+            "keywords": ["plan", "implementation", "steps"],
+            "confidence": 0.85,
+        }
 
-    if any(keyword in message_lower for keyword in ["code", "bug", "error", "fix", "debug", "review"]):
-        return {"type": "code_help", "keywords": ["code", "debug", "review"], "confidence": 0.8}
+    if any(
+        keyword in message_lower
+        for keyword in ["code", "bug", "error", "fix", "debug", "review"]
+    ):
+        return {
+            "type": "code_help",
+            "keywords": ["code", "debug", "review"],
+            "confidence": 0.8,
+        }
 
     return {"type": "general_query", "keywords": [], "confidence": 0.5}
 
 
-async def _build_enhanced_context(request: ChatRequest, intent: Dict[str, Any]) -> Dict[str, Any]:
+async def _build_enhanced_context(
+    request: ChatRequest, intent: Dict[str, Any]
+) -> Dict[str, Any]:
     enhanced_context: Dict[str, Any] = {
         "intent": intent,
         "conversation_history": request.conversationHistory[-5:],
@@ -1181,7 +1367,9 @@ async def _build_enhanced_context(request: ChatRequest, intent: Dict[str, Any]) 
         try:
             api_base = get_api_base_url()
             client = await get_http_client()
-            response = await client.get(f"{api_base}/api/context/task/{request.currentTask}")
+            response = await client.get(
+                f"{api_base}/api/context/task/{request.currentTask}"
+            )
             if response.status_code == 200:
                 enhanced_context["task_context"] = response.json()
         except Exception as e:
@@ -1193,7 +1381,9 @@ async def _build_enhanced_context(request: ChatRequest, intent: Dict[str, Any]) 
 # ------------------------------------------------------------------------------
 # Existing handlers (kept as-is, lightly touched only if needed)
 # ------------------------------------------------------------------------------
-async def _handle_task_query(intent: Dict[str, Any], context: Dict[str, Any]) -> ChatResponse:
+async def _handle_task_query(
+    intent: Dict[str, Any], context: Dict[str, Any]
+) -> ChatResponse:
     try:
         tasks = []
         try:
@@ -1225,24 +1415,33 @@ async def _handle_task_query(intent: Dict[str, Any], context: Dict[str, Any]) ->
         if not tasks:
             return ChatResponse(
                 content="You don't have any assigned tasks right now. Would you like me to help you find work to do?",
-                suggestions=["Show available tasks", "Check team priorities", "Find tasks I can help with"],
+                suggestions=[
+                    "Show available tasks",
+                    "Check team priorities",
+                    "Find tasks I can help with",
+                ],
             )
 
         content = f"You have {len(tasks)} assigned tasks.\n\n�� **Your JIRA Tasks:**\n"
         for task in tasks[:5]:
             status = task.get("status")
             status_emoji = (
-                "🔄" if status == "In Progress"
-                else "📝" if status == "To Do"
-                else "✅" if status == "Done"
-                else "📌"
+                "🔄"
+                if status == "In Progress"
+                else "📝" if status == "To Do" else "✅" if status == "Done" else "📌"
             )
             jira_key = task.get("jira_key", "")
             title = task.get("title", "").replace(f"[Jira] {jira_key}: ", "")
-            content += f"{status_emoji} **{jira_key}**: {title} ({status or 'Unknown'})\n"
+            content += (
+                f"{status_emoji} **{jira_key}**: {title} ({status or 'Unknown'})\n"
+            )
 
         suggestions = [
-            f"Work on {tasks[0].get('jira_key', 'first task')}" if tasks else "Find new tasks",
+            (
+                f"Work on {tasks[0].get('jira_key', 'first task')}"
+                if tasks
+                else "Find new tasks"
+            ),
             "Generate plan for highest priority task",
             "Show task dependencies",
             "Check what teammates are working on",
@@ -1252,11 +1451,17 @@ async def _handle_task_query(intent: Dict[str, Any], context: Dict[str, Any]) ->
     except Exception:
         return ChatResponse(
             content="I had trouble fetching your tasks. Let me try a different approach.",
-            suggestions=["Refresh task list", "Check JIRA connection", "Show cached tasks"],
+            suggestions=[
+                "Refresh task list",
+                "Check JIRA connection",
+                "Show cached tasks",
+            ],
         )
 
 
-async def _handle_team_query(intent: Dict[str, Any], context: Dict[str, Any]) -> ChatResponse:
+async def _handle_team_query(
+    intent: Dict[str, Any], context: Dict[str, Any]
+) -> ChatResponse:
     try:
         team_activity = []
         try:
@@ -1272,7 +1477,11 @@ async def _handle_team_query(intent: Dict[str, Any], context: Dict[str, Any]) ->
         if not team_activity:
             return ChatResponse(
                 content="I don't have recent team activity data. Let me help you connect with your team.",
-                suggestions=["Check Slack for updates", "Review recent commits", "Show team calendar"],
+                suggestions=[
+                    "Check Slack for updates",
+                    "Review recent commits",
+                    "Show team calendar",
+                ],
             )
 
         content = "🔄 **Recent Team Activity:**\n\n"
@@ -1293,39 +1502,66 @@ async def _handle_team_query(intent: Dict[str, Any], context: Dict[str, Any]) ->
     except Exception:
         return ChatResponse(
             content="I had trouble getting team information. Let me help you in other ways.",
-            suggestions=["Check team chat", "Review recent changes", "Show project status"],
+            suggestions=[
+                "Check team chat",
+                "Review recent changes",
+                "Show project status",
+            ],
         )
 
 
-async def _handle_plan_request(intent: Dict[str, Any], context: Dict[str, Any]) -> ChatResponse:
+async def _handle_plan_request(
+    intent: Dict[str, Any], context: Dict[str, Any]
+) -> ChatResponse:
     try:
-        current_task = context.get("current_task") or context.get("task_context", {}).get("key")
+        current_task = context.get("current_task") or context.get(
+            "task_context", {}
+        ).get("key")
         if not current_task:
             return ChatResponse(
                 content="I'd love to help you create a plan! Which task would you like me to plan for?",
-                suggestions=["Plan for my highest priority task", "Create a general work plan", "Help me break down a complex task"],
+                suggestions=[
+                    "Plan for my highest priority task",
+                    "Create a general work plan",
+                    "Help me break down a complex task",
+                ],
             )
 
         task_context = context.get("task_context", {})
         content = f"I'll create a detailed plan for **{current_task}**.\n\n"
-        content += f"**Task**: {task_context.get('summary', 'Task details loading...')}\n\n"
+        content += (
+            f"**Task**: {task_context.get('summary', 'Task details loading...')}\n\n"
+        )
         if task_context.get("description"):
             content += f"**Description**: {task_context['description'][:200]}...\n\n"
-        content += "Let me analyze the requirements and generate an implementation plan."
+        content += (
+            "Let me analyze the requirements and generate an implementation plan."
+        )
 
         return ChatResponse(
             content=content,
-            suggestions=["Generate detailed implementation plan", "Show task dependencies first", "Break into smaller subtasks", "Include testing strategy"],
+            suggestions=[
+                "Generate detailed implementation plan",
+                "Show task dependencies first",
+                "Break into smaller subtasks",
+                "Include testing strategy",
+            ],
             context={"taskKey": current_task, "action": "plan_generation"},
         )
     except Exception:
         return ChatResponse(
             content="I had trouble analyzing the task for planning. Let me help you get started anyway.",
-            suggestions=["Tell me about the task manually", "Show existing plans", "Create simple task breakdown"],
+            suggestions=[
+                "Tell me about the task manually",
+                "Show existing plans",
+                "Create simple task breakdown",
+            ],
         )
 
 
-async def _handle_code_help(intent: Dict[str, Any], context: Dict[str, Any]) -> ChatResponse:
+async def _handle_code_help(
+    intent: Dict[str, Any], context: Dict[str, Any]
+) -> ChatResponse:
     content = (
         "I'm here to help with your code!\n\n"
         "I can assist with:\n"
@@ -1349,7 +1585,9 @@ async def _handle_code_help(intent: Dict[str, Any], context: Dict[str, Any]) -> 
     return ChatResponse(content=content, suggestions=suggestions)
 
 
-async def _handle_general_query(intent: Dict[str, Any], context: Dict[str, Any]) -> ChatResponse:
+async def _handle_general_query(
+    intent: Dict[str, Any], context: Dict[str, Any]
+) -> ChatResponse:
     content = (
         "I'm your autonomous engineering assistant!\n\n"
         "I can help you with:\n"
@@ -1362,8 +1600,20 @@ async def _handle_general_query(intent: Dict[str, Any], context: Dict[str, Any])
 
     suggestions: List[str] = []
     if context.get("current_task"):
-        suggestions.extend([f"Continue work on {context['current_task']}", "Generate plan for current task"])
-    suggestions.extend(["Show my tasks", "What is my team working on?", "Help me with current work", "Review recent changes"])
+        suggestions.extend(
+            [
+                f"Continue work on {context['current_task']}",
+                "Generate plan for current task",
+            ]
+        )
+    suggestions.extend(
+        [
+            "Show my tasks",
+            "What is my team working on?",
+            "Help me with current work",
+            "Review recent changes",
+        ]
+    )
 
     return ChatResponse(content=content, suggestions=suggestions)
 

@@ -6,15 +6,15 @@ Equivalent to Gemini's long-term memory but optimized for engineering tasks.
 
 import sys
 import pickle
+import logging
+from pathlib import Path
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, cast
 try:
     import numpy as np
 except ImportError:
     np = None  # type: ignore
 np = cast(Any, np)
-from pathlib import Path
-import logging
-from datetime import datetime, timedelta
 
 try:
     import faiss  # type: ignore  # Optional dependency

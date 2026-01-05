@@ -33,6 +33,7 @@ import time
 import logging
 import random
 import asyncio
+import os
 from typing import Any, Dict, Optional, List
 from dataclasses import dataclass
 
@@ -179,6 +180,47 @@ class LLMRouter:
             model, provider, use_smart_auto, allowed_providers
         )
 
+        env = os.getenv("APP_ENV", "dev").lower()
+        offline_configured = os.getenv("LLM_OFFLINE_MODE", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+
+        # Provider-specific default API key resolution (systematic, no hardcoding)
+        provider_env_map = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "google": "GOOGLE_API_KEY",
+            "xai": "XAI_API_KEY",
+            "mistral": "MISTRAL_API_KEY",
+        }
+        provider_env_key = provider_env_map.get(provider_info.provider_id)
+        default_api_key = os.getenv(provider_env_key) if provider_env_key else None
+        api_key = api_key or default_api_key
+
+        allow_offline = offline_configured or (
+            env in {"dev", "test", "local"} and not api_key
+        )
+        offline_reason: Optional[str] = None
+
+        if not api_key and not allow_offline:
+            # In prod/stage, require a real key to avoid degraded responses
+            raise APIKeyMissingError(
+                f"Missing API key for provider '{provider_info.provider_id}'. "
+                f"Set {provider_env_key or 'PROVIDER_API_KEY'} or pass api_key explicitly."
+            )
+
+        if allow_offline and not api_key:
+            offline_reason = f"no API key provided (env={env})"
+            logger.warning("[LLM] Offline fallback enabled: %s", offline_reason)
+            return self._offline_response(
+                prompt=prompt,
+                model=model_info.model_id,
+                provider=provider_info.provider_id,
+                reason=offline_reason,
+            )
+
         logger.info(f"[LLM] Using {provider_info.provider_id}:{model_info.model_id}")
 
         # Prepare payload depending on provider
@@ -193,14 +235,29 @@ class LLMRouter:
         )
 
         # Execute with retry logic
-        response_json, latency_ms = await self._execute_with_retry(
-            provider_info=provider_info,
-            model_info=model_info,
-            payload=request_payload,
-            api_key=api_key,
-            org_id=org_id,
-            user_id=user_id,
-        )
+        try:
+            response_json, latency_ms = await self._execute_with_retry(
+                provider_info=provider_info,
+                model_info=model_info,
+                payload=request_payload,
+                api_key=api_key,
+                org_id=org_id,
+                user_id=user_id,
+            )
+        except Exception as exc:
+            if allow_offline:
+                offline_reason = offline_reason or f"LLM call failed: {exc}"
+                logger.warning(
+                    "[LLM] %s – returning deterministic offline response",
+                    offline_reason,
+                )
+                return self._offline_response(
+                    prompt=prompt,
+                    model=model_info.model_id,
+                    provider=provider_info.provider_id,
+                    reason=offline_reason,
+                )
+            raise
 
         # Normalize final response
         text = self._extract_text(provider_info.provider_id, response_json)
@@ -215,6 +272,35 @@ class LLMRouter:
             raw=response_json,
             latency_ms=latency_ms,
             tokens_used=tokens_used,
+        )
+
+    def _offline_response(
+        self,
+        *,
+        prompt: str,
+        model: str,
+        provider: str,
+        reason: str,
+    ) -> LLMResponse:
+        """
+        Deterministic offline response used when API keys are missing or network access is disabled.
+        """
+        preview_lines = [line for line in prompt.splitlines() if line.strip()]
+        head = preview_lines[0] if preview_lines else "Request"
+        snippet = head[:180] + ("…" if len(head) > 180 else "")
+        text = (
+            f"[offline] {snippet}\n\n"
+            f"(Offline fallback active: {reason}. Provide a provider API key to enable full LLM responses.)"
+        )
+
+        return LLMResponse(
+            text=text,
+            model=model or "offline-model",
+            provider=f"{provider}-offline",
+            raw={"offline_fallback": True, "reason": reason, "preview": snippet},
+            latency_ms=5.0,
+            tokens_used=None,
+            cost_estimate=0.0,
         )
 
     # ------------------------------------------------------------------
@@ -301,12 +387,21 @@ class LLMRouter:
 
         # OpenAI-compatible APIs (OpenAI, xAI, Mistral)
         if provider in {"openai", "xai", "mistral"}:
-            return {
+            payload = {
                 "model": model,
-                "max_tokens": max_tokens,
                 "temperature": temperature,
                 "messages": self._build_openai_messages(prompt, system_prompt, images),
             }
+
+            # Use max_completion_tokens for newer OpenAI models (GPT-4o, GPT-5.x)
+            if provider == "openai" and any(
+                x in model for x in ["gpt-4o", "gpt-5", "o1"]
+            ):
+                payload["max_completion_tokens"] = max_tokens
+            else:
+                payload["max_tokens"] = max_tokens
+
+            return payload
 
         # Anthropic Claude
         if provider == "anthropic":

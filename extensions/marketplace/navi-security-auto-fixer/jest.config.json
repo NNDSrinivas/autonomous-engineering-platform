@@ -1,0 +1,45 @@
+{
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": [
+        "**/__tests__/**/*.test.ts",
+        "**/?(*.)+(spec|test).ts"
+    ],
+    "collectCoverage": true,
+    "collectCoverageFrom": [
+        "**/*.ts",
+        "!**/*.d.ts",
+        "!**/node_modules/**",
+        "!**/tests/**",
+        "!jest.config.js"
+    ],
+    "coverageDirectory": "coverage",
+    "coverageReporters": [
+        "text",
+        "lcov",
+        "html"
+    ],
+    "coverageThreshold": {
+        "global": {
+            "branches": 40,
+            "functions": 65,
+            "lines": 60,
+            "statements": 60
+        }
+    },
+    "setupFilesAfterEnv": [
+        "<rootDir>/tests/setupTests.ts"
+    ],
+    "moduleFileExtensions": [
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "json"
+    ],
+    "transform": {
+        "^.+\\.ts$": "ts-jest"
+    },
+    "testTimeout": 10000,
+    "verbose": true
+}

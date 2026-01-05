@@ -1,7 +1,7 @@
 # backend/api/navi_intent.py
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, Optional
 import os
 import logging
 import json
@@ -18,6 +18,7 @@ client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 class IntentRequest(BaseModel):
     message: str
+    user_id: Optional[str] = "default_user"
 
 
 class IntentResponse(BaseModel):
@@ -31,6 +32,33 @@ class IntentResponse(BaseModel):
         "general",
         "other",
     ]
+
+
+@router.get("/intent", response_model=dict)
+async def get_intent_docs():
+    """
+    Get intent classification system documentation
+    """
+    return {
+        "system": "NAVI Intent Classification",
+        "description": "Classifies user messages into actionable intents",
+        "supported_intents": [
+            "greeting",
+            "jira_list",
+            "jira_ticket",
+            "jira_priority",
+            "code",
+            "workspace",
+            "general",
+            "other",
+        ],
+        "usage": {
+            "method": "POST",
+            "endpoint": "/api/navi/intent/classify",
+            "body": {"message": "your message", "user_id": "optional"},
+        },
+        "status": "ready",
+    }
 
 
 INTENT_SYSTEM_PROMPT = """

@@ -5,7 +5,7 @@ Provides persistent storage for Organizations, Users, and their Role assignments
 Supports both org-wide and project-scoped role grants.
 """
 
-from sqlalchemy import Column, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Column, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from backend.core.db import Base
@@ -24,6 +24,9 @@ class Organization(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     org_key = Column(String(64), unique=True, index=True, nullable=False)
     name = Column(String(255), nullable=False)
+    ui_base_url = Column(String(512), nullable=True)
+    ui_allowed_domains = Column(Text, nullable=True)
+    ui_redirect_path = Column(String(255), nullable=True)
 
     # Relationships
     users = relationship(

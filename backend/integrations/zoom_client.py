@@ -10,7 +10,7 @@ Supports:
 import os
 import base64
 from typing import Dict, Any, List, Optional
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 
 import requests
 
@@ -29,27 +29,84 @@ class ZoomClient:
         account_id: Optional[str] = None,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
+        access_token: Optional[str] = None,
+        refresh_token: Optional[str] = None,
+        expires_at: Optional[datetime] = None,
     ) -> None:
         self.account_id = account_id or os.getenv("AEP_ZOOM_ACCOUNT_ID", "")
         self.client_id = client_id or os.getenv("AEP_ZOOM_CLIENT_ID", "")
         self.client_secret = client_secret or os.getenv("AEP_ZOOM_CLIENT_SECRET", "")
+        self.refresh_token = refresh_token
+        self.expires_at = expires_at
+        self._token: Optional[str] = access_token
+        self.base_url = "https://api.zoom.us/v2"
 
-        if not self.account_id or not self.client_id or not self.client_secret:
+        if not self._token and not (
+            self.account_id and self.client_id and self.client_secret
+        ):
             raise RuntimeError(
-                "ZoomClient requires AEP_ZOOM_ACCOUNT_ID, AEP_ZOOM_CLIENT_ID, "
-                "AEP_ZOOM_CLIENT_SECRET to be set."
+                "ZoomClient requires either an access token or "
+                "AEP_ZOOM_ACCOUNT_ID, AEP_ZOOM_CLIENT_ID, AEP_ZOOM_CLIENT_SECRET."
             )
 
-        self._token: Optional[str] = None
-        self.base_url = "https://api.zoom.us/v2"
+    def _token_expired(self) -> bool:
+        if not self.expires_at:
+            return False
+        return datetime.now(timezone.utc) >= self.expires_at
+
+    def _refresh_access_token(self) -> str:
+        if not self.refresh_token or not self.client_id or not self.client_secret:
+            raise RuntimeError(
+                "Zoom refresh requires client_id, client_secret, refresh_token"
+            )
+
+        auth_bytes = f"{self.client_id}:{self.client_secret}".encode("utf-8")
+        basic_auth = base64.b64encode(auth_bytes).decode("utf-8")
+
+        resp = requests.post(
+            "https://zoom.us/oauth/token",
+            headers={
+                "Authorization": f"Basic {basic_auth}",
+            },
+            params={
+                "grant_type": "refresh_token",
+                "refresh_token": self.refresh_token,
+            },
+            timeout=30,
+        )
+        if not resp.ok:
+            raise RuntimeError(
+                f"Zoom refresh token error: {resp.status_code} {resp.text[:300]}"
+            )
+
+        data = resp.json()
+        token = data.get("access_token")
+        if not token:
+            raise RuntimeError("Zoom refresh token response missing access_token")
+
+        self._token = token
+        new_refresh = data.get("refresh_token")
+        if new_refresh:
+            self.refresh_token = new_refresh
+        expires_in = data.get("expires_in")
+        if expires_in:
+            try:
+                self.expires_at = datetime.now(timezone.utc) + timedelta(
+                    seconds=int(expires_in)
+                )
+            except Exception:
+                self.expires_at = None
+        return token
 
     # ------------------------------------------------------------------ #
     # Auth
     # ------------------------------------------------------------------ #
     def _get_access_token(self) -> str:
         """Get OAuth access token using Server-to-Server OAuth flow"""
-        if self._token:
+        if self._token and not self._token_expired():
             return self._token
+        if self.refresh_token:
+            return self._refresh_access_token()
 
         auth_bytes = f"{self.client_id}:{self.client_secret}".encode("utf-8")
         basic_auth = base64.b64encode(auth_bytes).decode("utf-8")

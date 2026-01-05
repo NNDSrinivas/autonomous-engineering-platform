@@ -65,6 +65,7 @@ class IntentKind(str, Enum):
     REFACTOR_CODE = "refactor_code"  # structural improvements
     IMPLEMENT_FEATURE = "implement_feature"  # end-to-end change
     FIX_BUG = "fix_bug"  # debug + patch
+    FIX_DIAGNOSTICS = "fix_diagnostics"  # Phase 4.1.2: Fix Problems tab errors
     UPDATE_DEPENDENCIES = "update_dependencies"
     EDIT_INFRA = "edit_infra"  # Dockerfile, CI, infra-as-code
 
@@ -430,6 +431,15 @@ class NaviIntent(BaseModel):
         ...,
         description="Original user/system message that produced this intent.",
     )
+
+    # Phase 4.1.2 compatibility fields
+    critical: bool = Field(
+        default=False, description="Whether this intent is critical/urgent"
+    )
+    description: Optional[str] = Field(
+        default=None, description="Human-readable description of the intent"
+    )
+
     # structured/query arguments extracted by the classifier (free-form)
     slots: Dict[str, Any] = Field(
         default_factory=dict,

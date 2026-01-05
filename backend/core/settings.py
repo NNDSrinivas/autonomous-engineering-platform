@@ -60,6 +60,8 @@ class Settings(BaseSettings):
 
     # Application environment
     APP_ENV: str = "development"
+    # Defer optional/auxiliary router imports until first request hits those paths
+    DEFER_OPTIONAL_ROUTERS: bool = True
 
     # Audit logging configuration
     enable_audit_logging: bool = True

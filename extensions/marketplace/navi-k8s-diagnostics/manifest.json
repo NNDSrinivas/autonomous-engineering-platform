@@ -1,0 +1,19 @@
+{
+    "id": "navi-k8s-diagnostics",
+    "name": "Kubernetes Diagnostics",
+    "author": "Navra Labs",
+    "version": "1.0.0",
+    "category": "Infrastructure",
+    "trust": "CORE",
+    "description": "Diagnoses Kubernetes issues, explains failures, and proposes safe remediation steps",
+    "entry": "index.ts",
+    "permissions": [
+        "K8S_READ",
+        "K8S_LOGS",
+        "REPO_READ",
+        "REQUEST_APPROVAL",
+        "PROPOSE_ACTIONS"
+    ],
+    "hash": "",
+    "created_at": ""
+}

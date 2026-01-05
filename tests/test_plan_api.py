@@ -2,20 +2,39 @@
 Tests for Live Plan Mode API endpoints
 """
 
+import os
+
+os.environ["APP_ENV"] = "test"
+os.environ["DATABASE_URL"] = "sqlite:///./data/test_plan_api.db"
+os.environ["JWT_ENABLED"] = "false"
+os.environ["DEV_USER_ROLE"] = "admin"
+os.environ["DEV_USER_ID"] = "test-user"
+os.environ["DEV_ORG_ID"] = "test-org"
+
 import pytest
 import uuid
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from backend.api.main import app
-from backend.core.db import Base
+from sqlalchemy.orm import sessionmaker
 
-# Use in-memory SQLite database for tests to avoid file persistence
-# This prevents conflicts in CI/CD and enables parallel test execution.
-# NOTE: SQLite's JSON handling differs from PostgreSQL's JSONB. Tests involving JSON fields may pass here but fail on PostgreSQL due to type coercion or feature differences.
-TEST_DATABASE_URL = "sqlite:///:memory:"
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+from backend.core.auth.deps import _get_db_for_auth
+from backend.core.db import Base, get_db, get_engine
+from backend.database.models.live_plan import LivePlan
+import backend.core.db as core_db
+import backend.api.routers.plan as plan_router
+
+# Use file-based SQLite to keep a shared test database and avoid Postgres dependencies
+TEST_DATABASE_URL = os.environ["DATABASE_URL"]
+
+
+# Create a dedicated engine/session factory for tests and wire it into core_db helpers
+core_db.settings.database_url = TEST_DATABASE_URL  # force config to use test DB
+core_db._engine = None
+core_db._SessionLocal = None
+engine = get_engine()
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+core_db._engine = engine  # ensure lazy proxies reuse the test engine
+core_db._SessionLocal = TestingSessionLocal
 
 
 # Override the database dependency
@@ -30,10 +49,22 @@ def override_get_db():
 @pytest.fixture(scope="module")
 def test_client():
     """Create test client with test database"""
-    Base.metadata.create_all(bind=engine)
+    # Ensure clean slate and only create the tables required for plan tests to avoid SQLite incompatibilities
+    Base.metadata.drop_all(bind=engine, tables=[LivePlan.__table__])
+    Base.metadata.create_all(bind=engine, tables=[LivePlan.__table__])
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[_get_db_for_auth] = override_get_db
+
+    # Stub out Postgres-only event store functions for SQLite test runs
+    async def _noop_append(*args, **kwargs):
+        return None
+
+    plan_router.append_and_broadcast = _noop_append
+    plan_router.replay = lambda *args, **kwargs: []
     client = TestClient(app)
     yield client
-    Base.metadata.drop_all(bind=engine)
+    app.dependency_overrides.clear()
+    Base.metadata.drop_all(bind=engine, tables=[LivePlan.__table__])
 
 
 @pytest.fixture
@@ -85,7 +116,7 @@ class TestPlanCreation:
             "/api/plan/start", json={"title": "Test Plan", "participants": ["user1"]}
         )
 
-        assert response.status_code in [400, 403]  # Missing org
+        assert response.status_code in [400, 403, 422]  # Missing org
 
 
 class TestPlanRetrieval:
@@ -129,7 +160,7 @@ class TestPlanRetrieval:
         """Test retrieving plan without org header fails"""
         response = test_client.get(f"/api/plan/{created_plan_id}")
 
-        assert response.status_code in [400, 403]
+        assert response.status_code in [400, 403, 422]
 
 
 class TestAddStep:

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from ...context.schemas import AgentNoteOut
 from ...context.service import parse_tags_field
 from ...core.db import get_db
+from ..deps import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -46,16 +47,18 @@ class ConsolidateRequest(BaseModel):
 
 
 @router.post("/event")
-def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
+def record_event(
+    req: SessionEventRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     """Record episodic memory event
 
     Stores short-term events like plans, decisions, errors, QA exchanges.
     Events are later consolidated into long-term agent notes.
     """
-    # TODO: SECURITY - Hardcoded org_id bypasses tenant isolation
-    # This is MVP code - in production, extract org_id from authenticated user context
-    # to prevent unauthorized access/modification of other organizations' data
-    org_id = "default_org"
+    # Extract org_id from authenticated user context for proper tenant isolation
+    org_id = current_user.get("org_id", "default_org")
 
     try:
         db.execute(
@@ -104,16 +107,18 @@ def record_event(req: SessionEventRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/consolidate", response_model=AgentNoteOut)
-def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
+def consolidate_memory(
+    req: ConsolidateRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     """Consolidate session events into agent note
 
     Takes ephemeral session events and creates a persistent, searchable note.
     Used for long-term memory and context retrieval.
     """
-    # TODO: SECURITY - Hardcoded org_id bypasses tenant isolation
-    # This is MVP code - in production, extract org_id from authenticated user context
-    # to prevent unauthorized access/modification of other organizations' data
-    org_id = "default_org"
+    # Extract org_id from authenticated user context for proper tenant isolation
+    org_id = current_user.get("org_id", "default_org")
 
     # Fetch session events for context
     try:
@@ -187,12 +192,14 @@ def consolidate_memory(req: ConsolidateRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/notes/{task_key}", response_model=List[AgentNoteOut])
-def get_notes(task_key: str, db: Session = Depends(get_db)):
+def get_notes(
+    task_key: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     """Fetch agent notes for task"""
-    # TODO: SECURITY - Hardcoded org_id bypasses tenant isolation
-    # This is MVP code - in production, extract org_id from authenticated user context
-    # to prevent unauthorized access to other organizations' data
-    org_id = "default_org"
+    # Extract org_id from authenticated user context for proper tenant isolation
+    org_id = current_user.get("org_id", "default_org")
 
     rows = (
         db.execute(

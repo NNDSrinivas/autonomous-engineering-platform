@@ -11,6 +11,7 @@ import axios from 'axios';
 
 export const CORE_API = import.meta.env.VITE_CORE_API || 'http://localhost:8000';
 export const ORG = import.meta.env.VITE_ORG_ID || 'default';
+export const USER_ID = import.meta.env.VITE_USER_ID || 'default_user';
 
 export const api = axios.create({
   baseURL: CORE_API,

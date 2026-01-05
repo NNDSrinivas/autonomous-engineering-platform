@@ -7,7 +7,7 @@ detects Jira ticket references, and stores as NAVI memory entries.
 
 import re
 import os
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from openai import AsyncOpenAI
 import structlog
 
 from backend.integrations.zoom_client import ZoomClient
+from backend.services import connectors as connectors_service
 from backend.services.navi_memory_service import store_memory
 
 logger = structlog.get_logger(__name__)
@@ -37,6 +38,30 @@ def _get_openai_client() -> AsyncOpenAI:
 
 
 JIRA_KEY_RE = re.compile(r"\b[A-Z]{2,10}-\d+\b")  # LAB-158, ENG-102, etc.
+
+
+def _resolve_zoom_oauth_app(
+    db: Session,
+    org_id: Optional[str],
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    if not org_id:
+        return (
+            os.getenv("AEP_ZOOM_CLIENT_ID"),
+            os.getenv("AEP_ZOOM_CLIENT_SECRET"),
+            os.getenv("AEP_ZOOM_ACCOUNT_ID"),
+        )
+
+    stored = connectors_service.get_oauth_app_config(
+        db=db,
+        org_id=str(org_id),
+        provider="zoom",
+    )
+    config = (stored or {}).get("config") or {}
+    secrets = (stored or {}).get("secrets") or {}
+    client_id = config.get("client_id") or os.getenv("AEP_ZOOM_CLIENT_ID")
+    client_secret = secrets.get("client_secret") or os.getenv("AEP_ZOOM_CLIENT_SECRET")
+    account_id = config.get("account_id") or os.getenv("AEP_ZOOM_ACCOUNT_ID")
+    return client_id, client_secret, account_id
 
 
 def _clean_transcript_text(text: str) -> str:
@@ -106,6 +131,7 @@ async def ingest_zoom_meetings(
     db: Session,
     *,
     user_id: str,
+    org_id: Optional[str] = None,
     zoom_user: str,
     from_date: date,
     to_date: date,
@@ -122,6 +148,7 @@ async def ingest_zoom_meetings(
     Args:
         db: Database session
         user_id: NAVI user identifier
+        org_id: Organization scope for connector lookup
         zoom_user: Zoom user ID or email
         from_date: Start date for meeting search
         to_date: End date for meeting search
@@ -142,7 +169,41 @@ async def ingest_zoom_meetings(
         max_meetings=max_meetings,
     )
 
-    zc = ZoomClient()
+    connector = connectors_service.get_connector_for_context(
+        db, user_id=user_id, org_id=org_id, provider="zoom"
+    )
+    token = None
+    refresh_token = None
+    expires_at = None
+    account_id = None
+    resolved_org_id = org_id
+    if connector:
+        cfg = connector.get("config") or {}
+        secrets = connector.get("secrets") or {}
+        token = secrets.get("access_token") or secrets.get("token")
+        refresh_token = secrets.get("refresh_token")
+        account_id = cfg.get("account_id")
+        resolved_org_id = resolved_org_id or cfg.get("org_id")
+        expires_raw = cfg.get("expires_at")
+        if expires_raw:
+            try:
+                expires_at = datetime.fromisoformat(
+                    str(expires_raw).replace("Z", "+00:00")
+                )
+            except Exception:
+                expires_at = None
+
+    client_id, client_secret, org_account_id = _resolve_zoom_oauth_app(
+        db, resolved_org_id
+    )
+    zc = ZoomClient(
+        account_id=account_id or org_account_id,
+        client_id=client_id,
+        client_secret=client_secret,
+        access_token=token,
+        refresh_token=refresh_token,
+        expires_at=expires_at,
+    )
     meetings = zc.list_recordings_for_user(
         user_id=zoom_user,
         from_date=from_date,

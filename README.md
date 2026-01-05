@@ -1266,7 +1266,7 @@ For production deployments:
 ✅ Embeddings provider configurable via env vars  
 ✅ All API calls audited and rate-limited (existing middleware)
 
-### Roadmap: PR-14B
+### Roadmap: Extended Connectors
 
 **Coming next:** Connector integrations for:
 - **Slack** - Index messages, threads, pins
@@ -1274,15 +1274,13 @@ For production deployments:
 - **Microsoft Teams** - Index chat, files
 - **Zoom** - Index transcripts, recordings
 
-Stay tuned for **PR-14B** to expand memory coverage!
-
 ---
 
-## 🔌 PR-14B: Extended Connectors (Slack, Confluence, Wiki, Zoom/Teams)
+## 🔌 Extended Connectors (Slack, Confluence, Wiki, Zoom/Teams)
 
 ### 🎯 **Expanded Memory Coverage**
 
-PR-14B extends PR-14's memory search to cover your entire knowledge base:
+Extended connectors expand memory search to cover your entire knowledge base:
 - **Slack**: Messages, threads, channels (incremental sync with cursor)
 - **Confluence**: Wiki pages, documentation spaces
 - **Local Wiki**: Markdown files from `docs/` directory
@@ -1505,7 +1503,7 @@ CREATE TABLE wiki_page (
 ✅ Prometheus metrics track ingestion counts and errors  
 ✅ All endpoints enforce `X-Org-Id` header requirement  
 
-### 🚧 **Future Enhancements (PR-15+)**
+### 🚧 **Future Enhancements**
 
 **Planned improvements:**
 - **OAuth flows** for Slack/Confluence (vs. token-based)
@@ -1558,79 +1556,8 @@ DELETE FROM sync_cursor WHERE org_id='default' AND source='slack';
 
 ## 🎉 Recent Features & Updates
 
-### ✅ PR-19: Live Plan Mode + Real-Time Collaboration (October 2025)
-
-**Real-time collaborative planning for engineering teams**
-
-Create plan sessions where multiple users can collaborate in real-time, see each other's contributions live, and archive completed plans to the memory graph for historical context.
-
-#### Key Features
-- **Real-time SSE Streaming** - See updates instantly as team members add steps
-- **Collaborative Planning** - Multiple users working on the same plan session
-- **Step-by-Step Tracking** - Chronological view of all plan steps with owner attribution
-- **Memory Graph Integration** - Archive plans as `plan_session` nodes for context retrieval
-- **React Dashboard** - Modern UI for browsing, creating, and collaborating
-- **Telemetry** - Prometheus metrics for plan events, latency, and active sessions
-
-#### Quick Start
-```bash
-# Apply database migration
-make pr19-migrate
-
-# Start backend (http://localhost:8000)
-make pr19-dev
-
-# Start frontend (http://localhost:5173)
-make ui-plan-dev
-
-# Open browser to: http://localhost:5173/plans
-
-# Run smoke tests
-make pr19-smoke
-
-# Run full validation (migrate + tests + smoke)
-make pr19-all
-```
-
-#### API Endpoints
-- `POST /api/plan/start` - Create new plan session
-- `GET /api/plan/{id}` - Get plan details
-- `POST /api/plan/step` - Add step (broadcasts to all connected clients)
-- `GET /api/plan/{id}/stream` - SSE stream for real-time updates
-- `POST /api/plan/{id}/archive` - Archive plan to memory graph
-- `GET /api/plan/list` - List plans with optional archive filter
-
-#### Architecture
-```
-User → React UI → EventSource SSE → Backend API
-                                    ↓
-                        AsyncIO Queue Broadcast
-                                    ↓
-                        All Connected Clients
-```
-
-📚 **Full Documentation:** [docs/pr-19-plan-mode.md](docs/pr-19-plan-mode.md)
-
----
-
-### ✅ PR-18: Memory Graph UI (October 2025)
-
-**Interactive visualization of team memory and knowledge**
-
-Explore your team's memory graph with an interactive network visualization, timeline view, and powerful query interface.
-
-#### Key Features
-- **Interactive Graph Visualization** - vis-network powered graph with 3D physics
-- **Timeline View** - Chronological exploration of memories with filtering
-- **Query Interface** - Test semantic/keyword/hybrid searches with live results
-- **Node Details** - Inspect full memory content, metadata, and relationships
-- **Telemetry** - Real-time connection status and performance metrics
-
-📚 **Full Documentation:** [docs/pr-18-memory-graph.md](docs/pr-18-memory-graph.md)
-
----
-
-**Next up:** PR-15 (Retrieval-Augmented Context Pack) will auto-attach top-k memory hits to coding tasks!
+- **Live Plan Mode**: Real-time collaborative planning with SSE updates, step tracking, and memory graph archiving.
+- **Memory Graph UI**: Interactive graph and timeline views with rich node inspection and search tooling.
 
 ---
 
@@ -1898,4 +1825,3 @@ npm run test:e2e -- plan-resume.spec.ts
 ---
 
 **Copyright © 2025 NavraLabs, Inc. All rights reserved.**
-

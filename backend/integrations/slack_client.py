@@ -5,7 +5,10 @@ and prepares them for ingestion into NAVI's memory system.
 """
 
 import os
+import asyncio
 from typing import List, Dict, Any, Optional
+
+import httpx
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -40,15 +43,41 @@ class SlackClient:
         Returns:
             List of channel dictionaries with id, name, and metadata
         """
+        return self.list_conversations(types="public_channel,private_channel")
+
+    def list_direct_messages(self) -> List[Dict[str, Any]]:
+        """
+        List IM/MPIM conversations the token can access.
+        """
+        return self.list_conversations(types="im,mpim")
+
+    def list_conversations(self, types: str) -> List[Dict[str, Any]]:
+        """
+        List conversations by Slack API type string.
+
+        Args:
+            types: Comma-separated Slack conversation types.
+        """
+        channels: List[Dict[str, Any]] = []
+        cursor: Optional[str] = None
         try:
-            res = self.client.conversations_list(
-                exclude_archived=True, types="public_channel,private_channel"
-            )
-            channels = res.get("channels", [])
-            logger.info("Listed Slack channels", count=len(channels))
+            while True:
+                res = self.client.conversations_list(
+                    exclude_archived=True,
+                    types=types,
+                    limit=200,
+                    cursor=cursor,
+                )
+                channels.extend(res.get("channels", []))
+                cursor = (res.get("response_metadata") or {}).get("next_cursor")
+                if not cursor:
+                    break
+            logger.info("Listed Slack conversations", count=len(channels), types=types)
             return channels
         except SlackApiError as e:
-            logger.error("Failed to list Slack channels", error=e.response["error"])
+            logger.error(
+                "Failed to list Slack conversations", error=e.response["error"]
+            )
             raise RuntimeError(f"Slack API error: {e.response['error']}")
 
     def fetch_channel_messages(
@@ -218,3 +247,78 @@ class SlackClient:
         except SlackApiError:
             logger.warning("Failed to get channel name", channel_id=channel_id)
             return channel_id
+
+    def auth_test(self) -> Dict[str, Any]:
+        """
+        Validate the current token against Slack.
+
+        Returns the auth.test payload (team_id, user_id, bot_id, etc.).
+        """
+        try:
+            response = self.client.auth_test()
+            return getattr(response, "data", response)
+        except SlackApiError as e:
+            error_code = e.response.get("error", "unknown")
+            logger.error("Slack auth.test failed", error=error_code)
+            raise RuntimeError(f"Slack API error: {error_code}")
+
+    async def post_message(
+        self,
+        channel: str,
+        text: str,
+        thread_ts: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Post a message to Slack.
+
+        This is async-friendly by running the blocking Slack SDK call in a thread.
+        """
+        payload: Dict[str, Any] = {"channel": channel, "text": text}
+        if thread_ts:
+            payload["thread_ts"] = thread_ts
+        if attachments:
+            payload["attachments"] = attachments
+
+        try:
+            response = await asyncio.to_thread(self.client.chat_postMessage, **payload)
+            return getattr(response, "data", response)
+        except SlackApiError as e:
+            error_code = e.response.get("error", "unknown")
+            logger.error("Failed to post Slack message", error=error_code)
+            raise RuntimeError(f"Slack API error: {error_code}")
+
+    async def fetch_file_content(
+        self,
+        file_info: Dict[str, Any],
+        *,
+        max_bytes: int = 200_000,
+    ) -> Optional[str]:
+        """
+        Download a Slack file (if available) and return text content.
+
+        Returns None if file is missing, too large, or download fails.
+        """
+        url = file_info.get("url_private_download") or file_info.get("url_private")
+        if not url:
+            return None
+        size = file_info.get("size")
+        if size and size > max_bytes:
+            logger.info("Skipping Slack file (too large)", size=size)
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(
+                    url,
+                    headers={"Authorization": f"Bearer {self.token}"},
+                )
+            if resp.status_code >= 400:
+                logger.warning(
+                    "Slack file download failed", status=resp.status_code, url=url
+                )
+                return None
+            content = resp.content[:max_bytes]
+            return content.decode("utf-8", errors="ignore").strip()
+        except Exception as exc:
+            logger.warning("Slack file download error", error=str(exc))
+            return None

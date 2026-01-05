@@ -26,24 +26,48 @@ class ConfluenceClient:
         base_url: Optional[str] = None,
         email: Optional[str] = None,
         api_token: Optional[str] = None,
+        access_token: Optional[str] = None,
+        cloud_id: Optional[str] = None,
     ):
+        self.access_token = access_token or os.getenv("AEP_CONFLUENCE_ACCESS_TOKEN", "")
+        self.cloud_id = cloud_id or os.getenv("AEP_CONFLUENCE_CLOUD_ID", "")
         self.base_url = (base_url or os.getenv("AEP_CONFLUENCE_BASE_URL", "")).rstrip(
             "/"
         )
         self.email = email or os.getenv("AEP_CONFLUENCE_EMAIL", "")
         self.api_token = api_token or os.getenv("AEP_CONFLUENCE_API_TOKEN", "")
 
-        if not self.base_url or not self.email or not self.api_token:
-            raise RuntimeError(
-                "ConfluenceClient is not configured. "
-                "Set AEP_CONFLUENCE_BASE_URL, AEP_CONFLUENCE_EMAIL, AEP_CONFLUENCE_API_TOKEN."
+        if self.access_token:
+            if self.cloud_id and (
+                not self.base_url or "atlassian.net" in self.base_url
+            ):
+                self.base_url = (
+                    f"https://api.atlassian.com/ex/confluence/{self.cloud_id}/wiki"
+                )
+            elif self.base_url and not self.base_url.rstrip("/").endswith("/wiki"):
+                self.base_url = f"{self.base_url.rstrip('/')}/wiki"
+            if not self.base_url:
+                raise RuntimeError(
+                    "ConfluenceClient requires base_url or cloud_id for OAuth access."
+                )
+            self.client = httpx.AsyncClient(
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {self.access_token}",
+                },
+                timeout=30.0,
             )
-
-        self.client = httpx.AsyncClient(
-            auth=(self.email, self.api_token),
-            headers={"Accept": "application/json"},
-            timeout=30.0,
-        )
+        else:
+            if not self.base_url or not self.email or not self.api_token:
+                raise RuntimeError(
+                    "ConfluenceClient is not configured. "
+                    "Set AEP_CONFLUENCE_BASE_URL, AEP_CONFLUENCE_EMAIL, AEP_CONFLUENCE_API_TOKEN."
+                )
+            self.client = httpx.AsyncClient(
+                auth=(self.email, self.api_token),
+                headers={"Accept": "application/json"},
+                timeout=30.0,
+            )
 
         logger.info("ConfluenceClient initialized", base_url=self.base_url)
 

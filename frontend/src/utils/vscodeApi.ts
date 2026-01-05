@@ -119,20 +119,4 @@ if (typeof window !== 'undefined') {
 
         listeners.forEach((cb) => cb(data));
     });
-
-    // Optional: make Cmd+C inside the webview behave via the extension clipboard
-    window.addEventListener('copy', (event: ClipboardEvent) => {
-        try {
-            const selection = window.getSelection()?.toString() ?? '';
-            if (!selection.trim()) {
-                return; // nothing selected, let default behavior happen
-            }
-
-            writeClipboard(selection);
-            event.preventDefault();
-        } catch (err) {
-            // eslint-disable-next-line no-console
-            console.error('[vscodeApi] copy handler error', err);
-        }
-    });
 }

@@ -1,6 +1,27 @@
 // src/api/navi/client.ts
 import type { NaviChatMessage, NaviChatResponse } from "../../types/naviChat";
 import { mapChatResponseToNaviChatMessage } from "../../types/naviChat";
+import { ORG, USER_ID } from "../client";
+
+/**
+ * Resolve the backend base URL.
+ * Priority:
+ * 1) Explicit override injected by the VS Code extension/webview
+ * 2) Same-origin (works for local dev + prod)
+ * 3) Legacy localhost fallback for standalone runs
+ */
+export function resolveBackendBase(): string {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const override = typeof window !== "undefined"
+        ? (window as any).__AEP_BACKEND_BASE_URL__
+        : undefined;
+
+    // Prefer VS Code-injected base, then origin, then dev default
+    const base = override || origin || "http://127.0.0.1:8787";
+    const cleaned = base.replace(/\/$/, "");
+    // Ensure we never end up with /api/navi/chat appended
+    return cleaned.replace(/\/api\/navi\/chat$/i, "");
+}
 
 /**
  * Low-level API call to NAVI backend.
@@ -13,8 +34,7 @@ export async function sendNaviChat(
     userText: string,
     extraPayload?: Record<string, any>,
 ): Promise<NaviChatMessage> {
-    // Use the backend base URL from window (set by extension or fallback)
-    const backendBase = (window as any).__AEP_BACKEND_BASE_URL__ || "http://127.0.0.1:8787";
+    const backendBase = resolveBackendBase();
     const url = `${backendBase}/api/navi/chat`;
 
     // Get workspace context from window (set by extension)
@@ -29,7 +49,7 @@ export async function sendNaviChat(
         attachments: extraPayload?.attachments || [],
         workspace: workspace || null,
         workspace_root: workspaceRoot,
-        user_id: extraPayload?.user_id || "default_user",
+        user_id: extraPayload?.user_id || USER_ID,
     };
 
     console.log("[NAVI Client] Sending request:", {
@@ -44,28 +64,41 @@ export async function sendNaviChat(
 
     console.log("[NAVI Client] Full request body JSON:", JSON.stringify(body, null, 2));
 
-    const res = await fetch(url, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-    });
+    try {
+        const res = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Org-Id": ORG,
+            },
+            body: JSON.stringify(body),
+        });
 
-    console.log("[NAVI Client] Response status:", res.status, res.statusText);
+        console.log("[NAVI Client] Response status:", res.status, res.statusText);
 
-    const text = await res.text();
-    console.log("[NAVI Client] Raw response:", text.substring(0, 500));
+        const text = await res.text();
+        console.log("[NAVI Client] Raw response:", text.substring(0, 500));
 
-    if (!res.ok) {
-        throw new Error(
-            `Failed to send NAVI chat: ${res.status} ${res.statusText}\nBody: ${text}`,
-        );
+        if (!res.ok) {
+            throw new Error(
+                `Failed to send NAVI chat: ${res.status} ${res.statusText}\nBody: ${text}`,
+            );
+        }
+
+        const data = JSON.parse(text) as NaviChatResponse;
+        console.log("[NAVI Client] Parsed response:", data);
+
+        // Convert backend response to NaviChatMessage
+        return mapChatResponseToNaviChatMessage(data, "assistant");
+    } catch (err: any) {
+        console.error("[NAVI Client] Request failed:", err);
+        // Graceful fallback so UI still shows a message
+        return {
+            id: `local-error-${Date.now()}`,
+            role: "assistant",
+            content:
+                "I couldn't reach the NAVI backend. Please verify the backend is running and reachable. " +
+                (err?.message ? `Details: ${err.message}` : ""),
+        };
     }
-
-    const data = JSON.parse(text) as NaviChatResponse;
-    console.log("[NAVI Client] Parsed response:", data);
-
-    // Convert backend response to NaviChatMessage
-    return mapChatResponseToNaviChatMessage(data, "assistant");
 }

@@ -3,7 +3,7 @@ set -euo pipefail
 
 CORE=${CORE:-http://localhost:8002}
 
-echo "[SMOKE] Testing PR-9.1: Telemetry & Audit Logging"
+echo "[SMOKE] Testing telemetry and audit logging"
 echo "[SMOKE] Core API: $CORE"
 
 # Test plan generation endpoint
@@ -54,4 +54,4 @@ echo "[SMOKE] Second plan generated successfully"
 echo "[SMOKE] Checking updated metrics..."
 curl -s "$CORE/metrics" | grep 'aep_llm_calls_total' | head -n 5
 
-echo "✅ PR-9.1 telemetry and audit logging smoke test completed successfully"
+echo "✅ Telemetry and audit logging smoke test completed successfully"

@@ -1,0 +1,28 @@
+{
+    "permissions": [
+        "COST_READ",
+        "USAGE_READ",
+        "K8S_READ",
+        "REPO_READ",
+        "REQUEST_APPROVAL",
+        "PROPOSE_ACTIONS"
+    ],
+    "restrictions": {
+        "no_auto_scaling": "Cannot modify auto-scaling policies without approval",
+        "no_instance_termination": "Cannot terminate instances without approval",
+        "no_cost_impacting_mutations": "Cannot make cost-impacting changes without approval",
+        "read_only_by_default": "All operations are read-only unless explicitly approved"
+    },
+    "approval_required_for": [
+        "RESOURCE_SCALING",
+        "INSTANCE_MODIFICATION",
+        "COST_OPTIMIZATION_ACTIONS",
+        "INFRASTRUCTURE_CHANGES"
+    ],
+    "audit_trail": {
+        "log_all_cost_queries": true,
+        "log_all_optimization_proposals": true,
+        "log_all_approved_actions": true,
+        "retention_days": 90
+    }
+}

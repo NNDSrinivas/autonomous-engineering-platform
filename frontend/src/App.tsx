@@ -5,7 +5,8 @@ import { PlansListPage } from './pages/PlansListPage'
 import { PlanView } from './pages/PlanView'
 import ConciergePage from './pages/ConciergePage'
 import { NaviSearchPage } from './pages/NaviSearchPage'
-import NaviRoot from './components/navi/NaviRoot'
+import ExtensionMarketplacePage from './pages/ExtensionMarketplacePage'
+// import NaviRoot from './components/navi/NaviRoot'
 import { WorkspaceProvider } from './context/WorkspaceContext'
 
 function HomePage() {
@@ -51,6 +52,14 @@ function HomePage() {
                   🔍 NAVI RAG Search
                 </Link>
               </li>
+              <li>
+                <Link
+                  to="/extensions"
+                  className="block bg-violet-600 hover:bg-violet-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors text-center"
+                >
+                  🧩 Extension Marketplace
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
@@ -94,6 +103,12 @@ function Layout({ children }: { children: React.ReactNode }) {
               >
                 🔍 NAVI Search
               </Link>
+              <Link
+                to="/extensions"
+                className="text-gray-700 hover:text-violet-600 font-medium transition-colors"
+              >
+                🧩 Extensions
+              </Link>
             </div>
           </div>
         </div>
@@ -109,12 +124,13 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/navi" element={<NaviRoot />} />
+          {/* <Route path="/navi" element={<NaviRoot />} /> */}
           <Route path="/concierge" element={<ConciergePage />} />
           <Route path="/memory/graph" element={<MemoryGraphPage />} />
           <Route path="/plans" element={<PlansListPage />} />
           <Route path="/plan/:id" element={<PlanView />} />
           <Route path="/navi/search" element={<NaviSearchPage />} />
+          <Route path="/extensions" element={<ExtensionMarketplacePage />} />
         </Routes>
       </Layout>
     </WorkspaceProvider>

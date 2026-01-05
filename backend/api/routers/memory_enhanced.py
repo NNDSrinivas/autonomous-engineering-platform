@@ -10,7 +10,7 @@ from datetime import datetime
 import logging
 
 from ...api.deps import get_current_user
-from ...models.user import User
+from ...core.auth.models import User
 
 logger = logging.getLogger(__name__)
 

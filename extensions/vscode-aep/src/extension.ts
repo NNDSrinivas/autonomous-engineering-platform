@@ -28,8 +28,7 @@ import { RepoPatternResolver } from './navi-core/context/RepoPatternResolver';
 import { GenerativeCodeEngine } from './navi-core/generation/GenerativeCodeEngine';
 import { DiagnosticsPerception, DiagnosticCluster } from './navi-core/perception/DiagnosticsPerception';
 import { GenerativeStructuralFixEngine } from './navi-core/fix/GenerativeStructuralFixEngine';
-// NEW: Import shared contracts for intent classification
-import { IntentKind, IntentFamily, getFallbackIntent } from '@navi/contracts';
+import { normalizeIntentKind } from '@aep/navi-contracts';
 import { FixConfidencePolicy } from './navi-core/fix/FixConfidencePolicy';
 import { FixTransactionManager } from './navi-core/fix/FixTransactionManager';
 import { FeaturePlanEngine } from './navi-core/planning/FeaturePlanEngine';
@@ -1263,32 +1262,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
   // Phase 4.1 Step 1.5: Planner Intent Gate
   private isPlannerSupportedIntent(intentKind: string | undefined): boolean {
-    // Use shared contracts for intent validation
-    return intentKind === IntentKind.FIX_DIAGNOSTICS || 
-           intentKind === IntentKind.FIX_BUG ||
-           intentKind === IntentKind.FIX ||
-           // Legacy support
-           intentKind === 'fix_problems' || 
-           intentKind === 'FIX_PROBLEMS';
-  }
-
-  // Phase 4.1 Step 4: Intent Normalization Bridge
+    // Use shared contracts for intent validation - normalize first
+    const normalized = normalizeIntentKind(intentKind);
+    return normalized === 'FIX_PROBLEMS';
+  }  // Phase 4.1 Step 4: Intent Normalization Bridge
   private mapToPlannerIntent(intentKind?: string): "FIX_PROBLEMS" | null {
-    if (!intentKind) return null;
-
-    // Use shared contracts for intent mapping
-    switch (intentKind) {
-      case IntentKind.FIX_DIAGNOSTICS:
-      case IntentKind.FIX_BUG:
-      case IntentKind.FIX:
-      // Legacy support
-      case "fix_debug":
-      case "fix_problems":
-      case "FIX_PROBLEMS":
-        return "FIX_PROBLEMS";
-      default:
-        return null;
-    }
+    // Use shared contracts normalization
+    const normalized = normalizeIntentKind(intentKind);
+    return normalized === 'FIX_PROBLEMS' ? 'FIX_PROBLEMS' : null;
   }
 
   // Generate varied, natural greeting responses

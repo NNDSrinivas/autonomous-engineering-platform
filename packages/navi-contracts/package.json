@@ -1,25 +1,16 @@
 {
-  "name": "@navi/contracts",
-  "version": "1.0.0",
-  "description": "Shared contracts and schemas for NAVI extension and backend",
+  "name": "@aep/navi-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": ["dist"],
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc --watch",
+    "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist"
   },
-  "files": [
-    "dist/**/*"
-  ],
   "devDependencies": {
-    "typescript": "^5.3.0"
-  },
-  "keywords": [
-    "navi",
-    "contracts",
-    "schemas",
-    "types"
-  ],
-  "license": "ISC"
+    "typescript": "^5.0.0"
+  }
 }

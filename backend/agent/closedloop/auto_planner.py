@@ -782,7 +782,6 @@ class AutoPlanner:
         """Plan actions for issue status changes"""
 
         actions = []
-        event.event_data.get("from_status", "")
         to_status = event.event_data.get("to_status", "")
 
         # When issue moves to "In Progress", offer assistance

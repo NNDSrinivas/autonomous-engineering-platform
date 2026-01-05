@@ -776,27 +776,177 @@ class AutoPlanner:
 
         return actions
 
+    def _analyze_status_transition(
+        self, from_status: str, to_status: str
+    ) -> Dict[str, Any]:
+        """Analyze status transition patterns to determine appropriate actions"""
+
+        from_status = from_status.lower().strip()
+        to_status = to_status.lower().strip()
+
+        # Define status categories
+        todo_states = ["open", "new", "to do", "todo", "backlog", "created", ""]
+        in_progress_states = [
+            "in progress",
+            "in-progress",
+            "active",
+            "working",
+            "assigned",
+        ]
+        review_states = ["code review", "review", "peer review", "testing", "qa"]
+        done_states = ["resolved", "done", "closed", "completed", "fixed"]
+        blocked_states = ["blocked", "on hold", "waiting", "paused"]
+
+        transition_analysis = {
+            "from_category": self._categorize_status(
+                from_status,
+                todo_states,
+                in_progress_states,
+                review_states,
+                done_states,
+                blocked_states,
+            ),
+            "to_category": self._categorize_status(
+                to_status,
+                todo_states,
+                in_progress_states,
+                review_states,
+                done_states,
+                blocked_states,
+            ),
+            "from_status": from_status,
+            "to_status": to_status,
+        }
+
+        # Determine transition type
+        if (
+            transition_analysis["from_category"] == "todo"
+            and transition_analysis["to_category"] == "in_progress"
+        ):
+            transition_analysis["type"] = "start_work"
+            transition_analysis["priority_boost"] = True
+            transition_analysis["assistance_level"] = "proactive"
+        elif (
+            transition_analysis["from_category"] == "in_progress"
+            and transition_analysis["to_category"] == "review"
+        ):
+            transition_analysis["type"] = "submit_for_review"
+            transition_analysis["priority_boost"] = False
+            transition_analysis["assistance_level"] = "validation"
+        elif (
+            transition_analysis["from_category"] in ["in_progress", "review"]
+            and transition_analysis["to_category"] == "done"
+        ):
+            transition_analysis["type"] = "completion"
+            transition_analysis["priority_boost"] = False
+            transition_analysis["assistance_level"] = "verification"
+        elif transition_analysis["to_category"] == "blocked":
+            transition_analysis["type"] = "blocked"
+            transition_analysis["priority_boost"] = True
+            transition_analysis["assistance_level"] = "problem_solving"
+        elif transition_analysis["from_category"] == "blocked" and transition_analysis[
+            "to_category"
+        ] in ["todo", "in_progress"]:
+            transition_analysis["type"] = "unblocked"
+            transition_analysis["priority_boost"] = True
+            transition_analysis["assistance_level"] = "momentum_recovery"
+        elif transition_analysis["from_category"] == "done" and transition_analysis[
+            "to_category"
+        ] in ["todo", "in_progress"]:
+            transition_analysis["type"] = "reopened"
+            transition_analysis["priority_boost"] = True
+            transition_analysis["assistance_level"] = "investigation"
+        else:
+            transition_analysis["type"] = "other"
+            transition_analysis["priority_boost"] = False
+            transition_analysis["assistance_level"] = "minimal"
+
+        return transition_analysis
+
+    def _categorize_status(
+        self,
+        status: str,
+        todo_states: List[str],
+        in_progress_states: List[str],
+        review_states: List[str],
+        done_states: List[str],
+        blocked_states: List[str],
+    ) -> str:
+        """Categorize a status into one of the main categories"""
+        if status in todo_states:
+            return "todo"
+        elif status in in_progress_states:
+            return "in_progress"
+        elif status in review_states:
+            return "review"
+        elif status in done_states:
+            return "done"
+        elif status in blocked_states:
+            return "blocked"
+        else:
+            return "unknown"
+
     async def _plan_status_change_actions(
         self, event: ProcessedEvent, context: ResolvedContext
     ) -> List[PlannedAction]:
         """Plan actions for issue status changes"""
 
         actions = []
+        from_status = event.event_data.get("from_status", "")
         to_status = event.event_data.get("to_status", "")
 
-        # When issue moves to "In Progress", offer assistance
-        if to_status.lower() == "in progress":
+        # Analyze the transition for more sophisticated logic
+        transition = self._analyze_status_transition(from_status, to_status)
+
+        # Apply sophisticated transition-based actions
+        if transition.get("type") == "start_work":
+            # Issue transitioning from backlog/new to in progress
+            if (
+                from_status.lower() in ["open", "new", "to do", "backlog", ""]
+                and to_status.lower() == "in progress"
+            ):
+                actions.append(
+                    PlannedAction(
+                        action_type=ActionType.ADD_COMMENT,
+                        priority=ActionPriority.LOW,
+                        safety_level=SafetyLevel.SAFE,
+                        confidence_score=0.6,
+                        context_completeness=context.context_completeness,
+                        historical_success=0.7,
+                        target=context.primary_object.get("key", ""),
+                        parameters={
+                            "comment": "I see you're starting work on this issue. I can help with code analysis, testing, or creating related PRs. Just mention me if you need assistance!",
+                        },
+                        prerequisites=[],
+                        safety_checks=[],
+                        rollback_plan=None,
+                        human_approval_required=False,
+                        escalation_triggers=[],
+                        notification_recipients=[],
+                        estimated_duration=2,
+                        max_retries=1,
+                        timeout_minutes=10,
+                        reasoning="Issue moved to In Progress, offering assistance",
+                        alternatives_considered=["no_action", "wait_for_request"],
+                        risks_identified=["unwanted_interference"],
+                        created_at=datetime.now(timezone.utc),
+                    )
+                )
+
+        # Handle other sophisticated transition types
+        elif transition.get("type") == "submit_for_review":
+            # Issue moved from in progress to review
             actions.append(
                 PlannedAction(
                     action_type=ActionType.ADD_COMMENT,
-                    priority=ActionPriority.LOW,
+                    priority=ActionPriority.MEDIUM,
                     safety_level=SafetyLevel.SAFE,
-                    confidence_score=0.6,
+                    confidence_score=0.7,
                     context_completeness=context.context_completeness,
-                    historical_success=0.7,
+                    historical_success=0.8,
                     target=context.primary_object.get("key", ""),
                     parameters={
-                        "comment": "I see you're starting work on this issue. I can help with code analysis, testing, or creating related PRs. Just mention me if you need assistance!",
+                        "comment": f"Great! I see this issue has moved from '{from_status}' to '{to_status}'. I can help review the implementation or check for any missing requirements.",
                     },
                     prerequisites=[],
                     safety_checks=[],
@@ -804,18 +954,111 @@ class AutoPlanner:
                     human_approval_required=False,
                     escalation_triggers=[],
                     notification_recipients=[],
-                    estimated_duration=2,
+                    estimated_duration=5,
                     max_retries=1,
-                    timeout_minutes=10,
-                    reasoning="Issue moved to In Progress, offering assistance",
-                    alternatives_considered=["no_action", "wait_for_request"],
-                    risks_identified=["unwanted_interference"],
+                    timeout_minutes=15,
+                    reasoning=f"Issue transitioned from {from_status} to {to_status} (review phase)",
+                    alternatives_considered=["wait_for_explicit_request"],
+                    risks_identified=["premature_intervention"],
                     created_at=datetime.now(timezone.utc),
                 )
             )
 
-        # When issue is resolved, verify completion
-        elif to_status.lower() in ["resolved", "done", "closed"]:
+        elif transition.get("type") == "blocked":
+            # Issue moved to blocked status
+            actions.append(
+                PlannedAction(
+                    action_type=ActionType.ADD_COMMENT,
+                    priority=ActionPriority.HIGH,
+                    safety_level=SafetyLevel.SAFE,
+                    confidence_score=0.8,
+                    context_completeness=context.context_completeness,
+                    historical_success=0.7,
+                    target=context.primary_object.get("key", ""),
+                    parameters={
+                        "comment": f"I notice this issue has been marked as blocked (moved from '{from_status}' to '{to_status}'). I can help identify potential solutions or workarounds. What's blocking progress?",
+                    },
+                    prerequisites=[],
+                    safety_checks=[],
+                    rollback_plan=None,
+                    human_approval_required=False,
+                    escalation_triggers=[],
+                    notification_recipients=["assigned_user", "reporter"],
+                    estimated_duration=10,
+                    max_retries=2,
+                    timeout_minutes=20,
+                    reasoning=f"Issue blocked - proactive assistance needed (from {from_status} to {to_status})",
+                    alternatives_considered=[
+                        "wait_for_resolution",
+                        "escalate_immediately",
+                    ],
+                    risks_identified=["unwanted_pressure", "premature_solutions"],
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+
+        elif transition.get("type") == "unblocked":
+            # Issue unblocked and moving back to work
+            actions.append(
+                PlannedAction(
+                    action_type=ActionType.ADD_COMMENT,
+                    priority=ActionPriority.MEDIUM,
+                    safety_level=SafetyLevel.SAFE,
+                    confidence_score=0.7,
+                    context_completeness=context.context_completeness,
+                    historical_success=0.8,
+                    target=context.primary_object.get("key", ""),
+                    parameters={
+                        "comment": f"Excellent! I see the blocker has been resolved and this issue is back in progress (moved from '{from_status}' to '{to_status}'). Let me know if you need help getting back up to speed!",
+                    },
+                    prerequisites=[],
+                    safety_checks=[],
+                    rollback_plan=None,
+                    human_approval_required=False,
+                    escalation_triggers=[],
+                    notification_recipients=[],
+                    estimated_duration=3,
+                    max_retries=1,
+                    timeout_minutes=10,
+                    reasoning=f"Issue unblocked - momentum recovery support (from {from_status} to {to_status})",
+                    alternatives_considered=["no_action"],
+                    risks_identified=["minimal"],
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+
+        elif transition.get("type") == "reopened":
+            # Issue reopened from done state
+            actions.append(
+                PlannedAction(
+                    action_type=ActionType.ADD_COMMENT,
+                    priority=ActionPriority.HIGH,
+                    safety_level=SafetyLevel.SAFE,
+                    confidence_score=0.8,
+                    context_completeness=context.context_completeness,
+                    historical_success=0.7,
+                    target=context.primary_object.get("key", ""),
+                    parameters={
+                        "comment": f"I notice this issue has been reopened (moved from '{from_status}' to '{to_status}'). I can help investigate what caused the regression or what additional work is needed.",
+                    },
+                    prerequisites=[],
+                    safety_checks=[],
+                    rollback_plan=None,
+                    human_approval_required=False,
+                    escalation_triggers=[],
+                    notification_recipients=["original_resolver", "reporter"],
+                    estimated_duration=15,
+                    max_retries=1,
+                    timeout_minutes=30,
+                    reasoning=f"Issue reopened - investigation needed (from {from_status} to {to_status})",
+                    alternatives_considered=["wait_for_details"],
+                    risks_identified=["assumptions_about_cause"],
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+
+        # When issue moves to "Done"/"Resolved"/"Closed", verify completion with context awareness
+        elif transition.get("type") == "completion":
             actions.append(
                 PlannedAction(
                     action_type=ActionType.GATHER_MORE_CONTEXT,

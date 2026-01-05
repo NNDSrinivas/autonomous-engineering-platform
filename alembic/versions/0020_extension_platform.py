@@ -133,7 +133,6 @@ def upgrade():
             "id",
             sa.String(36),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
             comment="Installation ID",
         ),
         sa.Column(

@@ -22,12 +22,32 @@ export function normalizeIntentKind(input: string | undefined | null): IntentKin
   if (v === "fix_problems") return IntentKind.FIX_PROBLEMS;
   if (v === "analyze_project") return IntentKind.ANALYZE_PROJECT;
   if (v === "deploy") return IntentKind.DEPLOY;
+  if (v === "clarify") return IntentKind.CLARIFY;
   if (v === "general_chat" || v === "general_question") return IntentKind.GENERAL_CHAT;
 
   // heuristic mapping (Phase 4.2 grounding starter)
-  if (v.includes("fix") || v.includes("error") || v.includes("problem") || v.includes("bug")) return IntentKind.FIX_PROBLEMS;
-  if (v.includes("analy") || v.includes("explain project") || v.includes("repo")) return IntentKind.ANALYZE_PROJECT;
-  if (v.includes("deploy") || v.includes("release") || v.includes("ship")) return IntentKind.DEPLOY;
+  // For overlapping keywords, return the intent for whichever keyword appears first
+  const patterns = [
+    { keywords: ["fix", "error", "problem", "bug"], intent: IntentKind.FIX_PROBLEMS },
+    { keywords: ["analy", "explain project", "repo"], intent: IntentKind.ANALYZE_PROJECT },
+    { keywords: ["deploy", "release", "ship"], intent: IntentKind.DEPLOY },
+    { keywords: ["clarif", "explain", "what"], intent: IntentKind.CLARIFY }
+  ];
+
+  let earliestMatch: { position: number; intent: IntentKind } = { position: v.length, intent: IntentKind.GENERAL_CHAT };
+  
+  for (const pattern of patterns) {
+    for (const keyword of pattern.keywords) {
+      const position = v.indexOf(keyword);
+      if (position !== -1 && position < earliestMatch.position) {
+        earliestMatch = { position, intent: pattern.intent };
+      }
+    }
+  }
+  
+  if (earliestMatch.position < v.length) {
+    return earliestMatch.intent;
+  }
 
   // default
   return IntentKind.GENERAL_CHAT;

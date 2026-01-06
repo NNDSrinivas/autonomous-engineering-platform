@@ -1265,7 +1265,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     // Use shared contracts for intent validation - normalize first
     const normalized = normalizeIntentKind(intentKind);
     return normalized === 'FIX_PROBLEMS';
-  }  // Phase 4.1 Step 4: Intent Normalization Bridge
+  }
+
+  // Phase 4.1 Step 4: Intent Normalization Bridge
   private mapToPlannerIntent(intentKind?: string): "FIX_PROBLEMS" | null {
     // Use shared contracts normalization
     const normalized = normalizeIntentKind(intentKind);

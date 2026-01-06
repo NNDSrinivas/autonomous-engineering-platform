@@ -938,8 +938,9 @@ class NaviWebviewProvider {
     isPlannerSupportedIntent(intentKind) {
         // Use shared contracts for intent validation - normalize first
         const normalized = (0, navi_contracts_1.normalizeIntentKind)(intentKind);
-        return normalized === 'FIX_PROBLEMS';
-    } // Phase 4.1 Step 4: Intent Normalization Bridge
+        return normalized === navi_contracts_1.IntentKind.FIX_PROBLEMS;
+    }
+    // Phase 4.1 Step 4: Intent Normalization Bridge
     mapToPlannerIntent(intentKind) {
         // Use shared contracts normalization
         const normalized = (0, navi_contracts_1.normalizeIntentKind)(intentKind);

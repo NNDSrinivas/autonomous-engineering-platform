@@ -27,9 +27,11 @@ export function normalizeIntentKind(input: string | undefined | null): IntentKin
 
   // heuristic mapping (Phase 4.2 grounding starter)
   // For overlapping keywords, return the intent for whichever keyword appears first
+  // Check phrase patterns first (more specific), then word patterns
   const patterns = [
+    { keywords: ["explain project"], intent: IntentKind.ANALYZE_PROJECT }, // phrase patterns first
     { keywords: ["fix", "error", "problem", "bug"], intent: IntentKind.FIX_PROBLEMS },
-    { keywords: ["analy", "explain project", "repo"], intent: IntentKind.ANALYZE_PROJECT },
+    { keywords: ["analy", "repo"], intent: IntentKind.ANALYZE_PROJECT },
     { keywords: ["deploy", "release", "ship"], intent: IntentKind.DEPLOY },
     { keywords: ["clarif", "explain", "what"], intent: IntentKind.CLARIFY }
   ];
@@ -39,7 +41,7 @@ export function normalizeIntentKind(input: string | undefined | null): IntentKin
     intent: IntentKind.GENERAL_CHAT,
     keywordLength: 0
   };
-  
+
   for (const pattern of patterns) {
     for (const keyword of pattern.keywords) {
       const position = v.indexOf(keyword);
@@ -52,7 +54,7 @@ export function normalizeIntentKind(input: string | undefined | null): IntentKin
       }
     }
   }
-  
+
   if (earliestMatch.position < v.length) {
     return earliestMatch.intent;
   }

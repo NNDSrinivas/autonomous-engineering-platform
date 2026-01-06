@@ -28,7 +28,7 @@ import { RepoPatternResolver } from './navi-core/context/RepoPatternResolver';
 import { GenerativeCodeEngine } from './navi-core/generation/GenerativeCodeEngine';
 import { DiagnosticsPerception, DiagnosticCluster } from './navi-core/perception/DiagnosticsPerception';
 import { GenerativeStructuralFixEngine } from './navi-core/fix/GenerativeStructuralFixEngine';
-import { normalizeIntentKind } from '@aep/navi-contracts';
+import { normalizeIntentKind, IntentKind } from '@aep/navi-contracts';
 import { FixConfidencePolicy } from './navi-core/fix/FixConfidencePolicy';
 import { FixTransactionManager } from './navi-core/fix/FixTransactionManager';
 import { FeaturePlanEngine } from './navi-core/planning/FeaturePlanEngine';
@@ -1264,7 +1264,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private isPlannerSupportedIntent(intentKind: string | undefined): boolean {
     // Use shared contracts for intent validation - normalize first
     const normalized = normalizeIntentKind(intentKind);
-    return normalized === 'FIX_PROBLEMS';
+    return normalized === IntentKind.FIX_PROBLEMS;
   }
 
   // Phase 4.1 Step 4: Intent Normalization Bridge

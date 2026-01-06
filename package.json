@@ -3,9 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "description": "Autonomous Engineering Intelligence Platform - E2E Tests",
+  "workspaces": [
+    "packages/*",
+    "frontend",
+    "extensions/vscode-aep",
+    "extensions/vscode-aep/webview"
+  ],
   "scripts": {
     "install:all": "npm install && npm install --prefix frontend && npm install --prefix extensions/vscode-aep && npm install --prefix extensions/vscode-aep/webview",
-    "build": "npm run build --prefix frontend && npm run build --prefix extensions/vscode-aep/webview && npm run compile --prefix extensions/vscode-aep",
+    "build": "npm run build --prefix packages/navi-contracts && npm run build --prefix frontend && npm run build --prefix extensions/vscode-aep/webview && npm run compile --prefix extensions/vscode-aep",
     "dev": "echo 'run package-level dev scripts: e.g., npm run dev --prefix frontend'",
     "lint": "echo 'root lint: add package-level lint when ready'",
     "typecheck": "echo 'root typecheck: add package-level checks when ready'",

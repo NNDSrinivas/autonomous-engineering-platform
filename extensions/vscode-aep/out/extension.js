@@ -25,6 +25,7 @@ const RepoPatternResolver_1 = require("./navi-core/context/RepoPatternResolver")
 const GenerativeCodeEngine_1 = require("./navi-core/generation/GenerativeCodeEngine");
 const DiagnosticsPerception_1 = require("./navi-core/perception/DiagnosticsPerception");
 const GenerativeStructuralFixEngine_1 = require("./navi-core/fix/GenerativeStructuralFixEngine");
+const navi_contracts_1 = require("@aep/navi-contracts");
 const FixConfidencePolicy_1 = require("./navi-core/fix/FixConfidencePolicy");
 const FixTransactionManager_1 = require("./navi-core/fix/FixTransactionManager");
 const FeaturePlanEngine_1 = require("./navi-core/planning/FeaturePlanEngine");
@@ -935,21 +936,15 @@ class NaviWebviewProvider {
     }
     // Phase 4.1 Step 1.5: Planner Intent Gate
     isPlannerSupportedIntent(intentKind) {
-        // Only FIX_PROBLEMS is supported in Phase 4.1 Step 1
-        return intentKind === 'fix_problems' || intentKind === 'FIX_PROBLEMS';
+        // Use shared contracts for intent validation - normalize first
+        const normalized = (0, navi_contracts_1.normalizeIntentKind)(intentKind);
+        return normalized === navi_contracts_1.IntentKind.FIX_PROBLEMS;
     }
     // Phase 4.1 Step 4: Intent Normalization Bridge
     mapToPlannerIntent(intentKind) {
-        if (!intentKind)
-            return null;
-        switch (intentKind) {
-            case "fix_debug":
-            case "fix_problems":
-            case "FIX_PROBLEMS":
-                return "FIX_PROBLEMS";
-            default:
-                return null;
-        }
+        // Use shared contracts normalization
+        const normalized = (0, navi_contracts_1.normalizeIntentKind)(intentKind);
+        return normalized === 'FIX_PROBLEMS' ? 'FIX_PROBLEMS' : null;
     }
     // Generate varied, natural greeting responses
     getRandomGreeting() {

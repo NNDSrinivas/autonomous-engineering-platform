@@ -185,6 +185,7 @@
     "demo-backend": "node demo-backend.js"
   },
   "dependencies": {
+    "@aep/navi-contracts": "0.1.0",
     "@octokit/rest": "^22.0.1",
     "@types/diff": "^8.0.0",
     "diff": "^8.0.2",

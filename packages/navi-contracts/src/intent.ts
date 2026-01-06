@@ -34,13 +34,21 @@ export function normalizeIntentKind(input: string | undefined | null): IntentKin
     { keywords: ["clarif", "explain", "what"], intent: IntentKind.CLARIFY }
   ];
 
-  let earliestMatch: { position: number; intent: IntentKind } = { position: v.length, intent: IntentKind.GENERAL_CHAT };
+  let earliestMatch: { position: number; intent: IntentKind; keywordLength: number } = {
+    position: v.length,
+    intent: IntentKind.GENERAL_CHAT,
+    keywordLength: 0
+  };
   
   for (const pattern of patterns) {
     for (const keyword of pattern.keywords) {
       const position = v.indexOf(keyword);
-      if (position !== -1 && position < earliestMatch.position) {
-        earliestMatch = { position, intent: pattern.intent };
+      if (
+        position !== -1 &&
+        (position < earliestMatch.position ||
+          (position === earliestMatch.position && keyword.length > earliestMatch.keywordLength))
+      ) {
+        earliestMatch = { position, intent: pattern.intent, keywordLength: keyword.length };
       }
     }
   }

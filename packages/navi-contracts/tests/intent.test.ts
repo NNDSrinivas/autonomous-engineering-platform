@@ -93,5 +93,14 @@ describe('normalizeIntentKind', () => {
       // "deploy" should match DEPLOY heuristic first
       expect(normalizeIntentKind('deploy and analyze')).toBe(IntentKind.DEPLOY);
     });
+
+    it('should prioritize longer keywords when at same position', () => {
+      // "explain project" should match ANALYZE_PROJECT (longer match)
+      expect(normalizeIntentKind('explain project structure')).toBe(IntentKind.ANALYZE_PROJECT);
+      // "explain" alone should match CLARIFY
+      expect(normalizeIntentKind('explain how this works')).toBe(IntentKind.CLARIFY);
+      // When both start at same position, longer match wins
+      expect(normalizeIntentKind('explain project and clarify details')).toBe(IntentKind.ANALYZE_PROJECT);
+    });
   });
 });

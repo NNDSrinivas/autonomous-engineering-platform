@@ -14,8 +14,7 @@ from datetime import datetime
 
 # Add the backend to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../"))
-
-from backend.agent.execution_engine.ci import (
+from backend.agent.execution_engine.ci import (  # noqa: E402
     CIEvent,
     CIProvider,
     CILogFetcher,

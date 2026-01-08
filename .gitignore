@@ -97,6 +97,7 @@ extensions/vscode-aep/webview/dist/
 extensions/vscode-aep/webview/node_modules/
 extensions/**/dist/
 extensions/**/out/
+**/*.map
 
 # Frontend Configuration (generated from template + env vars)
 frontend/auth_config.json

@@ -3,7 +3,12 @@ Tests for Live Plan Mode API endpoints
 """
 
 import os
+import pytest
+import uuid
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import sessionmaker
 
+# Set environment variables BEFORE importing backend modules
 os.environ["APP_ENV"] = "test"
 os.environ["DATABASE_URL"] = "sqlite:///./data/test_plan_api.db"
 os.environ["JWT_ENABLED"] = "false"
@@ -11,17 +16,12 @@ os.environ["DEV_USER_ROLE"] = "admin"
 os.environ["DEV_USER_ID"] = "test-user"
 os.environ["DEV_ORG_ID"] = "test-org"
 
-import pytest
-import uuid
-from fastapi.testclient import TestClient
-from backend.api.main import app
-from sqlalchemy.orm import sessionmaker
-
-from backend.core.auth.deps import _get_db_for_auth
-from backend.core.db import Base, get_db, get_engine
-from backend.database.models.live_plan import LivePlan
-import backend.core.db as core_db
-import backend.api.routers.plan as plan_router
+from backend.api.main import app  # noqa: E402
+from backend.core.auth.deps import _get_db_for_auth  # noqa: E402
+from backend.core.db import Base, get_db, get_engine  # noqa: E402
+from backend.database.models.live_plan import LivePlan  # noqa: E402
+import backend.core.db as core_db  # noqa: E402
+import backend.api.routers.plan as plan_router  # noqa: E402
 
 # Use file-based SQLite to keep a shared test database and avoid Postgres dependencies
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]

@@ -15,9 +15,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../../../"))
 # Import only the CI components without the problematic rollback engine
 from backend.agent.execution_engine.ci.ci_types import CIEvent, CIProvider  # noqa: E402
 from backend.agent.execution_engine.ci.ci_log_fetcher import CILogFetcher  # noqa: E402
-from backend.agent.execution_engine.ci.failure_classifier import (
+from backend.agent.execution_engine.ci.failure_classifier import (  # noqa: E402
     FailureClassifier,
-)  # noqa: E402
+)
 from backend.agent.execution_engine.ci.failure_mapper import FailureMapper  # noqa: E402
 
 

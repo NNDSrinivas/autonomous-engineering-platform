@@ -16,7 +16,6 @@ from sqlalchemy.orm import sessionmaker, Session
 
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from backend.core.config import settings
 from backend.database.models.memory_graph import MemoryNode, MemoryEdge
 

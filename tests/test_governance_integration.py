@@ -236,7 +236,6 @@ class TestGovernanceIntegration:
             with patch.object(
                 governed_execution_controller, "_execute_with_safety_checks"
             ) as mock_execute:
-
                 # Setup mocks
                 mock_evaluate.return_value = (
                     DecisionType.AUTO,

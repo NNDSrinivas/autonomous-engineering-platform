@@ -174,7 +174,6 @@ class LLMIntentClassifier:
         metadata: Dict[str, Any],
         repo: Optional[RepoTarget],
     ) -> NaviIntent:
-
         # Validate enums
         family = _safe_enum(IntentFamily, data.get("family"))
         kind = _safe_enum(IntentKind, data.get("kind"))

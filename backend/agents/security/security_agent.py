@@ -197,10 +197,10 @@ class SecurityAgent:
                 scan_results["patches"] = patches
 
             # Generate recommendations
-            scan_results["recommendations"] = (
-                await self._generate_security_recommendations(
-                    scan_results["findings"], scan_results["summary"]
-                )
+            scan_results[
+                "recommendations"
+            ] = await self._generate_security_recommendations(
+                scan_results["findings"], scan_results["summary"]
             )
 
             # Calculate scan duration

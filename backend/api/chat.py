@@ -1428,7 +1428,11 @@ async def _handle_task_query(
             status_emoji = (
                 "🔄"
                 if status == "In Progress"
-                else "📝" if status == "To Do" else "✅" if status == "Done" else "📌"
+                else "📝"
+                if status == "To Do"
+                else "✅"
+                if status == "Done"
+                else "📌"
             )
             jira_key = task.get("jira_key", "")
             title = task.get("title", "").replace(f"[Jira] {jira_key}: ", "")

@@ -501,7 +501,6 @@ class DecisionTraceabilitySystem:
         # Get reasoning graph if available
         reasoning_details = None
         if include_reasoning_graph and trace.get("reasoning_session_id"):
-
             # Import here to avoid circular dependency
             from backend.explainability.reasoning_graph import ExplainableAISystem
 

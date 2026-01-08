@@ -392,9 +392,11 @@ class LongHorizonOrchestrator:
         # Restore from checkpoint if specified
         if checkpoint_id:
             try:
-                plan_graph, execution_context, checkpoint_metadata = (
-                    self.checkpoint_engine.restore_checkpoint(checkpoint_id)
-                )
+                (
+                    plan_graph,
+                    execution_context,
+                    checkpoint_metadata,
+                ) = self.checkpoint_engine.restore_checkpoint(checkpoint_id)
 
                 orchestration["plan_graph"] = plan_graph
                 orchestration["current_checkpoint"] = checkpoint_id
@@ -441,10 +443,11 @@ class LongHorizonOrchestrator:
 
             # Check for replanning needs
             if config.enable_adaptive_replanning:
-                needs_replan, replan_context = (
-                    self.adaptive_replanner.evaluate_replan_need(
-                        plan_graph, execution_context
-                    )
+                (
+                    needs_replan,
+                    replan_context,
+                ) = self.adaptive_replanner.evaluate_replan_need(
+                    plan_graph, execution_context
                 )
 
                 if needs_replan:

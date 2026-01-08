@@ -451,7 +451,6 @@ class AutoPlanner:
 
         # If assigned to NAVI/bot, create autonomous work plan
         if assignee and assignee.lower() in ["navi", "bot", "autonomous"]:
-
             # Analyze issue complexity and create implementation plan
             complexity = context.complexity_score
 

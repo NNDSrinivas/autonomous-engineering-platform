@@ -436,7 +436,9 @@ def _analyze_patch_safety(patch: str, original_content: str) -> Dict[str, Any]:
         "estimated_risk": (
             "low"
             if safety_score >= 0.7
-            else "medium" if safety_score >= 0.4 else "high"
+            else "medium"
+            if safety_score >= 0.4
+            else "high"
         ),
     }
 

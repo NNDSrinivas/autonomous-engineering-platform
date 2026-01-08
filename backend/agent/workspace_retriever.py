@@ -403,7 +403,6 @@ async def _analyze_project_info(root: str) -> Dict[str, Any]:
                             elif "angular" in str(pkg.get("dependencies", {})):
                                 project_info["framework"] = "angular"
                     except Exception:
-
                         pass
 
                 break
@@ -425,7 +424,6 @@ async def _analyze_project_info(root: str) -> Dict[str, Any]:
                             project_info["description"] = line
                             break
             except Exception:
-
                 pass
 
         logger.info(f"[WORKSPACE] Project analysis: {project_info}")

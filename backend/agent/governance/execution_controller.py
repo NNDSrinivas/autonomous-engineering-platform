@@ -63,9 +63,9 @@ class GovernedExecutionController(ExecutionController):
         self.rollback_controller = RollbackController(db_session)
 
         # Execution state
-        self.pending_executions: Dict[str, Dict] = (
-            {}
-        )  # approval_id -> execution context
+        self.pending_executions: Dict[
+            str, Dict
+        ] = {}  # approval_id -> execution context
         self.governance_enabled = True
         self.safety_mode = True
 
@@ -104,10 +104,13 @@ class GovernedExecutionController(ExecutionController):
 
             # Check governance (unless bypassed for emergency operations)
             if self.governance_enabled and not bypass_governance:
-                decision, risk_score, reasons, approval_id = (
-                    self.approval_engine.evaluate_action(
-                        action.action_type.value, action_context
-                    )
+                (
+                    decision,
+                    risk_score,
+                    reasons,
+                    approval_id,
+                ) = self.approval_engine.evaluate_action(
+                    action.action_type.value, action_context
                 )
 
                 logger.info(

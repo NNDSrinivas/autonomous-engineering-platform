@@ -120,9 +120,9 @@ class ConversationalMemory(MemoryEntry):
 
     memory_type: MemoryType = MemoryType.CONVERSATIONAL
 
-    preference_key: Optional[str] = (
-        None  # e.g., "language_preference", "naming_convention"
-    )
+    preference_key: Optional[
+        str
+    ] = None  # e.g., "language_preference", "naming_convention"
     preference_value: Optional[str] = None
 
     # How was this learned?

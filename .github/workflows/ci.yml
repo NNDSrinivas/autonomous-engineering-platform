@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: pip install ruff black pytest requests
+      - run: pip install ruff==0.1.6 black==23.9.1 pytest requests
       - name: Lint
         run: ruff check backend/ tests/ *.py && black --check .
       - name: Unit tests (health only for now)

@@ -54,7 +54,7 @@ export const AttachmentChips: React.FC<AttachmentChipsProps> = ({
             {onRemove && (
               <button
                 type="button"
-                className="navi-attachment-chip-close"
+                className="navi-chat-attachment-remove"
                 onClick={() => onRemove(index)}
                 title="Remove attachment"
                 data-testid="remove-attachment-btn"

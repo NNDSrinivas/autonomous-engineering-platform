@@ -6073,7 +6073,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const targetUrl = `${this.getBackendBaseUrl()}/api/navi/chat`;
 
       const controller = new AbortController();
-      const timeoutMs = 300000; // 5 minutes - large workspace indexing can take time
+      const timeoutMs = 60000; // 60 seconds - reasonable for most operations
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       // Get the last bot message state for autonomous coding continuity

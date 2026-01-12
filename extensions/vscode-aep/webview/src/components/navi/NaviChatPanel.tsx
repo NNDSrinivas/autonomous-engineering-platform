@@ -1039,10 +1039,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           fetchAutonomousSteps(msg.state.task_id);
         }
 
-        // If this is a project creation success, open the project in VSCode
-        if (msg.agentRun?.mode === 'project_created' && msg.agentRun?.project_path) {
+        // If this is a project creation success or opening existing, open the project in VSCode
+        if (
+          (msg.agentRun?.mode === 'project_created' || msg.agentRun?.mode === 'open_existing_project') &&
+          msg.agentRun?.project_path
+        ) {
           const projectPath = msg.agentRun.project_path;
-          console.log('[NAVI] Opening new project in VSCode:', projectPath);
+          console.log('[NAVI] Opening project in VSCode:', projectPath);
 
           // Send message to VSCode extension to open the folder
           window.vscode?.postMessage({

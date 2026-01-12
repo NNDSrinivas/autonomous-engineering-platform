@@ -616,6 +616,13 @@ Error: {result.get('error', 'Unknown error')}
 
 Would you like to try a different location or project name?
 """,
+                            state={
+                                "project_creation_failed": True,
+                                "project_name": project_name,
+                                "description": description,
+                                "parent_dir": parent_dir,
+                                "error": result.get("error", "Unknown error"),
+                            },
                             suggestions=[
                                 "Try different location",
                                 "Change project name",
@@ -996,30 +1003,83 @@ Would you like to try again with different settings?
                 logger.error(f"Error executing autonomous step: {e}")
                 # Fall through to normal chat handling
 
-        # 🏗️ CHECK FOR FOLLOW-UP REQUESTS ON RECENTLY CREATED PROJECT
-        if request.state and request.state.get("recent_project"):
-            recent_project = request.state["recent_project"]
+        # 🏗️ CHECK FOR FOLLOW-UP REQUESTS ON RECENTLY CREATED PROJECT OR FAILED PROJECT
+        if request.state and (
+            request.state.get("recent_project")
+            or request.state.get("project_creation_failed")
+        ):
+            # Handle failed project creation - user might want to open existing or try again
+            if request.state.get("project_creation_failed"):
+                failed_project_name = request.state.get("project_name", "")
+                parent_dir = request.state.get("parent_dir", "")
 
-            # Check if this is a casual acknowledgment (should maintain context)
-            casual_acknowledgments = [
-                "sure",
-                "ok",
-                "okay",
-                "thanks",
-                "thank you",
-                "great",
-                "cool",
-                "nice",
-            ]
-            is_casual = (
-                any(ack in message_lower for ack in casual_acknowledgments)
-                and len(message.split()) <= 3
-            )
+                # Check if user wants to open the existing project
+                open_keywords = ["open", "show", "navigate", "go to", "switch to"]
+                wants_to_open = any(kw in message_lower for kw in open_keywords)
 
-            if is_casual:
-                # User is just acknowledging - maintain context and ask what's next
-                return ChatResponse(
-                    content=f"""Great! Your project **{recent_project['name']}** is ready at `{recent_project['path']}`.
+                if wants_to_open and failed_project_name:
+                    # User wants to open the existing project
+                    project_path = os.path.join(parent_dir, failed_project_name)
+                    if os.path.exists(project_path):
+                        return ChatResponse(
+                            content=f"""I'll open the existing project **{failed_project_name}** for you.
+
+📁 **Location**: `{project_path}`
+
+Opening in a new VSCode window...""",
+                            agentRun={
+                                "mode": "open_existing_project",
+                                "project_path": project_path,
+                            },
+                            state={
+                                "recent_project": {
+                                    "path": project_path,
+                                    "name": failed_project_name,
+                                    "type": "existing",
+                                    "description": request.state.get("description", ""),
+                                },
+                                "context": "opened_existing",
+                            },
+                            suggestions=[
+                                "Add features",
+                                "Review project",
+                                "Done",
+                            ],
+                        )
+                    else:
+                        return ChatResponse(
+                            content=f"""❌ Project not found at `{project_path}`.
+
+Would you like to create it at a different location?""",
+                            state=request.state,  # Keep the failure state
+                            suggestions=["Try different location", "Cancel"],
+                        )
+
+            recent_project = request.state.get("recent_project")
+            if not recent_project:
+                # No recent project context, continue
+                pass
+            else:
+                # Check if this is a casual acknowledgment (should maintain context)
+                casual_acknowledgments = [
+                    "sure",
+                    "ok",
+                    "okay",
+                    "thanks",
+                    "thank you",
+                    "great",
+                    "cool",
+                    "nice",
+                ]
+                is_casual = (
+                    any(ack in message_lower for ack in casual_acknowledgments)
+                    and len(message.split()) <= 3
+                )
+
+                if is_casual:
+                    # User is just acknowledging - maintain context and ask what's next
+                    return ChatResponse(
+                        content=f"""Great! Your project **{recent_project['name']}** is ready at `{recent_project['path']}`.
 
 What would you like to do next? I can help you:
 - Add specific files or features to the project
@@ -1029,39 +1089,41 @@ What would you like to do next? I can help you:
 - Or start working on something else
 
 What would you like to work on?""",
-                    state={
-                        "recent_project": recent_project,
-                        "context": "project_created",
-                    },
-                    suggestions=[
-                        "Add a homepage",
-                        "Install dependencies",
-                        "Configure settings",
-                        "Start new task",
-                    ],
+                        state={
+                            "recent_project": recent_project,
+                            "context": "project_created",
+                        },
+                        suggestions=[
+                            "Add a homepage",
+                            "Install dependencies",
+                            "Configure settings",
+                            "Start new task",
+                        ],
+                    )
+
+                # Check for modification requests
+                modification_keywords = [
+                    "add",
+                    "install",
+                    "create",
+                    "setup",
+                    "configure",
+                    "modify",
+                    "change",
+                    "update",
+                ]
+                is_modification = any(
+                    kw in message_lower for kw in modification_keywords
                 )
 
-            # Check for modification requests
-            modification_keywords = [
-                "add",
-                "install",
-                "create",
-                "setup",
-                "configure",
-                "modify",
-                "change",
-                "update",
-            ]
-            is_modification = any(kw in message_lower for kw in modification_keywords)
-
-            if is_modification:
-                # User wants to modify the recently created project
-                # Set workspace_root to the new project path so autonomous coding can work
-                workspace_root = recent_project["path"]
-                logger.info(
-                    f"[NAVI] Detected follow-up request for project {recent_project['name']} at {workspace_root}"
-                )
-                # Continue to autonomous coding detection below
+                if is_modification:
+                    # User wants to modify the recently created project
+                    # Set workspace_root to the new project path so autonomous coding can work
+                    workspace_root = recent_project["path"]
+                    logger.info(
+                        f"[NAVI] Detected follow-up request for project {recent_project['name']} at {workspace_root}"
+                    )
+                    # Continue to autonomous coding detection below
 
         # Check if this is a code analysis request (include common error/bug wording + typos)
         code_analysis_keywords = [

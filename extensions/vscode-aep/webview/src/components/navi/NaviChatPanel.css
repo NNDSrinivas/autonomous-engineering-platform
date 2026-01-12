@@ -700,13 +700,6 @@
   margin-bottom: 8px;
 }
 
-.navi-quick-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
 .navi-quick-action-btn {
   display: inline-flex;
   align-items: center;

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import os
 import threading
 from contextlib import asynccontextmanager
 from typing import Any
@@ -62,6 +63,11 @@ from .routers.audit import router as audit_router
 from .change import router as change_router
 from .chat import router as chat_router
 from .chat import navi_router as navi_chat_router  # Diff-aware Navi chat
+from .routers.autonomous_coding import (
+    router as autonomous_coding_router,
+)  # Project scaffolding + autonomous coding
+
+# TEMPORARILY DISABLED FOR DEBUGGING - THESE IMPORTS ARE HANGING
 from .navi import router as navi_router  # PR-5B/PR-6: NAVI extension endpoint
 from .navi import agent_router as navi_agent_router  # Agent classification endpoint
 from .org_sync import router as org_sync_router  # Step 2: Jira/Confluence memory sync
@@ -99,14 +105,9 @@ from .review_stream import router as review_stream_router  # SSE streaming for r
 from .real_review_stream import (
     router as real_review_stream_router,
 )  # Real git-based review streaming
-from .test_real_review import (
-    router as test_real_review_router,
-)  # Test real review service
 from .comprehensive_review import (
     router as comprehensive_review_router,
 )  # Advanced comprehensive analysis
-from .debug_navi import router as debug_navi_router  # Debug NAVI analysis
-from .simple_navi_test import router as simple_navi_test_router  # Simple NAVI test
 from .navi_analyze import (
     router as navi_analyze_router,
 )  # Phase 4.2: Task grounding for FIX_PROBLEMS
@@ -117,9 +118,6 @@ from .governance import (
     router as governance_router,
 )  # Phase 5.1: Human-in-the-Loop Governance
 from ..ci_api import router as ci_api_router  # CI Failure Analysis API
-from .autonomous_navi import (
-    router as autonomous_navi_router,
-)  # Autonomous coding integration
 
 # VS Code Extension API endpoints
 from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
@@ -140,7 +138,8 @@ from .routers.docs_webhook import router as docs_webhook_router
 from .routers.ci_webhook import router as ci_webhook_router
 from .routers.zoom_webhook import router as zoom_webhook_router
 from .routers.meet_webhook import router as meet_webhook_router
-from .routers.navi_chat_enhanced import router as navi_chat_enhanced_router
+
+# Removed: navi_chat_enhanced_router - unused duplicate of chat.py navi_router
 from .routers.memory_enhanced import router as memory_enhanced_router
 
 # from .refactor_stream_api import router as refactor_stream_router  # Batch 8 Part 4: SSE Live Refactor Streaming - TODO: Implement
@@ -162,7 +161,7 @@ async def lifespan(app: FastAPI):
     presence_lifecycle.start_cleanup_thread()
     yield
     # Shutdown: cleanup background services
-    presence_lifecycle.stop_cleanup_thread()
+    # presence_lifecycle.stop_cleanup_thread()
     try:
         result = on_shutdown()  # PR-29: Graceful shutdown
         if inspect.iscoroutine(result):
@@ -374,18 +373,21 @@ app.include_router(deliver_router)
 app.include_router(policy_router)
 app.include_router(change_router)
 app.include_router(chat_router)  # Enhanced conversational interface
-app.include_router(navi_chat_router)  # Diff-aware Navi chat (/api/navi/chat)
-app.include_router(
-    navi_chat_enhanced_router
-)  # Enhanced NAVI chat with multi-LLM support
+app.include_router(navi_chat_router)  # Diff-aware Navi chat (/api/navi/chat) - ACTIVE
+app.include_router(autonomous_coding_router)  # Autonomous coding + project scaffolding
+# Removed: navi_chat_enhanced_router - unused duplicate
 app.include_router(
     memory_enhanced_router
 )  # Enhanced memory management from code-companion
-app.include_router(navi_router)  # PR-5B/PR-6: NAVI VS Code extension
+app.include_router(
+    navi_router, prefix="/api/navi"
+)  # PR-5B/PR-6: NAVI VS Code extension
 app.include_router(navi_analyze_router)  # Phase 4.2: Task grounding for FIX_PROBLEMS
 app.include_router(navi_multirepo_router)  # Phase 4.8: Multi-repository intelligence
 app.include_router(governance_router)  # Phase 5.1: Human-in-the-Loop Governance
-app.include_router(navi_agent_router)  # Agent classification endpoint
+app.include_router(
+    navi_agent_router, prefix="/api/navi/agent"
+)  # Agent classification endpoint
 app.include_router(org_sync_router)  # Step 2: Jira/Confluence memory integration
 app.include_router(navi_search_router)  # Step 3: Unified RAG search
 app.include_router(github_actions_router)  # GitHub PR actions
@@ -407,9 +409,9 @@ app.include_router(tools_api_router)  # NAVI tools execution API
 app.include_router(
     apply_fix_router
 )  # Batch 6: Auto-Fix Engine with AI patch generation
-app.include_router(
-    autonomous_navi_router, prefix="/api"
-)  # Autonomous coding integration
+# app.include_router(
+#     autonomous_navi_router, prefix="/api"
+# )  # Autonomous coding integration - DISABLED FOR DEBUG (router not imported)
 app.include_router(search_router)
 app.include_router(integrations_ext_router)
 app.include_router(context_pack_router, prefix="/api")
@@ -420,12 +422,15 @@ app.include_router(review_stream_router)  # SSE streaming for code reviews
 app.include_router(
     real_review_stream_router, prefix="/api"
 )  # Real git-based review streaming
-app.include_router(test_real_review_router, prefix="/api")  # Test real review service
-app.include_router(
-    comprehensive_review_router, prefix="/api"
-)  # Advanced comprehensive analysis
-app.include_router(debug_navi_router, prefix="/api")  # Debug NAVI analysis
-app.include_router(simple_navi_test_router, prefix="/api")  # Simple NAVI test
+# Test and debug endpoints - only enabled in development
+if (
+    os.getenv("DEBUG", "false").lower() == "true"
+    or os.getenv("ENABLE_TEST_ENDPOINTS", "false").lower() == "true"
+):
+    app.include_router(
+        comprehensive_review_router, prefix="/api"
+    )  # Advanced comprehensive analysis
+    logger.info("Test and debug endpoints enabled")
 # app.include_router(refactor_stream_router)  # Batch 8 Part 4: SSE Live Refactor Streaming - TODO: Implement
 app.include_router(audit_router, prefix="/api")  # Audit and replay endpoints
 app.include_router(jira_webhook_router)  # Jira webhook ingestion

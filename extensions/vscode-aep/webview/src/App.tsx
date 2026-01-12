@@ -1,15 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
+import { WorkspaceProvider } from "./context/WorkspaceContext";
 import { UIProvider, useUIState } from "./state/uiStore";
 import { routeEventToUI } from "./state/eventRouter";
 import { onMessage } from "./utils/vscodeApi";
-import { PanelContainer } from "./components/layout/PanelContainer";
-import { HeaderBar } from "./components/layout/HeaderBar";
-import { ComposerBar } from "./components/layout/ComposerBar";
-import { ActionCard } from "./components/actions/ActionCard";
-import { WorkflowTimeline } from "./components/workflow/WorkflowTimeline";
-import { AgentWorkflowPanel } from "./components/workflow/AgentWorkflowPanel";
-import ChatArea from "./components/chat/ChatArea";
-import { ConnectorsPanel } from "./components/connectors/ConnectorsPanel";
+import { CodeCompanionShell } from "./components/shell/CodeCompanionShell";
 import "./globals.css";
 
 /**
@@ -26,7 +20,6 @@ import "./globals.css";
  */
 function AppContent() {
   const { dispatch } = useUIState();
-  const [connectorsOpen, setConnectorsOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onMessage((event) => {
@@ -36,29 +29,55 @@ function AppContent() {
   }, [dispatch]);
 
   return (
-    <PanelContainer>
-      <HeaderBar onOpenConnectors={() => setConnectorsOpen(true)} />
-
-      {/* Agent workflow panel (only visible when agent is active) */}
-      <AgentWorkflowPanel />
-
-      <ChatArea />
-
-      {/* State-driven workflow components */}
-      <WorkflowTimeline />
-      <ActionCard />
-
-      <ComposerBar />
-
-      <ConnectorsPanel open={connectorsOpen} onClose={() => setConnectorsOpen(false)} />
-    </PanelContainer>
+    <ErrorBoundary>
+      <CodeCompanionShell />
+    </ErrorBoundary>
   );
-} function App() {
+}
+
+function App() {
   return (
     <UIProvider>
-      <AppContent />
+      <WorkspaceProvider>
+        <AppContent />
+      </WorkspaceProvider>
     </UIProvider>
   );
 }
 
 export default App;
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("[NAVI] Webview render error:", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-full w-full items-center justify-center bg-slate-950 text-slate-100">
+          <div className="max-w-lg rounded-xl border border-red-500/40 bg-red-950/40 p-4 text-sm text-red-100">
+            <div className="font-semibold">Webview render error</div>
+            <div className="mt-2 text-red-200">
+              {this.state.error?.message || "Unknown error"}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}

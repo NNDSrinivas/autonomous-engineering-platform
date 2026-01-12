@@ -2,10 +2,14 @@ import { useState, useCallback, useEffect } from 'react';
 import type { ChatMessage, JiraTask } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { getRecommendedModel, type TaskType } from '@/lib/llmRouter';
+import { resolveBackendBase } from '@/api/navi/client';
 
-// Use RAG-enhanced endpoint when authenticated, otherwise fallback to basic chat
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/navi-chat`;
-const RAG_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rag-query`;
+// Use local backend API endpoints
+const BACKEND_BASE = resolveBackendBase();
+const CHAT_URL = `${BACKEND_BASE}/api/navi/chat`;
+const CHAT_STREAM_URL = `${BACKEND_BASE}/api/navi/chat/stream`;
+// IMPORTANT: Disable streaming for autonomous coding to work properly (state/agentRun metadata not supported in streaming yet)
+const USE_STREAMING = false;
 
 export interface LLMModel {
   id: string;
@@ -132,18 +136,10 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
     ];
 
     try {
-      // Use RAG endpoint if authenticated for memory-enhanced responses
-      const { data: { session } } = await supabase.auth.getSession();
-      const useRag = !!session;
-      const endpoint = useRag ? RAG_URL : CHAT_URL;
-      const authHeader = useRag 
-        ? session.access_token 
-        : import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
       // Use override model if provided, otherwise use selected model
       let modelToUse = overrideModel || selectedModel;
       let modelName = '';
-      
+
       if (modelToUse === 'auto/recommended') {
         const recommendation = getRecommendedModel(userMessage);
         modelToUse = recommendation.modelId;
@@ -170,28 +166,49 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
         }
       }
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authHeader}`,
-        },
-        body: JSON.stringify({
-          query: userMessage,
-          messages: conversationMessages,
-          model: modelToUse,
-          mode: chatMode,
-          include_memories: useRag,
-          memory_count: 5,
-          task_context: selectedTask ? {
+      // Get the last bot message state for autonomous coding continuity
+      const lastBotMessage = messages.slice().reverse().find(m => m.role === 'assistant');
+      const previousState = lastBotMessage?.metadata?.state;
+
+      console.log('[NAVI STATE] Last bot message:', lastBotMessage?.content?.substring(0, 50));
+      console.log('[NAVI STATE] Last bot metadata:', lastBotMessage?.metadata);
+      console.log('[NAVI STATE] Previous state:', previousState);
+
+      // Build request body for backend
+      const requestBody = {
+        message: userMessage,
+        conversationHistory: messages.map(m => ({
+          id: m.id,
+          type: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+        })),
+        currentTask: selectedTask ? selectedTask.key : null,
+        teamContext: selectedTask ? {
+          task: {
             key: selectedTask.key,
             title: selectedTask.title,
             description: selectedTask.description,
             status: selectedTask.status,
             acceptanceCriteria: selectedTask.acceptanceCriteria,
-          } : undefined,
-          stream: true,
-        }),
+          }
+        } : null,
+        model: modelToUse,
+        mode: chatMode,
+        // Include previous state for autonomous coding continuity
+        state: previousState || undefined,
+      };
+
+      const endpoint = USE_STREAMING ? CHAT_STREAM_URL : CHAT_URL;
+      console.log('[NAVI] Sending request to:', endpoint);
+      console.log('[NAVI] Request body:', requestBody);
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -199,62 +216,71 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
         throw new Error(errorData.error || `Request failed: ${response.status}`);
       }
 
-      if (!response.body) {
-        throw new Error('No response body');
-      }
+      if (USE_STREAMING) {
+        // Handle SSE streaming
+        if (!response.body) {
+          throw new Error('No response body for streaming');
+        }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let streamDone = false;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-      while (!streamDone) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        let newlineIndex: number;
-        while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
-          let line = buffer.slice(0, newlineIndex);
-          buffer = buffer.slice(newlineIndex + 1);
+          buffer += decoder.decode(value, { stream: true });
 
-          if (line.endsWith('\r')) line = line.slice(0, -1);
-          if (line.startsWith(':') || line.trim() === '') continue;
-          if (!line.startsWith('data: ')) continue;
+          // Process complete lines
+          let newlineIndex: number;
+          while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
 
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === '[DONE]') {
-            streamDone = true;
-            break;
-          }
+            if (!line.trim() || line.startsWith(':')) continue;
+            if (!line.startsWith('data: ')) continue;
 
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) onDelta(content);
-          } catch {
-            buffer = line + '\n' + buffer;
-            break;
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') {
+              onDone({ id: modelToUse, name: modelName });
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                onDelta(parsed.content);
+              } else if (parsed.error) {
+                throw new Error(parsed.error);
+              }
+            } catch (e) {
+              console.warn('[NAVI] Failed to parse SSE data:', data);
+            }
           }
         }
-      }
 
-      if (buffer.trim()) {
-        for (let raw of buffer.split('\n')) {
-          if (!raw || raw.startsWith(':') || raw.trim() === '') continue;
-          if (!raw.startsWith('data: ')) continue;
-          const jsonStr = raw.slice(6).trim();
-          if (jsonStr === '[DONE]') continue;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) onDelta(content);
-          } catch { /* ignore */ }
+        onDone({ id: modelToUse, name: modelName });
+      } else {
+        // Handle non-streaming JSON response
+        const data = await response.json();
+        console.log('[NAVI] Response:', data);
+
+        if (data.content || data.reply) {
+          const content = data.content || data.reply;
+          onDelta(content);
+        } else {
+          throw new Error('No content in response');
         }
-      }
 
-      onDone({ id: modelToUse, name: modelName });
+        // Pass along state and agentRun metadata for autonomous coding
+        const metadata: any = {};
+        if (data.state) metadata.state = data.state;
+        if (data.agentRun) metadata.agentRun = data.agentRun;
+        if (data.suggestions) metadata.suggestions = data.suggestions;
+
+        onDone({ id: modelToUse, name: modelName }, metadata);
+      }
     } catch (error) {
       console.error('[NAVI] Stream error:', error);
       onError(error instanceof Error ? error.message : 'Unknown error');
@@ -296,14 +322,19 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
     await streamChat(
       input,
       updateAssistant,
-      (model) => {
+      (model, metadata?: any) => {
         modelInfo = model;
-        // Update the last assistant message with model info
+        // Update the last assistant message with model info and metadata (state, agentRun, suggestions)
         setMessages(prev => {
           const last = prev[prev.length - 1];
           if (last?.role === 'assistant') {
-            return prev.map((m, i) => i === prev.length - 1 
-              ? { ...m, modelId: model.id, modelName: model.name } 
+            return prev.map((m, i) => i === prev.length - 1
+              ? {
+                  ...m,
+                  modelId: model.id,
+                  modelName: model.name,
+                  metadata: metadata || m.metadata  // Store state/agentRun/suggestions
+                }
               : m
             );
           }

@@ -533,9 +533,9 @@ class DiffGenerator:
         elif self._is_likely_type_error(var_name):
             # Add type declaration
             lines.insert(line_num - 1, f"// TODO: Define type for {var_name}")
-            lines[
-                line_num
-            ] = f"const {var_name}: any = undefined; // Fix: Added declaration"
+            lines[line_num] = (
+                f"const {var_name}: any = undefined; // Fix: Added declaration"
+            )
 
         else:
             # Generic variable declaration

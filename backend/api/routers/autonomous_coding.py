@@ -22,10 +22,22 @@ import calendar
 from backend.core.db import get_db
 from backend.autonomous.enhanced_coding_engine import EnhancedAutonomousCodingEngine
 from backend.core.ai.llm_service import LLMService
-from backend.core.memory_system.vector_store import VectorStore
 from backend.core.settings import settings
 import os
 from pathlib import Path
+
+# Import VectorStore with graceful fallback
+try:
+    from backend.core.memory_system.vector_store import VectorStore
+
+    HAS_VECTOR_STORE = True
+except ImportError:
+    VectorStore = None
+    HAS_VECTOR_STORE = False
+    logger = logging.getLogger(__name__)
+    logger.warning(
+        "VectorStore not available - autonomous coding will work without vector search"
+    )
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/autonomous", tags=["autonomous-coding"])
@@ -99,7 +111,7 @@ def get_coding_engine(
         if workspace_id not in _coding_engines:
             # Initialize with proper dependencies (without db_session)
             llm_service = LLMService()
-            vector_store = VectorStore()  # Placeholder
+            vector_store = VectorStore() if HAS_VECTOR_STORE else None
 
             # Use configurable workspace base path with validation
             workspace_base = getattr(settings, "WORKSPACE_BASE_PATH", "/tmp/workspaces")
@@ -132,7 +144,7 @@ def get_engine_with_session(workspace_id: str, db: Session):
     """Get a new engine instance with request-scoped database session for thread safety"""
     # Create new engine instance for each request to ensure thread safety
     llm_service = LLMService()
-    vector_store = VectorStore()  # Initialize vector store
+    vector_store = VectorStore() if HAS_VECTOR_STORE else None
 
     # Use configurable workspace base path with validation
     workspace_base = getattr(settings, "WORKSPACE_BASE_PATH", "/tmp/workspaces")
@@ -395,6 +407,87 @@ async def health_check(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         return {"status": "unhealthy", "error": "Internal server error"}
+
+
+class CreateProjectRequest(BaseModel):
+    """Request to create a new project"""
+
+    project_name: str
+    description: str
+    parent_directory: str
+    project_type: Optional[str] = None
+    typescript: bool = True
+    git_init: bool = True
+    install_dependencies: bool = True
+
+
+class CreateProjectResponse(BaseModel):
+    """Response from project creation"""
+
+    success: bool
+    project_path: str
+    project_type: str
+    message: str
+    commands_run: List[str]
+    error: Optional[str] = None
+
+
+@router.post("/create-project", response_model=CreateProjectResponse)
+async def create_project(request: CreateProjectRequest):
+    """
+    Create a new project with scaffolding
+
+    This endpoint allows NAVI to create new projects outside the current workspace:
+    - Detects project type from description
+    - Scaffolds using appropriate tools (create-next-app, create-react-app, etc.)
+    - Initializes git repository
+    - Returns path for VSCode to open
+    """
+    from backend.services.project_scaffolder import (
+        ProjectScaffolder,
+        ProjectScaffoldRequest,
+        ProjectType,
+    )
+
+    logger.info(
+        f"Creating project: {request.project_name} in {request.parent_directory}"
+    )
+
+    scaffolder = ProjectScaffolder()
+
+    # Detect project type if not specified
+    if request.project_type:
+        try:
+            project_type = ProjectType[request.project_type.upper().replace("-", "_")]
+        except KeyError:
+            project_type = scaffolder.detect_project_type(request.description)
+    else:
+        project_type = scaffolder.detect_project_type(request.description)
+
+    logger.info(f"Detected project type: {project_type.value}")
+
+    # Create scaffold request
+    scaffold_request = ProjectScaffoldRequest(
+        project_name=request.project_name,
+        project_type=project_type,
+        parent_directory=request.parent_directory,
+        description=request.description,
+        typescript=request.typescript,
+        git_init=request.git_init,
+        install_dependencies=request.install_dependencies,
+    )
+
+    # Scaffold the project
+    result = await scaffolder.scaffold_project(scaffold_request)
+
+    return CreateProjectResponse(
+        success=result.success,
+        project_path=result.project_path,
+        project_type=result.project_type.value,
+        message=result.message,
+        commands_run=result.commands_run,
+        error=result.error,
+    )
 
 
 @router.get("/user-daily-context")

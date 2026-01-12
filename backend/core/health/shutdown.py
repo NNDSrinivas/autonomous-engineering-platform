@@ -4,6 +4,9 @@ import os
 
 async def on_startup():
     # Initialize tenant database on startup
+    print("🚀 Starting backend initialization...")
+
+    # Database initialization - with timeout and error handling
     try:
         from ..tenant_database import init_tenant_database
 
@@ -13,26 +16,37 @@ async def on_startup():
         # Create data directory if it doesn't exist
         if database_url.startswith("sqlite:///"):
             db_path = database_url.replace("sqlite:///", "")
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            if db_path.startswith("./"):
+                os.makedirs(
+                    os.path.dirname(db_path) if os.path.dirname(db_path) else ".",
+                    exist_ok=True,
+                )
 
         init_tenant_database(database_url)
         print(f"✅ Database initialized: {database_url}")
+    except Exception as e:
+        print(f"⚠️ Database initialization warning: {e}")
+        print("⚠️ Continuing without database...")
 
-        # Initialize observability after database is ready
+    # Initialize observability - optional, don't block startup
+    try:
         from ..observability import init_observability
 
         init_observability()
         print("✅ Observability initialized")
+    except Exception as e:
+        print(f"⚠️ Observability initialization skipped: {e}")
 
-        # Initialize extensions after database is ready
+    # Initialize extensions - optional, don't block startup
+    try:
         from ...extensions.runtime import init_extensions
 
         init_extensions()
         print("✅ Extensions initialized")
-
     except Exception as e:
-        print(f"⚠️ Database initialization warning: {e}")
+        print(f"⚠️ Extensions initialization skipped: {e}")
 
+    print("🎉 Backend startup complete!")
     # place for warmups (e.g., compile regex, prime caches) if needed
     return
 

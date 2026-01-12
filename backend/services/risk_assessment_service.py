@@ -534,8 +534,6 @@ class RiskAssessmentService:
                     "💾 Database backup recommended before schema changes"
                 )
             elif "infrastructure" in factor.category:
-                recommendations.append(
-                    "🏗️ Infrastructure changes require DevOps review"
-                )
+                recommendations.append("🏗️ Infrastructure changes require DevOps review")
 
         return list(set(recommendations))  # Remove duplicates

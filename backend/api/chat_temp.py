@@ -1,1 +1,0 @@
-# I'll backup and fix the chat.py file by removing all fake review code

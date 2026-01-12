@@ -4,9 +4,11 @@ Provides context-aware responses with team intelligence + Navi diff review
 """
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from typing import List, Dict, Any, Optional, Tuple
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 import asyncio
 import logging
 import httpx
@@ -21,10 +23,32 @@ from backend.core.settings import settings
 from backend.services.navi_memory_service import (
     search_memory,
     get_recent_memories,
+    store_memory,
 )
 from backend.services.git_service import GitService
+from backend.core.ai.llm_service import LLMService
+from backend.autonomous.enhanced_coding_engine import (
+    TaskType as AutonomousTaskType,
+)
 
 logger = logging.getLogger(__name__)
+
+# Initialize LLM service for chat
+_llm_service: Optional[LLMService] = None
+
+
+def get_llm_service() -> Optional[LLMService]:
+    """Get or initialize LLM service"""
+    global _llm_service
+    if _llm_service is None:
+        try:
+            _llm_service = LLMService()
+            logger.info("LLM service initialized for chat")
+        except Exception as e:
+            logger.warning(f"LLM service unavailable: {e}")
+            return None
+    return _llm_service
+
 
 # ------------------------------------------------------------------------------
 # Routers
@@ -163,6 +187,9 @@ class NaviChatRequest(ChatRequest):
     attachments: List[Attachment] = Field(default_factory=list)
     executionMode: Optional[str] = None  # e.g., plan_propose | plan_and_run (future)
     workspace_root: Optional[str] = None  # Workspace root for reading new file contents
+    state: Optional[Dict[str, Any]] = (
+        None  # State from previous response for autonomous coding continuity
+    )
 
 
 class ChatResponse(BaseModel):
@@ -243,8 +270,84 @@ async def apply_auto_fix(fix_id: str) -> dict:
 
 
 # ------------------------------------------------------------------------------
-# Navi entrypoint: /api/navi/chat
+# Streaming helper for LLM responses
 # ------------------------------------------------------------------------------
+async def stream_llm_response(question: str, context: Dict[str, Any]):
+    """Stream LLM response as Server-Sent Events"""
+    llm_service = get_llm_service()
+
+    if not llm_service:
+        yield f"data: {json.dumps({'error': 'LLM service unavailable'})}\n\n"
+        return
+
+    try:
+        # Use OpenAI streaming
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=llm_service.settings.openai_api_key)
+
+        system_prompt = llm_service._build_engineering_system_prompt(context)
+        user_prompt = llm_service._build_user_prompt(question, context)
+
+        stream = await client.chat.completions.create(
+            model=llm_service.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.7,
+            max_tokens=1500,
+            stream=True,
+        )
+
+        async for chunk in stream:
+            if chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                yield f"data: {json.dumps({'content': content})}\n\n"
+
+        yield "data: [DONE]\n\n"
+
+    except Exception as e:
+        logger.error(f"Streaming error: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+
+# ------------------------------------------------------------------------------
+# Navi entrypoints: /api/navi/chat and /api/navi/chat/stream
+# ------------------------------------------------------------------------------
+@navi_router.post("/chat/stream")
+async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_db)):
+    """Streaming version of navi_chat with SSE"""
+    try:
+        intent = await _analyze_user_intent(request.message)
+        context = await _build_enhanced_context(
+            ChatRequest(
+                message=request.message,
+                conversationHistory=request.conversationHistory,
+                currentTask=request.currentTask,
+                teamContext=request.teamContext,
+            ),
+            intent,
+        )
+
+        return StreamingResponse(
+            stream_llm_response(request.message, context),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    except Exception as stream_error:
+        logger.error(f"Stream initialization error: {stream_error}")
+        error_msg = str(stream_error)
+
+        async def error_stream():
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+
 @navi_router.post("/chat", response_model=ChatResponse)
 async def navi_chat(
     request: NaviChatRequest, db: Session = Depends(get_db)
@@ -257,6 +360,17 @@ async def navi_chat(
       - if code analysis request + workspace -> comprehensive analysis
       - else -> fall back to existing /api/chat/respond behavior
     """
+    # DEBUG: Log incoming request state
+    print(f"\n{'='*80}")
+    print("🔵 CHAT.PY NAVI_CHAT CALLED 🔵")
+    print(f"DEBUG REQUEST - Message: {request.message[:50]}...")
+    print(f"DEBUG REQUEST - Has state: {request.state is not None}")
+    print(f"DEBUG REQUEST - State content: {request.state}")
+    print(f"{'='*80}\n")
+    logger.info(
+        f"🔵 CHAT.PY navi_chat handler called with message: {request.message[:50]}"
+    )
+
     try:
         # Fetch relevant memories to ground the response
         memories: List[Dict[str, Any]] = []
@@ -284,6 +398,670 @@ async def navi_chat(
         message = request.message.strip()
         message_lower = message.lower()
         workspace_root = request.workspace_root
+
+        # 🚀 CHECK FOR NEW PROJECT CREATION
+        # Detect if the user is asking to create a new project
+        # Check for combinations of action verbs + project/website/app keywords
+        action_verbs = ["create", "build", "make", "start", "scaffold"]
+        project_keywords = ["project", "website", "app", "application", "workspace"]
+
+        # Check if message contains any action verb + any project keyword
+        has_action = any(verb in message_lower for verb in action_verbs)
+        has_project_keyword = any(
+            keyword in message_lower for keyword in project_keywords
+        )
+        is_project_creation = has_action and has_project_keyword
+
+        # Also check explicit patterns for higher confidence
+        explicit_patterns = [
+            "new project",
+            "new workspace",
+            "new app",
+            "new application",
+        ]
+        if any(pattern in message_lower for pattern in explicit_patterns):
+            is_project_creation = True
+
+        # Exclude conversational/clarification responses
+        # These are NOT project creation requests
+        clarification_phrases = [
+            "ok please",
+            "okay please",
+            "can you",
+            "could you",
+            "please choose",
+            "choose the",
+            "which one",
+            "what should",
+            "help me choose",
+        ]
+        if any(phrase in message_lower for phrase in clarification_phrases):
+            is_project_creation = False
+            logger.info(
+                f"Message contains clarification phrase, not treating as project creation: {message[:50]}"
+            )
+
+        if is_project_creation:
+            logger.info(f"Detected project creation request: {message}")
+
+            # Simple extraction without LLM - parse project name from message
+            try:
+                # Extract project name by looking for common patterns
+                # e.g., "create the Marketing website" -> "marketing-website"
+                # e.g., "build a blog app" -> "blog-app"
+
+                words = message.lower().split()
+
+                # Find the main subject words (skip common words)
+                skip_words = {
+                    "the",
+                    "a",
+                    "an",
+                    "for",
+                    "to",
+                    "and",
+                    "or",
+                    "of",
+                    "in",
+                    "on",
+                    "at",
+                    "with",
+                }
+                action_verbs_set = set(action_verbs)
+
+                subject_words = []
+                found_action = False
+                for word in words:
+                    clean_word = re.sub(r"[^\w-]", "", word)  # Remove punctuation
+                    if clean_word in action_verbs_set:
+                        found_action = True
+                        continue
+                    if found_action and clean_word and clean_word not in skip_words:
+                        subject_words.append(clean_word)
+
+                # Generate project name (take first 3-4 meaningful words)
+                if subject_words:
+                    project_name = "-".join(subject_words[:4])
+                else:
+                    project_name = "new-project"
+
+                description = message
+                parent_dir = os.path.expanduser("~/dev")
+
+                logger.info(
+                    f"Extracted project_name: {project_name}, description: {description}"
+                )
+
+                # Return a special response asking user to confirm the location
+                return ChatResponse(
+                    content=f"""I'll help you create a new project: **{project_name}**
+
+📁 **Suggested location**: `{parent_dir}/{project_name}`
+
+I'll automatically detect the best tech stack based on your description (Next.js, React, Vue, static HTML, etc.) and set everything up for you.
+
+**Reply "yes" to create it at the suggested location**, or specify a different directory.
+""",
+                    agentRun={
+                        "mode": "project_creation",
+                        "project_name": project_name,
+                        "description": description,
+                        "parent_dir": parent_dir,
+                    },
+                    state={
+                        "project_creation": True,
+                        "project_name": project_name,
+                        "description": description,
+                        "parent_dir": parent_dir,
+                    },
+                    suggestions=["Yes, create it", "Use /different/path", "Cancel"],
+                )
+
+            except Exception as e:
+                logger.error(f"Error extracting project details: {e}", exc_info=True)
+                # Fall through to normal chat handling
+
+        # Check if this is a confirmation for project creation
+        # IMPORTANT: This must be checked BEFORE autonomous coding approval to avoid conflicts
+        if request.state and request.state.get("project_creation"):
+            logger.info(f"Processing project creation confirmation: {message}")
+            project_name = request.state.get("project_name")
+            description = request.state.get("description")
+            parent_dir = request.state.get("parent_dir")
+
+            # Check if user is confirming or providing a different path
+            if message_lower in [
+                "yes",
+                "create it",
+                "proceed",
+                "go ahead",
+                "okay",
+                "ok",
+            ]:
+                # Use the suggested parent directory
+                logger.info(f"User confirmed project creation at: {parent_dir}")
+                pass
+            elif "use " in message_lower:
+                # Extract the path from "use /path/to/dir"
+                path_match = re.search(r"use\s+([~/\w\-/.]+)", message, re.IGNORECASE)
+                if path_match:
+                    parent_dir = os.path.expanduser(path_match.group(1))
+                    logger.info(f"User specified custom parent directory: {parent_dir}")
+            elif os.path.exists(os.path.expanduser(message.strip())):
+                # User provided a direct path
+                parent_dir = os.path.expanduser(message.strip())
+                logger.info(f"User provided direct path: {parent_dir}")
+
+            # Call the project creation API
+            try:
+                import httpx
+
+                # Use port 8787 (the port where the backend is running)
+                backend_url = "http://localhost:8787"
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{backend_url}/api/autonomous/create-project",
+                        json={
+                            "project_name": project_name,
+                            "description": description,
+                            "parent_directory": parent_dir,
+                            "typescript": True,
+                            "git_init": True,
+                            "install_dependencies": True,
+                        },
+                        timeout=300.0,  # 5 minutes for npm install
+                    )
+
+                    result = response.json()
+
+                    if result["success"]:
+                        return ChatResponse(
+                            content=f"""✅ **Project created successfully!**
+
+📁 **Location**: `{result['project_path']}`
+🎯 **Type**: {result['project_type']}
+
+**Commands executed**:
+```bash
+{chr(10).join(result['commands_run'])}
+```
+
+{result['message']}
+
+I'll now open this project in VSCode for you. Once it opens, I can help you customize it further!
+""",
+                            agentRun={
+                                "mode": "project_created",
+                                "project_path": result["project_path"],
+                                "open_in_vscode": True,
+                            },
+                            state={
+                                "recent_project": {
+                                    "path": result["project_path"],
+                                    "name": project_name,
+                                    "type": result["project_type"],
+                                    "description": description,
+                                },
+                                "context": "project_created",
+                            },
+                            suggestions=["Customize project", "Add features", "Done"],
+                        )
+                    else:
+                        return ChatResponse(
+                            content=f"""❌ **Failed to create project**
+
+{result['message']}
+
+Error: {result.get('error', 'Unknown error')}
+
+Would you like to try a different location or project name?
+""",
+                            suggestions=[
+                                "Try different location",
+                                "Change project name",
+                                "Cancel",
+                            ],
+                        )
+
+            except Exception as e:
+                logger.error(f"Error creating project: {e}", exc_info=True)
+                return ChatResponse(
+                    content=f"""❌ **Error creating project**
+
+{str(e)}
+
+Would you like to try again with different settings?
+""",
+                    suggestions=["Try again", "Change location", "Cancel"],
+                )
+
+        # 🤖 CHECK FOR AUTONOMOUS STEP APPROVAL
+        # If the message is a simple approval and there's an active autonomous task in state
+        approval_keywords = [
+            "yes",
+            "proceed",
+            "continue",
+            "go ahead",
+            "approve",
+            "ok",
+            "okay",
+            "sure",
+            "do it",
+        ]
+        is_approval = (
+            any(keyword in message_lower for keyword in approval_keywords)
+            and len(message.split()) <= 5
+        )
+
+        # Check for bulk approval (approve all remaining steps)
+        is_bulk_approval = any(
+            phrase in message_lower
+            for phrase in [
+                "approve all",
+                "all remaining",
+                "approve remaining",
+                "do all",
+                "yes to all",
+            ]
+        )
+
+        logger.error("=== DEBUG APPROVAL ===")
+        logger.error(f"Message: {message}")
+        logger.error(f"is_approval: {is_approval}")
+        logger.error(f"is_bulk_approval: {is_bulk_approval}")
+        logger.error(f"has state: {request.state is not None}")
+        logger.error(f"state content: {request.state}")
+        logger.error("===================")
+        print(
+            f"DEBUG APPROVAL - is_approval: {is_approval}, is_bulk: {is_bulk_approval}, has state: {request.state is not None}, state content: {request.state}"
+        )
+
+        if (
+            (is_approval or is_bulk_approval)
+            and request.state
+            and request.state.get("autonomous_coding")
+        ):
+            logger.error("=== ENTERING EXECUTION BLOCK ===")
+            try:
+                task_id = request.state.get("task_id")
+                current_step_index = request.state.get("current_step", 0)
+                logger.error(f"Task ID: {task_id}, Current Step: {current_step_index}")
+
+                # Use the shared engine instance from autonomous_coding router
+                # Import the shared _coding_engines dict
+                from backend.api.routers.autonomous_coding import _coding_engines
+
+                # Get the shared engine instance that has our tasks
+                workspace_id = request.state.get("workspace_id", "default")
+                coding_engine = _coding_engines.get(workspace_id)
+
+                if not coding_engine:
+                    # Engine not found - fall through to normal chat
+                    logger.warning(
+                        f"Coding engine not found for workspace {workspace_id}"
+                    )
+                    raise ValueError("Engine not available")
+
+                # Get the task from the shared engine
+                task = coding_engine.active_tasks.get(task_id)
+                logger.error(f"Task found: {task is not None}")
+                if task:
+                    logger.error(
+                        f"Task has {len(task.steps)} steps, current step: {current_step_index}"
+                    )
+
+                if task and current_step_index < len(task.steps):
+                    # Check if we should auto-execute all steps (from initial approval)
+                    auto_execute_all = request.state and request.state.get(
+                        "auto_execute_all", False
+                    )
+                    logger.error(f"Auto execute all: {auto_execute_all}")
+
+                    # Determine if we're executing all remaining steps or just one
+                    steps_to_execute = (
+                        range(current_step_index, len(task.steps))
+                        if (is_bulk_approval or auto_execute_all)
+                        else [current_step_index]
+                    )
+
+                    logger.error("=== EXECUTION LOOP STARTING ===")
+                    logger.error(f"Steps to execute: {list(steps_to_execute)}")
+
+                    completed_steps = []
+                    failed_step = None
+
+                    # Build progress message
+                    if len(list(steps_to_execute)) > 1:
+                        progress_msg = f"🚀 **Executing {len(list(steps_to_execute))} steps automatically...**\n\n"
+                    else:
+                        progress_msg = ""
+
+                    logger.error("About to enter for loop...")
+                    for step_index in steps_to_execute:
+                        logger.error(f"=== LOOP ITERATION {step_index + 1} ===")
+                        current_step = task.steps[step_index]
+
+                        # Log progress for user visibility
+                        logger.info(
+                            f"[NAVI PROGRESS] Executing Step {step_index + 1}/{len(task.steps)}: {current_step.description}"
+                        )
+                        logger.info(
+                            f"[NAVI PROGRESS] Working on file: {current_step.file_path}"
+                        )
+
+                        # Add progress info to message
+                        progress_msg += f"⏳ **Step {step_index + 1}/{len(task.steps)}:** {current_step.description}\n"
+                        progress_msg += f"📝 Working on: `{current_step.file_path}`\n\n"
+
+                        # Execute the step
+                        result = await coding_engine.execute_step(
+                            task_id=task_id, step_id=current_step.id, user_approved=True
+                        )
+
+                        if result["status"] == "completed":
+                            completed_steps.append((step_index, current_step, result))
+                        else:
+                            failed_step = (step_index, current_step, result)
+                            break  # Stop on first failure
+
+                    # Build response based on results
+                    if completed_steps and not failed_step:
+                        # All requested steps completed successfully
+                        last_step_index, last_step, last_result = completed_steps[-1]
+                        next_step_index = last_step_index + 1
+
+                        if is_bulk_approval or auto_execute_all:
+                            reply = f"{progress_msg}\n✅ **All steps execution completed!**\n\n"
+                            reply += f"Successfully executed {len(completed_steps)} step{'s' if len(completed_steps) != 1 else ''}:\n"
+                            for idx, step, _ in completed_steps:
+                                # Try to get git diff stats for this file
+                                diff_stats = ""
+                                try:
+                                    import subprocess
+
+                                    result = subprocess.run(
+                                        [
+                                            "git",
+                                            "diff",
+                                            "--numstat",
+                                            "HEAD",
+                                            step.file_path,
+                                        ],
+                                        cwd=workspace_root,
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=2,
+                                    )
+                                    if result.returncode == 0 and result.stdout.strip():
+                                        parts = result.stdout.strip().split()
+                                        if len(parts) >= 2:
+                                            additions = parts[0]
+                                            deletions = parts[1]
+                                            if additions != "-" and deletions != "-":
+                                                diff_stats = f" <span style='color:#22c55e'>+{additions}</span> <span style='color:#ef4444'>-{deletions}</span>"
+                                except Exception:
+                                    pass
+
+                                reply += f"- ✅ Step {idx + 1}: `{step.file_path}`{diff_stats}\n"
+                            reply += "\n"
+                        else:
+                            reply = f"✅ **Step {last_step_index + 1} completed!**\n\n"
+                            reply += f"Changes applied to `{last_step.file_path}`\n\n"
+
+                        if next_step_index < len(task.steps):
+                            # More steps remaining - prompt for next step
+                            next_step = task.steps[next_step_index]
+                            reply += f"**Next: Step {next_step_index + 1}/{len(task.steps)}**\n"
+                            reply += f"{next_step.description}\n"
+                            reply += f"📁 File: `{next_step.file_path}` ({next_step.operation})\n\n"
+                            reply += "Ready to proceed?"
+
+                            return ChatResponse(
+                                content=reply,
+                                agentRun={
+                                    "mode": "autonomous_coding",
+                                    "task_id": task_id,
+                                    "status": "awaiting_approval",
+                                    "current_step": next_step_index,
+                                    "total_steps": len(task.steps),
+                                },
+                                state={
+                                    "autonomous_coding": True,
+                                    "task_id": task_id,
+                                    "workspace": workspace_root,
+                                    "workspace_id": workspace_id,
+                                    "current_step": next_step_index,
+                                    "total_steps": len(task.steps),
+                                },
+                                suggestions=[
+                                    "Yes",
+                                    "Approve all remaining",
+                                    "Skip this step",
+                                    "Cancel",
+                                ],
+                            )
+                        else:
+                            # Task complete! Show detailed summary
+                            reply += progress_msg if progress_msg else ""
+                            reply += "🎉 **All steps completed!**\n\n"
+
+                            # List all files that were modified with git diff stats
+                            reply += "**📝 Files Created/Modified:**\n"
+                            for step in task.steps:
+                                if step.file_path and step.file_path not in (
+                                    "N/A",
+                                    "n/a",
+                                ):
+                                    operation_icon = (
+                                        "📄"
+                                        if step.operation == "create"
+                                        else "✏️" if step.operation == "modify" else "🗑️"
+                                    )
+
+                                    # Try to get git diff stats for this file
+                                    diff_stats = ""
+                                    try:
+                                        import subprocess
+
+                                        result = subprocess.run(
+                                            [
+                                                "git",
+                                                "diff",
+                                                "--numstat",
+                                                "HEAD",
+                                                step.file_path,
+                                            ],
+                                            cwd=workspace_root,
+                                            capture_output=True,
+                                            text=True,
+                                            timeout=2,
+                                        )
+                                        if (
+                                            result.returncode == 0
+                                            and result.stdout.strip()
+                                        ):
+                                            parts = result.stdout.strip().split()
+                                            if len(parts) >= 2:
+                                                additions = parts[0]
+                                                deletions = parts[1]
+                                                if (
+                                                    additions != "-"
+                                                    and deletions != "-"
+                                                ):
+                                                    diff_stats = (
+                                                        f" `+{additions} -{deletions}`"
+                                                    )
+                                    except Exception:
+                                        pass
+
+                                    reply += f"{operation_icon} `{step.file_path}` ({step.operation}){diff_stats}\n"
+                            reply += "\n"
+
+                            # Add implementation summary
+                            reply += "**✨ What Was Implemented:**\n"
+                            reply += f"- {task.title}\n"
+                            reply += f"- Completed {len(task.steps)} step{'s' if len(task.steps) != 1 else ''} successfully\n"
+                            reply += (
+                                "- All changes have been applied to your workspace\n\n"
+                            )
+
+                            # Add testing instructions
+                            reply += "**🧪 How to Test:**\n"
+                            reply += "1. Review the modified files in your editor\n"
+                            reply += "2. Run your application to test the changes\n"
+                            reply += "3. Test the new functionality manually\n"
+                            reply += "4. Run your test suite if available\n\n"
+
+                            # Add next steps
+                            reply += "**🚀 Next Steps:**\n"
+                            reply += "- Review the changes and ensure they meet your requirements\n"
+                            reply += "- Test the implementation thoroughly\n"
+                            reply += "- Commit the changes when ready\n"
+                            reply += "- Create a PR or continue with more changes\n"
+
+                            # Store memory of completed task
+                            try:
+                                files_modified = [
+                                    step.file_path
+                                    for step in task.steps
+                                    if step.file_path
+                                    and step.file_path not in ("N/A", "n/a")
+                                ]
+                                memory_content = (
+                                    f"Implemented: {task.title}\n"
+                                    f"Files modified: {', '.join(files_modified)}\n"
+                                    f"Steps completed: {len(task.steps)}"
+                                )
+                                await store_memory(
+                                    db=db,
+                                    user_id="default_user",
+                                    category="task",
+                                    content=memory_content,
+                                    scope=workspace_root,
+                                    title=f"Completed: {task.title}",
+                                    tags={
+                                        "type": "autonomous_coding",
+                                        "task_id": task_id,
+                                        "files": files_modified,
+                                        "workspace": workspace_root,
+                                    },
+                                    importance=4,
+                                )
+                                logger.info(
+                                    f"[NAVI MEMORY] Stored task completion: {task.title}"
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    f"[NAVI MEMORY] Failed to store memory: {e}"
+                                )
+
+                            return ChatResponse(
+                                content=reply,
+                                suggestions=[
+                                    "Show me the changes",
+                                    "Create PR",
+                                    "Make more changes",
+                                    "Done",
+                                ],
+                            )
+                    elif failed_step:
+                        # A step failed during bulk or single execution
+                        step_index, current_step, result = failed_step
+
+                        if completed_steps:
+                            reply = f"⚠️ **Partial completion: {len(completed_steps)}/{len(steps_to_execute)} steps completed**\n\n"
+                            reply += "Completed steps:\n"
+                            for idx, step, _ in completed_steps:
+                                reply += f"- ✅ Step {idx + 1}: {step.file_path}\n"
+                            reply += f"\n❌ Step {step_index + 1} failed: {result.get('error', 'Unknown error')}\n\n"
+                        else:
+                            reply = f"❌ Step {step_index + 1} failed: {result.get('error', 'Unknown error')}\n\n"
+
+                        reply += "Would you like to retry or skip this step?"
+
+                        return ChatResponse(
+                            content=reply,
+                            state={
+                                "autonomous_coding": True,
+                                "task_id": task_id,
+                                "workspace": workspace_root,
+                                "workspace_id": workspace_id,
+                                "current_step": step_index,  # Keep at failed step
+                                "total_steps": len(task.steps),
+                                "failed_step": step_index,  # Remember which step failed
+                            },
+                            suggestions=["Retry", "Skip", "Cancel"],
+                        )
+            except Exception as e:
+                logger.error(f"Error executing autonomous step: {e}")
+                # Fall through to normal chat handling
+
+        # 🏗️ CHECK FOR FOLLOW-UP REQUESTS ON RECENTLY CREATED PROJECT
+        if request.state and request.state.get("recent_project"):
+            recent_project = request.state["recent_project"]
+
+            # Check if this is a casual acknowledgment (should maintain context)
+            casual_acknowledgments = [
+                "sure",
+                "ok",
+                "okay",
+                "thanks",
+                "thank you",
+                "great",
+                "cool",
+                "nice",
+            ]
+            is_casual = (
+                any(ack in message_lower for ack in casual_acknowledgments)
+                and len(message.split()) <= 3
+            )
+
+            if is_casual:
+                # User is just acknowledging - maintain context and ask what's next
+                return ChatResponse(
+                    content=f"""Great! Your project **{recent_project['name']}** is ready at `{recent_project['path']}`.
+
+What would you like to do next? I can help you:
+- Add specific files or features to the project
+- Install additional dependencies
+- Set up configuration files
+- Customize the project structure
+- Or start working on something else
+
+What would you like to work on?""",
+                    state={
+                        "recent_project": recent_project,
+                        "context": "project_created",
+                    },
+                    suggestions=[
+                        "Add a homepage",
+                        "Install dependencies",
+                        "Configure settings",
+                        "Start new task",
+                    ],
+                )
+
+            # Check for modification requests
+            modification_keywords = [
+                "add",
+                "install",
+                "create",
+                "setup",
+                "configure",
+                "modify",
+                "change",
+                "update",
+            ]
+            is_modification = any(kw in message_lower for kw in modification_keywords)
+
+            if is_modification:
+                # User wants to modify the recently created project
+                # Set workspace_root to the new project path so autonomous coding can work
+                workspace_root = recent_project["path"]
+                logger.info(
+                    f"[NAVI] Detected follow-up request for project {recent_project['name']} at {workspace_root}"
+                )
+                # Continue to autonomous coding detection below
 
         # Check if this is a code analysis request (include common error/bug wording + typos)
         code_analysis_keywords = [
@@ -317,11 +1095,33 @@ async def navi_chat(
             keyword in message_lower for keyword in code_analysis_keywords
         ) or bool(error_typo_pattern.search(message_lower))
 
+        # Exclude explanation/overview questions from code analysis and autonomous mode
+        # But allow action requests like "fix errors", "create feature"
+        has_action_keywords = any(
+            keyword in message_lower
+            for keyword in ["fix", "create", "implement", "add", "build", "generate"]
+        )
+
+        is_explanation_request = not has_action_keywords and any(
+            keyword in message_lower
+            for keyword in [
+                "explain",
+                "what is",
+                "what does",
+                "describe",
+                "tell me about",
+                "how does",
+                "overview",
+                "summary",
+            ]
+        )
+
         print(f"DEBUG NAVI CHAT - Message: '{message[:100]}'")
         print(f"DEBUG NAVI CHAT - Workspace root: '{workspace_root}'")
         print(f"DEBUG NAVI CHAT - Is code analysis: {is_code_analysis}")
+        print(f"DEBUG NAVI CHAT - Is explanation: {is_explanation_request}")
         print(
-            f"DEBUG NAVI CHAT - Should trigger comprehensive: {is_code_analysis and workspace_root}"
+            f"DEBUG NAVI CHAT - Should trigger comprehensive: {is_code_analysis and workspace_root and not is_explanation_request}"
         )
 
         # 🤖 AUTONOMOUS CODING DETECTION - Add this before comprehensive analysis
@@ -341,55 +1141,258 @@ async def navi_chat(
             keyword in message_lower for keyword in autonomous_keywords
         )
 
+        # Exclude explanation/analysis questions from autonomous mode
+        is_explanation_question = any(
+            keyword in message_lower
+            for keyword in [
+                "explain",
+                "what is",
+                "what does",
+                "describe",
+                "tell me about",
+                "how does",
+                "overview",
+                "summary",
+                "analyze",
+            ]
+        )
+
         print(f"DEBUG AUTONOMOUS - Has keywords: {has_autonomous_keywords}")
         print(f"DEBUG AUTONOMOUS - Has workspace: {bool(workspace_root)}")
+        print(f"DEBUG AUTONOMOUS - Is explanation: {is_explanation_question}")
 
-        if has_autonomous_keywords and workspace_root:
-            print("DEBUG AUTONOMOUS - TRIGGERING AUTONOMOUS CODING")
+        if has_autonomous_keywords and workspace_root and not is_explanation_question:
+            print("DEBUG AUTONOMOUS - TRIGGERING AUTONOMOUS CODING ENGINE")
 
-            # Return autonomous coding response
-            reply = f"""🤖 **Autonomous Coding Mode Activated**
+            try:
+                # Initialize autonomous coding engine
+                llm_service = get_llm_service()
+                if not llm_service:
+                    return ChatResponse(
+                        content="⚠️ Autonomous coding requires LLM service. Please configure OPENAI_API_KEY.",
+                        suggestions=["Configure API key", "Try a different approach"],
+                    )
 
-I'll help you implement that autonomously, like Cline, Copilot, and other AI coding assistants:
+                # Use shared coding engine instance from autonomous_coding router
+                # This ensures tasks persist across requests
+                from backend.api.routers.autonomous_coding import get_coding_engine
 
-**Your Request:** "{message}"
-**Workspace:** `{workspace_root}`
+                # Use "default" workspace ID for now (can be customized per user/project later)
+                workspace_id = "default"
+                coding_engine = get_coding_engine(workspace_id=workspace_id, db=db)
 
-**My Autonomous Workflow:**
-1. **📋 Analyze** your request and codebase structure
-2. **🎯 Plan** step-by-step implementation approach  
-3. **⚙️ Generate** code with your approval at each step
-4. **🔄 Apply** changes safely to your workspace
-5. **✅ Test** and verify the implementation works
+                # Check memory for similar previous tasks
+                previous_memories = []
+                try:
+                    previous_memories = await search_memory(
+                        db=db,
+                        user_id="default_user",
+                        query=message,
+                        categories=["task"],
+                        limit=5,
+                        min_importance=3,
+                    )
+                    if previous_memories:
+                        logger.info(
+                            f"[NAVI MEMORY] Found {len(previous_memories)} related memories"
+                        )
+                except Exception as e:
+                    logger.warning(f"[NAVI MEMORY] Failed to search memory: {e}")
 
-**🚀 Ready to proceed?** I'll start by analyzing your workspace and breaking down the implementation into manageable steps. Each step will require your approval before proceeding.
+                # Check if similar work was already done
+                if previous_memories:
+                    # Look for memories in the same workspace
+                    workspace_memories = [
+                        m
+                        for m in previous_memories
+                        if m.get("scope") == workspace_root
+                        and m.get("similarity", 0) > 0.8
+                    ]
 
-Would you like me to begin the autonomous coding process?"""
+                    if workspace_memories:
+                        # Found very similar previous work!
+                        latest_memory = workspace_memories[0]
+                        return ChatResponse(
+                            content=f"""✅ **I already implemented something similar!**
 
-            actions = [
-                {
-                    "type": "startAutonomousTask",
-                    "description": "Start autonomous implementation",
-                    "workspace_root": workspace_root,
-                    "request": message,
-                }
-            ]
+I previously worked on: **{latest_memory.get('title', 'this task')}**
 
-            return ChatResponse(
-                content=reply,
-                actions=actions,
-                agentRun={"mode": "autonomous_coding", "task": "code_implementation"},
-                reply=reply,
-                should_stream=False,
-                state={
-                    "autonomous_coding": True,
-                    "workspace": workspace_root,
-                    "request": message,
-                },
-                duration_ms=100,
-            )
+**What I implemented:**
+{latest_memory.get('content', 'Previous implementation details')}
 
-        if is_code_analysis and workspace_root:
+**Options:**
+- If you want me to enhance or modify what's already there, please specify what changes you'd like
+- If you want me to implement this differently, I can create a new implementation
+- If you want to review what I did, I can show you the changes
+
+What would you like to do?""",
+                            suggestions=[
+                                "Show me what you implemented",
+                                "Add more features",
+                                "Implement it differently",
+                                "Test the existing implementation",
+                            ],
+                        )
+
+                # Check if related files already exist in workspace
+                # This helps provide better context to the LLM when planning
+                workspace_context = None
+                try:
+                    # Extract potential file/feature names from the message
+                    # e.g., "signin", "signup", "login", "auth", etc.
+                    # os and Path are already imported at the top of the file
+
+                    # Look for common patterns that might indicate what to search for
+                    # Extract words from message (simple approach)
+                    words = re.findall(r"\b\w+\b", message_lower)
+                    # Filter for relevant keywords (avoid common words)
+                    relevant_keywords = [
+                        w
+                        for w in words
+                        if len(w) > 3
+                        and w
+                        not in {
+                            "create",
+                            "make",
+                            "add",
+                            "build",
+                            "implement",
+                            "write",
+                            "please",
+                            "could",
+                            "would",
+                            "should",
+                            "want",
+                            "need",
+                            "have",
+                            "already",
+                            "there",
+                            "check",
+                        }
+                    ]
+
+                    # Check if any relevant files exist
+                    existing_files = []
+                    workspace_path = Path(workspace_root)
+                    if workspace_path.exists() and relevant_keywords:
+                        # Search for files that might be related
+                        for keyword in relevant_keywords[
+                            :5
+                        ]:  # Limit to first 5 keywords
+                            # Case-insensitive glob search
+                            for pattern in [f"**/*{keyword}*", f"**/{keyword}*"]:
+                                try:
+                                    matches = list(workspace_path.glob(pattern))
+                                    for match in matches[
+                                        :3
+                                    ]:  # Limit matches per keyword
+                                        if match.is_file() and match.suffix in {
+                                            ".js",
+                                            ".ts",
+                                            ".tsx",
+                                            ".jsx",
+                                            ".py",
+                                            ".vue",
+                                            ".svelte",
+                                        }:
+                                            rel_path = match.relative_to(workspace_path)
+                                            existing_files.append(str(rel_path))
+                                except Exception:
+                                    pass
+
+                    if existing_files:
+                        workspace_context = (
+                            f"Existing related files: {', '.join(existing_files[:10])}"
+                        )
+                        logger.info(
+                            f"[NAVI WORKSPACE] Found {len(existing_files)} related files"
+                        )
+                except Exception as e:
+                    logger.warning(f"[NAVI WORKSPACE] Failed to analyze workspace: {e}")
+
+                # Determine task type from keywords
+                task_type = AutonomousTaskType.FEATURE
+                if any(kw in message_lower for kw in ["fix", "bug", "error"]):
+                    task_type = AutonomousTaskType.BUG_FIX
+                elif any(
+                    kw in message_lower for kw in ["refactor", "improve", "optimize"]
+                ):
+                    task_type = AutonomousTaskType.REFACTOR
+                elif any(kw in message_lower for kw in ["test", "tests"]):
+                    task_type = AutonomousTaskType.TEST
+
+                # Enhance description with workspace context if available
+                enhanced_description = message
+                if workspace_context:
+                    enhanced_description = (
+                        f"{message}\n\nWorkspace context: {workspace_context}"
+                    )
+
+                # Create autonomous task with proper parameters
+                task = await coding_engine.create_task(
+                    title=message[:100],  # Use first 100 chars as title
+                    description=enhanced_description,
+                    task_type=task_type,
+                    repository_path=workspace_root,
+                    user_id=None,  # Optional user tracking
+                )
+
+                # Get task ID and steps from the created task
+                task_id = task.id
+                steps = task.steps
+
+                # Build concise response without repetition
+                reply = f"""🤖 **Implementation Plan Created**
+
+I'll implement this in **{len(steps)} step{'s' if len(steps) != 1 else ''}**:
+
+"""
+                # Show all steps (usually just 1-3 steps from enhanced engine)
+                for i, step in enumerate(steps, 1):
+                    reply += f"**Step {i}:** {step.description}\n"
+                    reply += f"   📁 File: `{step.file_path}` ({step.operation})\n"
+                    if step.reasoning:
+                        reply += f"   💡 Why: {step.reasoning}\n"
+                    reply += "\n"
+
+                reply += """I'll execute all steps automatically once you approve. Ready to proceed?"""
+
+                return ChatResponse(
+                    content=reply,
+                    # Don't include actions array - it causes unwanted "Apply" button
+                    agentRun={
+                        "mode": "autonomous_coding",
+                        "task_id": task_id,
+                        "status": "awaiting_approval",
+                        "current_step": 0,
+                        "total_steps": len(steps),
+                    },
+                    state={
+                        "autonomous_coding": True,
+                        "task_id": task_id,
+                        "workspace": workspace_root,
+                        "workspace_id": workspace_id,  # Add workspace_id for approval flow
+                        "current_step": 0,
+                        "total_steps": len(steps),
+                        "auto_execute_all": True,  # Flag to execute all steps automatically
+                    },
+                    suggestions=[
+                        "Yes, execute all steps",
+                        "Show me more details",
+                        "Cancel",
+                    ],
+                )
+            except Exception as e:
+                import traceback
+
+                logger.error(f"Error starting autonomous coding: {e}")
+                logger.error(f"Full traceback: {traceback.format_exc()}")
+                return ChatResponse(
+                    content=f"❌ Failed to start autonomous coding: {str(e)}\n\nPlease try again or rephrase your request.",
+                    suggestions=["Try again", "Ask a different question"],
+                )
+
+        if is_code_analysis and workspace_root and not is_explanation_request:
             print("DEBUG NAVI CHAT - ENTERING comprehensive analysis branch")
             try:
                 try:
@@ -1308,16 +2311,68 @@ async def _merge_partial_reviews(
 # Intent analysis + context building (kept)
 # ------------------------------------------------------------------------------
 async def _analyze_user_intent(message: str) -> Dict[str, Any]:
+    """Analyze user intent using LLM for better classification"""
     message_lower = message.lower()
 
+    # Try LLM-based intent classification first
+    llm_service = get_llm_service()
+    if llm_service:
+        try:
+            from openai import AsyncOpenAI
+
+            client = AsyncOpenAI(api_key=llm_service.settings.openai_api_key)
+
+            intent_prompt = f"""Classify the user's intent into ONE of these categories:
+- task_query: Questions about JIRA tasks, tickets, assignments
+- team_query: Questions about team members, their work, collaboration
+- plan_request: Requests for implementation plans, steps, approach
+- code_help: Requests for code help, debugging, code review
+- general_query: General questions or conversation
+
+User message: "{message}"
+
+Respond with ONLY the category name (e.g., "code_help"). No explanation."""
+
+            response = await client.chat.completions.create(
+                model="gpt-3.5-turbo",  # Use faster model for classification
+                messages=[{"role": "user", "content": intent_prompt}],
+                temperature=0.1,
+                max_tokens=20,
+            )
+
+            intent_type = response.choices[0].message.content.strip().lower()
+
+            # Validate the response
+            valid_intents = [
+                "task_query",
+                "team_query",
+                "plan_request",
+                "code_help",
+                "general_query",
+            ]
+            if intent_type in valid_intents:
+                return {
+                    "type": intent_type,
+                    "query": message,
+                    "confidence": 0.95,
+                    "method": "llm",
+                }
+        except Exception as e:
+            logger.warning(
+                f"LLM intent classification failed, falling back to keywords: {e}"
+            )
+
+    # Fallback to keyword-based classification
     if any(
         keyword in message_lower
         for keyword in ["task", "jira", "ticket", "assigned", "priority"]
     ):
         return {
             "type": "task_query",
+            "query": message,
             "keywords": ["task", "jira", "priority"],
             "confidence": 0.9,
+            "method": "keyword",
         }
 
     if any(
@@ -1326,8 +2381,10 @@ async def _analyze_user_intent(message: str) -> Dict[str, Any]:
     ):
         return {
             "type": "team_query",
+            "query": message,
             "keywords": ["team", "activity", "collaboration"],
             "confidence": 0.8,
+            "method": "keyword",
         }
 
     if any(
@@ -1336,8 +2393,10 @@ async def _analyze_user_intent(message: str) -> Dict[str, Any]:
     ):
         return {
             "type": "plan_request",
+            "query": message,
             "keywords": ["plan", "implementation", "steps"],
             "confidence": 0.85,
+            "method": "keyword",
         }
 
     if any(
@@ -1346,11 +2405,19 @@ async def _analyze_user_intent(message: str) -> Dict[str, Any]:
     ):
         return {
             "type": "code_help",
+            "query": message,
             "keywords": ["code", "debug", "review"],
             "confidence": 0.8,
+            "method": "keyword",
         }
 
-    return {"type": "general_query", "keywords": [], "confidence": 0.5}
+    return {
+        "type": "general_query",
+        "query": message,
+        "keywords": [],
+        "confidence": 0.5,
+        "method": "keyword",
+    }
 
 
 async def _build_enhanced_context(
@@ -1428,11 +2495,7 @@ async def _handle_task_query(
             status_emoji = (
                 "🔄"
                 if status == "In Progress"
-                else "📝"
-                if status == "To Do"
-                else "✅"
-                if status == "Done"
-                else "📌"
+                else "📝" if status == "To Do" else "✅" if status == "Done" else "📌"
             )
             jira_key = task.get("jira_key", "")
             title = task.get("title", "").replace(f"[Jira] {jira_key}: ", "")
@@ -1566,6 +2629,30 @@ async def _handle_plan_request(
 async def _handle_code_help(
     intent: Dict[str, Any], context: Dict[str, Any]
 ) -> ChatResponse:
+    """Handle code help requests with actual LLM call"""
+    llm_service = get_llm_service()
+
+    if llm_service:
+        try:
+            # Call LLM with engineering context
+            question = intent.get("query", "Help me with coding")
+            response = await llm_service.generate_engineering_response(
+                question, context
+            )
+
+            return ChatResponse(
+                content=response.answer,
+                suggestions=response.suggested_actions,
+                context={
+                    "confidence": response.confidence,
+                    "reasoning": response.reasoning,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Error in code help LLM call: {e}")
+            # Fall through to default response
+
+    # Fallback if LLM unavailable
     content = (
         "I'm here to help with your code!\n\n"
         "I can assist with:\n"
@@ -1573,18 +2660,14 @@ async def _handle_code_help(
         "• **Debugging** - Help identify and fix issues\n"
         "• **Implementation** - Guide you through coding tasks\n"
         "• **Testing** - Create tests and validate your code\n\n"
+        "⚠️ Note: LLM service is currently unavailable. Please configure OPENAI_API_KEY."
     )
 
     suggestions = [
         "Review my current changes",
         "Help debug an issue",
         "Generate tests for my code",
-        "Suggest code improvements",
-        "Check for potential bugs",
     ]
-    if context.get("current_task"):
-        content += f"I can also provide specific help for your current task: **{context['current_task']}**"
-        suggestions.insert(0, f"Help implement {context['current_task']}")
 
     return ChatResponse(content=content, suggestions=suggestions)
 
@@ -1592,6 +2675,30 @@ async def _handle_code_help(
 async def _handle_general_query(
     intent: Dict[str, Any], context: Dict[str, Any]
 ) -> ChatResponse:
+    """Handle general queries with actual LLM call"""
+    llm_service = get_llm_service()
+
+    if llm_service:
+        try:
+            # Call LLM with full context
+            question = intent.get("query", "Tell me about what you can do")
+            response = await llm_service.generate_engineering_response(
+                question, context
+            )
+
+            return ChatResponse(
+                content=response.answer,
+                suggestions=response.suggested_actions,
+                context={
+                    "confidence": response.confidence,
+                    "reasoning": response.reasoning,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Error in general query LLM call: {e}")
+            # Fall through to default response
+
+    # Fallback if LLM unavailable
     content = (
         "I'm your autonomous engineering assistant!\n\n"
         "I can help you with:\n"
@@ -1600,24 +2707,14 @@ async def _handle_general_query(
         "• **Implementation Planning** - Generate detailed plans for your work\n"
         "• **Code Assistance** - Review, debug, and improve your code\n"
         "• **Context Intelligence** - Connect related work across your team\n\n"
+        "⚠️ Note: LLM service is currently unavailable. Please configure OPENAI_API_KEY."
     )
 
-    suggestions: List[str] = []
-    if context.get("current_task"):
-        suggestions.extend(
-            [
-                f"Continue work on {context['current_task']}",
-                "Generate plan for current task",
-            ]
-        )
-    suggestions.extend(
-        [
-            "Show my tasks",
-            "What is my team working on?",
-            "Help me with current work",
-            "Review recent changes",
-        ]
-    )
+    suggestions: List[str] = [
+        "Show my tasks",
+        "Help me with current work",
+        "Review recent changes",
+    ]
 
     return ChatResponse(content=content, suggestions=suggestions)
 

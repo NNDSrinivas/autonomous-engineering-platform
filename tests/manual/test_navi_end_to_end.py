@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """
 NAVI End-to-End Test - Context-Aware Autonomous Coding
 

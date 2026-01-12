@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Phase 4.5.2 CI Auto-Repair Loop - Comprehensive Test
 

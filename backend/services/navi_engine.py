@@ -530,13 +530,16 @@ class NaviEngine:
 
         return {
             "success": result.success,
+            "action": intent.get("action", "unknown"),
             "message": result.message,
             "files_created": result.files_created,
             "files_modified": result.files_modified,
             "vscode_command": result.vscode_command,
-            "intent": intent,
-            "project_type": self.project_type,
-            "technologies": self.technologies,
+            "result": {
+                "intent": intent,
+                "project_type": self.project_type,
+                "technologies": self.technologies,
+            },
         }
 
     async def _execute(self, intent: Dict, context: Dict) -> NaviResult:

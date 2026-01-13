@@ -34,11 +34,15 @@ import { FixTransactionManager } from './navi-core/fix/FixTransactionManager';
 import { FeaturePlanEngine } from './navi-core/planning/FeaturePlanEngine';
 import { ContextService } from './services/ContextService';
 import { NaviClient } from './services/NaviClient';
+import { GitService } from './services/GitService';
+import { TaskService } from './services/TaskService';
 
 const exec = util.promisify(child_process.exec);
 
-// Global ContextService instance for workspace analysis
+// Global service instances for workspace operations
 let globalContextService: ContextService | undefined;
+let globalGitService: GitService | undefined;
+let globalTaskService: TaskService | undefined;
 
 // Phase 1.4: Collect VS Code diagnostics for a set of files
 function collectDiagnosticsForFiles(workspaceRoot: string, relativePaths: string[]) {
@@ -633,6 +637,17 @@ export function activate(context: vscode.ExtensionContext) {
     maxSearchResults: 50      // Return more total results
   });
 
+  // Initialize GitService for git operations
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (workspaceFolders && workspaceFolders.length > 0) {
+    globalGitService = new GitService(workspaceFolders[0].uri.fsPath);
+    console.log('[AEP] GitService initialized');
+  }
+
+  // Initialize TaskService for JIRA integration
+  globalTaskService = new TaskService(naviClient);
+  console.log('[AEP] TaskService initialized');
+
   // Index workspace on activation (async, non-blocking)
   globalContextService.indexWorkspace().then(() => {
     console.log('[AEP] Workspace indexing completed');
@@ -640,10 +655,12 @@ export function activate(context: vscode.ExtensionContext) {
     console.error('[AEP] Workspace indexing failed:', err);
   });
 
-  // Dispose ContextService on deactivation
+  // Dispose services on deactivation
   context.subscriptions.push({
     dispose: () => {
       globalContextService?.dispose();
+      globalGitService?.dispose();
+      globalTaskService?.dispose();
       naviClient.dispose();
     }
   });

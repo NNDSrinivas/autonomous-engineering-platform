@@ -32,8 +32,14 @@ import { normalizeIntentKind, IntentKind } from '@aep/navi-contracts';
 import { FixConfidencePolicy } from './navi-core/fix/FixConfidencePolicy';
 import { FixTransactionManager } from './navi-core/fix/FixTransactionManager';
 import { FeaturePlanEngine } from './navi-core/planning/FeaturePlanEngine';
+import { ContextService } from './services/ContextService';
+import { NaviClient } from './services/NaviClient';
 
 const exec = util.promisify(child_process.exec);
+
+// Global ContextService instance for workspace analysis
+let globalContextService: ContextService | undefined;
+
 // Phase 1.4: Collect VS Code diagnostics for a set of files
 function collectDiagnosticsForFiles(workspaceRoot: string, relativePaths: string[]) {
   const results: Array<{ path: string; diagnostics: Array<{ message: string; severity: vscode.DiagnosticSeverity; line: number; character: number }> }> = [];
@@ -142,12 +148,42 @@ async function collectWorkspaceContext(): Promise<any> {
 
   const recentFiles = vscode.workspace.textDocuments.slice(0, 10).map(doc => doc.fileName);
 
-  return {
+  // Enhanced: Add ContextService data if available
+  let enhancedContext: any = {
     workspace_root: rootFolder,
     active_file: activeFile,
     selected_text: selectedText,
     recent_files: recentFiles,
   };
+
+  if (globalContextService) {
+    try {
+      const workspaceContext = await globalContextService.getWorkspaceContext();
+      enhancedContext = {
+        ...enhancedContext,
+        technologies: workspaceContext.technologies,
+        totalFiles: workspaceContext.totalFiles,
+        totalSize: workspaceContext.totalSize,
+        gitBranch: workspaceContext.gitBranch,
+        packageJson: workspaceContext.packageJson,
+      };
+
+      // Add editor context if editor is available
+      if (editor) {
+        const editorContext = await globalContextService.getEditorContext(editor);
+        enhancedContext.editorContext = {
+          currentFile: editorContext.currentFile,
+          language: editorContext.language,
+          imports: editorContext.imports,
+          relatedFiles: editorContext.relatedFiles,
+        };
+      }
+    } catch (err) {
+      console.error('[AEP] Failed to get enhanced context:', err);
+    }
+  }
+
+  return enhancedContext;
 }
 
 // Detect Diagnostics Commands (for "check errors & fix" functionality)
@@ -584,6 +620,27 @@ export function activate(context: vscode.ExtensionContext) {
       provider
     )
   );
+
+  // Initialize ContextService for workspace analysis
+  const config = vscode.workspace.getConfiguration('aep.navi');
+  const backendUrl = config.get<string>('backendUrl') || 'http://127.0.0.1:8787';
+  const naviClient = new NaviClient(backendUrl, backendUrl, 'default');
+  globalContextService = new ContextService(naviClient);
+
+  // Index workspace on activation (async, non-blocking)
+  globalContextService.indexWorkspace().then(() => {
+    console.log('[AEP] Workspace indexing completed');
+  }).catch(err => {
+    console.error('[AEP] Workspace indexing failed:', err);
+  });
+
+  // Dispose ContextService on deactivation
+  context.subscriptions.push({
+    dispose: () => {
+      globalContextService?.dispose();
+      naviClient.dispose();
+    }
+  });
 
   // Register Smart Mode commands
   smartModeCommands.registerCommands(context);

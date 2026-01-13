@@ -30,6 +30,7 @@ from backend.core.ai.llm_service import LLMService
 from backend.autonomous.enhanced_coding_engine import (
     TaskType as AutonomousTaskType,
 )
+from backend.api.chat_enhanced import IntentDetector, ActionExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -187,9 +188,9 @@ class NaviChatRequest(ChatRequest):
     attachments: List[Attachment] = Field(default_factory=list)
     executionMode: Optional[str] = None  # e.g., plan_propose | plan_and_run (future)
     workspace_root: Optional[str] = None  # Workspace root for reading new file contents
-    state: Optional[
-        Dict[str, Any]
-    ] = None  # State from previous response for autonomous coding continuity
+    state: Optional[Dict[str, Any]] = (
+        None  # State from previous response for autonomous coding continuity
+    )
 
 
 class ChatResponse(BaseModel):
@@ -372,6 +373,51 @@ async def navi_chat(
     )
 
     try:
+        # 🚀 AGGRESSIVE INTENT DETECTION - Phase 1
+        # Detect actionable intents and execute immediately without asking permission
+        detector = IntentDetector()
+        executor = ActionExecutor(request.workspace_root)
+
+        intent = detector.detect_intent(request.message)
+        logger.info(
+            f"🎯 Detected intent: {intent['action']} (confidence: {intent['confidence']})"
+        )
+
+        # Execute high-confidence actionable intents immediately
+        if intent["confidence"] >= 0.8 and intent["action"] != "general_coding":
+            context = {
+                "workspace_path": request.workspace_root,
+                "technologies": {},  # Will be populated from workspace analysis
+            }
+
+            execution_result = await executor.execute(intent, context)
+
+            # If execution was successful and has a VS Code command, return it
+            if execution_result.get("success") and "vscode_command" in execution_result:
+                response_content = execution_result["message"]
+
+                # Add helpful context if alternatives were found
+                if (
+                    "result" in execution_result
+                    and "alternatives" in execution_result["result"]
+                ):
+                    alternatives = execution_result["result"]["alternatives"]
+                    if alternatives:
+                        response_content += "\n\n**Other matches found:**\n"
+                        for alt in alternatives:
+                            response_content += f"- {alt['name']} at `{alt['path']}`\n"
+
+                return ChatResponse(
+                    content=response_content,
+                    actions=[
+                        {
+                            "type": "vscode_command",
+                            "command": execution_result["vscode_command"]["command"],
+                            "args": execution_result["vscode_command"]["args"],
+                        }
+                    ],
+                )
+
         # Fetch relevant memories to ground the response
         memories: List[Dict[str, Any]] = []
         try:
@@ -862,9 +908,7 @@ Would you like to try again with different settings?
                                     operation_icon = (
                                         "📄"
                                         if step.operation == "create"
-                                        else "✏️"
-                                        if step.operation == "modify"
-                                        else "🗑️"
+                                        else "✏️" if step.operation == "modify" else "🗑️"
                                     )
 
                                     # Try to get git diff stats for this file
@@ -2559,11 +2603,7 @@ async def _handle_task_query(
             status_emoji = (
                 "🔄"
                 if status == "In Progress"
-                else "📝"
-                if status == "To Do"
-                else "✅"
-                if status == "Done"
-                else "📌"
+                else "📝" if status == "To Do" else "✅" if status == "Done" else "📌"
             )
             jira_key = task.get("jira_key", "")
             title = task.get("title", "").replace(f"[Jira] {jira_key}: ", "")

@@ -673,6 +673,38 @@ export function activate(context: vscode.ExtensionContext) {
   // Register Smart Mode commands
   smartModeCommands.registerCommands(context);
 
+  // Register aggressive NAVI action commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand('navi.createAndOpenFile', async (filePath: string, content: string) => {
+      try {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+          vscode.window.showErrorMessage('No workspace folder open');
+          return;
+        }
+
+        const fullPath = path.join(workspaceFolders[0].uri.fsPath, filePath);
+        const uri = vscode.Uri.file(fullPath);
+
+        // Ensure directory exists
+        const dirPath = path.dirname(fullPath);
+        await vscode.workspace.fs.createDirectory(vscode.Uri.file(dirPath));
+
+        // Write file
+        const encoder = new TextEncoder();
+        await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+
+        // Open file in editor
+        const document = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(document);
+
+        vscode.window.showInformationMessage(`Created and opened ${filePath}`);
+      } catch (error: any) {
+        vscode.window.showErrorMessage(`Failed to create file: ${error.message}`);
+      }
+    })
+  );
+
   // Phase 3.3/3.4 UI Test Commands for immediate testing
   context.subscriptions.push(
     vscode.commands.registerCommand('aep.test.changePlan', () => {
@@ -2499,6 +2531,24 @@ Provide a comprehensive overview that goes beyond just listing files. Make it ac
               await vscode.env.openExternal(vscode.Uri.parse(url));
             } catch (e) {
               vscode.window.showErrorMessage('Failed to open external URL');
+            }
+            break;
+          }
+
+          case 'executeCommand': {
+            // 🚀 Execute VS Code commands from aggressive NAVI actions
+            const command = String(msg.command || '').trim();
+            const args = msg.args || [];
+            if (!command) {
+              console.warn('[AEP] No command provided for executeCommand');
+              return;
+            }
+            try {
+              console.log('[AEP] Executing command:', command, args);
+              await vscode.commands.executeCommand(command, ...args);
+            } catch (e: any) {
+              console.error('[AEP] Failed to execute command:', e);
+              vscode.window.showErrorMessage(`Failed to execute command: ${e.message}`);
             }
             break;
           }

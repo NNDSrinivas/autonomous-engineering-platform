@@ -635,12 +635,14 @@ export function activate(context: vscode.ExtensionContext) {
   const backendUrl = config.get<string>('backendUrl') || 'http://127.0.0.1:8787';
   const naviClient = new NaviClient(backendUrl, backendUrl, 'default');
 
-  // Configure ContextService with higher limits for large codebases
-  globalContextService = new ContextService(naviClient, {
-    maxSearchFiles: 500,      // Search more files in large codebases
-    maxMatchesPerFile: 10,    // Show more context per file
-    maxSearchResults: 50      // Return more total results
-  });
+  // Configure ContextService with limits that can be customized via settings
+  const aepConfig = vscode.workspace.getConfiguration('aep');
+  const contextConfig = {
+    maxSearchFiles: aepConfig.get<number>('context.maxSearchFiles', 500),
+    maxMatchesPerFile: aepConfig.get<number>('context.maxMatchesPerFile', 10),
+    maxSearchResults: aepConfig.get<number>('context.maxSearchResults', 50)
+  };
+  globalContextService = new ContextService(naviClient, contextConfig);
 
   // Initialize GitService for git operations
   const workspaceFolders = vscode.workspace.workspaceFolders;

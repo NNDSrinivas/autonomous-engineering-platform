@@ -134,11 +134,15 @@ export class GitService {
                 const status = line.substring(0, 2);
                 const filePath = line.substring(3);
 
-                if (status.includes('M')) {modified.push(filePath);}
-                else if (status.includes('A')) {added.push(filePath);}
-                else if (status.includes('D')) {deleted.push(filePath);}
-                else if (status.includes('?')) {untracked.push(filePath);}
-                else if (status.includes('U')) {conflicted.push(filePath);}
+                // Use exact character position matching to avoid false positives
+                const indexStatus = status[0];
+                const workTreeStatus = status[1];
+
+                if (indexStatus === 'M' || workTreeStatus === 'M') {modified.push(filePath);}
+                else if (indexStatus === 'A' || workTreeStatus === 'A') {added.push(filePath);}
+                else if (indexStatus === 'D' || workTreeStatus === 'D') {deleted.push(filePath);}
+                else if (indexStatus === '?' || workTreeStatus === '?') {untracked.push(filePath);}
+                else if (indexStatus === 'U' || workTreeStatus === 'U') {conflicted.push(filePath);}
             });
 
             // Get ahead/behind counts

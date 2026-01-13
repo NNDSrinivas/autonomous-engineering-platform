@@ -46,9 +46,21 @@ export class ContextService {
     private client: NaviClient;
     private indexCache: Map<string, any> = new Map();
     private fileWatcher?: vscode.FileSystemWatcher;
+    private maxSearchFiles: number = 100; // Default limit, configurable
+    private maxMatchesPerFile: number = 5; // Default limit
+    private maxSearchResults: number = 20; // Default limit
 
-    constructor(client: NaviClient) {
+    constructor(client: NaviClient, options?: {
+        maxSearchFiles?: number;
+        maxMatchesPerFile?: number;
+        maxSearchResults?: number;
+    }) {
         this.client = client;
+        if (options) {
+            this.maxSearchFiles = options.maxSearchFiles ?? 100;
+            this.maxMatchesPerFile = options.maxMatchesPerFile ?? 5;
+            this.maxSearchResults = options.maxSearchResults ?? 20;
+        }
         this.setupFileWatcher();
     }
 
@@ -243,7 +255,7 @@ export class ContextService {
         }
 
         // Search in cached files
-        for (const file of files.slice(0, 100)) { // Limit to prevent slowdown
+        for (const file of files.slice(0, this.maxSearchFiles)) {
             try {
                 const filePath = path.join(rootPath, file);
                 const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
@@ -258,14 +270,14 @@ export class ContextService {
                 });
 
                 if (matches.length > 0) {
-                    results.push({ file, matches: matches.slice(0, 5) }); // Max 5 matches per file
+                    results.push({ file, matches: matches.slice(0, this.maxMatchesPerFile) });
                 }
             } catch {
                 // Skip files that can't be read
             }
         }
 
-        return results.slice(0, 20); // Return top 20 files
+        return results.slice(0, this.maxSearchResults);
     }
 
     /**

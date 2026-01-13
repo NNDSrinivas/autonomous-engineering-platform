@@ -625,7 +625,13 @@ export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration('aep.navi');
   const backendUrl = config.get<string>('backendUrl') || 'http://127.0.0.1:8787';
   const naviClient = new NaviClient(backendUrl, backendUrl, 'default');
-  globalContextService = new ContextService(naviClient);
+
+  // Configure ContextService with higher limits for large codebases
+  globalContextService = new ContextService(naviClient, {
+    maxSearchFiles: 500,      // Search more files in large codebases
+    maxMatchesPerFile: 10,    // Show more context per file
+    maxSearchResults: 50      // Return more total results
+  });
 
   // Index workspace on activation (async, non-blocking)
   globalContextService.indexWorkspace().then(() => {
@@ -1252,6 +1258,33 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     this._currentModelLabel = context.globalState.get<string>(STORAGE_KEYS.modelLabel) ?? DEFAULT_MODEL.label;
     this._currentModeId = context.globalState.get<string>(STORAGE_KEYS.modeId) ?? DEFAULT_MODE.id;
     this._currentModeLabel = context.globalState.get<string>(STORAGE_KEYS.modeLabel) ?? DEFAULT_MODE.label;
+  }
+
+  /**
+   * Generate repository analysis prompt template
+   * Separated for maintainability and reusability
+   */
+  private buildRepoAnalysisPrompt(contextMessage: string, originalMessage: string): string {
+    return `${contextMessage}
+
+${originalMessage}
+
+Please analyze the repository architecture and structure based on the attached files. Provide TWO sections:
+
+**Section 1: Non-Technical Overview (for business stakeholders)**
+- What is this project? What problem does it solve?
+- Who would use this and why?
+- What are the main features or capabilities?
+- Explain in simple terms that anyone can understand
+
+**Section 2: Technical Analysis (for developers)**
+1. What this project does and its purpose
+2. The overall architecture and how components interact
+3. Key technologies and frameworks used
+4. Main entry points and how the application flows
+5. Any important patterns or design decisions you can identify
+
+Provide a comprehensive overview that goes beyond just listing files. Make it accessible for both technical and non-technical readers.`;
   }
 
   private getBackendBaseUrl(): string {
@@ -4222,6 +4255,25 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             break;
           }
 
+          case 'openFile': {
+            const { filePath } = msg;
+            console.log('[AEP] React webview: Open file request', { filePath });
+
+            try {
+              // Convert to URI and open the file
+              const fileUri = vscode.Uri.file(filePath);
+              const document = await vscode.workspace.openTextDocument(fileUri);
+              await vscode.window.showTextDocument(document, {
+                preview: false,
+                preserveFocus: false
+              });
+            } catch (error) {
+              console.error('[AEP] Failed to open file:', error);
+              vscode.window.showErrorMessage(`Failed to open file: ${path.basename(filePath)}`);
+            }
+            break;
+          }
+
           case 'aep.file.diff': {
             const file = String(msg.file || '').trim();
             if (!file) break;
@@ -6145,7 +6197,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const targetUrl = `${this.getBackendBaseUrl()}/api/navi/chat`;
 
       const controller = new AbortController();
-      const timeoutMs = 60000; // 60 seconds - reasonable for most operations
+      const config = vscode.workspace.getConfiguration('aep.navi');
+      const timeoutMs = config.get<number>('requestTimeout') || 60000;
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       // Get the last bot message state for autonomous coding continuity
@@ -6578,27 +6631,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       });
     }
 
-    // Prepare enhanced prompt with context
-    const enhancedPrompt = `${contextMessage}
-
-${originalMessage}
-
-Please analyze the repository architecture and structure based on the attached files. Provide TWO sections:
-
-**Section 1: Non-Technical Overview (for business stakeholders)**
-- What is this project? What problem does it solve?
-- Who would use this and why?
-- What are the main features or capabilities?
-- Explain in simple terms that anyone can understand
-
-**Section 2: Technical Analysis (for developers)**
-1. What this project does and its purpose
-2. The overall architecture and how components interact
-3. Key technologies and frameworks used
-4. Main entry points and how the application flows
-5. Any important patterns or design decisions you can identify
-
-Provide a comprehensive overview that goes beyond just listing files. Make it accessible for both technical and non-technical readers.`;
+    // Prepare enhanced prompt with context using template method
+    const enhancedPrompt = this.buildRepoAnalysisPrompt(contextMessage, originalMessage);
 
     // Call the backend with the attachments for deep analysis
     await this.callNaviBackend(enhancedPrompt, undefined, undefined, attachments);

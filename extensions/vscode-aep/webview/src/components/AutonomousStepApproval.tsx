@@ -240,7 +240,15 @@ export function AutonomousStepApproval({
           </button>
 
           <button
-            onClick={() => window.open(`file://${workspace}/${currentStep.file_path}`)}
+            onClick={() => {
+              // Use VS Code's postMessage API to request file opening
+              if (window.vscode) {
+                window.vscode.postMessage({
+                  type: 'openFile',
+                  filePath: `${workspace}/${currentStep.file_path}`
+                });
+              }
+            }}
             disabled={loading}
             style={{
               ...styles.button,

@@ -36,6 +36,7 @@ import { ContextService } from './services/ContextService';
 import { NaviClient } from './services/NaviClient';
 import { GitService } from './services/GitService';
 import { TaskService } from './services/TaskService';
+import { createDefaultActionRegistry, ActionRegistry } from './actions';
 
 const exec = util.promisify(child_process.exec);
 
@@ -48,6 +49,7 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds heartbeat
 let globalContextService: ContextService | undefined;
 let globalGitService: GitService | undefined;
 let globalTaskService: TaskService | undefined;
+let globalActionRegistry: ActionRegistry | undefined;
 
 // Phase 1.4: Collect VS Code diagnostics for a set of files
 function collectDiagnosticsForFiles(workspaceRoot: string, relativePaths: string[]) {
@@ -654,6 +656,10 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize TaskService for JIRA integration
   globalTaskService = new TaskService(naviClient);
   console.log('[AEP] TaskService initialized');
+
+  // Initialize Dynamic Action Registry
+  globalActionRegistry = createDefaultActionRegistry();
+  console.log('[AEP] ActionRegistry initialized with dynamic handlers');
 
   // Index workspace on activation (async, non-blocking)
   globalContextService.indexWorkspace().then(() => {
@@ -9173,6 +9179,27 @@ Provide a comprehensive overview that goes beyond just listing files. Make it ac
     try {
       console.log('[Extension Host] [AEP] Applying agent action:', action);
 
+      // Use dynamic action registry if available, otherwise fall back to legacy handlers
+      if (globalActionRegistry) {
+        const result = await globalActionRegistry.execute(action, {
+          workspaceRoot: this.getActiveWorkspaceRoot(),
+          approvedViaChat: Boolean(approvedViaChat),
+          postMessage: (msg) => this.postToWebview(msg),
+          showMessage: (msg) => vscode.window.showInformationMessage(msg)
+        });
+
+        if (!result.success) {
+          console.error('[Extension Host] [AEP] Action execution failed:', result.error);
+          vscode.window.showErrorMessage(result.message || 'Action execution failed');
+        } else {
+          console.log('[Extension Host] [AEP] Action executed successfully:', result.message);
+        }
+        return;
+      }
+
+      // Legacy fallback (will be removed once registry is stable)
+      console.warn('[Extension Host] [AEP] ActionRegistry not available, using legacy handlers');
+
       // 1) Create new file
       if (action.type === 'createFile') {
         await this.applyCreateFileAction(action);
@@ -9217,25 +9244,47 @@ Provide a comprehensive overview that goes beyond just listing files. Make it ac
 
     for (const action of actions) {
       try {
-        if (!action || !action.type) {
+        if (!action) {
           console.warn('[Extension Host] [AEP] Skipping invalid action in workspace plan:', action);
           continue;
         }
 
-        if (action.type === 'createFile') {
-          await this.applyCreateFileAction(action);
-          appliedCount += 1;
-        } else if (action.type === 'editFile') {
-          await this.applyEditFileAction(action);
-          appliedCount += 1;
-        } else if (action.type === 'runCommand') {
-          await this.applyRunCommandAction(action);
-          appliedCount += 1;
-        } else if (action.type === 'vscode_command') {
-          await this.applyVSCodeCommandAction(action);
-          appliedCount += 1;
+        // Use dynamic action registry if available
+        if (globalActionRegistry) {
+          const result = await globalActionRegistry.execute(action, {
+            workspaceRoot: this.getActiveWorkspaceRoot(),
+            approvedViaChat: true, // Workspace plans are pre-approved
+            postMessage: (msg) => this.postToWebview(msg),
+            showMessage: (msg) => vscode.window.showInformationMessage(msg)
+          });
+
+          if (result.success) {
+            appliedCount += 1;
+          } else {
+            console.error('[Extension Host] [AEP] Action failed:', result.error);
+          }
         } else {
-          console.warn('[Extension Host] [AEP] Unknown action type in workspace plan:', action.type);
+          // Legacy fallback
+          if (!action.type) {
+            console.warn('[Extension Host] [AEP] Skipping action without type:', action);
+            continue;
+          }
+
+          if (action.type === 'createFile') {
+            await this.applyCreateFileAction(action);
+            appliedCount += 1;
+          } else if (action.type === 'editFile') {
+            await this.applyEditFileAction(action);
+            appliedCount += 1;
+          } else if (action.type === 'runCommand') {
+            await this.applyRunCommandAction(action);
+            appliedCount += 1;
+          } else if (action.type === 'vscode_command') {
+            await this.applyVSCodeCommandAction(action);
+            appliedCount += 1;
+          } else {
+            console.warn('[Extension Host] [AEP] Unknown action type in workspace plan:', action.type);
+          }
         }
       } catch (err: any) {
         console.error('[Extension Host] [AEP] Failed to apply action in workspace plan:', err);

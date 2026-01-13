@@ -67,6 +67,18 @@ class ProjectDetector:
     @staticmethod
     def detect(workspace_path: str) -> Tuple[str, List[str], Dict[str, str]]:
         """Detect project type, technologies, and dependencies"""
+        # Try to use dynamic project detector first
+        try:
+            from backend.core.dynamic_project_detector import get_project_detector
+            detector = get_project_detector()
+            project_type, technologies, dependencies = detector.detect(workspace_path)
+            print(f"[ProjectDetector] ✅ Using dynamic detector: {project_type} with {len(technologies)} technologies")
+            return project_type, technologies, dependencies
+        except Exception as e:
+            print(f"[ProjectDetector] ⚠️ Dynamic detector failed, using fallback: {e}")
+            # Fallback to hardcoded detection
+            pass
+
         path = Path(workspace_path)
         technologies = []
         dependencies = {}
@@ -169,54 +181,66 @@ class IntentParser:
     """Parse user intent from natural language"""
 
     def __init__(self):
-        self.patterns = [
-            # Open/Navigate
-            (r"open\s+(.+?)(?:\s+project)?$", "open_project"),
-            (r"go\s+to\s+(.+)", "open_project"),
-            (r"switch\s+to\s+(.+)", "open_project"),
-            # Create
-            (
-                r"(?:create|make|add|new)\s+(?:a\s+)?(?:new\s+)?component\s+(?:called\s+|named\s+)?(.+)",
-                "create_component",
-            ),
-            (
-                r"(?:create|make|add|new)\s+(?:a\s+)?(.+)\s+component",
-                "create_component",
-            ),
-            (
-                r"(?:create|make|add|new)\s+(?:a\s+)?(?:new\s+)?page\s+(?:called\s+|named\s+)?(.+)",
-                "create_page",
-            ),
-            (r"(?:create|make|add|new)\s+(?:a\s+)?(.+)\s+page", "create_page"),
-            (
-                r"(?:create|make|add|new)\s+(?:a\s+)?(?:new\s+)?(?:api|endpoint)\s+(?:for\s+)?(.+)",
-                "create_api",
-            ),
-            (
-                r"(?:create|make|add|new)\s+(?:a\s+)?file\s+(?:called\s+)?(.+)",
-                "create_file",
-            ),
-            # Git
-            (r"commit\s*(.+)?", "git_commit"),
-            (r"push", "git_push"),
-            (r"(?:create|make|open)\s+(?:a\s+)?(?:pr|pull\s+request)", "create_pr"),
-            (r"(?:create|make)\s+(?:a\s+)?branch\s+(?:called\s+)?(.+)", "git_branch"),
-            # Packages
-            (r"(?:install|add)\s+(?:package\s+)?(.+)", "install_package"),
-            (r"npm\s+(?:install|i)\s+(.+)", "install_package"),
-            (r"pip\s+install\s+(.+)", "install_package"),
-            # Fix/Improve
-            (r"(?:fix|solve|debug)\s+(.+)", "fix_bug"),
-            (r"refactor\s+(.+)", "refactor"),
-            # Tests
-            (r"(?:create|write|generate)\s+tests?\s+for\s+(.+)", "create_test"),
-            (r"run\s+tests?", "run_tests"),
-            # Explain
-            (r"(?:explain|describe)\s+(.+)", "explain_code"),
-            (r"what\s+(?:is|does)\s+(.+)", "explain_code"),
-            # Add feature
-            (r"add\s+(?:a\s+)?(.+)", "add_feature"),
-        ]
+        # Try to load dynamic patterns from YAML config
+        try:
+            from backend.core.config_loader import get_config_loader
+            config_loader = get_config_loader()
+            intent_patterns = config_loader.load_intent_patterns("english")
+
+            # Convert IntentPattern objects to (regex, action) tuples
+            self.patterns = [(p.regex, p.action) for p in intent_patterns]
+            print(f"[IntentParser] ✅ Loaded {len(self.patterns)} dynamic intent patterns from YAML")
+        except Exception as e:
+            print(f"[IntentParser] ⚠️ Failed to load dynamic patterns, using fallback: {e}")
+            # Fallback to hardcoded patterns if dynamic loading fails
+            self.patterns = [
+                # Open/Navigate
+                (r"open\s+(.+?)(?:\s+project)?$", "open_project"),
+                (r"go\s+to\s+(.+)", "open_project"),
+                (r"switch\s+to\s+(.+)", "open_project"),
+                # Create
+                (
+                    r"(?:create|make|add|new)\s+(?:a\s+)?(?:new\s+)?component\s+(?:called\s+|named\s+)?(.+)",
+                    "create_component",
+                ),
+                (
+                    r"(?:create|make|add|new)\s+(?:a\s+)?(.+)\s+component",
+                    "create_component",
+                ),
+                (
+                    r"(?:create|make|add|new)\s+(?:a\s+)?(?:new\s+)?page\s+(?:called\s+|named\s+)?(.+)",
+                    "create_page",
+                ),
+                (r"(?:create|make|add|new)\s+(?:a\s+)?(.+)\s+page", "create_page"),
+                (
+                    r"(?:create|make|add|new)\s+(?:a\s+)?(?:new\s+)?(?:api|endpoint)\s+(?:for\s+)?(.+)",
+                    "create_api",
+                ),
+                (
+                    r"(?:create|make|add|new)\s+(?:a\s+)?file\s+(?:called\s+)?(.+)",
+                    "create_file",
+                ),
+                # Git
+                (r"commit\s*(.+)?", "git_commit"),
+                (r"push", "git_push"),
+                (r"(?:create|make|open)\s+(?:a\s+)?(?:pr|pull\s+request)", "create_pr"),
+                (r"(?:create|make)\s+(?:a\s+)?branch\s+(?:called\s+)?(.+)", "git_branch"),
+                # Packages
+                (r"(?:install|add)\s+(?:package\s+)?(.+)", "install_package"),
+                (r"npm\s+(?:install|i)\s+(.+)", "install_package"),
+                (r"pip\s+install\s+(.+)", "install_package"),
+                # Fix/Improve
+                (r"(?:fix|solve|debug)\s+(.+)", "fix_bug"),
+                (r"refactor\s+(.+)", "refactor"),
+                # Tests
+                (r"(?:create|write|generate)\s+tests?\s+for\s+(.+)", "create_test"),
+                (r"run\s+tests?", "run_tests"),
+                # Explain
+                (r"(?:explain|describe)\s+(.+)", "explain_code"),
+                (r"what\s+(?:is|does)\s+(.+)", "explain_code"),
+                # Add feature
+                (r"add\s+(?:a\s+)?(.+)", "add_feature"),
+            ]
 
     def parse(self, message: str) -> Dict[str, Any]:
         """Parse message and return intent"""

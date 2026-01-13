@@ -374,6 +374,12 @@ async def navi_chat(
     try:
         # 🚀 AGGRESSIVE NAVI ENGINE - Comprehensive intent detection and execution
         # Uses complete NAVI engine for advanced code generation, git ops, and dependency management
+
+        # Check if workspace_root is provided, if not, skip NAVI processing
+        if not request.workspace_root:
+            logger.warning("⚠️ workspace_root is None, skipping NAVI engine processing")
+            raise ValueError("workspace_root is required for NAVI processing")
+
         from backend.services.navi_engine import process_request as navi_process
 
         navi_context = {

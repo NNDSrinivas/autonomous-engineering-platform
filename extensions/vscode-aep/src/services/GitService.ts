@@ -5,6 +5,9 @@ import { promisify } from 'util';
 
 const execAsync = promisify(cp.exec);
 
+// Git command execution configuration
+const MAX_GIT_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB buffer for large diffs
+
 export interface GitStatus {
     branch: string;
     ahead: number;
@@ -74,7 +77,7 @@ export class GitService {
         try {
             const { stdout, stderr } = await execAsync(command, {
                 cwd: this.workspaceRoot,
-                maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+                maxBuffer: MAX_GIT_BUFFER_SIZE
             });
 
             if (stderr && !stderr.includes('warning')) {

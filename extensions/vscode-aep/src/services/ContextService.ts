@@ -42,13 +42,22 @@ export interface WorkspaceContext {
     totalSize: number;
 }
 
+// Configuration constants for ContextService
+export const DEFAULT_CONTEXT_CONFIG = {
+    MAX_SEARCH_FILES: 100,
+    MAX_MATCHES_PER_FILE: 5,
+    MAX_SEARCH_RESULTS: 20,
+    FILE_TREE_MAX_DEPTH: 3,
+    REINDEX_DEBOUNCE_MS: 2000
+} as const;
+
 export class ContextService {
     private client: NaviClient;
     private indexCache: Map<string, any> = new Map();
     private fileWatcher?: vscode.FileSystemWatcher;
-    private maxSearchFiles: number = 100; // Default limit, configurable
-    private maxMatchesPerFile: number = 5; // Default limit
-    private maxSearchResults: number = 20; // Default limit
+    private maxSearchFiles: number;
+    private maxMatchesPerFile: number;
+    private maxSearchResults: number;
 
     constructor(client: NaviClient, options?: {
         maxSearchFiles?: number;
@@ -56,11 +65,9 @@ export class ContextService {
         maxSearchResults?: number;
     }) {
         this.client = client;
-        if (options) {
-            this.maxSearchFiles = options.maxSearchFiles ?? 100;
-            this.maxMatchesPerFile = options.maxMatchesPerFile ?? 5;
-            this.maxSearchResults = options.maxSearchResults ?? 20;
-        }
+        this.maxSearchFiles = options?.maxSearchFiles ?? DEFAULT_CONTEXT_CONFIG.MAX_SEARCH_FILES;
+        this.maxMatchesPerFile = options?.maxMatchesPerFile ?? DEFAULT_CONTEXT_CONFIG.MAX_MATCHES_PER_FILE;
+        this.maxSearchResults = options?.maxSearchResults ?? DEFAULT_CONTEXT_CONFIG.MAX_SEARCH_RESULTS;
         this.setupFileWatcher();
     }
 
@@ -337,7 +344,7 @@ export class ContextService {
 
         this.debounceTimer = setTimeout(() => {
             this.indexWorkspace();
-        }, 2000); // Re-index after 2 seconds of no changes
+        }, DEFAULT_CONTEXT_CONFIG.REINDEX_DEBOUNCE_MS);
     }
 
     private async detectTechnologies(rootPath: string, files: string[]): Promise<string[]> {

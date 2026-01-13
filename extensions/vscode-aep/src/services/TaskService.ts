@@ -129,10 +129,11 @@ export class TaskService {
     private tasksCache: Map<string, JiraTask> = new Map();
     private projectsCache: Map<string, JiraProject> = new Map();
     private lastCacheUpdate: number = 0;
-    private cacheExpiry: number = 5 * 60 * 1000; // 5 minutes
+    private cacheExpiry: number;
 
-    constructor(client: NaviClient) {
+    constructor(client: NaviClient, cacheExpiryMs?: number) {
         this.client = client;
+        this.cacheExpiry = cacheExpiryMs ?? 5 * 60 * 1000; // default 5 minutes
     }
 
     /**

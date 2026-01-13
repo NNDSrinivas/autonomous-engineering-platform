@@ -6,6 +6,46 @@ type RuntimeConfig = {
   backendBaseUrl?: string;
 };
 
+// Type-safe interfaces for API requests/responses
+export interface WorkspaceInfo {
+  rootPath: string;
+  technologies: string[];
+  totalFiles: number;
+  gitBranch?: string;
+}
+
+export interface EditorContext {
+  currentFile: string;
+  language: string;
+  selection?: {
+    text: string;
+    range: {
+      start: { line: number; character: number };
+      end: { line: number; character: number };
+    };
+  };
+  surroundingCode?: {
+    before: string;
+    after: string;
+  };
+  imports?: string[];
+}
+
+export interface CodeContext {
+  workspace?: WorkspaceInfo;
+  editor?: EditorContext;
+  additionalContext?: Record<string, unknown>;
+}
+
+export interface Diagnostic {
+  message: string;
+  severity: number;
+  line: number;
+  character: number;
+  source?: string;
+  code?: string | number;
+}
+
 function getRuntimeConfig(): RuntimeConfig {
   if (typeof window === "undefined") {
     return {};
@@ -65,7 +105,7 @@ export class NaviAPIClient {
 
   async generateCode(request: {
     prompt: string;
-    context: any;
+    context: CodeContext;
     language: string;
   }): Promise<{ code: string; explanation: string }> {
     return this.request('/api/code/generate', {
@@ -84,7 +124,7 @@ export class NaviAPIClient {
 
   async refactorCode(request: {
     code: string;
-    context: any;
+    context: CodeContext;
     language: string;
   }): Promise<{ refactoredCode: string; explanation: string }> {
     return this.request('/api/code/refactor', {
@@ -106,8 +146,8 @@ export class NaviAPIClient {
 
   async fixBug(request: {
     code: string;
-    diagnostics: any[];
-    context: any;
+    diagnostics: Diagnostic[];
+    context: CodeContext;
   }): Promise<{ fixedCode: string; explanation: string }> {
     return this.request('/api/code/fix', {
       method: 'POST',
@@ -119,7 +159,7 @@ export class NaviAPIClient {
     prefix: string;
     suffix: string;
     language: string;
-    context: any;
+    context: CodeContext;
   }): Promise<{ completion: string; confidence: number }> {
     return this.request('/api/code/complete', {
       method: 'POST',
@@ -131,8 +171,8 @@ export class NaviAPIClient {
 
   async createPR(request: {
     title: string;
-    changes: any[];
-    context: any;
+    changes: Array<{ file: string; additions: number; deletions: number }>;
+    context: CodeContext;
   }): Promise<{ url: string; number: number }> {
     return this.request('/api/git/pr', {
       method: 'POST',
@@ -141,9 +181,9 @@ export class NaviAPIClient {
   }
 
   async reviewChanges(request: {
-    changes: any[];
-    context: any;
-  }): Promise<{ comments: any[]; summary: string }> {
+    changes: Array<{ file: string; additions: number; deletions: number }>;
+    context: CodeContext;
+  }): Promise<{ comments: Array<{ file: string; line: number; message: string }>; summary: string }> {
     return this.request('/api/git/review', {
       method: 'POST',
       body: JSON.stringify(request),

@@ -39,6 +39,11 @@ import { TaskService } from './services/TaskService';
 
 const exec = util.promisify(child_process.exec);
 
+// Configuration constants
+const DEFAULT_REQUEST_TIMEOUT_MS = 60000; // 60 seconds for complex operations
+const DEFAULT_SSE_TIMEOUT_MS = 60000; // 60 seconds for SSE connections
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds heartbeat
+
 // Global service instances for workspace operations
 let globalContextService: ContextService | undefined;
 let globalGitService: GitService | undefined;
@@ -1261,8 +1266,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private sse = new SSEClient({
     maxRetries: 3,
     retryDelay: 1000,
-    heartbeatInterval: 30000,
-    timeout: 60000
+    heartbeatInterval: DEFAULT_HEARTBEAT_INTERVAL_MS,
+    timeout: DEFAULT_SSE_TIMEOUT_MS
   });
 
   constructor(extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
@@ -6215,7 +6220,7 @@ Provide a comprehensive overview that goes beyond just listing files. Make it ac
 
       const controller = new AbortController();
       const config = vscode.workspace.getConfiguration('aep.navi');
-      const timeoutMs = config.get<number>('requestTimeout') || 60000;
+      const timeoutMs = config.get<number>('requestTimeout') || DEFAULT_REQUEST_TIMEOUT_MS;
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       // Get the last bot message state for autonomous coding continuity

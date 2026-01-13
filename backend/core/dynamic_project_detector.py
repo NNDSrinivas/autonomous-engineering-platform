@@ -166,7 +166,10 @@ class DynamicProjectDetector:
                 with open(py_file, "r", encoding="utf-8") as f:
                     content = f.read()
                     for import_name in import_names:
-                        if f"import {import_name}" in content or f"from {import_name}" in content:
+                        if (
+                            f"import {import_name}" in content
+                            or f"from {import_name}" in content
+                        ):
                             return True
             except Exception:
                 continue
@@ -210,7 +213,12 @@ class DynamicProjectDetector:
                                 dependencies[parts[0]] = parts[1]
                             else:
                                 # Handle >=, <=, etc.
-                                pkg_name = line.split("[")[0].split(">")[0].split("<")[0].split("!")[0]
+                                pkg_name = (
+                                    line.split("[")[0]
+                                    .split(">")[0]
+                                    .split("<")[0]
+                                    .split("!")[0]
+                                )
                                 dependencies[pkg_name] = "*"
             except Exception as e:
                 logger.error(f"Error reading requirements.txt: {e}")
@@ -234,7 +242,9 @@ class DynamicProjectDetector:
         technologies = []
 
         # Docker
-        if (workspace / "Dockerfile").exists() or (workspace / "docker-compose.yml").exists():
+        if (workspace / "Dockerfile").exists() or (
+            workspace / "docker-compose.yml"
+        ).exists():
             technologies.append("Docker")
 
         # Kubernetes

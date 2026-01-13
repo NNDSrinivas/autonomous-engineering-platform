@@ -263,28 +263,27 @@ PHASE_3_AVAILABLE = False
 
 
 class StateManager(Protocol):
-    def load_state(self, session_id: str) -> Dict[str, Any]:
-        ...
+    def load_state(self, session_id: str) -> Dict[str, Any]: ...
 
-    def save_state(self, session_id: str, state: Dict[str, Any]) -> None:
-        ...
+    def save_state(self, session_id: str, state: Dict[str, Any]) -> None: ...
 
 
 class MemoryRetriever(Protocol):
-    def retrieve(self, intent: NaviIntent, context: Dict[str, Any]) -> Dict[str, Any]:
-        ...
+    def retrieve(
+        self, intent: NaviIntent, context: Dict[str, Any]
+    ) -> Dict[str, Any]: ...
 
 
 class Planner(Protocol):
-    async def plan(self, intent: NaviIntent, context: Dict[str, Any]) -> "PlanResult":
-        ...
+    async def plan(
+        self, intent: NaviIntent, context: Dict[str, Any]
+    ) -> "PlanResult": ...
 
 
 class ToolExecutor(Protocol):
     async def execute_step(
         self, step: "PlannedStep", intent: NaviIntent, context: Dict[str, Any]
-    ) -> "StepResult":
-        ...
+    ) -> "StepResult": ...
 
 
 class LLMIntentClassifier(Protocol):
@@ -297,8 +296,7 @@ class LLMIntentClassifier(Protocol):
         api_key: Optional[str] = None,
         org_id: Optional[str] = None,
         session_id: Optional[str] = None,
-    ) -> NaviIntent:
-        ...
+    ) -> NaviIntent: ...
 
 
 # ============================================================================

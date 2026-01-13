@@ -187,9 +187,19 @@ class NaviChatRequest(ChatRequest):
     attachments: List[Attachment] = Field(default_factory=list)
     executionMode: Optional[str] = None  # e.g., plan_propose | plan_and_run (future)
     workspace_root: Optional[str] = None  # Workspace root for reading new file contents
-    state: Optional[
-        Dict[str, Any]
-    ] = None  # State from previous response for autonomous coding continuity
+    state: Optional[Dict[str, Any]] = (
+        None  # State from previous response for autonomous coding continuity
+    )
+
+    # 🚀 LLM-FIRST: Full VS Code context fields
+    current_file: Optional[str] = (
+        None  # Currently open file path (relative to workspace)
+    )
+    current_file_content: Optional[str] = None  # Content of the current file
+    selection: Optional[str] = None  # Selected text in the editor
+    errors: Optional[List[Dict[str, Any]]] = (
+        None  # List of errors from VS Code diagnostics
+    )
 
 
 class ChatResponse(BaseModel):
@@ -203,6 +213,13 @@ class ChatResponse(BaseModel):
     should_stream: Optional[bool] = None
     duration_ms: Optional[int] = None
     reply: Optional[str] = None
+
+    # Intelligence fields (like Codex/Claude Code)
+    thinking_steps: Optional[List[str]] = None  # Show what NAVI did
+    files_read: Optional[List[str]] = None  # Show what files were analyzed
+    project_type: Optional[str] = None  # Detected project type
+    framework: Optional[str] = None  # Detected framework
+    warnings: Optional[List[str]] = None  # Safety warnings
 
 
 class ProactiveSuggestionsRequest(BaseModel):
@@ -372,63 +389,143 @@ async def navi_chat(
     )
 
     try:
-        # 🚀 AGGRESSIVE NAVI ENGINE - Comprehensive intent detection and execution
-        # Uses complete NAVI engine for advanced code generation, git ops, and dependency management
+        # 🚀 LLM-FIRST NAVI BRAIN - Pure LLM intelligence for code generation and execution
+        # Uses new clean NAVI brain with safety features and multi-provider LLM support
 
         # Check if workspace_root is provided, if not, skip NAVI processing
         if not request.workspace_root:
-            logger.warning("⚠️ workspace_root is None, skipping NAVI engine processing")
+            logger.warning("⚠️ workspace_root is None, skipping NAVI brain processing")
             raise ValueError("workspace_root is required for NAVI processing")
 
-        from backend.services.navi_engine import process_request as navi_process
+        from backend.services.navi_brain import process_navi_request
 
-        navi_context = {
-            "workspace_path": request.workspace_root,
-            "current_file": None,  # Can be populated from request if available
-            "technologies": [],  # Will be auto-detected by NAVI
-        }
+        # 🚀 LLM-FIRST: Extract full context from request
+        current_file = getattr(request, "current_file", None)
+        current_file_content = getattr(request, "current_file_content", None)
+        selection = getattr(request, "selection", None)
+        errors = getattr(request, "errors", None)
 
-        navi_result = await navi_process(
+        # Also check attachments for file content (backward compatibility)
+        if not current_file_content and request.attachments:
+            for att in request.attachments:
+                if att.get("kind") == "file" and att.get("content"):
+                    if not current_file:
+                        current_file = att.get("path")
+                    if not current_file_content:
+                        current_file_content = att.get("content")
+                    break
+
+        logger.info(
+            f"🎯 Context extracted - current_file: {current_file}, has_content: {bool(current_file_content)}, has_selection: {bool(selection)}, errors: {len(errors) if errors else 0}"
+        )
+
+        # Call the new LLM-first NAVI brain with full context
+        navi_result = await process_navi_request(
             message=request.message,
-            workspace=request.workspace_root,
-            context=navi_context,
+            workspace_path=request.workspace_root,
+            llm_provider="openai",  # Use OpenAI GPT-4
+            llm_model=None,  # Use default model for provider
+            api_key=None,  # Will use environment variable (OPENAI_API_KEY)
+            current_file=current_file,
+            current_file_content=current_file_content,
+            selection=selection,
+            open_files=None,
+            errors=errors,
+            conversation_history=(
+                request.conversationHistory
+                if hasattr(request, "conversationHistory")
+                else None
+            ),
         )
 
         logger.info(
-            f"🎯 NAVI processed action: {navi_result.get('action', 'unknown')} (success: {navi_result.get('success', False)})"
+            f"🎯 NAVI brain processed: success={navi_result.get('success', False)}, files_created={len(navi_result.get('files_created', []))}"
         )
 
-        # If NAVI successfully executed and has a VS Code command, return it
-        if navi_result.get("success") and navi_result.get("vscode_command"):
-            response_content = navi_result["message"]
+        # Build response content from NAVI brain result
+        response_content = navi_result.get("message", "Task completed successfully.")
 
-            # Add helpful context about files created
-            if navi_result.get("files_created"):
-                response_content += "\n\n**Files created:**\n"
-                for file_path in navi_result["files_created"]:
-                    response_content += f"- {file_path}\n"
+        # Add warnings if any (safety features)
+        if navi_result.get("warnings"):
+            response_content += "\n\n**⚠️ Warnings:**\n"
+            for warning in navi_result["warnings"]:
+                response_content += f"- {warning}\n"
 
-            # Add helpful context about dependencies installed
-            if navi_result.get("dependencies_installed"):
-                response_content += "\n\n**Dependencies installed:**\n"
-                for package in navi_result["dependencies_installed"]:
-                    response_content += f"- {package}\n"
+        # Add helpful context about files created
+        if navi_result.get("files_created"):
+            response_content += "\n\n**Files created:**\n"
+            for file_path in navi_result["files_created"]:
+                response_content += f"- {file_path}\n"
 
-            # Add helpful context about git operations
-            if navi_result.get("git_operations"):
-                response_content += "\n\n**Git operations:**\n"
-                for operation in navi_result["git_operations"]:
-                    response_content += f"- {operation}\n"
+        # Add helpful context about files modified
+        if navi_result.get("files_modified"):
+            response_content += "\n\n**Files modified:**\n"
+            for file_path in navi_result["files_modified"]:
+                response_content += f"- {file_path}\n"
 
+        # Add helpful context about commands to run (not executed yet - user needs to click Apply)
+        if navi_result.get("commands_run"):
+            response_content += "\n\n**Commands to run:**\n"
+            for command in navi_result["commands_run"]:
+                response_content += f"- `{command}`\n"
+
+        # Convert NAVI's commands and VS Code commands into actions array
+        actions = []
+
+        # Add shell commands as runCommand actions
+        commands_run = navi_result.get("commands_run", [])
+        for command in commands_run:
+            actions.append(
+                {
+                    "type": "runCommand",
+                    "command": command,
+                    "cwd": request.workspace_root,
+                }
+            )
+
+        # Add VS Code commands as vscode_command actions
+        vscode_commands = navi_result.get("vscode_commands", [])
+        for vscode_cmd in vscode_commands:
+            # Convert relative paths to absolute paths for vscode.open command
+            args = vscode_cmd.get("args", [])
+            if vscode_cmd.get("command") == "vscode.open" and args:
+                import os
+
+                workspace_root = request.workspace_root or ""
+                # Make first arg absolute if it's a relative path
+                if args[0] and not os.path.isabs(args[0]):
+                    args[0] = os.path.join(workspace_root, args[0])
+
+            actions.append(
+                {
+                    "type": "vscode_command",
+                    "command": vscode_cmd.get("command"),
+                    "args": args,
+                }
+            )
+
+        # Return actions if we have any
+        if actions or navi_result.get("success"):
             return ChatResponse(
                 content=response_content,
-                actions=[
-                    {
-                        "type": "vscode_command",
-                        "command": navi_result["vscode_command"]["command"],
-                        "args": navi_result["vscode_command"]["args"],
-                    }
-                ],
+                actions=actions,
+                thinking_steps=navi_result.get("thinking_steps"),
+                files_read=navi_result.get("files_read"),
+                project_type=navi_result.get("project_type"),
+                framework=navi_result.get("framework"),
+                warnings=navi_result.get("warnings"),
+            )
+
+        # If successful but no VS Code commands, just return the message
+        if navi_result.get("success"):
+            return ChatResponse(
+                content=response_content,
+                actions=[],
+                thinking_steps=navi_result.get("thinking_steps"),
+                files_read=navi_result.get("files_read"),
+                project_type=navi_result.get("project_type"),
+                framework=navi_result.get("framework"),
+                warnings=navi_result.get("warnings"),
             )
 
         # Fetch relevant memories to ground the response
@@ -921,9 +1018,7 @@ Would you like to try again with different settings?
                                     operation_icon = (
                                         "📄"
                                         if step.operation == "create"
-                                        else "✏️"
-                                        if step.operation == "modify"
-                                        else "🗑️"
+                                        else "✏️" if step.operation == "modify" else "🗑️"
                                     )
 
                                     # Try to get git diff stats for this file
@@ -2618,11 +2713,7 @@ async def _handle_task_query(
             status_emoji = (
                 "🔄"
                 if status == "In Progress"
-                else "📝"
-                if status == "To Do"
-                else "✅"
-                if status == "Done"
-                else "📌"
+                else "📝" if status == "To Do" else "✅" if status == "Done" else "📌"
             )
             jira_key = task.get("jira_key", "")
             title = task.get("title", "").replace(f"[Jira] {jira_key}: ", "")

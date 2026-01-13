@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
+import os
 
 
 # ==================== DATA CLASSES ====================
@@ -178,20 +179,63 @@ class ProjectDetector:
 
 
 class IntentParser:
-    """Parse user intent from natural language"""
+    """
+    Hybrid intent parser supporting both LLM and regex-based classification.
+
+    Classification Strategy:
+    1. LLM-First (mode="llm"): Try LLM, fallback to regex on failure
+    2. Regex-First (mode="regex"): Try regex, fallback to LLM on no match
+    3. Hybrid (mode="hybrid"): Try both, use highest confidence
+    4. LLM-Only (mode="llm_only"): Use LLM, fail if unavailable
+    5. Regex-Only (mode="regex_only"): Use regex only
+
+    Configuration via environment variables:
+    - NAVI_INTENT_MODE: llm, regex, hybrid, llm_only, regex_only (default: hybrid)
+    - NAVI_LLM_PROVIDER: openai, anthropic, local (default: openai)
+    - NAVI_LLM_MODEL: model name (default: provider-specific)
+    """
 
     def __init__(self):
-        # Try to load dynamic patterns from YAML config
-        try:
-            from backend.core.config_loader import get_config_loader
-            config_loader = get_config_loader()
-            intent_patterns = config_loader.load_intent_patterns("english")
+        import os
 
-            # Convert IntentPattern objects to (regex, action) tuples
-            self.patterns = [(p.regex, p.action) for p in intent_patterns]
-            print(f"[IntentParser] ✅ Loaded {len(self.patterns)} dynamic intent patterns from YAML")
-        except Exception as e:
-            print(f"[IntentParser] ⚠️ Failed to load dynamic patterns, using fallback: {e}")
+        # Get mode from environment or default to llm (LLM-first for natural language understanding)
+        # Options: llm (recommended), hybrid, regex, llm_only, regex_only
+        self.mode = os.getenv("NAVI_INTENT_MODE", "llm").lower()
+        self.llm_provider = os.getenv("NAVI_LLM_PROVIDER", "openai").lower()
+        self.llm_model = os.getenv("NAVI_LLM_MODEL")
+
+        self.use_llm = False
+        self.llm_classifier = None
+        self.use_regex = False
+        self.patterns = []
+
+        # Initialize LLM classifier if needed
+        if self.mode in ["llm", "hybrid", "llm_only"]:
+            try:
+                from backend.core.llm_intent_classifier import get_llm_classifier
+                self.llm_classifier = get_llm_classifier()
+                self.use_llm = True
+                print(f"[IntentParser] ✅ LLM classifier ready (provider: {self.llm_provider}, model: {self.llm_classifier.model_name})")
+            except Exception as e:
+                print(f"[IntentParser] ⚠️ LLM classifier failed to initialize: {e}")
+                if self.mode == "llm_only":
+                    raise Exception("LLM-only mode selected but LLM classifier unavailable")
+
+        # Initialize regex patterns if needed
+        if self.mode in ["regex", "hybrid", "regex_only"]:
+            try:
+                from backend.core.config_loader import get_config_loader
+                config_loader = get_config_loader()
+                intent_patterns = config_loader.load_intent_patterns("english")
+
+                # Convert IntentPattern objects to (regex, action) tuples
+                self.patterns = [(p.regex, p.action) for p in intent_patterns]
+                self.use_regex = True
+                print(f"[IntentParser] ✅ Loaded {len(self.patterns)} regex patterns from YAML")
+            except Exception as e:
+                print(f"[IntentParser] ⚠️ Failed to load regex patterns: {e}")
+                if self.mode == "regex_only":
+                    raise Exception("Regex-only mode selected but patterns unavailable")
             # Fallback to hardcoded patterns if dynamic loading fails
             self.patterns = [
                 # Open/Navigate
@@ -243,7 +287,84 @@ class IntentParser:
             ]
 
     def parse(self, message: str) -> Dict[str, Any]:
-        """Parse message and return intent"""
+        """
+        Parse message and return intent using configured strategy.
+
+        Returns dict with: action, target, original, confidence
+        """
+
+        # Mode: LLM-First (try LLM, fallback to regex)
+        if self.mode == "llm":
+            llm_result = self._try_llm_classification(message)
+            if llm_result:
+                return llm_result
+            return self._try_regex_classification(message)
+
+        # Mode: Regex-First (try regex, fallback to LLM)
+        elif self.mode == "regex":
+            regex_result = self._try_regex_classification(message)
+            if regex_result["action"] != "general":
+                return regex_result
+            llm_result = self._try_llm_classification(message)
+            if llm_result:
+                return llm_result
+            return regex_result
+
+        # Mode: Hybrid (try both, use highest confidence)
+        elif self.mode == "hybrid":
+            llm_result = self._try_llm_classification(message)
+            regex_result = self._try_regex_classification(message)
+
+            # If both available, use highest confidence
+            if llm_result and regex_result:
+                llm_conf = llm_result.get("confidence", 0.5)
+                regex_conf = regex_result.get("confidence", 0.5)
+
+                if llm_conf >= regex_conf:
+                    print(f"[IntentParser] 🎯 Hybrid: Using LLM (conf: {llm_conf:.2f} vs regex: {regex_conf:.2f})")
+                    return llm_result
+                else:
+                    print(f"[IntentParser] 🎯 Hybrid: Using regex (conf: {regex_conf:.2f} vs LLM: {llm_conf:.2f})")
+                    return regex_result
+
+            # Fallback to whichever is available
+            return llm_result or regex_result or self._fallback_result(message)
+
+        # Mode: LLM-Only
+        elif self.mode == "llm_only":
+            result = self._try_llm_classification(message)
+            if not result:
+                raise Exception("LLM classification failed in llm_only mode")
+            return result
+
+        # Mode: Regex-Only
+        elif self.mode == "regex_only":
+            return self._try_regex_classification(message)
+
+        # Unknown mode, use hybrid as default
+        else:
+            print(f"[IntentParser] ⚠️ Unknown mode '{self.mode}', using hybrid")
+            self.mode = "hybrid"
+            return self.parse(message)
+
+    def _try_llm_classification(self, message: str) -> Optional[Dict[str, Any]]:
+        """Try LLM-based classification, return None on failure"""
+        if not self.use_llm or not self.llm_classifier:
+            return None
+
+        try:
+            result = self.llm_classifier.classify_sync(message)
+            print(f"[IntentParser] 🤖 LLM: {message[:50]} → {result['action']} (conf: {result.get('confidence', 0.8):.2f})")
+            return result
+        except Exception as e:
+            print(f"[IntentParser] ⚠️ LLM classification error: {e}")
+            return None
+
+    def _try_regex_classification(self, message: str) -> Dict[str, Any]:
+        """Try regex pattern matching, return general on no match"""
+        if not self.use_regex or not self.patterns:
+            return self._fallback_result(message)
+
         message_lower = message.lower().strip()
 
         for pattern, action in self.patterns:
@@ -252,13 +373,19 @@ class IntentParser:
                 target = (
                     match.group(1).strip() if match.groups() and match.group(1) else ""
                 )
-                return {
+                result = {
                     "action": action,
                     "target": target,
                     "original": message,
                     "confidence": 0.9,
                 }
+                print(f"[IntentParser] 📋 Regex: {message[:50]} → {action} (pattern matched)")
+                return result
 
+        return self._fallback_result(message)
+
+    def _fallback_result(self, message: str) -> Dict[str, Any]:
+        """Fallback result when no classification works"""
         return {
             "action": "general",
             "target": message,

@@ -16,49 +16,81 @@ router = APIRouter(prefix="/api/navi", tags=["navi"])
 
 # ==================== REQUEST/RESPONSE MODELS ====================
 
+
 class NaviRequest(BaseModel):
     """Request model for NAVI processing"""
+
     message: str = Field(..., description="User's natural language message")
     workspace: str = Field(..., description="Workspace root path")
 
     # LLM configuration (user's choice)
-    llm_provider: str = Field(default="anthropic", description="LLM provider: anthropic, openai, google, groq, mistral, openrouter, ollama")
-    llm_model: Optional[str] = Field(default=None, description="Specific model name (optional, uses provider default)")
-    api_key: Optional[str] = Field(default=None, description="API key (optional, can use environment variable)")
+    llm_provider: str = Field(
+        default="anthropic",
+        description="LLM provider: anthropic, openai, google, groq, mistral, openrouter, ollama",
+    )
+    llm_model: Optional[str] = Field(
+        default=None,
+        description="Specific model name (optional, uses provider default)",
+    )
+    api_key: Optional[str] = Field(
+        default=None, description="API key (optional, can use environment variable)"
+    )
 
     # Context from VS Code
-    context: Optional[Dict[str, Any]] = Field(default=None, description="Additional context (current file, selection, etc.)")
+    context: Optional[Dict[str, Any]] = Field(
+        default=None, description="Additional context (current file, selection, etc.)"
+    )
 
 
 class NaviResponse(BaseModel):
     """Response model for NAVI processing"""
+
     success: bool = Field(..., description="Whether the action succeeded")
     message: str = Field(..., description="Human-readable message")
 
     # Files
-    files_created: List[str] = Field(default_factory=list, description="Files that were created")
-    files_modified: List[str] = Field(default_factory=list, description="Files that were modified")
+    files_created: List[str] = Field(
+        default_factory=list, description="Files that were created"
+    )
+    files_modified: List[str] = Field(
+        default_factory=list, description="Files that were modified"
+    )
 
     # Commands
-    commands_run: List[str] = Field(default_factory=list, description="Commands that were executed")
+    commands_run: List[str] = Field(
+        default_factory=list, description="Commands that were executed"
+    )
 
     # VS Code integration
-    vscode_commands: List[Dict[str, Any]] = Field(default_factory=list, description="VS Code commands to execute")
+    vscode_commands: List[Dict[str, Any]] = Field(
+        default_factory=list, description="VS Code commands to execute"
+    )
 
     # User interaction
-    needs_user_input: bool = Field(default=False, description="Whether user input is needed")
-    user_input_prompt: Optional[str] = Field(default=None, description="Prompt for user input")
+    needs_user_input: bool = Field(
+        default=False, description="Whether user input is needed"
+    )
+    user_input_prompt: Optional[str] = Field(
+        default=None, description="Prompt for user input"
+    )
 
     # Safety
-    needs_user_confirmation: bool = Field(default=False, description="Whether dangerous commands need confirmation")
-    dangerous_commands: List[str] = Field(default_factory=list, description="Commands that need confirmation")
+    needs_user_confirmation: bool = Field(
+        default=False, description="Whether dangerous commands need confirmation"
+    )
+    dangerous_commands: List[str] = Field(
+        default_factory=list, description="Commands that need confirmation"
+    )
     warnings: List[str] = Field(default_factory=list, description="Safety warnings")
 
     # Execution details
-    execution_results: Optional[Dict[str, Any]] = Field(default=None, description="Detailed execution results")
+    execution_results: Optional[Dict[str, Any]] = Field(
+        default=None, description="Detailed execution results"
+    )
 
 
 # ==================== MAIN ENDPOINT ====================
+
 
 @router.post("/process", response_model=NaviResponse)
 async def process_navi_request(request: NaviRequest):
@@ -97,7 +129,9 @@ async def process_navi_request(request: NaviRequest):
     """
     try:
         # Import the clean LLM-first system
-        from backend.services.navi_brain import process_navi_request as process_llm_request
+        from backend.services.navi_brain import (
+            process_navi_request as process_llm_request,
+        )
 
         # Get API key from request or environment
         api_key = request.api_key
@@ -115,20 +149,26 @@ async def process_navi_request(request: NaviRequest):
         if not api_key and request.llm_provider != "ollama":
             raise HTTPException(
                 status_code=400,
-                detail=f"API key required for {request.llm_provider}. Set {env_vars.get(request.llm_provider, 'API_KEY')} environment variable or pass api_key in request."
+                detail=f"API key required for {request.llm_provider}. Set {env_vars.get(request.llm_provider, 'API_KEY')} environment variable or pass api_key in request.",
             )
 
         logger.info(f"🎯 Processing NAVI request: {request.message[:100]}...")
-        logger.info(f"🤖 Using LLM: {request.llm_provider} {request.llm_model or '(default model)'}")
+        logger.info(
+            f"🤖 Using LLM: {request.llm_provider} {request.llm_model or '(default model)'}"
+        )
 
         # Extract context fields
         context = request.context or {}
         current_file = context.get("currentFile") or context.get("current_file")
-        current_file_content = context.get("currentFileContent") or context.get("current_file_content")
+        current_file_content = context.get("currentFileContent") or context.get(
+            "current_file_content"
+        )
         selection = context.get("selection")
         open_files = context.get("openFiles") or context.get("open_files")
         errors = context.get("errors")
-        conversation_history = context.get("conversationHistory") or context.get("conversation_history")
+        conversation_history = context.get("conversationHistory") or context.get(
+            "conversation_history"
+        )
 
         # Process with clean LLM-first system
         result = await process_llm_request(
@@ -154,26 +194,40 @@ async def process_navi_request(request: NaviRequest):
 
 # ==================== NAVI V2: APPROVAL FLOW ENDPOINTS ====================
 
+
 class PlanResponse(BaseModel):
     """Response for plan creation (NAVI V2)"""
+
     plan_id: str = Field(..., description="Unique plan ID")
     message: str = Field(..., description="Response message")
     requires_approval: bool = Field(..., description="Whether user approval is needed")
-    actions_with_risk: List[Dict[str, Any]] = Field(default_factory=list, description="Actions with risk assessment")
-    thinking_steps: List[str] = Field(default_factory=list, description="Thinking process")
+    actions_with_risk: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Actions with risk assessment"
+    )
+    thinking_steps: List[str] = Field(
+        default_factory=list, description="Thinking process"
+    )
     files_read: List[str] = Field(default_factory=list, description="Files analyzed")
-    project_type: Optional[str] = Field(default=None, description="Detected project type")
+    project_type: Optional[str] = Field(
+        default=None, description="Detected project type"
+    )
     framework: Optional[str] = Field(default=None, description="Detected framework")
 
 
 class ApproveRequest(BaseModel):
     """Request to approve a plan"""
-    approved_action_indices: List[int] = Field(..., description="Indices of actions to execute")
+
+    approved_action_indices: List[int] = Field(
+        ..., description="Indices of actions to execute"
+    )
 
 
 class ExecutionUpdate(BaseModel):
     """Execution progress update"""
-    type: str = Field(..., description="Update type: action_start, action_complete, plan_complete")
+
+    type: str = Field(
+        ..., description="Update type: action_start, action_complete, plan_complete"
+    )
     index: Optional[int] = Field(default=None, description="Action index")
     action: Optional[Dict[str, Any]] = Field(default=None, description="Action details")
     success: Optional[bool] = Field(default=None, description="Action success status")
@@ -219,19 +273,21 @@ async def create_plan(request: NaviRequest):
 
         # Get API key
         api_key = request.api_key or os.getenv(
-            {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}.get(request.llm_provider, "")
+            {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}.get(
+                request.llm_provider, ""
+            )
         )
 
         if not api_key and request.llm_provider != "ollama":
-            raise HTTPException(status_code=400, detail=f"API key required for {request.llm_provider}")
+            raise HTTPException(
+                status_code=400, detail=f"API key required for {request.llm_provider}"
+            )
 
         logger.info(f"🎯 [NAVI V2] Creating plan for: {request.message[:100]}...")
 
         # Initialize brain
         brain = NaviBrain(
-            provider=request.llm_provider,
-            model=request.llm_model,
-            api_key=api_key
+            provider=request.llm_provider, model=request.llm_model, api_key=api_key
         )
 
         # Build context
@@ -289,7 +345,7 @@ async def approve_plan(plan_id: str, approve_request: ApproveRequest):
 
         # Get the brain instance (in production, you'd store this globally)
         # For now, we'll track plans globally in the module
-        brain = getattr(approve_plan, '_brain_instance', None)
+        brain = getattr(approve_plan, "_brain_instance", None)
         if not brain:
             raise HTTPException(status_code=404, detail="Plan not found")
 
@@ -297,7 +353,9 @@ async def approve_plan(plan_id: str, approve_request: ApproveRequest):
         if not plan:
             raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
 
-        logger.info(f"🎯 [NAVI V2] Approved {len(approve_request.approved_action_indices)} actions for plan {plan_id}")
+        logger.info(
+            f"🎯 [NAVI V2] Approved {len(approve_request.approved_action_indices)} actions for plan {plan_id}"
+        )
 
         # Start execution in background
         execution_id = plan_id + "-exec"
@@ -305,7 +363,7 @@ async def approve_plan(plan_id: str, approve_request: ApproveRequest):
         return {
             "execution_id": execution_id,
             "status": "executing",
-            "message": f"Executing {len(approve_request.approved_action_indices)} approved actions..."
+            "message": f"Executing {len(approve_request.approved_action_indices)} approved actions...",
         }
 
     except HTTPException:
@@ -324,7 +382,7 @@ async def get_plan(plan_id: str):
     """
     try:
 
-        brain = getattr(approve_plan, '_brain_instance', None)
+        brain = getattr(approve_plan, "_brain_instance", None)
         if not brain:
             raise HTTPException(status_code=404, detail="Plan not found")
 
@@ -342,6 +400,7 @@ async def get_plan(plan_id: str):
 
 
 # ==================== HEALTH & INFO ENDPOINTS ====================
+
 
 @router.get("/health")
 async def health_check():
@@ -369,8 +428,8 @@ async def health_check():
             "Path validation (workspace boundaries)",
             "Dangerous command detection",
             "Graceful error handling",
-            "Natural language understanding (infinite variations)"
-        ]
+            "Natural language understanding (infinite variations)",
+        ],
     }
 
 
@@ -403,14 +462,14 @@ async def get_providers():
                     "claude-3-5-sonnet-20241022",
                     "claude-3-5-haiku-20241022",
                     "claude-3-opus-20240229",
-                    "claude-3-haiku-20240307"
+                    "claude-3-haiku-20240307",
                 ],
                 "default": "claude-3-5-sonnet-20241022",
                 "requires_api_key": True,
                 "recommended": True,
                 "best_for": "Code generation, reasoning, complex tasks",
                 "cost_per_1k_requests": "$10-15",
-                "latency": "300-800ms"
+                "latency": "300-800ms",
             },
             {
                 "id": "openai",
@@ -420,7 +479,7 @@ async def get_providers():
                 "requires_api_key": True,
                 "best_for": "Fast responses, general tasks",
                 "cost_per_1k_requests": "$5-10",
-                "latency": "200-600ms"
+                "latency": "200-600ms",
             },
             {
                 "id": "google",
@@ -430,17 +489,21 @@ async def get_providers():
                 "requires_api_key": True,
                 "best_for": "Multimodal, large context",
                 "cost_per_1k_requests": "$8-12",
-                "latency": "400-1000ms"
+                "latency": "400-1000ms",
             },
             {
                 "id": "groq",
                 "name": "Groq (Ultra-Fast)",
-                "models": ["llama-3.3-70b-versatile", "llama3-70b-8192", "mixtral-8x7b-32768"],
+                "models": [
+                    "llama-3.3-70b-versatile",
+                    "llama3-70b-8192",
+                    "mixtral-8x7b-32768",
+                ],
                 "default": "llama-3.3-70b-versatile",
                 "requires_api_key": True,
                 "best_for": "Ultra-fast responses",
                 "cost_per_1k_requests": "$2-5",
-                "latency": "100-300ms"
+                "latency": "100-300ms",
             },
             {
                 "id": "mistral",
@@ -450,7 +513,7 @@ async def get_providers():
                 "requires_api_key": True,
                 "best_for": "European data sovereignty, coding",
                 "cost_per_1k_requests": "$6-10",
-                "latency": "300-700ms"
+                "latency": "300-700ms",
             },
             {
                 "id": "openrouter",
@@ -458,13 +521,13 @@ async def get_providers():
                 "models": [
                     "anthropic/claude-3-5-sonnet-20241022",
                     "openai/gpt-4o",
-                    "google/gemini-pro"
+                    "google/gemini-pro",
                 ],
                 "default": "anthropic/claude-3-5-sonnet-20241022",
                 "requires_api_key": True,
                 "best_for": "Access multiple providers through one API",
                 "cost_per_1k_requests": "Varies by model",
-                "latency": "Varies by model"
+                "latency": "Varies by model",
             },
             {
                 "id": "ollama",
@@ -474,7 +537,7 @@ async def get_providers():
                 "requires_api_key": False,
                 "best_for": "Privacy, offline mode, no API costs",
                 "cost_per_1k_requests": "$0 (free, runs locally)",
-                "latency": "1000-3000ms (depends on hardware)"
+                "latency": "1000-3000ms (depends on hardware)",
             },
         ]
     }
@@ -506,8 +569,8 @@ async def get_safety_limits():
             "sudo (elevated privileges)",
             "chmod 777 (insecure permissions)",
             "git push --force (force push)",
-            "DROP TABLE/DATABASE (SQL drops)"
-        ]
+            "DROP TABLE/DATABASE (SQL drops)",
+        ],
     }
 
 
@@ -531,18 +594,27 @@ async def get_safe_commands():
             "build_tools": ["make", "cmake", "gradle", "mvn"],
             "testing": ["pytest", "jest", "vitest", "mocha"],
             "linting": ["eslint", "prettier", "black", "flake8"],
-            "git_safe": ["git status", "git log", "git diff", "git add", "git commit", "git pull"],
+            "git_safe": [
+                "git status",
+                "git log",
+                "git diff",
+                "git add",
+                "git commit",
+                "git pull",
+            ],
             "docker_readonly": ["docker ps", "docker images", "docker logs"],
-            "file_ops": ["ls", "cat", "head", "tail", "grep", "find"]
+            "file_ops": ["ls", "cat", "head", "tail", "grep", "find"],
         },
-        "note": "Commands not in this list will require user confirmation before execution"
+        "note": "Commands not in this list will require user confirmation before execution",
     }
 
 
 # ==================== PROJECT DETECTION ====================
 
+
 class ProjectDetectionRequest(BaseModel):
     """Request model for project detection"""
+
     workspace: str = Field(..., description="Workspace root path")
 
 
@@ -577,14 +649,18 @@ async def detect_project_type(request: ProjectDetectionRequest):
             "technologies": engine.technologies,
             "workspace": request.workspace,
             "has_git": (Path(request.workspace) / ".git").exists(),
-            "has_docker": (Path(request.workspace) / "Dockerfile").exists() or (Path(request.workspace) / "docker-compose.yml").exists(),
+            "has_docker": (Path(request.workspace) / "Dockerfile").exists()
+            or (Path(request.workspace) / "docker-compose.yml").exists(),
         }
     except Exception as e:
         logger.error(f"❌ Project detection failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Project detection failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Project detection failed: {str(e)}"
+        )
 
 
 # ==================== QUICK ACTIONS ====================
+
 
 @router.post("/quick/fix")
 async def quick_fix(request: NaviRequest):
@@ -609,7 +685,9 @@ async def quick_refactor(request: NaviRequest):
     """Quick action: Refactor selected code"""
     selection = request.context.get("selection") if request.context else None
     if selection:
-        request.message = f"Refactor this code to be cleaner and more efficient:\n{selection}"
+        request.message = (
+            f"Refactor this code to be cleaner and more efficient:\n{selection}"
+        )
     else:
         request.message = f"Refactor {request.context.get('currentFile', 'this file')}"
     return await process_navi_request(request)

@@ -94,7 +94,9 @@ class ActionHandler(ABC):
     can_handle() to determine if they can process an action.
     """
 
-    def __init__(self, handler_id: str, priority: ActionPriority = ActionPriority.NORMAL):
+    def __init__(
+        self, handler_id: str, priority: ActionPriority = ActionPriority.NORMAL
+    ):
         self.handler_id = handler_id
         self.priority = priority
 

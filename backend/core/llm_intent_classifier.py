@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class IntentClassification:
     """Result of intent classification"""
+
     action: str
     target: str
     confidence: float
@@ -46,16 +47,21 @@ class LLMIntentClassifier:
             model_name: Specific model to use (e.g., "gpt-4o-mini", "claude-3-5-sonnet-20241022")
         """
         self.config_loader = config_loader
-        self.examples = self._load_examples() if config_loader else self._get_default_examples()
+        self.examples = (
+            self._load_examples() if config_loader else self._get_default_examples()
+        )
         self.model_provider = model_provider
         self.model_name = model_name or self._get_default_model(model_provider)
 
         # Initialize professional LLM router
         try:
             from backend.ai.llm_router import LLMRouter
+
             self.llm_router = LLMRouter()
             self.has_router = True
-            logger.info(f"✅ Professional LLM router initialized (provider: {model_provider}, model: {self.model_name})")
+            logger.info(
+                f"✅ Professional LLM router initialized (provider: {model_provider}, model: {self.model_name})"
+            )
         except Exception as e:
             logger.warning(f"⚠️ Failed to initialize professional LLM router: {e}")
             self.llm_router = None
@@ -67,9 +73,13 @@ class LLMIntentClassifier:
 
         if not self.has_router:
             if model_provider == "openai" and not self.openai_api_key:
-                logger.warning("⚠️ OPENAI_API_KEY not set, OpenAI LLM classification will fail")
+                logger.warning(
+                    "⚠️ OPENAI_API_KEY not set, OpenAI LLM classification will fail"
+                )
             elif model_provider == "anthropic" and not self.anthropic_api_key:
-                logger.warning("⚠️ ANTHROPIC_API_KEY not set, Anthropic LLM classification will fail")
+                logger.warning(
+                    "⚠️ ANTHROPIC_API_KEY not set, Anthropic LLM classification will fail"
+                )
 
     def _get_default_model(self, provider: str) -> str:
         """Get default model for provider"""
@@ -79,7 +89,7 @@ class LLMIntentClassifier:
             "google": "gemini-1.5-pro",
             "mistral": "mistral-large-latest",
             "xai": "grok-2",
-            "local": "llama3"
+            "local": "llama3",
         }
         return defaults.get(provider, "claude-3-5-sonnet-20241022")
 
@@ -90,7 +100,7 @@ class LLMIntentClassifier:
                 "open my-app",
                 "switch to dashboard project",
                 "go to marketing-website",
-                "load the blog project"
+                "load the blog project",
             ],
             "create_component": [
                 "create a button component",
@@ -98,56 +108,52 @@ class LLMIntentClassifier:
                 "I need a navbar component",
                 "build a login form component",
                 "add a footer component",
-                "can you create a header component?"
+                "can you create a header component?",
             ],
             "create_page": [
                 "create a login page",
                 "make a dashboard page",
                 "I want a settings screen",
                 "build me a profile page",
-                "add an about page"
+                "add an about page",
             ],
             "create_api": [
                 "create an API for users",
                 "make an endpoint for authentication",
-                "add a REST API for products"
+                "add a REST API for products",
             ],
             "install_package": [
                 "install axios",
                 "add react-router to my project",
                 "I need lodash",
-                "install express as a dependency"
+                "install express as a dependency",
             ],
             "git_commit": [
                 "commit these changes",
                 "commit with message 'added navbar'",
-                "make a commit"
+                "make a commit",
             ],
-            "git_push": [
-                "push to origin",
-                "push my changes",
-                "upload to github"
-            ],
+            "git_push": ["push to origin", "push my changes", "upload to github"],
             "create_pr": [
                 "create a pull request",
                 "make a PR",
-                "open a pull request for review"
+                "open a pull request for review",
             ],
             "fix_bug": [
                 "fix the login bug",
                 "debug the authentication issue",
-                "solve the navbar problem"
+                "solve the navbar problem",
             ],
             "refactor": [
                 "refactor the auth module",
                 "clean up this code",
-                "improve the component structure"
+                "improve the component structure",
             ],
             "explain_code": [
                 "explain this function",
                 "what does this code do?",
-                "describe how authentication works"
-            ]
+                "describe how authentication works",
+            ],
         }
 
     def _load_examples(self) -> Dict[str, List[str]]:
@@ -171,7 +177,7 @@ class LLMIntentClassifier:
         for action, examples in self.examples.items():
             examples_text += f"\n**{action}:**\n"
             for example in examples[:3]:  # Show top 3 examples per action
-                examples_text += f"  - \"{example}\"\n"
+                examples_text += f'  - "{example}"\n'
 
         prompt = f"""You are an intelligent coding assistant that classifies user intents.
 
@@ -244,7 +250,7 @@ JSON Response:"""
                 target=message,
                 confidence=0.5,
                 reasoning="LLM not available (no API key)",
-                original_message=message
+                original_message=message,
             )
 
         try:
@@ -258,11 +264,14 @@ JSON Response:"""
             response = client.chat.completions.create(
                 model="gpt-4o-mini",  # Fast and cheap model for classification
                 messages=[
-                    {"role": "system", "content": "You are a precise intent classifier. Always respond with valid JSON only."},
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "system",
+                        "content": "You are a precise intent classifier. Always respond with valid JSON only.",
+                    },
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.1,  # Low temperature for consistent classification
-                max_tokens=150
+                max_tokens=150,
             )
 
             result_text = response.choices[0].message.content.strip()
@@ -270,7 +279,9 @@ JSON Response:"""
             # Parse JSON response
             # Remove markdown code blocks if present
             if result_text.startswith("```json"):
-                result_text = result_text.replace("```json", "").replace("```", "").strip()
+                result_text = (
+                    result_text.replace("```json", "").replace("```", "").strip()
+                )
             elif result_text.startswith("```"):
                 result_text = result_text.replace("```", "").strip()
 
@@ -281,7 +292,7 @@ JSON Response:"""
                 target=result.get("target", ""),
                 confidence=float(result.get("confidence", 0.8)),
                 reasoning=result.get("reasoning", "Classified by LLM"),
-                original_message=message
+                original_message=message,
             )
 
             logger.info(
@@ -292,7 +303,9 @@ JSON Response:"""
             return classification
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response as JSON: {e}, response: {result_text}")
+            logger.error(
+                f"Failed to parse LLM response as JSON: {e}, response: {result_text}"
+            )
             return self._fallback_classification(message)
 
         except Exception as e:
@@ -318,7 +331,7 @@ JSON Response:"""
             model=self.model_name,
             provider=self.model_provider,
             temperature=0.1,  # Low temperature for consistent classification
-            max_tokens=200
+            max_tokens=200,
         )
 
         result_text = response.text.strip()
@@ -336,8 +349,10 @@ JSON Response:"""
             action=result.get("action", "general"),
             target=result.get("target", ""),
             confidence=float(result.get("confidence", 0.8)),
-            reasoning=result.get("reasoning", f"Classified by {self.model_provider}:{self.model_name}"),
-            original_message=message
+            reasoning=result.get(
+                "reasoning", f"Classified by {self.model_provider}:{self.model_name}"
+            ),
+            original_message=message,
         )
 
         logger.info(
@@ -361,7 +376,7 @@ JSON Response:"""
                 target=target,
                 confidence=0.6,
                 reasoning="Fallback: keyword matching",
-                original_message=message
+                original_message=message,
             )
         elif any(word in message_lower for word in ["create", "make", "add", "build"]):
             if "component" in message_lower:
@@ -380,7 +395,7 @@ JSON Response:"""
                     target=target,
                     confidence=0.6,
                     reasoning="Fallback: keyword matching",
-                    original_message=message
+                    original_message=message,
                 )
             elif "page" in message_lower or "screen" in message_lower:
                 words = message_lower.split()
@@ -397,7 +412,7 @@ JSON Response:"""
                     target=target,
                     confidence=0.6,
                     reasoning="Fallback: keyword matching",
-                    original_message=message
+                    original_message=message,
                 )
         elif "install" in message_lower or "add" in message_lower:
             words = message.split()
@@ -407,7 +422,7 @@ JSON Response:"""
                 target=target,
                 confidence=0.6,
                 reasoning="Fallback: keyword matching",
-                original_message=message
+                original_message=message,
             )
 
         # General fallback
@@ -416,7 +431,7 @@ JSON Response:"""
             target=message,
             confidence=0.5,
             reasoning="Fallback: no clear intent detected",
-            original_message=message
+            original_message=message,
         )
 
     def classify_sync(self, message: str) -> Dict[str, Any]:
@@ -437,7 +452,7 @@ JSON Response:"""
             "action": classification.action,
             "target": classification.target,
             "original": classification.original_message,
-            "confidence": classification.confidence
+            "confidence": classification.confidence,
         }
 
 
@@ -461,17 +476,17 @@ def get_llm_classifier():
 
         try:
             from backend.core.config_loader import get_config_loader
+
             config_loader = get_config_loader()
             _classifier_instance = LLMIntentClassifier(
-                config_loader=config_loader,
-                model_provider=provider,
-                model_name=model
+                config_loader=config_loader, model_provider=provider, model_name=model
             )
-            logger.info(f"✅ LLM Intent Classifier initialized with {provider}:{model or 'default'}")
+            logger.info(
+                f"✅ LLM Intent Classifier initialized with {provider}:{model or 'default'}"
+            )
         except Exception as e:
             logger.warning(f"Failed to load config, using default examples: {e}")
             _classifier_instance = LLMIntentClassifier(
-                model_provider=provider,
-                model_name=model
+                model_provider=provider, model_name=model
             )
     return _classifier_instance

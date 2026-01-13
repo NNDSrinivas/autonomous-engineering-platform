@@ -406,9 +406,7 @@ class IncidentOrchestrator:
 
         # Address architectural issues
         if any("Architecture" in problem for problem in systemic_problems):
-            actions.append(
-                "🏗️ Architecture review - add circuit breakers and bulkheads"
-            )
+            actions.append("🏗️ Architecture review - add circuit breakers and bulkheads")
 
         # Address process issues
         if any("Process" in problem for problem in systemic_problems):

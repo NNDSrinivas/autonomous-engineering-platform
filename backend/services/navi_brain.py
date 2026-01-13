@@ -40,55 +40,95 @@ logger = logging.getLogger(__name__)
 # Safe commands that can be executed without user confirmation
 SAFE_COMMANDS = {
     # Package managers
-    "npm", "yarn", "pnpm", "bun",
-    "pip", "pip3", "poetry", "pipenv",
-    "cargo", "go", "composer", "gem", "bundle",
-
+    "npm",
+    "yarn",
+    "pnpm",
+    "bun",
+    "pip",
+    "pip3",
+    "poetry",
+    "pipenv",
+    "cargo",
+    "go",
+    "composer",
+    "gem",
+    "bundle",
     # Build tools
-    "make", "cmake", "gradle", "mvn", "ant",
-
+    "make",
+    "cmake",
+    "gradle",
+    "mvn",
+    "ant",
     # Testing
-    "pytest", "jest", "vitest", "mocha", "jasmine", "karma",
-    "go test", "cargo test", "phpunit",
-
+    "pytest",
+    "jest",
+    "vitest",
+    "mocha",
+    "jasmine",
+    "karma",
+    "go test",
+    "cargo test",
+    "phpunit",
     # Linting/Formatting
-    "eslint", "prettier", "black", "flake8", "pylint", "mypy",
-    "rustfmt", "gofmt", "rubocop",
-
+    "eslint",
+    "prettier",
+    "black",
+    "flake8",
+    "pylint",
+    "mypy",
+    "rustfmt",
+    "gofmt",
+    "rubocop",
     # Git (safe operations only)
-    "git status", "git log", "git diff", "git branch", "git checkout",
-    "git add", "git commit", "git pull", "git fetch", "git stash",
-
+    "git status",
+    "git log",
+    "git diff",
+    "git branch",
+    "git checkout",
+    "git add",
+    "git commit",
+    "git pull",
+    "git fetch",
+    "git stash",
     # Docker (read-only operations)
-    "docker ps", "docker images", "docker logs",
-
+    "docker ps",
+    "docker images",
+    "docker logs",
     # File operations (safe)
-    "ls", "cat", "head", "tail", "grep", "find", "tree",
+    "ls",
+    "cat",
+    "head",
+    "tail",
+    "grep",
+    "find",
+    "tree",
 }
 
 # Dangerous commands that require user confirmation
 DANGEROUS_PATTERNS = [
     r"rm\s+-rf",  # Recursive force delete
-    r"rm\s+/",    # Delete from root
-    r"sudo",      # Elevated privileges
-    r"chmod\s+777", # Insecure permissions
+    r"rm\s+/",  # Delete from root
+    r"sudo",  # Elevated privileges
+    r"chmod\s+777",  # Insecure permissions
     r"git\s+push\s+.*--force",  # Force push
     r"docker\s+rm",  # Delete containers
-    r"docker\s+rmi", # Delete images
+    r"docker\s+rmi",  # Delete images
     r"kubectl\s+delete",  # Delete k8s resources
     r"DROP\s+TABLE",  # SQL drop
     r"DROP\s+DATABASE",
 ]
 
 MAX_FILE_SIZE = 100 * 1024  # 100KB max per file
-MAX_FILES_PER_REQUEST = 20   # Max files to create at once
+MAX_FILES_PER_REQUEST = 20  # Max files to create at once
 
 
 # ==================== PROJECT INTELLIGENCE ====================
 
+
 @dataclass
 class ProjectInfo:
     """Information gathered from reading the project (like Codex/Claude Code)"""
+
     project_type: str = "unknown"  # nextjs, react, vue, express, python, etc.
     framework: Optional[str] = None
     framework_version: Optional[str] = None
@@ -203,7 +243,7 @@ class ProjectAnalyzer:
             file_path = workspace / filename
             if file_path.exists() and file_path.is_file():
                 try:
-                    content = file_path.read_text(encoding='utf-8', errors='ignore')
+                    content = file_path.read_text(encoding="utf-8", errors="ignore")
                     cls._process_file(filename, content, info)
                     info.files_read.append(filename)
                 except Exception as e:
@@ -217,7 +257,9 @@ class ProjectAnalyzer:
         elif (workspace / "bun.lockb").exists():
             info.package_manager = "bun"
 
-        logger.info(f"[ProjectAnalyzer] Analyzed project: type={info.project_type}, framework={info.framework}, files_read={len(info.files_read)}")
+        logger.info(
+            f"[ProjectAnalyzer] Analyzed project: type={info.project_type}, framework={info.framework}, files_read={len(info.files_read)}"
+        )
         return info
 
     @classmethod
@@ -341,6 +383,7 @@ class ProjectAnalyzer:
 
 # ==================== INTELLIGENT RESPONSE GENERATOR ====================
 
+
 class IntelligentResponder:
     """
     Generates intelligent responses based on project analysis.
@@ -356,7 +399,9 @@ class IntelligentResponder:
         parts = []
 
         # Show what we found
-        parts.append(f"This is a **{project_info.framework or project_info.project_type}** project.")
+        parts.append(
+            f"This is a **{project_info.framework or project_info.project_type}** project."
+        )
         if project_info.framework_version:
             parts.append(f"(Version: {project_info.framework_version})")
 
@@ -384,7 +429,9 @@ class IntelligentResponder:
         if other_scripts:
             parts.append("\n**Other available commands:**")
             for script, desc in other_scripts:
-                parts.append(f"- `{project_info.package_manager} run {script}` - {desc}")
+                parts.append(
+                    f"- `{project_info.package_manager} run {script}` - {desc}"
+                )
 
         # Environment setup
         if project_info.has_env_example:
@@ -475,9 +522,11 @@ class IntelligentResponder:
 
 # ==================== DATA CLASSES ====================
 
+
 @dataclass
 class NaviContext:
     """Everything NAVI knows about the current state"""
+
     workspace_path: str
     project_type: str = "unknown"
     technologies: List[str] = field(default_factory=list)
@@ -494,6 +543,7 @@ class NaviContext:
 @dataclass
 class NaviResponse:
     """What NAVI returns after processing"""
+
     message: str  # What to show the user
     files_to_create: Dict[str, str] = field(default_factory=dict)  # path -> content
     files_to_modify: Dict[str, str] = field(default_factory=dict)  # path -> new content
@@ -503,7 +553,9 @@ class NaviResponse:
     user_input_prompt: Optional[str] = None
 
     # Safety fields
-    dangerous_commands: List[str] = field(default_factory=list)  # Commands needing confirmation
+    dangerous_commands: List[str] = field(
+        default_factory=list
+    )  # Commands needing confirmation
     warnings: List[str] = field(default_factory=list)  # Safety warnings
 
     # Intelligence fields (like Codex/Claude Code)
@@ -515,8 +567,12 @@ class NaviResponse:
     # NAVI V2: Approval flow fields
     plan_id: Optional[str] = None  # Unique ID for this plan
     requires_approval: bool = False  # If true, show approval UI
-    actions_with_risk: List[Dict[str, Any]] = field(default_factory=list)  # Actions with risk assessment
-    estimated_changes: Dict[str, Any] = field(default_factory=dict)  # Files affected, lines changed
+    actions_with_risk: List[Dict[str, Any]] = field(
+        default_factory=list
+    )  # Actions with risk assessment
+    estimated_changes: Dict[str, Any] = field(
+        default_factory=dict
+    )  # Files affected, lines changed
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -547,13 +603,18 @@ class NaviPlan:
     A plan that requires user approval before execution.
     This is NAVI V2's key feature - human-in-the-loop approval flow.
     """
+
     id: str  # Unique UUID
     user_message: str
     context: NaviContext
     response: NaviResponse
-    status: str = "pending_approval"  # pending_approval, approved, rejected, executing, completed
+    status: str = (
+        "pending_approval"  # pending_approval, approved, rejected, executing, completed
+    )
     created_at: datetime = field(default_factory=datetime.now)
-    approved_actions: List[int] = field(default_factory=list)  # User-selected action indices
+    approved_actions: List[int] = field(
+        default_factory=list
+    )  # User-selected action indices
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -567,6 +628,7 @@ class NaviPlan:
 
 
 # ==================== SAFETY VALIDATORS ====================
+
 
 class SafetyValidator:
     """Validates LLM responses for safety"""
@@ -604,10 +666,12 @@ class SafetyValidator:
     @staticmethod
     def validate_file_size(content: str) -> bool:
         """Check file size doesn't exceed limit"""
-        return len(content.encode('utf-8')) <= MAX_FILE_SIZE
+        return len(content.encode("utf-8")) <= MAX_FILE_SIZE
 
     @staticmethod
-    def validate_response(response: NaviResponse, workspace_path: str) -> tuple[bool, List[str]]:
+    def validate_response(
+        response: NaviResponse, workspace_path: str
+    ) -> tuple[bool, List[str]]:
         """
         Validate entire response for safety.
 
@@ -618,7 +682,9 @@ class SafetyValidator:
         # Check file count
         total_files = len(response.files_to_create) + len(response.files_to_modify)
         if total_files > MAX_FILES_PER_REQUEST:
-            warnings.append(f"Too many files ({total_files}). Max allowed: {MAX_FILES_PER_REQUEST}")
+            warnings.append(
+                f"Too many files ({total_files}). Max allowed: {MAX_FILES_PER_REQUEST}"
+            )
             return False, warnings
 
         # Check file paths
@@ -631,8 +697,10 @@ class SafetyValidator:
 
             # Validate size
             if not SafetyValidator.validate_file_size(content):
-                size_kb = len(content.encode('utf-8')) / 1024
-                warnings.append(f"File too large: {file_path} ({size_kb:.1f}KB > {MAX_FILE_SIZE/1024}KB)")
+                size_kb = len(content.encode("utf-8")) / 1024
+                warnings.append(
+                    f"File too large: {file_path} ({size_kb:.1f}KB > {MAX_FILE_SIZE/1024}KB)"
+                )
                 return False, warnings
 
         # Check commands
@@ -645,6 +713,7 @@ class SafetyValidator:
 
 
 # ==================== NAVI BRAIN ====================
+
 
 class NaviBrain:
     """
@@ -869,7 +938,9 @@ RESPONSE FORMAT (MUST BE VALID JSON):
         project_info = ProjectAnalyzer.analyze(context.workspace_path)
 
         if project_info.files_read:
-            thinking_steps.append(f"Read {len(project_info.files_read)} files: {', '.join(project_info.files_read[:5])}")
+            thinking_steps.append(
+                f"Read {len(project_info.files_read)} files: {', '.join(project_info.files_read[:5])}"
+            )
 
         if project_info.framework:
             thinking_steps.append(f"Detected {project_info.framework} project")
@@ -877,18 +948,32 @@ RESPONSE FORMAT (MUST BE VALID JSON):
             thinking_steps.append(f"Detected {project_info.project_type} project")
 
         if project_info.scripts:
-            thinking_steps.append(f"Found {len(project_info.scripts)} available scripts")
+            thinking_steps.append(
+                f"Found {len(project_info.scripts)} available scripts"
+            )
 
         # STEP 2: Check if this is a "how to run" question - SMART RESPONSE (no LLM needed!)
         message_lower = message.lower()
-        is_run_question = any(phrase in message_lower for phrase in [
-            "how to run", "how do i run", "how can i run", "run this project",
-            "start the", "launch", "get started", "set up", "setup",
-        ])
+        is_run_question = any(
+            phrase in message_lower
+            for phrase in [
+                "how to run",
+                "how do i run",
+                "how can i run",
+                "run this project",
+                "start the",
+                "launch",
+                "get started",
+                "set up",
+                "setup",
+            ]
+        )
 
         # For "how to run" questions with known project type, generate smart response directly
         if is_run_question and project_info.project_type != "unknown":
-            logger.info("[NAVI] Detected 'how to run' question - generating smart response without LLM")
+            logger.info(
+                "[NAVI] Detected 'how to run' question - generating smart response without LLM"
+            )
             thinking_steps.append("Generating project-specific run instructions")
 
             # Generate intelligent response based on what we read
@@ -921,7 +1006,9 @@ RESPONSE FORMAT (MUST BE VALID JSON):
             response = self._parse_response(llm_response)
 
             # Validate response for safety
-            is_safe, warnings = self.validator.validate_response(response, context.workspace_path)
+            is_safe, warnings = self.validator.validate_response(
+                response, context.workspace_path
+            )
 
             if not is_safe:
                 # Return error response
@@ -953,7 +1040,9 @@ RESPONSE FORMAT (MUST BE VALID JSON):
                 needs_user_input=True,
                 user_input_prompt="Could you rephrase your request?",
                 thinking_steps=thinking_steps,
-                files_read=project_info.files_read if 'project_info' in locals() else [],
+                files_read=(
+                    project_info.files_read if "project_info" in locals() else []
+                ),
             )
 
     # ==================== NAVI V2: APPROVAL FLOW METHODS ====================
@@ -965,8 +1054,17 @@ RESPONSE FORMAT (MUST BE VALID JSON):
         """
         # Simple read-only patterns don't need approval
         read_only_patterns = [
-            "how to", "how do i", "what is", "explain", "show me",
-            "where is", "find", "search", "list", "describe", "tell me"
+            "how to",
+            "how do i",
+            "what is",
+            "explain",
+            "show me",
+            "where is",
+            "find",
+            "search",
+            "list",
+            "describe",
+            "tell me",
         ]
         message_lower = message.lower()
 
@@ -976,7 +1074,9 @@ RESPONSE FORMAT (MUST BE VALID JSON):
         # Anything that modifies code or runs commands needs approval
         return True
 
-    def _assess_action_risks(self, response: NaviResponse, workspace_path: str) -> List[Dict[str, Any]]:
+    def _assess_action_risks(
+        self, response: NaviResponse, workspace_path: str
+    ) -> List[Dict[str, Any]]:
         """
         Assess risk level for each action.
         Returns list of actions with risk assessment.
@@ -1000,14 +1100,16 @@ RESPONSE FORMAT (MUST BE VALID JSON):
                 risk = "high"
                 warnings.append("Path attempts to escape workspace")
 
-            actions_with_risk.append({
-                "type": "createFile",
-                "path": path,
-                "content": content,  # Full content for diff viewing
-                "risk": risk,
-                "warnings": warnings,
-                "preview": content[:200] + ("..." if len(content) > 200 else ""),
-            })
+            actions_with_risk.append(
+                {
+                    "type": "createFile",
+                    "path": path,
+                    "content": content,  # Full content for diff viewing
+                    "risk": risk,
+                    "warnings": warnings,
+                    "preview": content[:200] + ("..." if len(content) > 200 else ""),
+                }
+            )
 
         # Assess file modifications
         for path, content in response.files_to_modify.items():
@@ -1023,14 +1125,16 @@ RESPONSE FORMAT (MUST BE VALID JSON):
                 risk = "high"
                 warnings.append(f"Large file ({len(content)} bytes)")
 
-            actions_with_risk.append({
-                "type": "editFile",
-                "path": path,
-                "content": content,  # Full new content
-                "risk": risk,
-                "warnings": warnings,
-                "preview": content[:200] + ("..." if len(content) > 200 else ""),
-            })
+            actions_with_risk.append(
+                {
+                    "type": "editFile",
+                    "path": path,
+                    "content": content,  # Full new content
+                    "risk": risk,
+                    "warnings": warnings,
+                    "preview": content[:200] + ("..." if len(content) > 200 else ""),
+                }
+            )
 
         # Assess commands
         for cmd in response.commands_to_run:
@@ -1042,12 +1146,14 @@ RESPONSE FORMAT (MUST BE VALID JSON):
             elif risk == "medium":
                 warnings.append("Modifies project state")
 
-            actions_with_risk.append({
-                "type": "runCommand",
-                "command": cmd,
-                "risk": risk,
-                "warnings": warnings,
-            })
+            actions_with_risk.append(
+                {
+                    "type": "runCommand",
+                    "command": cmd,
+                    "risk": risk,
+                    "warnings": warnings,
+                }
+            )
 
         return actions_with_risk
 
@@ -1090,7 +1196,9 @@ RESPONSE FORMAT (MUST BE VALID JSON):
             return response
 
         # Assess risks for all actions
-        response.actions_with_risk = self._assess_action_risks(response, context.workspace_path)
+        response.actions_with_risk = self._assess_action_risks(
+            response, context.workspace_path
+        )
         response.requires_approval = True
 
         # Store plan
@@ -1104,14 +1212,14 @@ RESPONSE FORMAT (MUST BE VALID JSON):
             response=response,
         )
 
-        logger.info(f"[NAVI V2] Created plan {plan_id} with {len(response.actions_with_risk)} actions")
+        logger.info(
+            f"[NAVI V2] Created plan {plan_id} with {len(response.actions_with_risk)} actions"
+        )
 
         return response
 
     async def execute_plan(
-        self,
-        plan_id: str,
-        approved_action_indices: List[int]
+        self, plan_id: str, approved_action_indices: List[int]
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         NAVI V2: Execute approved actions from a plan.
@@ -1133,7 +1241,9 @@ RESPONSE FORMAT (MUST BE VALID JSON):
         actions = plan.response.actions_with_risk
         workspace_path = Path(plan.context.workspace_path)
 
-        logger.info(f"[NAVI V2] Executing plan {plan_id}: {len(approved_action_indices)} actions")
+        logger.info(
+            f"[NAVI V2] Executing plan {plan_id}: {len(approved_action_indices)} actions"
+        )
 
         for idx in approved_action_indices:
             if idx >= len(actions):
@@ -1150,7 +1260,7 @@ RESPONSE FORMAT (MUST BE VALID JSON):
 
                     full_path = workspace_path / path
                     full_path.parent.mkdir(parents=True, exist_ok=True)
-                    full_path.write_text(content, encoding='utf-8')
+                    full_path.write_text(content, encoding="utf-8")
 
                     logger.info(f"[NAVI V2] Created file: {path}")
                     yield {"type": "action_complete", "index": idx, "success": True}
@@ -1160,7 +1270,7 @@ RESPONSE FORMAT (MUST BE VALID JSON):
                     content = action["content"]
 
                     full_path = workspace_path / path
-                    full_path.write_text(content, encoding='utf-8')
+                    full_path.write_text(content, encoding="utf-8")
 
                     logger.info(f"[NAVI V2] Modified file: {path}")
                     yield {"type": "action_complete", "index": idx, "success": True}
@@ -1173,7 +1283,7 @@ RESPONSE FORMAT (MUST BE VALID JSON):
                         cmd,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
-                        cwd=str(workspace_path)
+                        cwd=str(workspace_path),
                     )
 
                     stdout, stderr = await process.communicate()
@@ -1181,7 +1291,9 @@ RESPONSE FORMAT (MUST BE VALID JSON):
 
                     success = process.returncode == 0
 
-                    logger.info(f"[NAVI V2] Ran command: {cmd} (exit code: {process.returncode})")
+                    logger.info(
+                        f"[NAVI V2] Ran command: {cmd} (exit code: {process.returncode})"
+                    )
                     yield {
                         "type": "action_complete",
                         "index": idx,
@@ -1210,7 +1322,12 @@ RESPONSE FORMAT (MUST BE VALID JSON):
 
     # ==================== END NAVI V2 METHODS ====================
 
-    def _build_prompt(self, message: str, context: NaviContext, project_info: Optional[ProjectInfo] = None) -> str:
+    def _build_prompt(
+        self,
+        message: str,
+        context: NaviContext,
+        project_info: Optional[ProjectInfo] = None,
+    ) -> str:
         """Build the full prompt with context + PROJECT INTELLIGENCE"""
 
         context_parts = []
@@ -1244,16 +1361,18 @@ RESPONSE FORMAT (MUST BE VALID JSON):
         # Git status
         if context.git_branch:
             context_parts.append(f"GIT BRANCH: {context.git_branch}")
-        if context.git_status.get('has_changes'):
-            files = context.git_status.get('changed_files', [])[:10]
+        if context.git_status.get("has_changes"):
+            files = context.git_status.get("changed_files", [])[:10]
             context_parts.append(f"CHANGED FILES: {', '.join(files)}")
 
         # Errors
         if context.errors:
-            errors_str = "\n".join([
-                f"- {e.get('file', 'unknown')}: {e.get('message', 'error')}"
-                for e in context.errors[:5]
-            ])
+            errors_str = "\n".join(
+                [
+                    f"- {e.get('file', 'unknown')}: {e.get('message', 'error')}"
+                    for e in context.errors[:5]
+                ]
+            )
             context_parts.append(f"CURRENT ERRORS:\n{errors_str}")
 
         # Open files
@@ -1266,22 +1385,63 @@ RESPONSE FORMAT (MUST BE VALID JSON):
         message_lower = message.lower()
         aggressive_instructions = []
 
-        if any(keyword in message_lower for keyword in ["what else", "what can", "capabilities", "features", "what do"]):
-            aggressive_instructions.append("⚠️ User is asking WHAT you can do. SHOW them by CREATING 3-5 example files demonstrating different capabilities.")
+        if any(
+            keyword in message_lower
+            for keyword in [
+                "what else",
+                "what can",
+                "capabilities",
+                "features",
+                "what do",
+            ]
+        ):
+            aggressive_instructions.append(
+                "⚠️ User is asking WHAT you can do. SHOW them by CREATING 3-5 example files demonstrating different capabilities."
+            )
 
-        if any(keyword in message_lower for keyword in ["error", "issue", "problem", "bug", "fix", "broken", "not working"]):
-            aggressive_instructions.append("⚠️ User is asking about ERRORS. READ the relevant files, ANALYZE them, and FIX any issues by MODIFYING the files.")
+        if any(
+            keyword in message_lower
+            for keyword in [
+                "error",
+                "issue",
+                "problem",
+                "bug",
+                "fix",
+                "broken",
+                "not working",
+            ]
+        ):
+            aggressive_instructions.append(
+                "⚠️ User is asking about ERRORS. READ the relevant files, ANALYZE them, and FIX any issues by MODIFYING the files."
+            )
 
-        if any(keyword in message_lower for keyword in ["how to", "how do", "start", "setup", "initialize", "begin"]):
-            aggressive_instructions.append("⚠️ User is asking HOW to do something. Don't explain - CREATE all necessary starter files AND RUN setup commands.")
+        if any(
+            keyword in message_lower
+            for keyword in ["how to", "how do", "start", "setup", "initialize", "begin"]
+        ):
+            aggressive_instructions.append(
+                "⚠️ User is asking HOW to do something. Don't explain - CREATE all necessary starter files AND RUN setup commands."
+            )
 
-        if any(keyword in message_lower for keyword in ["improve", "better", "optimize", "enhance", "upgrade"]):
-            aggressive_instructions.append("⚠️ User wants IMPROVEMENTS. MODIFY the relevant files with actual improvements, don't just suggest them.")
+        if any(
+            keyword in message_lower
+            for keyword in ["improve", "better", "optimize", "enhance", "upgrade"]
+        ):
+            aggressive_instructions.append(
+                "⚠️ User wants IMPROVEMENTS. MODIFY the relevant files with actual improvements, don't just suggest them."
+            )
 
-        if any(keyword in message_lower for keyword in ["add", "create", "make", "build", "implement", "generate"]):
-            aggressive_instructions.append("⚠️ User wants something ADDED. CREATE it immediately with complete, production-ready code.")
+        if any(
+            keyword in message_lower
+            for keyword in ["add", "create", "make", "build", "implement", "generate"]
+        ):
+            aggressive_instructions.append(
+                "⚠️ User wants something ADDED. CREATE it immediately with complete, production-ready code."
+            )
 
-        aggressive_block = "\n".join(aggressive_instructions) if aggressive_instructions else ""
+        aggressive_block = (
+            "\n".join(aggressive_instructions) if aggressive_instructions else ""
+        )
 
         return f"""CONTEXT:
 {context_block}
@@ -1299,12 +1459,18 @@ Your response MUST include AT LEAST ONE of:
 If your response is just text explanation, IT IS WRONG.
 Respond with JSON only."""
 
-    async def _call_llm(self, prompt: str, conversation_history: List[Dict] = None) -> str:
+    async def _call_llm(
+        self, prompt: str, conversation_history: List[Dict] = None
+    ) -> str:
         """Call the LLM provider"""
 
         if self.provider == "anthropic":
             return await self._call_anthropic(prompt, conversation_history)
-        elif self.provider == "openai" or self.provider == "groq" or self.provider == "openrouter":
+        elif (
+            self.provider == "openai"
+            or self.provider == "groq"
+            or self.provider == "openrouter"
+        ):
             return await self._call_openai_compatible(prompt, conversation_history)
         elif self.provider == "ollama":
             return await self._call_ollama(prompt, conversation_history)
@@ -1321,9 +1487,14 @@ Respond with JSON only."""
             for msg in history:
                 if isinstance(msg, dict):
                     messages.append(msg)
-                elif hasattr(msg, '__dict__'):
+                elif hasattr(msg, "__dict__"):
                     # Convert object to dict
-                    messages.append({"role": getattr(msg, 'role', 'user'), "content": getattr(msg, 'content', str(msg))})
+                    messages.append(
+                        {
+                            "role": getattr(msg, "role", "user"),
+                            "content": getattr(msg, "content", str(msg)),
+                        }
+                    )
                 else:
                     # Fallback: convert to string
                     messages.append({"role": "user", "content": str(msg)})
@@ -1346,7 +1517,7 @@ Respond with JSON only."""
             f"{self.base_url}/messages",
             headers=headers,
             json=payload,
-            timeout=aiohttp.ClientTimeout(total=120)
+            timeout=aiohttp.ClientTimeout(total=120),
         ) as response:
             if response.status != 200:
                 error = await response.text()
@@ -1355,7 +1526,9 @@ Respond with JSON only."""
             data = await response.json()
             return data["content"][0]["text"]
 
-    async def _call_openai_compatible(self, prompt: str, history: List[Dict] = None) -> str:
+    async def _call_openai_compatible(
+        self, prompt: str, history: List[Dict] = None
+    ) -> str:
         """Call OpenAI-compatible API (OpenAI, Groq, OpenRouter, etc.)"""
         session = await self._get_session()
 
@@ -1365,9 +1538,14 @@ Respond with JSON only."""
             for msg in history:
                 if isinstance(msg, dict):
                     messages.append(msg)
-                elif hasattr(msg, '__dict__'):
+                elif hasattr(msg, "__dict__"):
                     # Convert object to dict
-                    messages.append({"role": getattr(msg, 'role', 'user'), "content": getattr(msg, 'content', str(msg))})
+                    messages.append(
+                        {
+                            "role": getattr(msg, "role", "user"),
+                            "content": getattr(msg, "content", str(msg)),
+                        }
+                    )
                 else:
                     # Fallback: convert to string
                     messages.append({"role": "user", "content": str(msg)})
@@ -1394,7 +1572,7 @@ Respond with JSON only."""
             f"{self.base_url}/chat/completions",
             headers=headers,
             json=payload,
-            timeout=aiohttp.ClientTimeout(total=120)
+            timeout=aiohttp.ClientTimeout(total=120),
         ) as response:
             if response.status != 200:
                 error = await response.text()
@@ -1421,7 +1599,7 @@ Respond with JSON only."""
         async with session.post(
             f"{self.base_url}/api/chat",
             json=payload,
-            timeout=aiohttp.ClientTimeout(total=120)
+            timeout=aiohttp.ClientTimeout(total=120),
         ) as response:
             if response.status != 200:
                 error = await response.text()
@@ -1465,6 +1643,7 @@ Respond with JSON only."""
 
 # ==================== NAVI ENGINE (FULL INTEGRATION) ====================
 
+
 class NaviEngine:
     """
     Complete NAVI Engine with LLM brain + file operations + git + packages + safety.
@@ -1501,7 +1680,10 @@ class NaviEngine:
             try:
                 with open(pkg_json) as f:
                     pkg = json.load(f)
-                    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+                    deps = {
+                        **pkg.get("dependencies", {}),
+                        **pkg.get("devDependencies", {}),
+                    }
 
                     if "next" in deps:
                         project_type = "nextjs"
@@ -1588,29 +1770,83 @@ class NaviEngine:
         # AGGRESSIVE MODE: Validate that response contains actions
         # But ONLY for command-like messages, not questions/chat
         has_actions = (
-            len(response.files_to_create) > 0 or
-            len(response.files_to_modify) > 0 or
-            len(response.commands_to_run) > 0
+            len(response.files_to_create) > 0
+            or len(response.files_to_modify) > 0
+            or len(response.commands_to_run) > 0
         )
 
         # Detect if this is a question/chat (no actions expected) vs a command (actions expected)
         message_lower = message.lower().strip()
         is_question_or_chat = (
-            message_lower.startswith(('is ', 'are ', 'was ', 'were ', 'what ', 'where ', 'when ', 'why ', 'how ', 'who ', 'which ', 'can ', 'could ', 'would ', 'should ', 'do ', 'does ', 'did ', 'have ', 'has ', 'had ')) or
-            message_lower.endswith('?') or
-            message_lower.startswith(('hi', 'hello', 'hey', 'thanks', 'thank you', 'explain', 'describe', 'tell me', 'show me', 'list', 'find')) or
-            any(phrase in message_lower for phrase in ['is there', 'are there', 'do you', 'can you explain', 'what is', 'how does', 'why is', 'where is'])
+            message_lower.startswith(
+                (
+                    "is ",
+                    "are ",
+                    "was ",
+                    "were ",
+                    "what ",
+                    "where ",
+                    "when ",
+                    "why ",
+                    "how ",
+                    "who ",
+                    "which ",
+                    "can ",
+                    "could ",
+                    "would ",
+                    "should ",
+                    "do ",
+                    "does ",
+                    "did ",
+                    "have ",
+                    "has ",
+                    "had ",
+                )
+            )
+            or message_lower.endswith("?")
+            or message_lower.startswith(
+                (
+                    "hi",
+                    "hello",
+                    "hey",
+                    "thanks",
+                    "thank you",
+                    "explain",
+                    "describe",
+                    "tell me",
+                    "show me",
+                    "list",
+                    "find",
+                )
+            )
+            or any(
+                phrase in message_lower
+                for phrase in [
+                    "is there",
+                    "are there",
+                    "do you",
+                    "can you explain",
+                    "what is",
+                    "how does",
+                    "why is",
+                    "where is",
+                ]
+            )
         )
 
         # Also check if the LLM indicated this was just informational
         is_informational_response = (
-            response.needs_user_input or
-            'no explicit information' in response.message.lower() or
-            'not found' in response.message.lower() or
-            'does not' in response.message.lower()
+            response.needs_user_input
+            or "no explicit information" in response.message.lower()
+            or "not found" in response.message.lower()
+            or "does not" in response.message.lower()
         )
 
-        if not has_actions and not is_question_or_chat and not is_informational_response:
+        if (
+            not has_actions
+            and not is_question_or_chat
+            and not is_informational_response
+        ):
             # LLM failed to take action on a command - this might be an issue
             logger.info(f"ℹ️ No actions generated for message: {message[:100]}")
             # Don't add warning for questions - only for clear commands that should have generated actions
@@ -1679,7 +1915,9 @@ class NaviEngine:
                     full_path.parent.mkdir(parents=True, exist_ok=True)
                     full_path.write_text(content)
                     results["files_created"].append(file_path)
-                    logger.info(f"✅ Created file (modify target not found): {file_path}")
+                    logger.info(
+                        f"✅ Created file (modify target not found): {file_path}"
+                    )
             except Exception as e:
                 logger.error(f"❌ Failed to modify {file_path}: {e}")
                 results["errors"].append(f"Failed to modify {file_path}: {e}")
@@ -1688,6 +1926,7 @@ class NaviEngine:
         for command in response.commands_to_run:
             try:
                 import subprocess
+
                 logger.info(f"🔧 Running command: {command}")
                 result = subprocess.run(
                     command,
@@ -1697,12 +1936,14 @@ class NaviEngine:
                     text=True,
                     timeout=60,
                 )
-                results["commands_output"].append({
-                    "command": command,
-                    "success": result.returncode == 0,
-                    "output": result.stdout,
-                    "error": result.stderr,
-                })
+                results["commands_output"].append(
+                    {
+                        "command": command,
+                        "success": result.returncode == 0,
+                        "output": result.stdout,
+                        "error": result.stderr,
+                    }
+                )
                 if result.returncode == 0:
                     logger.info(f"✅ Command succeeded: {command}")
                 else:
@@ -1717,6 +1958,7 @@ class NaviEngine:
         """Get current git branch"""
         try:
             import subprocess
+
             result = subprocess.run(
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
                 cwd=self.workspace_path,
@@ -1733,6 +1975,7 @@ class NaviEngine:
         """Get git status"""
         try:
             import subprocess
+
             result = subprocess.run(
                 ["git", "status", "--porcelain"],
                 cwd=self.workspace_path,
@@ -1740,7 +1983,9 @@ class NaviEngine:
                 text=True,
             )
             if result.returncode == 0:
-                changed = [line[3:] for line in result.stdout.strip().split("\n") if line]
+                changed = [
+                    line[3:] for line in result.stdout.strip().split("\n") if line
+                ]
                 return {
                     "has_changes": len(changed) > 0,
                     "changed_files": changed,
@@ -1755,6 +2000,7 @@ class NaviEngine:
 
 
 # ==================== API HELPER ====================
+
 
 async def process_navi_request(
     message: str,

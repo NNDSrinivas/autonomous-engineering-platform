@@ -473,14 +473,14 @@ class AdaptiveLearningIntegrationSuite:
                 }
 
         # Analyze overall performance trends
-        benchmark_results[
-            "performance_analysis"
-        ] = await self._analyze_performance_trends(benchmark_results["results"])
+        benchmark_results["performance_analysis"] = (
+            await self._analyze_performance_trends(benchmark_results["results"])
+        )
 
         # Generate performance recommendations
-        benchmark_results[
-            "recommendations"
-        ] = await self._generate_performance_recommendations(benchmark_results)
+        benchmark_results["recommendations"] = (
+            await self._generate_performance_recommendations(benchmark_results)
+        )
 
         benchmark_results["end_time"] = datetime.now()
         benchmark_results["duration"] = (
@@ -531,9 +531,9 @@ class AdaptiveLearningIntegrationSuite:
         workflow_results["integration_validation"] = {"status": "completed"}
 
         # Validate data flow integrity
-        workflow_results[
-            "data_flow_validation"
-        ] = await self._validate_data_flow_integrity()
+        workflow_results["data_flow_validation"] = (
+            await self._validate_data_flow_integrity()
+        )
 
         # Determine overall status
         failed_workflows = [

@@ -125,7 +125,9 @@ class ConfigLoader:
             self._cache[cache_key] = patterns
             self._file_mtimes[f"intents/{language}.yaml"] = file_path.stat().st_mtime
 
-            logger.info(f"Loaded {len(patterns)} intent patterns for language: {language}")
+            logger.info(
+                f"Loaded {len(patterns)} intent patterns for language: {language}"
+            )
             return patterns
 
         except Exception as e:

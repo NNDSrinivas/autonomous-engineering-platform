@@ -33,6 +33,8 @@ import {
 } from "./AttachmentChips";
 import * as vscodeApi from "../../utils/vscodeApi";
 import { AutonomousStepApproval } from "../AutonomousStepApproval";
+import { NaviActionRunner } from "./NaviActionRunner";
+import { NaviApprovalPanel, ActionWithRisk } from "./NaviApprovalPanel";
 import "./NaviChatPanel.css";
 import Prism from 'prismjs';
 // import * as Diff from 'diff';
@@ -71,6 +73,17 @@ export interface ChatMessage {
     current_step?: number;
     total_steps?: number;
   };
+  // Intelligence fields (like Codex/Claude Code)
+  thinking_steps?: string[];  // Show what NAVI did
+  files_read?: string[];  // Show what files were analyzed
+  project_type?: string;  // Detected project type
+  framework?: string;  // Detected framework
+  warnings?: string[];  // Safety warnings
+
+  // NAVI V2: Approval flow fields
+  requiresApproval?: boolean;  // If true, show approval UI
+  planId?: string;  // Unique plan ID for tracking
+  actionsWithRisk?: ActionWithRisk[];  // Actions with risk assessment
 }
 
 type ExecutionMode = "plan_propose" | "plan_and_run";
@@ -646,6 +659,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   }>>([]);
   const [approvalState, setApprovalState] = useState<Map<string, 'approved' | 'ignored'>>(new Map());
   const [expandedProposals, setExpandedProposals] = useState<Set<string>>(new Set());
+
   // Phase 2.1.2: Alternative selection modal state
   const [alternativeModal, setAlternativeModal] = useState<{
     proposalId: string;
@@ -1029,6 +1043,16 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           actions: Array.isArray(msg.actions) ? msg.actions : undefined,
           agentRun: msg.agentRun,
           state: msg.state,
+          // Intelligence fields (like Codex/Claude Code)
+          thinking_steps: msg.thinking_steps,
+          files_read: msg.files_read,
+          project_type: msg.project_type,
+          framework: msg.framework,
+          warnings: msg.warnings,
+          // NAVI V2: Approval flow fields
+          requiresApproval: msg.requires_approval,
+          planId: msg.plan_id,
+          actionsWithRisk: msg.actions_with_risk,
         };
         setMessages((prev) => [...prev, assistantMessage]);
         setSending(false);
@@ -1198,6 +1222,74 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         setSending(false);
         clearSendTimeout();
         showToast(errorText, "error");
+        return;
+      }
+
+      // Handle action execution start
+      if (msg.type === "action.start" && msg.action) {
+        const action = msg.action;
+        const actionType = action.type === "runCommand" ? "command" :
+                          action.type === "createFile" ? "file creation" :
+                          action.type === "editFile" ? "file edit" :
+                          "action";
+
+        const detail = action.command || action.filePath || action.description || "";
+
+        showToast(`Starting ${actionType}: ${detail}`, "info");
+        return;
+      }
+
+      // Handle action execution complete
+      if (msg.type === "action.complete") {
+        const { action, success, message, data } = msg;
+
+        // NaviActionRunner handles its own state updates via message listener
+        // We just need to show completion summary in chat
+
+        if (success) {
+          // Create a success message showing what was done
+          const summaryParts: string[] = ["✅ **Action completed successfully**\n"];
+
+          if (action.type === "runCommand") {
+            summaryParts.push(`\n**Command executed:** \`${action.command}\``);
+            if (data?.exitCode !== undefined) {
+              summaryParts.push(`\n**Exit code:** ${data.exitCode}`);
+            }
+            if (data?.durationMs !== undefined) {
+              summaryParts.push(`\n**Duration:** ${data.durationMs}ms`);
+            }
+          } else if (action.type === "createFile") {
+            summaryParts.push(`\n**File created:** ${action.filePath}`);
+          } else if (action.type === "editFile") {
+            summaryParts.push(`\n**File edited:** ${action.filePath}`);
+          }
+
+          if (message) {
+            summaryParts.push(`\n\n${message}`);
+          }
+
+          const summaryMessage: ChatMessage = {
+            id: makeMessageId("system"),
+            role: "system",
+            content: summaryParts.join(""),
+            createdAt: nowIso(),
+          };
+
+          setMessages((prev) => [...prev, summaryMessage]);
+          showToast("Action completed successfully", "success");
+        } else {
+          // Show error message
+          const errorMsg = message || "Action execution failed";
+          const errorMessage: ChatMessage = {
+            id: makeMessageId("system"),
+            role: "system",
+            content: `❌ **Action failed**\n\n${errorMsg}`,
+            createdAt: nowIso(),
+          };
+
+          setMessages((prev) => [...prev, errorMessage]);
+          showToast(errorMsg, "error");
+        }
         return;
       }
 
@@ -1912,6 +2004,34 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     void handleSend(prompt);
   };
 
+  /* ---------- NAVI V2: approval flow handlers ---------- */
+
+  const handleApproveActions = (planId: string, approvedIndices: number[]) => {
+    console.log("[NaviChatPanel] Approving actions for plan:", planId, approvedIndices);
+    vscodeApi.postMessage({
+      type: "navi.approve",
+      planId,
+      approvedActionIndices: approvedIndices,
+    });
+  };
+
+  const handleRejectPlan = (planId: string) => {
+    console.log("[NaviChatPanel] Rejecting plan:", planId);
+    vscodeApi.postMessage({
+      type: "navi.reject",
+      planId,
+    });
+  };
+
+  const handleShowDiff = (planId: string, actionIndex: number) => {
+    console.log("[NaviChatPanel] Showing diff for action:", planId, actionIndex);
+    vscodeApi.postMessage({
+      type: "navi.showDiff",
+      planId,
+      actionIndex,
+    });
+  };
+
   /* ---------- attachments ---------- */
 
   const handleApplyAllFixes = (reviews: ReviewComment[]) => {
@@ -2049,6 +2169,15 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
   const handleApproveAction = (actions: AgentAction[], actionIndex: number) => {
     const action = actions[actionIndex];
+
+    // Debug logging
+    console.log('[NAVI] handleApproveAction called:', {
+      actionIndex,
+      actionType: action?.type,
+      command: action?.command,
+      totalActions: actions.length
+    });
+
     if (
       coverageGate?.status === "fail" &&
       action?.type === "runCommand" &&
@@ -2074,6 +2203,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       showToast("Command actions require the VS Code host.", "warning");
       return;
     }
+
+    console.log('[NAVI] Posting agent.applyAction message to extension');
     vscodeApi.postMessage({
       type: "agent.applyAction",
       decision: "approve",
@@ -2514,9 +2645,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
         {messages.map((m) => {
           const actionSource = Array.isArray(m.actions) ? m.actions : [];
-          const actionItems = actionSource
-            .map((action, index) => ({ action, index }))
-            .filter(({ action }) => action && typeof action.type === "string");
 
           return (
             <div
@@ -2536,62 +2664,74 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                   {renderMessageContent(m)}
                 </div>
 
-                {m.role === "assistant" && actionItems.length > 0 && (
-                  <div className="navi-action-list">
-                    {actionItems.map(({ action, index }) => (
-                      <div
-                        key={`${m.id}-action-${index}`}
-                        className="navi-action-card"
-                      >
-                        <div className="navi-action-info">
-                          <div className="navi-action-title">
-                            {formatActionTitle(action)}
+                {/* Show thinking steps (like Codex's "Working" panel) */}
+                {m.role === "assistant" && (m.thinking_steps || m.files_read) && (
+                  <div className="navi-thinking-panel" style={{
+                    margin: "12px 0",
+                    padding: "12px",
+                    background: "rgba(79, 192, 141, 0.08)",
+                    border: "1px solid rgba(79, 192, 141, 0.2)",
+                    borderRadius: "6px",
+                  }}>
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      marginBottom: "8px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "var(--vscode-foreground)",
+                    }}>
+                      <span>✓</span>
+                      <span>Finished working</span>
+                    </div>
+                    {m.thinking_steps && m.thinking_steps.length > 0 && (
+                      <div style={{ marginLeft: "20px" }}>
+                        {m.thinking_steps.map((step, idx) => (
+                          <div key={idx} style={{
+                            fontSize: "12px",
+                            color: "var(--vscode-descriptionForeground)",
+                            marginBottom: "4px",
+                          }}>
+                            {step}
                           </div>
-                          <div className="navi-action-detail">
-                            {action.type === "runCommand" ? (
-                              <code>{action.command || ""}</code>
-                            ) : (
-                              formatActionDetail(action)
-                            )}
-                          </div>
-                        </div>
-                        <div className="navi-action-buttons">
-                          {action.type === "runCommand" ? (
-                            <>
-                              <button
-                                type="button"
-                                className="navi-pill navi-pill--primary navi-action-btn"
-                                onClick={() =>
-                                  handleApproveAction(actionSource, index)
-                                }
-                              >
-                                Run
-                              </button>
-                              <button
-                                type="button"
-                                className="navi-pill navi-pill--ghost navi-action-btn"
-                                onClick={() =>
-                                  handleCopyActionCommand(action.command)
-                                }
-                              >
-                                Copy
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              className="navi-pill navi-pill--primary navi-action-btn"
-                              onClick={() =>
-                                handleApproveAction(actionSource, index)
-                              }
-                            >
-                              Apply
-                            </button>
-                          )}
-                        </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
+                    {m.files_read && m.files_read.length > 0 && (
+                      <div style={{
+                        marginTop: "8px",
+                        marginLeft: "20px",
+                        fontSize: "11px",
+                        color: "var(--vscode-descriptionForeground)",
+                      }}>
+                        <span style={{ fontWeight: 500 }}>Files analyzed:</span> {m.files_read.slice(0, 5).join(", ")}
+                        {m.files_read.length > 5 && ` +${m.files_read.length - 5} more`}
+                      </div>
+                    )}
                   </div>
+                )}
+
+                {/* NAVI V2: Show approval panel if requires approval */}
+                {m.role === "assistant" && m.requiresApproval && m.actionsWithRisk && m.planId && (
+                  <NaviApprovalPanel
+                    planId={m.planId}
+                    message={messages.filter(msg => msg.role === "user").slice(-1)[0]?.content || ""}
+                    actionsWithRisk={m.actionsWithRisk}
+                    onApprove={(approvedIndices) => handleApproveActions(m.planId!, approvedIndices)}
+                    onReject={() => handleRejectPlan(m.planId!)}
+                    onShowDiff={(actionIndex) => handleShowDiff(m.planId!, actionIndex)}
+                  />
+                )}
+
+                {m.role === "assistant" && actionSource.length > 0 && !m.requiresApproval && (
+                  <NaviActionRunner
+                    actions={actionSource}
+                    messageId={m.id}
+                    onRunAction={(action, actionIndex) => {
+                      handleApproveAction(actionSource, actionIndex);
+                    }}
+                  />
                 )}
 
                 {/* Timestamp */}

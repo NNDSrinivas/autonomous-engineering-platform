@@ -386,6 +386,46 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
     return 'Auto';
   };
 
+  // NAVI V2: Create plan with approval flow
+  const createPlan = useCallback(async (userMessage: string, workspace: string) => {
+    try {
+      // For now, use localhost:8787 for the FastAPI backend
+      // In production, this would be configured via environment variable
+      const backendUrl = 'http://localhost:8787';
+
+      const response = await fetch(`${backendUrl}/api/navi/plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage,
+          workspace,
+          llm_provider: 'anthropic',
+          context: {
+            current_file: undefined,
+            selected_text: undefined,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Plan creation failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        planId: data.plan_id,
+        requiresApproval: data.requires_approval,
+        actionsWithRisk: data.actions_with_risk || [],
+        thinkingSteps: data.thinking_steps || [],
+        filesRead: data.files_read || [],
+        content: data.message || data.content || '',
+      };
+    } catch (error) {
+      console.error('[NAVI] Plan creation error:', error);
+      throw error;
+    }
+  }, []);
+
   return {
     messages,
     setMessages,
@@ -403,5 +443,6 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
     getDisplayModelName,
     lastRouterInfo,
     preferencesLoaded,
+    createPlan, // NAVI V2: New method
   };
 }

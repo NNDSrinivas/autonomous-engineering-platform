@@ -337,6 +337,20 @@ export class ContextService {
     }
 
     private debounceTimer?: NodeJS.Timeout;
+
+    /**
+     * Debounces workspace re-indexing to avoid excessive file system operations.
+     *
+     * When files change rapidly (e.g., during a git checkout or npm install),
+     * this prevents triggering multiple expensive index operations. Instead,
+     * it waits for a quiet period (DEFAULT_CONTEXT_CONFIG.REINDEX_DEBOUNCE_MS = 2000ms)
+     * before starting the re-index.
+     *
+     * Trade-offs:
+     * - Responsiveness: 2-second delay means context may be briefly stale after changes
+     * - Performance: Prevents excessive CPU/memory usage during rapid file changes
+     * - Accuracy: Ensures we only index the final state, not intermediate changes
+     */
     private debounceReindex(): void {
         if (this.debounceTimer) {
             clearTimeout(this.debounceTimer);

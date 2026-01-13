@@ -1,5 +1,12 @@
 import { NaviClient } from './NaviClient';
 
+/**
+ * Default cache expiry time for task and project data.
+ * Set to 5 minutes to balance between data freshness and API calls.
+ * Cached data may be stale if tasks are updated externally during this period.
+ */
+export const DEFAULT_CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
 export interface JiraTask {
     key: string;
     summary: string;
@@ -124,6 +131,22 @@ export interface UpdateTaskRequest {
     estimatedHours?: number;
 }
 
+export interface TaskAnalytics {
+    totalTasks: number;
+    completedTasks: number;
+    inProgressTasks: number;
+    blockedTasks: number;
+    avgCompletionTimeHours: number;
+    velocityMetrics: {
+        tasksCompletedThisWeek: number;
+        tasksCompletedThisMonth: number;
+        tasksCompletedThisQuarter: number;
+    };
+    statusDistribution: Record<string, number>;
+    priorityDistribution: Record<string, number>;
+    assigneeDistribution: Record<string, number>;
+}
+
 export class TaskService {
     private client: NaviClient;
     private tasksCache: Map<string, JiraTask> = new Map();
@@ -133,7 +156,7 @@ export class TaskService {
 
     constructor(client: NaviClient, cacheExpiryMs?: number) {
         this.client = client;
-        this.cacheExpiry = cacheExpiryMs ?? 5 * 60 * 1000; // default 5 minutes
+        this.cacheExpiry = cacheExpiryMs ?? DEFAULT_CACHE_EXPIRY_MS;
     }
 
     /**
@@ -459,7 +482,7 @@ export class TaskService {
     /**
      * Get task analytics
      */
-    async getAnalytics(projectKey?: string, timeframe?: 'week' | 'month' | 'quarter'): Promise<any> {
+    async getAnalytics(projectKey?: string, timeframe?: 'week' | 'month' | 'quarter'): Promise<TaskAnalytics> {
         try {
             const params = new URLSearchParams();
 
@@ -473,7 +496,7 @@ export class TaskService {
             const queryString = params.toString();
             const endpoint = `/api/navi/analytics${queryString ? `?${queryString}` : ''}`;
 
-            const response = await this.client.request<any>(endpoint);
+            const response = await this.client.request<TaskAnalytics>(endpoint);
             return response;
         } catch (error) {
             console.error('Failed to get analytics:', error);

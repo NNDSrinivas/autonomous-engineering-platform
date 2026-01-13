@@ -5,7 +5,6 @@ Uses configuration files to detect project types, frameworks, and package manage
 instead of hardcoded logic.
 """
 
-import os
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional

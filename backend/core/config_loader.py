@@ -8,7 +8,6 @@ Loads configuration from YAML files for:
 - Code generators
 """
 
-import os
 import yaml
 from pathlib import Path
 from typing import Dict, List, Any, Optional

@@ -12,7 +12,7 @@ Benefits:
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 import logging

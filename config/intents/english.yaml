@@ -26,6 +26,14 @@ patterns:
       - "make a new component called LoginForm"
       - "add component UserCard"
 
+  - regex: "(?:create|make|add|new)\\s+(?:a\\s+)?(?:new\\s+)?(.+)\\s+component"
+    action: "create_component"
+    confidence: 0.95
+    examples:
+      - "create a sidebar component"
+      - "make a login component"
+      - "add navigation component"
+
   # Page Creation
   - regex: "(?:create|make|add|new)\\s+(?:a\\s+)?(?:new\\s+)?(?:page|screen|route)\\s+(?:called\\s+|named\\s+|for\\s+)?(.+)"
     action: "create_page"
@@ -33,6 +41,14 @@ patterns:
     examples:
       - "create a page dashboard"
       - "make a new screen for settings"
+
+  - regex: "(?:create|make|add|new)\\s+(?:a\\s+)?(?:new\\s+)?(.+)\\s+(?:page|screen)"
+    action: "create_page"
+    confidence: 0.95
+    examples:
+      - "create a login page"
+      - "make a dashboard screen"
+      - "add settings page"
       - "add page profile"
 
   # API Endpoint Creation

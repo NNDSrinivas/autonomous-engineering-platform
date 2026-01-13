@@ -399,7 +399,7 @@ async def navi_chat(
         )
 
         # If NAVI successfully executed and has a VS Code command, return it
-        if navi_result.get("success") and "vscode_command" in navi_result:
+        if navi_result.get("success") and navi_result.get("vscode_command"):
             response_content = navi_result["message"]
 
             # Add helpful context about files created

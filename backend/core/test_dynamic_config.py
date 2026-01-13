@@ -11,8 +11,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from backend.core.config_loader import get_config_loader
-from backend.core.dynamic_project_detector import get_project_detector
+from backend.core.config_loader import get_config_loader  # noqa: E402
+from backend.core.dynamic_project_detector import get_project_detector  # noqa: E402
 
 
 def test_intent_patterns():

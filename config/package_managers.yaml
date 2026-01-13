@@ -1,0 +1,202 @@
+# Package Manager Configuration
+# Defines package managers, how to detect them, and their commands
+
+package_managers:
+  # JavaScript / Node.js
+  - name: "npm"
+    category: "javascript"
+    display_name: "npm"
+    indicators:
+      lock_files:
+        - "package-lock.json"
+      config_files:
+        - "package.json"
+    commands:
+      install: ["npm", "install"]
+      install_package: ["npm", "install", "{package}"]
+      install_package_dev: ["npm", "install", "--save-dev", "{package}"]
+      uninstall: ["npm", "uninstall", "{package}"]
+      update: ["npm", "update"]
+      run_script: ["npm", "run", "{script}"]
+    priority: 70
+
+  - name: "yarn"
+    category: "javascript"
+    display_name: "Yarn"
+    indicators:
+      lock_files:
+        - "yarn.lock"
+    commands:
+      install: ["yarn", "install"]
+      install_package: ["yarn", "add", "{package}"]
+      install_package_dev: ["yarn", "add", "-D", "{package}"]
+      uninstall: ["yarn", "remove", "{package}"]
+      update: ["yarn", "upgrade"]
+      run_script: ["yarn", "{script}"]
+    priority: 90
+
+  - name: "pnpm"
+    category: "javascript"
+    display_name: "pnpm"
+    indicators:
+      lock_files:
+        - "pnpm-lock.yaml"
+    commands:
+      install: ["pnpm", "install"]
+      install_package: ["pnpm", "add", "{package}"]
+      install_package_dev: ["pnpm", "add", "-D", "{package}"]
+      uninstall: ["pnpm", "remove", "{package}"]
+      update: ["pnpm", "update"]
+      run_script: ["pnpm", "{script}"]
+    priority: 95
+
+  - name: "bun"
+    category: "javascript"
+    display_name: "Bun"
+    indicators:
+      lock_files:
+        - "bun.lockb"
+    commands:
+      install: ["bun", "install"]
+      install_package: ["bun", "add", "{package}"]
+      install_package_dev: ["bun", "add", "-d", "{package}"]
+      uninstall: ["bun", "remove", "{package}"]
+      update: ["bun", "update"]
+      run_script: ["bun", "run", "{script}"]
+    priority: 100
+
+  # Python
+  - name: "pip"
+    category: "python"
+    display_name: "pip"
+    indicators:
+      config_files:
+        - "requirements.txt"
+        - "pyproject.toml"
+        - "setup.py"
+    commands:
+      install: ["pip", "install", "-r", "requirements.txt"]
+      install_package: ["pip", "install", "{package}"]
+      uninstall: ["pip", "uninstall", "{package}"]
+      update: ["pip", "install", "--upgrade", "{package}"]
+      freeze: ["pip", "freeze", ">", "requirements.txt"]
+    priority: 80
+
+  - name: "poetry"
+    category: "python"
+    display_name: "Poetry"
+    indicators:
+      config_files:
+        - "poetry.lock"
+        - "pyproject.toml"
+    commands:
+      install: ["poetry", "install"]
+      install_package: ["poetry", "add", "{package}"]
+      install_package_dev: ["poetry", "add", "--group", "dev", "{package}"]
+      uninstall: ["poetry", "remove", "{package}"]
+      update: ["poetry", "update"]
+      run_script: ["poetry", "run", "{script}"]
+    priority: 95
+
+  - name: "pipenv"
+    category: "python"
+    display_name: "Pipenv"
+    indicators:
+      lock_files:
+        - "Pipfile.lock"
+      config_files:
+        - "Pipfile"
+    commands:
+      install: ["pipenv", "install"]
+      install_package: ["pipenv", "install", "{package}"]
+      install_package_dev: ["pipenv", "install", "--dev", "{package}"]
+      uninstall: ["pipenv", "uninstall", "{package}"]
+      update: ["pipenv", "update"]
+      run_script: ["pipenv", "run", "{script}"]
+    priority: 90
+
+  # Go
+  - name: "go"
+    category: "go"
+    display_name: "Go Modules"
+    indicators:
+      config_files:
+        - "go.mod"
+        - "go.sum"
+    commands:
+      install: ["go", "mod", "download"]
+      install_package: ["go", "get", "{package}"]
+      update: ["go", "get", "-u", "{package}"]
+      tidy: ["go", "mod", "tidy"]
+    priority: 90
+
+  # Rust
+  - name: "cargo"
+    category: "rust"
+    display_name: "Cargo"
+    indicators:
+      config_files:
+        - "Cargo.toml"
+        - "Cargo.lock"
+    commands:
+      install: ["cargo", "build"]
+      install_package: ["cargo", "add", "{package}"]
+      uninstall: ["cargo", "remove", "{package}"]
+      update: ["cargo", "update"]
+      run_script: ["cargo", "run"]
+    priority: 90
+
+  # Ruby
+  - name: "bundler"
+    category: "ruby"
+    display_name: "Bundler"
+    indicators:
+      config_files:
+        - "Gemfile"
+        - "Gemfile.lock"
+    commands:
+      install: ["bundle", "install"]
+      install_package: ["bundle", "add", "{package}"]
+      update: ["bundle", "update"]
+      run_script: ["bundle", "exec", "{script}"]
+    priority: 90
+
+  # PHP
+  - name: "composer"
+    category: "php"
+    display_name: "Composer"
+    indicators:
+      config_files:
+        - "composer.json"
+        - "composer.lock"
+    commands:
+      install: ["composer", "install"]
+      install_package: ["composer", "require", "{package}"]
+      install_package_dev: ["composer", "require", "--dev", "{package}"]
+      uninstall: ["composer", "remove", "{package}"]
+      update: ["composer", "update"]
+    priority: 90
+
+# Detection strategy
+detection:
+  # Check in priority order, return first match
+  strategy: "priority"
+
+  # Fallback if no package manager detected
+  fallback: "npm"
+
+  # Cache detection results
+  cache_enabled: true
+  cache_ttl_seconds: 300
+
+# Command templating
+templating:
+  # Variables that can be used in commands
+  variables:
+    - "package"
+    - "script"
+    - "version"
+
+  # Escape characters
+  escape_spaces: true
+  quote_packages: false

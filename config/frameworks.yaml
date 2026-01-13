@@ -1,0 +1,280 @@
+# Framework Detection Configuration
+# Defines how to detect different frameworks and their characteristics
+
+frameworks:
+  # JavaScript / TypeScript Frameworks
+  - name: "nextjs"
+    category: "javascript"
+    display_name: "Next.js"
+    indicators:
+      dependencies:
+        - "next"
+      files:
+        - "next.config.js"
+        - "next.config.ts"
+        - "pages/"
+        - "app/"
+    technologies:
+      - "Next.js"
+      - "React"
+    priority: 100
+
+  - name: "react-native"
+    category: "javascript"
+    display_name: "React Native"
+    indicators:
+      dependencies:
+        - "react-native"
+      files:
+        - "app.json"
+        - "metro.config.js"
+    technologies:
+      - "React Native"
+      - "React"
+    priority: 95
+
+  - name: "react"
+    category: "javascript"
+    display_name: "React"
+    indicators:
+      dependencies:
+        - "react"
+      files:
+        - "src/"
+    technologies:
+      - "React"
+    priority: 80
+
+  - name: "vue"
+    category: "javascript"
+    display_name: "Vue.js"
+    indicators:
+      dependencies:
+        - "vue"
+      files:
+        - "vue.config.js"
+        - "*.vue"
+    technologies:
+      - "Vue.js"
+    priority: 90
+
+  - name: "angular"
+    category: "javascript"
+    display_name: "Angular"
+    indicators:
+      dependencies:
+        - "@angular/core"
+      files:
+        - "angular.json"
+    technologies:
+      - "Angular"
+    priority: 90
+
+  - name: "svelte"
+    category: "javascript"
+    display_name: "Svelte"
+    indicators:
+      dependencies:
+        - "svelte"
+      files:
+        - "svelte.config.js"
+        - "*.svelte"
+    technologies:
+      - "Svelte"
+    priority: 90
+
+  - name: "nestjs"
+    category: "javascript"
+    display_name: "NestJS"
+    indicators:
+      dependencies:
+        - "@nestjs/core"
+      files:
+        - "nest-cli.json"
+    technologies:
+      - "NestJS"
+      - "Node.js"
+    priority: 90
+
+  - name: "express"
+    category: "javascript"
+    display_name: "Express"
+    indicators:
+      dependencies:
+        - "express"
+    technologies:
+      - "Express.js"
+      - "Node.js"
+    priority: 70
+
+  - name: "nodejs"
+    category: "javascript"
+    display_name: "Node.js"
+    indicators:
+      files:
+        - "package.json"
+    technologies:
+      - "Node.js"
+    priority: 50
+
+  # Python Frameworks
+  - name: "fastapi"
+    category: "python"
+    display_name: "FastAPI"
+    indicators:
+      imports:
+        - "fastapi"
+      files:
+        - "main.py"
+        - "app.py"
+    technologies:
+      - "FastAPI"
+      - "Python"
+    priority: 95
+
+  - name: "django"
+    category: "python"
+    display_name: "Django"
+    indicators:
+      imports:
+        - "django"
+      files:
+        - "manage.py"
+        - "settings.py"
+    technologies:
+      - "Django"
+      - "Python"
+    priority: 95
+
+  - name: "flask"
+    category: "python"
+    display_name: "Flask"
+    indicators:
+      imports:
+        - "flask"
+      files:
+        - "app.py"
+    technologies:
+      - "Flask"
+      - "Python"
+    priority: 90
+
+  - name: "python"
+    category: "python"
+    display_name: "Python"
+    indicators:
+      files:
+        - "requirements.txt"
+        - "pyproject.toml"
+        - "setup.py"
+        - "*.py"
+    technologies:
+      - "Python"
+    priority: 50
+
+  # Go Frameworks
+  - name: "go"
+    category: "go"
+    display_name: "Go"
+    indicators:
+      files:
+        - "go.mod"
+        - "go.sum"
+        - "*.go"
+    technologies:
+      - "Go"
+    priority: 90
+
+  # Rust
+  - name: "rust"
+    category: "rust"
+    display_name: "Rust"
+    indicators:
+      files:
+        - "Cargo.toml"
+        - "Cargo.lock"
+        - "*.rs"
+    technologies:
+      - "Rust"
+    priority: 90
+
+  # Java / Kotlin
+  - name: "spring-boot"
+    category: "java"
+    display_name: "Spring Boot"
+    indicators:
+      dependencies:
+        - "spring-boot"
+      files:
+        - "pom.xml"
+        - "build.gradle"
+    technologies:
+      - "Spring Boot"
+      - "Java"
+    priority: 95
+
+  - name: "java"
+    category: "java"
+    display_name: "Java"
+    indicators:
+      files:
+        - "pom.xml"
+        - "build.gradle"
+        - "*.java"
+    technologies:
+      - "Java"
+    priority: 80
+
+# Detection strategy
+detection:
+  # Priority-based: Check frameworks in priority order, return first match
+  strategy: "priority"
+
+  # How to check indicators
+  check_dependencies: true
+  check_files: true
+  check_imports: true
+
+  # File search depth
+  max_depth: 3
+
+  # Cache detection results
+  cache_enabled: true
+  cache_ttl_seconds: 300
+
+# Additional technology indicators (not frameworks, but tech stack)
+technologies:
+  - name: "Docker"
+    indicators:
+      files:
+        - "Dockerfile"
+        - "docker-compose.yml"
+        - ".dockerignore"
+
+  - name: "Kubernetes"
+    indicators:
+      files:
+        - "k8s/"
+        - "kubernetes/"
+        - "*.yaml"  # In k8s directory
+
+  - name: "TypeScript"
+    indicators:
+      files:
+        - "tsconfig.json"
+        - "*.ts"
+        - "*.tsx"
+
+  - name: "Git"
+    indicators:
+      files:
+        - ".git/"
+        - ".gitignore"
+
+  - name: "CI/CD"
+    indicators:
+      files:
+        - ".github/workflows/"
+        - ".gitlab-ci.yml"
+        - "Jenkinsfile"
+        - ".circleci/"

@@ -189,6 +189,7 @@
     "@octokit/rest": "^22.0.1",
     "@types/diff": "^8.0.0",
     "diff": "^8.0.2",
+    "fast-glob": "^3.3.3",
     "simple-git": "^3.30.0"
   },
   "devDependencies": {

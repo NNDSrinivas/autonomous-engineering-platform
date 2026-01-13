@@ -233,10 +233,25 @@ async function detectDiagnosticsCommands(workspaceRoot: string): Promise<string[
 
 type Role = 'user' | 'assistant' | 'system';
 
+interface NaviState {
+  recent_project?: {
+    path: string;
+    name: string;
+    type: string;
+    description?: string;
+  };
+  project_creation_failed?: boolean;
+  project_name?: string;
+  parent_dir?: string;
+  error?: string;
+  context?: string;
+  [key: string]: unknown; // Allow additional properties for future extensibility
+}
+
 interface NaviMessage {
   role: Role;
   content: string;
-  state?: any; // For autonomous coding continuity
+  state?: NaviState; // For autonomous coding continuity
 }
 
 // Intent classification types

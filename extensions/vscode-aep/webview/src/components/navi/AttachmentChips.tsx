@@ -36,7 +36,7 @@ export const AttachmentChips: React.FC<AttachmentChipsProps> = ({
   const basename = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
   return (
-    <div className="navi-attachment-chips-row">
+    <div className="navi-attachments-row">
       {attachments.map((att, index) => {
         // Use label if set, otherwise create from path + kind
         const text = att.label ||

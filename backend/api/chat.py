@@ -30,7 +30,6 @@ from backend.core.ai.llm_service import LLMService
 from backend.autonomous.enhanced_coding_engine import (
     TaskType as AutonomousTaskType,
 )
-from backend.api.chat_enhanced import IntentDetector, ActionExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -373,50 +372,58 @@ async def navi_chat(
     )
 
     try:
-        # 🚀 AGGRESSIVE INTENT DETECTION - Phase 1
-        # Detect actionable intents and execute immediately without asking permission
-        detector = IntentDetector()
-        executor = ActionExecutor(request.workspace_root)
+        # 🚀 AGGRESSIVE NAVI ENGINE - Comprehensive intent detection and execution
+        # Uses complete NAVI engine for advanced code generation, git ops, and dependency management
+        from backend.services.navi_engine import process_request as navi_process
 
-        intent = detector.detect_intent(request.message)
-        logger.info(
-            f"🎯 Detected intent: {intent['action']} (confidence: {intent['confidence']})"
+        navi_context = {
+            "workspace_path": request.workspace_root,
+            "current_file": None,  # Can be populated from request if available
+            "technologies": [],  # Will be auto-detected by NAVI
+        }
+
+        navi_result = await navi_process(
+            message=request.message,
+            workspace=request.workspace_root,
+            context=navi_context,
         )
 
-        # Execute high-confidence actionable intents immediately
-        if intent["confidence"] >= 0.8 and intent["action"] != "general_coding":
-            context = {
-                "workspace_path": request.workspace_root,
-                "technologies": {},  # Will be populated from workspace analysis
-            }
+        logger.info(
+            f"🎯 NAVI processed action: {navi_result.get('action', 'unknown')} (success: {navi_result.get('success', False)})"
+        )
 
-            execution_result = await executor.execute(intent, context)
+        # If NAVI successfully executed and has a VS Code command, return it
+        if navi_result.get("success") and "vscode_command" in navi_result:
+            response_content = navi_result["message"]
 
-            # If execution was successful and has a VS Code command, return it
-            if execution_result.get("success") and "vscode_command" in execution_result:
-                response_content = execution_result["message"]
+            # Add helpful context about files created
+            if navi_result.get("files_created"):
+                response_content += "\n\n**Files created:**\n"
+                for file_path in navi_result["files_created"]:
+                    response_content += f"- {file_path}\n"
 
-                # Add helpful context if alternatives were found
-                if (
-                    "result" in execution_result
-                    and "alternatives" in execution_result["result"]
-                ):
-                    alternatives = execution_result["result"]["alternatives"]
-                    if alternatives:
-                        response_content += "\n\n**Other matches found:**\n"
-                        for alt in alternatives:
-                            response_content += f"- {alt['name']} at `{alt['path']}`\n"
+            # Add helpful context about dependencies installed
+            if navi_result.get("dependencies_installed"):
+                response_content += "\n\n**Dependencies installed:**\n"
+                for package in navi_result["dependencies_installed"]:
+                    response_content += f"- {package}\n"
 
-                return ChatResponse(
-                    content=response_content,
-                    actions=[
-                        {
-                            "type": "vscode_command",
-                            "command": execution_result["vscode_command"]["command"],
-                            "args": execution_result["vscode_command"]["args"],
-                        }
-                    ],
-                )
+            # Add helpful context about git operations
+            if navi_result.get("git_operations"):
+                response_content += "\n\n**Git operations:**\n"
+                for operation in navi_result["git_operations"]:
+                    response_content += f"- {operation}\n"
+
+            return ChatResponse(
+                content=response_content,
+                actions=[
+                    {
+                        "type": "vscode_command",
+                        "command": navi_result["vscode_command"]["command"],
+                        "args": navi_result["vscode_command"]["args"],
+                    }
+                ],
+            )
 
         # Fetch relevant memories to ground the response
         memories: List[Dict[str, Any]] = []

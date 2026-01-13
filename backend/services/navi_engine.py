@@ -1,0 +1,917 @@
+# NAVI - Autonomous Engineering Intelligence
+# Complete Engine - Single File
+# backend/services/navi_engine.py
+"""
+NAVI - Autonomous Engineering Intelligence
+
+A complete AI coding assistant comparable to:
+- GitHub Copilot
+- Claude Code
+- Cline
+- Codex
+- Kilo Code
+- Gemini Code Assist
+
+Features:
+✅ Auto-detect project type (React, Python, Next.js, etc.)
+✅ Generate appropriate templates
+✅ Auto-install dependencies
+✅ Auto-commit changes
+✅ Auto-create PRs
+✅ Works for enterprises, teams, and personal use
+
+Copy this file to: backend/services/navi_engine.py
+"""
+
+import re
+import json
+import subprocess
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Tuple
+from dataclasses import dataclass, field
+from datetime import datetime
+
+
+# ==================== DATA CLASSES ====================
+
+
+@dataclass
+class NaviContext:
+    """Context for NAVI operations"""
+
+    workspace_path: str
+    project_type: str = "unknown"
+    current_file: Optional[str] = None
+    technologies: List[str] = field(default_factory=list)
+    dependencies: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class NaviResult:
+    """Result of NAVI action"""
+
+    success: bool
+    message: str
+    files_created: List[str] = field(default_factory=list)
+    files_modified: List[str] = field(default_factory=list)
+    vscode_command: Optional[Dict] = None
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+# ==================== PROJECT DETECTOR ====================
+
+
+class ProjectDetector:
+    """Auto-detect project type and technologies"""
+
+    @staticmethod
+    def detect(workspace_path: str) -> Tuple[str, List[str], Dict[str, str]]:
+        """Detect project type, technologies, and dependencies"""
+        path = Path(workspace_path)
+        technologies = []
+        dependencies = {}
+        project_type = "unknown"
+
+        # Check package.json (Node.js)
+        package_json = path / "package.json"
+        if package_json.exists():
+            try:
+                with open(package_json) as f:
+                    pkg = json.load(f)
+                    deps = {
+                        **pkg.get("dependencies", {}),
+                        **pkg.get("devDependencies", {}),
+                    }
+                    dependencies = deps
+
+                    if "next" in deps:
+                        project_type = "nextjs"
+                        technologies.extend(["Next.js", "React"])
+                    elif "react-native" in deps:
+                        project_type = "react-native"
+                        technologies.extend(["React Native", "React"])
+                    elif "react" in deps:
+                        project_type = "react"
+                        technologies.append("React")
+                    elif "vue" in deps:
+                        project_type = "vue"
+                        technologies.append("Vue.js")
+                    elif "@angular/core" in deps:
+                        project_type = "angular"
+                        technologies.append("Angular")
+                    elif "svelte" in deps:
+                        project_type = "svelte"
+                        technologies.append("Svelte")
+                    elif "@nestjs/core" in deps:
+                        project_type = "nestjs"
+                        technologies.append("NestJS")
+                    elif "express" in deps:
+                        project_type = "express"
+                        technologies.append("Express.js")
+                    else:
+                        project_type = "nodejs"
+                        technologies.append("Node.js")
+
+                    if "typescript" in deps:
+                        technologies.append("TypeScript")
+                    if "tailwindcss" in deps:
+                        technologies.append("Tailwind CSS")
+            except Exception:
+                pass
+
+        # Check Python
+        if (path / "requirements.txt").exists() or (path / "pyproject.toml").exists():
+            technologies.append("Python")
+            try:
+                req_file = path / "requirements.txt"
+                if req_file.exists():
+                    content = req_file.read_text().lower()
+                    if "fastapi" in content:
+                        project_type = "fastapi"
+                        technologies.append("FastAPI")
+                    elif "django" in content:
+                        project_type = "django"
+                        technologies.append("Django")
+                    elif "flask" in content:
+                        project_type = "flask"
+                        technologies.append("Flask")
+                    else:
+                        project_type = "python"
+            except Exception:
+                project_type = "python"
+
+        # Check Go
+        if (path / "go.mod").exists():
+            project_type = "go"
+            technologies.append("Go")
+
+        # Check Rust
+        if (path / "Cargo.toml").exists():
+            project_type = "rust"
+            technologies.append("Rust")
+
+        # Check Java
+        if (path / "pom.xml").exists() or (path / "build.gradle").exists():
+            technologies.append("Java")
+            project_type = "java"
+
+        # Check for Docker
+        if (path / "Dockerfile").exists():
+            technologies.append("Docker")
+
+        return project_type, list(set(technologies)), dependencies
+
+
+# ==================== INTENT PARSER ====================
+
+
+class IntentParser:
+    """Parse user intent from natural language"""
+
+    def __init__(self):
+        self.patterns = [
+            # Open/Navigate
+            (r"open\s+(.+?)(?:\s+project)?$", "open_project"),
+            (r"go\s+to\s+(.+)", "open_project"),
+            (r"switch\s+to\s+(.+)", "open_project"),
+            # Create
+            (
+                r"(?:create|make|add|new)\s+(?:a\s+)?(?:new\s+)?component\s+(?:called\s+|named\s+)?(.+)",
+                "create_component",
+            ),
+            (
+                r"(?:create|make|add|new)\s+(?:a\s+)?(.+)\s+component",
+                "create_component",
+            ),
+            (
+                r"(?:create|make|add|new)\s+(?:a\s+)?(?:new\s+)?page\s+(?:called\s+|named\s+)?(.+)",
+                "create_page",
+            ),
+            (r"(?:create|make|add|new)\s+(?:a\s+)?(.+)\s+page", "create_page"),
+            (
+                r"(?:create|make|add|new)\s+(?:a\s+)?(?:new\s+)?(?:api|endpoint)\s+(?:for\s+)?(.+)",
+                "create_api",
+            ),
+            (
+                r"(?:create|make|add|new)\s+(?:a\s+)?file\s+(?:called\s+)?(.+)",
+                "create_file",
+            ),
+            # Git
+            (r"commit\s*(.+)?", "git_commit"),
+            (r"push", "git_push"),
+            (r"(?:create|make|open)\s+(?:a\s+)?(?:pr|pull\s+request)", "create_pr"),
+            (r"(?:create|make)\s+(?:a\s+)?branch\s+(?:called\s+)?(.+)", "git_branch"),
+            # Packages
+            (r"(?:install|add)\s+(?:package\s+)?(.+)", "install_package"),
+            (r"npm\s+(?:install|i)\s+(.+)", "install_package"),
+            (r"pip\s+install\s+(.+)", "install_package"),
+            # Fix/Improve
+            (r"(?:fix|solve|debug)\s+(.+)", "fix_bug"),
+            (r"refactor\s+(.+)", "refactor"),
+            # Tests
+            (r"(?:create|write|generate)\s+tests?\s+for\s+(.+)", "create_test"),
+            (r"run\s+tests?", "run_tests"),
+            # Explain
+            (r"(?:explain|describe)\s+(.+)", "explain_code"),
+            (r"what\s+(?:is|does)\s+(.+)", "explain_code"),
+            # Add feature
+            (r"add\s+(?:a\s+)?(.+)", "add_feature"),
+        ]
+
+    def parse(self, message: str) -> Dict[str, Any]:
+        """Parse message and return intent"""
+        message_lower = message.lower().strip()
+
+        for pattern, action in self.patterns:
+            match = re.search(pattern, message_lower, re.IGNORECASE)
+            if match:
+                target = (
+                    match.group(1).strip() if match.groups() and match.group(1) else ""
+                )
+                return {
+                    "action": action,
+                    "target": target,
+                    "original": message,
+                    "confidence": 0.9,
+                }
+
+        return {
+            "action": "general",
+            "target": message,
+            "original": message,
+            "confidence": 0.5,
+        }
+
+
+# ==================== CODE GENERATOR ====================
+
+
+class CodeGenerator:
+    """Generate code for different project types"""
+
+    def __init__(self, project_type: str, technologies: List[str]):
+        self.project_type = project_type
+        self.technologies = technologies
+        self.use_ts = "TypeScript" in technologies
+
+    def to_pascal(self, name: str) -> str:
+        """Convert to PascalCase"""
+        words = re.split(r"[-_\s]", name)
+        return "".join(w.capitalize() for w in words if w)
+
+    def react_component(self, name: str) -> Dict[str, str]:
+        """Generate React component"""
+        comp = self.to_pascal(name)
+        ext = ".tsx" if self.use_ts else ".jsx"
+
+        code = f"""import React from 'react';
+{f"interface {comp}Props {{ className?: string; children?: React.ReactNode; }}" if self.use_ts else ""}
+
+export const {comp}{f": React.FC<{comp}Props>" if self.use_ts else ""} = ({{ className = '', children }}) => {{
+  return (
+    <div className={{`{name.lower()} ${{className}}`}}>
+      {{children}}
+    </div>
+  );
+}};
+
+export default {comp};
+"""
+
+        test = f"""import {{ render, screen }} from '@testing-library/react';
+import {{ {comp} }} from './{comp}';
+
+describe('{comp}', () => {{
+  it('renders', () => {{
+    render(<{comp} />);
+  }});
+}});
+"""
+
+        return {
+            f"src/components/{comp}/{comp}{ext}": code,
+            f"src/components/{comp}/{comp}.test{ext}": test,
+            f'src/components/{comp}/index{".ts" if self.use_ts else ".js"}': f'export {{ {comp}, default }} from "./{comp}";',
+        }
+
+    def nextjs_page(self, name: str) -> Dict[str, str]:
+        """Generate Next.js page"""
+        page = self.to_pascal(name)
+        slug = name.lower().replace(" ", "-")
+
+        code = f"""import type {{ Metadata }} from 'next';
+
+export const metadata: Metadata = {{
+  title: '{page}',
+}};
+
+export default function {page}Page() {{
+  return (
+    <main className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold">{page}</h1>
+    </main>
+  );
+}}
+"""
+
+        return {f"src/app/{slug}/page.tsx": code}
+
+    def nextjs_api(self, name: str) -> Dict[str, str]:
+        """Generate Next.js API"""
+        slug = name.lower().replace(" ", "-")
+
+        code = f"""import {{ NextRequest, NextResponse }} from 'next/server';
+
+export async function GET(request: NextRequest) {{
+  return NextResponse.json({{ message: 'Hello from {name}' }});
+}}
+
+export async function POST(request: NextRequest) {{
+  const body = await request.json();
+  return NextResponse.json({{ success: true }}, {{ status: 201 }});
+}}
+"""
+
+        return {f"src/app/api/{slug}/route.ts": code}
+
+    def fastapi_endpoint(self, name: str) -> Dict[str, str]:
+        """Generate FastAPI endpoint"""
+        model = self.to_pascal(name)
+        slug = name.lower().replace(" ", "_")
+
+        code = f"""from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import List, Optional
+
+router = APIRouter(prefix="/{slug}", tags=["{slug}"])
+
+class {model}(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+
+db: List[dict] = []
+
+@router.get("/", response_model=List[{model}])
+async def get_all():
+    return db
+
+@router.post("/", response_model={model}, status_code=201)
+async def create(item: {model}):
+    db.append(item.dict())
+    return item
+"""
+
+        return {f"backend/api/routers/{slug}.py": code}
+
+    def express_api(self, name: str) -> Dict[str, str]:
+        """Generate Express API"""
+        slug = name.lower()
+
+        controller = """import { Request, Response } from 'express';
+
+export const getAll = async (req: Request, res: Response) => {
+  res.json([]);
+};
+
+export const create = async (req: Request, res: Response) => {
+  res.status(201).json(req.body);
+};
+"""
+
+        routes = f"""import {{ Router }} from 'express';
+import * as ctrl from '../controllers/{slug}';
+
+const router = Router();
+router.get('/', ctrl.getAll);
+router.post('/', ctrl.create);
+
+export default router;
+"""
+
+        return {
+            f"src/controllers/{slug}.ts": controller,
+            f"src/routes/{slug}.ts": routes,
+        }
+
+
+# ==================== GIT MANAGER ====================
+
+
+class GitManager:
+    """Handle Git operations"""
+
+    def __init__(self, workspace: str):
+        self.workspace = workspace
+
+    def run(self, *args) -> Tuple[bool, str]:
+        """Run git command"""
+        try:
+            result = subprocess.run(
+                ["git"] + list(args), cwd=self.workspace, capture_output=True, text=True
+            )
+            return result.returncode == 0, result.stdout or result.stderr
+        except Exception as e:
+            return False, str(e)
+
+    def commit(self, message: str) -> Tuple[bool, str]:
+        """Stage all and commit"""
+        self.run("add", "-A")
+        return self.run("commit", "-m", message)
+
+    def push(self) -> Tuple[bool, str]:
+        """Push to origin"""
+        success, out = self.run("push")
+        if not success:
+            # Try setting upstream
+            branch = self.get_branch()
+            return self.run("push", "-u", "origin", branch)
+        return success, out
+
+    def get_branch(self) -> str:
+        """Get current branch"""
+        success, out = self.run("rev-parse", "--abbrev-ref", "HEAD")
+        return out.strip() if success else "main"
+
+    def create_pr(self) -> Dict[str, Any]:
+        """Create PR using gh CLI"""
+        try:
+            result = subprocess.run(
+                ["gh", "pr", "create", "--fill"],
+                cwd=self.workspace,
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                return {"success": True, "url": result.stdout.strip()}
+        except Exception:
+            pass
+        return {"success": False, "manual": True, "branch": self.get_branch()}
+
+
+# ==================== DEPENDENCY MANAGER ====================
+
+
+class DependencyManager:
+    """Manage package dependencies"""
+
+    def __init__(self, workspace: str):
+        self.workspace = workspace
+        self.pm = self._detect_pm()
+
+    def _detect_pm(self) -> str:
+        """Detect package manager"""
+        path = Path(self.workspace)
+        if (path / "yarn.lock").exists():
+            return "yarn"
+        if (path / "pnpm-lock.yaml").exists():
+            return "pnpm"
+        if (path / "bun.lockb").exists():
+            return "bun"
+        if (path / "package.json").exists():
+            return "npm"
+        if (path / "requirements.txt").exists():
+            return "pip"
+        if (path / "pyproject.toml").exists():
+            return "pip"
+        return "npm"
+
+    def install(self, package: str, dev: bool = False) -> Tuple[bool, str]:
+        """Install a package"""
+        cmds = {
+            "npm": ["npm", "install", package, "--save-dev" if dev else "--save"],
+            "yarn": ["yarn", "add", package] + (["-D"] if dev else []),
+            "pnpm": ["pnpm", "add", package] + (["-D"] if dev else []),
+            "bun": ["bun", "add", package] + (["-d"] if dev else []),
+            "pip": ["pip", "install", package],
+        }
+
+        cmd = cmds.get(self.pm, cmds["npm"])
+        cmd = [c for c in cmd if c]  # Remove empty strings
+
+        try:
+            result = subprocess.run(
+                cmd, cwd=self.workspace, capture_output=True, text=True
+            )
+            return result.returncode == 0, f"Installed {package}"
+        except Exception as e:
+            return False, str(e)
+
+
+# ==================== MAIN ENGINE ====================
+
+
+class NaviEngine:
+    """
+    NAVI - Autonomous Engineering Intelligence
+
+    Main orchestrator that handles all user requests.
+    """
+
+    def __init__(self, workspace_path: str):
+        self.workspace = workspace_path
+        self.project_type, self.technologies, self.deps = ProjectDetector.detect(
+            workspace_path
+        )
+        self.parser = IntentParser()
+        self.generator = CodeGenerator(self.project_type, self.technologies)
+        self.git = GitManager(workspace_path)
+        self.packages = DependencyManager(workspace_path)
+
+    async def process(self, message: str, context: Dict = None) -> Dict[str, Any]:
+        """Main entry point - process user message"""
+        context = context or {}
+
+        # Parse intent
+        intent = self.parser.parse(message)
+
+        # Execute action
+        result = await self._execute(intent, context)
+
+        return {
+            "success": result.success,
+            "message": result.message,
+            "files_created": result.files_created,
+            "files_modified": result.files_modified,
+            "vscode_command": result.vscode_command,
+            "intent": intent,
+            "project_type": self.project_type,
+            "technologies": self.technologies,
+        }
+
+    async def _execute(self, intent: Dict, context: Dict) -> NaviResult:
+        """Execute the detected action"""
+        action = intent["action"]
+        target = intent["target"]
+
+        handlers = {
+            "open_project": self._open_project,
+            "create_component": self._create_component,
+            "create_page": self._create_page,
+            "create_api": self._create_api,
+            "create_file": self._create_file,
+            "git_commit": self._git_commit,
+            "git_push": self._git_push,
+            "create_pr": self._create_pr,
+            "git_branch": self._git_branch,
+            "install_package": self._install_package,
+            "fix_bug": self._fix_bug,
+            "refactor": self._refactor,
+            "create_test": self._create_test,
+            "run_tests": self._run_tests,
+            "explain_code": self._explain_code,
+            "add_feature": self._add_feature,
+            "general": self._general,
+        }
+
+        handler = handlers.get(action, self._general)
+        return await handler(target, context)
+
+    # ========== ACTION HANDLERS ==========
+
+    async def _open_project(self, target: str, ctx: Dict) -> NaviResult:
+        """Open a project"""
+        # Fuzzy search
+        workspace = Path(self.workspace)
+        target_clean = target.lower().replace("-", "").replace("_", "").replace(" ", "")
+
+        for search_dir in [workspace, workspace.parent]:
+            for item in search_dir.iterdir():
+                if item.is_dir():
+                    item_clean = (
+                        item.name.lower()
+                        .replace("-", "")
+                        .replace("_", "")
+                        .replace(" ", "")
+                    )
+                    if target_clean in item_clean or item_clean in target_clean:
+                        # Check if project
+                        if any(
+                            (item / f).exists()
+                            for f in ["package.json", "requirements.txt", "src", ".git"]
+                        ):
+                            return NaviResult(
+                                success=True,
+                                message=f"Opening **{item.name}**",
+                                vscode_command={
+                                    "command": "vscode.openFolder",
+                                    "args": [str(item)],
+                                },
+                            )
+
+        return NaviResult(success=False, message=f"Could not find project '{target}'")
+
+    async def _create_component(self, target: str, ctx: Dict) -> NaviResult:
+        """Create a component"""
+        if self.project_type in ["react", "nextjs"]:
+            files = self.generator.react_component(target)
+        elif self.project_type == "vue":
+            # Would add Vue generator
+            files = self.generator.react_component(target)
+        else:
+            files = self.generator.react_component(target)
+
+        return self._write_files(
+            files, f"Created **{self.generator.to_pascal(target)}** component"
+        )
+
+    async def _create_page(self, target: str, ctx: Dict) -> NaviResult:
+        """Create a page"""
+        if self.project_type == "nextjs":
+            files = self.generator.nextjs_page(target)
+        else:
+            files = self.generator.nextjs_page(target)  # Default to Next.js style
+
+        return self._write_files(files, f"Created **{target}** page")
+
+    async def _create_api(self, target: str, ctx: Dict) -> NaviResult:
+        """Create an API endpoint"""
+        if self.project_type == "nextjs":
+            files = self.generator.nextjs_api(target)
+        elif self.project_type in ["fastapi", "python"]:
+            files = self.generator.fastapi_endpoint(target)
+        elif self.project_type in ["express", "nodejs"]:
+            files = self.generator.express_api(target)
+        else:
+            files = self.generator.nextjs_api(target)
+
+        return self._write_files(files, f"Created API for **{target}**")
+
+    async def _create_file(self, target: str, ctx: Dict) -> NaviResult:
+        """Create a generic file"""
+        content = f"// {target}\n"
+        files = {target: content}
+        return self._write_files(files, f"Created **{target}**")
+
+    async def _git_commit(self, message: str, ctx: Dict) -> NaviResult:
+        """Commit changes"""
+        if not message:
+            message = f"NAVI: Changes at {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+
+        success, out = self.git.commit(message)
+        return NaviResult(
+            success=success, message=f"Committed: {message}" if success else out
+        )
+
+    async def _git_push(self, target: str, ctx: Dict) -> NaviResult:
+        """Push changes"""
+        success, out = self.git.push()
+        return NaviResult(
+            success=success, message="Pushed to remote" if success else out
+        )
+
+    async def _create_pr(self, target: str, ctx: Dict) -> NaviResult:
+        """Create pull request"""
+        result = self.git.create_pr()
+        if result.get("success"):
+            return NaviResult(
+                success=True, message=f"PR created: {result.get('url', '')}"
+            )
+        return NaviResult(
+            success=True,
+            message=f"Please create PR manually for branch '{result.get('branch')}'",
+            data=result,
+        )
+
+    async def _git_branch(self, name: str, ctx: Dict) -> NaviResult:
+        """Create branch"""
+        success, out = self.git.run("checkout", "-b", name)
+        return NaviResult(
+            success=success, message=f"Created branch: {name}" if success else out
+        )
+
+    async def _install_package(self, package: str, ctx: Dict) -> NaviResult:
+        """Install package"""
+        success, msg = self.packages.install(package)
+        return NaviResult(success=success, message=msg)
+
+    async def _fix_bug(self, target: str, ctx: Dict) -> NaviResult:
+        """Fix bug (requires LLM)"""
+        return NaviResult(
+            success=True,
+            message=f"Analyzing: {target}",
+            data={"action_required": "llm"},
+        )
+
+    async def _refactor(self, target: str, ctx: Dict) -> NaviResult:
+        """Refactor code (requires LLM)"""
+        return NaviResult(
+            success=True,
+            message=f"Refactoring: {target}",
+            data={"action_required": "llm"},
+        )
+
+    async def _create_test(self, target: str, ctx: Dict) -> NaviResult:
+        """Create test"""
+        name = self.generator.to_pascal(target)
+        test = f"""import {{ render }} from '@testing-library/react';
+import {{ {name} }} from '../{name}';
+
+describe('{name}', () => {{
+  it('renders', () => {{
+    render(<{name} />);
+  }});
+}});
+"""
+        files = {f"src/__tests__/{name}.test.tsx": test}
+        return self._write_files(files, f"Created tests for **{target}**")
+
+    async def _run_tests(self, target: str, ctx: Dict) -> NaviResult:
+        """Run tests"""
+        cmd = (
+            ["npm", "test"]
+            if Path(self.workspace, "package.json").exists()
+            else ["pytest"]
+        )
+        try:
+            result = subprocess.run(
+                cmd, cwd=self.workspace, capture_output=True, text=True
+            )
+            return NaviResult(
+                success=result.returncode == 0,
+                message="Tests passed!" if result.returncode == 0 else "Tests failed",
+                data={"output": result.stdout, "errors": result.stderr},
+            )
+        except Exception as e:
+            return NaviResult(success=False, message=str(e))
+
+    async def _explain_code(self, target: str, ctx: Dict) -> NaviResult:
+        """Explain code (requires LLM)"""
+        return NaviResult(
+            success=True,
+            message=f"Explaining: {target}",
+            data={"action_required": "llm"},
+        )
+
+    async def _add_feature(self, target: str, ctx: Dict) -> NaviResult:
+        """Add a feature - detect type and route appropriately"""
+        target_lower = target.lower()
+
+        if any(w in target_lower for w in ["auth", "login", "signup"]):
+            return await self._add_auth(target, ctx)
+        elif any(
+            w in target_lower
+            for w in ["navbar", "header", "footer", "sidebar", "button", "modal"]
+        ):
+            return await self._create_component(target, ctx)
+        elif any(w in target_lower for w in ["page", "screen"]):
+            return await self._create_page(target, ctx)
+        elif any(w in target_lower for w in ["api", "endpoint"]):
+            return await self._create_api(target, ctx)
+        else:
+            return await self._create_component(target, ctx)
+
+    async def _add_auth(self, target: str, ctx: Dict) -> NaviResult:
+        """Add authentication"""
+        files = {
+            "src/components/auth/LoginForm.tsx": self._login_form(),
+            "src/components/auth/SignupForm.tsx": self._signup_form(),
+            "src/hooks/useAuth.ts": self._use_auth_hook(),
+            "src/contexts/AuthContext.tsx": self._auth_context(),
+        }
+        return self._write_files(
+            files, "Added authentication (LoginForm, SignupForm, AuthContext)"
+        )
+
+    async def _general(self, target: str, ctx: Dict) -> NaviResult:
+        """Handle general request"""
+        return NaviResult(
+            success=True,
+            message=f"Working on: {target}",
+            data={"action_required": "llm"},
+        )
+
+    # ========== FILE OPERATIONS ==========
+
+    def _write_files(self, files: Dict[str, str], message: str) -> NaviResult:
+        """Write files to disk"""
+        created = []
+        for path, content in files.items():
+            full_path = Path(self.workspace) / path
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            full_path.write_text(content)
+            created.append(path)
+
+        return NaviResult(
+            success=True,
+            message=message,
+            files_created=created,
+            vscode_command=(
+                {"command": "vscode.open", "args": [created[0]]} if created else None
+            ),
+        )
+
+    # ========== AUTH TEMPLATES ==========
+
+    def _login_form(self) -> str:
+        return """import React, { useState } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+
+export const LoginForm = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const { login } = useAuth();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await login(email, password);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className="w-full p-2 border rounded" />
+      <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full p-2 border rounded" />
+      <button type="submit" className="w-full p-2 bg-blue-600 text-white rounded">Sign In</button>
+    </form>
+  );
+};
+"""
+
+    def _signup_form(self) -> str:
+        return """import React, { useState } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+
+export const SignupForm = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const { signup } = useAuth();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await signup(email, password, name);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Name" className="w-full p-2 border rounded" />
+      <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" className="w-full p-2 border rounded" />
+      <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" className="w-full p-2 border rounded" />
+      <button type="submit" className="w-full p-2 bg-blue-600 text-white rounded">Sign Up</button>
+    </form>
+  );
+};
+"""
+
+    def _use_auth_hook(self) -> str:
+        return """import { useContext } from 'react';
+import { AuthContext } from '../contexts/AuthContext';
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  return context;
+};
+"""
+
+    def _auth_context(self) -> str:
+        return """import React, { createContext, useState, useCallback } from 'react';
+
+interface AuthContextType {
+  user: any;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, name: string) => Promise<void>;
+  logout: () => void;
+}
+
+export const AuthContext = createContext<AuthContextType | null>(null);
+
+export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
+  const [user, setUser] = useState(null);
+
+  const login = useCallback(async (email: string, password: string) => {
+    // Implement login
+    setUser({ email });
+  }, []);
+
+  const signup = useCallback(async (email: string, password: string, name: string) => {
+    // Implement signup
+    setUser({ email, name });
+  }, []);
+
+  const logout = useCallback(() => setUser(null), []);
+
+  return (
+    <AuthContext.Provider value={{ user, login, signup, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+"""
+
+
+# ==================== API ENTRY POINT ====================
+
+
+async def process_request(message: str, workspace: str, context: Dict = None) -> Dict:
+    """
+    Main API entry point.
+
+    Usage in FastAPI:
+
+    @router.post("/navi")
+    async def navi(request: NaviRequest):
+        return await process_request(request.message, request.workspace, request.context)
+    """
+    engine = NaviEngine(workspace)
+    return await engine.process(message, context)

@@ -342,9 +342,9 @@ class CapabilityRegistry:
 
     def __init__(self):
         self.capabilities: Dict[str, List[ExtensionCapability]] = {}
-        self.extension_capabilities: Dict[str, List[str]] = (
-            {}
-        )  # extension_id -> capability names
+        self.extension_capabilities: Dict[
+            str, List[str]
+        ] = {}  # extension_id -> capability names
 
     def register_capability(self, extension_id: str, capability: ExtensionCapability):
         """Register a new capability from an extension"""

@@ -46,43 +46,36 @@ print("✅ Core backend modules loaded")
 print("🔍 IMPORT DEBUG: Testing router imports...")
 
 try:
-
     print("✅ Tasks router loaded")
 except Exception as e:
     print(f"❌ Tasks router failed: {e}")
 
 try:
-
     print("✅ Plan router loaded")
 except Exception as e:
     print(f"❌ Plan router failed: {e}")
 
 try:
-
     print("✅ Deliver router loaded")
 except Exception as e:
     print(f"❌ Deliver router failed: {e}")
 
 try:
-
     print("✅ Policy router loaded")
 except Exception as e:
     print(f"❌ Policy router failed: {e}")
 
 try:
-
     print("✅ Audit router loaded")
 except Exception as e:
     print(f"❌ Audit router failed: {e}")
 
 try:
-
     print("✅ Change router loaded")
 except Exception as e:
     print(f"❌ Change router failed: {e}")
 
 try:
-
     print("✅ Chat router loaded")
 except Exception as e:
     print(f"❌ Chat router failed: {e}")
@@ -90,7 +83,6 @@ except Exception as e:
 print("🔍 IMPORT DEBUG: Testing NAVI imports (this might hang)...")
 
 try:
-
     print("✅ NAVI router loaded")
 except Exception as e:
     print(f"❌ NAVI router failed: {e}")

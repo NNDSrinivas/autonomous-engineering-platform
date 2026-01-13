@@ -1,11 +1,11 @@
 /**
- * VS Code Webview API utilities
- * 
- * Phase 4.0.4: Real VS Code webview communication
- * Handles postMessage sending and message listening
+ * VS Code webview API utilities.
+ * Handles postMessage, message listeners, and clipboard helpers.
  */
 
-// VS Code webview API
+export type VsCodeMessage = any;
+type Listener = (message: VsCodeMessage) => void;
+
 declare global {
   interface Window {
     acquireVsCodeApi?: () => {
@@ -13,56 +13,117 @@ declare global {
       getState: () => any;
       setState: (state: any) => void;
     };
+    __AEP_VSCODE_API__?: {
+      postMessage: (message: any) => void;
+      getState: () => any;
+      setState: (state: any) => void;
+    };
   }
 }
 
-// Get the VS Code API instance
-const vscode = typeof window !== 'undefined' && window.acquireVsCodeApi ? window.acquireVsCodeApi() : null;
+const listeners = new Set<Listener>();
 
-/**
- * Send a message to the VS Code extension
- */
-export function postMessage(message: any) {
-  if (vscode) {
-    console.log('📤 Sending to extension:', message);
-    vscode.postMessage(message);
-  } else {
-    console.warn('⚠️ VS Code API not available, message not sent:', message);
+let vscode: {
+  postMessage: (message: any) => void;
+  getState: () => any;
+  setState: (state: any) => void;
+} | null = null;
+
+if (typeof window !== "undefined") {
+  if (window.__AEP_VSCODE_API__) {
+    vscode = window.__AEP_VSCODE_API__;
+  } else if (window.acquireVsCodeApi) {
+    try {
+      vscode = window.acquireVsCodeApi();
+      window.__AEP_VSCODE_API__ = vscode;
+    } catch (err) {
+      console.error("[vscodeApi] acquireVsCodeApi failed", err);
+      vscode = null;
+    }
   }
 }
 
-/**
- * Listen for messages from the VS Code extension
- * Returns an unsubscribe function
- */
-export function onMessage(handler: (message: any) => void): () => void {
-  if (typeof window === 'undefined') {
-    return () => {}; // No-op for SSR
-  }
-
-  const messageHandler = (event: MessageEvent) => {
-    console.log('📨 Received from extension:', event.data);
-    handler(event.data);
-  };
-
-  window.addEventListener('message', messageHandler);
-  
-  // Return unsubscribe function
-  return () => {
-    window.removeEventListener('message', messageHandler);
-  };
+export function hasVsCodeHost(): boolean {
+  if (typeof window === "undefined") return false;
+  const anyWindow = window as any;
+  if (window.parent && window.parent !== window) return true;
+  if (typeof anyWindow.acquireVsCodeApi === "function") return true;
+  return false;
 }
 
-/**
- * Get persistent state from VS Code
- */
+export function postMessage(message: VsCodeMessage) {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(message, "*");
+      return;
+    }
+    if (vscode) {
+      vscode.postMessage(message);
+      return;
+    }
+  } catch (err) {
+    console.error("[vscodeApi] postMessage error", err);
+  }
+}
+
+export function onMessage(listener: Listener): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+let nextClipboardReqId = 1;
+const pendingClipboardWrites = new Map<number, (success: boolean) => void>();
+const pendingClipboardReads = new Map<number, (text: string | null) => void>();
+
+export function writeClipboard(text: string): Promise<boolean> {
+  const id = nextClipboardReqId++;
+  return new Promise((resolve) => {
+    pendingClipboardWrites.set(id, resolve);
+    postMessage({ type: "clipboard.write", id, text });
+  });
+}
+
+export function readClipboard(): Promise<string | null> {
+  const id = nextClipboardReqId++;
+  return new Promise((resolve) => {
+    pendingClipboardReads.set(id, resolve);
+    postMessage({ type: "clipboard.read", id });
+  });
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data;
+    if (!data || typeof data !== "object") return;
+
+    if (data.type === "clipboard.write.result" && typeof data.id === "number") {
+      const resolver = pendingClipboardWrites.get(data.id);
+      if (resolver) {
+        pendingClipboardWrites.delete(data.id);
+        resolver(Boolean(data.success));
+      }
+      return;
+    }
+
+    if (data.type === "clipboard.read.result" && typeof data.id === "number") {
+      const resolver = pendingClipboardReads.get(data.id);
+      if (resolver) {
+        pendingClipboardReads.delete(data.id);
+        resolver(typeof data.text === "string" ? data.text : null);
+      }
+      return;
+    }
+
+    listeners.forEach((cb) => cb(data));
+  });
+}
+
 export function getState() {
   return vscode?.getState();
 }
 
-/**
- * Set persistent state in VS Code
- */
 export function setState(state: any) {
   vscode?.setState(state);
 }

@@ -407,7 +407,6 @@ async def _validate_provider_background(
         # Update validation status
         config = _get_user_providers(user_id).get(provider_id)
         if config:
-
             config["validation_status"] = "valid"
             config["last_validated"] = datetime.now(timezone.utc).isoformat() + "Z"
             _save_user_provider(user_id, provider_id, config)
@@ -420,7 +419,6 @@ async def _validate_provider_background(
         # Update validation status as invalid
         config = _get_user_providers(user_id).get(provider_id)
         if config:
-
             config["validation_status"] = "invalid"
             config["last_validated"] = datetime.now(timezone.utc).isoformat() + "Z"
             config["validation_error"] = str(e)

@@ -6,10 +6,13 @@ export DEV_USER_EMAIL="srinivasn7779@gmail.com"
 export DEV_ORG_ID="default-org"
 export DEV_USER_ROLE="admin"
 
-cd /Users/mounikakapa/Desktop/Personal\ Projects/autonomous-engineering-platform
+cd /Users/mounikakapa/dev/autonomous-engineering-platform
 
-# Activate venv
-source aep-venv/bin/activate
-
-# Start backend
-python -m uvicorn backend.api.main:app --reload --host 127.0.0.1 --port 8787
+# Activate venv if exists, otherwise use system python
+if [ -d "aep-venv" ]; then
+    source aep-venv/bin/activate
+    python -m uvicorn backend.api.main:app --reload --host 127.0.0.1 --port 8787
+else
+    echo "No venv found, using system python3"
+    python3 -m uvicorn backend.api.main:app --reload --host 127.0.0.1 --port 8787
+fi

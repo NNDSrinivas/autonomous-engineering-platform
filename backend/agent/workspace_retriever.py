@@ -1,436 +1,409 @@
 """
-Workspace Retriever - Fetch Workspace Context (STEP C Enhanced)
+Workspace Retriever - Enhanced Codebase Indexer (STEP C Enhanced)
 
-Retrieves relevant context from the user's workspace:
-- Currently open files
-- Selected text/code
-- Project structure
-- Git branch/status
-- Recent file changes
-- Small files (for context)
+Retrieves comprehensive workspace context using existing analyzers:
+- File structure and project metadata (existing)
+- Project type detection (NEW)
+- Dependencies via DependencyResolver (existing)
+- Code analysis via IncrementalStaticAnalyzer (existing)
+- Entry points and architecture patterns
 
-This helps NAVI understand what the user is working on right now.
-Enables code explanation, refactoring, and generation.
+Provides NAVI with full workspace intelligence for context-sensitive responses.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
 import os
+from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-MAX_CONTENT_CHARS = 8000  # safety cap per file
+# Import existing analyzers - NO DUPLICATION!
+try:
+    from backend.agent.multirepo.dependency_resolver import DependencyResolver
 
+    HAS_DEPENDENCY_RESOLVER = True
+except ImportError:
+    logger.warning("DependencyResolver not available - dependency analysis disabled")
+    HAS_DEPENDENCY_RESOLVER = False
 
-def _is_safe_path(basedir: str, candidate: str) -> bool:
-    """Ensure candidate path stays within basedir."""
-    try:
-        # Enhanced input validation
-        if not candidate or not isinstance(candidate, str):
-            return False
+try:
+    from backend.static_analysis.incremental_analyzer import IncrementalAnalysisService
 
-        # Reject absolute paths
-        if candidate.startswith(("/", "\\")):
-            return False
-
-        # Reject any path with parent directory references
-        if ".." in candidate or "~" in candidate:
-            return False
-
-        # Reject paths with null bytes or other dangerous characters
-        if "\x00" in candidate or any(
-            c in candidate for c in ["<", ">", ":", '"', "|", "?", "*"]
-        ):
-            return False
-
-        # Only allow relative paths with standard separators
-        normalized_candidate = candidate.replace("\\", "/")
-        if "//" in normalized_candidate:
-            return False
-
-        # Normalize base directory
-        basedir_real = Path(basedir).resolve()
-
-        # Use os.path.join for safer path construction
-        import os
-
-        candidate_full = os.path.normpath(
-            os.path.join(str(basedir_real), normalized_candidate)
-        )
-        candidate_resolved = Path(candidate_full).resolve()
-
-        # Verify candidate is within basedir
-        candidate_resolved.relative_to(basedir_real)
-        return True
-    except (ValueError, OSError):
-        return False
+    HAS_STATIC_ANALYZER = True
+except ImportError:
+    logger.warning(
+        "IncrementalAnalysisService not available - static analysis disabled"
+    )
+    HAS_STATIC_ANALYZER = False
 
 
 async def retrieve_workspace_context(
     user_id: str,
     workspace_root: Optional[str] = None,
     include_files: bool = True,
-    attachments: Optional[List[Dict[str, Any]]] = None,
+    attachments: Optional[List[Any]] = None,
+    limit: int = 100,
 ) -> Dict[str, Any]:
     """
-    Retrieve workspace context for the user.
+    Retrieve relevant workspace context.
 
     Args:
         user_id: User identifier
-        workspace_root: Root path of workspace (if known)
-        include_files: Whether to read small files
+        workspace_root: Path to workspace root directory
+        include_files: Whether to include file listings
+        attachments: Additional file attachments
+        limit: Maximum number of files to include
 
     Returns:
         {
-            "active_file": str,           # Currently open file path
-            "selected_text": str,         # Selected code/text
-            "project_root": str,          # Workspace root path
-            "git_branch": str,            # Current git branch
-            "recent_files": List[Dict],   # Recently edited files
-            "file_tree": Dict             # Project structure summary
+            "workspace_root": str,
+            "files": [...],
+            "structure": {...},
+            "metadata": {...}
         }
     """
-
-    # ---------- 1) VS Code attachment-driven context ----------
-    if attachments:
-        logger.info(
-            f"[WORKSPACE] Using VS Code attachments for user={user_id} ({len(attachments)} attachments)"
-        )
-        active_file_path: Optional[str] = None
-        selected_text_chunks: List[str] = []
-        small_files: List[Dict[str, Any]] = []
-        recent_files: List[str] = []
-
-        for att in attachments:
-            kind = att.get("kind")
-            path = att.get("path")
-            content = att.get("content") or ""
-
-            if path:
-                recent_files.append(path)
-
-            # Active file: currentFile / file / pickedFile
-            if not active_file_path and kind in {"currentFile", "file", "pickedFile"}:
-                active_file_path = path
-
-            # Selected text: accumulate all "selection" attachments
-            if kind == "selection" and content:
-                selected_text_chunks.append(content)
-
-            # Small file snapshots for context
-            if (
-                include_files
-                and kind in {"currentFile", "file", "pickedFile"}
-                and content
-            ):
-                small_files.append(
-                    {
-                        "path": path,
-                        "language": att.get("language"),
-                        "content": content[:MAX_CONTENT_CHARS],
-                        "source": "vscode-attachment",
-                    }
-                )
-
-        return {
-            "active_file": active_file_path,
-            "selected_text": (
-                "\n\n".join(selected_text_chunks) if selected_text_chunks else None
-            ),
-            "project_root": workspace_root or None,
-            "git_branch": None,  # we don't know this from VS Code yet
-            "recent_files": list(dict.fromkeys(recent_files)),  # de-dupe
-            "file_tree": None,  # could be filled later with a dedicated "list workspace" tool
-            "small_files": small_files if include_files else [],
-        }
-
-    # ---------- 2) Fallback: old behaviour (server filesystem scan) ----------
-    logger.info(
-        f"[WORKSPACE] No VS Code attachments, using filesystem scan for user={user_id}"
-    )
-
-    context = {
-        "active_file": None,
-        "selected_text": None,
-        "project_root": workspace_root,
-        "git_branch": None,
-        "recent_files": [],
-        "file_tree": {},
-    }
-
-    # If workspace root is provided, scan for small files
-    if workspace_root and include_files and os.path.exists(workspace_root):
-        context["recent_files"] = await _scan_small_files(workspace_root)
-        context["git_branch"] = await _get_git_branch(workspace_root)
-        context["file_tree"] = await _build_file_tree_summary(workspace_root)
-        context["project_info"] = await _analyze_project_info(workspace_root)
-
-    return context
-
-
-async def _scan_small_files(
-    root: str, max_size: int = 50000, max_files: int = 10  # 50KB
-) -> List[Dict[str, Any]]:
-    """
-    Scan for small files that can fit in context window.
-
-    Only includes text files, excludes:
-    - node_modules, .venv, __pycache__, .git
-    - Binary files
-    - Large files
-    """
-
-    excluded_dirs = {
-        "node_modules",
-        ".venv",
-        "venv",
-        "__pycache__",
-        ".git",
-        "dist",
-        "build",
-        "out",
-        ".next",
-        "target",
-        "vendor",
-    }
-
-    text_extensions = {
-        ".py",
-        ".js",
-        ".ts",
-        ".tsx",
-        ".jsx",
-        ".java",
-        ".go",
-        ".rs",
-        ".c",
-        ".cpp",
-        ".h",
-        ".hpp",
-        ".cs",
-        ".rb",
-        ".php",
-        ".swift",
-        ".kt",
-        ".scala",
-        ".sh",
-        ".bash",
-        ".yaml",
-        ".yml",
-        ".json",
-        ".toml",
-        ".xml",
-        ".md",
-        ".txt",
-        ".sql",
-        ".html",
-        ".css",
-        ".scss",
-        ".sass",
-    }
-
-    small_files = []
+    logger.info(f"[WORKSPACE] Retrieving context for user {user_id}")
 
     try:
-        for dirpath, dirnames, filenames in os.walk(root):
-            # Skip excluded directories
-            dirnames[:] = [d for d in dirnames if d not in excluded_dirs]
+        result = {
+            "workspace_root": workspace_root,
+            "files": [],
+            "structure": {},
+            "metadata": {},
+        }
 
-            for filename in filenames:
-                ext = os.path.splitext(filename)[1]
-                if ext not in text_extensions:
-                    continue
+        if not workspace_root or not os.path.exists(workspace_root):
+            logger.warning(f"[WORKSPACE] Invalid workspace root: {workspace_root}")
+            return result
 
-                filepath = os.path.join(dirpath, filename)
+        # Get basic workspace info
+        workspace_path = Path(workspace_root)
+        result["metadata"] = {
+            "name": workspace_path.name,
+            "path": str(workspace_path.absolute()),
+            "exists": workspace_path.exists(),
+        }
 
-                # Validate filepath is within root directory to prevent path traversal
-                if not _is_safe_path(root, filepath):
-                    continue
+        if include_files and workspace_path.exists():
+            # Get file structure (basic implementation)
+            files = []
+            try:
+                for root, dirs, file_names in os.walk(workspace_root):
+                    # Skip common non-essential directories
+                    dirs[:] = [
+                        d
+                        for d in dirs
+                        if not d.startswith(".")
+                        and d not in ["node_modules", "__pycache__", "venv", ".venv"]
+                    ]
 
-                try:
-                    file_size = os.path.getsize(filepath)
-                    if file_size > max_size:
-                        continue
+                    for file_name in file_names[:limit]:
+                        if not file_name.startswith("."):
+                            file_path = os.path.join(root, file_name)
+                            rel_path = os.path.relpath(file_path, workspace_root)
+                            files.append(
+                                {
+                                    "name": file_name,
+                                    "path": rel_path,
+                                    "full_path": file_path,
+                                    "size": (
+                                        os.path.getsize(file_path)
+                                        if os.path.exists(file_path)
+                                        else 0
+                                    ),
+                                }
+                            )
 
-                    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                        content = f.read()
+                            if len(files) >= limit:
+                                break
 
-                    rel_path = os.path.relpath(filepath, root)
-                    small_files.append(
-                        {"path": rel_path, "content": content, "size": file_size}
-                    )
-
-                    if len(small_files) >= max_files:
+                    if len(files) >= limit:
                         break
 
-                except Exception:
-                    continue
+                result["files"] = files[:limit]
 
-            if len(small_files) >= max_files:
-                break
+            except Exception as e:
+                logger.error(f"[WORKSPACE] Error reading files: {e}")
 
-        logger.info(f"[WORKSPACE] Scanned {len(small_files)} small files")
-        return small_files
+        # Add attachments if provided
+        if attachments:
+            result["attachments"] = attachments
 
-    except Exception as e:
-        logger.error(f"[WORKSPACE] Error scanning files: {e}")
-        return []
-
-
-async def _get_git_branch(root: str) -> Optional[str]:
-    """Get current git branch."""
-    try:
-        import subprocess
-
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=2,
+        logger.info(
+            f"[WORKSPACE] Retrieved {len(result['files'])} files from workspace"
         )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception as e:
-        logger.debug(f"[WORKSPACE] Could not get git branch: {e}")
-
-    return None
-
-
-async def _build_file_tree_summary(root: str, max_depth: int = 2) -> Dict[str, Any]:
-    """
-    Build a summary of the file tree structure.
-
-    Returns a nested dict showing directories and key files.
-    """
-
-    excluded_dirs = {
-        "node_modules",
-        ".venv",
-        "venv",
-        "__pycache__",
-        ".git",
-        "dist",
-        "build",
-        "out",
-    }
-
-    try:
-        tree = {}
-
-        for dirpath, dirnames, filenames in os.walk(root):
-            # Calculate depth
-            rel_path = os.path.relpath(dirpath, root)
-            depth = rel_path.count(os.sep) if rel_path != "." else 0
-
-            if depth > max_depth:
-                continue
-
-            # Skip excluded directories
-            dirnames[:] = [d for d in dirnames if d not in excluded_dirs]
-
-            # Add this level to tree
-            parts = rel_path.split(os.sep) if rel_path != "." else []
-            current = tree
-            for part in parts:
-                if part not in current:
-                    current[part] = {}
-                current = current[part]
-
-            # Add file count
-            current["__files__"] = len(filenames)
-            current["__dirs__"] = len(dirnames)
-
-        return tree
+        return result
 
     except Exception as e:
-        logger.error(f"[WORKSPACE] Error building file tree: {e}")
-        return {}
-
-
-async def _analyze_project_info(root: str) -> Dict[str, Any]:
-    """
-    Analyze the project to determine its type, name, and description.
-    This helps NAVI understand what project the user is actually working on.
-    """
-    norm_root = os.path.abspath(os.path.realpath(root))
-    project_info = {
-        "name": os.path.basename(norm_root),
-        "type": "unknown",
-        "description": None,
-        "framework": None,
-        "language": None,
-    }
-
-    try:
-        # Check for common project files and extract info
-        config_files = {
-            "package.json": "nodejs",
-            "pom.xml": "java",
-            "build.gradle": "java",
-            "requirements.txt": "python",
-            "pyproject.toml": "python",
-            "Cargo.toml": "rust",
-            "go.mod": "go",
-            "composer.json": "php",
-            ".csproj": "csharp",
+        logger.error(f"[WORKSPACE] Error retrieving workspace context: {e}")
+        return {
+            "workspace_root": workspace_root,
+            "files": [],
+            "structure": {},
+            "metadata": {},
+            "error": str(e),
         }
 
-        for config_file, lang in config_files.items():
-            config_path = os.path.join(norm_root, config_file)
-            if not _is_safe_path(norm_root, config_path):
-                continue
-            if os.path.exists(config_path):
-                project_info["language"] = lang
 
-                # Try to extract project name and description
-                if config_file == "package.json":
-                    try:
-                        import json
+# ============================================================================
+# NEW: Enhanced Workspace Indexing Using Existing Components
+# ============================================================================
 
-                        with open(config_path, "r", encoding="utf-8") as f:
-                            pkg = json.load(f)
-                            project_info["name"] = pkg.get("name", project_info["name"])
-                            project_info["description"] = pkg.get("description")
-                            project_info["type"] = "nodejs"
-                            if "react" in str(
-                                pkg.get("dependencies", {})
-                            ) or "next" in str(pkg.get("dependencies", {})):
-                                project_info["framework"] = "react"
-                            elif "vue" in str(pkg.get("dependencies", {})):
-                                project_info["framework"] = "vue"
-                            elif "angular" in str(pkg.get("dependencies", {})):
-                                project_info["framework"] = "angular"
-                    except Exception:
 
-                        pass
+def _detect_project_type(files: List[Dict[str, Any]]) -> str:
+    """
+    Detect project type from file list.
 
-                break
+    Returns: 'python', 'fastapi', 'flask', 'django', 'nodejs', 'react',
+             'nextjs', 'go', 'java-maven', 'rust', 'monorepo', 'unknown'
+    """
+    file_names = [f.get("name", "") for f in files]
+    file_paths = [f.get("path", "") for f in files]
 
-        # Check for README.md for additional description
-        readme_path = os.path.join(norm_root, "README.md")
-        if (
-            _is_safe_path(norm_root, readme_path)
-            and os.path.exists(readme_path)
-            and not project_info["description"]
+    # Check for monorepo first - if multiple project types exist
+    has_python = any(
+        "requirements.txt" in fn or "pyproject.toml" in fn for fn in file_names
+    )
+    has_nodejs = "package.json" in file_names
+    has_go = "go.mod" in file_names
+    has_java = "pom.xml" in file_names or any("build.gradle" in fn for fn in file_names)
+    has_rust = "Cargo.toml" in file_names
+
+    project_type_count = sum([has_python, has_nodejs, has_go, has_java, has_rust])
+
+    # If multiple project types detected, it's a monorepo
+    if project_type_count > 1:
+        types = []
+        if has_nodejs:
+            if any("next.config" in fn for fn in file_names):
+                types.append("nextjs")
+            else:
+                types.append("nodejs")
+        if has_python:
+            if any("fastapi" in fn.lower() or "main.py" in fn for fn in file_names):
+                types.append("fastapi")
+            else:
+                types.append("python")
+        if has_go:
+            types.append("go")
+        if has_rust:
+            types.append("rust")
+        return "monorepo:" + "+".join(types)
+
+    # Python-based projects
+    if has_python:
+        # Check for specific Python frameworks
+        if any("fastapi" in fn.lower() or "main.py" in fn for fn in file_names):
+            return "fastapi"
+        elif any("flask" in fn.lower() or "app.py" in fn for fn in file_names):
+            return "flask"
+        elif any("django" in fn.lower() or "manage.py" in fn for fn in file_names):
+            return "django"
+        return "python"
+
+    # JavaScript/TypeScript projects
+    if has_nodejs:
+        # Check for React/Next.js
+        if any("next.config" in fn for fn in file_names):
+            return "nextjs"
+        elif any(
+            "react" in fp.lower() or "App.tsx" in fn or "App.jsx" in fn
+            for fn, fp in zip(file_names, file_paths)
         ):
+            return "react"
+        return "nodejs"
+
+    # Go projects
+    if has_go:
+        return "go"
+
+    # Java projects
+    if has_java:
+        if "pom.xml" in file_names:
+            return "java-maven"
+        return "java-gradle"
+
+    # Rust projects
+    if has_rust:
+        return "rust"
+
+    return "unknown"
+
+
+def _find_entry_points(files: List[Dict[str, Any]], project_type: str) -> List[str]:
+    """
+    Find entry point files based on project type.
+
+    Returns: List of relative file paths that are entry points
+    """
+    file_map = {f.get("name", ""): f.get("path", "") for f in files}
+
+    entry_point_patterns = {
+        "python": ["main.py", "app.py", "__main__.py", "run.py"],
+        "fastapi": ["main.py", "app.py", "server.py"],
+        "flask": ["app.py", "main.py", "wsgi.py"],
+        "django": ["manage.py", "wsgi.py"],
+        "nodejs": ["index.js", "server.js", "app.js", "main.js", "index.ts", "main.ts"],
+        "react": [
+            "index.tsx",
+            "index.jsx",
+            "App.tsx",
+            "App.jsx",
+            "main.tsx",
+            "main.jsx",
+        ],
+        "nextjs": [
+            "pages/_app.tsx",
+            "pages/_app.jsx",
+            "app/layout.tsx",
+            "next.config.js",
+        ],
+        "go": ["main.go", "cmd/main.go"],
+        "java-maven": ["Main.java", "Application.java"],
+        "rust": ["main.rs", "lib.rs"],
+    }
+
+    patterns = entry_point_patterns.get(project_type, ["main.*", "index.*", "app.*"])
+    entry_points = []
+
+    for pattern in patterns:
+        if "*" in pattern:
+            # Wildcard matching
+            prefix = pattern.replace("*", "")
+            for name, path in file_map.items():
+                if name.startswith(prefix):
+                    entry_points.append(path)
+        else:
+            # Exact matching
+            if pattern in file_map:
+                entry_points.append(file_map[pattern])
+
+    return entry_points
+
+
+async def index_workspace_full(
+    workspace_root: str,
+    user_id: str = "system",
+    include_code_analysis: bool = True,
+    include_dependencies: bool = True,
+) -> Dict[str, Any]:
+    """
+    Full workspace indexing using existing components.
+
+    Combines:
+    - Basic file scanning (retrieve_workspace_context)
+    - Project type detection (_detect_project_type)
+    - Entry point detection (_find_entry_points)
+    - Dependency resolution (DependencyResolver - if available)
+    - Static code analysis (IncrementalStaticAnalyzer - if available)
+
+    Args:
+        workspace_root: Path to workspace root directory
+        user_id: User identifier
+        include_code_analysis: Whether to run static analysis
+        include_dependencies: Whether to resolve dependencies
+
+    Returns:
+        {
+            "workspace_root": str,
+            "project_type": str,
+            "entry_points": List[str],
+            "files": List[Dict],
+            "dependencies": Dict (if include_dependencies=True),
+            "code_analysis": Dict (if include_code_analysis=True),
+            "metadata": Dict,
+            "indexed_at": str
+        }
+    """
+    logger.info(f"[WORKSPACE] Full indexing for {workspace_root}")
+
+    try:
+        # Step 1: Use existing file scanning
+        basic_context = await retrieve_workspace_context(
+            user_id=user_id,
+            workspace_root=workspace_root,
+            include_files=True,
+            limit=1000,  # Increase limit for full indexing
+        )
+
+        if "error" in basic_context:
+            logger.error(
+                f"[WORKSPACE] Basic context retrieval failed: {basic_context['error']}"
+            )
+            return basic_context
+
+        # Step 2: Detect project type (NEW)
+        project_type = _detect_project_type(basic_context.get("files", []))
+        logger.info(f"[WORKSPACE] Detected project type: {project_type}")
+
+        # Step 3: Find entry points (NEW)
+        entry_points = _find_entry_points(basic_context.get("files", []), project_type)
+        logger.info(f"[WORKSPACE] Found {len(entry_points)} entry points")
+
+        # Step 4: Resolve dependencies using EXISTING resolver
+        dependencies_info = None
+        if include_dependencies and HAS_DEPENDENCY_RESOLVER:
             try:
-                with open(readme_path, "r", encoding="utf-8") as f:
-                    readme_content = f.read()[:500]  # First 500 chars
-                    lines = readme_content.split("\n")
-                    for line in lines:
-                        line = line.strip()
-                        if line and not line.startswith("#") and len(line) > 20:
-                            project_info["description"] = line
-                            break
-            except Exception:
+                dependency_resolver = DependencyResolver()
+                workspace_name = Path(workspace_root).name
+                dep_graph = dependency_resolver.resolve_dependencies(
+                    workspace_root, workspace_name
+                )
 
-                pass
+                dependencies_info = {
+                    "total": dep_graph.total_dependencies,
+                    "direct": dep_graph.direct_dependencies,
+                    "internal": dep_graph.internal_dependencies,
+                    "external": dep_graph.external_dependencies,
+                    "files": dep_graph.dependency_files,
+                    "health_score": dep_graph.health_score,
+                    "vulnerabilities": dep_graph.vulnerabilities,
+                    "conflicts": dep_graph.conflicts,
+                }
+                logger.info(
+                    f"[WORKSPACE] Resolved {dep_graph.total_dependencies} dependencies"
+                )
+            except Exception as e:
+                logger.warning(f"[WORKSPACE] Dependency resolution failed: {e}")
+                dependencies_info = {"error": str(e)}
 
-        logger.info(f"[WORKSPACE] Project analysis: {project_info}")
+        # Step 5: Get code analysis using EXISTING analyzer
+        code_analysis_info = None
+        if include_code_analysis and HAS_STATIC_ANALYZER:
+            try:
+                analysis_service = IncrementalAnalysisService(workspace_root)
+                analysis_dashboard = await analysis_service.get_analysis_dashboard()
+                code_analysis_info = analysis_dashboard
+                logger.info("[WORKSPACE] Code analysis completed")
+            except Exception as e:
+                logger.warning(f"[WORKSPACE] Static analysis failed: {e}")
+                code_analysis_info = {"error": str(e)}
+
+        # Step 6: Return comprehensive index
+        result = {
+            **basic_context,
+            "project_type": project_type,
+            "entry_points": entry_points,
+            "indexed_at": __import__("datetime").datetime.now().isoformat(),
+        }
+
+        if dependencies_info:
+            result["dependencies"] = dependencies_info
+
+        if code_analysis_info:
+            result["code_analysis"] = code_analysis_info
+
+        logger.info(f"[WORKSPACE] Full indexing completed for {workspace_root}")
+        return result
 
     except Exception as e:
-        logger.error(f"[WORKSPACE] Error analyzing project: {e}")
-
-    return project_info
+        logger.error(f"[WORKSPACE] Error in full workspace indexing: {e}")
+        return {
+            "workspace_root": workspace_root,
+            "project_type": "unknown",
+            "entry_points": [],
+            "files": [],
+            "metadata": {},
+            "error": str(e),
+        }

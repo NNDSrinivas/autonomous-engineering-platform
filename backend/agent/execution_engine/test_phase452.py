@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Phase 4.5.2 CI Auto-Repair Loop - Comprehensive Test
 
@@ -14,7 +15,7 @@ from datetime import datetime
 
 # Add the backend to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../../"))
-from backend.agent.execution_engine.ci import (  # noqa: E402
+from backend.agent.execution_engine.ci import (
     CIEvent,
     CIProvider,
     CILogFetcher,

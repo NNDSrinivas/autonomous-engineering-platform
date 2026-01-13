@@ -296,7 +296,6 @@ async def search_extensions(request: ExtensionSearchRequest):
                 or request.query.lower() in ext["description"].lower()
                 or any(request.query.lower() in tag for tag in ext["tags"])
             ):
-
                 # Build full extension response
                 result = {
                     **ext,
@@ -678,10 +677,11 @@ async def validate_extension_security(
         security_service = create_security_service(db)
 
         # Validate security
-        security_report, is_approved = (
-            await security_service.validate_extension_security(
-                request.extension_manifest, extension_content, tenant.id
-            )
+        (
+            security_report,
+            is_approved,
+        ) = await security_service.validate_extension_security(
+            request.extension_manifest, extension_content, tenant.id
         )
 
         # Convert to response model

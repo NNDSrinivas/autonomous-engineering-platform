@@ -63,6 +63,13 @@
           "type": "boolean",
           "default": true,
           "description": "Enable smart verification mode for medium-risk changes"
+        },
+        "aep.navi.requestTimeout": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 10000,
+          "maximum": 300000,
+          "description": "Timeout in milliseconds for NAVI API requests (10s-300s). Increase for complex multi-step autonomous operations."
         }
       }
     },
@@ -189,6 +196,7 @@
     "@octokit/rest": "^22.0.1",
     "@types/diff": "^8.0.0",
     "diff": "^8.0.2",
+    "fast-glob": "^3.3.3",
     "simple-git": "^3.30.0"
   },
   "devDependencies": {

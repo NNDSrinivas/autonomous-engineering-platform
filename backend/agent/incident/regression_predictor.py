@@ -163,7 +163,6 @@ class RegressionPredictor:
             self.last_model_update is None
             or (datetime.now() - self.last_model_update).days >= 7
         ):
-
             logger.info("Updating regression prediction model")
             self.prediction_model = self._train_prediction_model(incidents)
             self.last_model_update = datetime.now()

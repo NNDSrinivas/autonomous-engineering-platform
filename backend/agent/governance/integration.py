@@ -91,10 +91,13 @@ class GovernedClosedLoopOrchestrator(ClosedLoopOrchestrator):
             action_context = self._create_action_context(action, context)
 
             # Evaluate governance decision
-            decision, risk_score, reasons, approval_id = (
-                self.approval_engine.evaluate_action(
-                    action.action_type.value, action_context
-                )
+            (
+                decision,
+                risk_score,
+                reasons,
+                approval_id,
+            ) = self.approval_engine.evaluate_action(
+                action.action_type.value, action_context
             )
 
             logger.info(
@@ -540,9 +543,12 @@ class GovernanceIntegrationMixin:
             )
 
             # Evaluate governance
-            decision, risk_score, reasons, approval_id = (
-                self.approval_engine.evaluate_action(action_type, action_context)
-            )
+            (
+                decision,
+                risk_score,
+                reasons,
+                approval_id,
+            ) = self.approval_engine.evaluate_action(action_type, action_context)
 
             if decision == DecisionType.BLOCKED:
                 return {

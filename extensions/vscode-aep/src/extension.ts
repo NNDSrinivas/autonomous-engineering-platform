@@ -32,8 +32,24 @@ import { normalizeIntentKind, IntentKind } from '@aep/navi-contracts';
 import { FixConfidencePolicy } from './navi-core/fix/FixConfidencePolicy';
 import { FixTransactionManager } from './navi-core/fix/FixTransactionManager';
 import { FeaturePlanEngine } from './navi-core/planning/FeaturePlanEngine';
+import { ContextService } from './services/ContextService';
+import { NaviClient } from './services/NaviClient';
+import { GitService } from './services/GitService';
+import { TaskService } from './services/TaskService';
+import { buildRepoAnalysisPrompt } from './constants/prompts';
 
 const exec = util.promisify(child_process.exec);
+
+// Configuration constants
+const DEFAULT_REQUEST_TIMEOUT_MS = 60000; // 60 seconds for complex operations
+const DEFAULT_SSE_TIMEOUT_MS = 60000; // 60 seconds for SSE connections
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds heartbeat
+
+// Global service instances for workspace operations
+let globalContextService: ContextService | undefined;
+let globalGitService: GitService | undefined;
+let globalTaskService: TaskService | undefined;
+
 // Phase 1.4: Collect VS Code diagnostics for a set of files
 function collectDiagnosticsForFiles(workspaceRoot: string, relativePaths: string[]) {
   const results: Array<{ path: string; diagnostics: Array<{ message: string; severity: vscode.DiagnosticSeverity; line: number; character: number }> }> = [];
@@ -142,12 +158,42 @@ async function collectWorkspaceContext(): Promise<any> {
 
   const recentFiles = vscode.workspace.textDocuments.slice(0, 10).map(doc => doc.fileName);
 
-  return {
+  // Enhanced: Add ContextService data if available
+  let enhancedContext: any = {
     workspace_root: rootFolder,
     active_file: activeFile,
     selected_text: selectedText,
     recent_files: recentFiles,
   };
+
+  if (globalContextService) {
+    try {
+      const workspaceContext = await globalContextService.getWorkspaceContext();
+      enhancedContext = {
+        ...enhancedContext,
+        technologies: workspaceContext.technologies,
+        totalFiles: workspaceContext.totalFiles,
+        totalSize: workspaceContext.totalSize,
+        gitBranch: workspaceContext.gitBranch,
+        packageJson: workspaceContext.packageJson,
+      };
+
+      // Add editor context if editor is available
+      if (editor) {
+        const editorContext = await globalContextService.getEditorContext(editor);
+        enhancedContext.editorContext = {
+          currentFile: editorContext.currentFile,
+          language: editorContext.language,
+          imports: editorContext.imports,
+          relatedFiles: editorContext.relatedFiles,
+        };
+      }
+    } catch (err) {
+      console.error('[AEP] Failed to get enhanced context:', err);
+    }
+  }
+
+  return enhancedContext;
 }
 
 // Detect Diagnostics Commands (for "check errors & fix" functionality)
@@ -233,9 +279,25 @@ async function detectDiagnosticsCommands(workspaceRoot: string): Promise<string[
 
 type Role = 'user' | 'assistant' | 'system';
 
+interface NaviState {
+  recent_project?: {
+    path: string;
+    name: string;
+    type: string;
+    description?: string;
+  };
+  project_creation_failed?: boolean;
+  project_name?: string;
+  parent_dir?: string;
+  error?: string;
+  context?: string;
+  [key: string]: unknown; // Allow additional properties for future extensibility
+}
+
 interface NaviMessage {
   role: Role;
   content: string;
+  state?: NaviState; // For autonomous coding continuity
 }
 
 // Intent classification types
@@ -568,6 +630,46 @@ export function activate(context: vscode.ExtensionContext) {
       provider
     )
   );
+
+  // Initialize ContextService for workspace analysis
+  const config = vscode.workspace.getConfiguration('aep.navi');
+  const backendUrl = config.get<string>('backendUrl') || 'http://127.0.0.1:8787';
+  const naviClient = new NaviClient(backendUrl, backendUrl, 'default');
+
+  // Configure ContextService with higher limits for large codebases
+  globalContextService = new ContextService(naviClient, {
+    maxSearchFiles: 500,      // Search more files in large codebases
+    maxMatchesPerFile: 10,    // Show more context per file
+    maxSearchResults: 50      // Return more total results
+  });
+
+  // Initialize GitService for git operations
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (workspaceFolders && workspaceFolders.length > 0) {
+    globalGitService = new GitService(workspaceFolders[0].uri.fsPath);
+    console.log('[AEP] GitService initialized');
+  }
+
+  // Initialize TaskService for JIRA integration
+  globalTaskService = new TaskService(naviClient);
+  console.log('[AEP] TaskService initialized');
+
+  // Index workspace on activation (async, non-blocking)
+  globalContextService.indexWorkspace().then(() => {
+    console.log('[AEP] Workspace indexing completed');
+  }).catch(err => {
+    console.error('[AEP] Workspace indexing failed:', err);
+  });
+
+  // Dispose services on deactivation
+  context.subscriptions.push({
+    dispose: () => {
+      globalContextService?.dispose();
+      globalGitService?.dispose();
+      globalTaskService?.dispose();
+      naviClient.dispose();
+    }
+  });
 
   // Register Smart Mode commands
   smartModeCommands.registerCommands(context);
@@ -1165,8 +1267,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private sse = new SSEClient({
     maxRetries: 3,
     retryDelay: 1000,
-    heartbeatInterval: 30000,
-    timeout: 60000
+    heartbeatInterval: DEFAULT_HEARTBEAT_INTERVAL_MS,
+    timeout: DEFAULT_SSE_TIMEOUT_MS
   });
 
   constructor(extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
@@ -1179,6 +1281,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     this._currentModelLabel = context.globalState.get<string>(STORAGE_KEYS.modelLabel) ?? DEFAULT_MODEL.label;
     this._currentModeId = context.globalState.get<string>(STORAGE_KEYS.modeId) ?? DEFAULT_MODE.id;
     this._currentModeLabel = context.globalState.get<string>(STORAGE_KEYS.modeLabel) ?? DEFAULT_MODE.label;
+  }
+
+  /**
+   * Generate repository analysis prompt template
+   * Delegates to extracted prompt template for maintainability
+   */
+  private buildRepoAnalysisPrompt(contextMessage: string, originalMessage: string): string {
+    return buildRepoAnalysisPrompt(contextMessage, originalMessage);
   }
 
   private getBackendBaseUrl(): string {
@@ -3452,6 +3562,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               return;
             }
 
+            // Check if this is a repo overview question BEFORE routing to backend
+            if (this.isRepoOverviewQuestion(text)) {
+              console.log('[Extension Host] [AEP] Detected repo overview question, using local analysis...');
+              this.postToWebview({ type: 'botThinking', value: true });
+              await this.handleLocalExplainRepo(text);
+              this.postToWebview({ type: 'botThinking', value: false });
+              break;
+            }
+
             console.log('[Extension Host] [AEP] Using chat-only smart routing...');
             await this.handleSmartRouting(text, modelId, modeId, attachments || [], msg.orgId, msg.userId);
             console.log('[Extension Host] [AEP] Smart routing completed');
@@ -4124,6 +4243,38 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             const { filePath, line } = msg;
             console.log('[AEP] React webview: Open file request', { filePath, line });
             await this.handleReactOpenFile(filePath, line);
+            break;
+          }
+
+          case 'openFolder': {
+            const { folderPath, newWindow } = msg;
+            console.log('[AEP] React webview: Open folder request', { folderPath, newWindow });
+
+            // Convert to URI and open the folder
+            const folderUri = vscode.Uri.file(folderPath);
+            await vscode.commands.executeCommand('vscode.openFolder', folderUri, newWindow !== false);
+
+            // Show notification
+            vscode.window.showInformationMessage(`Opening project: ${path.basename(folderPath)}`);
+            break;
+          }
+
+          case 'openFile': {
+            const { filePath } = msg;
+            console.log('[AEP] React webview: Open file request', { filePath });
+
+            try {
+              // Convert to URI and open the file
+              const fileUri = vscode.Uri.file(filePath);
+              const document = await vscode.workspace.openTextDocument(fileUri);
+              await vscode.window.showTextDocument(document, {
+                preview: false,
+                preserveFocus: false
+              });
+            } catch (error) {
+              console.error('[AEP] Failed to open file:', error);
+              vscode.window.showErrorMessage(`Failed to open file: ${path.basename(filePath)}`);
+            }
             break;
           }
 
@@ -5526,10 +5677,23 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       return false;
     }
 
-    const repoKeyword = /(repo|repository|codebase|project|architecture|structure|overview|summary)/.test(text);
-    const intentKeyword = /(analy[sz]e|explain|overview|summary|describe|walk\s+me\s+through)/.test(text);
+    // Match various forms of repo/codebase questions
+    const repoKeyword = /(this\s+)?(repo|repository|codebase|project|workspace|application|app)/.test(text);
+    const intentKeyword = /(analy[sz]e|explain|overview|summary|describe|walk\s+me\s+through|what\s+(is|does)|how\s+does|tell\s+me\s+about)/.test(text);
+    const architectureKeyword = /(architecture|structure|component|organization|design|layout)/.test(text);
 
-    return repoKeyword && intentKeyword;
+    const result = (repoKeyword && intentKeyword) || (architectureKeyword && intentKeyword);
+
+    console.log('[AEP] 🔍 isRepoOverviewQuestion check:', {
+      message: text,
+      repoKeyword,
+      intentKeyword,
+      architectureKeyword,
+      result
+    });
+
+    // Match if it has repo/project keyword + intent OR architecture keyword + intent
+    return result;
   }
 
   private emitReadOnlyContext(attachments: FileAttachment[] | undefined | null, summary?: string) {
@@ -6037,8 +6201,18 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const targetUrl = `${this.getBackendBaseUrl()}/api/navi/chat`;
 
       const controller = new AbortController();
-      const timeoutMs = 20000; // avoid hanging forever if backend stalls
+      const config = vscode.workspace.getConfiguration('aep.navi');
+      const timeoutMs = config.get<number>('requestTimeout') || DEFAULT_REQUEST_TIMEOUT_MS;
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+      // Get the last bot message state for autonomous coding continuity
+      const lastBotMessage = [...this._messages].reverse().find(m => m.role === 'assistant');
+      const previousState = lastBotMessage?.state;
+
+      console.log('[AEP STATE] Sending request with state:', previousState ? 'YES' : 'NO');
+      if (previousState) {
+        console.log('[AEP STATE] State content:', previousState);
+      }
 
       const response = await fetch(targetUrl, {
         method: 'POST',
@@ -6065,7 +6239,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             name: path.basename(att.path || ''),
             path: att.path,
           })),
-          workspace_root: this.getActiveWorkspaceRoot()
+          workspace_root: this.getActiveWorkspaceRoot(),
+          state: previousState || undefined // Include state for autonomous coding continuity
         }),
         signal: controller.signal
       });
@@ -6095,8 +6270,17 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         throw new Error('NAVI backend returned an empty reply.');
       }
 
-      // Add to message history
-      this._messages.push({ role: 'assistant', content });
+      // Add to message history - include state for autonomous coding continuity
+      this._messages.push({
+        role: 'assistant',
+        content,
+        state: data.state // Store state from backend response
+      });
+
+      console.log('[AEP STATE] Stored state in message history:', data.state ? 'YES' : 'NO');
+      if (data.state) {
+        console.log('[AEP STATE] State details:', JSON.stringify(data.state));
+      }
 
       const messageId = `msg-${Date.now()}`;
       if (Array.isArray(data.actions) && data.actions.length > 0) {
@@ -6380,31 +6564,82 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       parts.push(`\n**README snapshot:**\n\n${readmeSnippet}`);
     }
 
-    parts.push(
-      `\nIf you want, ask me about a specific file, component, or feature (e.g. ` +
-      '`explain `src/extension.ts`` or `how does the frontend auth work?`) and I can dive deeper using the real code.',
-    );
+    // Instead of just showing a shallow summary, let's call the backend with key files
+    // so the AI can provide a deep analysis of the architecture
+    const contextMessage = parts.join('\n');
 
-    const answer = parts.join('\n');
+    // Build attachments for key architecture files
+    const attachments: FileAttachment[] = [];
 
-    console.log('[AEP] Local repo explanation (rich):', {
+    // Helper to attach a file if it exists
+    const attachIfExists = async (relativePath: string) => {
+      try {
+        const uri = vscode.Uri.joinPath(rootUri, relativePath);
+        const bytes = await vscode.workspace.fs.readFile(uri);
+        const content = new TextDecoder().decode(bytes);
+
+        attachments.push({
+          path: relativePath,
+          content: content,
+          kind: 'file',
+          language: relativePath.endsWith('.py') ? 'python'
+                  : relativePath.endsWith('.ts') ? 'typescript'
+                  : relativePath.endsWith('.js') ? 'javascript'
+                  : relativePath.endsWith('.json') ? 'json'
+                  : 'plaintext'
+        });
+
+        readFiles.push({ path: relativePath, kind: 'file' });
+      } catch {
+        // File doesn't exist, skip
+      }
+    };
+
+    // Attach key architecture files
+    await attachIfExists('README.md');
+    await attachIfExists('package.json');
+
+    // Backend-specific files
+    if (hasBackend) {
+      await attachIfExists('backend/api/main.py');
+      await attachIfExists('backend/requirements.txt');
+      await attachIfExists('backend/package.json');
+    }
+
+    // Frontend-specific files
+    if (hasFrontend) {
+      await attachIfExists('frontend/package.json');
+      await attachIfExists('frontend/src/App.tsx');
+      await attachIfExists('frontend/src/App.jsx');
+    }
+
+    // VS Code extension files
+    if (hasExtensionEntrypoint) {
+      await attachIfExists('src/extension.ts');
+      await attachIfExists('package.json');
+    }
+
+    console.log('[AEP] Calling backend for deep repo analysis with attachments:', {
       repoName: displayName,
       path: workspaceRootPath,
-      techs,
-      topLevelDirs,
-      hasExtensionEntrypoint,
+      attachmentCount: attachments.length,
+      attachedFiles: attachments.map(a => a.path)
     });
 
-    this._messages.push({ role: 'assistant', content: answer });
+    // Show the context we're using
     if (readFiles.length > 0) {
       this.postToWebview({
         type: 'navi.readonly.context',
         files: readFiles,
-        summary: 'Local repo overview context'
+        summary: 'Analyzing repo architecture with key files'
       });
     }
-    this.postToWebview({ type: 'botThinking', value: false });
-    this.postToWebview({ type: 'botMessage', text: answer });
+
+    // Prepare enhanced prompt with context using template method
+    const enhancedPrompt = this.buildRepoAnalysisPrompt(contextMessage, originalMessage);
+
+    // Call the backend with the attachments for deep analysis
+    await this.callNaviBackend(enhancedPrompt, undefined, undefined, attachments);
   }
 
   private async handleGitInitRequest(requestedScope: DiffScope): Promise<void> {
@@ -6973,13 +7208,21 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       );
     if (repoLike) return null;
 
-    // Only auto-attach when it sounds like a code question
-    const maybeCodeQuestion =
-      /(code|bug|error|stack trace|exception|component|hook|function|method|class|file|module|refactor|tests?|unit test|integration test|compile|build|lint|ts error|typescript|js error|react|jsx|tsx|java|c#|python)/.test(
+    // Only auto-attach when it sounds like a code question ABOUT THE CURRENT FILE
+    // General questions like "explain async/await" should NOT attach the file
+    const explicitFileReference =
+      /this (code|file|component|function|class|method|bug|error)|current (file|code)|selected (code|text)|highlighted|above (code|function)/.test(
         text,
       );
 
-    if (!maybeCodeQuestion) {
+    // Questions with specific code keywords that imply working with current file
+    const impliesCurrentCode =
+      /(fix this|debug this|refactor this|review this|test this|why (does|is) this|what (does|is) this doing|how (does|is) this working)/.test(
+        text,
+      );
+
+    // If neither explicit reference nor implied current code context, don't attach
+    if (!explicitFileReference && !impliesCurrentCode) {
       return null;
     }
 

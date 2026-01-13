@@ -406,7 +406,6 @@ class RepoGraphBuilder:
                         and other_node.repo.business_domain != node.repo.business_domain
                         and other_node.repo.metadata.get("is_api_service", False)
                     ):
-
                         # Check if there's already a dependency
                         existing = any(
                             edge.target == other_name
@@ -440,7 +439,6 @@ class RepoGraphBuilder:
                     and node.repo.primary_language == lib_node.repo.primary_language
                     and node.repo.repo_type.value in ["service", "frontend"]
                 ):
-
                     # Check if dependency already exists
                     existing = any(
                         edge.target == lib_name for edge in node.outgoing_edges
@@ -472,7 +470,6 @@ class RepoGraphBuilder:
                     and node.repo.business_domain == infra_node.repo.business_domain
                     and node.repo.repo_type.value == "service"
                 ):
-
                     edge = DependencyEdge(
                         source=name,
                         target=infra_name,

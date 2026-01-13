@@ -257,7 +257,6 @@ async def get_memory_stats(
     }
 
     try:
-
         # Count total memories
         # query = "SELECT COUNT(*) FROM navi_memory"
         # if user_id:

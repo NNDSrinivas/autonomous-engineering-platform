@@ -523,9 +523,9 @@ class SelfEvolutionEngine:
             raise ValueError(f"Unknown deployment strategy: {deployment_strategy}")
 
         # Update current strategies
-        self.current_strategies[winning_candidate.component] = (
-            winning_candidate.implementation
-        )
+        self.current_strategies[
+            winning_candidate.component
+        ] = winning_candidate.implementation
 
         # Store deployment record
         await self._store_deployment_record(

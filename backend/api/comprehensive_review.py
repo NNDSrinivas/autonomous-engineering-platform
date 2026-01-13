@@ -209,15 +209,16 @@ async def comprehensive_analysis_stream(
             )
 
             # Generate executive summary
-            executive_summary, recommendations = (
-                await review_service._generate_executive_summary(
-                    review_entries,
-                    all_security_findings,
-                    all_performance_issues,
-                    all_technical_debt,
-                    architecture_insights,
-                    scores,
-                )
+            (
+                executive_summary,
+                recommendations,
+            ) = await review_service._generate_executive_summary(
+                review_entries,
+                all_security_findings,
+                all_performance_issues,
+                all_technical_debt,
+                architecture_insights,
+                scores,
             )
 
             # Send final comprehensive results

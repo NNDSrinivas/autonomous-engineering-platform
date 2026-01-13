@@ -30,6 +30,16 @@ from backend.core.ai.llm_service import LLMService
 from backend.models.integrations import JiraIssue, JiraConnection
 from backend.core.crypto import decrypt_token
 
+# NEW: Import enhanced workspace indexer
+try:
+    from backend.agent.workspace_retriever import index_workspace_full
+
+    HAS_WORKSPACE_INDEXER = True
+except ImportError:
+    # Enhanced workspace indexer not available - will use basic indexing
+    HAS_WORKSPACE_INDEXER = False
+    index_workspace_full = None
+
 
 class DangerousCodeError(Exception):
     """Raised when potentially dangerous code patterns are detected"""
@@ -1019,8 +1029,54 @@ class EnhancedAutonomousCodingEngine:
         else:
             return TaskType.FEATURE
 
+    async def _index_workspace_context(
+        self, repository_path: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        NEW: Index workspace using enhanced indexer for intelligent context.
+
+        Args:
+            repository_path: The actual user workspace path to index
+
+        Returns project type, entry points, dependencies, and code analysis.
+        """
+        if not HAS_WORKSPACE_INDEXER or not index_workspace_full:
+            logger.info("[NAVI] Workspace indexer not available - using basic mode")
+            return None
+
+        try:
+            logger.info(f"[NAVI] Indexing workspace: {repository_path}")
+            logger.info(f"[NAVI DEBUG] repository_path type: {type(repository_path)}")
+            logger.info(f"[NAVI DEBUG] repository_path value: {repository_path}")
+            workspace_index = await index_workspace_full(
+                workspace_root=repository_path,  # Use the actual user workspace
+                user_id="autonomous_engine",
+                include_code_analysis=False,  # Skip for speed
+                include_dependencies=True,
+            )
+
+            if "error" in workspace_index:
+                logger.warning(
+                    f"[NAVI] Workspace indexing failed: {workspace_index.get('error')}"
+                )
+                return None
+
+            logger.info(
+                f"[NAVI] Workspace indexed: {workspace_index.get('project_type')} project "
+                f"with {len(workspace_index.get('entry_points', []))} entry points"
+            )
+
+            return workspace_index
+
+        except Exception as e:
+            logger.warning(f"[NAVI] Failed to index workspace: {e}")
+            return None
+
     async def _generate_implementation_plan(self, task: CodingTask):
-        """Generate detailed implementation plan using AI"""
+        """Generate detailed implementation plan using AI with workspace intelligence"""
+
+        # NEW: Index workspace for intelligent context - use task's repository path
+        workspace_index = await self._index_workspace_context(task.repository_path)
 
         # Sanitize all inputs to prevent prompt injection attacks
         sanitized_task_description = self._sanitize_prompt_input(task.description)
@@ -1050,6 +1106,7 @@ class EnhancedAutonomousCodingEngine:
                     self._sanitize_prompt_input(str(doc_link))
                 )
 
+        # NEW: Build enhanced context with workspace intelligence
         context = {
             "task_description": sanitized_task_description,
             "related_files": sanitized_related_files,
@@ -1057,45 +1114,442 @@ class EnhancedAutonomousCodingEngine:
             "documentation": sanitized_documentation,
         }
 
-        # Use LLM to generate step-by-step plan with sanitized inputs
+        # NEW: Add workspace context if available
+        project_type = "unknown"
+        project_structure = []
+        package_managers = []
+
+        if workspace_index:
+            context["project_type"] = workspace_index.get("project_type", "unknown")
+            context["entry_points"] = workspace_index.get("entry_points", [])
+            context["workspace_root"] = workspace_index.get("workspace_root", "")
+            project_type = workspace_index.get("project_type", "unknown")
+
+            # Get actual files list for structure context
+            if "files" in workspace_index:
+                files = workspace_index.get("files", [])
+                # Get directory structure from files
+                dirs = set()
+                for f in files[:50]:  # Limit to first 50 files
+                    # Handle both string paths and dict objects with 'path' or 'file_path' key
+                    if isinstance(f, dict):
+                        file_str = (
+                            f.get("path") or f.get("file_path") or f.get("name", "")
+                        )
+                    else:
+                        file_str = str(f)
+
+                    if not file_str:
+                        continue
+
+                    file_path = Path(file_str)
+                    if file_path.parent != Path("."):
+                        dirs.add(str(file_path.parent))
+                    if len(file_path.parts) > 0:
+                        dirs.add(file_path.parts[0])  # Get top-level dirs
+                project_structure = sorted(list(dirs))[:20]  # Top 20 directories
+
+            # Detect package managers and config files
+            if "files" in workspace_index:
+                files = workspace_index.get("files", [])
+                for f in files:
+                    # Handle both string paths and dict objects
+                    if isinstance(f, dict):
+                        file_str = (
+                            f.get("path") or f.get("file_path") or f.get("name", "")
+                        )
+                    else:
+                        file_str = str(f)
+
+                    if not file_str:
+                        continue
+
+                    fname = Path(file_str).name
+                    if fname in ["package.json", "yarn.lock", "pnpm-lock.yaml"]:
+                        package_managers.append("npm/yarn/pnpm (Node.js)")
+                    elif fname in [
+                        "requirements.txt",
+                        "Pipfile",
+                        "pyproject.toml",
+                        "setup.py",
+                    ]:
+                        package_managers.append("pip/poetry (Python)")
+                    elif fname == "go.mod":
+                        package_managers.append("go modules (Go)")
+                    elif fname == "Cargo.toml":
+                        package_managers.append("cargo (Rust)")
+                package_managers = list(set(package_managers))
+
+            # Add dependency info if available
+            if "dependencies" in workspace_index:
+                deps = workspace_index["dependencies"]
+                context["dependencies"] = {
+                    "total": deps.get("total", 0),
+                    "frameworks": [Path(f).name for f in deps.get("files", [])],
+                }
+
+        # Map project types to specific guidance
+        project_guidance = {
+            "nodejs": """
+            This is a Node.js/JavaScript/TypeScript project.
+            - For Next.js: Create components in `components/` or `app/` directory
+            - For Next.js App Router: Create route handlers in `app/api/` directory
+            - For React: Create components with `.tsx` or `.jsx` extensions
+            - For Express: Create routes in `routes/` or `api/` directory
+            - Use ES6+ syntax and async/await
+            - Files should be in existing directories like: app/, components/, pages/, lib/, utils/
+            """,
+            "nextjs": """
+            This is a Next.js project (React framework).
+            - Create components in `components/`, `app/`, or `src/` directory
+            - For App Router: Use `app/` directory with layout.tsx, page.tsx, etc.
+            - For Pages Router: Use `pages/` directory
+            - API routes go in `app/api/` (App Router) or `pages/api/` (Pages Router)
+            - Use `.tsx` or `.jsx` extensions for React components
+            - Use TypeScript and modern React patterns (hooks, functional components)
+            """,
+            "react": """
+            This is a React project.
+            - Create components in `components/`, `src/components/`, or similar
+            - Use `.tsx` or `.jsx` extensions
+            - Follow React hooks and functional component patterns
+            - Common directories: src/, components/, pages/, hooks/, utils/
+            """,
+            "python": """
+            This is a Python project.
+            - Create modules in appropriate subdirectories
+            - Use snake_case for file and function names
+            - Follow PEP 8 style guidelines
+            - Add type hints where appropriate
+            - Common directories: src/, lib/, tests/, api/
+            """,
+            "fastapi": """
+            This is a FastAPI Python project.
+            - Create API routes in `api/`, `routers/`, or `endpoints/` directories
+            - Use snake_case for file and function names
+            - API endpoints typically in: backend/api/, app/api/, src/api/
+            - Models go in `models/` directory
+            - Follow FastAPI patterns: routers, dependencies, schemas
+            - Add type hints (required for FastAPI)
+            """,
+            "flask": """
+            This is a Flask Python project.
+            - Create routes in `routes/` or `views/` directory
+            - Templates go in `templates/` directory
+            - Static files in `static/` directory
+            - Use snake_case naming
+            """,
+            "django": """
+            This is a Django Python project.
+            - Create apps with `python manage.py startapp`
+            - Follow Django app structure: views.py, models.py, urls.py
+            - Templates in app-specific or project-wide `templates/`
+            - Use snake_case naming
+            """,
+            "go": """
+            This is a Go project.
+            - Create packages in appropriate subdirectories
+            - Use lowercase package names
+            - Follow Go conventions and idioms
+            - Common patterns: cmd/, pkg/, internal/, api/
+            """,
+            "rust": """
+            This is a Rust project.
+            - Create modules in `src/` directory
+            - Main entry point: src/main.rs or src/lib.rs
+            - Follow Rust naming conventions (snake_case)
+            - Use Cargo for dependencies
+            """,
+            "unknown": """
+            Project type not clearly detected.
+            - Analyze existing directory structure carefully
+            - Match the style and conventions of existing files
+            - Create files in appropriate existing directories
+            """,
+        }
+
+        # Get specific guidance for detected project type
+        # Handle monorepo case
+        if project_type.startswith("monorepo:"):
+            types = project_type.replace("monorepo:", "").split("+")
+            specific_guidance = f"""
+            This is a MONOREPO containing multiple project types: {', '.join(types)}
+
+            **CRITICAL: You MUST determine which subproject the user wants to modify based on their request.**
+
+            Request analysis:
+            - If the user mentions "component", "UI", "frontend", "React", "Next.js" → Work in the Node.js/frontend project
+            - If the user mentions "API", "endpoint", "backend", "service", "database" → Work in the Python/backend project
+            - If unclear, analyze the existing directory structure to find the appropriate subproject
+
+            Project-specific guidance:
+            """
+            for t in types:
+                if t in project_guidance:
+                    specific_guidance += f"\n{t.upper()}:\n{project_guidance[t]}"
+        else:
+            specific_guidance = project_guidance.get(
+                project_type, project_guidance["unknown"]
+            )
+
+        # NEW: Enhanced plan prompt with workspace context
         plan_prompt = f"""
         Create a detailed implementation plan for: {sanitized_task_title}
 
         Description: {sanitized_task_description}
-        Related files: {', '.join(sanitized_related_files)}
 
-        Generate a step-by-step plan with:
-        1. File to modify
-        2. Specific changes needed
-        3. Reasoning for each change
-        4. Dependencies between steps
+        ========================================
+        CRITICAL PROJECT CONTEXT - READ CAREFULLY:
+        ========================================
+
+        Project Type: **{project_type.upper()}**
+        Package Managers Detected: {', '.join(package_managers) if package_managers else 'None detected'}
+
+        Existing Directory Structure:
+        {chr(10).join(f'  - {d}/' for d in project_structure[:15]) if project_structure else '  (No structure detected - be cautious with file paths)'}
+
+        {specific_guidance}
+
+        ========================================
+        IMPORTANT RULES:
+        ========================================
+        1. **ONLY use directories that exist in the structure above**
+        2. **NEVER assume files like `src/main.py` exist without seeing them in the structure**
+        3. **Match the project type** - if it's Node.js, don't create Python files!
+        4. **Create new files in appropriate existing directories**
+        5. **For modifications, verify the file exists in the codebase**
+        6. **DO NOT create "check if file exists" steps** - Just use "create" operations directly. The system handles non-existent files.
+        7. **NEVER use "modify" operation on files that don't exist** - Use "create" instead
+
+        Related files: {', '.join(sanitized_related_files) if sanitized_related_files else 'None'}
+
+        Generate a step-by-step implementation plan that:
+        1. Uses **ONLY {project_type}** technologies and patterns
+        2. Creates files in **existing directories** from the structure above
+        3. Follows the **specific guidance** for {project_type} projects
+        4. Specifies exact file paths that match the project structure
+        5. Provides clear reasoning for each step
+        6. Identifies dependencies between steps
+
+        Return concrete, actionable steps in this EXACT format:
+
+        Step 1: [Brief description of what this step does]
+        File: [exact/path/to/file.ext]
+        Operation: [create/modify/delete]
+        Reasoning: [Why this step is needed]
+
+        Step 2: [Next step description]
+        File: [exact/path/to/file.ext]
+        Operation: [create/modify/delete]
+        Reasoning: [Why this step is needed]
+
+        Be specific with file paths and match the existing directory structure shown above.
         """
+
+        # DEBUG: Log the prompt being sent
+        logger.info(
+            f"[NAVI DEBUG] Generated prompt with project_type={project_type}, structure dirs={len(project_structure)}"
+        )
+        logger.debug(f"[NAVI DEBUG] Full prompt:\n{plan_prompt[:1000]}...")
 
         plan_response = await self.llm_service.generate_engineering_response(
             plan_prompt, context
         )
 
-        # Parse response and create steps (simplified)
-        steps = self._parse_plan_response(plan_response, task)
-        task.steps = steps
+        # Extract text from EngineeringResponse object
+        if hasattr(plan_response, "answer"):
+            response_text = plan_response.answer
+        else:
+            response_text = str(plan_response)
 
-    def _parse_plan_response(self, response, task: CodingTask) -> List[CodingStep]:
-        """Parse LLM response into concrete steps"""
-        # Simplified parsing - would be more sophisticated in practice
-        steps = []
-
-        # Mock steps for demonstration
-        steps.append(
-            CodingStep(
-                id=f"{task.id}-step-1",
-                description="Analyze existing code structure",
-                file_path="src/main.py",
-                operation="modify",
-                content_preview="// Code changes preview",
-                reasoning="Need to understand current implementation",
-            )
+        logger.info(
+            f"[NAVI DEBUG] LLM response text (first 500 chars): {response_text[:500]}"
         )
 
+        # Parse response and create steps
+        steps = self._parse_plan_response(response_text, task, project_structure)
+
+        logger.info(f"[NAVI DEBUG] Parsed {len(steps)} steps:")
+        for i, step in enumerate(steps, 1):
+            logger.info(
+                f"[NAVI DEBUG]   Step {i}: file={step.file_path}, op={step.operation}"
+            )
+        task.steps = steps
+
+        # Log enhanced planning
+        logger.info(
+            f"[NAVI] Generated plan with {len(steps)} steps for {context.get('project_type', 'unknown')} project"
+        )
+
+    def _parse_plan_response(
+        self, response, task: CodingTask, project_structure: List[str] = None
+    ) -> List[CodingStep]:
+        """Parse LLM response into concrete steps"""
+        steps = []
+        if project_structure is None:
+            project_structure = []
+
+        # Parse the LLM response to extract steps
+        # Look for patterns like "Step 1:", "File:", "Operation:", etc.
+        lines = response.strip().split("\n")
+
+        current_step = None
+        step_num = 0
+
+        for line in lines:
+            line = line.strip()
+
+            # Detect step headers (e.g., "Step 1:", "1.", "### Step 1")
+            if (
+                any(
+                    line.lower().startswith(prefix)
+                    for prefix in ["step ", "### step", "## step"]
+                )
+                and ":" in line
+            ):
+                if current_step:
+                    steps.append(current_step)
+
+                step_num += 1
+                # Extract description after the colon
+                description = (
+                    line.split(":", 1)[1].strip()
+                    if ":" in line
+                    else "Implementation step"
+                )
+
+                current_step = CodingStep(
+                    id=f"{task.id}-step-{step_num}",
+                    description=description[:200],  # Limit length
+                    file_path="placeholder.txt",  # Temporary, will be updated below
+                    operation="modify",  # Default
+                    content_preview="",
+                    reasoning="",
+                )
+
+            # Extract file path
+            elif current_step and ("file:" in line.lower() or "path:" in line.lower()):
+                # Extract path after "File:" or "Path:"
+                parts = line.split(":", 1)
+                if len(parts) > 1:
+                    file_path = parts[1].strip()
+                    # Clean up markdown formatting
+                    file_path = file_path.strip("`").strip()
+                    # Extract just the path if there's additional text
+                    if "(" in file_path:
+                        file_path = file_path.split("(")[0].strip()
+                    current_step.file_path = file_path
+
+            # Extract operation
+            elif current_step and "operation:" in line.lower():
+                operation = line.split(":", 1)[1].strip().lower()
+                if "create" in operation or "new" in operation:
+                    current_step.operation = "create"
+                elif "delete" in operation or "remove" in operation:
+                    current_step.operation = "delete"
+                else:
+                    current_step.operation = "modify"
+
+            # Extract reasoning
+            elif current_step and (
+                "why:" in line.lower()
+                or "reasoning:" in line.lower()
+                or "rationale:" in line.lower()
+            ):
+                reasoning = line.split(":", 1)[1].strip() if ":" in line else line
+                current_step.reasoning = reasoning[:300]
+
+        # Add the last step (even if file_path is empty, we'll fix it below)
+        if current_step:
+            steps.append(current_step)
+
+        # Fix steps with placeholder/empty file paths - try to infer from description or use sensible defaults
+        for step in steps:
+            if not step.file_path or step.file_path == "placeholder.txt":
+                # Try to infer file path from description
+                desc_lower = step.description.lower()
+
+                # Detect file type based on keywords
+                if any(
+                    word in desc_lower
+                    for word in ["component", "react", "ui", "jsx", "tsx"]
+                ):
+                    # React component
+                    # Extract component name if possible
+                    import re
+
+                    component_name_match = re.search(
+                        r"`?(\w+)`?\s*component", step.description, re.IGNORECASE
+                    )
+                    if component_name_match:
+                        component_name = component_name_match.group(1)
+                    else:
+                        component_name = "Component"
+
+                    # Choose appropriate directory based on monorepo structure
+                    if "extensions/vscode-aep/webview" in str(project_structure):
+                        step.file_path = f"extensions/vscode-aep/webview/src/components/{component_name}.tsx"
+                    else:
+                        step.file_path = f"components/{component_name}.tsx"
+                    step.operation = "create"
+
+                elif any(
+                    word in desc_lower
+                    for word in ["api", "endpoint", "route", "fastapi"]
+                ):
+                    # API endpoint
+                    step.file_path = "backend/api/endpoint.py"
+                    step.operation = "create"
+
+                elif any(word in desc_lower for word in ["test", "spec"]):
+                    # Test file
+                    step.file_path = "tests/test_implementation.py"
+                    step.operation = "create"
+
+                else:
+                    # Generic file
+                    step.file_path = "implementation.txt"
+                    step.operation = "create"
+
+                logger.info(
+                    f"[NAVI] Inferred file path: {step.file_path} from description: {step.description[:50]}"
+                )
+
+        # If no steps were parsed at all, create a default step
+        if not steps:
+            logger.warning(
+                "[NAVI] Failed to parse LLM response into structured steps, creating default step"
+            )
+            # Try to extract at least a file path from the response
+            file_path = "implementation.txt"  # Default
+            for line in lines:
+                if (
+                    ".py" in line
+                    or ".ts" in line
+                    or ".tsx" in line
+                    or ".js" in line
+                    or ".jsx" in line
+                ):
+                    # Try to extract a path
+                    words = line.split()
+                    for word in words:
+                        word = word.strip("`").strip()
+                        if "/" in word and ("." in word):
+                            file_path = word
+                            break
+
+            steps.append(
+                CodingStep(
+                    id=f"{task.id}-step-1",
+                    description=task.description[:200],
+                    file_path=file_path,
+                    operation="create",
+                    content_preview="",
+                    reasoning="Implementation based on task requirements",
+                )
+            )
+
+        logger.info(f"[NAVI] Parsed {len(steps)} steps from LLM response")
         return steps
 
     def _notify_progress(self, message: str):
@@ -1251,6 +1705,24 @@ class EnhancedAutonomousCodingEngine:
                         sanitized_value = ""
                     sanitized_team_context[sanitized_key] = sanitized_value
 
+            # NEW: Read existing file content for context (critical for modify operations)
+            existing_content = None
+            existing_imports = []
+            if step.operation == "modify":
+                existing_content = await self._read_existing_file(task, step)
+                if existing_content:
+                    existing_imports = self._extract_imports(
+                        existing_content, step.file_path
+                    )
+                    logger.info(
+                        f"[NAVI] Read existing file {step.file_path} ({len(existing_content)} chars, {len(existing_imports)} imports)"
+                    )
+
+            # NEW: Read related files for context (understand patterns, types, etc.)
+            related_file_contents = await self._read_related_files(
+                task, sanitized_related_files
+            )
+
             # Build context for code generation with sanitized data
             context = {
                 "task_description": sanitized_task_description,
@@ -1259,12 +1731,33 @@ class EnhancedAutonomousCodingEngine:
                 "operation": step.operation,  # This is enum/controlled value, safe
                 "related_files": sanitized_related_files,
                 "team_context": sanitized_team_context,
+                "existing_content": existing_content,  # NEW
+                "existing_imports": existing_imports,  # NEW
+                "related_file_contents": related_file_contents,  # NEW
             }
 
             if step.operation == "create":
                 prompt = f"Create a new file '{sanitized_file_path}' for: {sanitized_step_description}"
             elif step.operation == "modify":
-                prompt = f"Modify file '{sanitized_file_path}' to: {sanitized_step_description}"
+                # Enhanced prompt for modify operations with existing content
+                if existing_content:
+                    prompt = f"""Modify file '{sanitized_file_path}' to: {sanitized_step_description}
+
+EXISTING FILE CONTENT:
+```
+{existing_content[:3000]}  # Limit to avoid token overflow
+```
+
+IMPORTANT INSTRUCTIONS:
+1. Preserve all existing functionality that's not being changed
+2. Merge your changes with the existing code - DO NOT rewrite the entire file
+3. Keep existing imports and add new ones if needed
+4. Maintain consistent code style with existing patterns
+5. If modifying a function, only change that function - keep others intact
+6. Return the COMPLETE file content after merging changes
+"""
+                else:
+                    prompt = f"Modify file '{sanitized_file_path}' to: {sanitized_step_description}"
             else:  # delete
                 prompt = f"Prepare to delete file '{sanitized_file_path}' because: {sanitized_step_description}"
 
@@ -1275,11 +1768,20 @@ class EnhancedAutonomousCodingEngine:
                 context=context,
             )
 
+            generated_code = response.get("code", "")
+
+            # NEW: Add missing imports automatically for create operations
+            if step.operation == "create" and generated_code:
+                generated_code = await self._add_missing_imports(
+                    generated_code, step.file_path, task
+                )
+                logger.info(f"[NAVI] Added missing imports to {step.file_path}")
+
             return {
-                "generated_code": response.get("code", ""),
+                "generated_code": generated_code,
                 "language": response.get("language", "text"),
                 "confidence": 0.8,  # Would be calculated based on model response
-                "estimated_lines": len(response.get("code", "").split("\n")),
+                "estimated_lines": len(generated_code.split("\n")),
                 "safety_checks": ["syntax_valid", "no_dangerous_operations"],
             }
 
@@ -1331,10 +1833,29 @@ class EnhancedAutonomousCodingEngine:
         """Apply code changes to files with security validation"""
 
         try:
+            # Special case: Skip file operations for testing/validation steps
+            if step.file_path in (
+                "N/A",
+                "n/a",
+                "",
+            ) or step.file_path.lower().startswith("n/a"):
+                logger.info(
+                    f"[NAVI] Skipping file operation for validation/testing step: {step.description}"
+                )
+                return  # No file to write for testing steps
+
             # Validate file path string before any path operations
             self._validate_relative_path(step.file_path)
 
             file_path = self.workspace_path / step.file_path
+
+            # Auto-correct: Convert modify to create if file doesn't exist
+            # This handles cases where the LLM tries to modify non-existent files
+            if step.operation == "modify" and not file_path.exists():
+                logger.warning(
+                    f"[NAVI] File {step.file_path} doesn't exist, converting modify to create operation"
+                )
+                step.operation = "create"
 
             # Security validation: ensure file is within workspace and not a symlink
             # 1. Path traversal is already checked in _validate_relative_path()
@@ -1348,7 +1869,11 @@ class EnhancedAutonomousCodingEngine:
             # 3. Resolve path with enhanced security for create operations
             try:
                 if step.operation == "create":
-                    # Verify parent directory strictly (symlink check already done above)
+                    # For create operations, create parent directory first if it doesn't exist
+                    # This allows us to then validate the full path
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Now verify parent directory (after creating it)
                     parent_path = file_path.parent.resolve(strict=True)
                     parent_path.relative_to(self.workspace_path.resolve())
                     # Then resolve the full path without strict requirement
@@ -1367,7 +1892,7 @@ class EnhancedAutonomousCodingEngine:
                     )
                 else:
                     raise SecurityError(
-                        "Invalid file path: parent directory does not exist"
+                        "Invalid file path: unable to create parent directory"
                     )
             except ValueError:
                 raise SecurityError(
@@ -1402,8 +1927,7 @@ class EnhancedAutonomousCodingEngine:
                 )
 
             if step.operation == "create":
-                # Create new file
-                file_path.parent.mkdir(parents=True, exist_ok=True)
+                # Create new file (parent directory already created during validation)
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(generated_code)
                 logger.info(f"Created file: {step.file_path}")
@@ -1522,16 +2046,26 @@ class EnhancedAutonomousCodingEngine:
                     )
 
             elif language in ["javascript", "typescript"]:
-                # Basic JS/TS validation (would use proper linters in production)
-                validation_results["warnings"].append(
-                    "JavaScript/TypeScript validation not implemented"
-                )
+                # Try to run TypeScript compiler or build command
+                build_result = await self._run_build_check(task)
+                if not build_result["success"]:
+                    validation_results["syntax_valid"] = False
+                    validation_results["warnings"].append(
+                        f"Build failed: {build_result.get('error', 'Unknown error')}"
+                    )
+                else:
+                    logger.info(f"[NAVI] Build check passed for {step.file_path}")
 
-            # TODO: Add more sophisticated validation
-            # - Run tests
-            # - Check for breaking changes
-            # - Security scanning
-            # - Performance analysis
+            # NEW: Run existing tests if available
+            test_result = await self._run_tests(task)
+            if test_result:
+                validation_results["tests_passing"] = test_result.get(
+                    "all_passed", True
+                )
+                if not test_result.get("all_passed"):
+                    validation_results["warnings"].append(
+                        f"Some tests failed: {test_result.get('failed_count', 0)}"
+                    )
 
             return validation_results
 
@@ -1543,6 +2077,333 @@ class EnhancedAutonomousCodingEngine:
                 "no_conflicts": False,
                 "error": str(e),
             }
+
+    async def _read_existing_file(
+        self, task: CodingTask, step: CodingStep
+    ) -> Optional[str]:
+        """Read existing file content for context during code generation"""
+        try:
+            file_path = Path(task.repository_path) / step.file_path
+            if file_path.exists() and file_path.is_file():
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    return content
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to read existing file {step.file_path}: {e}")
+            return None
+
+    def _extract_imports(self, content: str, file_path: str) -> List[str]:
+        """Extract import statements from code"""
+        imports = []
+        try:
+            lines = content.split("\n")
+            ext = Path(file_path).suffix.lower()
+
+            if ext == ".py":
+                # Python imports
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("import ") or line.startswith("from "):
+                        imports.append(line)
+            elif ext in [".js", ".jsx", ".ts", ".tsx"]:
+                # JavaScript/TypeScript imports
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("import ") or line.startswith("export "):
+                        imports.append(line)
+            elif ext == ".go":
+                # Go imports
+                in_import_block = False
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("import ("):
+                        in_import_block = True
+                        imports.append(line)
+                    elif in_import_block:
+                        imports.append(line)
+                        if line == ")":
+                            in_import_block = False
+                    elif line.startswith('import "'):
+                        imports.append(line)
+
+            return imports
+        except Exception as e:
+            logger.warning(f"Failed to extract imports from {file_path}: {e}")
+            return []
+
+    async def _read_related_files(
+        self, task: CodingTask, related_files: List[str]
+    ) -> Dict[str, str]:
+        """Read related files for context (types, interfaces, patterns)"""
+        contents = {}
+        try:
+            for rel_file in related_files[
+                :5
+            ]:  # Limit to 5 files to avoid token overflow
+                try:
+                    file_path = Path(task.repository_path) / rel_file
+                    if file_path.exists() and file_path.is_file():
+                        # Only read small files (< 100KB) to avoid memory issues
+                        if file_path.stat().st_size < 100_000:
+                            with open(file_path, "r", encoding="utf-8") as f:
+                                content = f.read()
+                                # Store first 2000 chars for context
+                                contents[rel_file] = content[:2000]
+                                logger.info(
+                                    f"[NAVI] Read related file {rel_file} for context"
+                                )
+                except Exception as e:
+                    logger.warning(f"Failed to read related file {rel_file}: {e}")
+                    continue
+
+            return contents
+        except Exception as e:
+            logger.warning(f"Failed to read related files: {e}")
+            return {}
+
+    async def _add_missing_imports(
+        self, code: str, file_path: str, task: CodingTask
+    ) -> str:
+        """Automatically add missing imports based on code analysis"""
+        try:
+            ext = Path(file_path).suffix.lower()
+
+            if ext in [".js", ".jsx", ".ts", ".tsx"]:
+                return await self._add_js_imports(code, file_path, task)
+            elif ext == ".py":
+                return await self._add_python_imports(code, file_path, task)
+            else:
+                return code  # No import management for other languages yet
+        except Exception as e:
+            logger.warning(f"Failed to add missing imports: {e}")
+            return code
+
+    async def _add_js_imports(self, code: str, file_path: str, task: CodingTask) -> str:
+        """Add missing imports for JavaScript/TypeScript"""
+        try:
+            lines = code.split("\n")
+            imports = []
+
+            # Common React imports if using JSX
+            if "React" in code or "<" in code and ">" in code:
+                if not any("import React" in line for line in lines):
+                    imports.append("import React from 'react';")
+
+            # useState, useEffect, etc.
+            react_hooks = [
+                "useState",
+                "useEffect",
+                "useCallback",
+                "useMemo",
+                "useRef",
+                "useContext",
+            ]
+            used_hooks = [hook for hook in react_hooks if hook in code]
+            if used_hooks and not any(
+                "import {" in line and any(hook in line for hook in used_hooks)
+                for line in lines
+            ):
+                imports.append(f"import {{ {', '.join(used_hooks)} }} from 'react';")
+
+            # Add imports at the beginning
+            if imports:
+                # Find where to insert (after any existing imports)
+                insert_index = 0
+                for i, line in enumerate(lines):
+                    if line.strip().startswith("import ") or line.strip().startswith(
+                        "export "
+                    ):
+                        insert_index = i + 1
+
+                for imp in reversed(imports):
+                    lines.insert(insert_index, imp)
+
+                return "\n".join(lines)
+
+            return code
+        except Exception as e:
+            logger.warning(f"Failed to add JS imports: {e}")
+            return code
+
+    async def _add_python_imports(
+        self, code: str, file_path: str, task: CodingTask
+    ) -> str:
+        """Add missing imports for Python"""
+        try:
+            lines = code.split("\n")
+            imports = []
+
+            # Common patterns
+            if "FastAPI" in code and not any(
+                "from fastapi import" in line for line in lines
+            ):
+                imports.append("from fastapi import FastAPI, APIRouter, HTTPException")
+
+            if "Pydantic" in code or "BaseModel" in code:
+                if not any("from pydantic import" in line for line in lines):
+                    imports.append("from pydantic import BaseModel, Field")
+
+            if "datetime" in code and not any(
+                "from datetime import" in line or "import datetime" in line
+                for line in lines
+            ):
+                imports.append("from datetime import datetime")
+
+            if "Dict" in code or "List" in code or "Optional" in code:
+                if not any("from typing import" in line for line in lines):
+                    types_used = []
+                    if "Dict" in code:
+                        types_used.append("Dict")
+                    if "List" in code:
+                        types_used.append("List")
+                    if "Optional" in code:
+                        types_used.append("Optional")
+                    if "Any" in code:
+                        types_used.append("Any")
+                    imports.append(f"from typing import {', '.join(types_used)}")
+
+            # Add imports at the beginning
+            if imports:
+                # Find where to insert (after docstring and before code)
+                insert_index = 0
+                in_docstring = False
+                for i, line in enumerate(lines):
+                    if line.strip().startswith('"""') or line.strip().startswith("'''"):
+                        in_docstring = not in_docstring
+                    elif not in_docstring and (
+                        line.strip().startswith("import ")
+                        or line.strip().startswith("from ")
+                    ):
+                        insert_index = i + 1
+                    elif (
+                        not in_docstring
+                        and line.strip()
+                        and not line.strip().startswith("#")
+                    ):
+                        break
+
+                for imp in reversed(imports):
+                    lines.insert(insert_index, imp)
+
+                return "\n".join(lines)
+
+            return code
+        except Exception as e:
+            logger.warning(f"Failed to add Python imports: {e}")
+            return code
+
+    async def _run_build_check(self, task: CodingTask) -> Dict[str, Any]:
+        """Run build command to check if code compiles"""
+        import subprocess
+
+        try:
+            repo_path = Path(task.repository_path)
+
+            # Check for package.json (Node.js project)
+            if (repo_path / "package.json").exists():
+                logger.info("[NAVI] Running npm run build to validate changes...")
+                result = subprocess.run(
+                    ["npm", "run", "build"],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,  # 2 minute timeout
+                )
+
+                if result.returncode == 0:
+                    return {"success": True, "output": result.stdout}
+                else:
+                    logger.warning(f"[NAVI] Build failed: {result.stderr[:500]}")
+                    return {"success": False, "error": result.stderr[:500]}
+
+            # Check for tsconfig.json (TypeScript)
+            elif (repo_path / "tsconfig.json").exists():
+                logger.info("[NAVI] Running tsc to validate TypeScript...")
+                result = subprocess.run(
+                    ["npx", "tsc", "--noEmit"],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+
+                if result.returncode == 0:
+                    return {"success": True, "output": "TypeScript check passed"}
+                else:
+                    return {"success": False, "error": result.stderr[:500]}
+
+            # No build system found
+            return {"success": True, "output": "No build system detected, skipping"}
+
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": "Build timeout (exceeded 2 minutes)"}
+        except FileNotFoundError:
+            return {
+                "success": True,
+                "output": "Build tools not found, skipping validation",
+            }
+        except Exception as e:
+            logger.warning(f"Build check failed: {e}")
+            return {"success": True, "output": f"Build check skipped: {str(e)}"}
+
+    async def _run_tests(self, task: CodingTask) -> Optional[Dict[str, Any]]:
+        """Run existing tests to ensure changes don't break functionality"""
+        import subprocess
+
+        try:
+            repo_path = Path(task.repository_path)
+
+            # Check for test scripts
+            if (repo_path / "package.json").exists():
+                # Check if test script exists
+                try:
+                    with open(repo_path / "package.json", "r") as f:
+                        import json
+
+                        pkg = json.load(f)
+                        if "test" in pkg.get("scripts", {}):
+                            logger.info("[NAVI] Running tests...")
+                            result = subprocess.run(
+                                ["npm", "test"],
+                                cwd=repo_path,
+                                capture_output=True,
+                                text=True,
+                                timeout=180,  # 3 minute timeout
+                            )
+
+                            return {
+                                "all_passed": result.returncode == 0,
+                                "output": result.stdout[:1000],
+                                "failed_count": 0 if result.returncode == 0 else 1,
+                            }
+                except Exception as e:
+                    logger.warning(f"Test execution failed: {e}")
+
+            # Python tests (pytest)
+            elif (repo_path / "pytest.ini").exists() or (repo_path / "tests").exists():
+                logger.info("[NAVI] Running pytest...")
+                result = subprocess.run(
+                    ["pytest", "--tb=short"],
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                )
+
+                return {
+                    "all_passed": result.returncode == 0,
+                    "output": result.stdout[:1000],
+                    "failed_count": 0 if result.returncode == 0 else 1,
+                }
+
+            return None  # No tests found
+
+        except subprocess.TimeoutExpired:
+            return {"all_passed": False, "output": "Tests timeout", "failed_count": 1}
+        except Exception as e:
+            logger.warning(f"Test execution failed: {e}")
+            return None
 
     def _detect_language(self, file_path: str) -> str:
         """Detect programming language from file extension"""

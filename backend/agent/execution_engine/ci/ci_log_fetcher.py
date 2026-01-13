@@ -5,7 +5,14 @@ Production-grade log fetching system for GitHub Actions, Jenkins, and other
 CI providers with intelligent parsing and error handling.
 """
 
-import aiohttp
+try:
+    import aiohttp
+
+    AIOHTTP_AVAILABLE = True
+except ImportError:
+    AIOHTTP_AVAILABLE = False
+    aiohttp = None  # type: ignore
+
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -26,13 +33,19 @@ class CILogFetcher:
     """
 
     def __init__(self, github_config: Optional[GitHubActionsConfig] = None):
+        if not AIOHTTP_AVAILABLE:
+            raise ImportError(
+                "aiohttp is required for CILogFetcher. Install it with: pip install aiohttp"
+            )
         self.github_config = github_config
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: Optional[aiohttp.ClientSession] = None  # type: ignore
 
     async def __aenter__(self):
         """Async context manager for session lifecycle"""
-        self.session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=300),
+        if not AIOHTTP_AVAILABLE or aiohttp is None:
+            raise ImportError("aiohttp is required for CILogFetcher")
+        self.session = aiohttp.ClientSession(  # type: ignore
+            timeout=aiohttp.ClientTimeout(total=300),  # type: ignore
             headers={"User-Agent": "NAVI-CI-AutoRepair/1.0"},
         )
         return self
@@ -94,7 +107,10 @@ class CILogFetcher:
             if response.status == 404:
                 raise ValueError(f"GitHub Actions run {event.run_id} not found")
             elif response.status != 200:
-                raise aiohttp.ClientError(f"GitHub API error: {response.status}")
+                if aiohttp:
+                    raise aiohttp.ClientError(f"GitHub API error: {response.status}")  # type: ignore
+                else:
+                    raise RuntimeError(f"GitHub API error: {response.status}")
 
             run_data = await response.json()
 

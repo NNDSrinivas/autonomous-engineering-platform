@@ -129,7 +129,6 @@ class TestSprintPlannerAgent:
         with patch("backend.agents.sprint_planner_agent.LLMRouter"), patch(
             "backend.agents.sprint_planner_agent.DatabaseService"
         ):
-
             planner = SprintPlannerAgent()
             planner.llm = AsyncMock()
             planner.db = AsyncMock()
@@ -245,7 +244,6 @@ class TestBacklogManagerAgent:
         with patch("backend.agents.backlog_manager_agent.LLMRouter"), patch(
             "backend.agents.backlog_manager_agent.DatabaseService"
         ):
-
             manager = BacklogManagerAgent()
             manager.llm = AsyncMock()
             manager.db = AsyncMock()
@@ -450,7 +448,6 @@ class TestMemoryLayer:
         with patch("backend.memory.memory_layer.DatabaseService"), patch(
             "backend.memory.memory_layer.VectorStore"
         ):
-
             memory = MemoryLayer()
             memory.db = AsyncMock()
             memory.vector_store = AsyncMock()
@@ -603,7 +600,6 @@ class TestMultiRepoOrchestrator:
         with patch("backend.agents.multi_repo_orchestrator.DatabaseService"), patch(
             "backend.agents.multi_repo_orchestrator.MemoryLayer"
         ):
-
             orch = MultiRepoOrchestrator()
             orch.db = AsyncMock()
             orch.memory = AsyncMock()
@@ -697,7 +693,6 @@ class TestAutonomousPRReviewer:
         with patch("backend.agents.autonomous_pr_reviewer.DatabaseService"), patch(
             "backend.agents.autonomous_pr_reviewer.MemoryLayer"
         ):
-
             reviewer = AutonomousPRReviewer()
             reviewer.db = AsyncMock()
             reviewer.memory = AsyncMock()

@@ -17,6 +17,7 @@ python-dotenv==1.0.1
 
 # Authentication and JWT
 PyJWT>=2.8.0
+cachetools>=5.3.0
 
 # LLM providers
 openai>=1.0.0

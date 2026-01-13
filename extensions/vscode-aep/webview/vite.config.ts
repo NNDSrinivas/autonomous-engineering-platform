@@ -6,6 +6,11 @@ export default defineConfig({
   plugins: [react()],
   root: ".",
   base: "",
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "src")
+    }
+  },
   build: {
     outDir: "../dist/webview",
     emptyOutDir: true,

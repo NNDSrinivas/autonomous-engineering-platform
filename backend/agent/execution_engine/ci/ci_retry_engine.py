@@ -6,7 +6,14 @@ repairs with intelligent retry logic, rate limiting, and failure tracking.
 """
 
 import asyncio
-import aiohttp
+
+try:
+    import aiohttp
+
+    AIOHTTP_AVAILABLE = True
+except ImportError:
+    AIOHTTP_AVAILABLE = False
+    aiohttp = None  # type: ignore
 import logging
 from typing import Optional, Dict, List, Any
 from datetime import datetime, timedelta

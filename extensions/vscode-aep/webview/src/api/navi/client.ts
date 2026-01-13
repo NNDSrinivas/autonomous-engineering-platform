@@ -46,6 +46,51 @@ export interface Diagnostic {
   code?: string | number;
 }
 
+export interface MemorySearchResult {
+  id: string;
+  content: string;
+  similarity: number;
+  metadata?: Record<string, unknown>;
+  source?: string;
+  timestamp?: string;
+}
+
+export interface TaskContextResponse {
+  task: {
+    key: string;
+    summary: string;
+    description?: string;
+    status: string;
+    assignee?: string;
+  };
+  relatedTasks?: Array<{
+    key: string;
+    summary: string;
+    relation: string;
+  }>;
+  recentComments?: Array<{
+    author: string;
+    body: string;
+    created: string;
+  }>;
+  linkedPRs?: Array<{
+    number: number;
+    title: string;
+    url: string;
+    status: string;
+  }>;
+  relatedMeetings?: Array<{
+    id: string;
+    title: string;
+    date: string;
+  }>;
+  codeReferences?: Array<{
+    filePath: string;
+    lineNumber?: number;
+    snippet?: string;
+  }>;
+}
+
 function getRuntimeConfig(): RuntimeConfig {
   if (typeof window === "undefined") {
     return {};
@@ -192,16 +237,16 @@ export class NaviAPIClient {
 
   // Memory & Context APIs
 
-  async searchMemory(query: string, k: number = 10): Promise<any[]> {
-    const response = await this.request<{ hits: any[] }>('/api/search/', {
+  async searchMemory(query: string, k: number = 10): Promise<MemorySearchResult[]> {
+    const response = await this.request<{ hits: MemorySearchResult[] }>('/api/search/', {
       method: 'POST',
       body: JSON.stringify({ q: query, k }),
     });
     return response.hits;
   }
 
-  async getTaskContext(taskKey: string): Promise<any> {
-    return this.request('/api/context/pack', {
+  async getTaskContext(taskKey: string): Promise<TaskContextResponse> {
+    return this.request<TaskContextResponse>('/api/context/pack', {
       method: 'POST',
       body: JSON.stringify({
         query: taskKey,

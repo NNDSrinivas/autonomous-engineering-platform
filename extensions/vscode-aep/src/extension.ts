@@ -36,6 +36,7 @@ import { ContextService } from './services/ContextService';
 import { NaviClient } from './services/NaviClient';
 import { GitService } from './services/GitService';
 import { TaskService } from './services/TaskService';
+import { buildRepoAnalysisPrompt } from './constants/prompts';
 
 const exec = util.promisify(child_process.exec);
 
@@ -1284,29 +1285,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
   /**
    * Generate repository analysis prompt template
-   * Separated for maintainability and reusability
+   * Delegates to extracted prompt template for maintainability
    */
   private buildRepoAnalysisPrompt(contextMessage: string, originalMessage: string): string {
-    return `${contextMessage}
-
-${originalMessage}
-
-Please analyze the repository architecture and structure based on the attached files. Provide TWO sections:
-
-**Section 1: Non-Technical Overview (for business stakeholders)**
-- What is this project? What problem does it solve?
-- Who would use this and why?
-- What are the main features or capabilities?
-- Explain in simple terms that anyone can understand
-
-**Section 2: Technical Analysis (for developers)**
-1. What this project does and its purpose
-2. The overall architecture and how components interact
-3. Key technologies and frameworks used
-4. Main entry points and how the application flows
-5. Any important patterns or design decisions you can identify
-
-Provide a comprehensive overview that goes beyond just listing files. Make it accessible for both technical and non-technical readers.`;
+    return buildRepoAnalysisPrompt(contextMessage, originalMessage);
   }
 
   private getBackendBaseUrl(): string {

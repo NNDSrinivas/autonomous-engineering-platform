@@ -9191,6 +9191,12 @@ Provide a comprehensive overview that goes beyond just listing files. Make it ac
         return;
       }
 
+      // 4) Execute VS Code command
+      if (action.type === 'vscode_command') {
+        await this.applyVSCodeCommandAction(action);
+        return;
+      }
+
       console.warn('[Extension Host] [AEP] Unknown action type:', action.type);
     } catch (error: any) {
       console.error('[Extension Host] [AEP] Error applying action:', error);
@@ -9224,6 +9230,9 @@ Provide a comprehensive overview that goes beyond just listing files. Make it ac
           appliedCount += 1;
         } else if (action.type === 'runCommand') {
           await this.applyRunCommandAction(action);
+          appliedCount += 1;
+        } else if (action.type === 'vscode_command') {
+          await this.applyVSCodeCommandAction(action);
           appliedCount += 1;
         } else {
           console.warn('[Extension Host] [AEP] Unknown action type in workspace plan:', action.type);
@@ -9468,6 +9477,26 @@ Provide a comprehensive overview that goes beyond just listing files. Make it ac
         error: err?.message || String(err),
       });
       return null;
+    }
+  }
+
+  // ---- Execute VS Code command -------------------------------
+  private async applyVSCodeCommandAction(action: any): Promise<void> {
+    const command = action.command;
+    const args = action.args || [];
+
+    if (!command) {
+      console.warn('[Extension Host] [AEP] VS Code command action missing command field');
+      return;
+    }
+
+    try {
+      console.log(`[Extension Host] [AEP] Executing VS Code command: ${command} with args:`, args);
+      await vscode.commands.executeCommand(command, ...args);
+      console.log(`[Extension Host] [AEP] Successfully executed VS Code command: ${command}`);
+    } catch (error: any) {
+      console.error(`[Extension Host] [AEP] Failed to execute VS Code command ${command}:`, error);
+      vscode.window.showErrorMessage(`Failed to execute command: ${error.message}`);
     }
   }
 

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import fg from 'fast-glob';
+import * as fg from 'fast-glob';
 import { NaviClient } from './NaviClient';
 
 export interface FileNode {

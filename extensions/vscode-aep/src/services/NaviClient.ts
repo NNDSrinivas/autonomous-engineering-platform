@@ -55,7 +55,7 @@ export class NaviClient {
             throw new Error(`API request failed: ${response.status} ${error}`);
         }
 
-        return response.json();
+        return response.json() as Promise<T>;
     }
 
     on(event: string, callback: (data: any) => void): () => void {

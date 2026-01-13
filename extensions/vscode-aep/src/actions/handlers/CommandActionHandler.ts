@@ -61,6 +61,19 @@ export class CommandActionHandler extends BaseActionHandler {
         console.log(`[CommandHandler] Executing VS Code command: ${command} with args:`, args);
 
         try {
+            // Special handling for vscode.openFolder - requires URI object
+            if (command === 'vscode.openFolder' && args.length > 0 && typeof args[0] === 'string') {
+                const folderPath = args[0];
+                const uri = vscode.Uri.file(folderPath);
+                const result = await vscode.commands.executeCommand(command, uri);
+
+                return {
+                    success: true,
+                    message: `Opened folder: ${folderPath}`,
+                    data: result
+                };
+            }
+
             const result = await vscode.commands.executeCommand(command, ...args);
 
             return {

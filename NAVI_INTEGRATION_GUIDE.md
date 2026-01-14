@@ -58,9 +58,7 @@ NAVI is an **aggressive, action-taking AI coding assistant** that competes with 
 
 4. **Start the backend**:
    ```bash
-   uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-   ```
-
+   uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ### VS Code Extension Setup
 
 1. **Install extension dependencies**:

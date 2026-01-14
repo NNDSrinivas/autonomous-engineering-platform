@@ -2099,12 +2099,6 @@ export default function NaviChatPanel() {
     ));
   };
 
-  const handleShowDiff = async (planId: string, actionIndex: number) => {
-    // For web frontend, we show a modal or inline diff
-    // This is a placeholder - actual implementation would open a diff view
-    showToast("Diff preview coming soon for web frontend", "info");
-  };
-
   const renderMessageContent = (msg: ChatMessage) => {
     if (msg.meta?.kind === "command") {
       return (
@@ -2605,7 +2599,6 @@ export default function NaviChatPanel() {
                       actionsWithRisk={m.actionsWithRisk}
                       onApprove={(approvedIndices) => handleApproveActions(m.planId!, approvedIndices)}
                       onReject={() => handleRejectPlan(m.planId!)}
-                      onShowDiff={(actionIndex) => handleShowDiff(m.planId!, actionIndex)}
                     />
                   )}
 

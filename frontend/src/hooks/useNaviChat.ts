@@ -7,6 +7,9 @@ import { getRecommendedModel, type TaskType } from '@/lib/llmRouter';
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/navi-chat`;
 const RAG_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rag-query`;
 
+// NAVI V2 backend URL - defaults to localhost for development
+const NAVI_BACKEND_URL = import.meta.env.VITE_NAVI_BACKEND_URL || 'http://localhost:8787';
+
 export interface LLMModel {
   id: string;
   name: string;
@@ -389,11 +392,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
   // NAVI V2: Create plan with approval flow
   const createPlan = useCallback(async (userMessage: string, workspace: string) => {
     try {
-      // For now, use localhost:8787 for the FastAPI backend
-      // In production, this would be configured via environment variable
-      const backendUrl = 'http://localhost:8787';
-
-      const response = await fetch(`${backendUrl}/api/navi/plan`, {
+      const response = await fetch(`${NAVI_BACKEND_URL}/api/navi/plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -18,7 +18,21 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pip install ruff==0.1.6 black==23.9.1 pytest requests
       - name: Lint
-        run: ruff check backend/ tests/ *.py && black --check .
+        run: |
+          ruff check backend/ tests/ *.py
+          # For PRs, only check changed Python files; for pushes, check all
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin ${{ github.base_ref }} --depth=1
+            CHANGED_PY=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py' | tr '\n' ' ')
+            if [ -n "$CHANGED_PY" ]; then
+              echo "Checking formatting for changed files: $CHANGED_PY"
+              black --check $CHANGED_PY
+            else
+              echo "No Python files changed in PR"
+            fi
+          else
+            black --check .
+          fi
       - name: Unit tests (health only for now)
         env:
           SECRET_KEY: test-secret-for-ci

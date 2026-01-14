@@ -383,8 +383,8 @@ app.include_router(
     memory_enhanced_router
 )  # Enhanced memory management from code-companion
 app.include_router(
-    navi_router, prefix="/api/navi"
-)  # PR-5B/PR-6: NAVI VS Code extension
+    navi_router  # PR-5B/PR-6: NAVI VS Code extension (already has /api/navi prefix)
+)
 app.include_router(
     navi_engine_router
 )  # Aggressive NAVI engine with code generation, git ops, dependency management

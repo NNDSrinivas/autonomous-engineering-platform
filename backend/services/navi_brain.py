@@ -661,7 +661,7 @@ class SafetyValidator:
             # Check if target is within workspace
             return str(target).startswith(str(workspace))
         except Exception:
-            return False
+            return False  # Path resolution failed, treat as unsafe
 
     @staticmethod
     def validate_file_size(content: str) -> bool:
@@ -1712,7 +1712,7 @@ class NaviEngine:
                     if "tailwindcss" in deps:
                         technologies.append("Tailwind")
             except Exception:
-                pass
+                pass  # Ignore JSON parse errors in package.json
 
         # Check Python
         if (path / "requirements.txt").exists() or (path / "pyproject.toml").exists():
@@ -1730,7 +1730,7 @@ class NaviEngine:
                         project_type = "flask"
                         technologies.append("Flask")
                 except Exception:
-                    pass
+                    pass  # Ignore file read errors in requirements.txt
 
         return project_type, list(set(technologies))
 
@@ -1968,7 +1968,7 @@ class NaviEngine:
             if result.returncode == 0:
                 return result.stdout.strip()
         except Exception:
-            pass
+            pass  # Git branch command failed, return None
         return None
 
     def _get_git_status(self) -> Dict[str, Any]:
@@ -1991,7 +1991,7 @@ class NaviEngine:
                     "changed_files": changed,
                 }
         except Exception:
-            pass
+            pass  # Git status command failed, return empty state
         return {"has_changes": False, "changed_files": []}
 
     async def close(self):

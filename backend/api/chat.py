@@ -489,8 +489,6 @@ async def navi_chat(
             # Convert relative paths to absolute paths for vscode.open command
             args = vscode_cmd.get("args", [])
             if vscode_cmd.get("command") == "vscode.open" and args:
-                import os
-
                 workspace_root = request.workspace_root or ""
                 # Make first arg absolute if it's a relative path
                 if args[0] and not os.path.isabs(args[0]):

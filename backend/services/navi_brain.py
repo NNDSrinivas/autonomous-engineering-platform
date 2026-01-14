@@ -1862,6 +1862,11 @@ class NaviEngine:
                 "files_to_create": list(response.files_to_create.keys()),
                 "files_to_modify": list(response.files_to_modify.keys()),
                 "commands_to_run": response.commands_to_run,
+                # NAVI V3: Intelligence fields
+                "thinking_steps": response.thinking_steps,
+                "files_read": response.files_read,
+                "project_type": response.project_type,
+                "framework": response.framework,
             }
 
         # Execute the actions (only if safe)
@@ -1879,6 +1884,11 @@ class NaviEngine:
             "user_input_prompt": response.user_input_prompt,
             "warnings": response.warnings,
             "execution_results": execution_results,
+            # NAVI V3: Intelligence fields
+            "thinking_steps": response.thinking_steps,
+            "files_read": response.files_read,
+            "project_type": response.project_type,
+            "framework": response.framework,
         }
 
     async def _execute_actions(self, response: NaviResponse) -> Dict[str, Any]:

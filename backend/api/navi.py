@@ -59,6 +59,11 @@ from backend.agent.intent_schema import (
     NaviIntent,
 )
 from backend.services.git_service import GitService
+from backend.navi.project_analyzer import (
+    ProjectAnalyzer,
+    generate_run_instructions,
+    is_run_question,
+)
 
 
 # Phase 4.1.2: Planner Engine Data Models
@@ -3896,6 +3901,12 @@ class ChatResponse(BaseModel):
     state: Optional[Dict[str, Any]] = None
     duration_ms: Optional[int] = None
 
+    # NAVI V3: Intelligence fields (like Codex/Claude Code)
+    thinking_steps: Optional[List[str]] = None  # Show what NAVI did
+    files_read: Optional[List[str]] = None  # Show what files were analyzed
+    project_type: Optional[str] = None  # Detected project type
+    framework: Optional[str] = None  # Detected framework
+
 
 @router.get("/test-agent")
 async def test_agent_endpoint():
@@ -4136,6 +4147,67 @@ Ready to start autonomous implementation?"""
                 },
                 duration_ms=0,
             )
+
+        # ------------------------------------------------------------------
+        # PROJECT ANALYSIS - "How to run" questions (Codex/Claude Code style)
+        # ------------------------------------------------------------------
+        if workspace_root and is_run_question(request.message):
+            logger.info(
+                "[NAVI-PROJECT-ANALYZER] Detected 'how to run' question, analyzing..."
+            )
+            try:
+                project_info = await ProjectAnalyzer.analyze(workspace_root)
+                if project_info.project_type != "unknown":
+                    run_instructions = generate_run_instructions(project_info)
+                    thinking = [step.label for step in project_info.thinking_steps]
+
+                    logger.info(
+                        "[NAVI-PROJECT-ANALYZER] Analysis complete: "
+                        f"type={project_info.project_type}, framework={project_info.framework}"
+                    )
+
+                    return ChatResponse(
+                        content=run_instructions,
+                        actions=[
+                            {
+                                "type": "vscode_command",
+                                "command": "workbench.action.terminal.sendSequence",
+                                "args": [
+                                    {
+                                        "text": f"{project_info.package_manager} install\\n"
+                                    }
+                                ],
+                                "label": f"Run: {project_info.package_manager} install",
+                            },
+                            {
+                                "type": "vscode_command",
+                                "command": "workbench.action.terminal.sendSequence",
+                                "args": [
+                                    {
+                                        "text": f"{project_info.package_manager} run dev\\n"
+                                    }
+                                ],
+                                "label": f"Run: {project_info.package_manager} run dev",
+                            },
+                        ],
+                        agentRun={
+                            "mode": "project_analysis",
+                            "steps": [
+                                {"id": s.id, "label": s.label, "status": s.status}
+                                for s in project_info.thinking_steps
+                            ],
+                        },
+                        thinking_steps=thinking,
+                        files_read=project_info.files_read,
+                        project_type=project_info.project_type,
+                        framework=project_info.framework,
+                        reply=run_instructions,
+                        should_stream=False,
+                        duration_ms=0,
+                    )
+            except Exception as e:
+                logger.warning(f"[NAVI-PROJECT-ANALYZER] Analysis failed: {e}")
+                # Fall through to normal processing
 
         # If this is *very short* and clearly small talk (not a work request), reply directly.
         # To avoid false positives (e.g., "which project are we in?"), only trigger when the

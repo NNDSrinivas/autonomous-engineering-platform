@@ -77,9 +77,9 @@ class UserResponse(BaseModel):
     email: str
     display_name: Optional[str]
     org_id: int
-    roles_deleted_count: Optional[
-        int
-    ] = None  # Number of roles deleted during org reassignment
+    roles_deleted_count: Optional[int] = (
+        None  # Number of roles deleted during org reassignment
+    )
 
 
 class RoleGrant(BaseModel):

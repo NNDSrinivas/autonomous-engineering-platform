@@ -34,6 +34,7 @@ import {
 import * as vscodeApi from "../../utils/vscodeApi";
 import "./NaviChatPanel.css";
 import Prism from 'prismjs';
+import { NaviApprovalPanel, ActionWithRisk } from './NaviApprovalPanel';
 // import * as Diff from 'diff';
 // Temporarily commenting out components with missing dependencies
 // import { LiveProgressDiagnostics } from '../ui/LiveProgressDiagnostics';
@@ -57,6 +58,18 @@ export interface ChatMessage {
   responseData?: NaviChatResponse;
   actions?: AgentAction[];
   meta?: ChatMessageMeta;
+  // NAVI V2: Approval flow fields
+  requiresApproval?: boolean;
+  planId?: string;
+  actionsWithRisk?: Array<{
+    type: 'createFile' | 'editFile' | 'runCommand';
+    path?: string;
+    command?: string;
+    content?: string;
+    risk: 'low' | 'medium' | 'high';
+    warnings: string[];
+    preview?: string;
+  }>;
 }
 
 type ExecutionMode = "plan_propose" | "plan_and_run";
@@ -2043,6 +2056,49 @@ export default function NaviChatPanel() {
       });
   };
 
+  // NAVI V2: Approval flow handlers
+  const handleApproveActions = async (planId: string, approvedIndices: number[]) => {
+    try {
+      setSending(true);
+      const backendBase = resolveBackendBase();
+
+      const response = await fetch(`${backendBase}/api/navi/plan/${planId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved_action_indices: approvedIndices }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Approval failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      showToast(`✅ Completed ${approvedIndices.length} actions`, "info");
+
+      // Remove approval panel by updating message
+      setMessages(prev => prev.map(m =>
+        m.planId === planId
+          ? { ...m, requiresApproval: false, planId: undefined, actionsWithRisk: undefined }
+          : m
+      ));
+    } catch (error) {
+      console.error('[NAVI] Approval error:', error);
+      showToast(`Error executing actions: ${error instanceof Error ? error.message : 'Unknown error'}`, "error");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleRejectPlan = (planId: string) => {
+    showToast("Plan rejected", "info");
+    // Remove approval panel by updating message
+    setMessages(prev => prev.map(m =>
+      m.planId === planId
+        ? { ...m, requiresApproval: false, planId: undefined, actionsWithRisk: undefined }
+        : m
+    ));
+  };
+
   const renderMessageContent = (msg: ChatMessage) => {
     if (msg.meta?.kind === "command") {
       return (
@@ -2530,6 +2586,20 @@ export default function NaviChatPanel() {
                         Apply all fixes
                       </button>
                     </div>
+                  )}
+
+                {/* NAVI V2: Approval Panel */}
+                {m.role === "assistant" &&
+                  m.requiresApproval &&
+                  m.actionsWithRisk &&
+                  m.planId && (
+                    <NaviApprovalPanel
+                      planId={m.planId}
+                      message={messages.filter(msg => msg.role === "user").slice(-1)[0]?.content || ""}
+                      actionsWithRisk={m.actionsWithRisk}
+                      onApprove={(approvedIndices) => handleApproveActions(m.planId!, approvedIndices)}
+                      onReject={() => handleRejectPlan(m.planId!)}
+                    />
                   )}
 
                 {m.role === "assistant" && (

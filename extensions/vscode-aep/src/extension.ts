@@ -36,7 +36,7 @@ import { ContextService } from './services/ContextService';
 import { NaviClient } from './services/NaviClient';
 import { GitService } from './services/GitService';
 import { TaskService } from './services/TaskService';
-import { buildRepoAnalysisPrompt } from './constants/prompts';
+import { createDefaultActionRegistry, ActionRegistry } from './actions';
 
 const exec = util.promisify(child_process.exec);
 
@@ -49,6 +49,7 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds heartbeat
 let globalContextService: ContextService | undefined;
 let globalGitService: GitService | undefined;
 let globalTaskService: TaskService | undefined;
+let globalActionRegistry: ActionRegistry | undefined;
 
 // Phase 1.4: Collect VS Code diagnostics for a set of files
 function collectDiagnosticsForFiles(workspaceRoot: string, relativePaths: string[]) {
@@ -636,12 +637,14 @@ export function activate(context: vscode.ExtensionContext) {
   const backendUrl = config.get<string>('backendUrl') || 'http://127.0.0.1:8787';
   const naviClient = new NaviClient(backendUrl, backendUrl, 'default');
 
-  // Configure ContextService with higher limits for large codebases
-  globalContextService = new ContextService(naviClient, {
-    maxSearchFiles: 500,      // Search more files in large codebases
-    maxMatchesPerFile: 10,    // Show more context per file
-    maxSearchResults: 50      // Return more total results
-  });
+  // Configure ContextService with limits that can be customized via settings
+  const aepConfig = vscode.workspace.getConfiguration('aep');
+  const contextConfig = {
+    maxSearchFiles: aepConfig.get<number>('context.maxSearchFiles', 500),
+    maxMatchesPerFile: aepConfig.get<number>('context.maxMatchesPerFile', 10),
+    maxSearchResults: aepConfig.get<number>('context.maxSearchResults', 50)
+  };
+  globalContextService = new ContextService(naviClient, contextConfig);
 
   // Initialize GitService for git operations
   const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -653,6 +656,10 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize TaskService for JIRA integration
   globalTaskService = new TaskService(naviClient);
   console.log('[AEP] TaskService initialized');
+
+  // Initialize Dynamic Action Registry
+  globalActionRegistry = createDefaultActionRegistry();
+  console.log('[AEP] ActionRegistry initialized with dynamic handlers');
 
   // Index workspace on activation (async, non-blocking)
   globalContextService.indexWorkspace().then(() => {
@@ -673,6 +680,38 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register Smart Mode commands
   smartModeCommands.registerCommands(context);
+
+  // Register aggressive NAVI action commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand('navi.createAndOpenFile', async (filePath: string, content: string) => {
+      try {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+          vscode.window.showErrorMessage('No workspace folder open');
+          return;
+        }
+
+        const fullPath = path.join(workspaceFolders[0].uri.fsPath, filePath);
+        const uri = vscode.Uri.file(fullPath);
+
+        // Ensure directory exists
+        const dirPath = path.dirname(fullPath);
+        await vscode.workspace.fs.createDirectory(vscode.Uri.file(dirPath));
+
+        // Write file
+        const encoder = new TextEncoder();
+        await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+
+        // Open file in editor
+        const document = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(document);
+
+        vscode.window.showInformationMessage(`Created and opened ${filePath}`);
+      } catch (error: any) {
+        vscode.window.showErrorMessage(`Failed to create file: ${error.message}`);
+      }
+    })
+  );
 
   // Phase 3.3/3.4 UI Test Commands for immediate testing
   context.subscriptions.push(
@@ -1283,13 +1322,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     this._currentModeLabel = context.globalState.get<string>(STORAGE_KEYS.modeLabel) ?? DEFAULT_MODE.label;
   }
 
-  /**
-   * Generate repository analysis prompt template
-   * Delegates to extracted prompt template for maintainability
-   */
-  private buildRepoAnalysisPrompt(contextMessage: string, originalMessage: string): string {
-    return buildRepoAnalysisPrompt(contextMessage, originalMessage);
-  }
+  // 🚀 LLM-FIRST: Removed buildRepoAnalysisPrompt()
+  // No longer needed - was only used by handleLocalExplainRepo which has been removed
+  // LLM backend now handles all repo analysis without templated prompts
 
   private getBackendBaseUrl(): string {
     const config = vscode.workspace.getConfiguration('aep');
@@ -2485,6 +2520,24 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             break;
           }
 
+          case 'executeCommand': {
+            // 🚀 Execute VS Code commands from aggressive NAVI actions
+            const command = String(msg.command || '').trim();
+            const args = msg.args || [];
+            if (!command) {
+              console.warn('[AEP] No command provided for executeCommand');
+              return;
+            }
+            try {
+              console.log('[AEP] Executing command:', command, args);
+              await vscode.commands.executeCommand(command, ...args);
+            } catch (e: any) {
+              console.error('[AEP] Failed to execute command:', e);
+              vscode.window.showErrorMessage(`Failed to execute command: ${e.message}`);
+            }
+            break;
+          }
+
           // Phase 1.3.1: Handle openDiff request from NAVI UI
           case 'openDiff': {
             const filePath = String(msg.path || '').trim();
@@ -3448,13 +3501,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               }
             }
 
-            if (this.looksLikeDiagnosticsRequest(text)) {
-              this._messages.push({ role: 'user', content: text });
-              recordUserMessage();
-              await this.handleDiagnosticsRequest(text);
-              this.postToWebview({ type: 'botThinking', value: false });
-              return;
-            }
+            // 🚀 LLM-FIRST: Removed diagnostic request interception
+            // All requests now go through unified LLM backend
+            // Old code: if (this.looksLikeDiagnosticsRequest(text)) { ... }
 
             // PR-4: Use modelId and modeId from the message (coming from pills)
             const modelId = msg.modelId || this._currentModelId;
@@ -3506,70 +3555,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             console.log('[Extension Host] [AEP] About to process message with routing:', text);
             const workspaceRoot = this.getActiveWorkspaceRoot();
 
-            // CRITICAL: Ensure repo/intention commands go through local NAVI agent (no backend)
-            const repoIntentRegex = /(review\s+working\s+tree|review\s+changes|scan\s+repo|analyze\s+repo|git\s+diff|review\s+repo|review\s+my\s+working\s+changes)/i;
-            if (this.isRepoCommand(text) || repoIntentRegex.test(text)) {
-              console.log('[Extension Host] [AEP] 🔒 Repo command detected - routing to NAVI agent (local)');
-              const workspaceRoot = this.getActiveWorkspaceRoot();
-              if (!workspaceRoot) {
-                this.postToWebview({ type: 'botMessage', text: 'No workspace open.' });
-                this.postToWebview({ type: 'botThinking', value: false });
-                return;
-              }
-
-              this.postToWebview({ type: 'botThinking', value: true });
-
-              const { runNaviAgent } = await import('./navi/NaviAgentAdapter');
-              await runNaviAgent({
-                workspaceRoot,
-                userInput: text,
-                emitEvent: (event) => {
-                  // Forward all agent events
-                  this.postToWebview({ type: 'navi.agent.event', event });
-
-                  // Phase 2.1: Capture fix proposals for later application
-                  const kind = event.type || event.kind;
-                  if (kind === 'navi.fix.proposals') {
-                    const files = event.data?.files || [];
-                    this._fixProposals.clear(); // Clear old proposals
-                    for (const fileGroup of files) {
-                      for (const proposal of fileGroup.proposals || []) {
-                        this._fixProposals.set(proposal.id, proposal);
-                      }
-                    }
-                    console.log(`[AEP] Stored ${this._fixProposals.size} fix proposals for application`);
-                  }
-
-                  // Phase 1.4: When repo diff summary arrives, collect diagnostics for changed files only
-                  if (kind === 'repo.diff.summary') {
-                    try {
-                      const unstaged: Array<{ path: string }> = event.data?.unstagedFiles || [];
-                      const staged: Array<{ path: string }> = event.data?.stagedFiles || [];
-                      const relPaths = [...unstaged, ...staged].map(f => f.path).filter(Boolean);
-                      const diagnosticsByFile = collectDiagnosticsForFiles(workspaceRoot, relPaths);
-                      this.postToWebview({
-                        type: 'navi.agent.event',
-                        event: { type: 'diagnostics.summary', data: { files: diagnosticsByFile } }
-                      });
-                    } catch (e) {
-                      console.warn('[AEP] Phase 1.4 diagnostics collection failed:', e);
-                    }
-                  }
-                }
-              });
-
-              this.postToWebview({ type: 'botThinking', value: false });
-              return;
-            }
-
-            // Check if this is a repo overview question BEFORE routing to backend
-            if (this.isRepoOverviewQuestion(text)) {
-              console.log('[Extension Host] [AEP] Detected repo overview question, using local analysis...');
-              this.postToWebview({ type: 'botThinking', value: true });
-              await this.handleLocalExplainRepo(text);
-              this.postToWebview({ type: 'botThinking', value: false });
-              break;
-            }
+            // 🚀 LLM-FIRST ARCHITECTURE: Send ALL requests to NAVI backend
+            // No more special routing - let the LLM decide what to do
+            console.log('[Extension Host] [AEP] 🎯 LLM-First: Routing ALL requests to NAVI backend');
 
             console.log('[Extension Host] [AEP] Using chat-only smart routing...');
             await this.handleSmartRouting(text, modelId, modeId, attachments || [], msg.orgId, msg.userId);
@@ -3595,7 +3583,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           }
 
           case 'getDiagnostics': {
-            await this.handleDiagnosticsRequest();
+            // 🚀 LLM-FIRST: Removed handleDiagnosticsRequest call
+            // All requests now route through unified LLM backend
+            console.log('[AEP] getDiagnostics message received but no longer needed - use chat interface instead');
             break;
           }
 
@@ -4125,6 +4115,105 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             await this.handleApplyReviewFixes(reviews);
             break;
           }
+
+          // ==================== NAVI V2: APPROVAL FLOW HANDLERS ====================
+
+          case 'navi.approve': {
+            const { planId, approvedActionIndices } = msg;
+            console.log('[AEP] NAVI V2: Approving plan', planId, 'with actions:', approvedActionIndices);
+
+            // Import NaviService
+            const { NaviService } = await import('./services/NaviService');
+            const naviService = NaviService.getInstance();
+
+            try {
+              // Show progress notification
+              await vscode.window.withProgress(
+                {
+                  location: vscode.ProgressLocation.Notification,
+                  title: `NAVI: Executing ${approvedActionIndices.length} actions...`,
+                  cancellable: false,
+                },
+                async (progress) => {
+                  // Approve and execute plan
+                  const executionId = await naviService.approvePlan(planId, approvedActionIndices);
+
+                  progress.report({ increment: 100 });
+
+                  // Show completion message
+                  vscode.window.showInformationMessage(
+                    `✅ NAVI: Completed ${approvedActionIndices.length} action${approvedActionIndices.length !== 1 ? 's' : ''}`
+                  );
+
+                  // Notify webview of completion
+                  this.postToWebview({
+                    type: 'navi.execution.complete',
+                    planId,
+                    executionId,
+                  });
+                }
+              );
+            } catch (error: any) {
+              console.error('[AEP] NAVI V2: Plan approval failed:', error);
+              vscode.window.showErrorMessage(`NAVI: Failed to execute actions: ${error.message}`);
+            }
+            break;
+          }
+
+          case 'navi.reject': {
+            const { planId } = msg;
+            console.log('[AEP] NAVI V2: Rejecting plan', planId);
+
+            vscode.window.showInformationMessage('NAVI: Plan rejected');
+
+            // Notify webview
+            this.postToWebview({
+              type: 'navi.plan.rejected',
+              planId,
+            });
+            break;
+          }
+
+          case 'navi.showDiff': {
+            const { planId, actionIndex } = msg;
+            console.log('[AEP] NAVI V2: Showing diff for plan', planId, 'action', actionIndex);
+
+            try {
+              // Import NaviService
+              const { NaviService } = await import('./services/NaviService');
+              const naviService = NaviService.getInstance();
+
+              // Get plan
+              const plan = await naviService.getPlan(planId);
+              const action = plan.actionsWithRisk[actionIndex];
+
+              if (!action) {
+                vscode.window.showWarningMessage('NAVI: Action not found');
+                break;
+              }
+
+              const workspaceRoot = this.getActiveWorkspaceRoot();
+              if (!workspaceRoot) {
+                vscode.window.showWarningMessage('NAVI: No workspace root found');
+                break;
+              }
+
+              // Show diff based on action type
+              if (action.type === 'editFile') {
+                await naviService.showDiff(action, workspaceRoot);
+              } else if (action.type === 'createFile') {
+                await naviService.showCreateFileDiff(action, workspaceRoot);
+              } else {
+                vscode.window.showInformationMessage('NAVI: Cannot show diff for commands');
+              }
+            } catch (error: any) {
+              console.error('[AEP] NAVI V2: Failed to show diff:', error);
+              vscode.window.showErrorMessage(`NAVI: Failed to show diff: ${error.message}`);
+            }
+            break;
+          }
+
+          // ==================== END NAVI V2 HANDLERS ====================
 
           case 'quickAction': {
             const action = String(msg.action || '');
@@ -4801,10 +4890,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               : undefined;
             const inferredIntent = suggestedIntent || this.inferCoreIntent(content);
 
-            if (inferredIntent === 'FIX_PROBLEMS' || this.looksLikeDiagnosticsRequest(content)) {
-              await this.handleDiagnosticsRequest(content);
-              return;
-            }
+            // 🚀 LLM-FIRST: Removed FIX_PROBLEMS and diagnostics interception
+            // All requests now route through unified LLM backend
 
             const coreIntents = new Set([
               'RUN_TESTS',
@@ -5233,29 +5320,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   /**
    * Detect if a message is a repo-aware command that needs orchestrator
    */
-  private isRepoCommand(text: string): boolean {
-    if (this.looksLikeGitCommand(text)) {
-      return false;
-    }
-    if (this.looksLikeDiagnosticsRequest(text)) {
-      return false;
-    }
-    return /(review|working tree|git|changes|diff|errors|fix|diagnostic|analyze|check.*quality|suggest.*improvements)/i.test(text);
-  }
-
-  private looksLikeDiagnosticsRequest(text: string): boolean {
-    const msg = (text || '').toLowerCase();
-    if (!msg.trim()) return false;
-    if (/\b(lint|eslint|tsc|typecheck|mypy|flake8|pylint|ruff|diagnostic)\b/.test(msg)) {
-      return true;
-    }
-    const errorPhrase =
-      /\b(check|find|scan|look for|list|show|fix|resolve|address)\b.*\b(error|errors|warnings|issues|problems)\b/.test(msg);
-    const scopeHint = /\b(repo|repository|project|codebase|workspace|file|current file|this file)\b/.test(msg);
-    if (errorPhrase && scopeHint) return true;
-    if (/\b(check|find|scan|fix|resolve)\b.*\berrors?\b/.test(msg)) return true;
-    return false;
-  }
+  // 🚀 LLM-FIRST: Removed old regex-based routing methods
+  // - isRepoCommand() - no longer needed
+  // - looksLikeDiagnosticsRequest() - no longer needed
+  // All requests now route through unified LLM backend
 
   private inferCoreIntent(text: string): string | undefined {
     const msg = (text || '').toLowerCase();
@@ -5288,32 +5356,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     return undefined;
   }
 
-  private looksLikeGitCommand(text: string): boolean {
-    const trimmed = (text || "").trim();
-    if (!trimmed) return false;
-    if (/^git\s+\S+/i.test(trimmed)) return true;
-    if (/`git\s+[^`]+`/i.test(trimmed)) return true;
-    if (/\b(run|execute|please run|can you run)\s+git\s+\S+/i.test(trimmed)) {
-      return true;
-    }
-    const lower = trimmed.toLowerCase();
-    if (/\b(review|analyz|analyse|audit|inspect|quality)\b/.test(lower)) {
-      return false;
-    }
-    const hasGitWord = /\bgit\b/.test(lower);
-    const diffIntent =
-      /\b(diff|compare)\b/.test(lower) ||
-      (/\bchanges\b/.test(lower) && /\b(git|branch|main|master)\b/.test(lower));
-    if (diffIntent) return true;
-    if (/\bworking tree\b/.test(lower)) return true;
-    if (/\b(staged|unstaged)\b/.test(lower)) return true;
-    if (/\bstatus\b/.test(lower) && hasGitWord) return true;
-    if (/\b(current|active|which|what)\s+branch\b/.test(lower)) return true;
-    if (/\bbranches?\b/.test(lower)) return true;
-    if (/\b(log|history|recent commits|last commit)\b/.test(lower)) return true;
-    if (/\b(remote|remotes)\b/.test(lower)) return true;
-    return false;
-  }
+  // 🚀 LLM-FIRST: Removed looksLikeGitCommand()
+  // No longer needed - LLM backend handles all git-related queries
 
   private async getGitHealth(workspaceRoot: string): Promise<{ isGitRepo: boolean; hasHead: boolean }> {
     try {
@@ -5333,129 +5377,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async handleDiagnosticsRequest(text?: string): Promise<void> {
-    console.log('[AEP] [Phase 4.2] Using NAVI analyze-problems endpoint for diagnostic handling');
-
-    const workspaceRoot = this.getActiveWorkspaceRoot();
-    const lower = (text || '').toLowerCase();
-    const restrictToActiveFile = /\b(current file|this file|active file|open file)\b/.test(lower);
-
-    try {
-      this.postToWebview({
-        type: 'navi.assistant.thinking',
-        thinking: true
-      });
-
-      // Step 1: Collect VS Code diagnostics
-      const allDiagnostics = vscode.languages.getDiagnostics();
-      const activeEditor = vscode.window.activeTextEditor;
-      const activePath = activeEditor?.document?.uri.fsPath;
-
-      const diagnostics = restrictToActiveFile && activePath
-        ? allDiagnostics.filter(([uri]) => uri.fsPath === activePath)
-        : allDiagnostics;
-
-      const errorCount = diagnostics.reduce((count, [_, diags]) => count + diags.length, 0);
-      const fileCount = diagnostics.length;
-
-      // Step 2: Transform diagnostics for analyze-problems API
-      const diagnosticsData = Array.from(diagnostics).map(([uri, diags]) => {
-        const filePath = workspaceRoot
-          ? path.relative(workspaceRoot, uri.fsPath)
-          : uri.fsPath;
-
-        return {
-          uri: uri.toString(),
-          path: filePath,
-          diagnostics: diags.map(d => ({
-            message: d.message,
-            severity: d.severity,
-            line: d.range.start.line,
-            character: d.range.start.character,
-            source: d.source,
-            code: d.code
-          }))
-        };
-      });
-
-      const affectedFiles = Array.from(diagnostics).map(([uri]) =>
-        workspaceRoot ? path.relative(workspaceRoot, uri.fsPath) : path.basename(uri.fsPath)
-      );
-
-      // Step 3: Call NAVI analyze-problems endpoint
-      const response = await this.callAnalyzeProblemsEndpoint({
-        user_input: text || 'fix problems in workspace',
-        session_id: `session-${Date.now()}`,
-        workspace: workspaceRoot || 'workspace',
-        diagnostics: diagnosticsData,
-        diagnostics_count: errorCount,
-        active_file: activePath ? path.relative(workspaceRoot || '', activePath) : undefined
-      });
-
-      // Step 4: Handle grounding result
-      if (!response.success) {
-        // Grounding rejected or failed
-        this.postToWebview({
-          type: 'navi.assistant.message',
-          content: `❌ Unable to process diagnostic request.\n\n${response.error || 'Unknown error'}`
-        });
-        return;
-      }
-
-      if (!response.plan) {
-        this.postToWebview({
-          type: 'navi.assistant.message',
-          content: `⚠️ No plan generated. The task grounding system did not generate a plan.`
-        });
-        return;
-      }
-
-      // Step 5: Handle successful grounding with approval workflow
-      const plan = response.plan;
-      const executionTaskId = plan?.execution?.task_id || response.execution_result?.task_id;
-
-      if (executionTaskId) {
-        plan.execution = plan.execution || {};
-        plan.execution.task_id = executionTaskId;
-      }
-
-      if (!plan.id && executionTaskId) {
-        plan.id = executionTaskId;
-      }
-
-      const requiresApproval = plan.requires_approval;
-
-      this.postToWebview({
-        type: 'navi.assistant.plan',
-        plan,
-        reasoning: response.reasoning,
-        session_id: response.session_id
-      });
-
-      if (!requiresApproval) {
-        this.postToWebview({
-          type: 'navi.assistant.message',
-          content: `✅ Analysis complete.\n\n${response.reasoning || 'Plan generated.'}`
-        });
-      }
-
-    } catch (error) {
-      console.error('[AEP] [Phase 4.2] Error in handleDiagnosticsRequest:', error);
-
-      this.postToWebview({
-        type: 'navi.assistant.message',
-        content:
-          `⚠️ Could not connect to NAVI analysis system.\n\n` +
-          `Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\n` +
-          `Please ensure the backend is running and try again.`
-      });
-    } finally {
-      this.postToWebview({
-        type: 'navi.assistant.thinking',
-        thinking: false
-      });
-    }
-  }
+  // 🚀 LLM-FIRST: Removed handleDiagnosticsRequest()
+  // No longer needed - diagnostics are now sent as context to LLM backend
+  // Old endpoint: /api/v1/navi/analyze-problems (removed)
+  // New flow: All requests go through /api/navi/chat with full VS Code context
 
   private createPlanId(prefix: string): string {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -5638,8 +5563,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     model: string,
     attachmentsOverride?: FileAttachment[]
   ): Promise<void> {
+    // 🚀 LLM-FIRST: Simplified - removed repo overview interception
     let attachments = attachmentsOverride ?? this.getCurrentAttachments();
-    const repoOverview = this.isRepoOverviewQuestion(content);
     let autoSummary: string | null = null;
 
     this.postToWebview({
@@ -5648,11 +5573,6 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     });
 
     try {
-      if (repoOverview) {
-        await this.handleLocalExplainRepo(content);
-        return;
-      }
-
       if (!attachments || attachments.length === 0) {
         const auto = this.buildAutoAttachments(content);
         if (auto) {
@@ -5671,30 +5591,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private isRepoOverviewQuestion(message: string): boolean {
-    const text = (message || '').toLowerCase();
-    if (!text.trim()) {
-      return false;
-    }
-
-    // Match various forms of repo/codebase questions
-    const repoKeyword = /(this\s+)?(repo|repository|codebase|project|workspace|application|app)/.test(text);
-    const intentKeyword = /(analy[sz]e|explain|overview|summary|describe|walk\s+me\s+through|what\s+(is|does)|how\s+does|tell\s+me\s+about)/.test(text);
-    const architectureKeyword = /(architecture|structure|component|organization|design|layout)/.test(text);
-
-    const result = (repoKeyword && intentKeyword) || (architectureKeyword && intentKeyword);
-
-    console.log('[AEP] 🔍 isRepoOverviewQuestion check:', {
-      message: text,
-      repoKeyword,
-      intentKeyword,
-      architectureKeyword,
-      result
-    });
-
-    // Match if it has repo/project keyword + intent OR architecture keyword + intent
-    return result;
-  }
+  // 🚀 LLM-FIRST: Removed isRepoOverviewQuestion()
+  // No longer needed - LLM understands all question types
 
   private emitReadOnlyContext(attachments: FileAttachment[] | undefined | null, summary?: string) {
     const files = (attachments || [])
@@ -6016,38 +5914,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  /**
-   * Call the NAVI analyze-problems endpoint
-   */
-  private async callAnalyzeProblemsEndpoint(request: any): Promise<any> {
-    try {
-      const backendUrl = this.getBackendBaseUrl();
-      const url = `${backendUrl}/api/v1/navi/analyze-problems`;
-
-      console.log('[AEP] [Phase 4.2] Calling NAVI analyze-problems:', url);
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json() as any;
-      const status = result.success ? 'SUCCESS' : 'FAILED';
-      console.log('[AEP] [Phase 4.2] NAVI analyze-problems response:', status);
-
-      return result;
-    } catch (error) {
-      console.error('[AEP] [Phase 4.2] Failed to call analyze-problems endpoint:', error);
-      throw error;
-    }
-  }
+  // 🚀 LLM-FIRST: Removed callAnalyzeProblemsEndpoint()
+  // Old endpoint: /api/v1/navi/analyze-problems (removed)
+  // New flow: All requests go through /api/navi/chat with full VS Code context
 
   private async executeApprovedTask(taskId: string, sessionId: string): Promise<void> {
     const workspaceRoot = this.getActiveWorkspaceRoot();
@@ -6214,6 +6083,40 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         console.log('[AEP STATE] State content:', previousState);
       }
 
+      // 🚀 LLM-FIRST: Gather full VS Code context
+      const workspaceRoot = this.getActiveWorkspaceRoot();
+      const editor = vscode.window.activeTextEditor;
+      const currentFile = editor?.document.uri.fsPath;
+      const currentFileContent = editor?.document.getText();
+      const currentFileRelative = currentFile && workspaceRoot ? path.relative(workspaceRoot, currentFile) : undefined;
+      const selection = editor && !editor.selection.isEmpty
+        ? editor.document.getText(editor.selection)
+        : undefined;
+
+      // Get diagnostics (errors) from VS Code
+      const errors: Array<{file: string; message: string; line?: number; severity?: string}> = [];
+      const diagnostics = vscode.languages.getDiagnostics();
+      for (const [uri, fileDiagnostics] of diagnostics) {
+        for (const diag of fileDiagnostics) {
+          if (diag.severity === vscode.DiagnosticSeverity.Error) {
+            const filePath = workspaceRoot ? path.relative(workspaceRoot, uri.fsPath) : uri.fsPath;
+            errors.push({
+              file: filePath,
+              message: diag.message,
+              line: diag.range.start.line + 1,
+              severity: 'error'
+            });
+          }
+        }
+      }
+
+      console.log('[AEP] 📋 Context gathered:', {
+        workspaceRoot: !!workspaceRoot,
+        currentFile: currentFileRelative,
+        hasSelection: !!selection,
+        errorCount: errors.length
+      });
+
       const response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
@@ -6239,7 +6142,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             name: path.basename(att.path || ''),
             path: att.path,
           })),
-          workspace_root: this.getActiveWorkspaceRoot(),
+          workspace_root: workspaceRoot,
+          current_file: currentFileRelative,
+          current_file_content: currentFileContent,
+          selection: selection,
+          errors: errors.slice(0, 20), // Limit to first 20 errors
           state: previousState || undefined // Include state for autonomous coding continuity
         }),
         signal: controller.signal
@@ -6298,6 +6205,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         actions: Array.isArray(data.actions) ? data.actions : undefined,
         agentRun: data.agentRun || null,
       });
+
+      // 🚀 LLM-FIRST: Actions are sent to webview for user approval
+      // They will be executed when user clicks "Apply" via handleAgentApplyAction
+      // DO NOT auto-execute commands here - that bypasses the approval flow
+      console.log('[AEP] ✅ Actions sent to webview for user approval:', data.actions?.length || 0);
     } catch (error) {
       console.error('[AEP] ❌ Chat routing error:', error);
       this.postToWebview({ type: 'botThinking', value: false });
@@ -6308,339 +6220,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async handleLocalExplainRepo(originalMessage: string): Promise<void> {
-    // Try to infer a meaningful "repo root" from the workspace or active file.
-    let workspaceRootPath = this.getActiveWorkspaceRoot();
-    const editor = vscode.window.activeTextEditor;
-    const activeFilePath = editor?.document?.uri.fsPath;
-
-    console.log('[AEP] 🔍 handleLocalExplainRepo debug:', {
-      originalMessage,
-      workspaceRootPath,
-      activeFilePath,
-      workspaceFolders: vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath)
-    });
-
-    let repoName: string;
-
-    if (workspaceRootPath) {
-      repoName = path.basename(workspaceRootPath);
-    } else if (activeFilePath) {
-      const maybeRoot = path.dirname(activeFilePath);
-      workspaceRootPath = maybeRoot;
-      repoName = path.basename(maybeRoot);
-    } else {
-      repoName = 'current';
-    }
-
-    if (!workspaceRootPath) {
-      const text =
-        `You're currently working in the **${repoName}** workspace in VS Code.\n\n` +
-        `I couldn't infer a project root from VS Code (no folder is open yet). ` +
-        `Try opening a folder in VS Code and ask again, or tell me which file or directory you want me to analyse.`;
-
-      this._messages.push({ role: 'assistant', content: text });
-      this.postToWebview({ type: 'botThinking', value: false });
-      this.postToWebview({ type: 'botMessage', text });
-      return;
-    }
-
-    const rootUri = vscode.Uri.file(workspaceRootPath);
-    const readFiles: Array<{ path: string; kind?: string }> = [];
-
-    // Helper to read package.json at root or subfolder (e.g. "frontend", "backend")
-    const readPkg = async (subdir?: string): Promise<any | null> => {
-      try {
-        const segments = subdir ? [subdir, 'package.json'] : ['package.json'];
-        const pkgUri = vscode.Uri.joinPath(rootUri, ...segments);
-        const bytes = await vscode.workspace.fs.readFile(pkgUri);
-        const text = new TextDecoder().decode(bytes);
-        readFiles.push({ path: segments.join('/'), kind: 'file' });
-        return JSON.parse(text);
-      } catch {
-        return null;
-      }
-    };
-
-    // Helper to check if a file exists
-    const exists = async (...segments: string[]): Promise<boolean> => {
-      try {
-        const uri = vscode.Uri.joinPath(rootUri, ...segments);
-        await vscode.workspace.fs.stat(uri);
-        return true;
-      } catch {
-        return false;
-      }
-    };
-
-    // 1) Discover top-level folders
-    let topLevelDirs: string[] = [];
-    try {
-      const entries = await vscode.workspace.fs.readDirectory(rootUri);
-      topLevelDirs = entries
-        .filter(([_, type]) => type === vscode.FileType.Directory)
-        .map(([name]) => name)
-        .sort();
-    } catch {
-      // ignore; not critical
-    }
-
-    const hasFrontend = topLevelDirs.includes('frontend');
-    const hasBackend = topLevelDirs.includes('backend');
-    const hasSrc = topLevelDirs.includes('src');
-    const hasApps = topLevelDirs.includes('apps');
-    const hasPackages = topLevelDirs.includes('packages');
-
-    // 2) Read package.json(s) + README
-    const [rootPkg, frontendPkg, backendPkg] = await Promise.all([
-      readPkg(),
-      hasFrontend ? readPkg('frontend') : Promise.resolve(null),
-      hasBackend ? readPkg('backend') : Promise.resolve(null),
-    ]);
-
-    let readme: string | null = null;
-    for (const name of ['README.md', 'readme.md']) {
-      if (readme) break;
-      try {
-        const uri = vscode.Uri.joinPath(rootUri, name);
-        const bytes = await vscode.workspace.fs.readFile(uri);
-        const text = new TextDecoder().decode(bytes);
-        readme = text.trim();
-        readFiles.push({ path: name, kind: 'file' });
-      } catch {
-        // no README at this path, continue
-      }
-    }
-
-    const displayName: string =
-      (rootPkg && typeof rootPkg.name === 'string' && rootPkg.name.trim()) ||
-      repoName;
-
-    const description: string | null =
-      rootPkg &&
-        typeof rootPkg.description === 'string' &&
-        rootPkg.description.trim()
-        ? rootPkg.description.trim()
-        : null;
-
-    // 3) Infer tech stack from package.jsons + structure
-    const techs: string[] = [];
-    const addTech = (label: string) => {
-      if (!techs.includes(label)) techs.push(label);
-    };
-
-    const collectTechFromPkg = (pkg: any | null) => {
-      if (!pkg || typeof pkg !== 'object') return;
-      const deps = {
-        ...(pkg.dependencies || {}),
-        ...(pkg.devDependencies || {}),
-      };
-      const scripts = pkg.scripts || {};
-
-      if (deps.react) addTech('React');
-      if (deps['react-dom']) addTech('React DOM');
-      if (deps.next) addTech('Next.js');
-      if (deps.vite) addTech('Vite');
-      if (deps.typescript) addTech('TypeScript');
-      if (deps['tailwindcss']) addTech('Tailwind CSS');
-      if (deps['express'] || deps['fastify'] || deps['koa']) {
-        addTech('Node.js API server');
-      }
-      if (deps['@vscode/webview-ui-toolkit'] || (pkg.engines && pkg.engines.vscode)) {
-        addTech('VS Code extension');
-      }
-
-      const devScript: string = scripts.dev || '';
-      if (devScript.includes('next')) addTech('Next.js dev server');
-      if (devScript.includes('vite')) addTech('Vite dev server');
-    };
-
-    collectTechFromPkg(rootPkg);
-    collectTechFromPkg(frontendPkg);
-    collectTechFromPkg(backendPkg);
-
-    // 4) Detect VS Code extension entrypoint
-    let hasExtensionEntrypoint = false;
-    if (await exists('src', 'extension.ts')) {
-      hasExtensionEntrypoint = true;
-      addTech('VS Code extension');
-    }
-
-    // 5) Build high-level structure summary
-    const structureLines: string[] = [];
-
-    if (hasFrontend) {
-      const labelParts: string[] = ['frontend/ — main web UI'];
-      if (frontendPkg) {
-        const deps = {
-          ...(frontendPkg.dependencies || {}),
-          ...(frontendPkg.devDependencies || {}),
-        };
-        if (deps.next) labelParts.push('(Next.js)');
-        else if (deps.vite) labelParts.push('(Vite + React)');
-        else if (deps.react) labelParts.push('(React app)');
-      }
-      structureLines.push(`- \`frontend/\` — ${labelParts.join(' ')}`);
-    }
-
-    if (hasBackend) {
-      const labelParts: string[] = ['backend/ — server/API layer'];
-      if (backendPkg) {
-        const deps = {
-          ...(backendPkg.dependencies || {}),
-          ...(backendPkg.devDependencies || {}),
-        };
-        if (deps.express) labelParts.push('(Express.js API)');
-        else if (deps.fastify) labelParts.push('(Fastify API)');
-        else if (deps.koa) labelParts.push('(Koa API)');
-      }
-      structureLines.push(`- \`backend/\` — ${labelParts.join(' ')}`);
-    }
-
-    if (hasSrc) {
-      const base = hasExtensionEntrypoint
-        ? 'src/ — VS Code extension sources (including extension.ts)'
-        : 'src/ — main source files';
-      structureLines.push(`- \`src/\` — ${base}`);
-    }
-
-    if (hasApps) {
-      structureLines.push('- `apps/` — multi-app/monorepo entry points');
-    }
-
-    if (hasPackages) {
-      structureLines.push('- `packages/` — shared libraries in a monorepo setup');
-    }
-
-    const otherDirs = topLevelDirs.filter(
-      (d) =>
-        ![
-          'frontend',
-          'backend',
-          'src',
-          'apps',
-          'packages',
-          '.git',
-          '.vscode',
-          'node_modules',
-        ].includes(d),
-    );
-    if (otherDirs.length > 0) {
-      structureLines.push(
-        `- Other top-level dirs: ${otherDirs.map((d) => `\`${d}/\``).join(', ')}`,
-      );
-    }
-
-    // 6) README snippet
-    let readmeSnippet: string | null = null;
-    if (readme) {
-      const lines = readme.split('\n').slice(0, 12);
-      const snippet = lines.join('\n').trim();
-      readmeSnippet =
-        snippet.length > 500 ? snippet.slice(0, 500).trimEnd() + '…' : snippet;
-    }
-
-    // 7) Compose final dynamic answer
-    const parts: string[] = [];
-
-    parts.push(
-      `You're currently working in the **${displayName}** repo at \`${workspaceRootPath}\`.`,
-    );
-
-    if (description) {
-      parts.push(`\n**Description (from package.json):** ${description}`);
-    }
-
-    if (techs.length > 0) {
-      parts.push(`\n**Tech stack signals:** ${techs.join(', ')}.`);
-    }
-
-    if (structureLines.length > 0) {
-      parts.push('\n**Repo structure (top level):**\n');
-      parts.push(structureLines.join('\n'));
-    }
-
-    if (readmeSnippet) {
-      parts.push(`\n**README snapshot:**\n\n${readmeSnippet}`);
-    }
-
-    // Instead of just showing a shallow summary, let's call the backend with key files
-    // so the AI can provide a deep analysis of the architecture
-    const contextMessage = parts.join('\n');
-
-    // Build attachments for key architecture files
-    const attachments: FileAttachment[] = [];
-
-    // Helper to attach a file if it exists
-    const attachIfExists = async (relativePath: string) => {
-      try {
-        const uri = vscode.Uri.joinPath(rootUri, relativePath);
-        const bytes = await vscode.workspace.fs.readFile(uri);
-        const content = new TextDecoder().decode(bytes);
-
-        attachments.push({
-          path: relativePath,
-          content: content,
-          kind: 'file',
-          language: relativePath.endsWith('.py') ? 'python'
-                  : relativePath.endsWith('.ts') ? 'typescript'
-                  : relativePath.endsWith('.js') ? 'javascript'
-                  : relativePath.endsWith('.json') ? 'json'
-                  : 'plaintext'
-        });
-
-        readFiles.push({ path: relativePath, kind: 'file' });
-      } catch {
-        // File doesn't exist, skip
-      }
-    };
-
-    // Attach key architecture files
-    await attachIfExists('README.md');
-    await attachIfExists('package.json');
-
-    // Backend-specific files
-    if (hasBackend) {
-      await attachIfExists('backend/api/main.py');
-      await attachIfExists('backend/requirements.txt');
-      await attachIfExists('backend/package.json');
-    }
-
-    // Frontend-specific files
-    if (hasFrontend) {
-      await attachIfExists('frontend/package.json');
-      await attachIfExists('frontend/src/App.tsx');
-      await attachIfExists('frontend/src/App.jsx');
-    }
-
-    // VS Code extension files
-    if (hasExtensionEntrypoint) {
-      await attachIfExists('src/extension.ts');
-      await attachIfExists('package.json');
-    }
-
-    console.log('[AEP] Calling backend for deep repo analysis with attachments:', {
-      repoName: displayName,
-      path: workspaceRootPath,
-      attachmentCount: attachments.length,
-      attachedFiles: attachments.map(a => a.path)
-    });
-
-    // Show the context we're using
-    if (readFiles.length > 0) {
-      this.postToWebview({
-        type: 'navi.readonly.context',
-        files: readFiles,
-        summary: 'Analyzing repo architecture with key files'
-      });
-    }
-
-    // Prepare enhanced prompt with context using template method
-    const enhancedPrompt = this.buildRepoAnalysisPrompt(contextMessage, originalMessage);
-
-    // Call the backend with the attachments for deep analysis
-    await this.callNaviBackend(enhancedPrompt, undefined, undefined, attachments);
-  }
+  // 🚀 LLM-FIRST: Removed handleLocalExplainRepo() - 333 lines of local repo analysis code
+  // No longer needed - repo analysis now handled by LLM backend with full context
+  // Old flow: Local file reading + regex patterns + manual analysis
+  // New flow: All requests go through /api/navi/chat with workspace context
 
   private async handleGitInitRequest(requestedScope: DiffScope): Promise<void> {
     const workspaceRoot = this.getActiveWorkspaceRoot();
@@ -9103,28 +8686,109 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     try {
       console.log('[Extension Host] [AEP] Applying agent action:', action);
 
+      // Notify UI that action execution started
+      this.postToWebview({
+        type: 'action.start',
+        action: action,
+        actionIndex: actionIndex
+      });
+
+      // Use dynamic action registry if available, otherwise fall back to legacy handlers
+      if (globalActionRegistry) {
+        const result = await globalActionRegistry.execute(action, {
+          workspaceRoot: this.getActiveWorkspaceRoot(),
+          approvedViaChat: Boolean(approvedViaChat),
+          postMessage: (msg) => this.postToWebview(msg),
+          showMessage: (msg) => vscode.window.showInformationMessage(msg)
+        });
+
+        if (!result.success) {
+          console.error('[Extension Host] [AEP] Action execution failed:', result.error);
+          vscode.window.showErrorMessage(result.message || 'Action execution failed');
+
+          // Send failure notification to webview
+          this.postToWebview({
+            type: 'action.complete',
+            action: action,
+            actionIndex: actionIndex,
+            success: false,
+            message: result.message || 'Action execution failed',
+            error: result.error
+          });
+        } else {
+          console.log('[Extension Host] [AEP] Action executed successfully:', result.message);
+
+          // Send success notification to webview (includes actionIndex for sequential approval)
+          this.postToWebview({
+            type: 'action.complete',
+            action: action,
+            actionIndex: actionIndex,  // Important: needed for sequential approval tracking
+            success: true,
+            message: result.message,
+            data: result.data
+          });
+        }
+        return;
+      }
+
+      // Legacy fallback (will be removed once registry is stable)
+      console.warn('[Extension Host] [AEP] ActionRegistry not available, using legacy handlers');
+
+      let legacySuccess = false;
+      let legacyMessage = '';
+
       // 1) Create new file
       if (action.type === 'createFile') {
         await this.applyCreateFileAction(action);
-        return;
+        legacySuccess = true;
+        legacyMessage = `Created file: ${action.filePath || 'unknown'}`;
       }
-
       // 2) Edit existing file with diff
-      if (action.type === 'editFile') {
+      else if (action.type === 'editFile') {
         await this.applyEditFileAction(action);
-        return;
+        legacySuccess = true;
+        legacyMessage = `Edited file: ${action.filePath || 'unknown'}`;
       }
-
       // 3) Run terminal command
-      if (action.type === 'runCommand') {
+      else if (action.type === 'runCommand') {
         await this.applyRunCommandAction(action, { skipConfirm: Boolean(approvedViaChat) });
-        return;
+        legacySuccess = true;
+        legacyMessage = `Executed command: ${action.command || 'unknown'}`;
+      }
+      // 4) Execute VS Code command
+      else if (action.type === 'vscode_command') {
+        await this.applyVSCodeCommandAction(action);
+        legacySuccess = true;
+        legacyMessage = `Executed VS Code command: ${action.command || 'unknown'}`;
+      }
+      else {
+        console.warn('[Extension Host] [AEP] Unknown action type:', action.type);
+        legacySuccess = false;
+        legacyMessage = `Unknown action type: ${action.type}`;
       }
 
-      console.warn('[Extension Host] [AEP] Unknown action type:', action.type);
+      // Send completion notification for legacy handlers
+      this.postToWebview({
+        type: 'action.complete',
+        action: action,
+        actionIndex: actionIndex,
+        success: legacySuccess,
+        message: legacyMessage
+      });
+
     } catch (error: any) {
       console.error('[Extension Host] [AEP] Error applying action:', error);
       vscode.window.showErrorMessage(`Failed to apply action: ${error.message}`);
+
+      // Send error notification to webview
+      this.postToWebview({
+        type: 'action.complete',
+        action: action,
+        actionIndex: actionIndex,
+        success: false,
+        message: `Failed to apply action: ${error.message}`,
+        error: error
+      });
     }
   }
 
@@ -9141,22 +8805,47 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
     for (const action of actions) {
       try {
-        if (!action || !action.type) {
+        if (!action) {
           console.warn('[Extension Host] [AEP] Skipping invalid action in workspace plan:', action);
           continue;
         }
 
-        if (action.type === 'createFile') {
-          await this.applyCreateFileAction(action);
-          appliedCount += 1;
-        } else if (action.type === 'editFile') {
-          await this.applyEditFileAction(action);
-          appliedCount += 1;
-        } else if (action.type === 'runCommand') {
-          await this.applyRunCommandAction(action);
-          appliedCount += 1;
+        // Use dynamic action registry if available
+        if (globalActionRegistry) {
+          const result = await globalActionRegistry.execute(action, {
+            workspaceRoot: this.getActiveWorkspaceRoot(),
+            approvedViaChat: true, // Workspace plans are pre-approved
+            postMessage: (msg) => this.postToWebview(msg),
+            showMessage: (msg) => vscode.window.showInformationMessage(msg)
+          });
+
+          if (result.success) {
+            appliedCount += 1;
+          } else {
+            console.error('[Extension Host] [AEP] Action failed:', result.error);
+          }
         } else {
-          console.warn('[Extension Host] [AEP] Unknown action type in workspace plan:', action.type);
+          // Legacy fallback
+          if (!action.type) {
+            console.warn('[Extension Host] [AEP] Skipping action without type:', action);
+            continue;
+          }
+
+          if (action.type === 'createFile') {
+            await this.applyCreateFileAction(action);
+            appliedCount += 1;
+          } else if (action.type === 'editFile') {
+            await this.applyEditFileAction(action);
+            appliedCount += 1;
+          } else if (action.type === 'runCommand') {
+            await this.applyRunCommandAction(action);
+            appliedCount += 1;
+          } else if (action.type === 'vscode_command') {
+            await this.applyVSCodeCommandAction(action);
+            appliedCount += 1;
+          } else {
+            console.warn('[Extension Host] [AEP] Unknown action type in workspace plan:', action.type);
+          }
         }
       } catch (err: any) {
         console.error('[Extension Host] [AEP] Failed to apply action in workspace plan:', err);
@@ -9398,6 +9087,26 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         error: err?.message || String(err),
       });
       return null;
+    }
+  }
+
+  // ---- Execute VS Code command -------------------------------
+  private async applyVSCodeCommandAction(action: any): Promise<void> {
+    const command = action.command;
+    const args = action.args || [];
+
+    if (!command) {
+      console.warn('[Extension Host] [AEP] VS Code command action missing command field');
+      return;
+    }
+
+    try {
+      console.log(`[Extension Host] [AEP] Executing VS Code command: ${command} with args:`, args);
+      await vscode.commands.executeCommand(command, ...args);
+      console.log(`[Extension Host] [AEP] Successfully executed VS Code command: ${command}`);
+    } catch (error: any) {
+      console.error(`[Extension Host] [AEP] Failed to execute VS Code command ${command}:`, error);
+      vscode.window.showErrorMessage(`Failed to execute command: ${error.message}`);
     }
   }
 
@@ -10043,14 +9752,16 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       this.recordMemoryEvent('chat:user', { content: message, ts: Date.now() }).catch(() => { });
 
-      // Show thinking state and process diagnostics
+      // 🚀 LLM-FIRST: Route through unified LLM backend instead of old handleDiagnosticsRequest
       this.postToWebview({ type: 'botThinking', value: true });
 
-      await this.handleDiagnosticsRequest(message);
+      // Use the unified smart routing that sends full VS Code context to LLM
+      await this.handleSmartRouting(message, this._currentModelId || 'gpt-4', this._currentModeId || 'chat', [], '', '');
+
       this.postToWebview({ type: 'botThinking', value: false });
 
       // Show confirmation to user
-      vscode.window.setStatusBarMessage('NAVI: Running diagnostics...', 3000);
+      vscode.window.setStatusBarMessage('NAVI: Analyzing errors...', 3000);
     } catch (error) {
       console.error('[Extension Host] [AEP] Check errors command failed:', error);
       vscode.window.showErrorMessage('Failed to run error checking.');

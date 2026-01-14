@@ -1,0 +1,175 @@
+# Intent Pattern Configuration
+# Patterns for natural language understanding in English
+
+patterns:
+  # Navigation / Project Opening
+  - regex: "open\\s+(.+?)(?:\\s+project)?$"
+    action: "open_project"
+    confidence: 0.9
+    examples:
+      - "open my-app"
+      - "open the dashboard project"
+
+  - regex: "(?:go|switch)\\s+to\\s+(.+)"
+    action: "open_project"
+    confidence: 0.85
+    examples:
+      - "go to my-app"
+      - "switch to dashboard"
+
+  # Component Creation
+  - regex: "(?:create|make|add|new)\\s+(?:a\\s+)?(?:new\\s+)?component\\s+(?:called\\s+|named\\s+)?(.+)"
+    action: "create_component"
+    confidence: 0.95
+    examples:
+      - "create a component Button"
+      - "make a new component called LoginForm"
+      - "add component UserCard"
+
+  - regex: "(?:create|make|add|new)\\s+(?:a\\s+)?(?:new\\s+)?(.+)\\s+component"
+    action: "create_component"
+    confidence: 0.95
+    examples:
+      - "create a sidebar component"
+      - "make a login component"
+      - "add navigation component"
+
+  # Page Creation
+  - regex: "(?:create|make|add|new)\\s+(?:a\\s+)?(?:new\\s+)?(?:page|screen|route)\\s+(?:called\\s+|named\\s+|for\\s+)?(.+)"
+    action: "create_page"
+    confidence: 0.95
+    examples:
+      - "create a page dashboard"
+      - "make a new screen for settings"
+
+  - regex: "(?:create|make|add|new)\\s+(?:a\\s+)?(?:new\\s+)?(.+)\\s+(?:page|screen)"
+    action: "create_page"
+    confidence: 0.95
+    examples:
+      - "create a login page"
+      - "make a dashboard screen"
+      - "add settings page"
+      - "add page profile"
+
+  # API Endpoint Creation
+  - regex: "(?:create|make|add|new)\\s+(?:an?\\s+)?(?:new\\s+)?(?:api|endpoint)\\s+(?:for\\s+|to\\s+)?(.+)"
+    action: "create_api"
+    confidence: 0.95
+    examples:
+      - "create an API for users"
+      - "make a new endpoint for auth"
+      - "add API /products"
+
+  # File Creation
+  - regex: "(?:create|make|add|new)\\s+(?:a\\s+)?(?:new\\s+)?file\\s+(.+)"
+    action: "create_file"
+    confidence: 0.9
+    examples:
+      - "create a file config.json"
+      - "make file utils.ts"
+
+  # Git Operations
+  - regex: "(?:commit|save)(?:\\s+(?:these\\s+)?changes)?(?:\\s+with\\s+message\\s+[\"'](.+)[\"'])?"
+    action: "git_commit"
+    confidence: 0.9
+    examples:
+      - "commit these changes"
+      - "save with message 'Add login feature'"
+      - "commit"
+
+  - regex: "(?:push|upload)(?:\\s+(?:to\\s+)?(?:remote|origin|github))?"
+    action: "git_push"
+    confidence: 0.9
+    examples:
+      - "push to remote"
+      - "upload to github"
+
+  - regex: "create\\s+(?:a\\s+)?(?:pr|pull\\s+request)(?:\\s+for\\s+(.+))?"
+    action: "create_pr"
+    confidence: 0.95
+    examples:
+      - "create a PR"
+      - "create pull request for login feature"
+
+  - regex: "(?:create|checkout|switch\\s+to)\\s+branch\\s+(.+)"
+    action: "git_branch"
+    confidence: 0.9
+    examples:
+      - "create branch feature/auth"
+      - "checkout branch develop"
+
+  # Package Management
+  - regex: "install\\s+(.+?)(?:\\s+as\\s+(?:dev|development)(?:\\s+dependency)?)?"
+    action: "install_package"
+    confidence: 0.95
+    examples:
+      - "install axios"
+      - "install jest as dev dependency"
+
+  # Code Operations
+  - regex: "fix\\s+(?:the\\s+)?(.+?)(?:\\s+(?:bug|error|issue))?"
+    action: "fix_bug"
+    confidence: 0.85
+    examples:
+      - "fix the login bug"
+      - "fix authentication error"
+
+  - regex: "refactor\\s+(.+)"
+    action: "refactor"
+    confidence: 0.9
+    examples:
+      - "refactor UserList component"
+      - "refactor the authentication logic"
+
+  - regex: "(?:create|add|write)\\s+(?:tests?|specs?)\\s+for\\s+(.+)"
+    action: "create_test"
+    confidence: 0.9
+    examples:
+      - "create tests for UserService"
+      - "write test for login function"
+
+  - regex: "run\\s+tests?"
+    action: "run_tests"
+    confidence: 0.95
+    examples:
+      - "run tests"
+      - "run test"
+
+  - regex: "explain\\s+(.+)"
+    action: "explain_code"
+    confidence: 0.8
+    examples:
+      - "explain this code"
+      - "explain the UserService"
+
+  - regex: "add\\s+(?:a\\s+)?(.+)"
+    action: "add_feature"
+    confidence: 0.7
+    examples:
+      - "add dark mode"
+      - "add a search feature"
+
+# Fallback patterns (lower confidence, catch-all)
+fallback:
+  - regex: ".*"
+    action: "general"
+    confidence: 0.5
+
+# Preprocessing rules
+preprocessing:
+  - remove_punctuation: true
+  - lowercase: true
+  - trim_whitespace: true
+  - remove_extra_spaces: true
+
+# Typo tolerance
+typo_tolerance:
+  enabled: true
+  max_edit_distance: 2
+  common_typos:
+    "componenet": "component"
+    "comit": "commit"
+    "instlal": "install"
+    "intsall": "install"
+    "craete": "create"
+    "rrefactor": "refactor"

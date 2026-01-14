@@ -31,8 +31,9 @@ logger = logging.getLogger(__name__)
 async def ingest(
     request: Request,
     db: Session = Depends(get_db),
-    x_slack_request_timestamp: str
-    | None = Header(None, alias="X-Slack-Request-Timestamp"),
+    x_slack_request_timestamp: str | None = Header(
+        None, alias="X-Slack-Request-Timestamp"
+    ),
     x_slack_signature: str | None = Header(None, alias="X-Slack-Signature"),
     x_org_id: str | None = Header(None, alias="X-Org-Id"),
 ):

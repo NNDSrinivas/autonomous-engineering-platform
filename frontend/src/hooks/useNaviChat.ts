@@ -7,6 +7,9 @@ import { getRecommendedModel, type TaskType } from '@/lib/llmRouter';
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/navi-chat`;
 const RAG_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/rag-query`;
 
+// NAVI V2 backend URL - defaults to localhost for development
+const NAVI_BACKEND_URL = import.meta.env.VITE_NAVI_BACKEND_URL || 'http://localhost:8787';
+
 export interface LLMModel {
   id: string;
   name: string;
@@ -386,6 +389,42 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
     return 'Auto';
   };
 
+  // NAVI V2: Create plan with approval flow
+  const createPlan = useCallback(async (userMessage: string, workspace: string) => {
+    try {
+      const response = await fetch(`${NAVI_BACKEND_URL}/api/navi/plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage,
+          workspace,
+          llm_provider: 'anthropic',
+          context: {
+            current_file: undefined,
+            selected_text: undefined,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Plan creation failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        planId: data.plan_id,
+        requiresApproval: data.requires_approval,
+        actionsWithRisk: data.actions_with_risk || [],
+        thinkingSteps: data.thinking_steps || [],
+        filesRead: data.files_read || [],
+        content: data.message || data.content || '',
+      };
+    } catch (error) {
+      console.error('[NAVI] Plan creation error:', error);
+      throw error;
+    }
+  }, []);
+
   return {
     messages,
     setMessages,
@@ -403,5 +442,6 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
     getDisplayModelName,
     lastRouterInfo,
     preferencesLoaded,
+    createPlan, // NAVI V2: New method
   };
 }

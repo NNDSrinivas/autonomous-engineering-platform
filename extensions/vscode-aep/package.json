@@ -70,6 +70,27 @@
           "minimum": 10000,
           "maximum": 300000,
           "description": "Timeout in milliseconds for NAVI API requests (10s-300s). Increase for complex multi-step autonomous operations."
+        },
+        "aep.context.maxSearchFiles": {
+          "type": "number",
+          "default": 500,
+          "minimum": 10,
+          "maximum": 10000,
+          "description": "Maximum number of files to search in large codebases when gathering context"
+        },
+        "aep.context.maxMatchesPerFile": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of matches to show per file when gathering context"
+        },
+        "aep.context.maxSearchResults": {
+          "type": "number",
+          "default": 50,
+          "minimum": 5,
+          "maximum": 500,
+          "description": "Maximum total number of search results to return when gathering context"
         }
       }
     },
@@ -195,6 +216,7 @@
     "@aep/navi-contracts": "0.1.0",
     "@octokit/rest": "^22.0.1",
     "@types/diff": "^8.0.0",
+    "axios": "^1.13.2",
     "diff": "^8.0.2",
     "fast-glob": "^3.3.3",
     "simple-git": "^3.30.0"

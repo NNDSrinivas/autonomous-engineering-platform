@@ -70,6 +70,9 @@ from .routers.autonomous_coding import (
 # TEMPORARILY DISABLED FOR DEBUGGING - THESE IMPORTS ARE HANGING
 from .navi import router as navi_router  # PR-5B/PR-6: NAVI extension endpoint
 from .navi import agent_router as navi_agent_router  # Agent classification endpoint
+from .routers.navi import (
+    router as navi_engine_router,
+)  # Aggressive NAVI engine with code generation
 from .org_sync import router as org_sync_router  # Step 2: Jira/Confluence memory sync
 from .navi_search import router as navi_search_router  # Step 3: Unified RAG search
 from .github_actions import router as github_actions_router  # GitHub PR actions
@@ -382,6 +385,9 @@ app.include_router(
 app.include_router(
     navi_router, prefix="/api/navi"
 )  # PR-5B/PR-6: NAVI VS Code extension
+app.include_router(
+    navi_engine_router
+)  # Aggressive NAVI engine with code generation, git ops, dependency management
 app.include_router(navi_analyze_router)  # Phase 4.2: Task grounding for FIX_PROBLEMS
 app.include_router(navi_multirepo_router)  # Phase 4.8: Multi-repository intelligence
 app.include_router(governance_router)  # Phase 5.1: Human-in-the-Loop Governance

@@ -1041,22 +1041,22 @@ All changes verified and diagnostics are now clean."""
         # Enhance with NAVI-specific context
         if decision["action"] == "success":
             decision["staff_level"] = True
-            decision[
-                "message"
-            ] = "🎉 NAVI successfully resolved all issues and CI passed! PR ready for review."
+            decision["message"] = (
+                "🎉 NAVI successfully resolved all issues and CI passed! PR ready for review."
+            )
 
         elif decision["action"] == "analyze_and_fix":
             decision["staff_level"] = True
-            decision[
-                "message"
-            ] = "🔍 NAVI detected CI failures and can analyze/fix them autonomously."
+            decision["message"] = (
+                "🔍 NAVI detected CI failures and can analyze/fix them autonomously."
+            )
             decision["can_auto_fix"] = True
 
         elif decision["action"] == "escalate":
             decision["staff_level"] = False
-            decision[
-                "message"
-            ] = "⚠️ CI failure requires human expertise - NAVI will escalate properly."
+            decision["message"] = (
+                "⚠️ CI failure requires human expertise - NAVI will escalate properly."
+            )
 
         return decision
 
@@ -1482,9 +1482,7 @@ All changes verified and diagnostics are now clean."""
             file_path = (
                 target_files[i]
                 if i < len(target_files)
-                else target_files[0]
-                if target_files
-                else "unknown"
+                else target_files[0] if target_files else "unknown"
             )
 
             diagnostics.append(

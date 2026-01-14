@@ -279,6 +279,20 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
         if (data.agentRun) metadata.agentRun = data.agentRun;
         if (data.suggestions) metadata.suggestions = data.suggestions;
 
+        // 🚀 Execute VS Code commands from aggressive NAVI actions
+        if (data.actions && Array.isArray(data.actions)) {
+          for (const action of data.actions) {
+            if (action.type === 'vscode_command' && window.vscode) {
+              console.log('[NAVI] Executing VS Code command:', action.command, action.args);
+              window.vscode.postMessage({
+                type: 'executeCommand',
+                command: action.command,
+                args: action.args
+              });
+            }
+          }
+        }
+
         onDone({ id: modelToUse, name: modelName }, metadata);
       }
     } catch (error) {

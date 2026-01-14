@@ -32,8 +32,7 @@ class ToolExecutor(Protocol):
         *,
         intent: NaviIntent,
         context: Dict[str, Any],
-    ) -> StepResult:
-        ...
+    ) -> StepResult: ...
 
 
 class RealToolExecutor(ToolExecutor):

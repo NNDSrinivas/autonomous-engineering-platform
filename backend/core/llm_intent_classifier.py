@@ -37,13 +37,13 @@ class LLMIntentClassifier:
     Supports multiple LLM providers via the professional LLM router.
     """
 
-    def __init__(self, config_loader=None, model_provider="anthropic", model_name=None):
+    def __init__(self, config_loader=None, model_provider="openai", model_name=None):
         """
         Initialize with optional config loader for action examples
 
         Args:
             config_loader: Optional config loader for examples
-            model_provider: "openai", "anthropic", "google", "mistral", etc. (default: "anthropic")
+            model_provider: "openai", "anthropic", "google", "mistral", etc. (default: "openai")
             model_name: Specific model to use (e.g., "gpt-4o-mini", "claude-3-5-sonnet-20241022")
         """
         self.config_loader = config_loader
@@ -465,13 +465,13 @@ def get_llm_classifier():
     Get singleton LLM classifier instance.
 
     Configuration via environment variables:
-    - NAVI_LLM_PROVIDER: openai, anthropic, google, mistral, xai (default: anthropic)
+    - NAVI_LLM_PROVIDER: openai, anthropic, google, mistral, xai (default: openai)
     - NAVI_LLM_MODEL: specific model name (default: provider-specific)
     """
     global _classifier_instance
     if _classifier_instance is None:
         # Get provider and model from environment
-        provider = os.getenv("NAVI_LLM_PROVIDER", "anthropic").lower()
+        provider = os.getenv("NAVI_LLM_PROVIDER", "openai").lower()
         model = os.getenv("NAVI_LLM_MODEL")
 
         try:

@@ -10,7 +10,7 @@
         "module": "ESNext",
         "moduleResolution": "Node",
         "strict": true,
-        "skipLibCheck": false,
+        "skipLibCheck": true,
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
         "resolveJsonModule": true,
@@ -20,11 +20,13 @@
         "baseUrl": ".",
         "paths": {
             "@/*": ["src/*"]
-        }
+        },
+        "types": ["vite/client", "node"]
     },
     "include": [
         "src/**/*.ts",
-        "src/**/*.tsx"
+        "src/**/*.tsx",
+        "src/**/*.d.ts"
     ],
     "exclude": [
         "src/**/*.js",

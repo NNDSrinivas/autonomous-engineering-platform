@@ -51,17 +51,35 @@ async def ground_task(intent: Any, context: Dict[str, Any]) -> GroundingResult:
     elif intent_type == "DEPLOY":
         return ground_deploy(intent, context)
 
-    # Future intents will be added here:
-    # elif intent_type == "RUN_TESTS":
-    #     return ground_run_tests(context)
-
+    # For all other intents, allow them to pass through to the planner/LLM
+    # This enables code generation, explanations, run commands, etc.
+    # The planner will use the LLM to determine the appropriate actions
     else:
-        logger.warning(
-            f"No grounding logic available for intent: {family_str}/{kind_str}"
+        logger.info(
+            f"Passing through intent to planner: {family_str}/{kind_str}"
         )
+        # Return a "ready" result with a generic task structure
+        # Using FIX_PROBLEMS as a placeholder intent since GroundedTask requires a Literal
         return GroundingResult(
-            type="rejected",
-            reason=f"Intent '{family_str}/{kind_str}' is not yet supported by the task grounding system.",
+            type="ready",
+            task=GroundedTask(
+                intent="FIX_PROBLEMS",  # Required Literal, but metadata shows actual intent
+                scope="workspace",
+                target="general",
+                inputs={
+                    "message": context.get("message", ""),
+                    "workspace_root": context.get("workspace_root") or context.get("diagnostics", {}).get("workspace_root"),
+                    "files": context.get("files", []),
+                    "original_intent": f"{family_str}/{kind_str}",
+                },
+                requires_approval=True,
+                confidence=1.0,
+                metadata={
+                    "passthrough": True,
+                    "original_family": family_str,
+                    "original_kind": kind_str,
+                }
+            ),
         )
 
 

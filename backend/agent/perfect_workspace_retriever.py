@@ -170,3 +170,7 @@ def retrieve_workspace_sync(root: str, max_files: int = 20) -> Dict[str, Any]:
     except (OSError, ValueError) as exc:
         logger.warning("Error retrieving workspace: %s", exc)
         return {"root": root, "structure": [], "files": {}}
+
+
+# Alias for backward compatibility
+retrieve_workspace = retrieve_workspace_sync

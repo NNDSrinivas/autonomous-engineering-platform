@@ -138,16 +138,52 @@ class IntentPriority(str, Enum):
 class Provider(str, Enum):
     """External service/app that NAVI integrates with for cross-app workflows."""
 
+    # Core Issue Tracking
     JIRA = "jira"
-    SLACK = "slack"
-    GITHUB = "github"
-    TEAMS = "teams"
-    ZOOM = "zoom"
-    CONFLUENCE = "confluence"
-    NOTION = "notion"
     LINEAR = "linear"
     ASANA = "asana"
+    TRELLO = "trello"
+    MONDAY = "monday"
+    CLICKUP = "clickup"
+
+    # Code & Version Control
+    GITHUB = "github"
+    GITLAB = "gitlab"
+    BITBUCKET = "bitbucket"
+
+    # CI/CD & Deployment
+    GITHUB_ACTIONS = "github_actions"
+    CIRCLECI = "circleci"
+    VERCEL = "vercel"
     JENKINS = "jenkins"
+
+    # Communication
+    SLACK = "slack"
+    TEAMS = "teams"
+    DISCORD = "discord"
+
+    # Documentation & Knowledge
+    CONFLUENCE = "confluence"
+    NOTION = "notion"
+    GOOGLE_DRIVE = "google_drive"
+    GOOGLE_DOCS = "google_docs"
+
+    # Meetings & Calendar
+    ZOOM = "zoom"
+    GOOGLE_CALENDAR = "google_calendar"
+    LOOM = "loom"
+
+    # Monitoring & Security
+    DATADOG = "datadog"
+    SENTRY = "sentry"
+    PAGERDUTY = "pagerduty"
+    SNYK = "snyk"
+    SONARQUBE = "sonarqube"
+
+    # Design
+    FIGMA = "figma"
+
+    # Generic fallback
     GENERIC = "generic"
 
 
@@ -391,6 +427,9 @@ class NaviIntent(BaseModel):
 
     Only one of the *_spec fields is usually populated, depending on kind.
     """
+
+    # Disable protected namespace warnings for fields like model_used
+    model_config = {"protected_namespaces": ()}
 
     # --- identity / metadata -------------------------------------------------
     id: Optional[str] = Field(

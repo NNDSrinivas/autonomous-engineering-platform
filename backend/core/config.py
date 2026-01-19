@@ -145,6 +145,8 @@ class Settings(BaseSettings):
     # AI Configuration
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-3.5-turbo"
+    anthropic_api_key: Optional[str] = None
+    default_llm_provider: str = "openai"
 
     # Jira Integration Configuration
     aep_jira_base_url: Optional[str] = None
@@ -210,6 +212,123 @@ class Settings(BaseSettings):
     google_client_secret: Optional[str] = None
     google_oauth_scopes: Optional[str] = None
 
+    # GitLab Integration
+    gitlab_client_id: Optional[str] = None
+    gitlab_client_secret: Optional[str] = None
+    gitlab_oauth_scopes: Optional[str] = None
+    gitlab_base_url: Optional[str] = None  # For self-hosted GitLab
+    gitlab_webhook_secret: Optional[str] = None
+
+    # Linear Integration
+    linear_client_id: Optional[str] = None
+    linear_client_secret: Optional[str] = None
+    linear_oauth_scopes: Optional[str] = None
+    linear_webhook_secret: Optional[str] = None
+
+    # Notion Integration
+    notion_client_id: Optional[str] = None
+    notion_client_secret: Optional[str] = None
+
+    # Bitbucket Integration
+    bitbucket_client_id: Optional[str] = None
+    bitbucket_client_secret: Optional[str] = None
+    bitbucket_oauth_scopes: Optional[str] = None
+    bitbucket_webhook_secret: Optional[str] = None
+
+    # Jira OAuth Integration (Atlassian Cloud)
+    jira_client_id: Optional[str] = None
+    jira_client_secret: Optional[str] = None
+    jira_oauth_scopes: Optional[str] = None
+
+    # Discord Integration (Phase 2)
+    discord_client_id: Optional[str] = None
+    discord_client_secret: Optional[str] = None
+    discord_oauth_scopes: Optional[str] = None
+    discord_bot_token: Optional[str] = None
+    discord_webhook_secret: Optional[str] = None
+
+    # Google Docs/Drive Integration (Phase 2)
+    gdocs_client_id: Optional[str] = None
+    gdocs_client_secret: Optional[str] = None
+    gdocs_oauth_scopes: Optional[str] = None
+
+    # Figma Integration (Phase 2)
+    figma_client_id: Optional[str] = None
+    figma_client_secret: Optional[str] = None
+    figma_oauth_scopes: Optional[str] = None
+    figma_access_token: Optional[str] = None  # Personal access token
+    figma_webhook_passcode: Optional[str] = None
+
+    # Loom Integration (Phase 2)
+    loom_access_token: Optional[str] = None
+
+    # CircleCI Integration (Phase 3)
+    circleci_client_id: Optional[str] = None
+    circleci_client_secret: Optional[str] = None
+    circleci_oauth_scopes: Optional[str] = None
+    circleci_api_token: Optional[str] = None
+    circleci_webhook_secret: Optional[str] = None
+
+    # Vercel Integration (Phase 3)
+    vercel_client_id: Optional[str] = None
+    vercel_client_secret: Optional[str] = None
+    vercel_oauth_scopes: Optional[str] = None
+    vercel_api_token: Optional[str] = None
+    vercel_webhook_secret: Optional[str] = None
+
+    # Datadog Integration (Phase 3)
+    datadog_api_key: Optional[str] = None
+    datadog_app_key: Optional[str] = None
+    datadog_site: str = "datadoghq.com"
+
+    # Asana Integration (Phase 4)
+    asana_client_id: Optional[str] = None
+    asana_client_secret: Optional[str] = None
+    asana_oauth_scopes: Optional[str] = None
+    asana_access_token: Optional[str] = None
+    asana_webhook_secret: Optional[str] = None
+
+    # Trello Integration (Phase 4)
+    trello_api_key: Optional[str] = None
+    trello_api_token: Optional[str] = None
+    trello_oauth_scopes: Optional[str] = None
+    trello_webhook_secret: Optional[str] = None
+
+    # Monday.com Integration (Phase 4)
+    monday_client_id: Optional[str] = None
+    monday_client_secret: Optional[str] = None
+    monday_oauth_scopes: Optional[str] = None
+    monday_api_token: Optional[str] = None
+
+    # ClickUp Integration (Phase 4)
+    clickup_client_id: Optional[str] = None
+    clickup_client_secret: Optional[str] = None
+    clickup_oauth_scopes: Optional[str] = None
+    clickup_api_token: Optional[str] = None
+    clickup_webhook_secret: Optional[str] = None
+
+    # Snyk Integration (Phase 5)
+    snyk_api_token: Optional[str] = None
+    snyk_org_id: Optional[str] = None
+    snyk_webhook_secret: Optional[str] = None
+
+    # SonarQube Integration (Phase 5)
+    sonarqube_url: Optional[str] = None
+    sonarqube_token: Optional[str] = None
+    sonarqube_webhook_secret: Optional[str] = None
+
+    # PagerDuty Integration (Phase 5)
+    pagerduty_api_token: Optional[str] = None
+    pagerduty_webhook_secret: Optional[str] = None
+
+    # Sentry Integration (Phase 5)
+    sentry_client_id: Optional[str] = None
+    sentry_client_secret: Optional[str] = None
+    sentry_oauth_scopes: Optional[str] = None
+    sentry_auth_token: Optional[str] = None
+    sentry_org_slug: Optional[str] = None
+    sentry_webhook_secret: Optional[str] = None
+
     # Development Authentication
     dev_user_id: Optional[str] = None
 
@@ -268,6 +387,30 @@ class Settings(BaseSettings):
     pgvector_index: str = "hnsw"  # Options: hnsw | ivfflat
     bm25_enabled: bool = True  # Enable BM25/FTS hybrid ranking
     faiss_index_path: str = "./data/faiss/index.faiss"  # FAISS index file path
+
+    # NAVI Memory System Configuration
+    embedding_model: str = "text-embedding-3-small"  # OpenAI embedding model
+    embedding_dimensions: int = 1536  # Embedding vector dimensions
+    memory_cache_ttl: int = 3600  # Memory cache TTL in seconds
+    memory_index_batch_size: int = 100  # Batch size for codebase indexing
+    memory_max_context_items: int = 10  # Max items to include in context
+    memory_min_similarity: float = 0.5  # Minimum similarity for search results
+
+    # MCP (Model Context Protocol) Server Configuration
+    mcp_enabled: bool = True  # Enable MCP server
+    mcp_server_name: str = "navi-tools"  # MCP server name
+    mcp_server_version: str = "1.0.0"  # MCP server version
+    mcp_transport: str = "stdio"  # Transport: stdio, http, websocket
+    mcp_http_port: int = 8765  # Port for HTTP transport
+    mcp_websocket_port: int = 8766  # Port for WebSocket transport
+    mcp_allowed_tools: List[str] = [  # Tools exposed via MCP
+        "git_operations",
+        "database_operations",
+        "code_debugging",
+        "file_operations",
+        "test_execution",
+        "code_analysis",
+    ]
 
     # Features
     enable_real_time: bool = True

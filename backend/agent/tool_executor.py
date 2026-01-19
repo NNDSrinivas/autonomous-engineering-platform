@@ -32,11 +32,66 @@ logger = logging.getLogger(__name__)
 
 # Tools that mutate state or filesystem. Used by guardrails and UI.
 WRITE_OPERATION_TOOLS = {
+    # Code write operations
     "code.apply_diff",
     "code.create_file",
     "code.edit_file",
     "code.run_command",
     "repo.write",
+    # Jira write operations
+    "jira.add_comment",
+    "jira.transition_issue",
+    "jira.assign_issue",
+    "jira.create_issue",
+    # GitHub write operations
+    "github.comment",
+    "github.set_label",
+    "github.rerun_check",
+    "github.create_issue",
+    "github.create_pr",
+    # Linear write operations
+    "linear.create_issue",
+    "linear.add_comment",
+    "linear.update_status",
+    # GitLab write operations
+    "gitlab.create_merge_request",
+    "gitlab.add_comment",
+    # Notion write operations
+    "notion.create_page",
+    # Slack write operations
+    "slack.send_message",
+    # Asana write operations
+    "asana.create_task",
+    "asana.complete_task",
+    # Bitbucket write operations
+    "bitbucket.create_pull_request",
+    # Discord write operations
+    "discord.send_message",
+    # Trello write operations
+    "trello.create_card",
+    "trello.move_card",
+    # ClickUp write operations
+    "clickup.create_task",
+    "clickup.update_task",
+    # Confluence write operations
+    "confluence.create_page",
+    # Figma write operations
+    "figma.add_comment",
+    # Sentry write operations
+    "sentry.resolve_issue",
+    # GitHub Actions write operations
+    "github_actions.trigger_workflow",
+    # CircleCI write operations
+    "circleci.trigger_pipeline",
+    # Vercel write operations
+    "vercel.redeploy",
+    # PagerDuty write operations
+    "pagerduty.acknowledge_incident",
+    "pagerduty.resolve_incident",
+    # Monday.com write operations
+    "monday.create_item",
+    # Datadog write operations
+    "datadog.mute_monitor",
 }
 
 
@@ -44,8 +99,10 @@ def get_available_tools():
     """List supported tool entrypoints for UI/help surfaces."""
     return sorted(
         {
+            # Context tools
             "context.present_packet",
             "context.summary",
+            # Repository and code tools
             "repo.inspect",
             "code.read_files",
             "code.search",
@@ -54,13 +111,150 @@ def get_available_tools():
             "code.create_file",
             "code.edit_file",
             "code.run_command",
+            # Project management
+            "project.summary",
+            # Jira tools
+            "jira.list_assigned_issues_for_user",
             "jira.search_issues",
             "jira.assign_issue",
             "jira.create_issue",
-            "slack.send_message",
+            "jira.add_comment",
+            "jira.transition_issue",
+            # GitHub tools
+            "github.list_my_prs",
+            "github.list_my_issues",
+            "github.get_pr_details",
+            "github.list_repo_issues",
+            "github.create_issue",
             "github.create_pr",
+            "github.comment",
+            "github.set_label",
             "github.rerun_check",
-            "project.summary",
+            # Linear tools
+            "linear.list_my_issues",
+            "linear.search_issues",
+            "linear.create_issue",
+            "linear.add_comment",
+            "linear.update_status",
+            "linear.list_teams",
+            # GitLab tools
+            "gitlab.list_my_merge_requests",
+            "gitlab.list_my_issues",
+            "gitlab.get_pipeline_status",
+            "gitlab.search",
+            "gitlab.create_merge_request",
+            "gitlab.add_comment",
+            # Notion tools
+            "notion.search_pages",
+            "notion.list_recent_pages",
+            "notion.get_page_content",
+            "notion.list_databases",
+            "notion.create_page",
+            # Slack tools
+            "slack.search_messages",
+            "slack.list_channel_messages",
+            "slack.send_message",
+            # Asana tools
+            "asana.list_my_tasks",
+            "asana.search_tasks",
+            "asana.list_projects",
+            "asana.create_task",
+            "asana.complete_task",
+            # Bitbucket tools
+            "bitbucket.list_my_prs",
+            "bitbucket.list_repos",
+            "bitbucket.get_pr_details",
+            "bitbucket.create_pull_request",
+            # Discord tools
+            "discord.list_channels",
+            "discord.get_messages",
+            "discord.send_message",
+            # Loom tools
+            "loom.list_videos",
+            "loom.search_videos",
+            "loom.get_video",
+            # Trello tools
+            "trello.list_boards",
+            "trello.list_my_cards",
+            "trello.get_card",
+            "trello.create_card",
+            "trello.move_card",
+            # ClickUp tools
+            "clickup.list_my_tasks",
+            "clickup.list_spaces",
+            "clickup.get_task",
+            "clickup.create_task",
+            "clickup.update_task",
+            # SonarQube tools
+            "sonarqube.list_projects",
+            "sonarqube.list_issues",
+            "sonarqube.get_quality_gate",
+            "sonarqube.get_metrics",
+            # Confluence tools
+            "confluence.search_pages",
+            "confluence.get_page",
+            "confluence.list_pages_in_space",
+            # Figma tools
+            "figma.list_files",
+            "figma.get_file",
+            "figma.get_comments",
+            "figma.list_projects",
+            "figma.add_comment",
+            # Sentry tools
+            "sentry.list_issues",
+            "sentry.get_issue",
+            "sentry.list_projects",
+            "sentry.resolve_issue",
+            # Snyk tools
+            "snyk.list_vulnerabilities",
+            "snyk.list_projects",
+            "snyk.get_security_summary",
+            "snyk.get_project_issues",
+            # GitHub Actions tools
+            "github_actions.list_workflows",
+            "github_actions.list_runs",
+            "github_actions.get_run_status",
+            "github_actions.trigger_workflow",
+            # CircleCI tools
+            "circleci.list_pipelines",
+            "circleci.get_pipeline_status",
+            "circleci.trigger_pipeline",
+            "circleci.get_job_status",
+            # Vercel tools
+            "vercel.list_projects",
+            "vercel.list_deployments",
+            "vercel.get_deployment_status",
+            "vercel.redeploy",
+            # PagerDuty tools
+            "pagerduty.list_incidents",
+            "pagerduty.get_oncall",
+            "pagerduty.list_services",
+            "pagerduty.acknowledge_incident",
+            "pagerduty.resolve_incident",
+            # Google Drive tools
+            "gdrive.list_files",
+            "gdrive.search",
+            "gdrive.get_content",
+            # Zoom tools
+            "zoom.list_recordings",
+            "zoom.get_transcript",
+            "zoom.search_recordings",
+            # Google Calendar tools
+            "gcalendar.list_events",
+            "gcalendar.todays_events",
+            "gcalendar.get_event",
+            # Monday.com tools
+            "monday.list_boards",
+            "monday.list_items",
+            "monday.get_my_items",
+            "monday.get_item",
+            "monday.create_item",
+            # Datadog tools
+            "datadog.list_monitors",
+            "datadog.alerting_monitors",
+            "datadog.list_incidents",
+            "datadog.list_dashboards",
+            "datadog.mute_monitor",
         }
     )
 
@@ -229,12 +423,101 @@ async def execute_tool(
     if tool_name == "github.rerun_check":
         return await _tool_github_rerun_check(user_id, args, db)
 
+    # Linear integration tools -------------------------------------------------------
+    if tool_name.startswith("linear."):
+        return await _dispatch_linear_tool(user_id, tool_name, args, db)
+
+    # GitLab integration tools -------------------------------------------------------
+    if tool_name.startswith("gitlab."):
+        return await _dispatch_gitlab_tool(user_id, tool_name, args, db)
+
+    # Notion integration tools -------------------------------------------------------
+    if tool_name.startswith("notion."):
+        return await _dispatch_notion_tool(user_id, tool_name, args, db)
+
     # Slack integration tools -------------------------------------------------------
-    # Slack tools not yet implemented
-    # if tool_name == "slack.fetch_recent_channel_messages":
-    #   return await _tool_slack_fetch_recent_channel_messages(user_id, args, db)
-    # if tool_name == "slack.search_user_messages":
-    #   return await _tool_slack_search_user_messages(user_id, args, db)
+    if tool_name.startswith("slack."):
+        return await _dispatch_slack_tool(user_id, tool_name, args, db)
+
+    # Asana integration tools -------------------------------------------------------
+    if tool_name.startswith("asana."):
+        return await _dispatch_asana_tool(user_id, tool_name, args, db)
+
+    # Bitbucket integration tools ---------------------------------------------------
+    if tool_name.startswith("bitbucket."):
+        return await _dispatch_bitbucket_tool(user_id, tool_name, args, db)
+
+    # Discord integration tools -----------------------------------------------------
+    if tool_name.startswith("discord."):
+        return await _dispatch_discord_tool(user_id, tool_name, args, db)
+
+    # Loom integration tools --------------------------------------------------------
+    if tool_name.startswith("loom."):
+        return await _dispatch_loom_tool(user_id, tool_name, args, db)
+
+    # Trello integration tools ------------------------------------------------------
+    if tool_name.startswith("trello."):
+        return await _dispatch_trello_tool(user_id, tool_name, args, db)
+
+    # ClickUp integration tools -----------------------------------------------------
+    if tool_name.startswith("clickup."):
+        return await _dispatch_clickup_tool(user_id, tool_name, args, db)
+
+    # SonarQube integration tools ---------------------------------------------------
+    if tool_name.startswith("sonarqube."):
+        return await _dispatch_sonarqube_tool(user_id, tool_name, args, db)
+
+    # Confluence integration tools --------------------------------------------------
+    if tool_name.startswith("confluence."):
+        return await _dispatch_confluence_tool(user_id, tool_name, args, db)
+
+    # Figma integration tools -------------------------------------------------------
+    if tool_name.startswith("figma."):
+        return await _dispatch_figma_tool(user_id, tool_name, args, db)
+
+    # Sentry integration tools ------------------------------------------------------
+    if tool_name.startswith("sentry."):
+        return await _dispatch_sentry_tool(user_id, tool_name, args, db)
+
+    # Snyk integration tools --------------------------------------------------------
+    if tool_name.startswith("snyk."):
+        return await _dispatch_snyk_tool(user_id, tool_name, args, db)
+
+    # GitHub Actions integration tools ----------------------------------------------
+    if tool_name.startswith("github_actions."):
+        return await _dispatch_github_actions_tool(user_id, tool_name, args, db)
+
+    # CircleCI integration tools ----------------------------------------------------
+    if tool_name.startswith("circleci."):
+        return await _dispatch_circleci_tool(user_id, tool_name, args, db)
+
+    # Vercel integration tools ------------------------------------------------------
+    if tool_name.startswith("vercel."):
+        return await _dispatch_vercel_tool(user_id, tool_name, args, db)
+
+    # PagerDuty integration tools ---------------------------------------------------
+    if tool_name.startswith("pagerduty."):
+        return await _dispatch_pagerduty_tool(user_id, tool_name, args, db)
+
+    # Google Drive integration tools ------------------------------------------------
+    if tool_name.startswith("gdrive."):
+        return await _dispatch_google_drive_tool(user_id, tool_name, args, db)
+
+    # Zoom integration tools --------------------------------------------------------
+    if tool_name.startswith("zoom."):
+        return await _dispatch_zoom_tool(user_id, tool_name, args, db)
+
+    # Google Calendar integration tools ---------------------------------------------
+    if tool_name.startswith("gcalendar."):
+        return await _dispatch_google_calendar_tool(user_id, tool_name, args, db)
+
+    # Monday.com integration tools --------------------------------------------------
+    if tool_name.startswith("monday."):
+        return await _dispatch_monday_tool(user_id, tool_name, args, db)
+
+    # Datadog integration tools -----------------------------------------------------
+    if tool_name.startswith("datadog."):
+        return await _dispatch_datadog_tool(user_id, tool_name, args, db)
 
     # Project-management stubs (future expansion) --------------------------------
     if tool_name.startswith("pm."):
@@ -1097,3 +1380,743 @@ async def _tool_code_run_command(user_id: str, args: Dict[str, Any]) -> Dict[str
         "exit_code": result.get("exit_code"),
         "error": result.get("error"),
     }
+
+
+# ==============================================================================
+# CONNECTOR TOOL DISPATCHERS
+# ==============================================================================
+
+
+async def _dispatch_linear_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Linear tools to their implementations."""
+    from backend.agent.tools.linear_tools import LINEAR_TOOLS
+    from backend.core.db import get_db
+
+    db or next(get_db())
+
+    # Build context for the tool
+    context = {
+        "user_id": user_id,
+        "user_name": args.get("user_name") or args.get("assignee"),
+        "org_id": args.get("org_id"),
+        "linear_assignee": args.get("assignee"),
+    }
+
+    # Map tool name to function
+    tool_func = LINEAR_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Linear tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        # Call the tool with context and args
+        if tool_name == "linear.list_my_issues":
+            result = await tool_func(
+                context,
+                status=args.get("status"),
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "linear.search_issues":
+            result = await tool_func(
+                context,
+                query=args.get("query", ""),
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "linear.create_issue":
+            result = await tool_func(
+                context,
+                team_id=args.get("team_id"),
+                title=args.get("title"),
+                description=args.get("description"),
+                priority=args.get("priority"),
+                assignee_id=args.get("assignee_id"),
+                approve=args.get("approve", False),
+            )
+        elif tool_name == "linear.update_status":
+            result = await tool_func(
+                context,
+                issue_id=args.get("issue_id"),
+                state_id=args.get("state_id"),
+                approve=args.get("approve", False),
+            )
+        elif tool_name == "linear.list_teams":
+            result = await tool_func(context)
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Linear tool '{tool_name}' dispatch not configured.",
+            }
+
+        # Convert ToolResult to dict for response
+        return {
+            "tool": tool_name,
+            "text": result.output,
+            "sources": result.sources,
+        }
+
+    except Exception as exc:
+        logger.error("Linear tool error: %s - %s", tool_name, exc)
+        return {
+            "tool": tool_name,
+            "text": f"Error executing Linear tool: {exc}",
+        }
+
+
+async def _dispatch_gitlab_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch GitLab tools to their implementations."""
+    from backend.agent.tools.gitlab_tools import GITLAB_TOOLS
+    from backend.core.db import get_db
+
+    db or next(get_db())
+
+    # Build context for the tool
+    context = {
+        "user_id": user_id,
+        "user_name": args.get("user_name"),
+        "org_id": args.get("org_id"),
+        "gitlab_username": args.get("gitlab_username"),
+    }
+
+    # Map tool name to function
+    tool_func = GITLAB_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"GitLab tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        # Call the tool with context and args
+        if tool_name == "gitlab.list_my_merge_requests":
+            result = await tool_func(
+                context,
+                status=args.get("status"),
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "gitlab.list_my_issues":
+            result = await tool_func(
+                context,
+                status=args.get("status"),
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "gitlab.get_pipeline_status":
+            result = await tool_func(
+                context,
+                max_results=args.get("max_results", 10),
+            )
+        elif tool_name == "gitlab.search":
+            result = await tool_func(
+                context,
+                query=args.get("query", ""),
+                item_type=args.get("item_type"),
+                max_results=args.get("max_results", 20),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"GitLab tool '{tool_name}' dispatch not configured.",
+            }
+
+        # Convert ToolResult to dict for response
+        return {
+            "tool": tool_name,
+            "text": result.output,
+            "sources": result.sources,
+        }
+
+    except Exception as exc:
+        logger.error("GitLab tool error: %s - %s", tool_name, exc)
+        return {
+            "tool": tool_name,
+            "text": f"Error executing GitLab tool: {exc}",
+        }
+
+
+async def _dispatch_notion_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Notion tools to their implementations."""
+    from backend.agent.tools.notion_tools import NOTION_TOOLS
+    from backend.core.db import get_db
+
+    db or next(get_db())
+
+    # Build context for the tool
+    context = {
+        "user_id": user_id,
+        "org_id": args.get("org_id"),
+    }
+
+    # Map tool name to function
+    tool_func = NOTION_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Notion tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        # Call the tool with context and args
+        if tool_name == "notion.search_pages":
+            result = await tool_func(
+                context,
+                query=args.get("query", ""),
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "notion.list_recent_pages":
+            result = await tool_func(
+                context,
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "notion.get_page_content":
+            result = await tool_func(
+                context,
+                page_id=args.get("page_id"),
+            )
+        elif tool_name == "notion.list_databases":
+            result = await tool_func(
+                context,
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "notion.create_page":
+            result = await tool_func(
+                context,
+                parent_id=args.get("parent_id"),
+                title=args.get("title"),
+                content=args.get("content"),
+                is_database=args.get("is_database", False),
+                approve=args.get("approve", False),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Notion tool '{tool_name}' dispatch not configured.",
+            }
+
+        # Convert ToolResult to dict for response
+        return {
+            "tool": tool_name,
+            "text": result.output,
+            "sources": result.sources,
+        }
+
+    except Exception as exc:
+        logger.error("Notion tool error: %s - %s", tool_name, exc)
+        return {
+            "tool": tool_name,
+            "text": f"Error executing Notion tool: {exc}",
+        }
+
+
+async def _dispatch_slack_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Slack tools to their implementations."""
+    from backend.agent.tools.slack_tools import SLACK_TOOLS
+    from backend.core.db import get_db
+
+    db or next(get_db())
+
+    # Build context for the tool
+    context = {
+        "user_id": user_id,
+        "org_id": args.get("org_id"),
+    }
+
+    # Map tool name to function
+    tool_func = SLACK_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Slack tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        # Call the tool with context and args
+        if tool_name == "slack.search_messages":
+            result = await tool_func(
+                context,
+                query=args.get("query", ""),
+                channel=args.get("channel"),
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "slack.list_channel_messages":
+            result = await tool_func(
+                context,
+                channel=args.get("channel"),
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "slack.send_message":
+            result = await tool_func(
+                context,
+                channel=args.get("channel"),
+                message=args.get("message"),
+                thread_ts=args.get("thread_ts"),
+                approve=args.get("approve", False),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Slack tool '{tool_name}' dispatch not configured.",
+            }
+
+        # Convert ToolResult to dict for response
+        return {
+            "tool": tool_name,
+            "text": result.output,
+            "sources": result.sources,
+        }
+
+    except Exception as exc:
+        logger.error("Slack tool error: %s - %s", tool_name, exc)
+        return {
+            "tool": tool_name,
+            "text": f"Error executing Slack tool: {exc}",
+        }
+
+
+async def _dispatch_asana_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Asana tools to their implementations."""
+    from backend.agent.tools.asana_tools import ASANA_TOOLS
+    from backend.core.db import get_db
+
+    db or next(get_db())
+
+    # Build context for the tool
+    context = {
+        "user_id": user_id,
+        "user_name": args.get("user_name"),
+        "org_id": args.get("org_id"),
+    }
+
+    # Map tool name to function
+    tool_func = ASANA_TOOLS.get(tool_name)
+    if not tool_func:
+        return {
+            "tool": tool_name,
+            "text": f"Asana tool '{tool_name}' is not implemented.",
+        }
+
+    try:
+        # Call the tool with context and args
+        if tool_name == "asana.list_my_tasks":
+            result = await tool_func(
+                context,
+                status=args.get("status"),
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "asana.search_tasks":
+            result = await tool_func(
+                context,
+                query=args.get("query", ""),
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "asana.list_projects":
+            result = await tool_func(
+                context,
+                max_results=args.get("max_results", 20),
+            )
+        elif tool_name == "asana.create_task":
+            result = await tool_func(
+                context,
+                name=args.get("name"),
+                project_gid=args.get("project_gid"),
+                workspace_gid=args.get("workspace_gid"),
+                notes=args.get("notes"),
+                due_on=args.get("due_on"),
+                approve=args.get("approve", False),
+            )
+        elif tool_name == "asana.complete_task":
+            result = await tool_func(
+                context,
+                task_gid=args.get("task_gid"),
+                approve=args.get("approve", False),
+            )
+        else:
+            return {
+                "tool": tool_name,
+                "text": f"Asana tool '{tool_name}' dispatch not configured.",
+            }
+
+        # Convert ToolResult to dict for response
+        return {
+            "tool": tool_name,
+            "text": result.output,
+            "sources": result.sources,
+        }
+
+    except Exception as exc:
+        logger.error("Asana tool error: %s - %s", tool_name, exc)
+        return {
+            "tool": tool_name,
+            "text": f"Error executing Asana tool: {exc}",
+        }
+
+
+async def _dispatch_bitbucket_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Bitbucket tools to their implementations."""
+    from backend.agent.tools.bitbucket_tools import BITBUCKET_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = BITBUCKET_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Bitbucket tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Bitbucket tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Bitbucket tool: {exc}"}
+
+
+async def _dispatch_discord_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Discord tools to their implementations."""
+    from backend.agent.tools.discord_tools import DISCORD_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = DISCORD_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Discord tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Discord tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Discord tool: {exc}"}
+
+
+async def _dispatch_loom_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Loom tools to their implementations."""
+    from backend.agent.tools.loom_tools import LOOM_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = LOOM_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Loom tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Loom tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Loom tool: {exc}"}
+
+
+async def _dispatch_trello_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Trello tools to their implementations."""
+    from backend.agent.tools.trello_tools import TRELLO_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = TRELLO_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Trello tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Trello tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Trello tool: {exc}"}
+
+
+async def _dispatch_clickup_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch ClickUp tools to their implementations."""
+    from backend.agent.tools.clickup_tools import CLICKUP_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = CLICKUP_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"ClickUp tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("ClickUp tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing ClickUp tool: {exc}"}
+
+
+async def _dispatch_sonarqube_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch SonarQube tools to their implementations."""
+    from backend.agent.tools.sonarqube_tools import SONARQUBE_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = SONARQUBE_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"SonarQube tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("SonarQube tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing SonarQube tool: {exc}"}
+
+
+async def _dispatch_confluence_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Confluence tools to their implementations."""
+    from backend.agent.tools.confluence_tools import CONFLUENCE_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = CONFLUENCE_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Confluence tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Confluence tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Confluence tool: {exc}"}
+
+
+async def _dispatch_figma_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Figma tools to their implementations."""
+    from backend.agent.tools.figma_tools import FIGMA_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = FIGMA_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Figma tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Figma tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Figma tool: {exc}"}
+
+
+async def _dispatch_sentry_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Sentry tools to their implementations."""
+    from backend.agent.tools.sentry_tools import SENTRY_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = SENTRY_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Sentry tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Sentry tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Sentry tool: {exc}"}
+
+
+async def _dispatch_snyk_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Snyk tools to their implementations."""
+    from backend.agent.tools.snyk_tools import SNYK_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = SNYK_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Snyk tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Snyk tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Snyk tool: {exc}"}
+
+
+async def _dispatch_github_actions_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch GitHub Actions tools to their implementations."""
+    from backend.agent.tools.github_actions_tools import GITHUB_ACTIONS_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = GITHUB_ACTIONS_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"GitHub Actions tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("GitHub Actions tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing GitHub Actions tool: {exc}"}
+
+
+async def _dispatch_circleci_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch CircleCI tools to their implementations."""
+    from backend.agent.tools.circleci_tools import CIRCLECI_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = CIRCLECI_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"CircleCI tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("CircleCI tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing CircleCI tool: {exc}"}
+
+
+async def _dispatch_vercel_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Vercel tools to their implementations."""
+    from backend.agent.tools.vercel_tools import VERCEL_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = VERCEL_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Vercel tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Vercel tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Vercel tool: {exc}"}
+
+
+async def _dispatch_pagerduty_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch PagerDuty tools to their implementations."""
+    from backend.agent.tools.pagerduty_tools import PAGERDUTY_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = PAGERDUTY_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"PagerDuty tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("PagerDuty tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing PagerDuty tool: {exc}"}
+
+
+async def _dispatch_google_drive_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Google Drive tools to their implementations."""
+    from backend.agent.tools.google_drive_tools import GOOGLE_DRIVE_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = GOOGLE_DRIVE_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Google Drive tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Google Drive tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Google Drive tool: {exc}"}
+
+
+async def _dispatch_zoom_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Zoom tools to their implementations."""
+    from backend.agent.tools.zoom_tools import ZOOM_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = ZOOM_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Zoom tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Zoom tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Zoom tool: {exc}"}
+
+
+async def _dispatch_google_calendar_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Google Calendar tools to their implementations."""
+    from backend.agent.tools.google_calendar_tools import GOOGLE_CALENDAR_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = GOOGLE_CALENDAR_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Google Calendar tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Google Calendar tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Google Calendar tool: {exc}"}
+
+
+async def _dispatch_monday_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Monday.com tools to their implementations."""
+    from backend.agent.tools.monday_tools import MONDAY_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = MONDAY_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Monday.com tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Monday.com tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Monday.com tool: {exc}"}
+
+
+async def _dispatch_datadog_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], db=None
+) -> Dict[str, Any]:
+    """Dispatch Datadog tools to their implementations."""
+    from backend.agent.tools.datadog_tools import DATADOG_TOOLS
+
+    context = {"user_id": user_id, "org_id": args.get("org_id")}
+    tool_func = DATADOG_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Datadog tool '{tool_name}' is not implemented."}
+
+    try:
+        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Datadog tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing Datadog tool: {exc}"}

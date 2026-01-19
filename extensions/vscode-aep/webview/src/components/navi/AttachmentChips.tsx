@@ -1,5 +1,6 @@
 // frontend/src/components/navi/AttachmentChips.tsx
 import React from "react";
+import { Paperclip, X } from "lucide-react";
 import "./NaviChatPanel.css";
 
 export interface AttachmentChipData {
@@ -48,18 +49,21 @@ export const AttachmentChips: React.FC<AttachmentChipsProps> = ({
             className="navi-attachment-chip"
             data-testid="attachment-item"
           >
+            <span className="navi-attachment-chip-icon" aria-hidden="true">
+              <Paperclip className="h-3.5 w-3.5 navi-icon-3d" />
+            </span>
             <span className="navi-attachment-chip-label" data-testid="attachment-name">
-              📎 {text}
+              {text}
             </span>
             {onRemove && (
               <button
                 type="button"
-                className="navi-chat-attachment-remove"
+                className="navi-chat-attachment-remove navi-icon-button"
                 onClick={() => onRemove(index)}
                 title="Remove attachment"
                 data-testid="remove-attachment-btn"
               >
-                ×
+                <X className="h-3.5 w-3.5 navi-icon-3d" />
               </button>
             )}
           </div>

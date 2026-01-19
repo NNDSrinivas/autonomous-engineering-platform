@@ -125,14 +125,50 @@ function TodoItemComponent({ todo }: { todo: TodoItem }) {
 }
 
 /**
- * File change summary with add/delete counts
+ * File change summary with add/delete counts - clickable to open file/diff
  */
 function FileChangeComponent({ file }: { file: FileChangeSummary }) {
+  const handleClick = () => {
+    // Send message to extension to open the file
+    if (window.vscode) {
+      window.vscode.postMessage({
+        type: 'OPEN_FILE',
+        path: file.path
+      });
+    }
+  };
+
+  const handleShowDiff = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.vscode) {
+      window.vscode.postMessage({
+        type: 'showDiff',
+        filePath: file.path
+      });
+    }
+  };
+
+  const getStatusIcon = () => {
+    switch (file.status) {
+      case 'added': return <span className="text-green-500 mr-1">A</span>;
+      case 'modified': return <span className="text-yellow-500 mr-1">M</span>;
+      case 'deleted': return <span className="text-red-500 mr-1">D</span>;
+      default: return null;
+    }
+  };
+
   return (
-    <div className="flex items-center justify-between text-xs">
-      <span className="text-[var(--vscode-foreground)]">
-        {file.path}
-      </span>
+    <div
+      className="flex items-center justify-between text-xs hover:bg-[var(--vscode-list-hoverBackground)] rounded px-1 py-0.5 cursor-pointer group"
+      onClick={handleClick}
+      title={`Click to open ${file.path}`}
+    >
+      <div className="flex items-center gap-1 min-w-0 flex-1">
+        {getStatusIcon()}
+        <span className="text-[var(--vscode-foreground)] truncate">
+          {file.path}
+        </span>
+      </div>
       <div className="flex items-center gap-2">
         {file.additions > 0 && (
           <span className="text-green-500">+{file.additions}</span>
@@ -140,6 +176,13 @@ function FileChangeComponent({ file }: { file: FileChangeSummary }) {
         {file.deletions > 0 && (
           <span className="text-red-500">-{file.deletions}</span>
         )}
+        <button
+          onClick={handleShowDiff}
+          className="opacity-0 group-hover:opacity-100 text-[var(--vscode-textLink-foreground)] hover:underline transition-opacity"
+          title="Show diff"
+        >
+          diff
+        </button>
       </div>
     </div>
   );

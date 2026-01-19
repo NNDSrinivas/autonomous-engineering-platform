@@ -1,3 +1,24 @@
+// VS Code API singleton - acquired once and reused
+interface VSCodeAPI {
+  postMessage(message: unknown): void;
+  getState(): unknown;
+  setState(state: unknown): void;
+}
+
+const acquireAPI = (): VSCodeAPI => {
+  if (typeof window !== 'undefined' && window.acquireVsCodeApi) {
+    return window.acquireVsCodeApi();
+  }
+  // Mock for non-VS Code environments
+  return {
+    postMessage: (msg: unknown) => console.log('[Mock VSCode] postMessage:', msg),
+    getState: () => ({}),
+    setState: (_state: unknown) => {},
+  };
+};
+
+export const vscode = acquireAPI();
+
 // User types
 export interface User {
   id: string;
@@ -14,6 +35,7 @@ export interface JiraTask {
   id: string;
   key: string;
   summary: string;
+  title?: string; // Alternative to summary (for compatibility)
   description?: string;
   status: string;
   priority: string;
@@ -31,6 +53,7 @@ export interface JiraTask {
   updated: string;
   labels?: string[];
   components?: string[];
+  acceptanceCriteria?: string[]; // For task acceptance criteria
   project: {
     id: string;
     key: string;

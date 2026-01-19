@@ -1,13 +1,14 @@
 """
 LLM Service - Wrapper for LLM API calls
 
-Simple wrapper around OpenAI API for NAVI agent.
+Multi-provider wrapper for NAVI agent using the LLM Router.
+Supports Anthropic, OpenAI, Google, and other providers.
 """
 
 import logging
+import os
 from typing import Dict, Any, Optional
 from openai import AsyncOpenAI
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,12 @@ async def call_llm(
     """
     Call LLM with message and context.
 
+    Uses the multi-provider LLM router which respects DEFAULT_LLM_PROVIDER.
+
     Args:
         message: User's message
         context: Full context from context_builder
-        model: LLM model to use
+        model: LLM model to use (may be overridden by DEFAULT_LLM_PROVIDER)
         mode: "chat" or "agent-full"
 
     Returns:
@@ -45,28 +48,28 @@ async def call_llm(
     """
 
     try:
+        # Use the multi-provider LLM router
+        from backend.ai.llm_router import LLMRouter
+
+        router = LLMRouter()
+
         # Build system prompt with context
         system_prompt = _build_system_prompt(context)
 
-        # Call OpenAI
-        client = get_openai_client()
-        response = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": message},
-            ],
+        # Call LLM through router (respects DEFAULT_LLM_PROVIDER)
+        response = await router.run(
+            prompt=message,
+            system_prompt=system_prompt,
+            use_smart_auto=False,  # Let DEFAULT_LLM_PROVIDER take precedence
             temperature=0.6,
-            # Remove max_tokens limit for comprehensive responses
         )
 
-        answer = response.choices[0].message.content
-        if answer is None:
-            logger.warning("[LLM] Received None response from API")
+        if response.text is None or response.text.startswith("Error:"):
+            logger.warning(f"[LLM] Router returned error: {response.text}")
             return "I couldn't generate a response. Please try again."
 
-        logger.info(f"[LLM] Generated response: {len(answer)} chars")
-        return answer
+        logger.info(f"[LLM] Generated response via {response.model}: {len(response.text)} chars")
+        return response.text
 
     except Exception as e:
         logger.error(f"[LLM] Error calling LLM: {e}", exc_info=True)

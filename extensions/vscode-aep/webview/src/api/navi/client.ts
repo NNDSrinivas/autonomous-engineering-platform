@@ -292,6 +292,337 @@ export class NaviAPIClient {
       method: 'POST',
     });
   }
+
+  // ========================================================================
+  // Advanced Operations APIs (Git, Database, Debugging)
+  // ========================================================================
+
+  // Git Operations
+
+  async gitCherryPick(request: {
+    workspace_path: string;
+    commit_hashes: string[];
+    no_commit?: boolean;
+  }, approved: boolean = false): Promise<GitOperationResult> {
+    return this.request(`/api/advanced/git/cherry-pick?approved=${approved}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async gitRebase(request: {
+    workspace_path: string;
+    onto: string;
+    interactive?: boolean;
+  }, approved: boolean = false): Promise<GitOperationResult> {
+    return this.request(`/api/advanced/git/rebase?approved=${approved}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async gitSquash(request: {
+    workspace_path: string;
+    num_commits: number;
+    message: string;
+  }, approved: boolean = false): Promise<GitOperationResult> {
+    return this.request(`/api/advanced/git/squash?approved=${approved}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async gitStash(request: {
+    workspace_path: string;
+    operation: 'save' | 'pop' | 'list' | 'apply' | 'drop' | 'clear';
+    message?: string;
+    stash_id?: string;
+  }): Promise<GitOperationResult> {
+    return this.request('/api/advanced/git/stash', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async gitBisect(request: {
+    workspace_path: string;
+    operation: 'start' | 'good' | 'bad' | 'reset' | 'skip' | 'run';
+    commit?: string;
+    script?: string;
+  }): Promise<GitOperationResult> {
+    return this.request('/api/advanced/git/bisect', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async gitReflog(request: {
+    workspace_path: string;
+    operation: 'show' | 'recover';
+    ref?: string;
+    limit?: number;
+  }): Promise<GitOperationResult> {
+    return this.request('/api/advanced/git/reflog', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async gitCleanupBranches(request: {
+    workspace_path: string;
+    dry_run?: boolean;
+    include_remote?: boolean;
+  }, approved: boolean = false): Promise<GitOperationResult> {
+    return this.request(`/api/advanced/git/cleanup-branches?approved=${approved}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  // Database Operations
+
+  async dbSchemaDiff(request: {
+    workspace_path: string;
+    source: 'models' | 'database' | 'migration';
+    target: 'models' | 'database' | 'migration';
+  }): Promise<DatabaseOperationResult> {
+    return this.request('/api/advanced/db/schema-diff', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async dbGenerateMigration(request: {
+    workspace_path: string;
+    message: string;
+    autogenerate?: boolean;
+  }, approved: boolean = false): Promise<DatabaseOperationResult> {
+    return this.request(`/api/advanced/db/generate-migration?approved=${approved}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async dbApplyMigration(request: {
+    workspace_path: string;
+    revision?: string;
+    dry_run?: boolean;
+  }, approved: boolean = false): Promise<DatabaseOperationResult> {
+    return this.request(`/api/advanced/db/apply-migration?approved=${approved}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async dbRollback(request: {
+    workspace_path: string;
+    steps?: number;
+    revision?: string;
+  }, approved: boolean = false): Promise<DatabaseOperationResult> {
+    return this.request(`/api/advanced/db/rollback?approved=${approved}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async dbMigrationHistory(workspace_path: string, verbose?: boolean): Promise<DatabaseOperationResult> {
+    const params = new URLSearchParams({ workspace_path });
+    if (verbose !== undefined) params.append('verbose', String(verbose));
+    return this.request(`/api/advanced/db/migration-history?${params}`);
+  }
+
+  async dbSeed(request: {
+    workspace_path: string;
+    seed_file?: string;
+    environment?: 'dev' | 'test' | 'staging';
+  }, approved: boolean = false): Promise<DatabaseOperationResult> {
+    return this.request(`/api/advanced/db/seed?approved=${approved}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  // Debugging Operations
+
+  async debugAnalyzeError(request: {
+    error_output: string;
+    workspace_path?: string;
+    language?: string;
+  }): Promise<DebugAnalysisResult> {
+    return this.request('/api/advanced/debug/analyze-error', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async debugPerformance(request: {
+    workspace_path: string;
+    file_path?: string;
+  }): Promise<DebugAnalysisResult> {
+    return this.request('/api/advanced/debug/performance', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async debugDeadCode(workspace_path: string): Promise<DebugAnalysisResult> {
+    return this.request(`/api/advanced/debug/dead-code?workspace_path=${encodeURIComponent(workspace_path)}`, {
+      method: 'POST',
+    });
+  }
+
+  async debugCircularDeps(workspace_path: string): Promise<DebugAnalysisResult> {
+    return this.request(`/api/advanced/debug/circular-deps?workspace_path=${encodeURIComponent(workspace_path)}`, {
+      method: 'POST',
+    });
+  }
+
+  async debugCodeSmells(workspace_path: string): Promise<DebugAnalysisResult> {
+    return this.request(`/api/advanced/debug/code-smells?workspace_path=${encodeURIComponent(workspace_path)}`, {
+      method: 'POST',
+    });
+  }
+
+  async debugAutoFix(request: {
+    workspace_path: string;
+    apply?: boolean;
+  }, approved: boolean = false): Promise<DebugAnalysisResult> {
+    return this.request(`/api/advanced/debug/auto-fix?approved=${approved}`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  // MCP Operations
+
+  async listMcpTools(): Promise<McpToolsResponse> {
+    return this.request('/api/advanced/mcp/tools');
+  }
+
+  async executeMcpTool(
+    tool_name: string,
+    arguments_: Record<string, unknown>,
+    approved: boolean = false
+  ): Promise<McpExecutionResult> {
+    return this.request(`/api/advanced/mcp/execute?tool_name=${encodeURIComponent(tool_name)}&approved=${approved}`, {
+      method: 'POST',
+      body: JSON.stringify(arguments_),
+    });
+  }
+
+  async advancedHealthCheck(): Promise<AdvancedHealthResponse> {
+    return this.request('/api/advanced/health');
+  }
+}
+
+// ========================================================================
+// Type Definitions for Advanced Operations
+// ========================================================================
+
+export interface GitOperationResult {
+  success?: boolean;
+  requires_approval?: boolean;
+  message?: string;
+  operation?: string;
+  details?: Record<string, unknown>;
+  output?: string;
+  error?: string;
+  commits?: string[];
+  branches?: string[];
+  stashes?: Array<{ id: string; message: string }>;
+  reflog?: Array<{ ref: string; action: string; message: string }>;
+}
+
+export interface DatabaseOperationResult {
+  success?: boolean;
+  requires_approval?: boolean;
+  message?: string;
+  operation?: string;
+  details?: Record<string, unknown>;
+  diff?: string;
+  migration_file?: string;
+  migrations?: Array<{ revision: string; message: string; applied: boolean }>;
+  error?: string;
+}
+
+export interface DebugAnalysisResult {
+  success: boolean;
+  errors?: Array<{
+    language: string;
+    category: string;
+    error_type: string;
+    message: string;
+    file_path?: string;
+    line?: number;
+    column?: number;
+    severity: string;
+    suggestions: string[];
+    auto_fix?: {
+      type: string;
+      description: string;
+      changes?: Record<string, unknown>;
+    };
+  }>;
+  issues?: Array<{
+    type: string;
+    severity: string;
+    file?: string;
+    line?: number;
+    message: string;
+    suggestion?: string;
+  }>;
+  summary?: {
+    total_errors: number;
+    by_category: Record<string, number>;
+    by_severity: Record<string, number>;
+  };
+  debugging_commands?: string[];
+  error?: string;
+}
+
+export interface McpToolsResponse {
+  server_info: {
+    name: string;
+    version: string;
+    protocolVersion: string;
+    capabilities: Record<string, unknown>;
+  };
+  tools: Array<{
+    name: string;
+    description: string;
+    inputSchema: {
+      type: string;
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+    metadata: {
+      category: string;
+      requires_approval: boolean;
+    };
+  }>;
+}
+
+export interface McpExecutionResult {
+  success: boolean;
+  data: unknown;
+  error?: string;
+  metadata: {
+    tool?: string;
+    category?: string;
+    executed_at?: string;
+    requires_approval?: boolean;
+  };
+}
+
+export interface AdvancedHealthResponse {
+  status: string;
+  mcp_server: {
+    name: string;
+    version: string;
+    protocolVersion: string;
+  };
+  tools_count: number;
+  categories: string[];
 }
 
 // Export singleton instance

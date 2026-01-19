@@ -36,6 +36,7 @@ from .intent_schema import (
     IntentSource,
     NaviIntent,
     ProjectManagementSpec,
+    Provider,
     RepoTarget,
     TestRunSpec,
     WorkflowHints,
@@ -78,6 +79,214 @@ def _priority_from_text(text: str) -> IntentPriority:
     if _contains_any(text, ("low priority", "whenever", "nice to have")):
         return IntentPriority.LOW
     return IntentPriority.NORMAL
+
+
+def _detect_provider(text: str) -> Optional[Provider]:
+    """
+    Detect which connector/provider the user is asking about.
+
+    Returns None if no specific provider is mentioned.
+    """
+    # -------------------------------------------------------------------------
+    # Issue Tracking & Project Management
+    # -------------------------------------------------------------------------
+
+    # Jira keywords
+    if _contains_any(text, ("jira", "jira ticket", "jira issue", "jira task", "jira sprint")):
+        return Provider.JIRA
+
+    # Linear keywords
+    if _contains_any(text, ("linear", "lin-", "linear issue", "linear ticket")):
+        return Provider.LINEAR
+
+    # Asana keywords
+    if _contains_any(text, ("asana", "asana task", "asana project")):
+        return Provider.ASANA
+
+    # Trello keywords
+    if _contains_any(text, ("trello", "trello board", "trello card", "trello list")):
+        return Provider.TRELLO
+
+    # Monday.com keywords
+    if _contains_any(text, ("monday", "monday.com", "monday board", "monday item")):
+        return Provider.MONDAY
+
+    # ClickUp keywords
+    if _contains_any(text, ("clickup", "click up", "clickup task", "clickup space")):
+        return Provider.CLICKUP
+
+    # -------------------------------------------------------------------------
+    # Code & Version Control
+    # -------------------------------------------------------------------------
+
+    # GitLab keywords (check before GitHub to handle "merge request" properly)
+    if _contains_any(
+        text,
+        (
+            "gitlab",
+            "merge request",
+            " mr ",
+            "gitlab issue",
+            "gitlab pipeline",
+            "gitlab ci",
+        ),
+    ):
+        return Provider.GITLAB
+
+    # Bitbucket keywords
+    if _contains_any(
+        text,
+        ("bitbucket", "bitbucket pr", "bitbucket pipeline", "bitbucket repo"),
+    ):
+        return Provider.BITBUCKET
+
+    # GitHub keywords
+    if _contains_any(
+        text,
+        (
+            "github",
+            "gh issue",
+            "gh pr",
+            "github issue",
+            "github pr",
+            "pull request",
+            " pr ",
+        ),
+    ):
+        return Provider.GITHUB
+
+    # -------------------------------------------------------------------------
+    # CI/CD & Deployment
+    # -------------------------------------------------------------------------
+
+    # GitHub Actions keywords (check before general GitHub)
+    if _contains_any(
+        text,
+        ("github action", "github actions", "workflow run", "action run", "gh action"),
+    ):
+        return Provider.GITHUB_ACTIONS
+
+    # CircleCI keywords
+    if _contains_any(text, ("circleci", "circle ci", "circle pipeline", "circleci job")):
+        return Provider.CIRCLECI
+
+    # Vercel keywords
+    if _contains_any(text, ("vercel", "vercel deployment", "vercel project", "vercel preview")):
+        return Provider.VERCEL
+
+    # Jenkins keywords
+    if _contains_any(text, ("jenkins", "jenkins job", "jenkins pipeline", "jenkins build")):
+        return Provider.JENKINS
+
+    # -------------------------------------------------------------------------
+    # Communication
+    # -------------------------------------------------------------------------
+
+    # Slack keywords
+    if _contains_any(
+        text,
+        ("slack", "slack channel", "slack message", "slack dm"),
+    ):
+        return Provider.SLACK
+
+    # Teams keywords
+    if _contains_any(text, ("teams", "microsoft teams", "teams channel", "teams message")):
+        return Provider.TEAMS
+
+    # Discord keywords
+    if _contains_any(text, ("discord", "discord channel", "discord server", "discord message")):
+        return Provider.DISCORD
+
+    # -------------------------------------------------------------------------
+    # Documentation & Knowledge
+    # -------------------------------------------------------------------------
+
+    # Confluence keywords
+    if _contains_any(
+        text,
+        ("confluence", "confluence page", "confluence doc", "confluence space"),
+    ):
+        return Provider.CONFLUENCE
+
+    # Notion keywords
+    if _contains_any(
+        text,
+        ("notion", "notion page", "notion doc", "notion database"),
+    ):
+        return Provider.NOTION
+
+    # Google Drive keywords
+    if _contains_any(
+        text,
+        ("google drive", "gdrive", "drive file", "drive folder", "my drive"),
+    ):
+        return Provider.GOOGLE_DRIVE
+
+    # Google Docs keywords
+    if _contains_any(text, ("google doc", "gdoc", "google docs")):
+        return Provider.GOOGLE_DOCS
+
+    # -------------------------------------------------------------------------
+    # Meetings & Calendar
+    # -------------------------------------------------------------------------
+
+    # Zoom keywords
+    if _contains_any(text, ("zoom", "zoom recording", "zoom meeting", "zoom transcript")):
+        return Provider.ZOOM
+
+    # Google Calendar keywords
+    if _contains_any(
+        text,
+        ("google calendar", "gcal", "calendar event", "my calendar", "today's meetings"),
+    ):
+        return Provider.GOOGLE_CALENDAR
+
+    # Loom keywords
+    if _contains_any(text, ("loom", "loom video", "loom recording", "loom transcript")):
+        return Provider.LOOM
+
+    # -------------------------------------------------------------------------
+    # Monitoring & Security
+    # -------------------------------------------------------------------------
+
+    # Datadog keywords
+    if _contains_any(
+        text,
+        ("datadog", "dd monitor", "datadog monitor", "datadog incident", "datadog dashboard"),
+    ):
+        return Provider.DATADOG
+
+    # Sentry keywords
+    if _contains_any(text, ("sentry", "sentry issue", "sentry error", "sentry project")):
+        return Provider.SENTRY
+
+    # PagerDuty keywords
+    if _contains_any(
+        text,
+        ("pagerduty", "pager duty", "oncall", "on-call", "pagerduty incident"),
+    ):
+        return Provider.PAGERDUTY
+
+    # Snyk keywords
+    if _contains_any(text, ("snyk", "snyk vulnerability", "snyk project", "snyk issue")):
+        return Provider.SNYK
+
+    # SonarQube keywords
+    if _contains_any(
+        text,
+        ("sonarqube", "sonar", "code quality", "quality gate", "sonar issue"),
+    ):
+        return Provider.SONARQUBE
+
+    # -------------------------------------------------------------------------
+    # Design
+    # -------------------------------------------------------------------------
+
+    # Figma keywords
+    if _contains_any(text, ("figma", "figma file", "figma design", "figma comment")):
+        return Provider.FIGMA
+
+    return None
 
 
 def _autonomy_from_text(text: str) -> AutonomyMode:
@@ -265,6 +474,11 @@ class IntentClassifier:
         # crude confidence score based on how specific we were
         confidence = self._confidence_score(kind, raw_text)
 
+        # --- provider detection ------------------------------------------------
+        # Detect which connector/provider the user is referring to
+        provider = metadata.get("provider") or _detect_provider(text)
+        provider_str = provider.value if provider else None
+
         intent = NaviIntent(
             family=family,
             kind=kind,
@@ -274,7 +488,8 @@ class IntentClassifier:
             raw_text=raw_text,
             slots={
                 "language": language_hint,
-                **{k: v for k, v in metadata.items() if k not in {"files", "language"}},
+                "provider": provider_str,  # Add detected provider to slots
+                **{k: v for k, v in metadata.items() if k not in {"files", "language", "provider"}},
             },
             code_edit=code_edit,
             test_run=test_run,
@@ -314,18 +529,125 @@ class IntentClassifier:
         if _contains_any(
             text,
             (
+                # Jira keywords
                 "jira",
                 "ticket",
                 "story",
-                "issue",
                 "backlog",
                 "sprint",
                 "epic",
                 "release notes",
                 "changelog",
+                # GitHub/GitLab PR keywords
                 "pull request",
                 "pr ",
                 "merge request",
+                " mr ",
+                # Linear keywords
+                "linear",
+                "lin-",
+                # Asana keywords
+                "asana",
+                "asana task",
+                "asana project",
+                # GitLab keywords
+                "gitlab",
+                "pipeline",
+                # Notion keywords
+                "notion",
+                "notion page",
+                "notion doc",
+                # Trello keywords
+                "trello",
+                "trello board",
+                "trello card",
+                # Monday.com keywords
+                "monday",
+                "monday.com",
+                "monday board",
+                # ClickUp keywords
+                "clickup",
+                "click up",
+                # Bitbucket keywords
+                "bitbucket",
+                # Confluence keywords
+                "confluence",
+                "confluence page",
+                # Google Drive/Docs keywords
+                "google drive",
+                "gdrive",
+                "google doc",
+                # Figma keywords
+                "figma",
+                "figma file",
+                # General issue/task keywords
+                "my issues",
+                "my tasks",
+                "assigned to me",
+                "my open",
+            ),
+        ):
+            return IntentFamily.PROJECT_MANAGEMENT
+
+        # CI/CD and Monitoring intents
+        if _contains_any(
+            text,
+            (
+                # CI/CD keywords
+                "github action",
+                "circleci",
+                "vercel",
+                "deployment",
+                "deploy status",
+                "build status",
+                "workflow run",
+                # Monitoring keywords
+                "datadog",
+                "monitor",
+                "incident",
+                "alerting",
+                "sentry",
+                "sentry issue",
+                "pagerduty",
+                "oncall",
+                "on-call",
+                # Security keywords
+                "snyk",
+                "vulnerability",
+                "sonarqube",
+                "code quality",
+                "quality gate",
+            ),
+        ):
+            return IntentFamily.PROJECT_MANAGEMENT
+
+        # Communication intents
+        if _contains_any(
+            text,
+            (
+                "slack",
+                "slack channel",
+                "discord",
+                "discord channel",
+                "teams",
+                "teams channel",
+            ),
+        ):
+            return IntentFamily.PROJECT_MANAGEMENT
+
+        # Meetings/Calendar intents
+        if _contains_any(
+            text,
+            (
+                "zoom",
+                "zoom recording",
+                "loom",
+                "loom video",
+                "google calendar",
+                "gcal",
+                "calendar event",
+                "today's meetings",
+                "upcoming meetings",
             ),
         ):
             return IntentFamily.PROJECT_MANAGEMENT
@@ -399,6 +721,37 @@ class IntentClassifier:
                     "runtime error",
                     "compile error",
                     "fix this bug",
+                    "error:",
+                    "typeerror",
+                    "syntaxerror",
+                    "referenceerror",
+                    "nameerror",
+                    "valueerror",
+                    "attributeerror",
+                    "keyerror",
+                    "indexerror",
+                    "importerror",
+                    "modulenotfounderror",
+                    "cannot read property",
+                    "undefined is not",
+                    "null is not",
+                    "is not defined",
+                    "is not a function",
+                    "how do i fix",
+                    "getting this error",
+                    "getting an error",
+                    "i'm getting",
+                    "im getting",
+                    "this error",
+                    "fix error",
+                    "resolve error",
+                    "debug",
+                    "not working",
+                    "doesn't work",
+                    "broken",
+                    "crash",
+                    "fails",
+                    "failed",
                 ),
             ):
                 return IntentKind.FIX_BUG
@@ -415,6 +768,52 @@ class IntentClassifier:
                     "add api",
                     "create endpoint",
                     "support this use case",
+                    "create a",
+                    "build a",
+                    "write a",
+                    "make a",
+                    "implement a",
+                    "add a new",
+                    "create new",
+                    "build new",
+                    "write new",
+                    "implement the",
+                    "add functionality",
+                    "develop a",
+                    "code a",
+                    "set up",
+                    "setup",
+                    "crud",
+                    "api for",
+                    "component for",
+                    "module for",
+                    "service for",
+                    "function that",
+                    "method that",
+                    "class that",
+                    "authentication",
+                    "login",
+                    "logout",
+                    "signup",
+                    "registration",
+                    "user management",
+                    "form validation",
+                    "data validation",
+                    "error handling",
+                    "logging",
+                    "caching",
+                    "pagination",
+                    "search functionality",
+                    "filter",
+                    "sort",
+                    "export",
+                    "import",
+                    "upload",
+                    "download",
+                    "notification",
+                    "email",
+                    "webhook",
+                    "integration",
                 ),
             ):
                 return IntentKind.IMPLEMENT_FEATURE
@@ -470,10 +869,55 @@ class IntentClassifier:
             if _contains_any(
                 text,
                 (
+                    "run this project",
+                    "run the project",
+                    "run this app",
+                    "run the app",
+                    "start the server",
+                    "start server",
+                    "start the app",
+                    "start this",
+                    "run this",
+                    "execute this",
+                    "how do i run",
+                    "how to run",
+                    "how to start",
+                    "npm start",
+                    "npm run dev",
+                    "python run",
+                    "uvicorn",
+                    "flask run",
+                    "django runserver",
+                    "node index",
+                    "node server",
+                    "yarn start",
+                    "yarn dev",
+                ),
+            ):
+                return IntentKind.RUN_CUSTOM_COMMAND
+
+            if _contains_any(
+                text,
+                (
                     "explain this code",
                     "what does this code do",
                     "explain how this works",
                     "help me understand this function",
+                    "what is this",
+                    "what does this",
+                    "how does this",
+                    "what is the purpose",
+                    "what are the",
+                    "describe this",
+                    "tell me about",
+                    "explain the",
+                    "what is this project",
+                    "what does this project",
+                    "what framework",
+                    "what language",
+                    "what technologies",
+                    "tech stack",
+                    "architecture",
                 ),
             ):
                 return IntentKind.EXPLAIN_CODE
@@ -551,6 +995,327 @@ class IntentClassifier:
             ):
                 return IntentKind.JIRA_LIST_MY_ISSUES
 
+            # Check for Linear "my issues" patterns
+            if _contains_any(
+                text,
+                (
+                    "my linear issues",
+                    "linear issues assigned to me",
+                    "show my linear tasks",
+                    "list my linear issues",
+                    "linear tasks",
+                    "lin-",
+                ),
+            ) and "linear" in text:
+                return IntentKind.LIST_MY_ITEMS  # Provider detected via _detect_provider
+
+            # Check for GitLab "my MRs/issues" patterns
+            if _contains_any(
+                text,
+                (
+                    "my gitlab",
+                    "my merge requests",
+                    "my mrs",
+                    "gitlab issues assigned to me",
+                    "gitlab mrs",
+                    "gitlab merge requests",
+                    "my pipelines",
+                    "pipeline status",
+                ),
+            ) and ("gitlab" in text or "merge request" in text or " mr " in text):
+                return IntentKind.LIST_MY_ITEMS  # Provider detected via _detect_provider
+
+            # Check for GitHub "my PRs/issues" patterns
+            if _contains_any(
+                text,
+                (
+                    "my github issues",
+                    "my github prs",
+                    "github issues assigned to me",
+                    "github prs assigned to me",
+                    "my pull requests",
+                ),
+            ) and "github" in text:
+                return IntentKind.LIST_MY_ITEMS  # Provider detected via _detect_provider
+
+            # Check for Asana "my tasks" patterns
+            if _contains_any(
+                text,
+                (
+                    "my asana tasks",
+                    "asana tasks assigned to me",
+                    "show my asana tasks",
+                    "list my asana tasks",
+                    "asana projects",
+                ),
+            ) and "asana" in text:
+                return IntentKind.LIST_MY_ITEMS  # Provider detected via _detect_provider
+
+            # Check for Notion "search/list" patterns
+            if _contains_any(
+                text,
+                (
+                    "search notion",
+                    "find notion",
+                    "notion pages",
+                    "my notion docs",
+                    "notion databases",
+                    "recent notion pages",
+                ),
+            ) and "notion" in text:
+                return IntentKind.LIST_MY_ITEMS  # Provider detected via _detect_provider
+
+            # Check for Trello patterns
+            if _contains_any(
+                text,
+                (
+                    "my trello cards",
+                    "trello boards",
+                    "show my trello",
+                    "list trello cards",
+                    "trello tasks",
+                ),
+            ) and "trello" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Monday.com patterns
+            if _contains_any(
+                text,
+                (
+                    "my monday items",
+                    "monday boards",
+                    "show my monday",
+                    "list monday items",
+                    "monday tasks",
+                ),
+            ) and "monday" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for ClickUp patterns
+            if _contains_any(
+                text,
+                (
+                    "my clickup tasks",
+                    "clickup spaces",
+                    "show my clickup",
+                    "list clickup tasks",
+                ),
+            ) and ("clickup" in text or "click up" in text):
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Bitbucket patterns
+            if _contains_any(
+                text,
+                (
+                    "my bitbucket prs",
+                    "bitbucket repos",
+                    "show my bitbucket",
+                    "bitbucket pipelines",
+                ),
+            ) and "bitbucket" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Confluence patterns
+            if _contains_any(
+                text,
+                (
+                    "search confluence",
+                    "confluence pages",
+                    "confluence spaces",
+                    "find confluence",
+                ),
+            ) and "confluence" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Google Drive patterns
+            if _contains_any(
+                text,
+                (
+                    "my drive files",
+                    "google drive files",
+                    "search drive",
+                    "list drive files",
+                    "recent files",
+                ),
+            ) and ("drive" in text or "gdrive" in text):
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Figma patterns
+            if _contains_any(
+                text,
+                (
+                    "my figma files",
+                    "figma projects",
+                    "show figma",
+                    "list figma files",
+                ),
+            ) and "figma" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Zoom patterns
+            if _contains_any(
+                text,
+                (
+                    "zoom recordings",
+                    "my zoom meetings",
+                    "zoom transcripts",
+                    "list zoom recordings",
+                ),
+            ) and "zoom" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Loom patterns
+            if _contains_any(
+                text,
+                (
+                    "loom videos",
+                    "my loom recordings",
+                    "loom transcripts",
+                    "list loom videos",
+                ),
+            ) and "loom" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Google Calendar patterns
+            if _contains_any(
+                text,
+                (
+                    "my calendar events",
+                    "today's calendar",
+                    "upcoming events",
+                    "calendar meetings",
+                    "show my calendar",
+                ),
+            ) and ("calendar" in text or "gcal" in text):
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Datadog patterns
+            if _contains_any(
+                text,
+                (
+                    "datadog monitors",
+                    "alerting monitors",
+                    "datadog incidents",
+                    "datadog dashboards",
+                    "show monitors",
+                ),
+            ) and "datadog" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Sentry patterns
+            if _contains_any(
+                text,
+                (
+                    "sentry issues",
+                    "sentry errors",
+                    "sentry projects",
+                    "show sentry",
+                    "list sentry issues",
+                ),
+            ) and "sentry" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for PagerDuty patterns
+            if _contains_any(
+                text,
+                (
+                    "pagerduty incidents",
+                    "who's on call",
+                    "oncall schedule",
+                    "show oncall",
+                    "pagerduty schedule",
+                ),
+            ) and ("pagerduty" in text or "oncall" in text or "on-call" in text):
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Snyk patterns
+            if _contains_any(
+                text,
+                (
+                    "snyk vulnerabilities",
+                    "snyk issues",
+                    "snyk projects",
+                    "security vulnerabilities",
+                ),
+            ) and "snyk" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for SonarQube patterns
+            if _contains_any(
+                text,
+                (
+                    "sonarqube issues",
+                    "code quality issues",
+                    "quality gate status",
+                    "sonar projects",
+                ),
+            ) and ("sonarqube" in text or "sonar" in text):
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for GitHub Actions patterns
+            if _contains_any(
+                text,
+                (
+                    "github actions",
+                    "workflow runs",
+                    "action status",
+                    "list workflows",
+                ),
+            ) and ("github action" in text or "workflow" in text):
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for CircleCI patterns
+            if _contains_any(
+                text,
+                (
+                    "circleci pipelines",
+                    "circleci jobs",
+                    "circle builds",
+                    "circleci status",
+                ),
+            ) and ("circleci" in text or "circle ci" in text):
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Vercel patterns
+            if _contains_any(
+                text,
+                (
+                    "vercel deployments",
+                    "vercel projects",
+                    "deployment status",
+                    "vercel preview",
+                ),
+            ) and "vercel" in text:
+                return IntentKind.LIST_MY_ITEMS
+
+            # Check for Discord patterns
+            if _contains_any(
+                text,
+                (
+                    "discord channels",
+                    "discord messages",
+                    "discord servers",
+                    "show discord",
+                ),
+            ) and "discord" in text:
+                return IntentKind.SUMMARIZE_CHANNEL
+
+            # Check for general "my items" across any provider
+            if _contains_any(
+                text,
+                (
+                    "my issues",
+                    "my tasks",
+                    "assigned to me",
+                    "show my",
+                    "list my",
+                    "what am i working on",
+                    "my open issues",
+                    "my open tasks",
+                ),
+            ):
+                return IntentKind.LIST_MY_ITEMS
+
             # Check for Slack channel summary patterns
             if _contains_any(
                 text,
@@ -562,6 +1327,8 @@ class IntentClassifier:
                     "what did i miss in #",
                     "summarize slack channel",
                     "slack standup summary",
+                    "slack messages",
+                    "recent slack",
                 ),
             ):
                 return IntentKind.SLACK_SUMMARIZE_CHANNEL

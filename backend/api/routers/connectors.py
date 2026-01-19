@@ -2267,3 +2267,2869 @@ def delete_connector(
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     return {"ok": True}
+
+
+# =============================================================================
+# GitLab OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/gitlab/oauth/start",
+    summary="Start GitLab OAuth flow",
+)
+def gitlab_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="gitlab",
+        fallback_client_id=settings.gitlab_client_id,
+        fallback_client_secret=settings.gitlab_client_secret,
+        fallback_scopes=settings.gitlab_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="GitLab OAuth not configured. Set org app config or GITLAB_CLIENT_ID/GITLAB_CLIENT_SECRET.",
+        )
+
+    scopes = oauth_cfg["scopes"] or "api read_api read_user"
+
+    state = create_state(
+        {
+            "provider": "gitlab",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    gitlab_base = settings.gitlab_base_url or "https://gitlab.com"
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/gitlab/oauth/callback"),
+        "response_type": "code",
+        "scope": scopes,
+        "state": state,
+    }
+    auth_url = f"{gitlab_base}/oauth/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/gitlab/oauth/callback",
+    summary="GitLab OAuth callback",
+)
+async def gitlab_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "gitlab":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id") or getattr(current_user, "org_id", None),
+        provider="gitlab",
+        fallback_client_id=settings.gitlab_client_id,
+        fallback_client_secret=settings.gitlab_client_secret,
+        fallback_scopes=settings.gitlab_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="GitLab OAuth not configured.",
+        )
+
+    gitlab_base = settings.gitlab_base_url or "https://gitlab.com"
+    redirect_uri = _oauth_redirect("/api/connectors/gitlab/oauth/callback")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            f"{gitlab_base}/oauth/token",
+            data={
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"GitLab OAuth failed: {resp.text}"
+        )
+
+    data = resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="GitLab OAuth missing access_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    scopes = _parse_scopes(data.get("scope"), delimiter=" ")
+    token_type = data.get("token_type")
+
+    # Validate token
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            user_resp = await client.get(
+                f"{gitlab_base}/api/v4/user",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            user_resp.raise_for_status()
+            user_info = user_resp.json()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"GitLab credential validation failed: {exc}",
+        ) from exc
+
+    connectors_service.upsert_connector(
+        db=db,
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
+        org_id=payload.get("org_id"),
+        provider="gitlab",
+        name=user_info.get("username", "default"),
+        config={
+            "base_url": gitlab_base,
+            "username": user_info.get("username"),
+            "user_id": user_info.get("id"),
+            "scopes": scopes,
+            "token_type": token_type,
+            "expires_at": expires_at,
+        },
+        secrets={
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+        },
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="gitlab",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True, "username": user_info.get("username")}
+
+
+@router.get(
+    "/gitlab/projects",
+    summary="List GitLab projects for the current user",
+)
+async def gitlab_list_projects(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_current_user_id),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    connector = connectors_service.get_connector_for_context(
+        db,
+        user_id=user_id,
+        org_id=getattr(current_user, "org_id", None),
+        provider="gitlab",
+    )
+    if not connector:
+        raise HTTPException(status_code=404, detail="GitLab connector not configured")
+
+    token = (connector.get("secrets") or {}).get("access_token")
+    base_url = (connector.get("config") or {}).get("base_url") or "https://gitlab.com"
+    if not token:
+        raise HTTPException(status_code=404, detail="GitLab token not found")
+
+    from backend.integrations.gitlab_client import GitLabClient
+
+    async with GitLabClient(access_token=token, base_url=base_url) as gitlab:
+        projects = await gitlab.list_projects()
+
+    return {"items": projects}
+
+
+@router.post(
+    "/gitlab/sync",
+    summary="Sync GitLab project data into NAVI memory",
+)
+async def gitlab_sync(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_current_user_id),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    connector = connectors_service.get_connector_for_context(
+        db,
+        user_id=user_id,
+        org_id=getattr(current_user, "org_id", None),
+        provider="gitlab",
+    )
+    if not connector:
+        raise HTTPException(status_code=404, detail="GitLab connector not configured")
+
+    token = (connector.get("secrets") or {}).get("access_token")
+    base_url = (connector.get("config") or {}).get("base_url") or "https://gitlab.com"
+    if not token:
+        raise HTTPException(status_code=404, detail="GitLab token not found")
+
+    from backend.integrations.gitlab_client import GitLabClient
+
+    async with GitLabClient(access_token=token, base_url=base_url) as gitlab:
+        project = await gitlab.get_project(project_id)
+        mrs = await gitlab.list_merge_requests(project_id)
+        issues = await gitlab.list_issues(project_id)
+        pipelines = await gitlab.list_pipelines(project_id)
+
+    return {
+        "ok": True,
+        "project": project.get("path_with_namespace"),
+        "merge_requests": len(mrs),
+        "issues": len(issues),
+        "pipelines": len(pipelines),
+    }
+
+
+# =============================================================================
+# Linear OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/linear/oauth/start",
+    summary="Start Linear OAuth flow",
+)
+def linear_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="linear",
+        fallback_client_id=settings.linear_client_id,
+        fallback_client_secret=settings.linear_client_secret,
+        fallback_scopes=settings.linear_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Linear OAuth not configured. Set org app config or LINEAR_CLIENT_ID/LINEAR_CLIENT_SECRET.",
+        )
+
+    scopes = oauth_cfg["scopes"] or "read write"
+
+    state = create_state(
+        {
+            "provider": "linear",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/linear/oauth/callback"),
+        "response_type": "code",
+        "scope": scopes,
+        "state": state,
+    }
+    auth_url = f"https://linear.app/oauth/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/linear/oauth/callback",
+    summary="Linear OAuth callback",
+)
+async def linear_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "linear":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id") or getattr(current_user, "org_id", None),
+        provider="linear",
+        fallback_client_id=settings.linear_client_id,
+        fallback_client_secret=settings.linear_client_secret,
+        fallback_scopes=settings.linear_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Linear OAuth not configured.",
+        )
+
+    redirect_uri = _oauth_redirect("/api/connectors/linear/oauth/callback")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://api.linear.app/oauth/token",
+            data={
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"Linear OAuth failed: {resp.text}"
+        )
+
+    data = resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Linear OAuth missing access_token")
+
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    scopes = _parse_scopes(data.get("scope"), delimiter=" ")
+
+    # Validate token and get user info
+    try:
+        from backend.integrations.linear_client import LinearClient
+
+        async with LinearClient(access_token=access_token) as linear:
+            viewer = await linear.get_viewer()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Linear credential validation failed: {exc}",
+        ) from exc
+
+    connectors_service.upsert_connector(
+        db=db,
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
+        org_id=payload.get("org_id"),
+        provider="linear",
+        name=viewer.get("name", "default"),
+        config={
+            "user_id": viewer.get("id"),
+            "email": viewer.get("email"),
+            "scopes": scopes,
+            "expires_at": expires_at,
+        },
+        secrets={
+            "access_token": access_token,
+        },
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="linear",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True, "name": viewer.get("name"), "email": viewer.get("email")}
+
+
+@router.get(
+    "/linear/issues",
+    summary="List Linear issues",
+)
+async def linear_list_issues(
+    team_id: str | None = None,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_current_user_id),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    connector = connectors_service.get_connector_for_context(
+        db,
+        user_id=user_id,
+        org_id=getattr(current_user, "org_id", None),
+        provider="linear",
+    )
+    if not connector:
+        raise HTTPException(status_code=404, detail="Linear connector not configured")
+
+    token = (connector.get("secrets") or {}).get("access_token")
+    if not token:
+        raise HTTPException(status_code=404, detail="Linear token not found")
+
+    from backend.integrations.linear_client import LinearClient
+
+    async with LinearClient(access_token=token) as linear:
+        issues_data = await linear.list_issues(team_id=team_id)
+
+    return {"items": issues_data.get("nodes", [])}
+
+
+@router.post(
+    "/linear/sync",
+    summary="Sync Linear data into NAVI memory",
+)
+async def linear_sync(
+    team_id: str | None = None,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_current_user_id),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    connector = connectors_service.get_connector_for_context(
+        db,
+        user_id=user_id,
+        org_id=getattr(current_user, "org_id", None),
+        provider="linear",
+    )
+    if not connector:
+        raise HTTPException(status_code=404, detail="Linear connector not configured")
+
+    token = (connector.get("secrets") or {}).get("access_token")
+    if not token:
+        raise HTTPException(status_code=404, detail="Linear token not found")
+
+    from backend.integrations.linear_client import LinearClient
+
+    async with LinearClient(access_token=token) as linear:
+        teams = await linear.list_teams()
+        issues_data = await linear.list_issues(team_id=team_id)
+        projects = await linear.list_projects(team_id=team_id)
+
+    return {
+        "ok": True,
+        "teams": len(teams),
+        "issues": len(issues_data.get("nodes", [])),
+        "projects": len(projects),
+    }
+
+
+# =============================================================================
+# Notion OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/notion/oauth/start",
+    summary="Start Notion OAuth flow",
+)
+def notion_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="notion",
+        fallback_client_id=settings.notion_client_id,
+        fallback_client_secret=settings.notion_client_secret,
+        fallback_scopes=None,  # Notion doesn't use scopes
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Notion OAuth not configured. Set org app config or NOTION_CLIENT_ID/NOTION_CLIENT_SECRET.",
+        )
+
+    state = create_state(
+        {
+            "provider": "notion",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/notion/oauth/callback"),
+        "response_type": "code",
+        "owner": "user",  # Request user-level access
+        "state": state,
+    }
+    auth_url = f"https://api.notion.com/v1/oauth/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/notion/oauth/callback",
+    summary="Notion OAuth callback",
+)
+async def notion_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "notion":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id") or getattr(current_user, "org_id", None),
+        provider="notion",
+        fallback_client_id=settings.notion_client_id,
+        fallback_client_secret=settings.notion_client_secret,
+        fallback_scopes=None,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Notion OAuth not configured.",
+        )
+
+    redirect_uri = _oauth_redirect("/api/connectors/notion/oauth/callback")
+
+    # Notion uses Basic auth for token exchange
+    auth_bytes = f"{oauth_cfg['client_id']}:{oauth_cfg['client_secret']}".encode("utf-8")
+    basic_auth = base64.b64encode(auth_bytes).decode("utf-8")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://api.notion.com/v1/oauth/token",
+            json={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={
+                "Authorization": f"Basic {basic_auth}",
+                "Content-Type": "application/json",
+            },
+        )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"Notion OAuth failed: {resp.text}"
+        )
+
+    data = resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Notion OAuth missing access_token")
+
+    # Notion tokens don't expire
+    workspace_id = data.get("workspace_id")
+    workspace_name = data.get("workspace_name")
+    workspace_icon = data.get("workspace_icon")
+    bot_id = data.get("bot_id")
+    owner = data.get("owner", {})
+
+    connectors_service.upsert_connector(
+        db=db,
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
+        org_id=payload.get("org_id"),
+        provider="notion",
+        name=workspace_name or "default",
+        config={
+            "workspace_id": workspace_id,
+            "workspace_name": workspace_name,
+            "workspace_icon": workspace_icon,
+            "bot_id": bot_id,
+            "owner_type": owner.get("type"),
+            "owner_user": owner.get("user", {}).get("id") if owner.get("type") == "user" else None,
+        },
+        secrets={
+            "access_token": access_token,
+        },
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="notion",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True, "workspace_name": workspace_name, "workspace_id": workspace_id}
+
+
+@router.get(
+    "/notion/pages",
+    summary="List Notion pages",
+)
+async def notion_list_pages(
+    query: str = "",
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_current_user_id),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    connector = connectors_service.get_connector_for_context(
+        db,
+        user_id=user_id,
+        org_id=getattr(current_user, "org_id", None),
+        provider="notion",
+    )
+    if not connector:
+        raise HTTPException(status_code=404, detail="Notion connector not configured")
+
+    token = (connector.get("secrets") or {}).get("access_token")
+    if not token:
+        raise HTTPException(status_code=404, detail="Notion token not found")
+
+    from backend.integrations.notion_client import NotionClient
+
+    async with NotionClient(access_token=token) as notion:
+        search_results = await notion.search(query=query, filter_type="page")
+
+    return {"items": search_results.get("results", [])}
+
+
+@router.get(
+    "/notion/databases",
+    summary="List Notion databases",
+)
+async def notion_list_databases(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_current_user_id),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    connector = connectors_service.get_connector_for_context(
+        db,
+        user_id=user_id,
+        org_id=getattr(current_user, "org_id", None),
+        provider="notion",
+    )
+    if not connector:
+        raise HTTPException(status_code=404, detail="Notion connector not configured")
+
+    token = (connector.get("secrets") or {}).get("access_token")
+    if not token:
+        raise HTTPException(status_code=404, detail="Notion token not found")
+
+    from backend.integrations.notion_client import NotionClient
+
+    async with NotionClient(access_token=token) as notion:
+        databases = await notion.list_databases()
+
+    return {"items": databases.get("results", [])}
+
+
+@router.post(
+    "/notion/sync",
+    summary="Sync Notion pages into NAVI memory",
+)
+async def notion_sync(
+    page_ids: List[str] | None = None,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_current_user_id),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    connector = connectors_service.get_connector_for_context(
+        db,
+        user_id=user_id,
+        org_id=getattr(current_user, "org_id", None),
+        provider="notion",
+    )
+    if not connector:
+        raise HTTPException(status_code=404, detail="Notion connector not configured")
+
+    token = (connector.get("secrets") or {}).get("access_token")
+    if not token:
+        raise HTTPException(status_code=404, detail="Notion token not found")
+
+    from backend.integrations.notion_client import NotionClient
+
+    async with NotionClient(access_token=token) as notion:
+        if page_ids:
+            pages = [await notion.get_page(pid) for pid in page_ids]
+        else:
+            search_results = await notion.search(query="", filter_type="page", page_size=50)
+            pages = search_results.get("results", [])
+
+    return {
+        "ok": True,
+        "pages_synced": len(pages),
+    }
+
+
+# =============================================================================
+# Bitbucket OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/bitbucket/oauth/start",
+    summary="Start Bitbucket OAuth flow",
+)
+def bitbucket_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="bitbucket",
+        fallback_client_id=settings.bitbucket_client_id,
+        fallback_client_secret=settings.bitbucket_client_secret,
+        fallback_scopes=settings.bitbucket_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Bitbucket OAuth not configured. Set org app config or BITBUCKET_CLIENT_ID/BITBUCKET_CLIENT_SECRET.",
+        )
+
+    state = create_state(
+        {
+            "provider": "bitbucket",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/bitbucket/oauth/callback"),
+        "response_type": "code",
+        "state": state,
+    }
+    auth_url = f"https://bitbucket.org/site/oauth2/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/bitbucket/oauth/callback",
+    summary="Bitbucket OAuth callback",
+)
+async def bitbucket_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "bitbucket":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id") or getattr(current_user, "org_id", None),
+        provider="bitbucket",
+        fallback_client_id=settings.bitbucket_client_id,
+        fallback_client_secret=settings.bitbucket_client_secret,
+        fallback_scopes=settings.bitbucket_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Bitbucket OAuth not configured.",
+        )
+
+    redirect_uri = _oauth_redirect("/api/connectors/bitbucket/oauth/callback")
+
+    # Bitbucket uses Basic auth for token exchange
+    auth_bytes = f"{oauth_cfg['client_id']}:{oauth_cfg['client_secret']}".encode("utf-8")
+    basic_auth = base64.b64encode(auth_bytes).decode("utf-8")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://bitbucket.org/site/oauth2/access_token",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={
+                "Authorization": f"Basic {basic_auth}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"Bitbucket OAuth failed: {resp.text}"
+        )
+
+    data = resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Bitbucket OAuth missing access_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    scopes = _parse_scopes(data.get("scopes"), delimiter=" ")
+
+    # Validate token and get user info
+    try:
+        from backend.integrations.bitbucket_client import BitbucketClient
+
+        async with BitbucketClient(access_token=access_token) as bitbucket:
+            user_info = await bitbucket.get_current_user()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Bitbucket credential validation failed: {exc}",
+        ) from exc
+
+    connectors_service.upsert_connector(
+        db=db,
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
+        org_id=payload.get("org_id"),
+        provider="bitbucket",
+        name=user_info.get("username", "default"),
+        config={
+            "uuid": user_info.get("uuid"),
+            "username": user_info.get("username"),
+            "display_name": user_info.get("display_name"),
+            "scopes": scopes,
+            "expires_at": expires_at,
+        },
+        secrets={
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+        },
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="bitbucket",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True, "username": user_info.get("username")}
+
+
+@router.get(
+    "/bitbucket/repos",
+    summary="List Bitbucket repositories for the current user",
+)
+async def bitbucket_list_repos(
+    workspace: str | None = None,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_current_user_id),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    connector = connectors_service.get_connector_for_context(
+        db,
+        user_id=user_id,
+        org_id=getattr(current_user, "org_id", None),
+        provider="bitbucket",
+    )
+    if not connector:
+        raise HTTPException(status_code=404, detail="Bitbucket connector not configured")
+
+    token = (connector.get("secrets") or {}).get("access_token")
+    if not token:
+        raise HTTPException(status_code=404, detail="Bitbucket token not found")
+
+    from backend.integrations.bitbucket_client import BitbucketClient
+
+    async with BitbucketClient(access_token=token) as bitbucket:
+        repos_data = await bitbucket.list_repositories(workspace=workspace)
+
+    return {"items": repos_data.get("values", [])}
+
+
+@router.post(
+    "/bitbucket/sync",
+    summary="Sync Bitbucket repo data into NAVI memory",
+)
+async def bitbucket_sync(
+    workspace: str,
+    repo_slug: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(_current_user_id),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    connector = connectors_service.get_connector_for_context(
+        db,
+        user_id=user_id,
+        org_id=getattr(current_user, "org_id", None),
+        provider="bitbucket",
+    )
+    if not connector:
+        raise HTTPException(status_code=404, detail="Bitbucket connector not configured")
+
+    token = (connector.get("secrets") or {}).get("access_token")
+    if not token:
+        raise HTTPException(status_code=404, detail="Bitbucket token not found")
+
+    from backend.integrations.bitbucket_client import BitbucketClient
+
+    async with BitbucketClient(access_token=token) as bitbucket:
+        repo = await bitbucket.get_repository(workspace, repo_slug)
+        prs_data = await bitbucket.list_pull_requests(workspace, repo_slug)
+        commits_data = await bitbucket.list_commits(workspace, repo_slug)
+        pipelines_data = await bitbucket.list_pipelines(workspace, repo_slug)
+
+    return {
+        "ok": True,
+        "repo": repo.get("full_name"),
+        "pull_requests": len(prs_data.get("values", [])),
+        "commits": len(commits_data.get("values", [])),
+        "pipelines": len(pipelines_data.get("values", [])),
+    }
+
+
+# =============================================================================
+# Jira OAuth Endpoints (Atlassian OAuth2)
+# =============================================================================
+
+
+@router.get(
+    "/jira/oauth/start",
+    summary="Start Jira OAuth flow (Atlassian Cloud)",
+)
+def jira_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    # Jira uses the same Atlassian OAuth as Confluence
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="jira",
+        fallback_client_id=settings.jira_client_id or settings.confluence_client_id,
+        fallback_client_secret=settings.jira_client_secret or settings.confluence_client_secret,
+        fallback_scopes=settings.jira_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Jira OAuth not configured. Set org app config or JIRA_CLIENT_ID/JIRA_CLIENT_SECRET.",
+        )
+
+    scopes = oauth_cfg["scopes"] or (
+        "read:jira-user read:jira-work write:jira-work offline_access"
+    )
+
+    state = create_state(
+        {
+            "provider": "jira",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "audience": "api.atlassian.com",
+        "client_id": oauth_cfg["client_id"],
+        "scope": scopes,
+        "redirect_uri": _oauth_redirect("/api/connectors/jira/oauth/callback"),
+        "state": state,
+        "response_type": "code",
+        "prompt": "consent",
+    }
+    auth_url = f"https://auth.atlassian.com/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/jira/oauth/callback",
+    summary="Jira OAuth callback",
+)
+async def jira_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "jira":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id") or getattr(current_user, "org_id", None),
+        provider="jira",
+        fallback_client_id=settings.jira_client_id or settings.confluence_client_id,
+        fallback_client_secret=settings.jira_client_secret or settings.confluence_client_secret,
+        fallback_scopes=settings.jira_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Jira OAuth not configured.",
+        )
+
+    redirect_uri = _oauth_redirect("/api/connectors/jira/oauth/callback")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_resp = await client.post(
+            "https://auth.atlassian.com/oauth/token",
+            json={
+                "grant_type": "authorization_code",
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+        )
+    if token_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"Jira OAuth failed: {token_resp.text}"
+        )
+
+    data = token_resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Jira OAuth missing access_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    scopes = _parse_scopes(data.get("scope"), delimiter=" ")
+
+    # Get accessible resources
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        res = await client.get(
+            "https://api.atlassian.com/oauth/token/accessible-resources",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        res.raise_for_status()
+        resources = res.json() or []
+
+    resource = resources[0] if resources else {}
+    cloud_id = resource.get("id")
+    site_url = resource.get("url")
+    site_name = resource.get("name")
+
+    connectors_service.save_jira_connection(
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
+        org_id=payload.get("org_id"),
+        base_url=site_url,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="Bearer",
+        cloud_id=cloud_id,
+        scopes=scopes,
+        expires_at=expires_at,
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="jira",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True, "cloud_id": cloud_id, "site_name": site_name}
+
+
+# =============================================================================
+# Discord OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/discord/oauth/start",
+    summary="Start Discord OAuth flow",
+)
+def discord_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="discord",
+        fallback_client_id=settings.discord_client_id,
+        fallback_client_secret=settings.discord_client_secret,
+        fallback_scopes=settings.discord_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Discord OAuth not configured.",
+        )
+
+    scopes = oauth_cfg["scopes"] or "identify guilds messages.read"
+
+    state = create_state(
+        {
+            "provider": "discord",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/discord/oauth/callback"),
+        "response_type": "code",
+        "scope": scopes,
+        "state": state,
+    }
+    auth_url = f"https://discord.com/api/oauth2/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/discord/oauth/callback",
+    summary="Discord OAuth callback",
+)
+async def discord_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "discord":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="discord",
+        fallback_client_id=settings.discord_client_id,
+        fallback_client_secret=settings.discord_client_secret,
+        fallback_scopes=settings.discord_oauth_scopes,
+    )
+
+    redirect_uri = _oauth_redirect("/api/connectors/discord/oauth/callback")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_resp = await client.post(
+            "https://discord.com/api/oauth2/token",
+            data={
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    if token_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"Discord OAuth failed: {token_resp.text}"
+        )
+
+    data = token_resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Discord OAuth missing access_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    scopes = _parse_scopes(data.get("scope"), delimiter=" ")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="discord",
+        config={"scopes": scopes, "expires_at": expires_at},
+        secrets={"access_token": access_token, "refresh_token": refresh_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="discord",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True}
+
+
+# =============================================================================
+# Figma OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/figma/oauth/start",
+    summary="Start Figma OAuth flow",
+)
+def figma_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="figma",
+        fallback_client_id=settings.figma_client_id,
+        fallback_client_secret=settings.figma_client_secret,
+        fallback_scopes=settings.figma_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Figma OAuth not configured.",
+        )
+
+    scopes = oauth_cfg["scopes"] or "file_read"
+
+    state = create_state(
+        {
+            "provider": "figma",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/figma/oauth/callback"),
+        "response_type": "code",
+        "scope": scopes,
+        "state": state,
+    }
+    auth_url = f"https://www.figma.com/oauth?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/figma/oauth/callback",
+    summary="Figma OAuth callback",
+)
+async def figma_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "figma":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="figma",
+        fallback_client_id=settings.figma_client_id,
+        fallback_client_secret=settings.figma_client_secret,
+        fallback_scopes=settings.figma_oauth_scopes,
+    )
+
+    redirect_uri = _oauth_redirect("/api/connectors/figma/oauth/callback")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_resp = await client.post(
+            "https://www.figma.com/api/oauth/token",
+            data={
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    if token_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"Figma OAuth failed: {token_resp.text}"
+        )
+
+    data = token_resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Figma OAuth missing access_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    user_id_figma = data.get("user_id")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="figma",
+        config={"figma_user_id": user_id_figma, "expires_at": expires_at},
+        secrets={"access_token": access_token, "refresh_token": refresh_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="figma",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True}
+
+
+# =============================================================================
+# Asana OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/asana/oauth/start",
+    summary="Start Asana OAuth flow",
+)
+def asana_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="asana",
+        fallback_client_id=settings.asana_client_id,
+        fallback_client_secret=settings.asana_client_secret,
+        fallback_scopes=settings.asana_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Asana OAuth not configured.",
+        )
+
+    state = create_state(
+        {
+            "provider": "asana",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/asana/oauth/callback"),
+        "response_type": "code",
+        "state": state,
+    }
+    auth_url = f"https://app.asana.com/-/oauth_authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/asana/oauth/callback",
+    summary="Asana OAuth callback",
+)
+async def asana_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "asana":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="asana",
+        fallback_client_id=settings.asana_client_id,
+        fallback_client_secret=settings.asana_client_secret,
+        fallback_scopes=settings.asana_oauth_scopes,
+    )
+
+    redirect_uri = _oauth_redirect("/api/connectors/asana/oauth/callback")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_resp = await client.post(
+            "https://app.asana.com/-/oauth_token",
+            data={
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    if token_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"Asana OAuth failed: {token_resp.text}"
+        )
+
+    data = token_resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Asana OAuth missing access_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    asana_user = data.get("data") or {}
+    asana_user_id = asana_user.get("gid")
+    asana_user_name = asana_user.get("name")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="asana",
+        config={
+            "asana_user_id": asana_user_id,
+            "asana_user_name": asana_user_name,
+            "expires_at": expires_at,
+        },
+        secrets={"access_token": access_token, "refresh_token": refresh_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="asana",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True, "asana_user": asana_user_name}
+
+
+# =============================================================================
+# Trello OAuth Endpoints (OAuth 1.0a style via REST API)
+# =============================================================================
+
+
+@router.get(
+    "/trello/oauth/start",
+    summary="Start Trello authorization flow",
+)
+def trello_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    # Trello uses API key + token authorization (not OAuth2)
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="trello",
+        fallback_client_id=settings.trello_api_key,
+        fallback_client_secret=None,  # Trello doesn't use client secret
+        fallback_scopes=settings.trello_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Trello API key not configured.",
+        )
+
+    scopes = oauth_cfg["scopes"] or "read,write"
+
+    state = create_state(
+        {
+            "provider": "trello",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    # Trello authorization returns token in fragment, need callback page
+    callback_url = _oauth_redirect("/api/connectors/trello/oauth/callback")
+
+    params = {
+        "key": oauth_cfg["client_id"],
+        "name": "NAVI AI Assistant",
+        "scope": scopes,
+        "expiration": "never",
+        "callback_method": "fragment",
+        "return_url": callback_url,
+        "state": state,
+    }
+    auth_url = f"https://trello.com/1/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.post(
+    "/trello/oauth/callback",
+    summary="Trello OAuth callback (receives token from frontend)",
+)
+async def trello_oauth_callback(
+    token: str,
+    state: str,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    # Trello returns token in URL fragment, so frontend must capture and POST it
+    if not token or not state:
+        raise HTTPException(status_code=400, detail="Missing token or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "trello":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    # Validate the token by getting current user
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="trello",
+        fallback_client_id=settings.trello_api_key,
+        fallback_client_secret=None,
+        fallback_scopes=settings.trello_oauth_scopes,
+    )
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            "https://api.trello.com/1/members/me",
+            params={"key": oauth_cfg["client_id"], "token": token},
+        )
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=400, detail="Invalid Trello token")
+
+    trello_user = resp.json()
+    trello_user_id = trello_user.get("id")
+    trello_username = trello_user.get("username")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="trello",
+        config={
+            "trello_user_id": trello_user_id,
+            "trello_username": trello_username,
+            "api_key": oauth_cfg["client_id"],
+        },
+        secrets={"api_token": token},
+        db=db,
+    )
+
+    return {"ok": True, "trello_username": trello_username}
+
+
+# =============================================================================
+# Monday.com OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/monday/oauth/start",
+    summary="Start Monday.com OAuth flow",
+)
+def monday_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="monday",
+        fallback_client_id=settings.monday_client_id,
+        fallback_client_secret=settings.monday_client_secret,
+        fallback_scopes=settings.monday_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Monday.com OAuth not configured.",
+        )
+
+    state = create_state(
+        {
+            "provider": "monday",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/monday/oauth/callback"),
+        "state": state,
+    }
+    auth_url = f"https://auth.monday.com/oauth2/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/monday/oauth/callback",
+    summary="Monday.com OAuth callback",
+)
+async def monday_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "monday":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="monday",
+        fallback_client_id=settings.monday_client_id,
+        fallback_client_secret=settings.monday_client_secret,
+        fallback_scopes=settings.monday_oauth_scopes,
+    )
+
+    redirect_uri = _oauth_redirect("/api/connectors/monday/oauth/callback")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_resp = await client.post(
+            "https://auth.monday.com/oauth2/token",
+            data={
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    if token_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"Monday OAuth failed: {token_resp.text}"
+        )
+
+    data = token_resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Monday OAuth missing access_token")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="monday",
+        config={},
+        secrets={"access_token": access_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="monday",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True}
+
+
+# =============================================================================
+# ClickUp OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/clickup/oauth/start",
+    summary="Start ClickUp OAuth flow",
+)
+def clickup_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="clickup",
+        fallback_client_id=settings.clickup_client_id,
+        fallback_client_secret=settings.clickup_client_secret,
+        fallback_scopes=settings.clickup_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ClickUp OAuth not configured.",
+        )
+
+    state = create_state(
+        {
+            "provider": "clickup",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/clickup/oauth/callback"),
+        "state": state,
+    }
+    auth_url = f"https://app.clickup.com/api?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/clickup/oauth/callback",
+    summary="ClickUp OAuth callback",
+)
+async def clickup_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "clickup":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="clickup",
+        fallback_client_id=settings.clickup_client_id,
+        fallback_client_secret=settings.clickup_client_secret,
+        fallback_scopes=settings.clickup_oauth_scopes,
+    )
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_resp = await client.post(
+            "https://api.clickup.com/api/v2/oauth/token",
+            params={
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "code": code,
+            },
+        )
+    if token_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"ClickUp OAuth failed: {token_resp.text}"
+        )
+
+    data = token_resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="ClickUp OAuth missing access_token")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="clickup",
+        config={},
+        secrets={"access_token": access_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="clickup",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True}
+
+
+# =============================================================================
+# CircleCI OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/circleci/oauth/start",
+    summary="Start CircleCI OAuth flow",
+)
+def circleci_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="circleci",
+        fallback_client_id=settings.circleci_client_id,
+        fallback_client_secret=settings.circleci_client_secret,
+        fallback_scopes=settings.circleci_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="CircleCI OAuth not configured.",
+        )
+
+    scopes = oauth_cfg["scopes"] or "read:project write:project"
+
+    state = create_state(
+        {
+            "provider": "circleci",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/circleci/oauth/callback"),
+        "response_type": "code",
+        "scope": scopes,
+        "state": state,
+    }
+    auth_url = f"https://circleci.com/oauth2/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/circleci/oauth/callback",
+    summary="CircleCI OAuth callback",
+)
+async def circleci_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "circleci":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="circleci",
+        fallback_client_id=settings.circleci_client_id,
+        fallback_client_secret=settings.circleci_client_secret,
+        fallback_scopes=settings.circleci_oauth_scopes,
+    )
+
+    redirect_uri = _oauth_redirect("/api/connectors/circleci/oauth/callback")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_resp = await client.post(
+            "https://circleci.com/oauth2/token",
+            data={
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    if token_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"CircleCI OAuth failed: {token_resp.text}"
+        )
+
+    data = token_resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="CircleCI OAuth missing access_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    scopes = _parse_scopes(data.get("scope"), delimiter=" ")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="circleci",
+        config={"scopes": scopes, "expires_at": expires_at},
+        secrets={"access_token": access_token, "refresh_token": refresh_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="circleci",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True}
+
+
+# =============================================================================
+# Vercel OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/vercel/oauth/start",
+    summary="Start Vercel OAuth flow",
+)
+def vercel_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="vercel",
+        fallback_client_id=settings.vercel_client_id,
+        fallback_client_secret=settings.vercel_client_secret,
+        fallback_scopes=settings.vercel_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Vercel OAuth not configured.",
+        )
+
+    state = create_state(
+        {
+            "provider": "vercel",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/vercel/oauth/callback"),
+        "state": state,
+    }
+    auth_url = f"https://vercel.com/integrations/{oauth_cfg['client_id']}/new?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/vercel/oauth/callback",
+    summary="Vercel OAuth callback",
+)
+async def vercel_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "vercel":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="vercel",
+        fallback_client_id=settings.vercel_client_id,
+        fallback_client_secret=settings.vercel_client_secret,
+        fallback_scopes=settings.vercel_oauth_scopes,
+    )
+
+    redirect_uri = _oauth_redirect("/api/connectors/vercel/oauth/callback")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_resp = await client.post(
+            "https://api.vercel.com/v2/oauth/access_token",
+            data={
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    if token_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"Vercel OAuth failed: {token_resp.text}"
+        )
+
+    data = token_resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Vercel OAuth missing access_token")
+
+    team_id = data.get("team_id")
+    user_id_vercel = data.get("user_id")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="vercel",
+        config={"team_id": team_id, "vercel_user_id": user_id_vercel},
+        secrets={"access_token": access_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="vercel",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True, "team_id": team_id}
+
+
+# =============================================================================
+# Sentry OAuth Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/sentry/oauth/start",
+    summary="Start Sentry OAuth flow",
+)
+def sentry_oauth_start(
+    install: str = "org",
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="sentry",
+        fallback_client_id=settings.sentry_client_id,
+        fallback_client_secret=settings.sentry_client_secret,
+        fallback_scopes=settings.sentry_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Sentry OAuth not configured.",
+        )
+
+    scopes = oauth_cfg["scopes"] or "project:read org:read event:read"
+
+    state = create_state(
+        {
+            "provider": "sentry",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "install": install,
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/sentry/oauth/callback"),
+        "response_type": "code",
+        "scope": scopes,
+        "state": state,
+    }
+    auth_url = f"https://sentry.io/oauth/authorize/?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/sentry/oauth/callback",
+    summary="Sentry OAuth callback",
+)
+async def sentry_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "sentry":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="sentry",
+        fallback_client_id=settings.sentry_client_id,
+        fallback_client_secret=settings.sentry_client_secret,
+        fallback_scopes=settings.sentry_oauth_scopes,
+    )
+
+    redirect_uri = _oauth_redirect("/api/connectors/sentry/oauth/callback")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token_resp = await client.post(
+            "https://sentry.io/oauth/token/",
+            data={
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+    if token_resp.status_code >= 400:
+        raise HTTPException(
+            status_code=400, detail=f"Sentry OAuth failed: {token_resp.text}"
+        )
+
+    data = token_resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Sentry OAuth missing access_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    scopes = _parse_scopes(data.get("scope"), delimiter=" ")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="sentry",
+        config={"scopes": scopes, "expires_at": expires_at},
+        secrets={"access_token": access_token, "refresh_token": refresh_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="sentry",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True}
+
+
+# ==================== LINEAR OAUTH ====================
+
+
+@router.get(
+    "/linear/oauth/start",
+    summary="Start Linear OAuth flow",
+)
+def linear_oauth_start(
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    """Start OAuth flow for Linear."""
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="linear",
+        fallback_client_id=settings.linear_client_id,
+        fallback_client_secret=settings.linear_client_secret,
+        fallback_scopes=settings.linear_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Linear OAuth not configured. Set LINEAR_CLIENT_ID/LINEAR_CLIENT_SECRET.",
+        )
+
+    scopes = oauth_cfg["scopes"] or "read write"
+    state = create_state(
+        {
+            "provider": "linear",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/linear/oauth/callback"),
+        "scope": scopes,
+        "state": state,
+        "response_type": "code",
+    }
+    auth_url = f"https://linear.app/oauth/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/linear/oauth/callback",
+    summary="Linear OAuth callback",
+)
+async def linear_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    """Handle OAuth callback from Linear."""
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "linear":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id") or getattr(current_user, "org_id", None),
+        provider="linear",
+        fallback_client_id=settings.linear_client_id,
+        fallback_client_secret=settings.linear_client_secret,
+        fallback_scopes=settings.linear_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Linear OAuth not configured.",
+        )
+
+    redirect_uri = _oauth_redirect("/api/connectors/linear/oauth/callback")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://api.linear.app/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=400, detail=f"Linear OAuth failed: {resp.text}")
+
+    data = resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Linear OAuth missing access_token")
+
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    scopes = _parse_scopes(data.get("scope"), delimiter=" ")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="linear",
+        config={"scopes": scopes, "expires_at": expires_at},
+        secrets={"access_token": access_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="linear",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True}
+
+
+# ==================== GITLAB OAUTH ====================
+
+
+@router.get(
+    "/gitlab/oauth/start",
+    summary="Start GitLab OAuth flow",
+)
+def gitlab_oauth_start(
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    """Start OAuth flow for GitLab."""
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="gitlab",
+        fallback_client_id=settings.gitlab_client_id,
+        fallback_client_secret=settings.gitlab_client_secret,
+        fallback_scopes=settings.gitlab_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="GitLab OAuth not configured. Set GITLAB_CLIENT_ID/GITLAB_CLIENT_SECRET.",
+        )
+
+    scopes = oauth_cfg["scopes"] or "api read_api read_user"
+    state = create_state(
+        {
+            "provider": "gitlab",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/gitlab/oauth/callback"),
+        "scope": scopes,
+        "state": state,
+        "response_type": "code",
+    }
+    auth_url = f"https://gitlab.com/oauth/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/gitlab/oauth/callback",
+    summary="GitLab OAuth callback",
+)
+async def gitlab_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    """Handle OAuth callback from GitLab."""
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "gitlab":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id") or getattr(current_user, "org_id", None),
+        provider="gitlab",
+        fallback_client_id=settings.gitlab_client_id,
+        fallback_client_secret=settings.gitlab_client_secret,
+        fallback_scopes=settings.gitlab_oauth_scopes,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="GitLab OAuth not configured.",
+        )
+
+    redirect_uri = _oauth_redirect("/api/connectors/gitlab/oauth/callback")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://gitlab.com/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=400, detail=f"GitLab OAuth failed: {resp.text}")
+
+    data = resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="GitLab OAuth missing access_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_at = _expires_at_iso(data.get("expires_in"))
+    scopes = _parse_scopes(data.get("scope"), delimiter=" ")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="gitlab",
+        config={"scopes": scopes, "expires_at": expires_at},
+        secrets={"access_token": access_token, "refresh_token": refresh_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="gitlab",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True}
+
+
+# ==================== NOTION OAUTH ====================
+
+
+@router.get(
+    "/notion/oauth/start",
+    summary="Start Notion OAuth flow",
+)
+def notion_oauth_start(
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    """Start OAuth flow for Notion."""
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="notion",
+        fallback_client_id=settings.notion_client_id,
+        fallback_client_secret=settings.notion_client_secret,
+        fallback_scopes=None,  # Notion doesn't use scopes parameter
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Notion OAuth not configured. Set NOTION_CLIENT_ID/NOTION_CLIENT_SECRET.",
+        )
+
+    state = create_state(
+        {
+            "provider": "notion",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/notion/oauth/callback"),
+        "state": state,
+        "response_type": "code",
+        "owner": "user",  # or "organization"
+    }
+    auth_url = f"https://api.notion.com/v1/oauth/authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/notion/oauth/callback",
+    summary="Notion OAuth callback",
+)
+async def notion_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    """Handle OAuth callback from Notion."""
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "notion":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id") or getattr(current_user, "org_id", None),
+        provider="notion",
+        fallback_client_id=settings.notion_client_id,
+        fallback_client_secret=settings.notion_client_secret,
+        fallback_scopes=None,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Notion OAuth not configured.",
+        )
+
+    redirect_uri = _oauth_redirect("/api/connectors/notion/oauth/callback")
+
+    # Notion uses Basic auth for token exchange
+    credentials = base64.b64encode(
+        f"{oauth_cfg['client_id']}:{oauth_cfg['client_secret']}".encode()
+    ).decode()
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://api.notion.com/v1/oauth/token",
+            json={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={
+                "Authorization": f"Basic {credentials}",
+                "Content-Type": "application/json",
+            },
+        )
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=400, detail=f"Notion OAuth failed: {resp.text}")
+
+    data = resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Notion OAuth missing access_token")
+
+    # Notion tokens don't expire by default
+    workspace_id = data.get("workspace_id")
+    workspace_name = data.get("workspace_name")
+    bot_id = data.get("bot_id")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="notion",
+        config={
+            "workspace_id": workspace_id,
+            "workspace_name": workspace_name,
+            "bot_id": bot_id,
+        },
+        secrets={"access_token": access_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="notion",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True}
+
+
+# ==================== ASANA OAUTH ====================
+
+
+@router.get(
+    "/asana/oauth/start",
+    summary="Start Asana OAuth flow",
+)
+def asana_oauth_start(
+    ui_origin: str | None = None,
+    current_user: Any = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    """Start OAuth flow for Asana."""
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=getattr(current_user, "org_id", None),
+        provider="asana",
+        fallback_client_id=settings.asana_client_id,
+        fallback_client_secret=settings.asana_client_secret,
+        fallback_scopes=None,  # Asana uses default scopes
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Asana OAuth not configured. Set ASANA_CLIENT_ID/ASANA_CLIENT_SECRET.",
+        )
+
+    state = create_state(
+        {
+            "provider": "asana",
+            "user_id": getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None),
+            "org_id": getattr(current_user, "org_id", None),
+            "ui_origin": ui_origin or None,
+        },
+        secret=settings.secret_key,
+        ttl_seconds=settings.oauth_state_ttl_seconds,
+    )
+
+    params = {
+        "client_id": oauth_cfg["client_id"],
+        "redirect_uri": _oauth_redirect("/api/connectors/asana/oauth/callback"),
+        "state": state,
+        "response_type": "code",
+    }
+    auth_url = f"https://app.asana.com/-/oauth_authorize?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get(
+    "/asana/oauth/callback",
+    summary="Asana OAuth callback",
+)
+async def asana_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: Any = Depends(get_current_user_optional),
+):
+    """Handle OAuth callback from Asana."""
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        payload = parse_state(state, secret=settings.secret_key)
+    except OAuthStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.get("provider") != "asana":
+        raise HTTPException(status_code=400, detail="Invalid OAuth provider")
+
+    oauth_cfg = _resolve_oauth_app_config(
+        db=db,
+        org_id=payload.get("org_id") or getattr(current_user, "org_id", None),
+        provider="asana",
+        fallback_client_id=settings.asana_client_id,
+        fallback_client_secret=settings.asana_client_secret,
+        fallback_scopes=None,
+    )
+    if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Asana OAuth not configured.",
+        )
+
+    redirect_uri = _oauth_redirect("/api/connectors/asana/oauth/callback")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            "https://app.asana.com/-/oauth_token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": oauth_cfg["client_id"],
+                "client_secret": oauth_cfg["client_secret"],
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=400, detail=f"Asana OAuth failed: {resp.text}")
+
+    data = resp.json()
+    access_token = data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Asana OAuth missing access_token")
+
+    refresh_token = data.get("refresh_token")
+    expires_at = _expires_at_iso(data.get("expires_in"))
+
+    # Get user info from token response
+    asana_data = data.get("data", {})
+    gid = asana_data.get("gid")
+    name = asana_data.get("name")
+    email = asana_data.get("email")
+
+    connectors_service.save_generic_connection(
+        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        org_id=payload.get("org_id"),
+        provider="asana",
+        config={
+            "asana_user_gid": gid,
+            "asana_user_name": name,
+            "asana_user_email": email,
+            "expires_at": expires_at,
+        },
+        secrets={"access_token": access_token, "refresh_token": refresh_token},
+        db=db,
+    )
+
+    redirect_url = _build_ui_redirect(
+        db=db,
+        org_id=payload.get("org_id"),
+        provider="asana",
+        status_value="success",
+        ui_origin=payload.get("ui_origin"),
+    )
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return {"ok": True}

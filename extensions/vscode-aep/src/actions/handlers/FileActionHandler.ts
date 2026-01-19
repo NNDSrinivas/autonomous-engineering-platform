@@ -1,11 +1,13 @@
 /**
  * File Action Handler
  * Handles actions that involve file operations (create, edit, delete)
+ * Shows diff view with green additions and red deletions before applying
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { BaseActionHandler, ActionContext, ActionResult } from '../ActionRegistry';
+import * as Diff from 'diff';
+import { BaseActionHandler, ActionContext, ActionResult, DiffStats } from '../ActionRegistry';
 
 export class FileActionHandler extends BaseActionHandler {
     constructor() {
@@ -13,11 +15,13 @@ export class FileActionHandler extends BaseActionHandler {
     }
 
     canHandle(action: any): boolean {
-        // Can handle if action has filePath and either content or operation
-        return !!(
-            action.filePath &&
-            (action.content !== undefined || action.operation)
+        // Can handle editFile actions, or actions with filePath and content/operation
+        const canHandle = !!(
+            action.type === 'editFile' ||
+            (action.filePath && (action.content !== undefined || action.operation))
         );
+        console.log(`[FileActionHandler] canHandle check - type: ${action.type}, filePath: ${action.filePath}, hasContent: ${action.content !== undefined}, result: ${canHandle}`);
+        return canHandle;
     }
 
     async execute(action: any, context: ActionContext): Promise<ActionResult> {
@@ -25,21 +29,33 @@ export class FileActionHandler extends BaseActionHandler {
         const content = action.content;
         const operation = action.operation || (content !== undefined ? 'write' : 'read');
 
+        console.log(`[FileActionHandler] Executing file operation: ${operation} on ${filePath}`);
+
         try {
             switch (operation) {
                 case 'create':
                 case 'write':
-                    await this.createOrUpdateFile(filePath, content, context);
+                    const writeResult = await this.createOrUpdateFile(filePath, content, context);
                     return {
                         success: true,
-                        message: `File ${operation}d: ${filePath}`
+                        message: `File ${operation === 'create' ? 'created' : 'written'}: ${filePath}`,
+                        diffStats: writeResult.diffStats,
+                        data: {
+                            diffUnified: writeResult.diffUnified
+                        }
                     };
 
+                case 'modify':
                 case 'edit':
-                    await this.editFile(filePath, content, action, context);
+                    const editResult = await this.editFile(filePath, content, action, context);
                     return {
                         success: true,
-                        message: `File edited: ${filePath}`
+                        message: `File modified: ${filePath}`,
+                        diffStats: editResult.diffStats,
+                        data: {
+                            diffUnified: editResult.diffUnified,
+                            originalContent: editResult.originalContent,
+                        }
                     };
 
                 case 'delete':
@@ -50,9 +66,23 @@ export class FileActionHandler extends BaseActionHandler {
                     };
 
                 default:
+                    // Default to edit/modify if we have content
+                    if (content !== undefined) {
+                        const defaultEditResult = await this.editFile(filePath, content, action, context);
+                        return {
+                            success: true,
+                            message: `File updated: ${filePath}`,
+                            diffStats: defaultEditResult.diffStats,
+                            data: {
+                                diffUnified: defaultEditResult.diffUnified,
+                                originalContent: defaultEditResult.originalContent,
+                            }
+                        };
+                    }
                     throw new Error(`Unknown file operation: ${operation}`);
             }
         } catch (error: any) {
+            console.error(`[FileActionHandler] File operation failed:`, error);
             return {
                 success: false,
                 error: error,
@@ -65,9 +95,21 @@ export class FileActionHandler extends BaseActionHandler {
         filePath: string,
         content: string,
         context: ActionContext
-    ): Promise<void> {
+    ): Promise<{ diffStats: DiffStats; diffUnified: string }> {
         const absolutePath = this.resolveFilePath(filePath, context.workspaceRoot);
         const uri = vscode.Uri.file(absolutePath);
+        const nextContent = content ?? "";
+        let originalContent = "";
+
+        try {
+            const existingDoc = await vscode.workspace.openTextDocument(uri);
+            originalContent = existingDoc.getText();
+        } catch {
+            originalContent = "";
+        }
+
+        const diffStats = this.calculateDiffStats(originalContent, nextContent);
+        const diffUnified = this.createUnifiedDiff(filePath, originalContent, nextContent);
 
         // Ensure directory exists
         const dir = path.dirname(absolutePath);
@@ -75,11 +117,13 @@ export class FileActionHandler extends BaseActionHandler {
 
         // Write file
         const encoder = new TextEncoder();
-        await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+        await vscode.workspace.fs.writeFile(uri, encoder.encode(nextContent));
 
         // Open file in editor
         const doc = await vscode.workspace.openTextDocument(uri);
         await vscode.window.showTextDocument(doc);
+
+        return { diffStats, diffUnified };
     }
 
     private async editFile(
@@ -87,9 +131,11 @@ export class FileActionHandler extends BaseActionHandler {
         content: string,
         action: any,
         context: ActionContext
-    ): Promise<void> {
+    ): Promise<{ diffStats: DiffStats; diffUnified: string; originalContent?: string }> {
         const absolutePath = this.resolveFilePath(filePath, context.workspaceRoot);
         const uri = vscode.Uri.file(absolutePath);
+
+        console.log(`[FileActionHandler] editFile called - path: ${absolutePath}, content length: ${content?.length || 0}`);
 
         // Check if file exists
         try {
@@ -98,14 +144,88 @@ export class FileActionHandler extends BaseActionHandler {
             throw new Error(`File not found: ${filePath}`);
         }
 
-        // If diff is provided, could show diff view
-        // For now, just replace content
-        const encoder = new TextEncoder();
-        await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+        // If content is empty or undefined, don't write
+        if (!content) {
+            console.error('[FileActionHandler] No content provided for edit!');
+            throw new Error('No content provided for file edit');
+        }
 
-        // Open file
+        // Open the document first (this ensures we're working with VS Code's buffer)
         const doc = await vscode.workspace.openTextDocument(uri);
+        const originalContent = doc.getText();
+
+        console.log(`[FileActionHandler] Original content length: ${originalContent.length}, new content length: ${content.length}`);
+
+        // Calculate diff statistics
+        const diffStats = this.calculateDiffStats(originalContent, content);
+        const diffUnified = this.createUnifiedDiff(filePath, originalContent, content);
+        console.log(`[FileActionHandler] Diff stats - additions: ${diffStats.additions}, deletions: ${diffStats.deletions}, changes: ${diffStats.changes}`);
+
+        // Auto-apply the edit (approved via NAVI approval panel)
+        const edit = new vscode.WorkspaceEdit();
+        const fullRange = new vscode.Range(
+            doc.positionAt(0),
+            doc.positionAt(originalContent.length)
+        );
+        edit.replace(uri, fullRange, content);
+
+        const success = await vscode.workspace.applyEdit(edit);
+        if (!success) {
+            throw new Error('Failed to apply edit to file');
+        }
+
+        console.log(`[FileActionHandler] Edit applied successfully`);
+
+        // Save the document to persist changes to disk
+        await doc.save();
+        console.log(`[FileActionHandler] File saved successfully`);
+
+        // Show the updated document
         await vscode.window.showTextDocument(doc);
+
+        // Show success notification with diff stats
+        vscode.window.setStatusBarMessage(`✅ Applied: +${diffStats.additions} -${diffStats.deletions} lines`, 5000);
+
+        // Return original content for potential undo
+        return { diffStats, diffUnified, originalContent };
+    }
+
+    private createUnifiedDiff(filePath: string, original: string, updated: string): string {
+        return Diff.createTwoFilesPatch(
+            filePath,
+            filePath,
+            original,
+            updated,
+            '',
+            ''
+        );
+    }
+
+    /**
+     * Calculate diff statistics between original and new content
+     */
+    private calculateDiffStats(original: string, modified: string): DiffStats {
+        const changes = Diff.diffLines(original, modified);
+
+        let additions = 0;
+        let deletions = 0;
+        let changeCount = 0;
+
+        for (const change of changes) {
+            if (change.added) {
+                additions += change.count || 0;
+                changeCount++;
+            } else if (change.removed) {
+                deletions += change.count || 0;
+                changeCount++;
+            }
+        }
+
+        return {
+            additions,
+            deletions,
+            changes: changeCount
+        };
     }
 
     private async deleteFile(filePath: string, context: ActionContext): Promise<void> {

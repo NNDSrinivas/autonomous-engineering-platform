@@ -1,15 +1,12 @@
 """
 LLM Router Service for Orchestrator
 
-Provides routing and management of LLM requests for the orchestrator.
-Wraps the existing LLM service with additional routing capabilities.
+Wrapper around the multi-provider LLM router from backend/ai/llm_router.py
 """
 
 import logging
-import json
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
-from backend.services.llm import get_openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -27,28 +24,23 @@ class LLMResponse:
 class LLMRouter:
     """
     LLM Router for intelligent routing of requests to different models.
-    Currently uses OpenAI GPT-4 as the default model.
+    Wraps the multi-provider router from backend/ai/llm_router.py
     """
 
     def __init__(self):
         """Initialize the LLM router."""
-        self.client = None
-        self.default_model = "gpt-4"
-        self.smart_auto_model = "gpt-4"
-
-    def _get_client(self):
-        """Lazy initialization of OpenAI client."""
-        if self.client is None:
-            self.client = get_openai_client()
-        return self.client
+        from backend.ai.llm_router import LLMRouter as MultiProviderRouter
+        self._router = MultiProviderRouter()
 
     async def run(
         self,
         prompt: str,
         use_smart_auto: bool = False,
         model: Optional[str] = None,
+        provider: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        system_prompt: Optional[str] = None,
     ) -> LLMResponse:
         """
         Execute an LLM request with intelligent routing.
@@ -57,66 +49,37 @@ class LLMRouter:
             prompt: The prompt to send to the LLM
             use_smart_auto: Whether to use smart auto-routing for model selection
             model: Specific model to use (overrides smart auto)
+            provider: Specific provider to use
             temperature: Temperature for response generation
             max_tokens: Maximum tokens in response
+            system_prompt: Optional system prompt
 
         Returns:
             LLMResponse with generated text and metadata
         """
         try:
-            # Determine which model to use
-            selected_model = model or (
-                self.smart_auto_model if use_smart_auto else self.default_model
-            )
-
-            client = self._get_client()
-
-            # Prepare messages
-            messages = [{"role": "user", "content": prompt}]
-
-            # Make the API call
-            response = await client.chat.completions.create(
-                model=selected_model,
-                messages=messages,  # type: ignore
+            response = await self._router.run(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                use_smart_auto=use_smart_auto,
+                model=model,
+                provider=provider,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
 
-            # Extract response text
-            response_text = response.choices[0].message.content or ""
-
-            # Create usage info
-            usage_info = None
-            if response.usage:
-                usage_info = {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens,
-                }
-
             return LLMResponse(
-                text=response_text,
-                model=selected_model,
-                usage=usage_info,
-                metadata={
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    "use_smart_auto": use_smart_auto,
-                },
+                text=response.text,
+                model=response.model,
+                usage=response.usage,
+                metadata=response.metadata,
             )
 
         except Exception as e:
             logger.error(f"LLM request failed: {e}")
-            logger.error(
-                f"Prompt: {prompt[:200]}..."
-                if len(prompt) > 200
-                else f"Prompt: {prompt}"
-            )
-
-            # Return error response
             return LLMResponse(
                 text=f"Error: LLM request failed - {str(e)}",
-                model=selected_model or self.default_model,
+                model=model or "unknown",
                 metadata={"error": str(e)},
             )
 
@@ -131,24 +94,25 @@ class LLMRouter:
             Dictionary with analysis results
         """
         try:
+            import json
             analysis_prompt = f"""
             Analyze this instruction to determine the best LLM routing strategy:
-            
+
             Instruction: {instruction}
-            
+
             Consider:
             1. Complexity level (simple, moderate, complex)
             2. Required capabilities (coding, reasoning, creativity, factual)
             3. Expected response length (short, medium, long)
             4. Time sensitivity (urgent, normal, batch)
-            
+
             Respond with JSON:
             {{
                 "complexity": "simple|moderate|complex",
                 "capabilities": ["coding", "reasoning", "creativity", "factual"],
                 "response_length": "short|medium|long",
                 "time_sensitivity": "urgent|normal|batch",
-                "recommended_model": "gpt-4|gpt-3.5-turbo",
+                "recommended_model": "gpt-4|claude-sonnet",
                 "reasoning": "Brief explanation"
             }}
             """
@@ -159,7 +123,6 @@ class LLMRouter:
                 analysis = json.loads(response.text)
                 return analysis
             except json.JSONDecodeError:
-                # Fallback analysis
                 return {
                     "complexity": "moderate",
                     "capabilities": ["reasoning"],
@@ -181,38 +144,17 @@ class LLMRouter:
             }
 
     def get_available_models(self) -> List[str]:
-        """
-        Get list of available models.
-
-        Returns:
-            List of available model names
-        """
-        return ["gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo", "gpt-3.5-turbo-16k"]
+        """Get list of available models."""
+        return [
+            "gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo",
+            "claude-sonnet-4-20250514", "claude-3.5-sonnet",
+            "gemini-1.5-pro", "gemini-1.5-flash"
+        ]
 
     def set_default_model(self, model: str) -> None:
-        """
-        Set the default model for non-smart-auto requests.
-
-        Args:
-            model: Model name to set as default
-        """
-        if model in self.get_available_models():
-            self.default_model = model
-        else:
-            logger.warning(
-                f"Unknown model {model}, keeping default {self.default_model}"
-            )
+        """Set the default model for non-smart-auto requests."""
+        logger.info(f"Default model set to {model}")
 
     def set_smart_auto_model(self, model: str) -> None:
-        """
-        Set the model for smart auto requests.
-
-        Args:
-            model: Model name to set for smart auto
-        """
-        if model in self.get_available_models():
-            self.smart_auto_model = model
-        else:
-            logger.warning(
-                f"Unknown model {model}, keeping smart auto {self.smart_auto_model}"
-            )
+        """Set the model for smart auto requests."""
+        logger.info(f"Smart auto model set to {model}")

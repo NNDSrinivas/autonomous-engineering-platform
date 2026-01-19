@@ -74,6 +74,8 @@ class ClassifyRequest(BaseModel):
 class ClassifyResponse(BaseModel):
     """Response from intent classification."""
 
+    model_config = {"protected_namespaces": ()}
+
     success: bool
     intent: Dict[str, Any]
     confidence: float

@@ -50,6 +50,7 @@ from .llm_model_registry import (
     ModelInfo,
     ProviderInfo,
 )
+from .llm_cache import get_cache
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +72,12 @@ class LLMResponse:
     latency_ms: float
     tokens_used: Optional[int] = None
     cost_estimate: Optional[float] = None
+    metadata: Optional[Dict[str, Any]] = None  # For cache info, failover tracking, etc.
+    usage: Optional[Dict[str, int]] = None  # For backward compatibility
 
     def __repr__(self):
-        return f"<LLMResponse model={self.model} provider={self.provider} latency={self.latency_ms:.0f}ms>"
+        cached = " (cached)" if self.metadata and self.metadata.get("cached") else ""
+        return f"<LLMResponse model={self.model} provider={self.provider} latency={self.latency_ms:.0f}ms{cached}>"
 
 
 # ======================================================================
@@ -180,6 +184,27 @@ class LLMRouter:
             model, provider, use_smart_auto, allowed_providers
         )
 
+        # Check cache first (skip for vision requests)
+        cache_enabled = os.getenv("LLM_CACHE_ENABLED", "true").lower() in {"1", "true", "yes"}
+        if cache_enabled and not images:
+            cache = get_cache()
+            cached_result = await cache.get(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                model=model_info.model_id,
+                temperature=temperature,
+            )
+            if cached_result:
+                cached_text, cached_metadata = cached_result
+                return LLMResponse(
+                    text=cached_text,
+                    model=model_info.model_id,
+                    provider=provider_info.provider_id,
+                    raw={"cached": True},
+                    latency_ms=0.5,  # Near-instant
+                    metadata=cached_metadata,
+                )
+
         env = os.getenv("APP_ENV", "dev").lower()
         offline_configured = os.getenv("LLM_OFFLINE_MODE", "").lower() in {
             "1",
@@ -234,7 +259,7 @@ class LLMRouter:
             max_tokens=max_tokens,
         )
 
-        # Execute with retry logic
+        # Execute with retry logic and provider failover
         try:
             response_json, latency_ms = await self._execute_with_retry(
                 provider_info=provider_info,
@@ -244,6 +269,48 @@ class LLMRouter:
                 org_id=org_id,
                 user_id=user_id,
             )
+        except ProviderError as exc:
+            # Check if rate limited (429) - try failover to another provider
+            if exc.status_code == 429 or "rate limit" in str(exc).lower():
+                logger.warning(
+                    "[LLM] Rate limited on %s, attempting provider failover",
+                    provider_info.provider_id,
+                )
+                fallback_result = await self._try_provider_failover(
+                    original_provider=provider_info.provider_id,
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    images=images,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    org_id=org_id,
+                    user_id=user_id,
+                )
+                if fallback_result:
+                    return fallback_result
+                # If failover failed too, continue to offline fallback
+                if allow_offline:
+                    return self._offline_response(
+                        prompt=prompt,
+                        model=model_info.model_id,
+                        provider=provider_info.provider_id,
+                        reason=f"Rate limited and failover failed: {exc}",
+                    )
+                raise
+            # Non-rate-limit error
+            if allow_offline:
+                offline_reason = offline_reason or f"LLM call failed: {exc}"
+                logger.warning(
+                    "[LLM] %s – returning deterministic offline response",
+                    offline_reason,
+                )
+                return self._offline_response(
+                    prompt=prompt,
+                    model=model_info.model_id,
+                    provider=provider_info.provider_id,
+                    reason=offline_reason,
+                )
+            raise
         except Exception as exc:
             if allow_offline:
                 offline_reason = offline_reason or f"LLM call failed: {exc}"
@@ -264,6 +331,19 @@ class LLMRouter:
         tokens_used = self._extract_token_count(
             provider_info.provider_id, response_json
         )
+
+        # Cache the response (skip for vision requests)
+        if cache_enabled and not images and text:
+            cache = get_cache()
+            await cache.set(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                model=model_info.model_id,
+                provider=provider_info.provider_id,
+                response_text=text,
+                tokens_used=tokens_used,
+                temperature=temperature,
+            )
 
         return LLMResponse(
             text=text,
@@ -302,6 +382,136 @@ class LLMRouter:
             tokens_used=None,
             cost_estimate=0.0,
         )
+
+    async def _try_provider_failover(
+        self,
+        *,
+        original_provider: str,
+        prompt: str,
+        system_prompt: Optional[str],
+        images: Optional[List[str]],
+        temperature: float,
+        max_tokens: int,
+        org_id: Optional[str],
+        user_id: Optional[str],
+    ) -> Optional[LLMResponse]:
+        """
+        Attempt to use a fallback provider when the primary is rate-limited.
+
+        Failover priority:
+        1. anthropic -> openai -> google
+        2. openai -> anthropic -> google
+        3. google -> anthropic -> openai
+
+        Returns None if all fallbacks fail.
+        """
+        # Define fallback chains for each provider
+        fallback_chains = {
+            "anthropic": ["openai", "google"],
+            "openai": ["anthropic", "google"],
+            "google": ["anthropic", "openai"],
+            "xai": ["openai", "anthropic"],
+            "mistral": ["openai", "anthropic"],
+        }
+
+        # Default models for each provider (fast, cheap options for failover)
+        fallback_models = {
+            "anthropic": "claude-sonnet-4-20250514",
+            "openai": "gpt-4o-mini",
+            "google": "gemini-1.5-flash",
+        }
+
+        # API key env vars
+        api_key_env = {
+            "anthropic": "ANTHROPIC_API_KEY",
+            "openai": "OPENAI_API_KEY",
+            "google": "GOOGLE_API_KEY",
+        }
+
+        fallbacks = fallback_chains.get(original_provider, ["openai", "anthropic"])
+
+        for fallback_provider in fallbacks:
+            # Check if we have API key for this provider
+            api_key = os.getenv(api_key_env.get(fallback_provider, ""))
+            if not api_key:
+                logger.debug(
+                    "[LLM] Skipping fallback to %s - no API key", fallback_provider
+                )
+                continue
+
+            fallback_model = fallback_models.get(fallback_provider)
+            if not fallback_model:
+                continue
+
+            logger.info(
+                "[LLM] Attempting failover to %s:%s",
+                fallback_provider,
+                fallback_model,
+            )
+
+            try:
+                # Resolve the fallback provider/model
+                registry = get_registry()
+                provider_info = registry.get_provider(fallback_provider)
+                model_info = registry.get_model(fallback_model)
+
+                if not provider_info or not model_info:
+                    logger.warning(
+                        "[LLM] Fallback provider %s not found in registry",
+                        fallback_provider,
+                    )
+                    continue
+
+                # Build payload for fallback
+                request_payload = self._build_payload(
+                    provider_info=provider_info,
+                    model_info=model_info,
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    images=images,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+
+                # Execute request
+                response_json, latency_ms = await self._execute_with_retry(
+                    provider_info=provider_info,
+                    model_info=model_info,
+                    payload=request_payload,
+                    api_key=api_key,
+                    org_id=org_id,
+                    user_id=user_id,
+                )
+
+                # Success! Return the response
+                text = self._extract_text(fallback_provider, response_json)
+                tokens_used = self._extract_token_count(fallback_provider, response_json)
+
+                logger.info(
+                    "[LLM] Failover successful to %s:%s",
+                    fallback_provider,
+                    fallback_model,
+                )
+
+                return LLMResponse(
+                    text=text,
+                    model=fallback_model,
+                    provider=fallback_provider,
+                    raw=response_json,
+                    latency_ms=latency_ms,
+                    tokens_used=tokens_used,
+                    metadata={"failover_from": original_provider},
+                )
+
+            except Exception as e:
+                logger.warning(
+                    "[LLM] Failover to %s failed: %s", fallback_provider, e
+                )
+                continue
+
+        # All fallbacks failed
+        logger.error("[LLM] All provider failovers failed")
+        return None
 
     # ------------------------------------------------------------------
     # Model resolution
@@ -362,8 +572,31 @@ class LLMRouter:
 
             raise ModelNotFoundError(f"Model '{model}' not found in any provider")
 
-        # Nothing provided → fall back to SMART AUTO
+        # Nothing provided → use DEFAULT_LLM_PROVIDER if set, else SMART AUTO
+        default_provider = os.environ.get("DEFAULT_LLM_PROVIDER", "").lower()
+        if default_provider:
+            provider_info = registry.get_provider(default_provider)
+            if provider_info:
+                # Get default model for this provider
+                default_model = self._get_default_model_for_provider(default_provider)
+                model_info = ModelInfo(
+                    provider_id=default_provider,
+                    model_id=default_model,
+                )
+                logger.info(f"[LLM] Using DEFAULT_LLM_PROVIDER: {default_provider}:{default_model}")
+                return provider_info, model_info
+
+        # Fallback to SMART AUTO
         return self._resolve_model(None, None, True, allowed_providers)
+
+    def _get_default_model_for_provider(self, provider: str) -> str:
+        """Get the default model for a given provider."""
+        defaults = {
+            "anthropic": os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+            "openai": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+            "google": os.environ.get("GOOGLE_MODEL", "gemini-1.5-flash"),
+        }
+        return defaults.get(provider, "gpt-4o-mini")
 
     # ------------------------------------------------------------------
     # Payload building (varies per provider)
@@ -395,7 +628,7 @@ class LLMRouter:
 
             # Use max_completion_tokens for newer OpenAI models (GPT-4o, GPT-5.x)
             if provider == "openai" and any(
-                x in model for x in ["gpt-4o", "gpt-5", "o1"]
+                x in model for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]
             ):
                 payload["max_completion_tokens"] = max_tokens
             else:
@@ -658,53 +891,123 @@ class LLMRouter:
     # ------------------------------------------------------------------
 
     def _extract_text(self, provider: str, data: Dict[str, Any]) -> str:
-        """Extract text content from provider-specific response format."""
+        """
+        Extract text content from provider-specific response format.
+
+        Uses safe nested access to prevent KeyError/IndexError crashes.
+        """
+        if data is None:
+            return ""
 
         try:
-            if provider in {"openai", "xai", "mistral"}:
-                return data["choices"][0]["message"]["content"]
+            if provider in {"openai", "xai", "mistral", "groq", "openrouter"}:
+                # Safe nested access: data["choices"][0]["message"]["content"]
+                choices = data.get("choices")
+                if choices and isinstance(choices, list) and len(choices) > 0:
+                    first_choice = choices[0]
+                    if isinstance(first_choice, dict):
+                        message = first_choice.get("message", {})
+                        if isinstance(message, dict):
+                            content = message.get("content")
+                            if content is not None:
+                                return str(content)
+                        # Also check delta for streaming responses
+                        delta = first_choice.get("delta", {})
+                        if isinstance(delta, dict):
+                            content = delta.get("content")
+                            if content is not None:
+                                return str(content)
+                # Fallback for direct content field
+                if "content" in data and isinstance(data["content"], str):
+                    return data["content"]
+                return ""
 
             elif provider == "anthropic":
                 content = data.get("content", [])
-                if content and isinstance(content, list):
-                    return "".join(
-                        block.get("text", "")
-                        for block in content
-                        if block.get("type") == "text"
-                    )
-                return str(content)
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, (list, tuple)) and content:
+                    texts = []
+                    for block in content:
+                        if isinstance(block, dict):
+                            if block.get("type") == "text":
+                                text = block.get("text")
+                                if text:
+                                    texts.append(str(text))
+                        elif isinstance(block, str):
+                            texts.append(block)
+                    return "".join(texts)
+                return ""
 
             elif provider == "google":
                 candidates = data.get("candidates", [])
-                if candidates:
-                    content = candidates[0].get("content", {})
-                    parts = content.get("parts", [])
-                    if parts:
-                        return parts[0].get("text", "")
+                if isinstance(candidates, (list, tuple)) and candidates:
+                    first_candidate = candidates[0]
+                    if isinstance(first_candidate, dict):
+                        content = first_candidate.get("content", {})
+                        if isinstance(content, dict):
+                            parts = content.get("parts", [])
+                            if isinstance(parts, (list, tuple)) and parts:
+                                first_part = parts[0]
+                                if isinstance(first_part, dict):
+                                    text = first_part.get("text")
+                                    if text is not None:
+                                        return str(text)
+                                elif isinstance(first_part, str):
+                                    return first_part
                 return ""
 
             elif provider == "cohere":
                 message = data.get("message", {})
-                content = message.get("content", [])
-                if content and isinstance(content, list):
-                    return content[0].get("text", "")
-                return str(message)
+                if isinstance(message, dict):
+                    content = message.get("content", [])
+                    if isinstance(content, (list, tuple)) and content:
+                        first_content = content[0]
+                        if isinstance(first_content, dict):
+                            text = first_content.get("text")
+                            if text is not None:
+                                return str(text)
+                        elif isinstance(first_content, str):
+                            return first_content
+                    elif isinstance(content, str):
+                        return content
+                elif isinstance(message, str):
+                    return message
+                return ""
 
-            elif provider == "meta":
-                return data.get("response", data.get("text", ""))
+            elif provider in {"meta", "ollama"}:
+                # Check multiple possible fields
+                for field in ["response", "text", "content"]:
+                    value = data.get(field)
+                    if value is not None:
+                        return str(value)
+                # Ollama format: {"message": {"content": "..."}}
+                message = data.get("message", {})
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if content is not None:
+                        return str(content)
+                return ""
 
             else:
-                # Fallback: look for common response fields
-                for field in ["text", "content", "response", "message"]:
-                    if field in data:
-                        return str(data[field])
-                return str(data)
+                # Generic fallback: look for common response fields
+                for field in ["text", "content", "response", "message", "output"]:
+                    value = data.get(field)
+                    if value is not None:
+                        if isinstance(value, str):
+                            return value
+                        if isinstance(value, dict):
+                            # Try nested content
+                            nested = value.get("content") or value.get("text")
+                            if nested is not None:
+                                return str(nested)
+                return ""
 
         except Exception as e:
             logger.warning(
                 f"[LLM] Failed to extract text from {provider} response: {e}"
             )
-            return str(data)
+            return ""  # Return empty string, not stringified data
 
     def _extract_token_count(
         self, provider: str, data: Dict[str, Any]

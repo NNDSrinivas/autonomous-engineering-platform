@@ -4,12 +4,12 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
-import { Button } from './ui/Button';
-import { Input } from './ui/Input';
-import { ScrollArea } from './ui/ScrollArea';
-import { Badge } from './ui/Badge';
-import { Separator } from './ui/Separator';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { ScrollArea } from './ui/scroll-area';
+import { Badge } from './ui/badge';
+import { Separator } from './ui/separator';
 import { 
   MessageSquare, 
   Sparkles, 

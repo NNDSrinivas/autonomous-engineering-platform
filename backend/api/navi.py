@@ -60,6 +60,9 @@ from backend.agent.intent_schema import (
 )
 from backend.services.git_service import GitService
 
+# Conversation memory for cross-session persistence
+from backend.services.memory.conversation_memory import ConversationMemoryService
+
 # NOTE: ProjectAnalyzer is in backend/services/navi_brain.py
 # The /api/navi/chat endpoint in chat.py uses navi_brain.py's implementation
 
@@ -141,6 +144,53 @@ active_runs: Dict[str, RunState] = {}
 
 logger = logging.getLogger(__name__)
 
+
+# Model alias resolution - maps fake/future model IDs to real valid models
+MODEL_ALIASES: Dict[str, Dict[str, str]] = {
+    # Special aliases for auto/recommended routing
+    "recommended": {"provider": "openai", "model": "gpt-4o"},
+    "auto": {"provider": "openai", "model": "gpt-4o"},
+    "auto/recommended": {"provider": "openai", "model": "gpt-4o"},
+    # OpenAI models - map fake/future model IDs to real valid models
+    "openai/gpt-5": {"provider": "openai", "model": "gpt-4o"},
+    "openai/gpt-5-mini": {"provider": "openai", "model": "gpt-4o-mini"},
+    "openai/gpt-5-nano": {"provider": "openai", "model": "gpt-4o-mini"},
+    "openai/gpt-4.1": {"provider": "openai", "model": "gpt-4o"},
+    "openai/gpt-4.1-mini": {"provider": "openai", "model": "gpt-4o-mini"},
+    "gpt-5.1": {"provider": "openai", "model": "gpt-4o"},
+    "gpt-5.0": {"provider": "openai", "model": "gpt-4o-mini"},
+    "gpt-4.1": {"provider": "openai", "model": "gpt-4o"},
+    "gpt-4.1-mini": {"provider": "openai", "model": "gpt-4o-mini"},
+    # Anthropic models
+    "anthropic/claude-sonnet-4": {"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
+    "anthropic/claude-opus-4": {"provider": "anthropic", "model": "claude-opus-4-20250514"},
+    # Google models
+    "google/gemini-2.5-pro": {"provider": "google", "model": "gemini-2.0-flash-exp"},
+    "google/gemini-2.5-flash": {"provider": "google", "model": "gemini-2.0-flash-exp"},
+}
+
+
+def _resolve_model(model: Optional[str]) -> str:
+    """Resolve model alias to actual model ID."""
+    if not model:
+        return "gpt-4o-mini"  # Default model
+
+    # Check if it's an alias
+    if model in MODEL_ALIASES:
+        return MODEL_ALIASES[model]["model"]
+
+    # If it's a provider/model format, check the full path
+    if "/" in model:
+        if model in MODEL_ALIASES:
+            return MODEL_ALIASES[model]["model"]
+        # Extract just the model part
+        _, model_name = model.split("/", 1)
+        if model_name in MODEL_ALIASES:
+            return MODEL_ALIASES[model_name]["model"]
+        return model_name  # Return the model part
+
+    return model  # Return as-is if not an alias
+
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
 agent_router = APIRouter(prefix="/api/agent", tags=["agent-classify"])
 
@@ -195,7 +245,19 @@ planner_v3 = PlannerV3()
 @agent_router.post("/classify")
 async def classify_intent_simple(request: Dict[str, Any]):
     """Classification endpoint that redirects to NAVI intent classification"""
-    message = request.get("message", "")
+    # Support multiple field names for message content
+    message = (
+        request.get("message")
+        or request.get("text")
+        or request.get("content")
+        or request.get("prompt")
+        or request.get("input")
+        or ""
+    )
+
+    # Ensure message is a string
+    if not isinstance(message, str):
+        message = str(message) if message else ""
 
     # Use the same intent classification logic as /api/navi/intent
     intent_map = {
@@ -213,7 +275,10 @@ async def classify_intent_simple(request: Dict[str, Any]):
         "docs": ["document", "readme", "explain", "describe", "help", "guide"],
     }
 
-    message_lower = message.lower()
+    message_lower = message.lower().strip()
+    if not message_lower:
+        return {"intent": "general"}
+
     for intent, keywords in intent_map.items():
         if any(keyword in message_lower for keyword in keywords):
             return {"intent": intent}
@@ -2697,15 +2762,77 @@ def _detect_diagnostics_command(root: Path) -> Optional[List[str]]:
     return None
 
 
-def _collect_repo_snapshot(root: Path, max_files: int = 200) -> tuple[str, list[Path]]:
+def _collect_repo_snapshot(root: Path, max_files: int = 500) -> tuple[str, list[Path]]:
     """
     Walks the repo under `root` and returns:
       - structure_md: markdown list of directories + files
       - key_files: list of Path objects to read for content
+
+    Enhanced to scan more files for comprehensive project understanding.
     """
     logger.info("[NAVI-REPO] _collect_repo_snapshot starting for root=%s", root)
     dir_entries: list[str] = []
     all_files: list[Path] = []
+
+    # Extended code file extensions for thorough analysis (50+ languages)
+    CODE_EXTENSIONS = {
+        # JavaScript/TypeScript ecosystem
+        ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+        # Python
+        ".py", ".pyw", ".pyi",  # .pyi for type stubs
+        # JVM languages
+        ".java", ".kt", ".kts", ".scala", ".groovy", ".clj", ".cljs", ".cljc",
+        # Go
+        ".go",
+        # Rust
+        ".rs",
+        # Ruby
+        ".rb", ".rake", ".erb",
+        # PHP
+        ".php", ".phtml",
+        # .NET / C#
+        ".cs", ".fs", ".fsx", ".vb",
+        # C/C++
+        ".cpp", ".c", ".h", ".hpp", ".cc", ".cxx", ".hxx",
+        # Swift / Objective-C
+        ".swift", ".m", ".mm",
+        # Frontend frameworks
+        ".vue", ".svelte", ".astro",
+        # GraphQL
+        ".graphql", ".gql",
+        # SQL
+        ".sql", ".psql", ".plsql",
+        # Shell scripts
+        ".sh", ".bash", ".zsh", ".fish",
+        # Data Science / ML
+        ".r", ".R", ".jl", ".ipynb",  # R, Julia, Jupyter
+        # Functional languages
+        ".ex", ".exs",  # Elixir
+        ".hs", ".lhs",  # Haskell
+        ".erl", ".hrl",  # Erlang
+        ".ml", ".mli",  # OCaml
+        ".elm",  # Elm
+        # Mobile
+        ".dart",  # Flutter/Dart
+        # Scripting
+        ".lua", ".pl", ".pm",  # Lua, Perl
+        # Systems programming
+        ".zig", ".nim", ".v",  # Zig, Nim, V
+        # Web markup/styling
+        ".html", ".htm", ".css", ".scss", ".sass", ".less",
+        # Config as code
+        ".hcl", ".tf", ".tfvars",  # Terraform
+        ".jsonnet", ".libsonnet",  # Jsonnet
+        ".dhall",  # Dhall
+        # Data formats (useful for understanding config)
+        ".yaml", ".yml", ".toml", ".json", ".xml",
+        # Documentation
+        ".md", ".mdx", ".rst",  # Markdown, MDX, reStructuredText
+        # Build/CI config
+        ".dockerfile", ".containerfile",
+        # WebAssembly
+        ".wat", ".wast",
+    }
 
     try:
         for dirpath, dirnames, filenames in os.walk(root):
@@ -2754,7 +2881,7 @@ def _collect_repo_snapshot(root: Path, max_files: int = 200) -> tuple[str, list[
         len(dir_entries),
     )
 
-    # Pick "key" files: well-known names first
+    # Pick "key" files: well-known config/doc names first
     key_files: list[Path] = []
     name_to_file: dict[str, Path] = {}
     for f in all_files:
@@ -2766,37 +2893,151 @@ def _collect_repo_snapshot(root: Path, max_files: int = 200) -> tuple[str, list[
         if f is not None:
             key_files.append(f)
 
-    # Extra interesting code files under app/src/pages/components/api, etc.
-    if len(key_files) < 20:
-        extra: list[Path] = []
-        for f in all_files:
-            rel = f.relative_to(root)
-            rel_str = str(rel)
-            ext = f.suffix.lower()
-            if ext not in {".js", ".jsx", ".ts", ".tsx", ".py", ".java"}:
-                continue
-            if (
-                "app/" in rel_str
-                or "src/" in rel_str
-                or "pages/" in rel_str
-                or "components/" in rel_str
-                or "api/" in rel_str
-            ):
-                extra.append(f)
+    # Priority directories for source code discovery
+    PRIORITY_DIRS = {
+        "app/", "src/", "pages/", "components/", "api/", "lib/", "utils/",
+        "services/", "hooks/", "routes/", "controllers/", "models/",
+        "views/", "handlers/", "middleware/", "core/", "modules/",
+        "features/", "domains/", "backend/", "frontend/", "server/", "client/",
+    }
 
-        for f in extra:
+    # Collect source code files from priority directories
+    priority_code_files: list[Path] = []
+    other_code_files: list[Path] = []
+
+    for f in all_files:
+        rel = f.relative_to(root)
+        rel_str = str(rel)
+        ext = f.suffix.lower()
+
+        if ext not in CODE_EXTENSIONS:
+            continue
+
+        # Check if in priority directory
+        is_priority = any(pdir in rel_str for pdir in PRIORITY_DIRS)
+
+        if is_priority:
+            priority_code_files.append(f)
+        else:
+            other_code_files.append(f)
+
+    # Sort by file size (prefer smaller files that are likely more focused)
+    def get_file_size(p: Path) -> int:
+        try:
+            return p.stat().st_size
+        except OSError:
+            return 0
+
+    priority_code_files.sort(key=get_file_size)
+    other_code_files.sort(key=get_file_size)
+
+    # Add priority code files first (up to 70 from priority directories)
+    for f in priority_code_files:
+        if f not in key_files:
+            key_files.append(f)
+            if len(key_files) >= 70:
+                break
+
+    # Add other code files if we still have room (up to 100 total)
+    if len(key_files) < 100:
+        for f in other_code_files:
             if f not in key_files:
                 key_files.append(f)
-                if len(key_files) >= 20:
+                if len(key_files) >= 100:
                     break
+
+    logger.info(
+        "[NAVI-REPO] Selected %d key files for analysis: %s",
+        len(key_files),
+        [str(f.relative_to(root)) for f in key_files[:10]] + (["..."] if len(key_files) > 10 else []),
+    )
 
     structure_md = "\n".join(dir_entries) if dir_entries else "(empty repo?)"
     return structure_md, key_files
 
 
-def _read_file_snippet(path: Path, max_chars: int = 2000) -> str:
+def _extract_code_signatures(text: str, file_ext: str) -> list[str]:
+    """
+    Extract function/class signatures from code for better understanding of large files.
+    Returns a list of signature strings.
+    """
+    import re
+    signatures = []
+
+    # Python signatures
+    if file_ext in {".py", ".pyw", ".pyi"}:
+        # Classes
+        for match in re.finditer(r'^class\s+(\w+)(?:\([^)]*\))?:', text, re.MULTILINE):
+            signatures.append(f"class {match.group(1)}")
+        # Functions/methods
+        for match in re.finditer(r'^(?:async\s+)?def\s+(\w+)\s*\([^)]*\)(?:\s*->\s*[^:]+)?:', text, re.MULTILINE):
+            signatures.append(f"def {match.group(1)}()")
+
+    # TypeScript/JavaScript signatures
+    elif file_ext in {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}:
+        # Exported functions
+        for match in re.finditer(r'^export\s+(?:async\s+)?function\s+(\w+)', text, re.MULTILINE):
+            signatures.append(f"export function {match.group(1)}()")
+        # Exported classes
+        for match in re.finditer(r'^export\s+class\s+(\w+)', text, re.MULTILINE):
+            signatures.append(f"export class {match.group(1)}")
+        # Exported const components/functions
+        for match in re.finditer(r'^export\s+const\s+(\w+)\s*[=:]', text, re.MULTILINE):
+            signatures.append(f"export const {match.group(1)}")
+        # React components
+        for match in re.finditer(r'^(?:export\s+)?(?:default\s+)?function\s+([A-Z]\w+)\s*\(', text, re.MULTILINE):
+            signatures.append(f"function {match.group(1)}()")
+
+    # Go signatures
+    elif file_ext == ".go":
+        for match in re.finditer(r'^func\s+(?:\([^)]+\)\s*)?(\w+)\s*\(', text, re.MULTILINE):
+            signatures.append(f"func {match.group(1)}()")
+        for match in re.finditer(r'^type\s+(\w+)\s+(?:struct|interface)', text, re.MULTILINE):
+            signatures.append(f"type {match.group(1)}")
+
+    # Rust signatures
+    elif file_ext == ".rs":
+        for match in re.finditer(r'^(?:pub\s+)?(?:async\s+)?fn\s+(\w+)', text, re.MULTILINE):
+            signatures.append(f"fn {match.group(1)}()")
+        for match in re.finditer(r'^(?:pub\s+)?struct\s+(\w+)', text, re.MULTILINE):
+            signatures.append(f"struct {match.group(1)}")
+        for match in re.finditer(r'^(?:pub\s+)?impl(?:\s+\w+)?\s+(?:for\s+)?(\w+)', text, re.MULTILINE):
+            signatures.append(f"impl {match.group(1)}")
+
+    # Java/Kotlin signatures
+    elif file_ext in {".java", ".kt", ".kts"}:
+        for match in re.finditer(r'^(?:public|private|protected)?\s*(?:static\s+)?class\s+(\w+)', text, re.MULTILINE):
+            signatures.append(f"class {match.group(1)}")
+        for match in re.finditer(r'^(?:public|private|protected)?\s*(?:static\s+)?(?:fun|void|\w+)\s+(\w+)\s*\(', text, re.MULTILINE):
+            signatures.append(f"fun {match.group(1)}()")
+
+    return signatures[:30]  # Limit to top 30 signatures
+
+
+def _extract_imports(text: str, file_ext: str) -> list[str]:
+    """Extract import statements from code."""
+    import re
+    imports = []
+
+    if file_ext in {".py", ".pyw", ".pyi"}:
+        for match in re.finditer(r'^(?:from\s+\S+\s+)?import\s+.+$', text, re.MULTILINE):
+            imports.append(match.group(0).strip())
+
+    elif file_ext in {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}:
+        for match in re.finditer(r'^import\s+.+$', text, re.MULTILINE):
+            imports.append(match.group(0).strip())
+
+    elif file_ext == ".go":
+        for match in re.finditer(r'^import\s+(?:\(\s*)?("[^"]+"|[\w/]+)', text, re.MULTILINE):
+            imports.append(match.group(0).strip())
+
+    return imports[:20]  # Limit to top 20 imports
+
+
+def _read_file_snippet(path: Path, max_chars: int = 3000) -> str:
     """
     Returns a UTF-8 text snippet from a file (with truncation and basic safety).
+    Increased max_chars for more comprehensive code understanding.
     """
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
@@ -2807,6 +3048,53 @@ def _read_file_snippet(path: Path, max_chars: int = 2000) -> str:
     if len(text) > max_chars:
         return text[:max_chars] + "\n...[truncated]..."
     return text
+
+
+def _read_file_smart(path: Path, max_chars: int = 5000) -> str:
+    """
+    Intelligently reads a file, extracting signatures and key content for large files.
+    For small files (<=max_chars), returns full content.
+    For large files, returns: imports + signatures + truncated content.
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except Exception as e:  # noqa: BLE001
+        return f"<<Failed to read {path.name}: {e}>>"
+
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    file_ext = path.suffix.lower()
+    total_lines = text.count('\n') + 1
+
+    # Small files: return full content
+    if len(text) <= max_chars:
+        return text
+
+    # Large files: extract structure + truncated content
+    result_parts = []
+
+    # Add file stats
+    result_parts.append(f"# File: {path.name} ({total_lines} lines, {len(text)} chars)")
+
+    # Extract and add imports
+    imports = _extract_imports(text, file_ext)
+    if imports:
+        result_parts.append("\n## Imports:")
+        result_parts.extend(imports[:10])
+
+    # Extract and add signatures
+    signatures = _extract_code_signatures(text, file_ext)
+    if signatures:
+        result_parts.append("\n## Code Structure (functions/classes):")
+        for sig in signatures[:20]:
+            result_parts.append(f"  - {sig}")
+
+    # Add truncated content (first portion)
+    first_portion_size = max_chars // 2
+    result_parts.append(f"\n## Content (first {first_portion_size} chars):")
+    result_parts.append(text[:first_portion_size])
+    result_parts.append(f"\n...[{len(text) - first_portion_size} more chars truncated]...")
+
+    return "\n".join(result_parts)
 
 
 def detect_project_commands(root: Path) -> Dict[str, Any]:
@@ -3026,7 +3314,7 @@ async def handle_repo_scan_fast_path(
         f"{entrypoints_md}\n"
     )
 
-    model = request.model or "gpt-4o-mini"
+    model = _resolve_model(request.model)
 
     try:
         resp = await openai_client.chat.completions.create(
@@ -3158,7 +3446,8 @@ async def handle_repo_explain_fast_path(
     snippets_parts: list[str] = []
     for f in key_files:
         rel = f.relative_to(root)
-        snippet = _read_file_snippet(f)
+        # Use smart reading for better handling of large files
+        snippet = _read_file_smart(f, max_chars=5000)
         snippets_parts.append(f"### File: `{rel}`\n```text\n{snippet}\n```")
 
     files_md = "\n\n".join(snippets_parts)
@@ -3167,23 +3456,88 @@ async def handle_repo_explain_fast_path(
 
     system_prompt = (
         "You are Navi, an autonomous engineering assistant integrated into VS Code.\n\n"
-        "You are given a **real snapshot** of a repository, including:\n"
-        "- Its directory structure (relative paths).\n"
-        "- The contents of key files like package.json, README, config files, and "
-        "  representative source files under app/src/pages/components/api.\n\n"
-        "Your job is to explain this *specific* repository to a developer who just opened it.\n\n"
-        "You MUST:\n"
-        "1. Identify the tech stack and frameworks from package.json and the code "
-        "   (e.g., React, Next.js, Node.js, TypeScript, Python, etc.).\n"
-        "2. Explain what the application appears to do, based on file names and code snippets.\n"
-        "3. Walk through the main folders and key files, mentioning them by path.\n"
-        "4. Highlight important entry points (for example: `app/page.tsx`, "
-        "   `app/dashboard/page.tsx`, `src/api/*`, backend services, etc.).\n"
-        "5. Suggest next steps for a new engineer: where to start reading, how to run it "
-        "   (if scripts/configs show that), and any obvious TODOs or extension points.\n\n"
-        "Do NOT fall back to vague language like 'the snapshot is limited' if you see real files.\n"
-        "Ground everything you say in the actual paths and code provided. If something is genuinely "
-        "missing (e.g., there are truly no source files), say that explicitly."
+        "You are given a **comprehensive snapshot** of a repository, including:\n"
+        "- Its complete directory structure (relative paths).\n"
+        "- The contents of configuration files (package.json, tsconfig, etc.).\n"
+        "- Representative source code from key directories (app, src, pages, components, api, services, etc.).\n\n"
+        "Your job is to provide a **thorough, detailed explanation** of this repository to a developer who just opened it.\n\n"
+        "You MUST provide a comprehensive analysis covering ALL 15 sections:\n\n"
+        "## 1. Project Overview\n"
+        "- Project name and type (web app, API, library, CLI tool, monorepo, etc.)\n"
+        "- Main purpose and what problem it solves\n"
+        "- Target users/audience\n"
+        "- Project maturity (early stage, production-ready, etc.)\n\n"
+        "## 2. Tech Stack & Architecture\n"
+        "- Framework(s) used (e.g., Next.js 14, React 18, FastAPI, etc.) with versions\n"
+        "- Programming languages (TypeScript, Python, etc.)\n"
+        "- Architecture pattern (monolith, microservices, serverless, etc.)\n"
+        "- Build tools and bundlers (Webpack, Vite, Turbopack, etc.)\n\n"
+        "## 3. Project Structure Deep Dive\n"
+        "- Explain EACH major directory and its purpose\n"
+        "- List key files and what they do\n"
+        "- Identify patterns (feature-based, layer-based, domain-driven, etc.)\n\n"
+        "## 4. Key Entry Points & Routes\n"
+        "- Main entry files (app/page.tsx, index.ts, main.py, etc.)\n"
+        "- Route structure and navigation patterns\n"
+        "- Server startup and initialization flow\n\n"
+        "## 5. API Surface\n"
+        "- REST endpoints (list paths and methods)\n"
+        "- GraphQL schemas if present\n"
+        "- WebSocket or real-time endpoints\n"
+        "- API versioning strategy\n\n"
+        "## 6. Database & Data Layer\n"
+        "- Database type (PostgreSQL, MongoDB, etc.)\n"
+        "- ORM/ODM used (Prisma, SQLAlchemy, Mongoose, etc.)\n"
+        "- Key models/tables and their relationships\n"
+        "- Migration strategy\n\n"
+        "## 7. State Management\n"
+        "- Client-side state (Redux, Zustand, Context, Jotai, etc.)\n"
+        "- Server state management (React Query, SWR, etc.)\n"
+        "- Data flow patterns\n\n"
+        "## 8. Authentication & Authorization\n"
+        "- Auth providers (NextAuth, Clerk, Auth0, custom JWT, etc.)\n"
+        "- Session management strategy\n"
+        "- Protected routes and middleware\n"
+        "- Role-based access control if present\n\n"
+        "## 9. Core Components & Features\n"
+        "- List major components/modules and their responsibilities\n"
+        "- Reusable utilities, hooks, and helpers\n"
+        "- Third-party integrations\n\n"
+        "## 10. Configuration & Environment\n"
+        "- Environment variables needed (list ALL from .env.example)\n"
+        "- Build/dev configurations\n"
+        "- Feature flags if present\n\n"
+        "## 11. Testing Strategy\n"
+        "- Test framework(s) used (Jest, Pytest, Vitest, etc.)\n"
+        "- Test directory structure\n"
+        "- Types of tests (unit, integration, e2e)\n"
+        "- Coverage requirements\n\n"
+        "## 12. Build & Deployment\n"
+        "- Build scripts and commands\n"
+        "- CI/CD configuration (GitHub Actions, GitLab CI, etc.)\n"
+        "- Docker/containerization setup\n"
+        "- Deployment target (Vercel, AWS, GCP, etc.)\n\n"
+        "## 13. Code Patterns & Conventions\n"
+        "- Naming conventions observed\n"
+        "- File organization patterns\n"
+        "- Notable coding patterns (hooks, HOCs, decorators, etc.)\n"
+        "- Error handling patterns\n\n"
+        "## 14. Performance Considerations\n"
+        "- Caching strategies (Redis, in-memory, etc.)\n"
+        "- Code splitting and lazy loading\n"
+        "- Image optimization\n"
+        "- Rate limiting\n\n"
+        "## 15. Getting Started\n"
+        "- Prerequisites (Node version, Python version, etc.)\n"
+        "- Step-by-step setup instructions\n"
+        "- Common development commands\n"
+        "- Troubleshooting tips\n\n"
+        "IMPORTANT GUIDELINES:\n"
+        "- Be SPECIFIC - reference actual file paths and code you see\n"
+        "- Do NOT use vague language like 'the snapshot is limited'\n"
+        "- Quote relevant code snippets when explaining functionality\n"
+        "- If a section doesn't apply, briefly explain why (e.g., 'No database detected')\n"
+        "- Mention any security considerations or potential issues you spot"
     )
 
     user_prompt = (
@@ -3196,7 +3550,7 @@ async def handle_repo_explain_fast_path(
         "Now write a detailed, repo-specific explanation following the system instructions."
     )
 
-    model = request.model or "gpt-4o-mini"
+    model = _resolve_model(request.model)
 
     # Fallback if OpenAI is disabled
     if not OPENAI_ENABLED or openai_client is None:
@@ -3368,7 +3722,7 @@ async def handle_repo_diagnostics_fast_path(
 
     # 4) Ask the model for concrete edits
     summary, edits = await _generate_edits_with_llm(
-        model_name=request.model or "gpt-4o-mini",
+        model_name=_resolve_model(request.model),
         workspace_root=workspace_root,
         task_message=(
             request.message
@@ -3538,7 +3892,7 @@ async def handle_code_edit_fast_path(
 
     try:
         completion = await openai_client.chat.completions.create(
-            model=request.model or "gpt-4.1-mini",
+            model=_resolve_model(request.model),
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -3688,7 +4042,7 @@ async def handle_generate_tests_fast_path(
     ]
 
     summary, edits = await _generate_edits_with_llm(
-        model_name=request.model or "gpt-4o-mini",
+        model_name=_resolve_model(request.model),
         workspace_root=workspace_root,
         task_message=(
             request.message
@@ -3873,6 +4227,16 @@ class ChatRequest(BaseModel):
         description="Logical user identifier (maps to NAVI memory user_id)",
     )
 
+    # Conversation context for multi-turn conversations
+    conversation_id: Optional[str] = Field(
+        default=None,
+        description="Unique conversation/session ID for tracking multi-turn conversations",
+    )
+    conversation_history: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Recent conversation history (last N messages) for context",
+    )
+
 
 class ChatResponse(BaseModel):
     # Shape that the VS Code extension expects:
@@ -3904,6 +4268,11 @@ class ChatResponse(BaseModel):
     files_read: Optional[List[str]] = None  # Show what files were analyzed
     project_type: Optional[str] = None  # Detected project type
     framework: Optional[str] = None  # Detected framework
+
+    # NAVI V2: Plan mode and approval flow
+    requires_approval: bool = False  # Whether user approval is needed
+    plan_id: Optional[str] = None  # Unique plan ID for tracking
+    actions_with_risk: List[Dict[str, Any]] = []  # Actions with risk assessment
 
 
 @router.get("/test-agent")
@@ -4081,70 +4450,13 @@ async def navi_chat(
         logger.info("[NAVI-WORKSPACE-DEBUG] Using workspace_root=%s", workspace_root)
 
         # ------------------------------------------------------------------
-        # AUTONOMOUS CODING DETECTION - Check immediately after workspace detection
+        # AUTONOMOUS CODING DETECTION - Removed hardcoded early return
+        # Let all code generation requests flow through to the agent loop
+        # which uses the actual LLM for intelligent responses
         # ------------------------------------------------------------------
-        msg_lower = request.message.lower().strip()
-        coding_keywords = [
-            "create",
-            "implement",
-            "build",
-            "generate",
-            "add",
-            "write",
-            "make",
-            "develop",
-        ]
-
-        print(f"[EARLY-DEBUG] Message: '{msg_lower}'")
-        print(f"[EARLY-DEBUG] Workspace: '{workspace_root}'")
-        print(
-            f"[EARLY-DEBUG] Keywords found: {[k for k in coding_keywords if k in msg_lower]}"
-        )
-
-        # Check if this is an autonomous coding request
-        if workspace_root and any(keyword in msg_lower for keyword in coding_keywords):
-            print("[EARLY-DEBUG] AUTONOMOUS CODING TRIGGERED!")
-            logger.info(
-                f"[NAVI-AUTONOMOUS] Early detection of coding request: {msg_lower}"
-            )
-
-            reply = f"""**AUTONOMOUS CODING MODE ACTIVATED**
-
-I'll help you implement: "{request.message}"
-
-**My autonomous workflow:**
-1. **Analyze** your workspace: `{workspace_root}`
-2. **Plan** step-by-step implementation  
-3. **Generate** code with your approval
-4. **Apply** changes safely
-5. **Test** and verify results
-
-This is how I work like Cline, Copilot, and other AI coding assistants - with step-by-step execution and safety approvals.
-
-Ready to start autonomous implementation?"""
-
-            actions = [
-                {
-                    "type": "startAutonomousTask",
-                    "description": "Start autonomous coding implementation",
-                    "workspace_root": workspace_root,
-                    "message": request.message,
-                }
-            ]
-
-            return ChatResponse(
-                content=reply,
-                actions=actions,
-                agentRun={"mode": "autonomous_coding", "workspace": workspace_root},
-                reply=reply,
-                should_stream=False,
-                state={
-                    "autonomous_coding": True,
-                    "workspace_root": workspace_root,
-                    "request": request.message,
-                },
-                duration_ms=0,
-            )
+        # NOTE: The previous hardcoded "AUTONOMOUS CODING MODE ACTIVATED" response
+        # has been removed. Now all requests go through the agent loop to get
+        # actual LLM-generated code and contextual descriptions.
 
         # NOTE: Project analysis ("how to run" questions) is handled by
         # chat.py using navi_brain.py's ProjectAnalyzer. This /chat endpoint
@@ -4813,82 +5125,10 @@ Ready to start autonomous implementation?"""
                 )
 
         # ------------------------------------------------------------------
-        # AUTONOMOUS CODING DETECTION - Check before agent loop
+        # AUTONOMOUS CODING DETECTION - Removed hardcoded early return
+        # All code generation requests now flow through to the agent loop
+        # which uses the actual LLM for intelligent, contextual responses
         # ------------------------------------------------------------------
-        msg_lower = request.message.lower().strip()
-        coding_keywords = [
-            "create",
-            "implement",
-            "build",
-            "generate",
-            "add",
-            "write",
-            "make",
-            "develop",
-        ]
-
-        print(f"[DEBUG-AUTONOMOUS] msg_lower: '{msg_lower}'")
-        print(f"[DEBUG-AUTONOMOUS] workspace_root: '{workspace_root}'")
-        print(f"[DEBUG-AUTONOMOUS] workspace_root is truthy: {bool(workspace_root)}")
-        print(
-            f"[DEBUG-AUTONOMOUS] keywords check: {[k for k in coding_keywords if k in msg_lower]}"
-        )
-        print(
-            f"[DEBUG-AUTONOMOUS] any keyword match: {any(keyword in msg_lower for keyword in coding_keywords)}"
-        )
-        print(
-            f"[DEBUG-AUTONOMOUS] condition result: {workspace_root and any(keyword in msg_lower for keyword in coding_keywords)}"
-        )
-
-        # Check if this is an autonomous coding request
-        if workspace_root and any(keyword in msg_lower for keyword in coding_keywords):
-            print("[DEBUG-AUTONOMOUS] ✅ TRIGGERING autonomous coding!")
-            logger.info(f"[NAVI-AUTONOMOUS] Detected coding request: {msg_lower}")
-            try:
-                print("[DEBUG-AUTONOMOUS] RETURNING autonomous coding response!")
-                reply = f"""**AUTONOMOUS CODING MODE ACTIVATED**
-
-I'll help you implement: "{request.message}"
-
-**My autonomous workflow:**
-1. **Analyze** your workspace and requirements
-2. **Plan** step-by-step implementation strategy  
-3. **Generate** code with your approval at each step
-4. **Apply** changes safely to your files
-5. **Test** and verify the implementation works
-
-**Workspace:** `{workspace_root}`
-
-This is how I work like Cline, Copilot, and other AI coding assistants - with step-by-step execution and safety approvals.
-
-Ready to start autonomous implementation?"""
-
-                actions = [
-                    {
-                        "type": "startAutonomousTask",
-                        "description": "Start autonomous coding implementation",
-                        "workspace_root": workspace_root,
-                        "message": request.message,
-                    }
-                ]
-
-                return ChatResponse(
-                    content=reply,
-                    actions=actions,
-                    agentRun={"mode": "autonomous_coding", "workspace": workspace_root},
-                    reply=reply,
-                    should_stream=False,
-                    state={
-                        "autonomous_coding": True,
-                        "workspace_root": workspace_root,
-                        "request": request.message,
-                    },
-                    duration_ms=0,
-                )
-
-            except Exception as e:
-                logger.error(f"[NAVI-AUTONOMOUS] Failed: {str(e)}")
-                # Fall through to regular agent loop
 
         # ------------------------------------------------------------------
         # Call the NAVI agent loop with perfect workspace context
@@ -5186,7 +5426,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
         agent_result = await run_agent_loop(
             user_id=user_id,
             message=request.message,
-            model=request.model,
+            model=_resolve_model(request.model),
             mode=mode,
             db=db,
             attachments=[a.dict() for a in (request.attachments or [])],
@@ -5317,6 +5557,46 @@ To get started, I need to analyze your codebase and create a detailed implementa
         progress_tracker.complete_step("Response generated")
         progress_tracker.update_status("Ready")
 
+        # NAVI V2: Plan mode - check if approval is required
+        requires_approval = state.get("pending_approval", False)
+        plan_id = None
+        actions_with_risk = []
+
+        if requires_approval and actions:
+            # Generate plan ID and format actions with risk assessment
+            import uuid
+            plan_id = str(uuid.uuid4())
+
+            for action in actions:
+                # Determine risk level based on action type
+                action_type = action.get("type", "generic")
+                tool = action.get("tool", "")
+
+                risk = "low"
+                warnings = []
+
+                if action_type == "fileEdit" or tool in ["code.apply_patch", "code.write_file"]:
+                    risk = "medium"
+                    warnings.append("This will modify files in your workspace")
+                elif tool.startswith("pm."):
+                    risk = "medium"
+                    warnings.append("This will create/modify project management items")
+                elif "runCommand" in action_type:
+                    risk = "medium"
+                    warnings.append("This will execute a command")
+
+                actions_with_risk.append({
+                    "type": action.get("type", "generic"),
+                    "path": action.get("filePath"),
+                    "command": action.get("command"),
+                    "content": action.get("content"),
+                    "risk": risk,
+                    "warnings": warnings,
+                    "preview": action.get("description", ""),
+                    "tool": tool,
+                    "arguments": action.get("arguments", {}),
+                })
+
         # Map `reply` -> `content` for the extension
         return ChatResponse(
             content=reply,
@@ -5329,6 +5609,10 @@ To get started, I need to analyze your codebase and create a detailed implementa
             should_stream=bool(agent_result.get("should_stream", False)),
             state=state,
             duration_ms=agent_result.get("duration_ms"),
+            # NAVI V2: Plan mode fields
+            requires_approval=requires_approval,
+            plan_id=plan_id,
+            actions_with_risk=actions_with_risk,
         )
 
     except HTTPException:
@@ -5339,6 +5623,347 @@ To get started, I need to analyze your codebase and create a detailed implementa
             status_code=500,
             detail="Failed to process NAVI chat",
         )
+
+
+# ---------------------------------------------------------------------------
+# Streaming chat endpoint (SSE)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/chat/stream")
+@no_type_check
+async def navi_chat_stream(
+    request: ChatRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Streaming version of navi_chat with Server-Sent Events (SSE).
+
+    Returns real-time progress updates and the final response as a stream.
+    Used by the VS Code extension for a responsive chat experience.
+    """
+    from backend.services.streaming_utils import (
+        StreamingSession,
+        stream_text_with_typing,
+    )
+    from backend.services.navi_brain import process_navi_request_streaming
+
+    logger.info(
+        "[NAVI-STREAM] Starting stream for message: '%s...'",
+        request.message[:50] if request.message else "",
+    )
+
+    user_id = (request.user_id or "default_user").strip() or "default_user"
+    mode = (request.mode or "chat-only").strip() or "chat-only"
+    workspace_root = request.workspace_root or (request.workspace or {}).get(
+        "workspace_root"
+    )
+
+    async def generate_stream():
+        """Generator for SSE events."""
+        stream_session = StreamingSession()
+
+        try:
+            # Emit initial activity
+            yield f"data: {json.dumps({'activity': {'kind': 'context', 'label': 'Starting', 'detail': 'Processing your request...', 'status': 'running'}})}\n\n"
+
+            # Check if we have workspace for agent mode
+            if not workspace_root:
+                # No workspace - use simple chat mode
+                logger.info("[NAVI-STREAM] No workspace, using simple chat mode")
+
+                # Call agent loop for response
+                agent_result = await run_agent_loop(
+                    user_id=user_id,
+                    message=request.message,
+                    model=_resolve_model(request.model),
+                    mode=mode,
+                    db=db,
+                    attachments=[a.dict() for a in (request.attachments or [])],
+                    workspace=request.workspace or {},
+                )
+
+                reply = str(agent_result.get("reply") or "").strip()
+                if not reply:
+                    reply = "I couldn't generate a response. Please try again."
+
+                # Stream the response content
+                async for chunk in stream_text_with_typing(
+                    reply,
+                    chunk_size=3,
+                    delay_ms=12,
+                ):
+                    content_event = stream_session.content(chunk)
+                    yield f"data: {json.dumps(content_event)}\n\n"
+
+                # Include actions if any
+                actions = agent_result.get("actions") or []
+                if actions:
+                    yield f"data: {json.dumps({'actions': actions})}\n\n"
+
+                yield f"data: {json.dumps({'router_info': {'mode': mode, 'model': request.model}})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            # With workspace - use NAVI brain streaming
+            logger.info(
+                "[NAVI-STREAM] Using NAVI brain streaming for workspace: %s",
+                workspace_root,
+            )
+
+            # Extract context from request
+            current_file = None
+            current_file_content = None
+            selection = None
+            errors = None
+
+            # Check attachments for file content
+            if request.attachments:
+                for att in request.attachments:
+                    att_kind = getattr(att, "kind", None) or (
+                        att.get("kind") if isinstance(att, dict) else None
+                    )
+                    att_content = getattr(att, "content", None) or (
+                        att.get("content") if isinstance(att, dict) else None
+                    )
+                    att_path = getattr(att, "path", None) or (
+                        att.get("path") if isinstance(att, dict) else None
+                    )
+
+                    if att_kind in ("file", "code") and att_content:
+                        if not current_file:
+                            current_file = att_path
+                        if not current_file_content:
+                            current_file_content = att_content
+                        break
+
+            # Determine auto-execute mode
+            auto_execute = mode in (
+                "agent-full-access",
+                "agent_full_access",
+                "full-access",
+                "full_access",
+            )
+
+            # Show current file context if available
+            if current_file:
+                yield f"data: {json.dumps({'activity': {'kind': 'context', 'label': 'Active file', 'detail': current_file, 'status': 'done'}})}\n\n"
+
+            # Stream from NAVI brain
+            navi_result = None
+            files_read_live = []
+
+            # Build conversation history for context
+            conversation_history_for_llm = None
+            if request.conversation_history:
+                # Convert frontend format to LLM format
+                conversation_history_for_llm = [
+                    {
+                        "role": msg.get("type", msg.get("role", "user")),
+                        "content": msg.get("content", ""),
+                    }
+                    for msg in request.conversation_history
+                    if msg.get("content")
+                ]
+                logger.info(
+                    "[NAVI-STREAM] Using conversation history with %d messages",
+                    len(conversation_history_for_llm),
+                )
+
+            async for event in process_navi_request_streaming(
+                message=request.message,
+                workspace_path=workspace_root,
+                llm_provider=request.provider or "openai",
+                llm_model=_resolve_model(request.model),
+                api_key=None,
+                current_file=current_file,
+                current_file_content=current_file_content,
+                selection=selection,
+                open_files=None,
+                errors=errors,
+                conversation_history=conversation_history_for_llm,
+            ):
+                # Stream activity events
+                if "activity" in event:
+                    activity = event["activity"]
+                    if activity.get("kind") == "file_read":
+                        files_read_live.append(activity.get("detail", ""))
+                    yield f"data: {json.dumps({'activity': activity})}\n\n"
+
+                # Stream thinking content
+                elif "thinking" in event:
+                    thinking_text = event["thinking"]
+                    yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
+
+                # Capture final result
+                elif "result" in event:
+                    navi_result = event["result"]
+
+            # Process final result
+            if navi_result:
+                logger.info(
+                    "[NAVI-STREAM] Result keys: %s", list(navi_result.keys())
+                )
+
+                # Emit activity for files to create/modify
+                files_created = navi_result.get("files_created", [])
+                files_modified = navi_result.get("files_modified", [])
+                file_edits = navi_result.get("file_edits", [])
+
+                for file_path in files_created:
+                    yield f"data: {json.dumps({'activity': {'kind': 'create', 'label': 'Creating', 'detail': file_path, 'status': 'done'}})}\n\n"
+
+                for file_path in files_modified:
+                    yield f"data: {json.dumps({'activity': {'kind': 'edit', 'label': 'Editing', 'detail': file_path, 'status': 'done'}})}\n\n"
+
+                # Build and stream response content
+                response_content = navi_result.get(
+                    "message", "Task completed successfully."
+                )
+
+                async for chunk in stream_text_with_typing(
+                    response_content,
+                    chunk_size=3,
+                    delay_ms=12,
+                ):
+                    content_event = stream_session.content(chunk)
+                    yield f"data: {json.dumps(content_event)}\n\n"
+
+                # Build actions from result
+                actions = []
+                proposed_actions = navi_result.get("actions", [])
+                for action in proposed_actions:
+                    actions.append(action)
+
+                for edit in file_edits:
+                    file_path_value = edit.get("filePath") or edit.get("path")
+                    if file_path_value:
+                        actions.append(
+                            {
+                                "type": edit.get("type", "editFile"),
+                                "filePath": file_path_value,
+                                "content": edit.get("content"),
+                                "diff": edit.get("diff"),
+                                "additions": edit.get("additions"),
+                                "deletions": edit.get("deletions"),
+                            }
+                        )
+
+                # Add files_created that aren't in file_edits
+                existing_paths = {
+                    a.get("filePath") for a in actions if a.get("filePath")
+                }
+                for file_path in files_created:
+                    if file_path not in existing_paths:
+                        content = None
+                        for edit in file_edits:
+                            edit_path = edit.get("filePath") or edit.get("path")
+                            if edit_path == file_path:
+                                content = edit.get("content")
+                                break
+                        if content:
+                            actions.append(
+                                {
+                                    "type": "createFile",
+                                    "filePath": file_path,
+                                    "content": content,
+                                }
+                            )
+
+                if actions:
+                    logger.info(
+                        "[NAVI-STREAM] Sending %d actions: %s",
+                        len(actions),
+                        [a.get("type") for a in actions],
+                    )
+                    yield f"data: {json.dumps({'actions': actions})}\n\n"
+
+                # Include next_steps if available
+                next_steps = navi_result.get("next_steps", [])
+                if next_steps:
+                    yield f"data: {json.dumps({'type': 'navi.next_steps', 'next_steps': next_steps})}\n\n"
+
+                # Persist conversation to database (non-blocking, failure won't break stream)
+                try:
+                    if request.conversation_id:
+                        from uuid import UUID
+                        memory_service = ConversationMemoryService(db)
+                        conv_uuid = UUID(request.conversation_id)
+
+                        # Check if conversation exists, create if not
+                        existing_conv = memory_service.get_conversation(conv_uuid)
+                        if not existing_conv:
+                            # Create new conversation with this ID
+                            # Note: This requires user_id as int, but we have string
+                            # For now, we'll use a hash of the user_id string
+                            user_id_int = abs(hash(user_id)) % (10**9)
+                            memory_service.db.execute(
+                                text("""
+                                    INSERT INTO conversations (id, user_id, workspace_path, status, created_at, updated_at)
+                                    VALUES (:id, :user_id, :workspace_path, 'active', NOW(), NOW())
+                                    ON CONFLICT (id) DO NOTHING
+                                """),
+                                {
+                                    "id": str(conv_uuid),
+                                    "user_id": user_id_int,
+                                    "workspace_path": workspace_root,
+                                }
+                            )
+                            memory_service.db.commit()
+                            logger.info("[NAVI-STREAM] Created conversation %s", conv_uuid)
+
+                        # Store user message
+                        await memory_service.add_message(
+                            conversation_id=conv_uuid,
+                            role="user",
+                            content=request.message,
+                            metadata={"workspace": workspace_root},
+                            generate_embedding=False,  # Skip embedding for speed
+                        )
+
+                        # Store assistant response
+                        await memory_service.add_message(
+                            conversation_id=conv_uuid,
+                            role="assistant",
+                            content=response_content,
+                            generate_embedding=False,  # Skip embedding for speed
+                        )
+                        logger.info(
+                            "[NAVI-STREAM] Persisted conversation %s with %d char response",
+                            conv_uuid,
+                            len(response_content),
+                        )
+                except Exception as mem_error:
+                    # Don't fail the stream if memory persistence fails
+                    logger.warning(
+                        "[NAVI-STREAM] Failed to persist conversation: %s",
+                        mem_error,
+                    )
+
+            # Include router info
+            yield f"data: {json.dumps({'router_info': {'provider': request.provider or 'openai', 'model': request.model, 'mode': mode, 'auto_execute': auto_execute}})}\n\n"
+
+            # Include streaming metrics
+            metrics = stream_session.get_metrics()
+            yield f"data: {json.dumps(metrics)}\n\n"
+
+            yield "data: [DONE]\n\n"
+
+        except Exception as e:
+            logger.error("[NAVI-STREAM] Streaming error: %s", e, exc_info=True)
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            metrics = stream_session.get_metrics()
+            yield f"data: {json.dumps(metrics)}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 async def _apply_auto_fix_by_id(

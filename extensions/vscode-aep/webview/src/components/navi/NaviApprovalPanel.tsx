@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import * as vscodeApi from '../../utils/vscodeApi';
 
 export type RiskLevel = 'low' | 'medium' | 'high';
 
@@ -29,19 +30,59 @@ export const NaviApprovalPanel: React.FC<NaviApprovalPanelProps> = ({
   onReject,
   onShowDiff,
 }) => {
-  const [selectedActions, setSelectedActions] = useState<Set<number>>(
-    new Set(actionsWithRisk.map((_, i) => i))
-  );
+  const [completedActions, setCompletedActions] = useState<Set<number>>(new Set());
+  const [inFlight, setInFlight] = useState(false);
+  const [lastApprovedIndex, setLastApprovedIndex] = useState<number | null>(null);
+  const [executionError, setExecutionError] = useState<string | null>(null);
 
-  const toggleAction = (index: number) => {
-    const newSelected = new Set(selectedActions);
-    if (newSelected.has(index)) {
-      newSelected.delete(index);
-    } else {
-      newSelected.add(index);
-    }
-    setSelectedActions(newSelected);
-  };
+  useEffect(() => {
+    setCompletedActions(new Set());
+    setInFlight(false);
+    setLastApprovedIndex(null);
+    setExecutionError(null);
+  }, [planId, actionsWithRisk]);
+
+  useEffect(() => {
+    const unsubscribe = vscodeApi.onMessage((msg) => {
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'navi.execution.complete' && msg.planId === planId) {
+        const indices = Array.isArray(msg.approvedActionIndices)
+          ? msg.approvedActionIndices
+          : lastApprovedIndex !== null
+            ? [lastApprovedIndex]
+            : [];
+        if (indices.length > 0) {
+          setCompletedActions((prev) => {
+            const next = new Set(prev);
+            indices.forEach((idx: number) => next.add(idx));
+            return next;
+          });
+        }
+        setInFlight(false);
+        setLastApprovedIndex(null);
+        setExecutionError(null);
+      }
+      if (msg.type === 'navi.execution.error' && msg.planId === planId) {
+        setInFlight(false);
+        setExecutionError(msg.error || 'Execution failed.');
+      }
+      if (msg.type === 'navi.plan.rejected' && msg.planId === planId) {
+        setInFlight(false);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [planId, lastApprovedIndex]);
+
+  const pendingIndices = useMemo(
+    () => actionsWithRisk.map((_, i) => i).filter((i) => !completedActions.has(i)),
+    [actionsWithRisk, completedActions]
+  );
+  const currentIndex = pendingIndices.length > 0 ? pendingIndices[0] : null;
+  const currentAction = currentIndex !== null ? actionsWithRisk[currentIndex] : null;
+  const completedCount = actionsWithRisk.length - pendingIndices.length;
 
   const getRiskColor = (risk: RiskLevel) => {
     switch (risk) {
@@ -82,6 +123,14 @@ export const NaviApprovalPanel: React.FC<NaviApprovalPanelProps> = ({
     }
   };
 
+  const handleApproveCurrent = () => {
+    if (currentIndex === null || inFlight) return;
+    setInFlight(true);
+    setExecutionError(null);
+    setLastApprovedIndex(currentIndex);
+    onApprove([currentIndex]);
+  };
+
   return (
     <div className="navi-approval-panel">
       <div className="approval-header">
@@ -89,96 +138,100 @@ export const NaviApprovalPanel: React.FC<NaviApprovalPanelProps> = ({
         <p className="user-message">{message}</p>
       </div>
 
-      <div className="actions-list">
-        {actionsWithRisk.map((action, index) => (
-          <div
-            key={index}
-            className={`action-item risk-${action.risk}`}
-            style={{
-              borderLeftColor: getRiskColor(action.risk),
-            }}
-          >
-            <div className="action-row">
-              <div className="action-select">
-                <input
-                  type="checkbox"
-                  checked={selectedActions.has(index)}
-                  onChange={() => toggleAction(index)}
-                  id={`action-${index}`}
-                />
+      <div className="approval-progress">
+        {actionsWithRisk.length === 0
+          ? 'No actions to approve.'
+          : `Action ${Math.min(completedCount + 1, actionsWithRisk.length)} of ${actionsWithRisk.length} · ${pendingIndices.length} remaining`}
+      </div>
+
+      {executionError && (
+        <div className="approval-error">
+          ⚠ {executionError}
+        </div>
+      )}
+
+      {currentAction ? (
+        <div
+          className={`action-item risk-${currentAction.risk}`}
+          style={{
+            borderLeftColor: getRiskColor(currentAction.risk),
+          }}
+        >
+          <div className="action-row">
+            <div className="action-content">
+              <div className="action-header">
+                <span
+                  className="risk-indicator"
+                  style={{ color: getRiskColor(currentAction.risk) }}
+                >
+                  <span className="risk-icon">{getRiskIcon(currentAction.risk)}</span>
+                  <span className="risk-text">{currentAction.risk.toUpperCase()} RISK</span>
+                </span>
+                <span className="action-type">{getActionTypeLabel(currentAction.type)}</span>
               </div>
 
-              <div className="action-content">
-                <div className="action-header">
-                  <span
-                    className="risk-indicator"
-                    style={{ color: getRiskColor(action.risk) }}
-                  >
-                    <span className="risk-icon">{getRiskIcon(action.risk)}</span>
-                    <span className="risk-text">{action.risk.toUpperCase()} RISK</span>
-                  </span>
-                  <span className="action-type">{getActionTypeLabel(action.type)}</span>
-                </div>
-
-                <div className="action-details">
-                  {action.type === 'createFile' && action.path && (
-                    <div>
-                      <strong>Create:</strong> <code>{action.path}</code>
-                      {action.preview && (
-                        <details className="preview-details">
-                          <summary>Show preview</summary>
-                          <pre className="preview">{action.preview}</pre>
-                        </details>
-                      )}
-                    </div>
-                  )}
-
-                  {action.type === 'editFile' && action.path && (
-                    <div>
-                      <strong>Edit:</strong> <code>{action.path}</code>
-                      <button
-                        className="show-diff-btn"
-                        onClick={() => onShowDiff(index)}
-                        title="Open diff view in VS Code"
-                      >
-                        Show Diff
-                      </button>
-                    </div>
-                  )}
-
-                  {action.type === 'runCommand' && action.command && (
-                    <div>
-                      <strong>Run:</strong>
-                      <pre className="command">{action.command}</pre>
-                    </div>
-                  )}
-                </div>
-
-                {action.warnings && action.warnings.length > 0 && (
-                  <div className="warnings">
-                    {action.warnings.map((warning, i) => (
-                      <div key={i} className="warning">
-                        ⚠ {warning}
-                      </div>
-                    ))}
+              <div className="action-details">
+                {(currentAction.type === 'createFile' || currentAction.type === 'editFile') && currentAction.path && (
+                  <div>
+                    <strong>{currentAction.type === 'createFile' ? 'Create:' : 'Edit:'}</strong>{' '}
+                    <code>{currentAction.path}</code>
+                    <button
+                      className="show-diff-btn"
+                      onClick={() => {
+                        if (currentIndex !== null) {
+                          onShowDiff(currentIndex);
+                        }
+                      }}
+                      title="Open diff view in VS Code"
+                    >
+                      Review Diff
+                    </button>
                   </div>
                 )}
+
+                {currentAction.type === 'runCommand' && currentAction.command && (
+                  <div>
+                    <strong>Run:</strong>
+                    <pre className="command">{currentAction.command}</pre>
+                  </div>
+                )}
+
+                {currentAction.preview && (
+                  <details className="preview-details">
+                    <summary>Show preview</summary>
+                    <pre className="preview">{currentAction.preview}</pre>
+                  </details>
+                )}
               </div>
+
+              {currentAction.warnings && currentAction.warnings.length > 0 && (
+                <div className="warnings">
+                  {currentAction.warnings.map((warning, i) => (
+                    <div key={i} className="warning">
+                      ⚠ {warning}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="approval-complete">
+          ✅ All approved actions have been processed.
+        </div>
+      )}
 
       <div className="approval-actions">
         <button
           className="approve-btn"
-          onClick={() => onApprove(Array.from(selectedActions))}
-          disabled={selectedActions.size === 0}
+          onClick={handleApproveCurrent}
+          disabled={currentIndex === null || inFlight}
         >
-          Approve {selectedActions.size} Action{selectedActions.size !== 1 ? 's' : ''}
+          {inFlight ? 'Running...' : 'Approve & Run'}
         </button>
         <button className="reject-btn" onClick={onReject}>
-          Reject All
+          Reject Plan
         </button>
       </div>
 
@@ -209,8 +262,26 @@ export const NaviApprovalPanel: React.FC<NaviApprovalPanelProps> = ({
           font-style: italic;
         }
 
-        .actions-list {
-          margin: 16px 0;
+        .approval-progress {
+          margin: 8px 0 12px;
+          font-size: 12px;
+          color: var(--vscode-descriptionForeground);
+        }
+
+        .approval-error {
+          margin: 8px 0 12px;
+          padding: 8px 10px;
+          border-radius: 6px;
+          background: rgba(248, 113, 113, 0.12);
+          border: 1px solid rgba(248, 113, 113, 0.35);
+          color: #fecaca;
+          font-size: 12px;
+        }
+
+        .approval-complete {
+          margin: 12px 0;
+          font-size: 12px;
+          color: var(--vscode-descriptionForeground);
         }
 
         .action-item {
@@ -231,13 +302,6 @@ export const NaviApprovalPanel: React.FC<NaviApprovalPanelProps> = ({
           display: flex;
           gap: 12px;
           align-items: flex-start;
-        }
-
-        .action-select input[type="checkbox"] {
-          width: 18px;
-          height: 18px;
-          cursor: pointer;
-          margin-top: 2px;
         }
 
         .action-content {

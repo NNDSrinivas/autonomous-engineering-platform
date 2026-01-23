@@ -830,19 +830,6 @@ export function CodeCompanionShell() {
                 <Clock className="h-4 w-4 navi-history-icon" />
               </button>
 
-              {/* Activity Button - Live stream animation */}
-              <button
-                className={`navi-header-icon-btn navi-animated-icon navi-activity-btn ${activityPanelOpen ? 'is-active' : ''}`}
-                title="Activity Stream"
-                onClick={() => setActivityPanelOpen(prev => !prev)}
-              >
-                <span className="navi-icon-glow" />
-                <Activity className="h-4 w-4 navi-activity-icon" />
-                {activityPanelState.steps.length > 0 && (
-                  <span className="navi-notification-badge">{activityPanelState.steps.filter(s => s.status === 'in_progress').length || activityPanelState.steps.length}</span>
-                )}
-              </button>
-
               {/* Notifications with Badge - Bell ring animation */}
               <button className="navi-header-icon-btn navi-animated-icon navi-has-badge navi-bell-btn" title="Notifications">
                 <span className="navi-icon-glow" />
@@ -878,9 +865,6 @@ export function CodeCompanionShell() {
                 <span className="navi-icon-glow" />
                 <HelpCircle className="h-4 w-4 navi-help-icon" />
               </button>
-
-              {/* Divider */}
-              <div className="navi-header-divider" />
 
               {/* User Menu / Sign In */}
               {isAuthenticated ? (

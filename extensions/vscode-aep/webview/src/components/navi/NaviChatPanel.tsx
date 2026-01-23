@@ -8905,10 +8905,6 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             ))}
           </select>
 
-          <div className="navi-chat-mode-pill" title="Notes">
-            Meeting Notes
-          </div>
-
           <div className="navi-branch-dropdown-container">
             <button
               type="button"

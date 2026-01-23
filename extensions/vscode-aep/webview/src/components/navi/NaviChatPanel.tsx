@@ -22,22 +22,24 @@ import {
   CheckCircle,
   CheckCircle2,
   ChevronDown,
-  Eye,
   ChevronRight,
   ChevronUp,
-  ClipboardList,
+  Circle,
   CircleX,
+  ClipboardList,
   Copy,
   Cpu,
+  Eye,
   FileText,
   Filter,
   Folder,
   FolderTree,
+  GitBranch,
   HelpCircle,
   History,
   Info,
   Lightbulb,
-  GitBranch,
+  Loader2,
   MessageSquare,
   Moon,
   Palette,
@@ -55,14 +57,15 @@ import {
   Sun,
   Tag,
   Terminal,
-  ThumbsUp,
   ThumbsDown,
+  ThumbsUp,
   ToggleLeft,
   ToggleRight,
   Trash2,
   User,
   Wrench,
   X,
+  XCircle,
   Zap,
 } from "lucide-react";
 import { useWorkspace } from "../../context/WorkspaceContext";
@@ -1171,6 +1174,21 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const [perActionActivities, setPerActionActivities] = useState<Map<number, ActivityEvent[]>>(new Map());
   // Live narrative stream (like Claude Code's conversational output)
   const [narrativeLines, setNarrativeLines] = useState<Array<{ id: string; text: string; timestamp: string }>>([]);
+
+  // Expandable thinking block (Claude Code-like reasoning display)
+  const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const [accumulatedThinking, setAccumulatedThinking] = useState("");
+  const [isThinkingComplete, setIsThinkingComplete] = useState(false);
+
+  // Execution plan panel state
+  interface ExecutionStep {
+    id: string;
+    title: string;
+    status: 'pending' | 'running' | 'done' | 'error';
+    description?: string;
+  }
+  const [executionSteps, setExecutionSteps] = useState<ExecutionStep[]>([]);
+  const [planCollapsed, setPlanCollapsed] = useState(true);
 
   // Dynamic placeholder suggestions
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -2659,6 +2677,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const thinkingText = msg.thinking || "";
         console.log('[NaviChatPanel] 🧠 Thinking received:', thinkingText.substring(0, 100) + '...');
 
+        // Accumulate full thinking text for expandable display
+        setAccumulatedThinking(prev => prev + thinkingText);
+        setIsThinkingComplete(false);
+
         // Update or create thinking activity with the streamed content
         setActivityEvents((prev) => {
           const thinkingIdx = prev.findIndex(
@@ -2690,6 +2712,20 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             },
           ];
         });
+        return;
+      }
+
+      // Handle thinking complete event
+      if (msg.type === "navi.thinking.complete" || msg.type === "thinking_complete") {
+        setIsThinkingComplete(true);
+        // Mark thinking activity as done
+        setActivityEvents((prev) =>
+          prev.map((evt) =>
+            evt.kind === "thinking" && evt.status === "running"
+              ? { ...evt, status: "done" as const }
+              : evt
+          )
+        );
         return;
       }
 
@@ -4809,6 +4845,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     // Clear previous activities, narratives, and next steps when starting a new request
     setLastNextSteps([]);
     setNarrativeLines([]);
+    // Clear accumulated thinking for new request
+    setAccumulatedThinking("");
+    setIsThinkingComplete(false);
+    setThinkingExpanded(false);
+    // Clear execution plan for new task
+    setExecutionSteps([]);
+    setPlanCollapsed(true);
 
     // Reset self-healing counters for NEW user-initiated messages (not self-healing retries)
     // Self-healing prompts contain specific patterns we can detect
@@ -5787,6 +5830,33 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       return blocks;
     };
 
+    // File icon mapping by extension
+    const FILE_ICONS: Record<string, string> = {
+      '.ts': '📘', '.tsx': '📘', '.js': '📒', '.jsx': '📒', '.mjs': '📒',
+      '.py': '🐍', '.pyw': '🐍',
+      '.json': '📋', '.jsonc': '📋',
+      '.md': '📝', '.mdx': '📝', '.txt': '📝',
+      '.css': '🎨', '.scss': '🎨', '.sass': '🎨', '.less': '🎨',
+      '.html': '🌐', '.htm': '🌐',
+      '.yaml': '⚙️', '.yml': '⚙️', '.toml': '⚙️', '.ini': '⚙️', '.env': '⚙️',
+      '.sql': '🗃️', '.db': '🗃️',
+      '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️', '.gif': '🖼️', '.svg': '🖼️', '.ico': '🖼️',
+      '.rs': '🦀', '.go': '🐹', '.rb': '💎', '.java': '☕', '.kt': '🟣',
+      '.sh': '💻', '.bash': '💻', '.zsh': '💻',
+      '.vue': '💚', '.svelte': '🔥',
+      '.graphql': '🔷', '.gql': '🔷',
+      '.dockerfile': '🐳', '.docker': '🐳',
+      '.lock': '🔒',
+      'default': '📄'
+    };
+
+    const getFileIcon = (path: string): string => {
+      const ext = path.substring(path.lastIndexOf('.')).toLowerCase();
+      // Special case for Dockerfile
+      if (path.toLowerCase().includes('dockerfile')) return '🐳';
+      return FILE_ICONS[ext] || FILE_ICONS['default'];
+    };
+
     // Make URLs and file paths clickable
     const makeLinksClickable = (html: string): string => {
       // URL pattern - matches http/https links
@@ -5815,8 +5885,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const leading = leadingMatch[0];
         const pathPart = match.slice(leading.length);
         const pathWithoutLine = pathPart.replace(/:(\d+)$/, '');
+        const icon = getFileIcon(pathWithoutLine);
         const dataLine = lineNum ? ` data-line="${lineNum}"` : '';
-        return `${leading}<a href="#" class="navi-link navi-link--file" data-file-path="${pathWithoutLine}"${dataLine}>${pathPart}</a>`;
+        // Wrap in span with icon
+        return `${leading}<span class="navi-file-link"><span class="navi-file-icon">${icon}</span><a href="#" class="navi-link navi-link--file" data-file-path="${pathWithoutLine}"${dataLine}>${pathWithoutLine}</a></span>`;
       });
 
       return result;
@@ -7153,6 +7225,37 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 className={`navi-chat-bubble navi-chat-bubble--${m.role}`}
                 data-testid={m.role === "assistant" ? "ai-response" : undefined}
               >
+                {/* EXPANDABLE THINKING BLOCK: Claude Code-like reasoning display */}
+                {m.role === "assistant" && m.isStreaming && accumulatedThinking && (
+                  <div className={`navi-thinking-block ${isThinkingComplete ? 'navi-thinking-block--complete' : ''}`}>
+                    <div
+                      className="navi-thinking-header"
+                      onClick={() => setThinkingExpanded(prev => !prev)}
+                    >
+                      <ChevronRight
+                        size={14}
+                        className={`navi-thinking-chevron ${thinkingExpanded ? 'expanded' : ''}`}
+                      />
+                      <span className="navi-thinking-label">Thinking</span>
+                      {!isThinkingComplete && (
+                        <span className="navi-thinking-wave-dots">
+                          <span className="navi-wave-dot" />
+                          <span className="navi-wave-dot" />
+                          <span className="navi-wave-dot" />
+                        </span>
+                      )}
+                      {isThinkingComplete && (
+                        <CheckCircle2 size={12} className="navi-thinking-complete-icon" />
+                      )}
+                    </div>
+                    {thinkingExpanded && (
+                      <div className="navi-thinking-content">
+                        {accumulatedThinking}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* INLINE ACTIVITIES: Show file read activities ABOVE the response while streaming */}
                 {/* This replaces the separate "Live activity stream" bubble to avoid double-bubble issue */}
                 {m.role === "assistant" && m.isStreaming && activityEvents.length > 0 && (

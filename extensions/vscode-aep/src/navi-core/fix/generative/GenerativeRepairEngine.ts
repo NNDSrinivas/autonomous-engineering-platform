@@ -137,7 +137,7 @@ Fixed file:`;
     }): Promise<string> {
         // TODO: Integrate with NAVI backend LLM endpoint
         // For now, return a placeholder that would come from the LLM
-        const response = await fetch('http://127.0.0.1:8787/api/navi/chat', {
+        const response = await fetch('http://127.0.0.1:8000/api/navi/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

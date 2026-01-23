@@ -161,8 +161,11 @@ MODEL_ALIASES: Dict[str, Dict[str, str]] = {
     "gpt-5.0": {"provider": "openai", "model": "gpt-4o-mini"},
     "gpt-4.1": {"provider": "openai", "model": "gpt-4o"},
     "gpt-4.1-mini": {"provider": "openai", "model": "gpt-4o-mini"},
+    # Direct model IDs for frontend llmRouter compatibility
+    "openai/gpt-4o": {"provider": "openai", "model": "gpt-4o"},
+    "openai/gpt-4o-mini": {"provider": "openai", "model": "gpt-4o-mini"},
     # Anthropic models
-    "anthropic/claude-sonnet-4": {"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
+    "anthropic/claude-sonnet-4": {"provider": "anthropic", "model": "claude-3-5-sonnet-20241022"},
     "anthropic/claude-opus-4": {"provider": "anthropic", "model": "claude-opus-4-20250514"},
     # Google models
     "google/gemini-2.5-pro": {"provider": "google", "model": "gemini-2.0-flash-exp"},
@@ -5626,6 +5629,53 @@ To get started, I need to analyze your codebase and create a detailed implementa
 
 
 # ---------------------------------------------------------------------------
+# Unified Agent Detection
+# ---------------------------------------------------------------------------
+
+
+def _should_use_unified_agent(message: str) -> bool:
+    """
+    Detect if a message should use the unified agent (action-oriented requests).
+
+    Returns True for requests that involve taking action rather than just chatting.
+    The unified agent uses native LLM tool-use for executing commands, creating files, etc.
+    """
+    action_patterns = [
+        # File/code creation
+        r'\b(create|write|make|add|build|generate)\b.*\b(file|component|function|class|test|module|page)\b',
+        # Running things - more permissive
+        r'\b(run|execute|start|stop|restart|launch)\b.*(project|server|test|build|app|application|script|command)',
+        r'\b(run|execute)\s+(the\s+)?(project|tests?|build|server|app)',  # "run the project", "run tests"
+        # Bug fixing
+        r'\b(fix|debug|repair|resolve|solve)\b.*\b(bug|error|issue|problem|crash|failure)\b',
+        # Code editing
+        r'\b(edit|modify|update|change|refactor|rename)\b.*\b(file|code|function|variable|class)\b',
+        # Package management
+        r'\b(install|uninstall|add|remove|upgrade|update)\b.*\b(package|dependency|module|library)\b',
+        r'\bnpm\s+(install|run|start|build|test)',  # npm commands
+        r'\byarn\s+(install|add|run|start|build|test)',  # yarn commands
+        r'\bpip\s+(install|uninstall)',  # pip commands
+        r'\bcargo\s+(build|run|test)',  # cargo commands
+        r'\bgo\s+(build|run|test|get)',  # go commands
+        r'\bpython\s+',  # python scripts
+        r'\bnode\s+',  # node scripts
+        # Git commands
+        r'\bgit\s+(commit|push|pull|merge|rebase|checkout|branch)',
+        # Imperative action phrases
+        r'^(please\s+)?(can\s+you\s+)?(run|execute|start|create|fix|install|build)',  # "run...", "can you run..."
+        # Direct command patterns
+        r'^\s*(npm|yarn|pip|cargo|go|python|node|git)\s+',  # Commands at start of message
+    ]
+
+    message_lower = message.lower()
+    for pattern in action_patterns:
+        if re.search(pattern, message_lower, re.IGNORECASE):
+            return True
+
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Streaming chat endpoint (SSE)
 # ---------------------------------------------------------------------------
 
@@ -5706,7 +5756,142 @@ async def navi_chat_stream(
                 yield "data: [DONE]\n\n"
                 return
 
-            # With workspace - use NAVI brain streaming
+            # =================================================================
+            # UNIFIED AGENT: Check if this is an action-oriented request
+            # =================================================================
+            if _should_use_unified_agent(request.message):
+                logger.info(
+                    "[NAVI-STREAM] 🚀 Routing to Unified Agent for action request: '%s...'",
+                    request.message[:50],
+                )
+                from backend.services.unified_agent import UnifiedAgent, AgentEventType
+
+                # For unified agent, prefer OpenAI as it has more reliable tool-use
+                # Fall back to DEFAULT_LLM_PROVIDER if OpenAI key not available
+                provider = request.provider or "openai"
+                # Let unified agent select the appropriate model for the provider
+                # Don't use _resolve_model as it may return a model incompatible with provider
+                model_name = None  # UnifiedAgent will use its default for the provider
+
+                # Build project context
+                project_context = None
+                if request.attachments:
+                    for att in request.attachments:
+                        att_path = getattr(att, "path", None) or (
+                            att.get("path") if isinstance(att, dict) else None
+                        )
+                        if att_path:
+                            project_context = {"current_file": att_path}
+                            break
+
+                # Build conversation history
+                conv_history = None
+                if request.conversation_history:
+                    conv_history = [
+                        {
+                            "role": msg.get("type", msg.get("role", "user")),
+                            "content": msg.get("content", ""),
+                        }
+                        for msg in request.conversation_history
+                        if msg.get("content")
+                    ]
+
+                # Emit unified agent start event
+                yield f"data: {json.dumps({'router_info': {'provider': provider, 'model': model_name or 'auto', 'mode': 'unified_agent', 'task_type': 'action'}})}\n\n"
+                yield f"data: {json.dumps({'activity': {'kind': 'agent_start', 'label': 'Agent', 'detail': 'Starting unified agent with native tool-use...', 'status': 'running'}})}\n\n"
+
+                try:
+                    agent = UnifiedAgent(
+                        provider=provider,
+                        model=model_name,
+                    )
+
+                    async for event in agent.run(
+                        message=request.message,
+                        workspace_path=workspace_root,
+                        conversation_history=conv_history,
+                        project_context=project_context,
+                    ):
+                        # Convert agent events to SSE format
+                        if event.type == AgentEventType.THINKING:
+                            yield f"data: {json.dumps({'activity': {'kind': 'thinking', 'label': 'Thinking', 'detail': event.data.get('message', ''), 'status': 'running'}})}\n\n"
+
+                        elif event.type == AgentEventType.TEXT:
+                            yield f"data: {json.dumps({'content': event.data})}\n\n"
+
+                        elif event.type == AgentEventType.TOOL_CALL:
+                            tool_name = event.data.get('name', 'unknown')
+                            tool_args = event.data.get('arguments', {})
+
+                            kind = 'command'
+                            label = tool_name
+                            detail = ''
+
+                            if tool_name == 'read_file':
+                                kind = 'read'
+                                label = 'Reading'
+                                detail = tool_args.get('path', '')
+                            elif tool_name == 'write_file':
+                                kind = 'create'
+                                label = 'Creating'
+                                detail = tool_args.get('path', '')
+                            elif tool_name == 'edit_file':
+                                kind = 'edit'
+                                label = 'Editing'
+                                detail = tool_args.get('path', '')
+                            elif tool_name == 'run_command':
+                                kind = 'command'
+                                label = 'Running'
+                                detail = tool_args.get('command', '')
+                            elif tool_name == 'search_files':
+                                kind = 'search'
+                                label = 'Searching'
+                                detail = tool_args.get('pattern', '')
+                            elif tool_name == 'list_directory':
+                                kind = 'read'
+                                label = 'Listing'
+                                detail = tool_args.get('path', '')
+
+                            yield f"data: {json.dumps({'activity': {'kind': kind, 'label': label, 'detail': detail, 'status': 'running'}})}\n\n"
+
+                        elif event.type == AgentEventType.TOOL_RESULT:
+                            # event.data = {"id": ..., "name": ..., "result": {...}}
+                            tool_result = event.data.get('result', {})
+                            success = tool_result.get('success', False)
+                            status = 'done' if success else 'error'
+                            # Get meaningful output preview
+                            output_preview = (
+                                tool_result.get('message', '') or
+                                tool_result.get('content', '')[:200] if tool_result.get('content') else
+                                tool_result.get('error', '') or
+                                str(tool_result.get('items', [])[:3]) if tool_result.get('items') else
+                                ''
+                            )
+                            yield f"data: {json.dumps({'activity': {'kind': 'tool_result', 'label': 'Result', 'detail': output_preview[:200], 'status': status}})}\n\n"
+
+                        elif event.type == AgentEventType.VERIFICATION:
+                            yield f"data: {json.dumps({'verification': event.data})}\n\n"
+
+                        elif event.type == AgentEventType.FIXING:
+                            yield f"data: {json.dumps({'activity': {'kind': 'fixing', 'label': 'Fixing', 'detail': event.data.get('message', ''), 'status': 'running'}})}\n\n"
+
+                        elif event.type == AgentEventType.DONE:
+                            yield f"data: {json.dumps({'activity': {'kind': 'done', 'label': 'Complete', 'detail': event.data.get('summary', 'Task completed'), 'status': 'done'}})}\n\n"
+                            yield f"data: {json.dumps({'done': True, 'summary': event.data})}\n\n"
+
+                        elif event.type == AgentEventType.ERROR:
+                            yield f"data: {json.dumps({'error': event.data.get('message', 'Unknown error')})}\n\n"
+
+                except Exception as e:
+                    logger.exception("[NAVI Unified Agent] Error: %s", e)
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+                yield "data: [DONE]\n\n"
+                return
+
+            # =================================================================
+            # NAVI BRAIN: For analysis, explanation, and conversation requests
+            # =================================================================
             logger.info(
                 "[NAVI-STREAM] Using NAVI brain streaming for workspace: %s",
                 workspace_root,
@@ -5790,6 +5975,11 @@ async def navi_chat_stream(
                     if activity.get("kind") == "file_read":
                         files_read_live.append(activity.get("detail", ""))
                     yield f"data: {json.dumps({'activity': activity})}\n\n"
+
+                # Stream narrative events (conversational explanations like Claude Code)
+                elif "narrative" in event:
+                    narrative_text = event["narrative"]
+                    yield f"data: {json.dumps({'narrative': narrative_text})}\n\n"
 
                 # Stream thinking content
                 elif "thinking" in event:
@@ -6009,3 +6199,488 @@ async def _apply_auto_fix_by_id(
 
     except Exception as e:
         return content, False, f"Fix failed: {str(e)}"
+
+
+# ============================================================================
+# NAVI V2: Tool-Use Streaming Endpoint (Claude Code Style)
+# ============================================================================
+
+class ToolStreamRequest(BaseModel):
+    """Request for tool-use streaming endpoint."""
+    message: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    workspace_path: Optional[str] = None
+    workspace_root: Optional[str] = None  # Alias for workspace_path from extension
+    current_file: Optional[str] = None
+    project_type: Optional[str] = None
+    # Fields from extension that we accept but may not use directly
+    mode: Optional[str] = None
+    user_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    conversation_history: Optional[List[Dict[str, Any]]] = None
+    attachments: Optional[List[Dict[str, Any]]] = None
+    selection: Optional[str] = None
+    current_file_content: Optional[str] = None
+    errors: Optional[List[Dict[str, Any]]] = None
+    state: Optional[Dict[str, Any]] = None
+    last_action_error: Optional[Dict[str, Any]] = None
+
+
+def _parse_model_string(model_str: Optional[str]) -> Tuple[str, str]:
+    """
+    Parse model string like 'openai/gpt-4o' into (provider, model).
+    Returns ('openai', 'gpt-4o') for default.
+    """
+    if not model_str:
+        return "openai", "gpt-4o"
+
+    if "/" in model_str:
+        parts = model_str.split("/", 1)
+        provider = parts[0].lower()
+        model = parts[1]
+        # Normalize provider names
+        if provider in ("openai", "gpt"):
+            return "openai", model
+        elif provider in ("anthropic", "claude"):
+            return "anthropic", model
+        elif provider in ("groq",):
+            return "groq", model
+        elif provider in ("openrouter",):
+            return "openrouter", model
+        else:
+            return provider, model
+    else:
+        # Just a model name, assume OpenAI
+        return "openai", model_str
+
+
+@router.post("/chat/stream/v2")
+async def navi_chat_stream_v2(
+    request: ToolStreamRequest,
+    http_request: Request,
+):
+    """
+    NAVI V2 Chat Stream - Claude Code Style
+
+    This endpoint uses tool-use/function-calling to provide a conversational
+    experience where the LLM:
+    1. Explains what it's doing in natural language
+    2. Calls tools (read_file, edit_file, run_command) inline
+    3. Continues explaining based on results
+
+    The stream interleaves:
+    - text: Narrative text from the LLM
+    - tool_call: When the LLM wants to use a tool
+    - tool_result: Results from tool execution
+    - done: When complete
+    """
+    import os
+    from backend.services.streaming_agent import (
+        stream_with_tools_anthropic,
+        stream_with_tools_openai,
+        StreamEventType,
+    )
+
+    # Determine workspace path (accept both workspace_path and workspace_root from extension)
+    workspace_path = request.workspace_path or request.workspace_root
+    if not workspace_path:
+        workspace_path = os.environ.get("AEP_WORKSPACE_PATH", os.getcwd())
+
+    # Build context
+    context = {}
+    if request.current_file:
+        context["current_file"] = request.current_file
+    if request.project_type:
+        context["project_type"] = request.project_type
+
+    # Parse the model string (handles "openai/gpt-4o" format from extension)
+    provider, model_name = _parse_model_string(request.model)
+
+    # Override with explicit provider if given
+    if request.provider:
+        provider = request.provider
+
+    logger.info(f"[NAVI V2] Parsed model: provider={provider}, model={model_name}")
+
+    async def stream_generator():
+        """Generate SSE events from the streaming agent."""
+        import asyncio
+        from backend.services.navi_brain import ProjectAnalyzer
+        from backend.services.narrative_generator import NarrativeGenerator
+        from backend.agent.intent_classifier import classify_intent
+        from backend.agent.intent_schema import IntentKind, IntentFamily
+
+        try:
+            # PHASE 0: Intent Classification (determines what analysis to do)
+            # This is key to being DYNAMIC - we don't do heavy analysis for simple greetings
+            intent = classify_intent(request.message)
+
+            logger.info(f"[NAVI V2] Classified intent: family={intent.family.value}, kind={intent.kind.value}, confidence={intent.confidence}")
+
+            # Emit intent detection activity
+            intent_activity = {
+                "type": "activity",
+                "activity": {
+                    "kind": "intent",
+                    "label": "Understanding request",
+                    "detail": f"Detected: {intent.kind.value} ({int(intent.confidence * 100)}%)",
+                    "status": "done"
+                }
+            }
+            yield f"data: {json.dumps(intent_activity)}\n\n"
+
+            # Also emit the intent for frontend to use
+            intent_event = {
+                "type": "intent",
+                "intent": {
+                    "family": intent.family.value,
+                    "kind": intent.kind.value,
+                    "confidence": intent.confidence
+                }
+            }
+            yield f"data: {json.dumps(intent_event)}\n\n"
+
+            # Determine if we need project analysis based on intent
+            # Skip heavy analysis for simple greetings and unknown intents
+            intents_needing_analysis = {
+                IntentKind.INSPECT_REPO,
+                IntentKind.SUMMARIZE_FILE,
+                IntentKind.SEARCH_CODE,
+                IntentKind.MODIFY_CODE,
+                IntentKind.CREATE_FILE,
+                IntentKind.REFACTOR_CODE,
+                IntentKind.IMPLEMENT_FEATURE,
+                IntentKind.FIX_BUG,
+                IntentKind.FIX_DIAGNOSTICS,
+                IntentKind.RUN_TESTS,
+                IntentKind.GENERATE_TESTS,
+                IntentKind.RUN_LINT,
+                IntentKind.RUN_BUILD,
+                IntentKind.EXPLAIN_CODE,
+                IntentKind.EXPLAIN_ERROR,
+                IntentKind.ARCHITECTURE_OVERVIEW,
+                IntentKind.DESIGN_PROPOSAL,
+                IntentKind.IMPLEMENT,
+                IntentKind.FIX,
+                IntentKind.CREATE,
+            }
+
+            needs_project_analysis = intent.kind in intents_needing_analysis
+
+            # Build context - start with basic context
+            enhanced_context = context.copy() if context else {}
+            source_files = {}
+            project_info = None
+
+            # PHASE 1: Project Analysis (ONLY if needed based on intent)
+            if needs_project_analysis:
+                # Emit project detection activity
+                yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'detection', 'label': 'Detecting project', 'detail': 'Analyzing workspace...', 'status': 'running'}})}\n\n"
+
+                # Run project analysis
+                project_info = ProjectAnalyzer.analyze(workspace_path)
+
+                yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'detection', 'label': 'Detected', 'detail': project_info.framework or project_info.project_type, 'status': 'done'}})}\n\n"
+
+                # PHASE 2: Read source files with streaming activities (like Copilot)
+                file_count = ProjectAnalyzer.get_important_files_count(workspace_path)
+
+                # Stream file reads one by one for real-time activity display
+                async for event in ProjectAnalyzer.analyze_source_files_streaming(
+                    workspace_path, max_files=file_count
+                ):
+                    if "activity" in event:
+                        # Emit file read activity to frontend
+                        activity_data = {"type": "activity", "activity": event["activity"]}
+                        yield f"data: {json.dumps(activity_data)}\n\n"
+                        await asyncio.sleep(0.02)  # Small delay for UI to update
+                    elif "files" in event:
+                        source_files = event["files"]
+
+                # Emit narrative about what we found
+                # Note: Don't emit file count here - it will be tracked dynamically by frontend
+                # The LLM may read additional files via tool calls, so count would be misleading
+                if source_files:
+                    narrative = NarrativeGenerator.for_project_detection({
+                        "project_type": project_info.project_type,
+                        "framework": project_info.framework,
+                        "dependencies": project_info.dependencies,
+                    })
+                    # Don't include file count - let frontend track total from activities
+                    narrative_data = {"type": "narrative", "content": narrative}
+                    yield f"data: {json.dumps(narrative_data)}\n\n"
+
+                # Add project context
+                enhanced_context["project_type"] = project_info.project_type
+                enhanced_context["framework"] = project_info.framework
+                enhanced_context["files_analyzed"] = list(source_files.keys())
+
+                # Add source file contents to context (for DETAILED responses)
+                # Include more files and more content per file for comprehensive analysis
+                if source_files:
+                    files_summary = []
+                    # Prioritize important files: package.json, configs, main entry points
+                    priority_patterns = ['package.json', 'tsconfig', 'next.config', 'index.', '_app.', 'main.']
+                    sorted_files = sorted(
+                        source_files.items(),
+                        key=lambda x: (
+                            0 if any(p in x[0].lower() for p in priority_patterns) else 1,
+                            x[0]
+                        )
+                    )
+                    for path, content in sorted_files[:10]:  # Top 10 files
+                        files_summary.append(f"--- {path} ---\n{content[:3000]}")  # More content per file
+                    enhanced_context["source_files_preview"] = "\n\n".join(files_summary)
+            else:
+                # For simple intents like GREET, just log and continue without analysis
+                logger.info(f"[NAVI V2] Skipping project analysis for intent: {intent.kind.value}")
+
+            # Add intent info to context for LLM
+            enhanced_context["detected_intent"] = {
+                "family": intent.family.value,
+                "kind": intent.kind.value,
+                "confidence": intent.confidence
+            }
+
+            # PHASE 3: Stream LLM response with tools
+            yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'llm_call', 'label': 'Generating response', 'detail': 'Thinking...', 'status': 'running'}})}\n\n"
+
+            if provider == "anthropic":
+                api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+                # Use a valid Claude model
+                if not model_name or "gpt" in model_name.lower():
+                    model_name_use = "claude-sonnet-4-20250514"
+                else:
+                    model_name_use = model_name
+
+                async for event in stream_with_tools_anthropic(
+                    message=request.message,
+                    workspace_path=workspace_path,
+                    api_key=api_key,
+                    model=model_name_use,
+                    context=enhanced_context,  # Use enhanced context with file info
+                    conversation_history=request.conversation_history,  # Pass conversation history for context
+                ):
+                    yield f"data: {json.dumps(event.to_dict())}\n\n"
+
+            else:  # OpenAI or compatible
+                api_key = os.environ.get("OPENAI_API_KEY", "")
+                model_name_use = model_name or "gpt-4o"
+
+                # Handle OpenRouter, Groq, etc.
+                base_url = "https://api.openai.com/v1"
+                if provider == "openrouter":
+                    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+                    base_url = "https://openrouter.ai/api/v1"
+                elif provider == "groq":
+                    api_key = os.environ.get("GROQ_API_KEY", "")
+                    base_url = "https://api.groq.com/openai/v1"
+
+                async for event in stream_with_tools_openai(
+                    message=request.message,
+                    workspace_path=workspace_path,
+                    api_key=api_key,
+                    model=model_name_use,
+                    base_url=base_url,
+                    context=enhanced_context,  # Use enhanced context with file info
+                    conversation_history=request.conversation_history,  # Pass conversation history for context
+                ):
+                    yield f"data: {json.dumps(event.to_dict())}\n\n"
+
+            # Mark LLM activity as done
+            yield f"data: {json.dumps({'type': 'activity', 'activity': {'kind': 'llm_call', 'label': 'Generating response', 'detail': 'Complete', 'status': 'done'}})}\n\n"
+
+        except Exception as e:
+            logger.exception(f"[NAVI V2] Stream error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ============================================================================
+# NAVI V3: Autonomous Agent Endpoint (End-to-End Task Completion)
+# ============================================================================
+
+class AutonomousTaskRequest(BaseModel):
+    """Request for autonomous task execution.
+
+    Accepts both workspace_path (direct) and workspace_root (from VS Code extension).
+    Also handles model ID mapping for different providers.
+    """
+    message: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    workspace_path: Optional[str] = None
+    workspace_root: Optional[str] = None  # Alias from VS Code extension
+    run_verification: bool = True
+    max_iterations: int = 5
+    # Additional fields from VS Code extension (ignored but accepted)
+    conversation_history: Optional[list] = None
+    conversation_id: Optional[str] = None
+    mode: Optional[str] = None
+    user_id: Optional[str] = None
+    attachments: Optional[list] = None
+    current_file: Optional[str] = None
+    current_file_content: Optional[str] = None
+    selection: Optional[str] = None
+    errors: Optional[list] = None
+    state: Optional[dict] = None
+    last_action_error: Optional[dict] = None
+
+
+def _map_model_to_provider(model: Optional[str]) -> tuple[str, str]:
+    """
+    Map a model ID to the correct provider and model name.
+
+    Handles formats like:
+    - "gpt-4o" -> ("openai", "gpt-4o")
+    - "openai/gpt-4o" -> ("openai", "gpt-4o")
+    - "anthropic/claude-3-sonnet" -> ("anthropic", "claude-sonnet-4-20250514")
+    - "gpt-5.1" -> ("openai", "gpt-4o")  # unknown models default to gpt-4o
+
+    Returns (provider, model_id) tuple.
+    """
+    if not model:
+        return "openai", "gpt-4o"
+
+    # Handle provider/model format (e.g., "openai/gpt-4o")
+    if "/" in model:
+        parts = model.split("/", 1)
+        provider_hint = parts[0].lower()
+        model_name = parts[1]
+    else:
+        provider_hint = ""
+        model_name = model
+
+    model_lower = model_name.lower()
+
+    # OpenAI models
+    if provider_hint == "openai" or any(x in model_lower for x in ["gpt-4", "gpt-3", "o1-", "o3-", "davinci", "curie"]):
+        # Validate model name - only return known OpenAI models
+        valid_openai = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo", "o1-preview", "o1-mini", "o3-mini"]
+        if model_name in valid_openai:
+            return "openai", model_name
+        # Default to gpt-4o for unknown OpenAI models
+        return "openai", "gpt-4o"
+
+    # Anthropic models
+    if provider_hint == "anthropic" or any(x in model_lower for x in ["claude"]):
+        # Normalize claude model names to current versions
+        if "sonnet" in model_lower:
+            return "anthropic", "claude-sonnet-4-20250514"
+        elif "opus" in model_lower:
+            return "anthropic", "claude-opus-4-20250514"
+        elif "haiku" in model_lower:
+            return "anthropic", "claude-3-5-haiku-20241022"
+        return "anthropic", "claude-sonnet-4-20250514"  # Default to sonnet
+
+    # Groq models
+    if provider_hint == "groq" or any(x in model_lower for x in ["llama", "mixtral"]):
+        return "groq", model_name
+
+    # Google models
+    if provider_hint == "google" or any(x in model_lower for x in ["gemini", "palm"]):
+        return "google", model_name
+
+    # Default to OpenAI with gpt-4o for unknown models
+    return "openai", "gpt-4o"
+
+
+@router.post("/chat/autonomous")
+async def navi_autonomous_task(
+    request: AutonomousTaskRequest,
+    http_request: Request,
+):
+    """
+    NAVI Autonomous Task Execution
+
+    This endpoint executes tasks end-to-end with:
+    1. Automatic verification (type checking, tests, builds)
+    2. Self-healing on errors (analyze failures, fix, retry)
+    3. Iteration until success or max attempts
+
+    The stream includes:
+    - status: Current phase (planning, executing, verifying, fixing, completed, failed)
+    - text: Narrative explanation from the LLM
+    - tool_call: Tool being called
+    - tool_result: Result of tool execution
+    - verification: Results of verification commands
+    - iteration: Current iteration info
+    - complete: Final summary
+
+    Example use cases:
+    - "Add a login form component with validation and tests"
+    - "Fix the type errors in the user service"
+    - "Refactor the API routes to use async/await"
+    """
+    import os
+    from backend.services.autonomous_agent import AutonomousAgent
+
+    # Determine workspace path (support both workspace_path and workspace_root)
+    workspace_path = request.workspace_path or request.workspace_root
+    if not workspace_path:
+        workspace_path = os.environ.get("AEP_WORKSPACE_PATH", os.getcwd())
+
+    # Map model to provider
+    if request.provider:
+        provider = request.provider
+        model = request.model
+    else:
+        provider, model = _map_model_to_provider(request.model)
+
+    logger.info(f"[NAVI Autonomous] Provider: {provider}, Model: {model}, Workspace: {workspace_path}")
+
+    # Get API key based on provider
+    if provider == "anthropic":
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    elif provider == "openrouter":
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    elif provider == "groq":
+        api_key = os.environ.get("GROQ_API_KEY", "")
+    elif provider == "google":
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+    else:
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+
+    async def stream_generator():
+        """Generate SSE events from the autonomous agent."""
+        try:
+            agent = AutonomousAgent(
+                workspace_path=workspace_path,
+                api_key=api_key,
+                provider=provider,
+                model=model,
+            )
+
+            async for event in agent.execute_task(
+                request=request.message,
+                run_verification=request.run_verification,
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+
+        except Exception as e:
+            logger.exception(f"[NAVI Autonomous] Error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

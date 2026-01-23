@@ -39,7 +39,7 @@ export interface ExecutionUpdate {
 
 export class NaviService {
   private static instance: NaviService;
-  private baseUrl = 'http://localhost:8787';
+  private baseUrl = 'http://localhost:8000';
   private activePlan: NaviPlan | null = null;
 
   private constructor() {}

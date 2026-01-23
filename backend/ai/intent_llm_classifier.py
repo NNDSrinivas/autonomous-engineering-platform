@@ -23,7 +23,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from ..agent.intent_schema import (
+from backend.agent.intent_schema import (
     NaviIntent,
     IntentFamily,
     IntentKind,
@@ -36,7 +36,7 @@ from ..agent.intent_schema import (
     ProjectManagementSpec,
     TestRunSpec,
 )
-from ..agent.intent_classifier import IntentClassifier
+from backend.agent.intent_classifier import IntentClassifier
 from .llm_router import LLMRouter, LLMResponse
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class LLMIntentClassifier:
         if model:
             self.model = model
         elif self.provider == "anthropic":
-            self.model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+            self.model = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
         else:
             self.model = "gpt-4o-mini"
 

@@ -43,9 +43,9 @@ import { DeviceAuthService } from './auth/deviceAuth';
 const exec = util.promisify(child_process.exec);
 
 // Configuration constants
-const DEFAULT_REQUEST_TIMEOUT_MS = 60000; // 60 seconds for complex operations
-const DEFAULT_SSE_TIMEOUT_MS = 60000; // 60 seconds for SSE connections
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds heartbeat
+const DEFAULT_REQUEST_TIMEOUT_MS = 1800000; // 30 minutes for complex autonomous operations
+const DEFAULT_SSE_TIMEOUT_MS = 1800000; // 30 minutes for SSE connections (matches autonomous ops)
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000; // 15 seconds heartbeat (more frequent to keep connection alive)
 const MAX_CONVERSATION_HISTORY = 25;
 const MAX_GIT_FALLBACK_LINES = 60;
 const MAX_GIT_FALLBACK_CHARS = 8000;
@@ -107,6 +107,20 @@ function runGit(
   });
 }
 
+// Helper to check if a file is untracked (new file not in git)
+async function isFileUntracked(workspaceRoot: string, relativePath: string): Promise<boolean> {
+  try {
+    const { execSync } = require('child_process');
+    const result = execSync(
+      `git ls-files --error-unmatch "${relativePath}"`,
+      { cwd: workspaceRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+    );
+    return false; // File exists in git
+  } catch {
+    return true; // File is untracked
+  }
+}
+
 // Phase 1.3.1: Open native IDE diff view
 async function openNativeDiff(
   workspaceRoot: string,
@@ -115,7 +129,28 @@ async function openNativeDiff(
 ) {
   try {
     // Build file URI for working tree version
-    const fileUri = vscode.Uri.file(path.join(workspaceRoot, relativePath));
+    const absolutePath = path.join(workspaceRoot, relativePath);
+    const fileUri = vscode.Uri.file(absolutePath);
+
+    console.log('[openNativeDiff] Opening diff for:', relativePath, 'scope:', scope);
+
+    // Check if file exists
+    const fs = require('fs');
+    if (!fs.existsSync(absolutePath)) {
+      console.warn('[openNativeDiff] File does not exist:', absolutePath);
+      vscode.window.showWarningMessage(`File not found: ${relativePath}`);
+      return;
+    }
+
+    // Check if file is untracked (new file)
+    const isNew = await isFileUntracked(workspaceRoot, relativePath);
+    if (isNew) {
+      console.log('[openNativeDiff] File is untracked, opening directly:', relativePath);
+      // For new files, just open them directly (no diff available)
+      await vscode.window.showTextDocument(fileUri, { preview: false });
+      vscode.window.showInformationMessage(`New file: ${relativePath} (no previous version to diff)`);
+      return;
+    }
 
     // Create git URI using the VS Code Git provider's JSON query format.
     // The Git content provider expects a JSON string with at least { path, ref }.
@@ -145,11 +180,19 @@ async function openNativeDiff(
       rightUri,
       `Diff: ${relativePath} (${titleScope})`
     );
+    console.log('[openNativeDiff] Diff opened successfully');
   } catch (error) {
     console.error('[openNativeDiff] Failed to open diff:', error);
-    vscode.window.showErrorMessage(
-      `Failed to open diff for ${relativePath}: ${error instanceof Error ? error.message : String(error)}`
-    );
+    // Fallback: try to just open the file
+    try {
+      const fileUri = vscode.Uri.file(path.join(workspaceRoot, relativePath));
+      await vscode.window.showTextDocument(fileUri, { preview: false });
+      console.log('[openNativeDiff] Fallback: opened file directly');
+    } catch (fallbackError) {
+      vscode.window.showErrorMessage(
+        `Failed to open diff for ${relativePath}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 }
 
@@ -730,7 +773,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Initialize ContextService for workspace analysis
   const config = vscode.workspace.getConfiguration('aep.navi');
-  const backendUrl = config.get<string>('backendUrl') || 'http://127.0.0.1:8787';
+  const backendUrl = config.get<string>('backendUrl') || 'http://127.0.0.1:8000';
   const naviClient = new NaviClient(backendUrl, backendUrl, 'default');
 
   // Configure ContextService with limits that can be customized via settings
@@ -1421,7 +1464,16 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private _activityPhaseId: string | null = null;
   private _actionActivityIds = new Map<string, { id: string; runId: string }>();
   // AUTO-RECOVERY: Store last action error for NAVI to debug
-  private _lastActionError: { action: any; errorMessage: string; errorDetails?: string; timestamp: number } | null = null;
+  private _lastActionError: {
+    action: any;
+    errorMessage: string;
+    errorDetails?: string;
+    commandOutput?: string;
+    stdout?: string;
+    stderr?: string;
+    exitCode?: number;
+    timestamp: number
+  } | null = null;
 
   // Command output tracking for focusTerminal and showOutput functionality
   private _commandOutputs = new Map<string, { command: string; cwd?: string; stdout: string; stderr: string; exitCode?: number; durationMs?: number }>();
@@ -1468,6 +1520,22 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     this._currentModelLabel = context.globalState.get<string>(STORAGE_KEYS.modelLabel) ?? DEFAULT_MODEL.label;
     this._currentModeId = context.globalState.get<string>(STORAGE_KEYS.modeId) ?? DEFAULT_MODE.id;
     this._currentModeLabel = context.globalState.get<string>(STORAGE_KEYS.modeLabel) ?? DEFAULT_MODE.label;
+
+    // Clean up NAVI terminals when they close to prevent accumulation
+    context.subscriptions.push(
+      vscode.window.onDidCloseTerminal(terminal => {
+        if (terminal.name === 'NAVI Terminal' && this._naviTerminal === terminal) {
+          this._naviTerminal = undefined;
+        }
+      })
+    );
+
+    // Dispose any existing stale NAVI terminals on startup
+    vscode.window.terminals.forEach(terminal => {
+      if (terminal.name === 'NAVI Terminal' && terminal.exitStatus !== undefined) {
+        terminal.dispose();
+      }
+    });
   }
 
   // 🚀 LLM-FIRST: Removed buildRepoAnalysisPrompt()
@@ -1479,14 +1547,19 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     // Default to local dev backend; allow users to provide full /api/navi/chat URL or plain base URL
     const raw = (config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787/api/navi/chat').trim();
 
-    // Turn http://127.0.0.1:8787/api/navi/chat → http://127.0.0.1:8787
+    console.log('[AEP] getBackendBaseUrl - raw config value:', raw);
+
+    // Turn http://127.0.0.1:8000/api/navi/chat → http://127.0.0.1:8000
     try {
       const url = new URL(raw);
       url.pathname = url.pathname.replace(/\/api\/navi\/chat\/?$/, '');
       url.search = '';
       url.hash = '';
-      return url.toString().replace(/\/$/, '');
+      const result = url.toString().replace(/\/$/, '');
+      console.log('[AEP] getBackendBaseUrl - returning:', result);
+      return result;
     } catch {
+      console.log('[AEP] getBackendBaseUrl - URL parse failed, returning default');
       return 'http://127.0.0.1:8787';
     }
   }
@@ -2420,6 +2493,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private parseOrgScanIntent(text: string): 'consent' | 'run' | 'pause' | 'resume' | 'revoke' | null {
     const msg = (text || '').toLowerCase();
     if (!msg.trim()) return null;
+
+    // Skip intent parsing for large messages (likely documentation/code paste)
+    // Short commands like "pause scanning" are typically < 100 chars
+    if (text.length > 500) {
+      return null;
+    }
     if (/(enable|allow|consent).*(repo|repository|project)?.*(scan|scanning)/.test(msg)) {
       return 'consent';
     }
@@ -3466,6 +3545,153 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               });
             } finally {
               this.postToWebview({ type: 'botThinking', value: false });
+            }
+            break;
+          }
+
+          // Task Accept - User accepts all changes made by NAVI
+          case 'task.accept': {
+            try {
+              // Commit the transaction (clears undo history)
+              FixTransactionManager.commit();
+
+              // Show success notification
+              vscode.window.showInformationMessage('✓ Changes accepted! All modifications have been kept.');
+
+              // Notify webview
+              this.postToWebview({
+                type: 'navi.narrative',
+                text: '\n✅ **Changes accepted.** All modifications have been kept.\n'
+              });
+
+              console.log('[AEP] Task changes accepted by user');
+            } catch (error) {
+              console.error('[AEP] Failed to accept changes:', error);
+              vscode.window.showErrorMessage(`Failed to accept changes: ${error}`);
+            }
+            break;
+          }
+
+          // Task Review All - Open diff views for all changed files
+          case 'task.reviewAll': {
+            try {
+              const files = msg.files as string[];
+              const workspaceRoot = this.getActiveWorkspaceRoot();
+
+              if (!files || files.length === 0) {
+                vscode.window.showWarningMessage('No files to review.');
+                break;
+              }
+
+              if (!workspaceRoot) {
+                vscode.window.showWarningMessage('No workspace root found.');
+                break;
+              }
+
+              console.log('[AEP] Opening diff views for', files.length, 'files');
+
+              // Open diff for each file (with a small delay to prevent overwhelming VS Code)
+              for (let i = 0; i < files.length; i++) {
+                const filePath = files[i];
+                try {
+                  await openNativeDiff(workspaceRoot, filePath, 'working');
+                  // Small delay between opening multiple diffs
+                  if (i < files.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                  }
+                } catch (err) {
+                  console.warn('[AEP] Failed to open diff for:', filePath, err);
+                }
+              }
+
+              vscode.window.showInformationMessage(`Opened ${files.length} file(s) for review.`);
+            } catch (error) {
+              console.error('[AEP] Failed to review files:', error);
+              vscode.window.showErrorMessage(`Failed to open review: ${error}`);
+            }
+            break;
+          }
+
+          // Task Revert - User reverts all changes made by NAVI
+          case 'task.revert': {
+            try {
+              const workspaceRoot = this.getActiveWorkspaceRoot();
+
+              // First try FixTransactionManager
+              if (FixTransactionManager.hasUndo()) {
+                await FixTransactionManager.rollback();
+                vscode.window.showInformationMessage('↶ Changes reverted! All modifications have been undone.');
+                this.postToWebview({
+                  type: 'navi.narrative',
+                  text: '\n↶ **Changes reverted.** All modifications have been undone.\n'
+                });
+                console.log('[AEP] Task changes reverted via FixTransactionManager');
+                break;
+              }
+
+              // Fallback: Use git to discard uncommitted changes
+              if (workspaceRoot) {
+                const { exec } = require('child_process');
+                const { promisify } = require('util');
+                const execAsync = promisify(exec);
+
+                try {
+                  // Check for uncommitted changes
+                  const { stdout: status } = await execAsync('git status --porcelain', { cwd: workspaceRoot });
+
+                  if (!status.trim()) {
+                    vscode.window.showWarningMessage('No uncommitted changes to revert.');
+                    this.postToWebview({
+                      type: 'navi.narrative',
+                      text: '\n⚠️ **No changes to revert.** Working directory is clean.\n'
+                    });
+                    break;
+                  }
+
+                  // Ask user for confirmation before reverting via git
+                  const confirm = await vscode.window.showWarningMessage(
+                    'Revert all uncommitted changes? This will discard modifications and delete new files.',
+                    { modal: true },
+                    'Revert All',
+                    'Cancel'
+                  );
+
+                  if (confirm !== 'Revert All') {
+                    break;
+                  }
+
+                  // Revert modified files
+                  await execAsync('git checkout -- .', { cwd: workspaceRoot });
+
+                  // Remove untracked files (new files created by NAVI)
+                  await execAsync('git clean -fd', { cwd: workspaceRoot });
+
+                  vscode.window.showInformationMessage('↶ Changes reverted via Git! All modifications have been undone.');
+                  this.postToWebview({
+                    type: 'navi.narrative',
+                    text: '\n↶ **Changes reverted via Git.** All modifications discarded, new files removed.\n'
+                  });
+                  console.log('[AEP] Task changes reverted via Git');
+
+                } catch (gitError) {
+                  console.error('[AEP] Git revert failed:', gitError);
+                  vscode.window.showErrorMessage(`Git revert failed: ${gitError}`);
+                  this.postToWebview({
+                    type: 'navi.narrative',
+                    text: `\n❌ **Revert failed:** ${gitError}\n`
+                  });
+                }
+              } else {
+                vscode.window.showWarningMessage('No workspace root found. Cannot revert changes.');
+              }
+
+            } catch (error) {
+              console.error('[AEP] Failed to revert changes:', error);
+              vscode.window.showErrorMessage(`Failed to revert changes: ${error}`);
+              this.postToWebview({
+                type: 'navi.narrative',
+                text: `\n❌ **Revert failed:** ${error}\n`
+              });
             }
             break;
           }
@@ -4547,25 +4773,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               }
 
               // Call the NAVI backend to generate the follow-up
+              // Using the correct ChatRequest format: message (not messages)
               const response = await fetch(`${baseUrl}/api/navi/chat`, {
                 method: 'POST',
                 headers: this.buildAuthHeaders(orgId, userId, 'application/json'),
                 body: JSON.stringify({
-                  messages: [
-                    {
-                      role: 'system',
-                      content: 'You are NAVI, a helpful AI coding assistant. Generate brief, natural follow-up responses after user actions complete. Be conversational and helpful, not robotic. Do not use markdown headers or excessive formatting.'
-                    },
-                    {
-                      role: 'user',
-                      content: followUpPrompt
-                    }
-                  ],
-                  stream: false,
-                  context: {
-                    actionFollowUp: true,
-                    actionContext
-                  }
+                  message: followUpPrompt,
+                  model: 'gpt-4o-mini', // Use fast model for quick follow-ups
+                  mode: 'chat-only',
                 }),
               });
 
@@ -4598,7 +4813,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             try {
               // Open the Connectors Hub
               const config = vscode.workspace.getConfiguration('aep');
-              const backendUrl = config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787';
+              const backendUrl = config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8000';
               const cleanBaseUrl = backendUrl.replace(/\/api\/navi\/chat$/, '');
 
               console.log('[AEP] Opening ConnectorsPanel with baseUrl:', cleanBaseUrl);
@@ -5117,7 +5332,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           case 'openFile': {
             const { filePath, line } = msg;
             console.log('[AEP] React webview: Open file request', { filePath, line });
-            await this.handleReactOpenFile(filePath, line);
+
+            // Resolve relative paths to absolute paths using workspace root
+            const resolvedPath = this.resolveWorkspacePath(filePath);
+            console.log('[AEP] Resolved file path:', resolvedPath);
+
+            await this.handleReactOpenFile(resolvedPath, line);
             break;
           }
 
@@ -5131,25 +5351,6 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
             // Show notification
             vscode.window.showInformationMessage(`Opening project: ${path.basename(folderPath)}`);
-            break;
-          }
-
-          case 'openFile': {
-            const { filePath } = msg;
-            console.log('[AEP] React webview: Open file request', { filePath });
-
-            try {
-              // Convert to URI and open the file
-              const fileUri = vscode.Uri.file(filePath);
-              const document = await vscode.workspace.openTextDocument(fileUri);
-              await vscode.window.showTextDocument(document, {
-                preview: false,
-                preserveFocus: false
-              });
-            } catch (error) {
-              console.error('[AEP] Failed to open file:', error);
-              vscode.window.showErrorMessage(`Failed to open file: ${path.basename(filePath)}`);
-            }
             break;
           }
 
@@ -5370,31 +5571,77 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           // ==================== NAVI COMMAND OUTPUT HANDLERS ====================
 
           case 'focusTerminal': {
-            // Focus terminal for the given command
+            // Focus terminal and show the command output
             const command = String(msg.command || '').trim();
             console.log('[AEP] focusTerminal request:', command);
 
             try {
-              // Get or create NAVI terminal
-              if (!this._naviTerminal || this._naviTerminal.exitStatus !== undefined) {
-                this._naviTerminal = vscode.window.createTerminal({
-                  name: 'NAVI Terminal',
-                  cwd: this.getActiveWorkspaceRoot()
-                });
+              // Find the output for this specific command
+              let commandOutput: { command: string; cwd?: string; stdout: string; stderr: string; exitCode?: number; durationMs?: number } | undefined;
+
+              if (command) {
+                for (const [key, val] of this._commandOutputs.entries()) {
+                  if (val.command === command || val.command.includes(command) || key.includes(command)) {
+                    commandOutput = val;
+                    break;
+                  }
+                }
               }
 
-              // Show the terminal
-              this._naviTerminal.show(true);
-
-              // If we have output for this command, show a message
-              const lastOutput = Array.from(this._commandOutputs.entries()).pop();
-              if (lastOutput) {
-                const [, output] = lastOutput;
-                if (output.exitCode !== undefined && output.exitCode !== 0) {
-                  vscode.window.showInformationMessage(
-                    `Last command "${output.command.slice(0, 50)}${output.command.length > 50 ? '...' : ''}" exited with code ${output.exitCode}. Use "Show Output" to see details.`
-                  );
+              // Fall back to most recent output
+              if (!commandOutput) {
+                const entries = Array.from(this._commandOutputs.entries());
+                if (entries.length > 0) {
+                  commandOutput = entries[entries.length - 1][1];
                 }
+              }
+
+              // Show output in Output Channel (better UX than terminal for viewing output)
+              if (commandOutput) {
+                if (!this._naviOutputChannel) {
+                  this._naviOutputChannel = vscode.window.createOutputChannel('NAVI Command Output');
+                }
+
+                this._naviOutputChannel.clear();
+                this._naviOutputChannel.appendLine('═══════════════════════════════════════════════════════════════');
+                this._naviOutputChannel.appendLine(`Command: ${commandOutput.command}`);
+                if (commandOutput.cwd) {
+                  this._naviOutputChannel.appendLine(`Directory: ${commandOutput.cwd}`);
+                }
+                this._naviOutputChannel.appendLine(`Exit Code: ${commandOutput.exitCode ?? 'N/A'}`);
+                if (commandOutput.durationMs) {
+                  this._naviOutputChannel.appendLine(`Duration: ${(commandOutput.durationMs / 1000).toFixed(2)}s`);
+                }
+                this._naviOutputChannel.appendLine('═══════════════════════════════════════════════════════════════');
+
+                if (commandOutput.stdout) {
+                  this._naviOutputChannel.appendLine('\n📤 STDOUT:');
+                  this._naviOutputChannel.appendLine(commandOutput.stdout);
+                }
+
+                if (commandOutput.stderr) {
+                  this._naviOutputChannel.appendLine('\n⚠️ STDERR:');
+                  this._naviOutputChannel.appendLine(commandOutput.stderr);
+                }
+
+                this._naviOutputChannel.show(true);
+              } else {
+                // No output available - just show empty terminal for manual commands
+                const existingTerminal = vscode.window.terminals.find(t => t.name === 'NAVI Terminal' && t.exitStatus === undefined);
+
+                if (existingTerminal) {
+                  this._naviTerminal = existingTerminal;
+                } else {
+                  if (this._naviTerminal && this._naviTerminal.exitStatus !== undefined) {
+                    this._naviTerminal.dispose();
+                  }
+                  this._naviTerminal = vscode.window.createTerminal({
+                    name: 'NAVI Terminal',
+                    cwd: this.getActiveWorkspaceRoot()
+                  });
+                }
+                this._naviTerminal.show(true);
+                vscode.window.showInformationMessage('No command output available. Terminal opened for manual use.');
               }
             } catch (err: any) {
               console.error('[AEP] Failed to focus terminal:', err);
@@ -7014,6 +7261,214 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /**
+   * Detect if a message should use the autonomous agent (action request).
+   *
+   * PHILOSOPHY: Default to autonomous mode unless it's CLEARLY just asking for information.
+   * Users come to NAVI to get things DONE, not just to chat.
+   *
+   * We use a "negative detection" approach: identify the FEW cases where we should NOT
+   * use autonomous mode, rather than trying to enumerate all action patterns.
+   */
+  private shouldUseAutonomousAgent(message: string): boolean {
+    const lowerMessage = message.toLowerCase().trim();
+
+    // Very short messages (< 10 chars) - likely greetings, not action requests
+    if (lowerMessage.length < 10) {
+      // Unless they're commands like "run it" or "fix it"
+      if (/^(run|fix|start|stop|test|build|help)\b/.test(lowerMessage)) {
+        console.log('[AEP] 🎯 Short command detected - using autonomous mode');
+        return true;
+      }
+      console.log('[AEP] 📖 Very short message - using regular chat');
+      return false;
+    }
+
+    // ============================================================
+    // STEP 1: Check for EXPLICIT information-only questions
+    // These are the ONLY cases where we DON'T use autonomous mode
+    // ============================================================
+    const informationOnlyPatterns = [
+      // Pure "what is" questions about concepts (not about the project)
+      /^what\s+(is|are|does|do)\s+(a|an|the)?\s*(concept|definition|meaning|difference between)/i,
+
+      // "How does X work" (conceptual, not "how do I fix X")
+      /^how\s+does\s+\w+\s+work\s*(in general|\?|$)/i,
+
+      // Asking for explanations of concepts
+      /^(explain|describe|tell me about)\s+(what|how|the concept|the difference)/i,
+
+      // Pure documentation questions
+      /^(where|what)\s+(is|are)\s+the\s+(docs?|documentation|readme)/i,
+    ];
+
+    for (const pattern of informationOnlyPatterns) {
+      if (pattern.test(lowerMessage)) {
+        console.log(`[AEP] 📖 Information-only question detected: ${pattern}`);
+        return false;
+      }
+    }
+
+    // ============================================================
+    // STEP 2: Check for STRONG action indicators (fuzzy matching)
+    // These ALWAYS trigger autonomous mode
+    // ============================================================
+
+    // Fuzzy word matching helper - handles typos like "wrking" for "working"
+    const fuzzyMatch = (text: string, targets: string[], threshold: number = 0.8): boolean => {
+      const words = text.split(/\s+/);
+      for (const word of words) {
+        for (const target of targets) {
+          if (word === target) return true;
+          // Simple edit distance check for words > 4 chars
+          if (word.length > 4 && target.length > 4) {
+            const similarity = this.calculateSimilarity(word, target);
+            if (similarity >= threshold) {
+              console.log(`[AEP] 🎯 Fuzzy match: "${word}" ≈ "${target}" (${(similarity * 100).toFixed(0)}%)`);
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    };
+
+    // Action verbs - even with typos
+    const actionVerbs = [
+      'run', 'runn', 'rn', 'fix', 'fixx', 'fxi', 'start', 'strat', 'stop', 'build', 'biuld',
+      'create', 'creat', 'add', 'install', 'instal', 'setup', 'configure', 'config',
+      'delete', 'remove', 'update', 'change', 'modify', 'edit', 'check', 'chek', 'test',
+      'debug', 'deploy', 'push', 'pull', 'commit', 'merge', 'restart', 'kill', 'open'
+    ];
+
+    // Problem indicators - even with typos
+    const problemWords = [
+      'working', 'wrking', 'workng', 'loading', 'loadng', 'running', 'runnng',
+      'broken', 'brokn', 'failed', 'failing', 'error', 'eror', 'errror', 'issue', 'isue',
+      'problem', 'problm', 'bug', 'crash', 'stuck', 'frozen', 'slow', 'hang', 'hanging'
+    ];
+
+    // Negation words that combine with problem words
+    const negationWords = ['not', 'nt', 'no', "don't", 'dont', "doesn't", 'doesnt', "isn't", 'isnt', "won't", 'wont', "can't", 'cant', 'cannot'];
+
+    // Check for action verbs
+    if (fuzzyMatch(lowerMessage, actionVerbs)) {
+      console.log('[AEP] 🎯 Action verb detected - using autonomous mode');
+      return true;
+    }
+
+    // Check for problem words (indicates troubleshooting request)
+    if (fuzzyMatch(lowerMessage, problemWords)) {
+      console.log('[AEP] 🎯 Problem indicator detected - using autonomous mode');
+      return true;
+    }
+
+    // Check for negation + common words (e.g., "not working", "doesn't load")
+    for (const neg of negationWords) {
+      if (lowerMessage.includes(neg)) {
+        console.log('[AEP] 🎯 Negation detected (likely a problem report) - using autonomous mode');
+        return true;
+      }
+    }
+
+    // ============================================================
+    // STEP 3: Check for question patterns that imply action
+    // ============================================================
+    const actionQuestionPatterns = [
+      // "Can you check/fix/run/help" patterns
+      /\b(can|could|would|will)\s+(you|u)\s+/i,
+
+      // "How do I / How can I" - user wants to DO something
+      /\bhow\s+(do|can|should|would)\s+(i|we)\b/i,
+
+      // "Why is/isn't X" - investigating a problem
+      /\bwhy\s+(is|isn't|isnt|does|doesn't|doesnt|won't|wont)\b/i,
+
+      // "I tried/want/need" - user has a goal
+      /\bi\s+(tried|want|need|have|got|see|noticed|found)\b/i,
+
+      // "It's/This is" followed by problem words
+      /\b(it's|its|this is|that is|there's|theres)\s+\w*\s*(not|broken|stuck|slow|wrong)/i,
+
+      // URLs - user is probably asking about something they see/don't see
+      /https?:\/\/|localhost:/i,
+
+      // File paths - user is probably asking about specific files
+      /\.(js|ts|jsx|tsx|py|go|rs|java|json|yaml|yml|md|css|html|vue|svelte)\b/i,
+
+      // "help me" or "help with"
+      /\bhelp\s+(me|with|to)\b/i,
+
+      // "please" - polite request, implies action
+      /\bplease\b/i,
+
+      // Question about something specific ending with "?"
+      /\?$/,
+    ];
+
+    for (const pattern of actionQuestionPatterns) {
+      if (pattern.test(lowerMessage)) {
+        console.log(`[AEP] 🎯 Action question pattern detected: ${pattern}`);
+        return true;
+      }
+    }
+
+    // ============================================================
+    // STEP 4: Default behavior based on message characteristics
+    // ============================================================
+
+    // If the message is a decent length (> 20 chars) and we haven't ruled it out,
+    // assume the user wants something done
+    if (lowerMessage.length > 20) {
+      console.log('[AEP] 🎯 Non-trivial message - defaulting to autonomous mode');
+      return true;
+    }
+
+    // Short messages that didn't match anything - use regular chat
+    console.log('[AEP] 📖 No action indicators found - using regular chat');
+    return false;
+  }
+
+  /**
+   * Calculate similarity between two strings using Levenshtein distance.
+   * Returns a value between 0 and 1, where 1 is an exact match.
+   */
+  private calculateSimilarity(str1: string, str2: string): number {
+    const len1 = str1.length;
+    const len2 = str2.length;
+
+    // Quick check for exact match
+    if (str1 === str2) return 1;
+
+    // Quick check for very different lengths
+    if (Math.abs(len1 - len2) > Math.max(len1, len2) * 0.5) return 0;
+
+    // Create distance matrix
+    const matrix: number[][] = [];
+    for (let i = 0; i <= len1; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= len2; j++) {
+      matrix[0][j] = j;
+    }
+
+    // Fill in the rest of the matrix
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1,      // deletion
+          matrix[i][j - 1] + 1,      // insertion
+          matrix[i - 1][j - 1] + cost // substitution
+        );
+      }
+    }
+
+    const distance = matrix[len1][len2];
+    const maxLen = Math.max(len1, len2);
+    return maxLen === 0 ? 1 : 1 - distance / maxLen;
+  }
+
   private async handleSmartRouting(
     text: string,
     modelId?: string,
@@ -7068,7 +7523,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       controller = new AbortController();
       const config = vscode.workspace.getConfiguration('aep.navi');
-      const timeoutMs = config.get<number>('requestTimeout') || DEFAULT_REQUEST_TIMEOUT_MS;
+      const baseTimeoutMs = config.get<number>('requestTimeout') || DEFAULT_REQUEST_TIMEOUT_MS;
+      // Check if this is an action request early to set appropriate timeout
+      const isActionRequestEarly = this.shouldUseAutonomousAgent(text);
+      // Use longer timeout for autonomous operations (30 min) vs regular chat (5 min)
+      // Autonomous operations can involve many tool calls, iterations, error fixing, builds, and verification cycles
+      const naviConfigEarly = vscode.workspace.getConfiguration('aep.navi');
+      const forceAutonomousEarly = naviConfigEarly.get<boolean>('useAutonomousMode', false);
+      const timeoutMs = (forceAutonomousEarly || isActionRequestEarly) ? Math.max(baseTimeoutMs, 1800000) : baseTimeoutMs;
       timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       // Get the last bot message state for autonomous coding continuity
@@ -7137,13 +7599,39 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       this.emitLiveProgress("Contacting model...", 35);
 
       // Use streaming endpoint for smooth response display
-      const streamUrl = `${this.getBackendBaseUrl()}/api/navi/chat/stream`;
+      // V2 endpoint uses tool-use based streaming (Claude Code style)
+      // V3/Autonomous endpoint adds verification and self-healing
+      const naviConfig = vscode.workspace.getConfiguration('aep.navi');
+      const useV2Streaming = naviConfig.get<boolean>('useToolStreaming', false);
+      const forceAutonomous = naviConfig.get<boolean>('useAutonomousMode', false);
+
+      // 🎯 AUTO-DETECT: Use autonomous agent for action requests
+      // This enables NAVI to act like Cline/Copilot/Claude Code - automatically executing and fixing
+      const isActionRequest = this.shouldUseAutonomousAgent(text);
+      const useAutonomous = forceAutonomous || isActionRequest;
+
+      if (isActionRequest && !forceAutonomous) {
+        console.log('[AEP] 🤖 Auto-detected action request - using Autonomous mode for end-to-end execution');
+      }
+
+      let streamUrl: string;
+      if (useAutonomous) {
+        streamUrl = `${this.getBackendBaseUrl()}/api/navi/chat/autonomous`;
+        console.log('[AEP] 🤖 Using Autonomous mode (end-to-end with verification)');
+      } else if (useV2Streaming) {
+        streamUrl = `${this.getBackendBaseUrl()}/api/navi/chat/stream/v2`;
+        console.log('[AEP] 🚀 Using V2 tool-use streaming (Claude Code style)');
+      } else {
+        streamUrl = `${this.getBackendBaseUrl()}/api/navi/chat/stream`;
+      }
       const nonStreamUrl = targetUrl;
 
       // Try streaming first, fall back to non-streaming if it fails
       let useStreaming = true;
       let streamedContent = '';
       const messageId = `msg-${Date.now()}`;
+      // Track if we've seen tool calls - if so, we need to emit narratives for interleaved display
+      let hasSeenToolCalls = false;
 
       try {
         // AUTO-RECOVERY: Include last action error if recent (within 5 minutes)
@@ -7154,6 +7642,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           console.log('[AEP] 🔧 Including last action error in request for NAVI auto-recovery');
         }
 
+        console.log('[AEP] 📡 About to fetch streaming URL:', streamUrl);
         const streamResponse = await fetch(streamUrl, {
           method: 'POST',
           headers: {
@@ -7191,6 +7680,8 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           this._lastActionError = null;
         }
 
+        console.log('[AEP] 📡 Stream response received, status:', streamResponse.status, streamResponse.ok);
+
         if (!streamResponse.ok) {
           throw new Error(`Stream HTTP ${streamResponse.status}`);
         }
@@ -7199,9 +7690,12 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           throw new Error('No response body for streaming');
         }
 
+        console.log('[AEP] 📡 Stream response body exists, starting to read...');
+
         this.emitLiveProgress("Streaming response...", 50);
 
         // Start streaming message to webview
+        console.log('[AEP] 🎬 Sending botMessageStart with messageId:', messageId);
         this.postToWebview({
           type: 'botMessageStart',
           messageId,
@@ -7228,6 +7722,32 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
               }
               try {
                 const parsed = JSON.parse(data);
+
+                // Handle heartbeat events - keep connection alive and show activity
+                if (parsed.heartbeat) {
+                  console.log('[AEP] 💓 Heartbeat received:', parsed.message, 'elapsed:', parsed.elapsed_seconds, 's');
+                  // Forward heartbeat to webview to show "still working" indicator
+                  this.postToWebview({
+                    type: 'navi.heartbeat',
+                    message: parsed.message || 'Working...',
+                    elapsed_seconds: parsed.elapsed_seconds || 0,
+                    heartbeat_count: parsed.heartbeat_count || 0,
+                  });
+                  // Also emit as activity event so users can see progress
+                  this.postToWebview({
+                    type: 'navi.agent.event',
+                    event: {
+                      kind: 'heartbeat',
+                      data: {
+                        label: 'Working',
+                        detail: parsed.message || 'Processing your request...',
+                        status: 'running',
+                        elapsed: parsed.elapsed_seconds,
+                      }
+                    }
+                  });
+                  continue; // Skip further processing for heartbeat events
+                }
 
                 // Handle content chunks for streaming text
                 if (parsed.content) {
@@ -7267,19 +7787,228 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     // Backend sent JSON like {"thinking_text": "..."} - extract the text
                     thinkingText = thinkingText.thinking_text || thinkingText.text || JSON.stringify(thinkingText);
                   }
-                  if (typeof thinkingText === 'string' && thinkingText.startsWith('{')) {
-                    // String that looks like JSON - try to parse and extract
-                    try {
-                      const thinkingObj = JSON.parse(thinkingText);
-                      thinkingText = thinkingObj.thinking_text || thinkingObj.text || thinkingText;
-                    } catch {
-                      // Not valid JSON, use as-is
+
+                  // Skip thinking text that looks like the final JSON response structure
+                  // The LLM streams its JSON response which we don't want to show as "thinking"
+                  const thinkingStr = String(thinkingText);
+                  const looksLikeJsonResponse = (
+                    thinkingStr.includes('"message"') ||
+                    thinkingStr.includes('```json') ||
+                    (thinkingStr.startsWith('{') && (
+                      thinkingStr.includes('"actions"') ||
+                      thinkingStr.includes('"files_to_create"') ||
+                      thinkingStr.includes('"next_steps"')
+                    ))
+                  );
+
+                  if (looksLikeJsonResponse) {
+                    // This is the LLM's JSON output, not actual thinking - skip displaying it
+                    console.log('[AEP] 🧠 Skipping JSON response as thinking:', thinkingStr.substring(0, 50) + '...');
+                  } else {
+                    // This might be actual thinking text, but let's be more selective
+                    // Only show if it doesn't start with JSON markers
+                    if (!thinkingStr.trim().startsWith('{') && !thinkingStr.trim().startsWith('[')) {
+                      console.log('[AEP] 🧠 Thinking received:', thinkingStr.substring(0, 50) + '...');
+                      this.postToWebview({
+                        type: 'navi.thinking',
+                        thinking: thinkingStr,
+                      });
                     }
                   }
-                  console.log('[AEP] 🧠 Thinking received:', String(thinkingText).substring(0, 50) + '...');
+                }
+
+                // Handle narrative events (conversational explanations like Claude Code)
+                if (parsed.narrative) {
+                  console.log('[AEP] 📝 Narrative received:', parsed.narrative.substring(0, 50) + '...');
                   this.postToWebview({
-                    type: 'navi.thinking',
-                    thinking: String(thinkingText),
+                    type: 'navi.narrative',
+                    text: parsed.narrative,
+                  });
+                }
+
+                // Handle V2 streaming events (tool-use based, Claude Code style)
+                // These have a 'type' field: text, tool_call, tool_result, done
+                if (parsed.type === 'text' && parsed.text) {
+                  // Stream narrative text - this is the LLM explaining what it's doing
+                  console.log('[AEP] 📝 V2 Text chunk:', parsed.text.substring(0, 50) + '...');
+                  streamedContent += parsed.text;
+                  console.log('[AEP] 📝 Sending botMessageChunk, total length:', streamedContent.length);
+                  this.postToWebview({
+                    type: 'botMessageChunk',
+                    messageId,
+                    chunk: parsed.text,
+                    fullContent: streamedContent,
+                  });
+                  // ALWAYS emit narrative for Claude Code-style interleaved display
+                  // This ensures text is shown between command/tool activities
+                  // The UI will handle deduplication - narratives show in activity section,
+                  // regular message content is hidden when narratives are present
+                  this.postToWebview({
+                    type: 'navi.narrative',
+                    text: parsed.text,
+                  });
+                  // Track that we've seen text content (helps with tool call interleaving)
+                  if (!hasSeenToolCalls) {
+                    hasSeenToolCalls = true;
+                  }
+                }
+
+                if (parsed.type === 'tool_call' && parsed.tool_call) {
+                  // LLM is calling a tool (read_file, edit_file, run_command)
+                  const tc = parsed.tool_call;
+                  console.log('[AEP] 🔧 V2 Tool Call:', tc.name, tc.arguments);
+
+                  // Mark that we've seen tool calls - enables narrative interleaving
+                  hasSeenToolCalls = true;
+
+                  // Map tool names to activity kinds for display
+                  const toolToKind: Record<string, string> = {
+                    'read_file': 'read',
+                    'write_file': 'create',
+                    'edit_file': 'edit',
+                    'run_command': 'command',
+                    'search_files': 'rag',
+                    'list_directory': 'context',
+                  };
+
+                  const kind = toolToKind[tc.name] || 'info';
+                  const detail = tc.arguments?.path || tc.arguments?.command || tc.name;
+
+                  this.postToWebview({
+                    type: 'navi.agent.event',
+                    event: {
+                      kind,
+                      data: {
+                        label: tc.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                        detail,
+                        status: 'running',
+                        toolId: tc.id,
+                      }
+                    }
+                  });
+                }
+
+                if (parsed.type === 'tool_result' && parsed.tool_result) {
+                  // Tool completed - update status
+                  const tr = parsed.tool_result;
+                  console.log('[AEP] ✅ V2 Tool Result:', tr.id, tr.result?.success);
+
+                  // Extract details for fallback matching if toolId doesn't match
+                  const resultDetails = {
+                    path: tr.result?.path || tr.result?.file,
+                    command: tr.result?.command,
+                    kind: tr.result?.kind || tr.name,
+                  };
+
+                  this.postToWebview({
+                    type: 'navi.agent.event',
+                    event: {
+                      kind: 'tool_result',
+                      data: {
+                        label: 'Complete',
+                        detail: tr.result?.success ? 'Success' : (tr.result?.error || 'Failed'),
+                        status: 'done',
+                        toolId: tr.id,
+                        result: {
+                          ...tr.result,
+                          ...resultDetails,
+                        },
+                      }
+                    }
+                  });
+                }
+
+                if (parsed.type === 'done') {
+                  console.log('[AEP] ✅ V2 Stream complete');
+                }
+
+                if (parsed.type === 'error') {
+                  console.error('[AEP] ❌ V2 Stream error:', parsed.error);
+                  this.emitLiveProgressError(parsed.error);
+                }
+
+                // === Autonomous Mode Events (V3) ===
+
+                // Status updates (planning, executing, verifying, fixing, completed, failed)
+                if (parsed.type === 'status') {
+                  console.log('[AEP] 🤖 Autonomous status:', parsed.status);
+                  const statusMessages: Record<string, string> = {
+                    'planning': '🧠 Planning approach...',
+                    'executing': '⚡ Executing changes...',
+                    'verifying': '🔍 Running verification...',
+                    'fixing': '🔧 Fixing issues...',
+                    'completed': '✅ Task completed!',
+                    'failed': '❌ Task failed after max attempts',
+                  };
+                  this.postToWebview({
+                    type: 'navi.agent.event',
+                    event: {
+                      kind: 'status',
+                      data: {
+                        label: parsed.status,
+                        detail: statusMessages[parsed.status] || parsed.status,
+                        status: parsed.status === 'completed' ? 'done' : 'running',
+                      }
+                    }
+                  });
+                }
+
+                // Iteration info
+                if (parsed.type === 'iteration') {
+                  console.log('[AEP] 🔄 Iteration:', parsed.iteration, '/', parsed.max);
+                  this.postToWebview({
+                    type: 'navi.narrative',
+                    text: `\n**Iteration ${parsed.iteration}/${parsed.max}** - ${parsed.reason}\n`,
+                  });
+                }
+
+                // Verification results
+                if (parsed.type === 'verification' && parsed.results) {
+                  console.log('[AEP] 🧪 Verification results:', parsed.results);
+                  for (const result of parsed.results) {
+                    this.postToWebview({
+                      type: 'navi.agent.event',
+                      event: {
+                        kind: 'verification',
+                        data: {
+                          label: result.type,
+                          detail: result.success ? '✅ Passed' : `❌ Failed (${result.errors?.length || 0} errors)`,
+                          status: result.success ? 'done' : 'error',
+                          errors: result.errors,
+                          warnings: result.warnings,
+                        }
+                      }
+                    });
+                  }
+                }
+
+                // Task completion summary
+                if (parsed.type === 'complete' && parsed.summary) {
+                  console.log('[AEP] 🏁 Task complete:', parsed.summary);
+                  this.postToWebview({
+                    type: 'navi.task.complete',
+                    summary: parsed.summary,
+                  });
+                }
+
+                // Task plan for complex multi-step tasks
+                if (parsed.type === 'plan') {
+                  console.log('[AEP] 📋 Task plan received:', parsed.steps?.length, 'steps');
+                  this.postToWebview({
+                    type: 'navi.plan',
+                    steps: parsed.steps || [],
+                    estimated_files: parsed.estimated_files || [],
+                    is_complex: parsed.is_complex ?? true,
+                  });
+                }
+
+                // Step progress updates
+                if (parsed.type === 'step_update') {
+                  console.log('[AEP] 📊 Step update:', parsed.step_id, parsed.status);
+                  this.postToWebview({
+                    type: 'navi.step_update',
+                    step_id: parsed.step_id,
+                    status: parsed.status,
                   });
                 }
 
@@ -7290,8 +8019,14 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   streamedActions = [...streamedActions, ...parsed.actions];
                 }
 
-                // Handle next_steps
-                if (parsed.next_steps && Array.isArray(parsed.next_steps)) {
+                // Handle next_steps (both direct property and typed event)
+                if (parsed.type === 'next_steps' && Array.isArray(parsed.next_steps)) {
+                  console.log('[AEP] 📋 Next steps received:', parsed.next_steps);
+                  this.postToWebview({
+                    type: 'navi.next_steps',
+                    next_steps: parsed.next_steps,
+                  });
+                } else if (parsed.next_steps && Array.isArray(parsed.next_steps)) {
                   this.postToWebview({
                     type: 'navi.next_steps',
                     next_steps: parsed.next_steps,
@@ -7327,6 +8062,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         // Finalize the streamed message with collected actions
+        console.log('[AEP] 🏁 Sending botMessageEnd, content length:', streamedContent.length);
         this.postToWebview({
           type: 'botMessageEnd',
           messageId,
@@ -7335,12 +8071,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
         });
 
       } catch (streamErr) {
+        console.error('[AEP] ❌ Streaming failed:', streamErr);
         console.warn('[AEP] Streaming failed, falling back to non-streaming:', streamErr);
         useStreaming = false;
       }
 
       // Fall back to non-streaming if streaming failed
-      if (!useStreaming || !streamedContent) {
+      // BUT don't fall back if we successfully processed tool calls (even without narrative text)
+      const streamingSucceeded = useStreaming && (streamedContent || hasSeenToolCalls);
+      if (!streamingSucceeded) {
         const response = await fetch(nonStreamUrl, {
           method: 'POST',
           headers: {
@@ -7409,7 +8148,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // Use the streamed content as the final content
       const content = streamedContent;
 
-      if (!content) {
+      // Only throw error if we have no content AND no tool calls were processed
+      // Tool-call-only responses are valid (LLM might only use tools without narrative)
+      if (!content && !hasSeenToolCalls) {
         throw new Error('NAVI backend returned an empty reply.');
       }
 
@@ -7424,12 +8165,19 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const responseState = undefined;
       const routing = undefined;
 
-      // Add to message history
-      this._messages.push({
-        role: 'assistant',
-        content,
-        state: responseState
-      });
+      // Add to message history only if we have actual content or tool calls
+      // This prevents empty messages from flooding the history
+      const hasContent = content && content.trim().length > 0;
+
+      if (hasContent || hasSeenToolCalls) {
+        this._messages.push({
+          role: 'assistant',
+          content,
+          state: responseState
+        });
+      } else {
+        console.warn('[AEP] Skipping empty assistant message - no content or tool calls');
+      }
 
       // If we used streaming, the webview already has the message via botMessageEnd
       // If we used non-streaming fallback, send the complete message now
@@ -7462,13 +8210,25 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       // DO NOT auto-execute commands here - that bypasses the approval flow
       console.log('[AEP] ✅ Response sent to webview (streaming:', useStreaming, ')');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Chat failed';
-      console.error('[AEP] ❌ Chat routing error:', error);
+      const isAbortError = error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'));
+      let errorMessage: string;
+
+      if (isAbortError) {
+        errorMessage = 'Request timed out. The operation took too long to complete. You can try again with a simpler request or check the backend logs.';
+        console.warn('[AEP] ⏱️ Request aborted due to timeout');
+      } else {
+        errorMessage = error instanceof Error ? error.message : 'Chat failed';
+        console.error('[AEP] ❌ Chat routing error:', error);
+      }
+
       finalizeProgressError(errorMessage);
       this.postToWebview({ type: 'botThinking', value: false });
+      // Send botMessageEnd to properly close any streaming message
       this.postToWebview({
-        type: 'error',
-        error: errorMessage
+        type: 'botMessageEnd',
+        messageId: `msg-${Date.now()}`,
+        text: `⚠️ ${errorMessage}`,
+        actions: undefined,
       });
     } finally {
       if (timeout) {
@@ -8171,7 +8931,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     const config = vscode.workspace.getConfiguration('aep');
     const raw = (config.get<string>('navi.backendUrl') || '').trim();
     const normalize = (u: string) => u.replace(/\/+$/, '');
-    const defaultBase = 'http://127.0.0.1:8787';
+    const defaultBase = 'http://127.0.0.1:8000';
     let baseUrl = raw ? normalize(raw) : defaultBase;
     baseUrl = baseUrl
       .replace(/\/api\/navi\/chat\/?$/i, '')
@@ -8302,6 +9062,16 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
   private getActiveWorkspaceRoot(): string | undefined {
     console.log('[Extension Host] [AEP] 🔍 Getting workspace root...');
 
+    // Priority 1: First workspace folder - most reliable when NAVI panel is focused
+    // This is the most common case and should work even when no editor is active
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (workspaceFolders && workspaceFolders.length > 0) {
+      const firstWorkspace = workspaceFolders[0].uri.fsPath;
+      console.log('[Extension Host] [AEP] 📁 Using first workspace folder:', firstWorkspace);
+      return firstWorkspace;
+    }
+
+    // Priority 2: Get workspace from active text editor (if available)
     const editor = vscode.window.activeTextEditor;
     if (editor) {
       const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
@@ -8314,15 +9084,17 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       console.log('[Extension Host] [AEP] ⚠️ No active text editor found');
     }
 
-    // Fallback: first workspace folder if present
-    const firstWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (firstWorkspace) {
-      console.log('[Extension Host] [AEP] 📁 Using first workspace folder as fallback:', firstWorkspace);
-    } else {
-      console.log('[Extension Host] [AEP] ❌ No workspace folders found at all');
+    // Priority 3: Check visible text editors (may have editors open but not focused)
+    for (const visibleEditor of vscode.window.visibleTextEditors) {
+      const folder = vscode.workspace.getWorkspaceFolder(visibleEditor.document.uri);
+      if (folder) {
+        console.log('[Extension Host] [AEP] ✅ Found workspace from visible editor:', folder.uri.fsPath);
+        return folder.uri.fsPath;
+      }
     }
 
-    return firstWorkspace;
+    console.log('[Extension Host] [AEP] ❌ No workspace folders found at all');
+    return undefined;
   }
 
   /**
@@ -8612,7 +9384,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const workspaceContext = await collectWorkspaceContext();
 
       // Call backend orchestrator
-      const response = await fetch('http://127.0.0.1:8787/api/orchestrator/execute', {
+      const response = await fetch('http://127.0.0.1:8000/api/orchestrator/execute', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -8653,7 +9425,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       // Call backend to generate AI patch
       const response = await fetch(
-        `http://127.0.0.1:8787/api/repo/fix/${entry.fixId}`,
+        `http://127.0.0.1:8000/api/repo/fix/${entry.fixId}`,
         { method: "POST" }
       );
 
@@ -10149,10 +10921,22 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     const maxChars = 120_000; // ~700–1000 lines is fine
     if (text.length <= maxChars) return text;
 
+    const originalSizeKB = Math.round(text.length / 1000);
+    const truncatedSizeKB = Math.round(maxChars / 1000);
+
+    // Show VS Code warning notification
     vscode.window.showWarningMessage(
       `NAVI: ${source} is very large; truncating to ${maxChars.toLocaleString()} characters for this request.`
     );
-    return text.slice(0, maxChars);
+
+    // Also send visible notification to chat panel
+    this.postToWebview({
+      type: 'navi.narrative',
+      text: `⚠️ Large content (${originalSizeKB}KB from ${source}) truncated to ${truncatedSizeKB}KB for processing.`
+    });
+
+    console.warn(`[AEP] Truncating ${source} from ${originalSizeKB}KB to ${truncatedSizeKB}KB`);
+    return text.slice(0, maxChars) + '\n\n--- [Content truncated due to size limit] ---';
   }
 
   private showWebviewToast(message: string, level: 'info' | 'warning' | 'error' = 'info') {
@@ -10466,24 +11250,42 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           }
           this._actionActivityIds.delete(actionKey);
 
-          // Send failure notification to webview
+          // Send failure notification to webview with command output for self-healing
           this.postToWebview({
             type: 'action.complete',
             action: action,
             actionIndex: actionIndex,
             success: false,
             message: errorMessage,
-            error: result.error
+            error: result.error,
+            // Include command execution details for frontend self-healing
+            commandOutput: result.data?.stdout || result.data?.stderr || '',
+            stdout: result.data?.stdout || '',
+            stderr: result.data?.stderr || '',
+            exitCode: result.data?.exitCode
           });
 
           // AUTO-RECOVERY: Store the error context so NAVI can debug it in the next message
+          // Include stdout/stderr from command execution for better debugging
+          const commandOutput = result.data?.stdout || result.data?.stderr || '';
+          const exitCode = result.data?.exitCode;
           this._lastActionError = {
             action: action,
             errorMessage: errorMessage,
             errorDetails: result.error?.message || result.error?.toString(),
+            // Include actual command output for self-healing
+            commandOutput: commandOutput,
+            stdout: result.data?.stdout || '',
+            stderr: result.data?.stderr || '',
+            exitCode: exitCode,
             timestamp: Date.now()
           };
-          console.log('[AEP] 🔧 Action failed - stored error context for NAVI auto-recovery:', this._lastActionError);
+          console.log('[AEP] 🔧 Action failed - stored error context for NAVI auto-recovery:', {
+            ...this._lastActionError,
+            commandOutput: `${commandOutput.substring(0, 200)}... (${commandOutput.length} chars)`,
+            stdout: `${(result.data?.stdout || '').substring(0, 100)}...`,
+            stderr: `${(result.data?.stderr || '').substring(0, 100)}...`
+          });
         } else {
           console.log('[Extension Host] [AEP] Action executed successfully:', result.message);
 
@@ -11897,6 +12699,9 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       };
 
       // Update the HTML to use webview URIs and add VS Code API
+      const cspSource = webview.cspSource;
+      const backendUrl = this.getBackendBaseUrl();
+
       html = html
         .replace('./panel.js', `${jsUri.toString()}?v=${buildVersion}`)
         .replace('./assets/', `${assetsUri.toString()}/`)
@@ -11905,6 +12710,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
           `$1="$2?v=${buildVersion}"`
         )
         .replace('<head>', `<head>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline'; font-src ${cspSource} data:; connect-src ${backendUrl} http://127.0.0.1:8787 http://localhost:8787 ws://127.0.0.1:8787 ws://localhost:8787;">
     <script>
       window.acquireVsCodeApi = acquireVsCodeApi;
       window.__AEP_CONFIG__ = ${JSON.stringify(webviewConfig)};

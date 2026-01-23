@@ -19,8 +19,10 @@ import {
   Bell,
   Brain,
   Check,
+  CheckCircle,
   CheckCircle2,
   ChevronDown,
+  Eye,
   ChevronRight,
   ChevronUp,
   ClipboardList,
@@ -53,6 +55,8 @@ import {
   Sun,
   Tag,
   Terminal,
+  ThumbsUp,
+  ThumbsDown,
   ToggleLeft,
   ToggleRight,
   Trash2,
@@ -447,7 +451,7 @@ type TerminalEntry = {
 
 type ActivityEvent = {
   id: string;
-  kind: "read" | "edit" | "create" | "delete" | "command" | "info" | "error" | "thinking" | "llm_call" | "detection" | "context" | "analysis" | "prompt" | "parsing" | "validation";
+  kind: "read" | "edit" | "create" | "delete" | "command" | "info" | "error" | "thinking" | "llm_call" | "detection" | "context" | "analysis" | "prompt" | "parsing" | "validation" | "intent" | "rag" | "response";
   label: string;
   detail?: string;
   filePath?: string;
@@ -1122,6 +1126,31 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const [useAutoModel, setUseAutoModel] = useState(true);
   const [lastManualModelId, setLastManualModelId] = useState(getDefaultManualModelId());
   const [lastRouterInfo, setLastRouterInfo] = useState<DetectedTask | null>(null);
+
+  // Task Complete panel state
+  type TaskSummary = {
+    filesRead: number;
+    filesModified: number;
+    filesCreated: number;
+    iterations: number;
+    verificationPassed: boolean | null;
+    nextSteps: string[];
+    summaryText?: string;
+    filesList?: Array<{
+      path: string;
+      action: 'created' | 'modified' | 'read';
+      additions?: number;
+      deletions?: number;
+    }>;
+    verificationDetails?: {
+      typecheck?: { passed: boolean; errors?: string[] };
+      lint?: { passed: boolean; errors?: string[] };
+      build?: { passed: boolean; errors?: string[] };
+      tests?: { passed: boolean; errors?: string[] };
+    };
+  };
+  const [taskSummary, setTaskSummary] = useState<TaskSummary | null>(null);
+  const [taskFilesExpanded, setTaskFilesExpanded] = useState(true);
   const [lastNextSteps, setLastNextSteps] = useState<string[]>([]);
   const [terminalEntries, setTerminalEntries] = useState<TerminalEntry[]>([]);
   const [terminalOpen, setTerminalOpen] = useState(true);
@@ -1140,6 +1169,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const [completedActionMessages, setCompletedActionMessages] = useState<Set<string>>(new Set());
   // Track activities per action index for inline display
   const [perActionActivities, setPerActionActivities] = useState<Map<number, ActivityEvent[]>>(new Map());
+  // Live narrative stream (like Claude Code's conversational output)
+  const [narrativeLines, setNarrativeLines] = useState<Array<{ id: string; text: string; timestamp: string }>>([]);
 
   // Dynamic placeholder suggestions
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -1195,6 +1226,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   }, [input]);
   // Track streaming narratives per action index
   const [perActionNarratives, setPerActionNarratives] = useState<Map<number, Array<{ id: string; text: string; timestamp: string }>>>(new Map());
+  // Track command outputs per action index for inline display
+  const [perActionOutputs, setPerActionOutputs] = useState<Map<number, string>>(new Map());
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -1251,6 +1284,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const lastFailedActionRef = useRef<string | null>(null); // Track last failed action to detect repeated failures
   // PHASE 4: Track current retry activity ID to update in place instead of creating new ones
   const currentRetryActivityRef = useRef<string | null>(null);
+  // Track auto-execute mode for Agent Full Access
+  const autoExecuteModeRef = useRef<boolean>(false);
 
   const [toast, setToast] = useState<ToastState | null>(null);
   const [structuredReview, setStructuredReview] = useState<StructuredReview | null>(null);
@@ -1393,21 +1428,21 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   const pushActivityEvent = (event: ActivityEvent) => {
     // PHASE 5: Add sequence number for reliable ordering
     setActivityEvents((prev) => {
-      // ENHANCED DEDUPLICATION: Check by label ONLY (ignore kind for dedup)
-      // This prevents duplicate "Building context", "Structuring explanation", etc.
-      // that may come with different kinds from different event sources
-      const existingByLabel = prev.findIndex(
-        (item) => item.label === event.label
+      // ENHANCED DEDUPLICATION: Check by label AND detail to avoid deduplicating different file reads
+      // File reads all have label "Reading" or "Read" but different detail (file path)
+      // So we need to match BOTH to properly deduplicate
+      const existingByLabelAndDetail = prev.findIndex(
+        (item) => item.label === event.label && item.detail === event.detail
       );
 
-      if (existingByLabel >= 0) {
+      if (existingByLabelAndDetail >= 0) {
         // Update existing activity instead of adding duplicate
         const next = [...prev];
-        next[existingByLabel] = {
-          ...next[existingByLabel],
+        next[existingByLabelAndDetail] = {
+          ...next[existingByLabelAndDetail],
           kind: event.kind, // Update kind in case it changed
           status: event.status,
-          detail: event.detail || next[existingByLabel].detail,
+          detail: event.detail || next[existingByLabelAndDetail].detail,
           timestamp: event.timestamp,
         };
         return next;
@@ -1720,6 +1755,26 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  // Handle clicks on file links (uses native DOM since dangerouslySetInnerHTML bypasses React events)
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('navi-link--file')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const filePath = target.getAttribute('data-file-path');
+        const lineStr = target.getAttribute('data-line');
+        const line = lineStr ? parseInt(lineStr, 10) : undefined;
+        if (filePath) {
+          console.log('[NAVI] Opening file:', filePath, 'at line:', line);
+          vscodeApi.postMessage({ type: 'openFile', filePath, line });
+        }
+      }
+    };
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
   }, []);
 
   // Establish active session on mount
@@ -2164,11 +2219,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         setActivityEvents([]);
         setActivityFiles([]);
         setExpandedActivityFiles(new Set());
+        setNarrativeLines([]); // Clear narrative stream for new run
         setActivityOpen(true);
         setActivityFilesOpen(false);
         // Clear per-action activities for new run
         setPerActionActivities(new Map());
         setPerActionNarratives(new Map());
+        setPerActionOutputs(new Map());
         currentActionIndexRef.current = null;
         return;
       }
@@ -2261,17 +2318,18 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         };
 
         setMessages((prev) => {
-          // PHASE 1 FIX: Check for empty streaming placeholder to update instead of duplicate
-          const emptyStreamingIdx = prev.findIndex(
-            (m) => m.role === "assistant" && m.isStreaming && (!m.content || !m.content.trim())
+          // PHASE 1 FIX: Check for ANY streaming message to update instead of creating duplicate
+          // This handles both empty placeholders AND messages filled via botMessageChunk
+          const streamingIdx = prev.findIndex(
+            (m) => m.role === "assistant" && m.isStreaming
           );
 
-          if (emptyStreamingIdx !== -1) {
-            // Update the empty streaming placeholder instead of creating a new message
-            console.log('[NaviChatPanel] Updating empty streaming placeholder with botMessage');
+          if (streamingIdx !== -1) {
+            // Update the streaming message instead of creating a new one
+            console.log('[NaviChatPanel] Updating streaming message with final botMessage content');
             const updated = [...prev];
-            updated[emptyStreamingIdx] = {
-              ...updated[emptyStreamingIdx],
+            updated[streamingIdx] = {
+              ...updated[streamingIdx],
               id: messageId,
               content: msg.text,
               isStreaming: false,
@@ -2393,16 +2451,30 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         }
       }
 
-      // Handle streaming message start - create placeholder message
+      // Handle streaming message start - update existing placeholder or create new
       if (msg.type === "botMessageStart" && msg.messageId) {
-        const streamingMessage: ChatMessage = {
-          id: msg.messageId,
-          role: "assistant",
-          content: "",
-          createdAt: nowIso(),
-          isStreaming: true,
-        };
-        setMessages((prev) => [...prev, streamingMessage]);
+        setMessages((prev) => {
+          // Check if there's already a streaming assistant message (placeholder from handleSend)
+          const existingStreamingIdx = prev.findIndex(
+            (m) => m.role === "assistant" && m.isStreaming && m.content === ""
+          );
+          if (existingStreamingIdx >= 0) {
+            // Update the existing placeholder with the actual message ID
+            return prev.map((m, idx) =>
+              idx === existingStreamingIdx
+                ? { ...m, id: msg.messageId }
+                : m
+            );
+          }
+          // Fallback: create new streaming message if no placeholder exists
+          return [...prev, {
+            id: msg.messageId,
+            role: "assistant" as ChatRole,
+            content: "",
+            createdAt: nowIso(),
+            isStreaming: true,
+          }];
+        });
         // Don't clear activities here - they're already being populated from backend streaming
         // Activities will be cleared after response completes (in botMessageEnd handler)
         return;
@@ -2422,6 +2494,8 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
       // Handle streaming message end - finalize the streaming message with actions
       if (msg.type === "botMessageEnd" && msg.messageId) {
+        const incomingActions = Array.isArray(msg.actions) ? msg.actions : [];
+
         setMessages((prev) =>
           prev.map((m) =>
             m.id === msg.messageId
@@ -2430,7 +2504,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 content: msg.text || m.content,
                 isStreaming: false,
                 // Include actions from the streamed response
-                actions: Array.isArray(msg.actions) ? msg.actions : m.actions,
+                actions: incomingActions.length > 0 ? incomingActions : m.actions,
               }
               : m
           )
@@ -2448,16 +2522,79 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         lastLiveProgressRef.current = "";
         clearSendTimeout();
 
-        // Handle next_steps from the message
-        if (msg.next_steps && Array.isArray(msg.next_steps) && msg.next_steps.length > 0) {
-          setLastNextSteps(msg.next_steps);
+        // Generate task summary from activity files if no task.complete message was sent
+        // and there are activity files or actions to summarize
+        if (activityFiles.length > 0 || incomingActions.length > 0) {
+          const filesModified = activityFiles.filter(f => f.scope === 'unstaged' || f.scope === 'working').length;
+          const filesCreated = incomingActions.filter((a: any) => a.type === 'createFile').length;
+          const filesRead = activityEvents.filter(e => e.kind === 'read').length;
+
+          // Extract summary from the response text
+          const responseText = msg.text || '';
+          const summaryLines = responseText.split('\n').slice(0, 3).join(' ').substring(0, 200);
+
+          // Build file list
+          const filesList = activityFiles.map(f => ({
+            path: f.path,
+            action: (f.scope === 'working' ? 'modified' : 'modified') as 'created' | 'modified' | 'read',
+            additions: f.additions,
+            deletions: f.deletions,
+          }));
+
+          // Only set task summary if there were significant changes
+          if (filesModified > 0 || filesCreated > 0 || filesRead > 2) {
+            setTaskSummary({
+              filesRead,
+              filesModified,
+              filesCreated,
+              iterations: 1,
+              verificationPassed: null,
+              nextSteps: [],
+              summaryText: summaryLines || 'Task completed successfully.',
+              filesList: filesList.length > 0 ? filesList : undefined,
+            });
+          }
         }
+
+        // AUTO-EXECUTE: If auto-execute mode is enabled, automatically approve and execute all actions
+        if (autoExecuteModeRef.current && incomingActions.length > 0) {
+          console.log('[NaviChatPanel] 🚀 Auto-executing', incomingActions.length, 'actions in Agent Full Access mode');
+
+          // Show activity notification
+          pushActivityEvent({
+            id: makeActivityId(),
+            kind: 'info',
+            label: 'Auto-executing actions',
+            detail: `Running ${incomingActions.length} action(s) automatically`,
+            status: 'running',
+            timestamp: nowIso(),
+          });
+
+          // Open activity panel to show live progress
+          if (activityPanelState && !activityPanelState.isVisible) {
+            console.log('[NaviChatPanel] Opening activity panel for auto-execution');
+            activityPanelState.setIsVisible(true);
+          }
+
+          // Execute each action sequentially with a small delay between them
+          setTimeout(() => {
+            incomingActions.forEach((action: any, idx: number) => {
+              setTimeout(() => {
+                console.log(`[NaviChatPanel] Auto-executing action ${idx + 1}/${incomingActions.length}:`, action.type);
+                handleApproveAction(incomingActions, idx);
+              }, idx * 200); // Stagger execution by 200ms
+            });
+          }, 500); // Initial delay of 500ms
+        }
+
         return;
       }
 
       // Handle router info from streaming endpoint (mode, model, task type)
       if (msg.type === "navi.router.info") {
         const { provider, model, mode, task_type, auto_execute } = msg;
+        const autoExecuteEnabled = auto_execute || false;
+
         setLastRouterInfo({
           source: "auto",
           provider: provider || "openai",
@@ -2465,8 +2602,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           modelName: model || "auto",
           taskType: task_type || "code_generation",
           mode: mode || "agent",
-          autoExecute: auto_execute || false,
+          autoExecute: autoExecuteEnabled,
         });
+
+        // Store auto-execute state for action processing
+        autoExecuteModeRef.current = autoExecuteEnabled;
+
+        console.log('[NaviChatPanel] 🤖 Auto-execute mode:', autoExecuteEnabled);
         return;
       }
 
@@ -2476,6 +2618,38 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         if (Array.isArray(nextSteps) && nextSteps.length > 0) {
           console.log('[NaviChatPanel] 📋 Next steps received:', nextSteps);
           setLastNextSteps(nextSteps);
+        }
+        return;
+      }
+
+      // Handle task completion with summary
+      if (msg.type === "navi.task.complete") {
+        const summary = msg.summary || msg;
+        console.log('[NaviChatPanel] ✅ Task complete received:', summary);
+
+        // Build file list from activity files
+        const filesList = activityFiles.map(f => ({
+          path: f.path,
+          action: (f.status === 'done' ? 'modified' : 'modified') as 'created' | 'modified' | 'read',
+          additions: f.additions,
+          deletions: f.deletions,
+        }));
+
+        setTaskSummary({
+          filesRead: summary.files_read || 0,
+          filesModified: summary.files_modified || filesList.filter(f => f.action === 'modified').length,
+          filesCreated: summary.files_created || filesList.filter(f => f.action === 'created').length,
+          iterations: summary.iterations || 1,
+          verificationPassed: summary.verification_passed ?? null,
+          nextSteps: Array.isArray(summary.next_steps) ? summary.next_steps : [],
+          summaryText: summary.summary_text || summary.message,
+          filesList: filesList.length > 0 ? filesList : undefined,
+          verificationDetails: summary.verification_details,
+        });
+
+        // Also update next steps if provided
+        if (Array.isArray(summary.next_steps) && summary.next_steps.length > 0) {
+          setLastNextSteps(summary.next_steps);
         }
         return;
       }
@@ -2525,6 +2699,19 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const actionIndex = typeof msg.actionIndex === 'number' ? msg.actionIndex : currentActionIndexRef.current;
         console.log('[NaviChatPanel] 💬 Narrative received:', narrativeText.substring(0, 100), 'for action:', actionIndex);
 
+        // Add to the live narrative stream (Claude Code-like display)
+        if (narrativeText) {
+          setNarrativeLines((prev) => [
+            ...prev,
+            {
+              id: makeActivityId(),
+              text: narrativeText,
+              timestamp: nowIso(),
+            },
+          ]);
+        }
+
+        // Also add to per-action narratives if we have an action context
         if (narrativeText && actionIndex !== null) {
           setPerActionNarratives((prev) => {
             const next = new Map(prev);
@@ -2605,10 +2792,12 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const entry = commandStateRef.current.get(msg.commandId);
         if (!entry) return;
         const terminalId = String(msg.commandId);
+        const actionIndex = entry.meta?.actionIndex ?? null;
         const next = appendWithLimit(entry.output, String(msg.text), MAX_COMMAND_OUTPUT);
+        // CRITICAL: Update entry.output so it's available for self-healing!
         entry.output = next.text;
         entry.truncated = entry.truncated || next.truncated;
-        // Only update terminal entries, not chat messages
+        // Also update terminal entries for UI display
         setTerminalEntries((prev) =>
           prev.map((terminalEntry) => {
             if (terminalEntry.id !== terminalId) return terminalEntry;
@@ -2618,6 +2807,16 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
             };
           })
         );
+        // Track output by action index for inline display in NaviActionRunner
+        if (actionIndex !== null) {
+          setPerActionOutputs((prev) => {
+            const updated = new Map(prev);
+            updated.set(actionIndex, next.text);
+            return updated;
+          });
+        }
+        // IMPORTANT: Don't return early - we're updating entry which is a ref!
+        // But we can return since no other processing needed
         return;
       }
 
@@ -2625,6 +2824,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const entry = commandStateRef.current.get(msg.commandId);
         if (!entry) return;
         const terminalId = String(msg.commandId);
+        const actionIndex = entry.meta?.actionIndex ?? null;
         entry.status = "done";
         entry.exitCode =
           typeof msg.exitCode === "number" ? msg.exitCode : entry.exitCode;
@@ -2641,77 +2841,11 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           entry.output = next.text;
           entry.truncated = entry.truncated || next.truncated;
         }
-        // Only update terminal entries, not chat messages
-        setTerminalEntries((prev) =>
-          prev.map((terminalEntry) => {
-            if (terminalEntry.id !== terminalId) return terminalEntry;
-            return {
-              ...terminalEntry,
-              output: entry.output,
-              status: "done",
-              exitCode: entry.exitCode,
-              durationMs: entry.durationMs,
-            };
-          })
-        );
-        const activityId = commandActivityRef.current.get(msg.commandId);
-        const actionIndex = (entry as any).actionIndex ?? null;
-        if (activityId) {
-          setActivityEvents((prev) =>
-            prev.map((event) =>
-              event.id === activityId
-                ? {
-                  ...event,
-                  label: "Command finished",
-                  detail: entry.command,
-                  status: "done",
-                  timestamp: nowIso(),
-                }
-                : event
-            )
-          );
 
-          // Also update per-action activities for inline display
-          if (actionIndex !== null) {
-            setPerActionActivities((prev) => {
-              const next = new Map(prev);
-              const existing = next.get(actionIndex) || [];
-              const updatedActivities = existing.map((evt) =>
-                evt.id === activityId
-                  ? { ...evt, label: "Command finished", detail: entry.command, status: "done" as const, timestamp: nowIso() }
-                  : evt
-              );
-              next.set(actionIndex, updatedActivities);
-              return next;
-            });
-          }
-
-          commandActivityRef.current.delete(msg.commandId);
-        } else {
-          const newActivity: ActivityEvent = {
-            id: makeActivityId(),
-            kind: "command",
-            label: "Command finished",
-            detail: entry.command,
-            status: "done",
-            timestamp: nowIso(),
-          };
-          pushActivityEvent(newActivity);
-
-          // Also track in per-action activities
-          if (actionIndex !== null) {
-            setPerActionActivities((prev) => {
-              const next = new Map(prev);
-              const existing = next.get(actionIndex) || [];
-              next.set(actionIndex, [...existing, newActivity]);
-              return next;
-            });
-          }
-        }
-
-        // PHASE 2 FIX: Show error activity when command fails (non-zero exit code)
+        // CRITICAL FIX: Trigger self-healing when command fails (non-zero exit code)
+        // MUST happen AFTER we've added final stdout/stderr to entry.output!
         const exitCode = entry.exitCode;
-        if (exitCode !== undefined && exitCode !== 0 && entry.output) {
+        if (exitCode !== undefined && exitCode !== 0) {
           // Extract last few lines of output as error preview
           const outputLines = entry.output.trim().split('\n');
           const errorPreview = outputLines.slice(-5).join('\n'); // Last 5 lines
@@ -2733,6 +2867,38 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
               next.set(actionIndex, [...existing, errorActivity]);
               return next;
             });
+          }
+
+          // SELF-HEALING: Find the action that triggered this command and trigger autonomous debugging
+          if (actionIndex !== null) {
+            // Find the message with this action
+            const messageWithAction = [...messages].reverse().find(m =>
+              m.actions && Array.isArray(m.actions) && m.actions.length > actionIndex
+            );
+
+            if (messageWithAction && messageWithAction.actions) {
+              const action = messageWithAction.actions[actionIndex];
+              if (action && action.type === 'runCommand') {
+                console.log(`[NAVI] 🔧 Command failed with exit code ${exitCode}, triggering self-healing...`);
+                // Trigger self-healing with full command output
+                // Use entry.output (accumulated output) or msg data as fallback
+                // DEBUG: Log all available error sources
+                console.log(`[NAVI] 📋 DEBUG entry.output: "${entry.output?.substring(0, 200)}..." (${entry.output?.length || 0} chars)`);
+                console.log(`[NAVI] 📋 DEBUG msg.stdout: "${msg.stdout?.substring(0, 200)}..." (${msg.stdout?.length || 0} chars)`);
+                console.log(`[NAVI] 📋 DEBUG msg.stderr: "${msg.stderr?.substring(0, 200)}..." (${msg.stderr?.length || 0} chars)`);
+
+                // Combine ALL sources - entry.output may have streaming output, msg has final output
+                const combinedOutput = [
+                  entry.output || '',
+                  msg.stdout || '',
+                  msg.stderr || ''
+                ].filter(Boolean).join('\n').trim();
+
+                const errorOutput = combinedOutput || `Command '${action.command}' failed with exit code ${exitCode}. No detailed error output was captured.`;
+                console.log(`[NAVI] 📋 Final error context length: ${errorOutput.length} chars`);
+                triggerSelfHealing(action, errorOutput, exitCode);
+              }
+            }
           }
         }
 
@@ -3111,9 +3277,21 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         } else {
           // SELF-HEALING: Instead of just showing an error, automatically retry with error context
           const errorMsg = message || "Action execution failed";
-          const errorOutput = data?.output || data?.stderr || data?.stdout || "";
-          const exitCode = data?.exitCode;
+          // FIXED: Use top-level stdout/stderr/commandOutput from action.complete message
+          // These are sent by the extension when command execution fails
+          const errorOutput = msg.commandOutput || msg.stderr || msg.stdout || data?.output || data?.stderr || data?.stdout || "";
+          const exitCode = msg.exitCode ?? data?.exitCode;
           const commandDetail = action.command || action.filePath || action.description || "";
+
+          // DEBUG: Log available error context
+          console.log('[NaviChatPanel] 📋 action.complete error context:', {
+            'msg.commandOutput': msg.commandOutput?.substring(0, 100),
+            'msg.stdout': msg.stdout?.substring(0, 100),
+            'msg.stderr': msg.stderr?.substring(0, 100),
+            'msg.exitCode': msg.exitCode,
+            'data?.output': data?.output?.substring(0, 100),
+            'computed errorOutput length': errorOutput.length
+          });
 
           // CONSOLIDATE: Append error info to existing message instead of creating new bubble
           const errorSuffix = `\n\n---\n⚠️ **Action failed:** \`${commandDetail}\`\n${errorMsg}${exitCode !== undefined ? `\nExit code: ${exitCode}` : ''}`;
@@ -3221,93 +3399,32 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           // NOTE: Don't call scheduleActionSummaryFlush here - summary is flushed
           // only when ALL actions complete via NaviActionRunner.onAllComplete
 
-          // SELF-HEALING: Automatically retry until success or max retries reached
-          // This mimics Claude Code, Codex, and Cline behavior where agents auto-retry on failure
+          // SELF-HEALING: Check if this action should be retried or skipped due to dependency failure
           const actionSignature = `${action.type}:${action.command || action.filePath || ''}`;
+          const hasDependency = action.requiresPreviousSuccess;
 
-          // Check if this is the same action failing repeatedly or a new failure
-          if (lastFailedActionRef.current === actionSignature) {
-            selfHealingRetryCountRef.current += 1;
-          } else {
-            // New action failure - reset counter
-            selfHealingRetryCountRef.current = 1;
-            lastFailedActionRef.current = actionSignature;
-          }
+          // If this action requires previous success but previous failed, skip retry
+          if (hasDependency && lastFailedActionRef.current && lastFailedActionRef.current !== actionSignature) {
+            console.log('[NaviChatPanel] ⏭️ Skipping action due to previous failure:', actionSignature);
 
-          const currentRetry = selfHealingRetryCountRef.current;
-          const canRetry = currentRetry <= MAX_SELF_HEALING_RETRIES;
-
-          if (canRetry) {
-            const retryInfo = `(Attempt ${currentRetry}/${MAX_SELF_HEALING_RETRIES})`;
-            const selfHealingPrompt = action.type === "runCommand"
-              ? `The command \`${action.command}\` failed with exit code ${exitCode ?? 'unknown'}. ${retryInfo}\n\nError output:\n\`\`\`\n${errorOutput.substring(0, 1500)}\n\`\`\`\n\nPlease analyze this error and fix it. Try a DIFFERENT approach than before - the previous approach didn't work.`
-              : `The file operation on \`${action.filePath}\` failed: ${errorMsg} ${retryInfo}\n\nPlease analyze this error and fix it. Try a DIFFERENT approach than before.`;
-
-            // PHASE 4 FIX: Update existing retry activity in place instead of creating new ones
-            if (currentRetryActivityRef.current) {
-              // Update the existing retry activity
-              setActivityEvents((prev) =>
-                prev.map((evt) =>
-                  evt.id === currentRetryActivityRef.current
-                    ? { ...evt, label: `Self-healing ${retryInfo}`, timestamp: nowIso() }
-                    : evt
-                )
-              );
-            } else {
-              // Create new retry activity and track it
-              const retryActivityId = makeActivityId();
-              currentRetryActivityRef.current = retryActivityId;
-              pushActivityEvent({
-                id: retryActivityId,
-                kind: "info",
-                label: `Self-healing ${retryInfo}`,
-                detail: "Analyzing error and attempting fix",
-                status: "running",
-                timestamp: nowIso(),
-              });
-            }
-
-            showToast(`Action failed - NAVI will attempt to fix... ${retryInfo}`, "warning");
-
-            // Trigger follow-up request after a short delay
-            setTimeout(() => {
-              console.log(`[NAVI] 🔄 Self-healing: Retry ${currentRetry}/${MAX_SELF_HEALING_RETRIES}`);
-              handleSend(selfHealingPrompt);
-            }, 500);
-          } else {
-            // Max retries reached - give up and notify user
-            selfHealingRetryCountRef.current = 0;
-            lastFailedActionRef.current = null;
-            // PHASE 4: Clear the retry activity ref
-            currentRetryActivityRef.current = null;
-
-            // Append final failure message
-            const finalErrorSuffix = `\n\n🛑 **Self-healing exhausted** - NAVI tried ${MAX_SELF_HEALING_RETRIES} times but couldn't fix this automatically.\n\nPlease review the error and provide guidance on how to proceed.`;
-
+            // Show skip message
             setMessages((prev) => {
               const lastAssistantIndex = [...prev].reverse().findIndex(m => m.role === "assistant");
               if (lastAssistantIndex === -1) return prev;
-
               const actualIndex = prev.length - 1 - lastAssistantIndex;
               const updated = [...prev];
               updated[actualIndex] = {
                 ...updated[actualIndex],
-                content: updated[actualIndex].content + finalErrorSuffix,
+                content: updated[actualIndex].content + `\n\n⏭️ Skipped: \`${commandDetail}\` (requires previous command to succeed)`,
               };
               return updated;
             });
-
-            pushActivityEvent({
-              id: makeActivityId(),
-              kind: "error",
-              label: "Self-healing failed",
-              detail: `Gave up after ${MAX_SELF_HEALING_RETRIES} attempts`,
-              status: "error",
-              timestamp: nowIso(),
-            });
-
-            showToast(`Self-healing failed after ${MAX_SELF_HEALING_RETRIES} attempts. Manual intervention needed.`, "error");
+            return;
           }
+
+          // Trigger self-healing retry with proper error context
+          const fullErrorOutput = errorOutput || data?.error || data?.message || '';
+          triggerSelfHealing(action, fullErrorOutput, exitCode, errorMsg);
         }
         return;
       }
@@ -3571,6 +3688,151 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
               timestamp: nowIso(),
             });
           }
+          return;
+        }
+
+        // Handle intent classification activity events
+        if (kind === 'intent') {
+          const label = data.label || 'Intent classified';
+          const detail = data.detail || '';
+          const status = data.status || 'done';
+
+          if (status === 'done') {
+            setActivityEvents((prev) => {
+              const existingIdx = prev.findIndex(
+                (evt) => evt.kind === 'intent' && evt.status === 'running'
+              );
+              if (existingIdx >= 0) {
+                const updated = [...prev];
+                updated[existingIdx] = { ...updated[existingIdx], status: 'done', detail };
+                return updated;
+              }
+              return [...prev, {
+                id: makeActivityId(),
+                kind: "intent" as const,
+                label,
+                detail,
+                status: "done" as const,
+                timestamp: nowIso(),
+              }];
+            });
+          } else {
+            pushActivityEvent({
+              id: makeActivityId(),
+              kind: "intent",
+              label,
+              detail,
+              status: "running",
+              timestamp: nowIso(),
+            });
+          }
+          return;
+        }
+
+        // Handle detection activity events (project type detection, etc.)
+        if (kind === 'detection') {
+          const label = data.label || 'Detecting';
+          const detail = data.detail || '';
+          const status = data.status || 'done';
+
+          if (status === 'done') {
+            setActivityEvents((prev) => {
+              const existingIdx = prev.findIndex(
+                (evt) => evt.kind === 'detection' && evt.status === 'running'
+              );
+              if (existingIdx >= 0) {
+                const updated = [...prev];
+                updated[existingIdx] = { ...updated[existingIdx], status: 'done', detail, label };
+                return updated;
+              }
+              return [...prev, {
+                id: makeActivityId(),
+                kind: "detection" as const,
+                label,
+                detail,
+                status: "done" as const,
+                timestamp: nowIso(),
+              }];
+            });
+          } else {
+            pushActivityEvent({
+              id: makeActivityId(),
+              kind: "detection",
+              label,
+              detail,
+              status: "running",
+              timestamp: nowIso(),
+            });
+          }
+          return;
+        }
+
+        // Handle command execution activity events (from run_command tool)
+        if (kind === 'command') {
+          const label = data.label || 'Running command';
+          const detail = data.detail || data.command || '';
+          const status = data.status || 'running';
+
+          if (status === 'done') {
+            setActivityEvents((prev) => {
+              const existingIdx = prev.findIndex(
+                (evt) => evt.kind === 'command' && evt.status === 'running' && (data.toolId ? (evt as any).toolId === data.toolId : evt.detail === detail)
+              );
+              if (existingIdx >= 0) {
+                const updated = [...prev];
+                updated[existingIdx] = { ...updated[existingIdx], status: 'done', detail };
+                return updated;
+              }
+              return [...prev, {
+                id: makeActivityId(),
+                kind: "command" as const,
+                label,
+                detail,
+                status: "done" as const,
+                timestamp: nowIso(),
+              }];
+            });
+          } else {
+            pushActivityEvent({
+              id: makeActivityId(),
+              kind: "command",
+              label,
+              detail,
+              status: "running",
+              timestamp: nowIso(),
+              ...(data.toolId ? { toolId: data.toolId } : {}),
+            } as any);
+          }
+          return;
+        }
+
+        // Handle tool_result events (completion of any tool call)
+        if (kind === 'tool_result') {
+          const result = data.result || {};
+          const toolId = data.toolId;
+          const success = result.success !== false;
+          const errorMsg = result.error || result.stderr;
+
+          // Update the corresponding running activity to done
+          setActivityEvents((prev) => {
+            // Find the running activity with matching toolId
+            const existingIdx = prev.findIndex(
+              (evt) => evt.status === 'running' && (evt as any).toolId === toolId
+            );
+            if (existingIdx >= 0) {
+              const updated = [...prev];
+              const existing = updated[existingIdx];
+              updated[existingIdx] = {
+                ...existing,
+                status: success ? 'done' : 'error',
+                detail: success
+                  ? (result.stdout ? `✓ ${result.stdout.substring(0, 100)}${result.stdout.length > 100 ? '...' : ''}` : existing.detail)
+                  : (errorMsg ? `✗ ${errorMsg.substring(0, 100)}` : 'Failed'),
+              };
+              return updated;
+            }
+            return prev;
+          });
           return;
         }
 
@@ -3843,17 +4105,88 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         // GENERIC HANDLER: Handle all other activity types from backend
         // This includes: detection, context, prompt, llm_call, thinking, parsing, validation, rag, response
         // These are informational activities showing what NAVI is doing
+
+        // SKIP llm_call activities BUT show streaming status for LLM calls
+        // Use a single unified activity ID for both llm_call and thinking
+        const unifiedThinkingId = 'llm-thinking-unified';
+
+        if (kind === 'llm_call') {
+          // Show live LLM activity without clutter
+          if (data.status === 'running') {
+            setIsAnalyzing(true);
+            // Create/update the unified thinking activity
+            setActivityEvents((prev) => {
+              const existing = prev.find(e => e.id === unifiedThinkingId);
+              if (existing) {
+                return prev.map(e => e.id === unifiedThinkingId
+                  ? { ...e, detail: data.detail || 'Processing with AI...', timestamp: nowIso() }
+                  : e);
+              }
+              return [...prev, {
+                id: unifiedThinkingId,
+                kind: 'thinking',
+                label: 'Thinking',
+                detail: data.detail || 'Processing with AI...',
+                status: 'running',
+                timestamp: nowIso(),
+              }];
+            });
+          } else if (data.status === 'done') {
+            setIsAnalyzing(false);
+            // Mark the unified thinking activity as complete
+            setActivityEvents(prev => prev.map(e =>
+              e.id === unifiedThinkingId ? { ...e, status: 'done', timestamp: nowIso() } : e
+            ));
+          }
+          return;
+        }
+
+        // Handle 'thinking' kind - update the SAME unified activity instead of creating a new one
+        // This prevents duplicate spinners
+        if (kind === 'thinking') {
+          if (data.status === 'running') {
+            setIsAnalyzing(true);
+            // Update the existing unified thinking activity
+            setActivityEvents((prev) => {
+              const existing = prev.find(e => e.id === unifiedThinkingId);
+              if (existing) {
+                // Just update the existing activity
+                return prev.map(e => e.id === unifiedThinkingId
+                  ? { ...e, label: 'Thinking', detail: data.detail || '', timestamp: nowIso() }
+                  : e);
+              }
+              // If no existing activity, create one
+              return [...prev, {
+                id: unifiedThinkingId,
+                kind: 'thinking',
+                label: 'Thinking',
+                detail: data.detail || '',
+                status: 'running',
+                timestamp: nowIso(),
+              }];
+            });
+          } else if (data.status === 'done') {
+            // Mark as done
+            setActivityEvents(prev => prev.map(e =>
+              e.id === unifiedThinkingId ? { ...e, status: 'done', detail: data.detail || 'Complete', timestamp: nowIso() } : e
+            ));
+          }
+          return;
+        }
+
         const label = data.label || kind || 'Processing';
         const detail = data.detail || '';
         const status = data.status || 'done';
 
         // Map backend activity kinds to display-friendly kinds
+        // IMPORTANT: Preserve 'detection' and 'intent' kinds for display filtering
         const displayKind = (() => {
-          if (kind === 'thinking' || kind === 'llm_call') return 'thinking';
-          if (kind === 'detection' || kind === 'context' || kind === 'prompt') return 'info';
+          if (kind === 'detection') return 'detection';
+          if (kind === 'intent') return 'intent';
+          if (kind === 'context' || kind === 'prompt') return 'context';
           if (kind === 'parsing' || kind === 'validation') return 'info';
-          if (kind === 'rag') return 'info';
-          if (kind === 'response') return 'info';
+          if (kind === 'rag') return 'rag';
+          if (kind === 'response') return 'response';
           return 'info';
         })();
 
@@ -3869,7 +4202,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
               return updated;
             }
             // No running activity found - only add done activities for important ones
-            if (kind === 'thinking' || kind === 'llm_call' || kind === 'rag') {
+            if (kind === 'thinking' || kind === 'rag') {
               return [...prev, {
                 id: makeActivityId(),
                 kind: displayKind as any,
@@ -4311,6 +4644,116 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     showToast("Request cancelled", "info");
   };
 
+  // Helper function to trigger self-healing retry logic
+  const triggerSelfHealing = (
+    action: AgentAction,
+    errorOutput: string,
+    exitCode?: number,
+    errorMsg?: string
+  ) => {
+    const actionSignature = `${action.type}-${action.command || action.filePath || ''}`;
+    const commandDetail = action.command || action.filePath || action.description || '';
+
+    // Check if this is the same action failing repeatedly or a new failure
+    if (lastFailedActionRef.current === actionSignature) {
+      selfHealingRetryCountRef.current += 1;
+    } else {
+      // New action failure - reset counter
+      selfHealingRetryCountRef.current = 1;
+      lastFailedActionRef.current = actionSignature;
+    }
+
+    const currentRetry = selfHealingRetryCountRef.current;
+    const canRetry = currentRetry <= MAX_SELF_HEALING_RETRIES;
+
+    if (canRetry) {
+      const retryInfo = `(Attempt ${currentRetry}/${MAX_SELF_HEALING_RETRIES})`;
+      // Capture error context with better fallbacks
+      const fullErrorOutput = errorOutput || errorMsg || 'No error output available';
+      let errorContext = fullErrorOutput.trim().substring(0, 2000);
+      if (!errorContext) {
+        errorContext = (errorMsg || 'No error output available').trim();
+      }
+
+      // Format exit code properly - only use 'unknown' if truly undefined/null
+      const exitCodeStr = (exitCode !== undefined && exitCode !== null)
+        ? String(exitCode)
+        : (fullErrorOutput.includes('exit code') ? 'non-zero' : '1');
+
+      const selfHealingPrompt = action.type === "runCommand"
+        ? `The command \`${action.command}\` failed with exit code ${exitCodeStr}. ${retryInfo}\n\nError output:\n\`\`\`\n${errorContext}\n\`\`\`\n\nPlease analyze this error and fix it. Try a DIFFERENT approach than before - the previous approach didn't work.`
+        : `The file operation on \`${action.filePath}\` failed: ${errorMsg} ${retryInfo}\n\nError output:\n\`\`\`\n${errorContext}\n\`\`\`\n\nPlease analyze this error and fix it. Try a DIFFERENT approach than before.`;
+
+      // Update existing retry activity in place instead of creating new ones
+      if (currentRetryActivityRef.current) {
+        setActivityEvents((prev) =>
+          prev.map((evt) =>
+            evt.id === currentRetryActivityRef.current
+              ? { ...evt, label: `Self-healing ${retryInfo}`, timestamp: nowIso() }
+              : evt
+          )
+        );
+      } else {
+        // Create new retry activity and track it
+        const retryActivityId = makeActivityId();
+        currentRetryActivityRef.current = retryActivityId;
+        pushActivityEvent({
+          id: retryActivityId,
+          kind: "info",
+          label: `Self-healing ${retryInfo}`,
+          detail: "Analyzing error and attempting fix",
+          status: "running",
+          timestamp: nowIso(),
+        });
+      }
+
+      // Debug: Show what we're sending to LLM
+      console.log(`[NAVI] 🔄 Self-healing: Retry ${currentRetry}/${MAX_SELF_HEALING_RETRIES}`);
+      console.log(`[NAVI] 📋 Error output length: ${fullErrorOutput.length} chars`);
+      console.log(`[NAVI] 📋 Error context (first 500 chars): ${errorContext.substring(0, 500)}`);
+      console.log(`[NAVI] 📋 Exit code: ${exitCodeStr}`);
+
+      showToast(`Action failed - NAVI will attempt to fix... ${retryInfo}`, "warning");
+
+      // Trigger follow-up request after a short delay
+      setTimeout(() => {
+        handleSend(selfHealingPrompt);
+      }, 500);
+    } else {
+      // Max retries reached - give up and notify user
+      selfHealingRetryCountRef.current = 0;
+      lastFailedActionRef.current = null;
+      currentRetryActivityRef.current = null;
+
+      // Append final failure message
+      const finalErrorSuffix = `\n\n🛑 **Self-healing exhausted** - NAVI tried ${MAX_SELF_HEALING_RETRIES} times but couldn't fix this automatically.\n\nPlease review the error and provide guidance on how to proceed.`;
+
+      setMessages((prev) => {
+        const lastAssistantIndex = [...prev].reverse().findIndex(m => m.role === "assistant");
+        if (lastAssistantIndex === -1) return prev;
+
+        const actualIndex = prev.length - 1 - lastAssistantIndex;
+        const updated = [...prev];
+        updated[actualIndex] = {
+          ...updated[actualIndex],
+          content: updated[actualIndex].content + finalErrorSuffix,
+        };
+        return updated;
+      });
+
+      pushActivityEvent({
+        id: makeActivityId(),
+        kind: "error",
+        label: "Self-healing failed",
+        detail: `Could not fix ${commandDetail} after ${MAX_SELF_HEALING_RETRIES} attempts`,
+        status: "error",
+        timestamp: nowIso(),
+      });
+
+      showToast(`Self-healing exhausted after ${MAX_SELF_HEALING_RETRIES} attempts`, "error");
+    }
+  };
+
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text) return;
@@ -4348,13 +4791,24 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       createdAt: nowIso(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    // Add user message and IMMEDIATE placeholder for assistant response
+    // This ensures "Thinking..." appears instantly, not after backend responds
+    const placeholderAssistantId = makeMessageId("assistant");
+    const placeholderAssistant: ChatMessage = {
+      id: placeholderAssistantId,
+      role: "assistant",
+      content: "",
+      createdAt: nowIso(),
+      isStreaming: true,  // Show streaming cursor immediately
+    };
+    setMessages((prev) => [...prev, userMessage, placeholderAssistant]);
     if (!overrideText) setInput("");
     setSending(true);
     setSendTimedOut(false);
     sentViaExtensionRef.current = false;
-    // Clear previous activities and next steps when starting a new request
+    // Clear previous activities, narratives, and next steps when starting a new request
     setLastNextSteps([]);
+    setNarrativeLines([]);
 
     // Reset self-healing counters for NEW user-initiated messages (not self-healing retries)
     // Self-healing prompts contain specific patterns we can detect
@@ -4841,6 +5295,12 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
   };
 
   const handleEditMessage = (msg: ChatMessage) => {
+    // Find the index of the message being edited
+    const msgIndex = messages.findIndex((m) => m.id === msg.id);
+    if (msgIndex !== -1) {
+      // Remove all messages after the edited message (including responses below)
+      setMessages((prev) => prev.slice(0, msgIndex));
+    }
     setInput(msg.content);
     setTimeout(() => inputRef.current?.focus(), 10);
   };
@@ -4851,6 +5311,62 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
 
   const handleRedoMessage = (msg: ChatMessage) => {
     void handleSend(msg.content);
+  };
+
+  // Track liked/disliked messages
+  const [likedMessages, setLikedMessages] = useState<Set<string>>(new Set());
+  const [dislikedMessages, setDislikedMessages] = useState<Set<string>>(new Set());
+
+  const handleLikeMessage = (msg: ChatMessage) => {
+    setLikedMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(msg.id)) {
+        next.delete(msg.id);
+      } else {
+        next.add(msg.id);
+        // Remove from disliked if it was there
+        setDislikedMessages((d) => {
+          const nd = new Set(d);
+          nd.delete(msg.id);
+          return nd;
+        });
+      }
+      return next;
+    });
+    // Send feedback to backend
+    vscodeApi.postMessage({
+      type: "feedback",
+      messageId: msg.id,
+      feedback: "like",
+      content: msg.content,
+    });
+    showToast("Thanks for the feedback!", "info");
+  };
+
+  const handleDislikeMessage = (msg: ChatMessage) => {
+    setDislikedMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(msg.id)) {
+        next.delete(msg.id);
+      } else {
+        next.add(msg.id);
+        // Remove from liked if it was there
+        setLikedMessages((l) => {
+          const nl = new Set(l);
+          nl.delete(msg.id);
+          return nl;
+        });
+      }
+      return next;
+    });
+    // Send feedback to backend
+    vscodeApi.postMessage({
+      type: "feedback",
+      messageId: msg.id,
+      feedback: "dislike",
+      content: msg.content,
+    });
+    showToast("Thanks for the feedback! We'll improve.", "info");
   };
 
   const clearCoverageGate = () => {
@@ -5010,10 +5526,12 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     setActivityEvents([]);
     setActivityFiles([]);
     setExpandedActivityFiles(new Set());
+    setNarrativeLines([]); // Clear narrative stream
     setActivityFilesOpen(false);
     setActivityOpen(true);
     setPerActionActivities(new Map());
     setPerActionNarratives(new Map());
+    setPerActionOutputs(new Map());
     currentActionIndexRef.current = null;
   };
 
@@ -5087,6 +5605,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     }
 
     console.log('[NAVI] Posting agent.applyAction message to extension');
+
+    // Open activity panel to show live progress
+    if (activityPanelState && !activityPanelState.isVisible) {
+      console.log('[NAVI] Auto-opening activity panel for action execution');
+      activityPanelState.setIsVisible(true);
+    }
+
     vscodeApi.postMessage({
       type: "agent.applyAction",
       decision: "approve",
@@ -5262,6 +5787,41 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
       return blocks;
     };
 
+    // Make URLs and file paths clickable
+    const makeLinksClickable = (html: string): string => {
+      // URL pattern - matches http/https links
+      // Stop at common sentence-ending punctuation when followed by space/end
+      const urlPattern = /(https?:\/\/[^\s<>"'\[\]]+)/g;
+      let result = html.replace(urlPattern, (url) => {
+        // Remove trailing punctuation that's likely sentence-ending (but keep port numbers like :3000)
+        let cleanUrl = url;
+        // Only strip trailing period/comma if it's at the very end (likely punctuation, not part of URL)
+        if (/[.,;:!?]$/.test(cleanUrl) && !/:\d+[.,;:!?]?$/.test(cleanUrl)) {
+          cleanUrl = cleanUrl.replace(/[.,;:!?]+$/, '');
+        }
+        return `<a href="${cleanUrl}" class="navi-link navi-link--url" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>`;
+      });
+
+      // File path pattern - VERY restrictive to avoid false positives
+      // Only match paths that:
+      // 1. Start with / (absolute path like /Users/foo/bar.txt)
+      // 2. Start with ./ or ../ (relative path like ./src/file.ts)
+      // 3. Have directory structure with common code directories (src/, lib/, components/, etc.)
+      // Do NOT match: Next.js, server.The, fresh.I've, Node.js, etc.
+      const filePathPattern = /(?:^|[\s(])((\/[\w\-.]+)+\.\w+|(\.\.?\/[\w\-./]+\.\w+)|((?:src|lib|components|pages|app|backend|frontend|extensions|webview|utils|services|api|hooks|types)\/[\w\-./]+\.\w+))(?::(\d+))?(?=[\s),.:;!?]|$)/g;
+      result = result.replace(filePathPattern, (match, fullPath, _p1, _p2, _p3, lineNum) => {
+        // Preserve leading whitespace/punctuation
+        const leadingMatch = match.match(/^[\s(]/) || [''];
+        const leading = leadingMatch[0];
+        const pathPart = match.slice(leading.length);
+        const pathWithoutLine = pathPart.replace(/:(\d+)$/, '');
+        const dataLine = lineNum ? ` data-line="${lineNum}"` : '';
+        return `${leading}<a href="#" class="navi-link navi-link--file" data-file-path="${pathWithoutLine}"${dataLine}>${pathPart}</a>`;
+      });
+
+      return result;
+    };
+
     // Render a text block with markdown-like formatting
     const renderTextBlock = (text: string, keyPrefix: string) => {
       const lines = text.split("\n");
@@ -5284,11 +5844,13 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
         const formattedLine = line.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         // Handle inline code
         const withCode = formattedLine.replace(/`([^`]+)`/g, '<code class="navi-inline-code">$1</code>');
+        // Make URLs and file paths clickable
+        const withLinks = makeLinksClickable(withCode);
         // Empty lines become spacing
         if (line.trim() === '') {
           return <br key={`${keyPrefix}-${idx}`} />;
         }
-        return <p key={`${keyPrefix}-${idx}`} dangerouslySetInnerHTML={{ __html: withCode }} />;
+        return <p key={`${keyPrefix}-${idx}`} dangerouslySetInnerHTML={{ __html: withLinks }} />;
       });
     };
 
@@ -5370,10 +5932,12 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
     setActivityEvents([]);
     setActivityFiles([]);
     setExpandedActivityFiles(new Set());
+    setNarrativeLines([]); // Clear narrative stream
     setActivityOpen(true);
     setActivityFilesOpen(false);
     setPerActionActivities(new Map());
     setPerActionNarratives(new Map());
+    setPerActionOutputs(new Map());
     setRepoSummary(null);
     setDiffDetails([]);
     setChangeDetailsOpen(false);
@@ -6568,8 +7132,10 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           const actionSource = Array.isArray(m.actions) ? m.actions : [];
           const showActivities = shouldShowActivitiesForMessage(m.id);
 
-          // Don't render empty streaming messages - wait for content
-          if (m.isStreaming && (!m.content || m.content.trim() === "")) {
+          // For streaming messages with no content yet, still render if we have activities
+          // This prevents the "double bubble" issue where activities show in a separate bubble
+          const hasActivitiesToShow = activityEvents.length > 0;
+          if (m.isStreaming && (!m.content || m.content.trim() === "") && !hasActivitiesToShow) {
             return null;
           }
 
@@ -6587,38 +7153,58 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 className={`navi-chat-bubble navi-chat-bubble--${m.role}`}
                 data-testid={m.role === "assistant" ? "ai-response" : undefined}
               >
-                {/* PRE-RESPONSE ACTIVITIES: ONLY "Thinking" shown ABOVE the response */}
-                {m.role === "assistant" && showActivities && (
-                  (() => {
-                    // Only show "Thinking..." activity above the response - nothing else
-                    const thinkingActivities = [...activityEvents]
-                      .filter((evt) => evt.kind === 'thinking')
-                      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-                    if (thinkingActivities.length === 0) return null;
-
-                    return (
-                      <div className="navi-inline-activities-section">
-                        {thinkingActivities.map((evt) => (
+                {/* INLINE ACTIVITIES: Show file read activities ABOVE the response while streaming */}
+                {/* This replaces the separate "Live activity stream" bubble to avoid double-bubble issue */}
+                {m.role === "assistant" && m.isStreaming && activityEvents.length > 0 && (
+                  <div className="navi-inline-activities-section">
+                    {activityEvents
+                      .filter((evt) => evt.kind === 'read' || evt.kind === 'edit' || evt.kind === 'create' || evt.kind === 'detection' || evt.kind === 'intent' || evt.kind === 'context' || evt.kind === 'rag' || evt.kind === 'info' || evt.kind === 'command')
+                      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                      .map((evt) => {
+                        const getActivityDisplay = () => {
+                          switch (evt.kind) {
+                            case 'intent':
+                              return { icon: '🎯', label: evt.label || 'Intent', detail: evt.detail };
+                            case 'detection':
+                              return { icon: '🔍', label: evt.label || 'Detected', detail: evt.detail };
+                            case 'context':
+                              return { icon: '📋', label: evt.label || 'Context', detail: evt.detail };
+                            case 'rag':
+                              return { icon: '🔎', label: evt.label || 'Search', detail: evt.detail };
+                            case 'read':
+                              return { icon: '📄', label: 'Read', detail: evt.detail, isFile: true };
+                            case 'edit':
+                              return { icon: '✏️', label: 'Edit', detail: evt.detail, isFile: true };
+                            case 'create':
+                              return { icon: '📝', label: 'Create', detail: evt.detail, isFile: true };
+                            case 'info':
+                              return { icon: '💡', label: evt.label || 'Info', detail: evt.detail };
+                            case 'command':
+                              return { icon: '⚡', label: evt.label || 'Run Command', detail: evt.detail, isCommand: true };
+                            default:
+                              return { icon: '●', label: evt.label || evt.kind, detail: evt.detail };
+                          }
+                        };
+                        const display = getActivityDisplay();
+                        return (
                           <div
                             key={evt.id}
-                            className={`navi-inline-activity navi-inline-activity--${evt.status} navi-inline-activity--thinking`}
+                            className={`navi-activity-item navi-activity-item--${evt.status} ${display.isFile ? 'navi-activity-item--file' : ''} ${(display as any).isCommand ? 'navi-activity-item--command' : ''}`}
                           >
-                            {evt.status === "running" ? (
-                              <div className="navi-activity-spinner-sm"></div>
-                            ) : evt.status === "done" ? (
-                              <span className="navi-inline-activity-check">✓</span>
-                            ) : (
-                              <span className="navi-inline-activity-error">✗</span>
+                            <span className="navi-activity-item-icon">{display.icon}</span>
+                            <span className="navi-activity-item-label">{display.label}</span>
+                            {display.detail && (
+                              <span className={`navi-activity-item-detail ${display.isFile ? 'navi-activity-item-detail--file' : ''}`}>
+                                {display.detail}
+                              </span>
                             )}
-                            <span className="navi-inline-activity-text">
-                              <span className="navi-inline-activity-label">{evt.label}</span>
-                            </span>
+                            {evt.status === "running" && (
+                              <div className="navi-activity-spinner-sm navi-activity-item-spinner"></div>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    );
-                  })()
+                        );
+                      })}
+                  </div>
                 )}
 
                 {/* RESPONSE TEXT */}
@@ -6660,16 +7246,18 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                       // Clear per-action activities after all complete
                       setPerActionActivities(new Map());
                       setPerActionNarratives(new Map());
+                      setPerActionOutputs(new Map());
                     }}
                     actionActivities={perActionActivities}
                     narratives={perActionNarratives}
+                    commandOutputs={perActionOutputs}
                   />
                 )}
 
-                {/* FILE ACTIVITIES ONLY: Show only file operations below response (read, edit, create) */}
-                {/* Info activities (Thinking, Calling OpenAI, Building context) are NOT shown below response */}
-                {/* PHASE 3: Consolidated activities to reduce clutter */}
-                {m.role === "assistant" && showActivities && actionSource.length === 0 && (
+                {/* FILE ACTIVITIES: Show as collapsed summary below response */}
+                {/* Only show if NOT currently streaming (activities shown inline during streaming) */}
+                {/* This prevents duplicates - inline during streaming, summary after completion */}
+                {m.role === "assistant" && showActivities && actionSource.length === 0 && !sending && (
                   (() => {
                     // ONLY show file-related activities below response
                     // Filter OUT: thinking, info, command, analysis, context, detection, prompt, llm_call, parsing, validation
@@ -6872,6 +7460,28 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 {/* Only show action buttons when message is complete (not streaming) */}
                 {!m.isStreaming && (
                   <div className="navi-chat-bubble-actions">
+                    {/* Like/Dislike for assistant messages */}
+                    {m.role === "assistant" && (
+                      <>
+                        <button
+                          type="button"
+                          className={`navi-icon-btn ${likedMessages.has(m.id) ? 'navi-icon-btn--active navi-icon-btn--liked' : ''}`}
+                          title="Good response"
+                          onClick={() => handleLikeMessage(m)}
+                        >
+                          <ThumbsUp className="h-3.5 w-3.5 navi-icon-3d" />
+                        </button>
+                        <button
+                          type="button"
+                          className={`navi-icon-btn ${dislikedMessages.has(m.id) ? 'navi-icon-btn--active navi-icon-btn--disliked' : ''}`}
+                          title="Poor response"
+                          onClick={() => handleDislikeMessage(m)}
+                        >
+                          <ThumbsDown className="h-3.5 w-3.5 navi-icon-3d" />
+                        </button>
+                        <div className="navi-icon-btn-separator" />
+                      </>
+                    )}
                     <button
                       type="button"
                       className="navi-icon-btn"
@@ -6884,7 +7494,7 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                       <button
                         type="button"
                         className="navi-icon-btn"
-                        title="Edit"
+                        title="Edit and regenerate (removes responses below)"
                         onClick={() => handleEditMessage(m)}
                       >
                         <Pencil className="h-3.5 w-3.5 navi-icon-3d" />
@@ -6898,14 +7508,16 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                     >
                       <RotateCcw className="h-3.5 w-3.5 navi-icon-3d" />
                     </button>
-                    <button
-                      type="button"
-                      className="navi-icon-btn"
-                      title="Redo (resend this message)"
-                      onClick={() => handleRedoMessage(m)}
-                    >
-                      <RotateCw className="h-3.5 w-3.5 navi-icon-3d" />
-                    </button>
+                    {m.role === "user" && (
+                      <button
+                        type="button"
+                        className="navi-icon-btn"
+                        title="Regenerate response"
+                        onClick={() => handleRedoMessage(m)}
+                      >
+                        <RotateCw className="h-3.5 w-3.5 navi-icon-3d" />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -6913,36 +7525,103 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
           );
         })}
 
-        {/* Live activity stream - show "Thinking..." while waiting for assistant response
-            This provides IMMEDIATE feedback when user sends a message.
-            Show when: sending=true, we have thinking activities, and no assistant message has arrived yet for this exchange */}
-        {sending && activityEvents.some(evt => evt.kind === 'thinking' && evt.status === 'running') && (
+        {/* Live activity stream - DISABLED: Activities now show inside the streaming message bubble
+            This was causing "double bubble" issue - one bubble for activities, one for response.
+            Activities are now rendered inside the message bubble (see PRE-RESPONSE ACTIVITIES section above).
+            Only show this if there's NO streaming message (edge case fallback) */}
+        {sending && !messages.some(m => m.isStreaming) && (activityEvents.some(evt => evt.status === 'running') || narrativeLines.length > 0) && (
           <div className="navi-chat-bubble-row navi-chat-bubble-row--assistant">
             <div className="navi-chat-avatar navi-chat-avatar--assistant">
               <Zap className="h-4 w-4 navi-icon-3d" />
             </div>
             <div className="navi-chat-bubble navi-chat-bubble--assistant">
               <div className="navi-inline-activities-section">
-                {[...activityEvents]
-                  .filter((evt) => evt.kind === 'thinking') // Only show thinking in live stream
-                  .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                  .map((evt) => (
-                    <div
-                      key={evt.id}
-                      className={`navi-inline-activity navi-inline-activity--${evt.status} navi-inline-activity--thinking`}
-                    >
-                      {evt.status === "running" ? (
-                        <div className="navi-activity-spinner-sm"></div>
-                      ) : evt.status === "done" ? (
-                        <span className="navi-inline-activity-check">✓</span>
-                      ) : (
-                        <span className="navi-inline-activity-error">✗</span>
-                      )}
-                      <span className="navi-inline-activity-text">
-                        <span className="navi-inline-activity-label">{evt.label}</span>
-                      </span>
-                    </div>
-                  ))}
+                {/* Claude Code-style stream - interleave narratives and activities by timestamp */}
+                {(() => {
+                  // Combine narratives and activities into a single sorted stream
+                  type StreamItem =
+                    | { type: 'narrative'; id: string; text: string; timestamp: string }
+                    | { type: 'activity'; data: typeof activityEvents[0] };
+
+                  const allItems: StreamItem[] = [
+                    ...narrativeLines.map(n => ({ type: 'narrative' as const, ...n })),
+                    ...activityEvents.map(a => ({ type: 'activity' as const, data: a })),
+                  ];
+
+                  // Sort by timestamp to maintain order
+                  allItems.sort((a, b) => {
+                    const timeA = a.type === 'narrative' ? a.timestamp : a.data.timestamp;
+                    const timeB = b.type === 'narrative' ? b.timestamp : b.data.timestamp;
+                    return new Date(timeA).getTime() - new Date(timeB).getTime();
+                  });
+
+                  return allItems.map((item, idx) => {
+                    if (item.type === 'narrative') {
+                      // Render narrative text (Claude Code conversational style)
+                      return (
+                        <div key={item.id} className="navi-narrative-line">
+                          {item.text}
+                        </div>
+                      );
+                    }
+
+                    // Render activity item
+                    const evt = item.data;
+                    const getActivityDisplay = () => {
+                      switch (evt.kind) {
+                        case 'detection':
+                          return { icon: '🔍', label: 'Detected', detail: evt.detail };
+                        case 'context':
+                          return { icon: '📋', label: evt.label, detail: evt.detail };
+                        case 'rag':
+                          return { icon: '🔎', label: 'Search', detail: evt.detail };
+                        case 'read':
+                          return { icon: '📄', label: 'Read', detail: evt.detail, isFile: true };
+                        case 'edit':
+                          return { icon: '✏️', label: 'Edit', detail: evt.detail, isFile: true };
+                        case 'create':
+                          return { icon: '📝', label: 'Create', detail: evt.detail, isFile: true };
+                        case 'prompt':
+                          return null;
+                        case 'llm_call':
+                          return null;
+                        case 'thinking':
+                          return { icon: '💡', label: 'Thinking', detail: null };
+                        case 'response':
+                          return { icon: '📝', label: evt.label, detail: evt.detail };
+                        case 'command':
+                          return { icon: '⚡', label: 'Run', detail: evt.detail, isCommand: true };
+                        case 'validation':
+                          return { icon: '✅', label: evt.label, detail: evt.detail };
+                        case 'parsing':
+                          return null;
+                        default:
+                          return { icon: '●', label: evt.label || evt.kind, detail: evt.detail };
+                      }
+                    };
+
+                    const display = getActivityDisplay();
+                    if (!display) return null;
+
+                    return (
+                      <div
+                        key={evt.id}
+                        className={`navi-activity-item navi-activity-item--${evt.status} ${display.isFile ? 'navi-activity-item--file' : ''} ${display.isCommand ? 'navi-activity-item--command' : ''}`}
+                      >
+                        <span className="navi-activity-item-icon">{display.icon}</span>
+                        <span className="navi-activity-item-label">{display.label}</span>
+                        {display.detail && (
+                          <span className={`navi-activity-item-detail ${display.isFile ? 'navi-activity-item-detail--file' : ''}`}>
+                            {display.detail}
+                          </span>
+                        )}
+                        {evt.status === "running" && (
+                          <div className="navi-activity-spinner-sm navi-activity-item-spinner"></div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
           </div>
@@ -7125,6 +7804,180 @@ export default function NaviChatPanel({ activityPanelState }: NaviChatPanelProps
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Task Complete Panel - shows after task finishes */}
+        {!sending && taskSummary && (
+          <div className="navi-task-complete-panel">
+            <div className="navi-task-complete-header">
+              <div className="navi-task-complete-title">
+                <CheckCircle className="h-4 w-4 text-green-400" />
+                <span>Task Complete</span>
+              </div>
+              <button
+                type="button"
+                className="navi-task-complete-close"
+                onClick={() => setTaskSummary(null)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Summary text */}
+            {taskSummary.summaryText && (
+              <div className="navi-task-complete-summary">
+                {taskSummary.summaryText}
+              </div>
+            )}
+
+            {/* Files changed section */}
+            {(taskSummary.filesModified > 0 || taskSummary.filesCreated > 0) && (
+              <div className="navi-task-complete-files">
+                <button
+                  type="button"
+                  className="navi-task-complete-files-header"
+                  onClick={() => setTaskFilesExpanded((prev) => !prev)}
+                >
+                  {taskFilesExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  )}
+                  <span>FILES CHANGED</span>
+                  <span className="navi-task-complete-files-count">
+                    {(taskSummary.filesModified || 0) + (taskSummary.filesCreated || 0)}
+                  </span>
+                </button>
+                {taskFilesExpanded && taskSummary.filesList && (
+                  <div className="navi-task-complete-files-list">
+                    {taskSummary.filesList.map((file) => (
+                      <div
+                        key={file.path}
+                        className="navi-task-complete-file-item"
+                        onClick={() => handleOpenActivityDiff({ path: file.path, scope: 'working' })}
+                      >
+                        <span className="navi-task-complete-file-icon">
+                          {file.action === 'created' ? '+' : '~'}
+                        </span>
+                        <span className="navi-task-complete-file-path">
+                          {toWorkspaceRelativePath(file.path)}
+                        </span>
+                        {(file.additions !== undefined || file.deletions !== undefined) && (
+                          <span className="navi-task-complete-file-stats">
+                            {file.additions !== undefined && (
+                              <span className="navi-files-add">+{file.additions}</span>
+                            )}
+                            {file.deletions !== undefined && (
+                              <span className="navi-files-del">-{file.deletions}</span>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Verification status */}
+            {taskSummary.verificationPassed !== null && (
+              <div className="navi-task-complete-verification">
+                <span className="navi-task-complete-verification-label">VERIFICATION</span>
+                <div className="navi-task-complete-verification-badges">
+                  {taskSummary.verificationDetails?.typecheck !== undefined && (
+                    <span className={`navi-verification-badge ${taskSummary.verificationDetails.typecheck.passed ? 'navi-verification-badge--passed' : 'navi-verification-badge--failed'}`}>
+                      {taskSummary.verificationDetails.typecheck.passed ? '✓' : '✗'} TypeScript
+                    </span>
+                  )}
+                  {taskSummary.verificationDetails?.lint !== undefined && (
+                    <span className={`navi-verification-badge ${taskSummary.verificationDetails.lint.passed ? 'navi-verification-badge--passed' : 'navi-verification-badge--failed'}`}>
+                      {taskSummary.verificationDetails.lint.passed ? '✓' : '✗'} ESLint
+                    </span>
+                  )}
+                  {taskSummary.verificationDetails?.build !== undefined && (
+                    <span className={`navi-verification-badge ${taskSummary.verificationDetails.build.passed ? 'navi-verification-badge--passed' : 'navi-verification-badge--failed'}`}>
+                      {taskSummary.verificationDetails.build.passed ? '✓' : '✗'} Build
+                    </span>
+                  )}
+                  {taskSummary.verificationDetails?.tests !== undefined && (
+                    <span className={`navi-verification-badge ${taskSummary.verificationDetails.tests.passed ? 'navi-verification-badge--passed' : 'navi-verification-badge--failed'}`}>
+                      {taskSummary.verificationDetails.tests.passed ? '✓' : '✗'} Tests
+                    </span>
+                  )}
+                  {!taskSummary.verificationDetails && (
+                    <span className={`navi-verification-badge ${taskSummary.verificationPassed ? 'navi-verification-badge--passed' : 'navi-verification-badge--failed'}`}>
+                      {taskSummary.verificationPassed ? '✓ Passed' : '✗ Failed'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Review All Changes button */}
+            {(taskSummary.filesModified > 0 || taskSummary.filesCreated > 0) && taskSummary.filesList && (
+              <button
+                type="button"
+                className="navi-task-complete-review-btn"
+                onClick={() => {
+                  const files = taskSummary.filesList?.map(f => f.path) || [];
+                  vscodeApi.postMessage({ type: 'task.reviewAll', files });
+                }}
+              >
+                <Eye className="h-4 w-4" />
+                Review All Changes
+              </button>
+            )}
+
+            {/* Accept / Revert buttons */}
+            {(taskSummary.filesModified > 0 || taskSummary.filesCreated > 0) && (
+              <div className="navi-task-complete-actions">
+                <button
+                  type="button"
+                  className="navi-task-complete-accept-btn"
+                  onClick={() => {
+                    vscodeApi.postMessage({ type: 'task.accept' });
+                    setTaskSummary(null);
+                  }}
+                >
+                  <Check className="h-4 w-4" />
+                  Accept Changes
+                </button>
+                <button
+                  type="button"
+                  className="navi-task-complete-revert-btn"
+                  onClick={() => {
+                    vscodeApi.postMessage({ type: 'task.revert' });
+                    setTaskSummary(null);
+                  }}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Revert All
+                </button>
+              </div>
+            )}
+
+            {/* Next steps suggestions */}
+            {taskSummary.nextSteps.length > 0 && (
+              <div className="navi-task-complete-next">
+                <span className="navi-task-complete-next-label">SUGGESTED NEXT</span>
+                <div className="navi-task-complete-next-btns">
+                  {taskSummary.nextSteps.slice(0, 3).map((step, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className="navi-task-complete-next-btn"
+                      onClick={() => {
+                        setInput(step);
+                        inputRef.current?.focus();
+                      }}
+                    >
+                      {step}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

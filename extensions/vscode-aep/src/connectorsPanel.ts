@@ -49,7 +49,7 @@ export class ConnectorsPanel {
         this._extensionUri = extensionUri;
 
         const config = vscode.workspace.getConfiguration("aep");
-        const naviBackendUrl = config.get<string>("navi.backendUrl") || "http://127.0.0.1:8787";
+        const naviBackendUrl = config.get<string>("navi.backendUrl") || "http://127.0.0.1:8000";
 
         // Extract the root URL by stripping /api/navi/chat from the NAVI backend URL
         this._backendBaseUrl = naviBackendUrl.replace(/\/api\/navi\/chat\/?$/, "");
@@ -1095,7 +1095,7 @@ export class ConnectorsPanel {
             ? (authToken.startsWith("Bearer ") ? authToken : "Bearer " + authToken)
             : "";
     const headers = authHeader ? { Authorization: authHeader } : {};
-    fetch("http://127.0.0.1:8787/api/connectors/marketplace/status", { headers })
+    fetch("http://127.0.0.1:8000/api/connectors/marketplace/status", { headers })
       .then(r => {
         console.log("[AEP] Immediate fetch test - status:", r.status);
         return r.json();

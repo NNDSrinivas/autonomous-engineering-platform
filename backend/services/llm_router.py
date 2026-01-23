@@ -58,6 +58,7 @@ class LLMRouter:
             LLMResponse with generated text and metadata
         """
         try:
+            resolved_max_tokens = max_tokens if max_tokens is not None else 4096
             response = await self._router.run(
                 prompt=prompt,
                 system_prompt=system_prompt,
@@ -65,7 +66,7 @@ class LLMRouter:
                 model=model,
                 provider=provider,
                 temperature=temperature,
-                max_tokens=max_tokens,
+                max_tokens=resolved_max_tokens,
             )
 
             return LLMResponse(
@@ -147,7 +148,7 @@ class LLMRouter:
         """Get list of available models."""
         return [
             "gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo",
-            "claude-sonnet-4-20250514", "claude-3.5-sonnet",
+            "claude-sonnet-4-20241022", "claude-3.5-sonnet",
             "gemini-1.5-pro", "gemini-1.5-flash"
         ]
 

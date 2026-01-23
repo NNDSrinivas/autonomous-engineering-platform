@@ -35,7 +35,8 @@ import random
 import asyncio
 import os
 from typing import Any, Dict, Optional, List
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import json
 
 try:
     import httpx
@@ -55,6 +56,27 @@ from .llm_cache import get_cache
 logger = logging.getLogger(__name__)
 
 # ======================================================================
+# Tool-Use Support
+# ======================================================================
+
+
+@dataclass
+class ToolCall:
+    """
+    Represents a tool call from the LLM.
+
+    This enables native tool-use support for agentic workflows,
+    matching the patterns used by Claude Code, Cline, and Copilot.
+    """
+    id: str
+    name: str
+    arguments: Dict[str, Any]
+
+    def __repr__(self):
+        return f"<ToolCall {self.name}({', '.join(f'{k}={repr(v)[:20]}' for k, v in self.arguments.items())})>"
+
+
+# ======================================================================
 # Unified Response Object
 # ======================================================================
 
@@ -63,6 +85,8 @@ logger = logging.getLogger(__name__)
 class LLMResponse:
     """
     Normalized output structure for all model providers.
+
+    Extended with tool_calls and stop_reason for agentic workflows.
     """
 
     text: str
@@ -74,10 +98,24 @@ class LLMResponse:
     cost_estimate: Optional[float] = None
     metadata: Optional[Dict[str, Any]] = None  # For cache info, failover tracking, etc.
     usage: Optional[Dict[str, int]] = None  # For backward compatibility
+    # NEW: Tool-use support for agentic workflows
+    tool_calls: Optional[List[ToolCall]] = None
+    stop_reason: Optional[str] = None  # "end_turn", "tool_use", "stop", "max_tokens"
 
     def __repr__(self):
         cached = " (cached)" if self.metadata and self.metadata.get("cached") else ""
-        return f"<LLMResponse model={self.model} provider={self.provider} latency={self.latency_ms:.0f}ms{cached}>"
+        tools = f" tools={len(self.tool_calls)}" if self.tool_calls else ""
+        return f"<LLMResponse model={self.model} provider={self.provider} latency={self.latency_ms:.0f}ms{cached}{tools}>"
+
+    @property
+    def has_tool_calls(self) -> bool:
+        """Check if this response contains tool calls."""
+        return bool(self.tool_calls)
+
+    @property
+    def wants_to_continue(self) -> bool:
+        """Check if the LLM wants to continue (made tool calls and expects results)."""
+        return self.stop_reason == "tool_use" or (self.has_tool_calls and self.stop_reason != "end_turn")
 
 
 # ======================================================================
@@ -110,6 +148,26 @@ class ProviderError(LLMRouterError):
         super().__init__(message)
         self.provider = provider
         self.status_code = status_code
+
+
+# ======================================================================
+# Model Alias Mapping (friendly names -> API model IDs)
+# ======================================================================
+
+MODEL_ALIASES = {
+    # Anthropic aliases - map friendly names to actual API model IDs
+    "claude-sonnet-4-20241022": "claude-3-5-sonnet-20241022",
+    "claude-sonnet-4-20250514": "claude-3-5-sonnet-20241022",  # Map to current version
+    "claude-sonnet-4": "claude-3-5-sonnet-20241022",
+    "claude-3.5-sonnet": "claude-3-5-sonnet-20241022",
+    "claude-3-sonnet": "claude-3-sonnet-20240229",
+    "claude-3-opus": "claude-3-opus-20240229",
+    "claude-3-haiku": "claude-3-haiku-20240307",
+    "claude-3.5-haiku": "claude-3-5-haiku-20241022",
+    # OpenAI aliases (for consistency)
+    "gpt-4-turbo": "gpt-4-turbo-preview",
+    "gpt-4": "gpt-4-0613",
+}
 
 
 # ======================================================================
@@ -152,6 +210,10 @@ class LLMRouter:
         max_tokens: int = 4096,
         use_smart_auto: bool = False,
         allowed_providers: Optional[List[str]] = None,
+        # NEW: Tool-use parameters for agentic workflows
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: str = "auto",  # "auto", "none", "required", or specific tool name
+        messages: Optional[List[Dict[str, Any]]] = None,  # For multi-turn with tool results
     ) -> LLMResponse:
         """
         Execute an LLM call using the selected provider & model.
@@ -169,9 +231,12 @@ class LLMRouter:
             max_tokens: Maximum tokens to generate
             use_smart_auto: Use SMART-AUTO model selection
             allowed_providers: Restrict SMART-AUTO to specific providers
+            tools: List of tool definitions (Anthropic format: name, description, input_schema)
+            tool_choice: How to choose tools - "auto", "none", "required", or tool name
+            messages: Full message history for multi-turn conversations (overrides prompt)
 
         Returns:
-            LLMResponse with normalized output
+            LLMResponse with normalized output (includes tool_calls if LLM wants to use tools)
 
         Raises:
             ModelNotFoundError: If model/provider not found
@@ -257,6 +322,9 @@ class LLMRouter:
             images=images,
             temperature=temperature,
             max_tokens=max_tokens,
+            tools=tools,
+            tool_choice=tool_choice,
+            messages=messages,
         )
 
         # Execute with retry logic and provider failover
@@ -332,8 +400,12 @@ class LLMRouter:
             provider_info.provider_id, response_json
         )
 
-        # Cache the response (skip for vision requests)
-        if cache_enabled and not images and text:
+        # Extract tool calls if present (for agentic workflows)
+        tool_calls = self._extract_tool_calls(provider_info.provider_id, response_json)
+        stop_reason = self._extract_stop_reason(provider_info.provider_id, response_json)
+
+        # Cache the response (skip for vision requests and tool responses)
+        if cache_enabled and not images and not tools and text:
             cache = get_cache()
             await cache.set(
                 prompt=prompt,
@@ -352,6 +424,8 @@ class LLMRouter:
             raw=response_json,
             latency_ms=latency_ms,
             tokens_used=tokens_used,
+            tool_calls=tool_calls,
+            stop_reason=stop_reason,
         )
 
     def _offline_response(
@@ -416,7 +490,7 @@ class LLMRouter:
 
         # Default models for each provider (fast, cheap options for failover)
         fallback_models = {
-            "anthropic": "claude-sonnet-4-20250514",
+            "anthropic": "claude-3-5-sonnet-20241022",
             "openai": "gpt-4o-mini",
             "google": "gemini-1.5-flash",
         }
@@ -528,6 +602,12 @@ class LLMRouter:
 
         registry = get_registry()
 
+        # Apply model alias mapping (friendly names -> API model IDs)
+        if model and model in MODEL_ALIASES:
+            resolved_model = MODEL_ALIASES[model]
+            logger.info(f"[LLM] Model alias resolved: {model} -> {resolved_model}")
+            model = resolved_model
+
         # SMART AUTO chooses best overall across all providers
         if use_smart_auto:
             candidates = smart_auto_candidates(
@@ -592,7 +672,7 @@ class LLMRouter:
     def _get_default_model_for_provider(self, provider: str) -> str:
         """Get the default model for a given provider."""
         defaults = {
-            "anthropic": os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+            "anthropic": os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
             "openai": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
             "google": os.environ.get("GOOGLE_MODEL", "gemini-1.5-flash"),
         }
@@ -612,18 +692,27 @@ class LLMRouter:
         images: Optional[List[str]],
         temperature: float,
         max_tokens: int,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: str = "auto",
+        messages: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Build request payload specific to each provider."""
 
         provider = provider_info.provider_id
         model = model_info.model_id
 
-        # OpenAI-compatible APIs (OpenAI, xAI, Mistral)
-        if provider in {"openai", "xai", "mistral"}:
+        # OpenAI-compatible APIs (OpenAI, xAI, Mistral, Groq)
+        if provider in {"openai", "xai", "mistral", "groq"}:
+            # Use provided messages or build from prompt
+            if messages:
+                msg_list = messages
+            else:
+                msg_list = self._build_openai_messages(prompt, system_prompt, images)
+
             payload = {
                 "model": model,
                 "temperature": temperature,
-                "messages": self._build_openai_messages(prompt, system_prompt, images),
+                "messages": msg_list,
             }
 
             # Use max_completion_tokens for newer OpenAI models (GPT-4o, GPT-5.x)
@@ -634,23 +723,52 @@ class LLMRouter:
             else:
                 payload["max_tokens"] = max_tokens
 
+            # Add tools if provided (convert from Anthropic format to OpenAI format)
+            if tools:
+                payload["tools"] = self._convert_tools_to_openai(tools)
+                if tool_choice == "required":
+                    payload["tool_choice"] = "required"
+                elif tool_choice == "none":
+                    payload["tool_choice"] = "none"
+                elif tool_choice != "auto":
+                    # Specific tool name
+                    payload["tool_choice"] = {"type": "function", "function": {"name": tool_choice}}
+
             return payload
 
         # Anthropic Claude
         if provider == "anthropic":
+            # Use provided messages or build from prompt
+            if messages:
+                msg_list = messages
+            else:
+                msg_list = [{"role": "user", "content": prompt}]
+
             payload = {
                 "model": model,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": msg_list,
             }
             if system_prompt:
                 payload["system"] = system_prompt
+
+            # Add tools if provided (Anthropic native format)
+            if tools:
+                payload["tools"] = tools
+                if tool_choice == "required":
+                    payload["tool_choice"] = {"type": "any"}
+                elif tool_choice == "none":
+                    payload["tool_choice"] = {"type": "none"}
+                elif tool_choice != "auto":
+                    # Specific tool name
+                    payload["tool_choice"] = {"type": "tool", "name": tool_choice}
+
             return payload
 
         # Google Gemini
         if provider == "google":
-            return {
+            payload = {
                 "model": model,
                 "generationConfig": {
                     "maxOutputTokens": max_tokens,
@@ -667,6 +785,12 @@ class LLMRouter:
                 ),
             }
 
+            # Add tools if provided (convert to Gemini format)
+            if tools:
+                payload["tools"] = [{"functionDeclarations": self._convert_tools_to_gemini(tools)}]
+
+            return payload
+
         # Meta LLaMA (local or Ollama-style)
         if provider == "meta":
             return {
@@ -678,19 +802,44 @@ class LLMRouter:
 
         # Cohere
         if provider == "cohere":
-            messages = []
+            msg_list = []
             if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
+                msg_list.append({"role": "system", "content": system_prompt})
+            msg_list.append({"role": "user", "content": prompt})
 
             return {
                 "model": model,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
-                "messages": messages,
+                "messages": msg_list,
             }
 
         raise ValueError(f"Unsupported provider '{provider}'")
+
+    def _convert_tools_to_openai(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert Anthropic-format tools to OpenAI function calling format."""
+        openai_tools = []
+        for tool in tools:
+            openai_tools.append({
+                "type": "function",
+                "function": {
+                    "name": tool.get("name", ""),
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("input_schema", {"type": "object", "properties": {}}),
+                }
+            })
+        return openai_tools
+
+    def _convert_tools_to_gemini(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert Anthropic-format tools to Gemini function declarations format."""
+        gemini_tools = []
+        for tool in tools:
+            gemini_tools.append({
+                "name": tool.get("name", ""),
+                "description": tool.get("description", ""),
+                "parameters": tool.get("input_schema", {"type": "object", "properties": {}}),
+            })
+        return gemini_tools
 
     def _build_openai_messages(
         self,
@@ -1037,6 +1186,154 @@ class LLMRouter:
             return None
 
         except Exception:
+            return None
+
+    def _extract_tool_calls(
+        self, provider: str, data: Dict[str, Any]
+    ) -> Optional[List[ToolCall]]:
+        """
+        Extract tool calls from provider-specific response format.
+
+        This enables native tool-use support for agentic workflows.
+        Returns None if no tool calls are present.
+        """
+        if data is None:
+            return None
+
+        try:
+            if provider in {"openai", "xai", "mistral", "groq", "openrouter"}:
+                # OpenAI format: choices[0].message.tool_calls
+                choices = data.get("choices", [])
+                if not choices:
+                    return None
+
+                message = choices[0].get("message", {})
+                tool_calls_data = message.get("tool_calls", [])
+
+                if not tool_calls_data:
+                    return None
+
+                tool_calls = []
+                for tc in tool_calls_data:
+                    func = tc.get("function", {})
+                    args_str = func.get("arguments", "{}")
+                    try:
+                        args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                    except json.JSONDecodeError:
+                        args = {"raw": args_str}
+
+                    tool_calls.append(ToolCall(
+                        id=tc.get("id", f"call_{len(tool_calls)}"),
+                        name=func.get("name", ""),
+                        arguments=args,
+                    ))
+
+                return tool_calls if tool_calls else None
+
+            elif provider == "anthropic":
+                # Anthropic format: content[] with type="tool_use"
+                content = data.get("content", [])
+                if not isinstance(content, list):
+                    return None
+
+                tool_calls = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        tool_calls.append(ToolCall(
+                            id=block.get("id", f"toolu_{len(tool_calls)}"),
+                            name=block.get("name", ""),
+                            arguments=block.get("input", {}),
+                        ))
+
+                return tool_calls if tool_calls else None
+
+            elif provider == "google":
+                # Gemini format: candidates[0].content.parts[] with functionCall
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    return None
+
+                content = candidates[0].get("content", {})
+                parts = content.get("parts", [])
+
+                tool_calls = []
+                for i, part in enumerate(parts):
+                    if isinstance(part, dict) and "functionCall" in part:
+                        func_call = part["functionCall"]
+                        tool_calls.append(ToolCall(
+                            id=f"gemini_call_{i}",
+                            name=func_call.get("name", ""),
+                            arguments=func_call.get("args", {}),
+                        ))
+
+                return tool_calls if tool_calls else None
+
+            # Other providers don't support tool calls yet
+            return None
+
+        except Exception as e:
+            logger.warning(f"[LLM] Failed to extract tool calls from {provider} response: {e}")
+            return None
+
+    def _extract_stop_reason(
+        self, provider: str, data: Dict[str, Any]
+    ) -> Optional[str]:
+        """
+        Extract stop reason from provider-specific response format.
+
+        Returns normalized stop reason:
+        - "end_turn": LLM finished naturally
+        - "tool_use": LLM wants to use tools (expects results)
+        - "max_tokens": Hit token limit
+        - "stop": Hit stop sequence
+        """
+        if data is None:
+            return None
+
+        try:
+            if provider in {"openai", "xai", "mistral", "groq", "openrouter"}:
+                # OpenAI format: choices[0].finish_reason
+                choices = data.get("choices", [])
+                if not choices:
+                    return None
+
+                finish_reason = choices[0].get("finish_reason")
+
+                # Normalize OpenAI finish reasons
+                if finish_reason == "tool_calls":
+                    return "tool_use"
+                elif finish_reason == "stop":
+                    return "end_turn"
+                elif finish_reason == "length":
+                    return "max_tokens"
+                return finish_reason
+
+            elif provider == "anthropic":
+                # Anthropic format: stop_reason
+                stop_reason = data.get("stop_reason")
+                return stop_reason  # Already normalized
+
+            elif provider == "google":
+                # Gemini format: candidates[0].finishReason
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    return None
+
+                finish_reason = candidates[0].get("finishReason")
+
+                # Normalize Gemini finish reasons
+                if finish_reason == "STOP":
+                    return "end_turn"
+                elif finish_reason == "MAX_TOKENS":
+                    return "max_tokens"
+                elif finish_reason == "SAFETY":
+                    return "safety"
+                return finish_reason
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"[LLM] Failed to extract stop reason from {provider} response: {e}")
             return None
 
 

@@ -49,6 +49,8 @@ interface NaviActionRunnerProps {
   actionActivities?: Map<number, ActionActivity[]>;
   // New: streaming narrative text per action
   narratives?: Map<number, StreamingNarrative[]>;
+  // New: command outputs by action index for inline display
+  commandOutputs?: Map<number, string>;
 }
 
 type ActionStatus = 'pending' | 'running' | 'completed' | 'skipped' | 'error';
@@ -59,7 +61,8 @@ export function NaviActionRunner({
   onRunAction,
   onAllComplete,
   actionActivities = new Map(),
-  narratives = new Map()
+  narratives = new Map(),
+  commandOutputs = new Map()
 }: NaviActionRunnerProps) {
   if (!actions || actions.length === 0) {
     return null;
@@ -183,6 +186,39 @@ export function NaviActionRunner({
     return status;
   };
 
+  // Get activity text based on kind
+  const getActivityText = (activity: ActionActivity): string => {
+    switch (activity.kind) {
+      case 'create': return 'Creating file';
+      case 'edit': return 'Editing file';
+      case 'read': return 'Reading file';
+      case 'write': return 'Writing file';
+      case 'delete': return 'Deleting file';
+      case 'command': return 'Running command';
+      case 'thinking': return 'Thinking';
+      case 'verifying': return 'Verifying';
+      case 'executing': return 'Executing';
+      case 'rag': return 'Searching codebase';
+      case 'search': return 'Searching';
+      default: return activity.label || 'Processing';
+    }
+  };
+
+  // Render wave animation text
+  const renderWaveText = (text: string) => (
+    <span className="activity-wave-text">
+      {text.split('').map((char, i) => (
+        <span
+          key={i}
+          className="activity-wave-char"
+          style={{ animationDelay: `${i * 0.05}s` }}
+        >
+          {char === ' ' ? '\u00A0' : char}
+        </span>
+      ))}
+    </span>
+  );
+
   // Render inline activities and narratives for an action (shown during and after execution)
   const renderActionActivities = (index: number, action: NaviAction, status: ActionStatus) => {
     const activities = actionActivities.get(index) || [];
@@ -195,42 +231,68 @@ export function NaviActionRunner({
       actionNarratives.length === 0 &&
       action.description;
 
-    if (activities.length === 0 && actionNarratives.length === 0 && !showDescriptionAsNarrative) {
+    // For running status, show wave animation even without explicit activities
+    const showRunningIndicator = status === 'running' &&
+      activities.length === 0 &&
+      actionNarratives.length === 0 &&
+      !showDescriptionAsNarrative;
+
+    if (activities.length === 0 && actionNarratives.length === 0 && !showDescriptionAsNarrative && !showRunningIndicator) {
       return null;
     }
 
     return (
       <div className={`action-inline-activities ${status === 'running' ? 'action-inline-activities--running' : ''}`}>
+        {/* Show default running indicator with wave animation when no other activities */}
+        {showRunningIndicator && (
+          <div className="action-activity action-activity--running">
+            {renderWaveText('Processing')}
+            <span className="activity-ellipsis">...</span>
+          </div>
+        )}
         {/* Show action description as narrative while running if no explicit narratives */}
         {showDescriptionAsNarrative && (
           <div className="action-narrative action-narrative--streaming">
-            <div className="narrative-spinner" />
+            {renderWaveText('Working')}
             <span className="narrative-text">{action.description}</span>
           </div>
         )}
         {/* Show streaming narratives for this action */}
         {actionNarratives.map((narrative) => (
           <div key={narrative.id} className={`action-narrative ${status === 'running' ? 'action-narrative--streaming' : ''}`}>
-            {status === 'running' && <div className="narrative-spinner" />}
+            {status === 'running' && renderWaveText('...')}
             <span className="narrative-text">{narrative.text}</span>
           </div>
         ))}
-        {/* Show activity events for this action */}
+        {/* Show activity events for this action with wave animation for running */}
         {activities.map((activity) => (
           <div
             key={activity.id}
             className={`action-activity action-activity--${activity.status || 'done'}`}
           >
             {activity.status === 'running' ? (
-              <div className="activity-spinner-sm" />
+              <>
+                {renderWaveText(getActivityText(activity))}
+                {activity.detail && (
+                  <span className="activity-detail">{activity.detail}</span>
+                )}
+              </>
             ) : activity.status === 'error' ? (
-              <span className="activity-icon activity-icon--error">✗</span>
+              <>
+                <span className="activity-icon activity-icon--error">✗</span>
+                <span className="activity-label">{activity.label}</span>
+                {activity.detail && (
+                  <span className="activity-detail">{activity.detail}</span>
+                )}
+              </>
             ) : (
-              <span className="activity-icon activity-icon--done">✓</span>
-            )}
-            <span className="activity-label">{activity.label}</span>
-            {activity.detail && (
-              <span className="activity-detail">{activity.detail}</span>
+              <>
+                <span className="activity-icon activity-icon--done">✓</span>
+                <span className="activity-label">{activity.label}</span>
+                {activity.detail && (
+                  <span className="activity-detail">{activity.detail}</span>
+                )}
+              </>
             )}
           </div>
         ))}
@@ -255,12 +317,14 @@ export function NaviActionRunner({
     }
 
     if (isCommandAction(action)) {
+      const commandOutput = commandOutputs.get(index) || '';
       return (
         <div key={index} className="action-item-wrapper">
           <InlineCommandApproval
             command={action.command || ''}
             shell="zsh"
             status={approvalStatus}
+            output={commandOutput}
             onAllow={() => handleAllow(action, index)}
             onSkip={() => handleSkip(index)}
             onFocusTerminal={() => {
@@ -372,18 +436,11 @@ export function NaviActionRunner({
     );
   };
 
-  // Get actions to render: completed/skipped ones + current one only
+  // Get actions to render: Show ALL actions so user can see the full plan
   const actionsToRender: number[] = [];
   for (let i = 0; i < actions.length; i++) {
-    const status = getActionStatus(i);
-    if (status === 'completed' || status === 'skipped' || status === 'error') {
-      // Always show completed/skipped/error actions
-      actionsToRender.push(i);
-    } else if (i === currentIndex) {
-      // Show the current pending/running action
-      actionsToRender.push(i);
-      break; // Don't show any actions after the current one
-    }
+    // Show all actions regardless of status
+    actionsToRender.push(i);
   }
 
   return (
@@ -577,11 +634,64 @@ export function NaviActionRunner({
           color: var(--vscode-descriptionForeground, #8b8b8b);
           font-size: 11px;
           margin-left: 4px;
+          font-family: 'JetBrains Mono', monospace;
+          max-width: 200px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        /* Wave animation for running activities */
+        .activity-wave-text {
+          display: inline-flex;
+          font-size: 12px;
+          font-weight: 500;
+          color: rgba(139, 92, 246, 0.9);
+        }
+
+        .activity-wave-char {
+          display: inline-block;
+          animation: activity-wave-bounce 1.2s ease-in-out infinite;
+        }
+
+        @keyframes activity-wave-bounce {
+          0%, 100% {
+            transform: translateY(0);
+            opacity: 0.6;
+          }
+          50% {
+            transform: translateY(-3px);
+            opacity: 1;
+          }
+        }
+
+        .activity-ellipsis {
+          color: rgba(139, 92, 246, 0.6);
+          margin-left: 2px;
+          animation: activity-ellipsis-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes activity-ellipsis-pulse {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 1; }
         }
 
         /* Running state for activities container */
         .action-inline-activities--running {
-          border-left-color: rgba(55, 148, 255, 0.5);
+          border-left-color: rgba(139, 92, 246, 0.5);
+        }
+
+        /* Light theme support */
+        .light .activity-wave-text,
+        :root.light .activity-wave-text,
+        html.light .activity-wave-text {
+          color: rgba(124, 58, 237, 0.9);
+        }
+
+        .light .activity-ellipsis,
+        :root.light .activity-ellipsis,
+        html.light .activity-ellipsis {
+          color: rgba(124, 58, 237, 0.6);
         }
 
         /* Streaming narrative text (like Cline/Claude conversational output) */

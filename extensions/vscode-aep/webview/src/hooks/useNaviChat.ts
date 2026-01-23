@@ -308,7 +308,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
       id: Date.now().toString(),
       role: 'user',
       content: input,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -328,7 +328,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
           id: (Date.now() + 1).toString(),
           role: 'assistant' as const,
           content: assistantContent,
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
         }];
       });
     };
@@ -362,7 +362,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
           id: (Date.now() + 2).toString(),
           role: 'assistant',
           content: `Sorry, I encountered an error: ${error}. Please try again.`,
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
         }]);
       },
       overrideModel

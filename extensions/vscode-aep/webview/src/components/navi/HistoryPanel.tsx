@@ -14,6 +14,14 @@ import {
   SortAsc,
   SortDesc
 } from 'lucide-react';
+import {
+  listSessions,
+  deleteSession,
+  toggleSessionPin,
+  toggleSessionStar,
+  toggleSessionArchive,
+  type ChatSessionSummary
+} from '../../utils/chatSessions';
 
 interface Conversation {
   id: string;
@@ -38,74 +46,20 @@ interface HistoryPanelProps {
 
 type FilterTab = 'all' | 'pinned' | 'starred' | 'archived';
 
-// Mock data for demonstration
-const MOCK_CONVERSATIONS: Conversation[] = [
-  {
-    id: '1',
-    title: 'Fix authentication bug in login flow',
-    preview: 'The login button is not redirecting properly after OAuth...',
-    messageCount: 12,
-    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    isPinned: true,
-    isStarred: true,
-    isArchived: false,
-    workspace: 'autonomous-engineering-platform',
-    tags: ['bug', 'auth'],
-  },
-  {
-    id: '2',
-    title: 'Implement MCP tools panel',
-    preview: 'Creating a new UI component for managing MCP tools...',
-    messageCount: 24,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-    isPinned: true,
-    isStarred: false,
-    isArchived: false,
-    workspace: 'autonomous-engineering-platform',
-    tags: ['feature', 'ui'],
-  },
-  {
-    id: '3',
-    title: 'Database migration for user preferences',
-    preview: 'Need to add new columns for storing user preferences...',
-    messageCount: 8,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 20).toISOString(),
-    isPinned: false,
-    isStarred: true,
-    isArchived: false,
-    workspace: 'autonomous-engineering-platform',
-    tags: ['database'],
-  },
-  {
-    id: '4',
-    title: 'Review PR #45 - API refactoring',
-    preview: 'Looking at the changes in the API layer for better...',
-    messageCount: 15,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-    isPinned: false,
-    isStarred: false,
-    isArchived: true,
-    workspace: 'autonomous-engineering-platform',
-    tags: ['review'],
-  },
-  {
-    id: '5',
-    title: 'Help with React hooks optimization',
-    preview: 'How do I properly memoize this expensive computation...',
-    messageCount: 6,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
-    isPinned: false,
-    isStarred: false,
-    isArchived: false,
-    workspace: 'my-react-app',
-    tags: ['react', 'performance'],
-  },
-];
+// Convert ChatSessionSummary to Conversation format
+const sessionToConversation = (session: ChatSessionSummary): Conversation => ({
+  id: session.id,
+  title: session.title,
+  preview: session.lastMessagePreview || 'No messages yet',
+  messageCount: session.messageCount,
+  createdAt: session.createdAt,
+  updatedAt: session.updatedAt,
+  isPinned: session.isPinned || false,
+  isStarred: session.isStarred || false,
+  isArchived: session.isArchived || false,
+  workspace: session.repoName || session.workspaceRoot?.split('/').pop(),
+  tags: session.tags?.map(t => t.label),
+});
 
 export const HistoryPanel: React.FC<HistoryPanelProps> = ({
   isOpen,
@@ -121,19 +75,16 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Fetch conversations from backend
-  const fetchConversations = useCallback(async () => {
+  // Load conversations from localStorage
+  const fetchConversations = useCallback(() => {
     setLoading(true);
     try {
-      const response = await fetch('/api/memory/conversations');
-      if (response.ok) {
-        const data = await response.json();
-        setConversations(data.conversations || []);
-      } else {
-        setConversations(MOCK_CONVERSATIONS);
-      }
-    } catch {
-      setConversations(MOCK_CONVERSATIONS);
+      const sessions = listSessions();
+      const conversations = sessions.map(sessionToConversation);
+      setConversations(conversations);
+    } catch (error) {
+      console.error('[HistoryPanel] Error loading sessions:', error);
+      setConversations([]);
     } finally {
       setLoading(false);
     }
@@ -145,36 +96,35 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
     }
   }, [isOpen, fetchConversations]);
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Delete this conversation?')) return;
 
-    try {
-      await fetch(`/api/memory/conversations/${id}`, { method: 'DELETE' });
-    } catch {
-      // Continue anyway
-    }
+    deleteSession(id);
     setConversations(prev => prev.filter(c => c.id !== id));
   };
 
-  const handlePin = async (id: string, e: React.MouseEvent) => {
+  const handlePin = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const newValue = toggleSessionPin(id);
     setConversations(prev =>
-      prev.map(c => (c.id === id ? { ...c, isPinned: !c.isPinned } : c))
+      prev.map(c => (c.id === id ? { ...c, isPinned: newValue } : c))
     );
   };
 
-  const handleStar = async (id: string, e: React.MouseEvent) => {
+  const handleStar = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const newValue = toggleSessionStar(id);
     setConversations(prev =>
-      prev.map(c => (c.id === id ? { ...c, isStarred: !c.isStarred } : c))
+      prev.map(c => (c.id === id ? { ...c, isStarred: newValue } : c))
     );
   };
 
-  const handleArchive = async (id: string, e: React.MouseEvent) => {
+  const handleArchive = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const newValue = toggleSessionArchive(id);
     setConversations(prev =>
-      prev.map(c => (c.id === id ? { ...c, isArchived: !c.isArchived } : c))
+      prev.map(c => (c.id === id ? { ...c, isArchived: newValue } : c))
     );
   };
 

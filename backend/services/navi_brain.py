@@ -27,13 +27,31 @@ import asyncio
 import aiohttp
 import uuid
 from pathlib import Path
-from typing import Dict, Any, List, Optional, AsyncGenerator
+from typing import Dict, Any, List, Optional, AsyncGenerator, Sequence, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 import re
 import logging
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_SUPPORT_URL = os.getenv(
+    "NAVI_ISSUE_URL",
+    os.getenv(
+        "NAVI_SUPPORT_URL",
+        "https://github.com/navra-labs/autonomous-engineering-platform/issues/new",
+    ),
+)
+
+
+class ModelNotAvailableError(RuntimeError):
+    """Raised when a requested model is unavailable for the provider."""
+
+    def __init__(self, provider: str, model: str, detail: str = ""):
+        super().__init__(f"Model '{model}' is not available for provider '{provider}'.")
+        self.provider = provider
+        self.model = model
+        self.detail = detail
 
 # ==================== MEMORY INTEGRATION ====================
 # Lazy-loaded to avoid circular imports
@@ -111,6 +129,46 @@ def _enhance_system_prompt_with_memory(
     except Exception as e:
         logger.warning(f"[NAVI] Failed to enhance system prompt: {e}")
         return base_prompt
+
+
+def _detect_language(file_path: Optional[str]) -> Optional[str]:
+    """Detect programming language from file extension."""
+    if not file_path:
+        return None
+
+    ext_to_lang = {
+        ".py": "python",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".java": "java",
+        ".go": "go",
+        ".rs": "rust",
+        ".rb": "ruby",
+        ".php": "php",
+        ".cs": "csharp",
+        ".cpp": "cpp",
+        ".c": "c",
+        ".swift": "swift",
+        ".kt": "kotlin",
+        ".scala": "scala",
+        ".vue": "vue",
+        ".svelte": "svelte",
+        ".html": "html",
+        ".css": "css",
+        ".scss": "scss",
+        ".json": "json",
+        ".yaml": "yaml",
+        ".yml": "yaml",
+        ".md": "markdown",
+        ".sql": "sql",
+        ".sh": "bash",
+        ".bash": "bash",
+    }
+
+    ext = Path(file_path).suffix.lower()
+    return ext_to_lang.get(ext)
 
 
 async def _store_interaction_async(
@@ -290,7 +348,7 @@ class NaviConfig:
     }
 
     @classmethod
-    def get_preferred_port(cls, project_info: "ProjectInfo" = None) -> int:
+    def get_preferred_port(cls, project_info: Optional["ProjectInfo"] = None) -> int:
         """
         Dynamically determine preferred port based on project type.
         Instead of hardcoding 3000, detect from project configuration.
@@ -334,7 +392,9 @@ class NaviConfig:
         return cls.DEFAULT_PORT_RANGE_START
 
     @classmethod
-    def get_package_manager_command(cls, action: str, project_info: "ProjectInfo" = None) -> str:
+    def get_package_manager_command(
+        cls, action: str, project_info: Optional["ProjectInfo"] = None
+    ) -> str:
         """
         Get the correct package manager command based on project detection.
         Instead of assuming npm, detect from lockfiles and config.
@@ -578,6 +638,44 @@ class ProjectAnalyzer:
         return info
 
     @classmethod
+    def get_important_files_count(cls, workspace_path: str) -> int:
+        """
+        Dynamically determine how many files to read based on workspace size.
+        Smaller projects get deeper analysis, larger projects get focused analysis.
+
+        Like Copilot, we aim to read enough files to give comprehensive context.
+        """
+        workspace = Path(workspace_path)
+
+        # Count total source files in key directories
+        total_files = 0
+        SOURCE_DIRS = ["pages", "app", "src/pages", "src/app", "components", "src/components", "utils", "lib", "hooks", "styles"]
+        SOURCE_EXTENSIONS = {".js", ".jsx", ".ts", ".tsx", ".py", ".go", ".rs", ".java", ".css"}
+
+        for dir_name in SOURCE_DIRS:
+            dir_path = workspace / dir_name
+            if dir_path.exists() and dir_path.is_dir():
+                try:
+                    for file_path in dir_path.iterdir():
+                        if file_path.is_file() and file_path.suffix in SOURCE_EXTENSIONS:
+                            total_files += 1
+                except Exception:
+                    pass
+
+        # Scale file count: aim for comprehensive coverage like Copilot
+        # Config files (package.json, etc.) are read separately, so add ~3 for those
+        config_files = 3
+
+        if total_files <= 10:
+            return total_files + config_files  # Read all files if small project
+        elif total_files <= 25:
+            return 12 + config_files  # Medium project - read most files
+        elif total_files <= 50:
+            return 10 + config_files  # Larger project
+        else:
+            return 8 + config_files  # Very large project, focus on key files
+    
+    @classmethod
     def analyze_source_files(cls, workspace_path: str, max_files: int = 10, max_file_size: int = 5000) -> Dict[str, str]:
         """
         Read actual source files from key directories to provide detailed context.
@@ -652,6 +750,180 @@ class ProjectAnalyzer:
 
         logger.info(f"[ProjectAnalyzer] Read {len(source_files)} source files for context")
         return source_files
+
+    @classmethod
+    async def analyze_source_files_streaming(
+        cls,
+        workspace_path: str,
+        max_files: int = 15,
+        max_file_size: int = 5000,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Async version that yields events as each file is read.
+
+        This enables real-time activity display like GitHub Copilot:
+        - Shows each file being read as it happens
+        - Yields {activity: {...}} events for frontend display
+        - Finally yields {files: {...}} with all file contents
+
+        Usage:
+            async for event in ProjectAnalyzer.analyze_source_files_streaming(workspace):
+                if "activity" in event:
+                    yield event  # Forward to SSE
+                elif "files" in event:
+                    source_files = event["files"]
+        """
+        workspace = Path(workspace_path)
+        source_files: Dict[str, str] = {}
+        files_found = 0
+
+        # PHASE 1: Read important config files first (like Copilot does)
+        # README.md is critical for understanding project purpose and name
+        CONFIG_FILES = [
+            "package.json",
+            "README.md",          # CRITICAL: Contains project name and description
+            "readme.md",          # Alternative casing
+            "next.config.js",
+            "next.config.mjs",
+            "tsconfig.json",
+            "vite.config.js",
+            "vite.config.ts",
+            ".env.example",
+        ]
+
+        for config_file in CONFIG_FILES:
+            if files_found >= max_files:
+                break
+            config_path = workspace / config_file
+            if config_path.exists() and config_path.is_file():
+                try:
+                    relative_path = config_file
+
+                    # Emit activity BEFORE reading
+                    yield {
+                        "activity": {
+                            "kind": "read",
+                            "label": "Reading",
+                            "detail": relative_path,
+                            "filePath": relative_path,
+                            "status": "running",
+                        }
+                    }
+                    await asyncio.sleep(0.01)
+
+                    content = config_path.read_text(encoding="utf-8", errors="ignore")
+                    if len(content) > max_file_size:
+                        content = content[:max_file_size] + "\n\n... (truncated)"
+                    source_files[relative_path] = content
+                    files_found += 1
+
+                    # Emit activity AFTER reading
+                    yield {
+                        "activity": {
+                            "kind": "read",
+                            "label": "Read",
+                            "detail": relative_path,
+                            "filePath": relative_path,
+                            "status": "done",
+                        }
+                    }
+                    logger.debug(f"[ProjectAnalyzer] Read config file: {relative_path}")
+                except Exception as e:
+                    logger.debug(f"Could not read config {config_file}: {e}")
+
+        # PHASE 2: Key directories to scan for source files
+        SOURCE_DIRS = [
+            "pages",           # Next.js pages
+            "app",             # Next.js 13+ app router
+            "src/pages",       # Alternative pages location
+            "src/app",         # Alternative app location
+            "components",      # React components
+            "src/components",  # Alternative components
+            "utils",           # Utility functions
+            "src/utils",       # Alternative utils
+            "lib",             # Library code
+            "src/lib",         # Alternative lib
+            "hooks",           # React hooks
+            "src/hooks",       # Alternative hooks
+            "services",        # Service layer
+            "src/services",    # Alternative services
+            "api",             # API routes
+            "src/api",         # Alternative API
+            "styles",          # CSS/styles directory
+            "src/styles",      # Alternative styles
+        ]
+
+        # File extensions to read (including CSS for styling context)
+        SOURCE_EXTENSIONS = {".js", ".jsx", ".ts", ".tsx", ".py", ".go", ".rs", ".java", ".css"}
+
+        for dir_name in SOURCE_DIRS:
+            dir_path = workspace / dir_name
+            if not dir_path.exists() or not dir_path.is_dir():
+                continue
+
+            try:
+                for file_path in sorted(dir_path.iterdir()):
+                    if files_found >= max_files:
+                        break
+
+                    if not file_path.is_file():
+                        continue
+
+                    if file_path.suffix not in SOURCE_EXTENSIONS:
+                        continue
+
+                    # Skip test files and config files
+                    if ".test." in file_path.name or ".spec." in file_path.name:
+                        continue
+
+                    try:
+                        relative_path = str(file_path.relative_to(workspace))
+
+                        # Emit activity BEFORE reading (shows "Reading...")
+                        yield {
+                            "activity": {
+                                "kind": "read",
+                                "label": "Reading",
+                                "detail": relative_path,
+                                "filePath": relative_path,
+                                "status": "running",
+                            }
+                        }
+
+                        # Small delay to ensure UI updates
+                        await asyncio.sleep(0.01)
+
+                        # Actually read the file
+                        content = file_path.read_text(encoding="utf-8", errors="ignore")
+                        if len(content) > max_file_size:
+                            content = content[:max_file_size] + "\n\n... (truncated)"
+
+                        source_files[relative_path] = content
+                        files_found += 1
+
+                        # Emit activity AFTER reading (shows "Read" with checkmark)
+                        yield {
+                            "activity": {
+                                "kind": "read",
+                                "label": "Read",
+                                "detail": relative_path,
+                                "filePath": relative_path,
+                                "status": "done",
+                            }
+                        }
+
+                        logger.debug(f"[ProjectAnalyzer] Read source file: {relative_path}")
+
+                    except Exception as e:
+                        logger.debug(f"Could not read {file_path}: {e}")
+
+            except Exception as e:
+                logger.debug(f"Could not scan {dir_name}: {e}")
+
+        logger.info(f"[ProjectAnalyzer] Streamed {len(source_files)} source files for context")
+
+        # Yield the final files dict
+        yield {"files": source_files}
 
     @classmethod
     def _process_file(cls, filename: str, content: str, info: ProjectInfo) -> None:
@@ -1479,9 +1751,12 @@ class PortManager:
         return {"pid": None, "name": None, "command": None}
 
     @classmethod
-    async def find_available_port(cls, preferred_port: int = None,
-                                   exclude_ports: List[int] = None,
-                                   project_info: "ProjectInfo" = None) -> int:
+    async def find_available_port(
+        cls,
+        preferred_port: Optional[int] = None,
+        exclude_ports: Optional[List[int]] = None,
+        project_info: Optional["ProjectInfo"] = None,
+    ) -> int:
         """
         Find an available port, starting with preferred port.
         Uses NaviConfig for all port values - NO HARDCODING.
@@ -1600,8 +1875,8 @@ class PortManager:
     @classmethod
     async def get_port_context_for_llm(
         cls,
-        preferred_port: int = None,
-        project_info: "ProjectInfo" = None
+        preferred_port: Optional[int] = None,
+        project_info: Optional["ProjectInfo"] = None,
     ) -> Dict[str, Any]:
         """
         Generate port context information for LLM to make intelligent decisions.
@@ -1635,8 +1910,8 @@ class PortManager:
             "message": DynamicMessages.port_conflict_message(
                 preferred_port,
                 status.process_name,
-                status.process_pid,
-                alternative
+                status.process_command,
+                alternative,
             ),
             "process_info": {
                 "name": status.process_name,
@@ -1929,15 +2204,13 @@ class NaviResponse:
 
         # Add usage info with cost calculation for SaaS billing
         if self.usage_info:
-            from backend.services.token_tracking import CostCalculator
+            from backend.services.token_tracking import CostCalculator, TokenUsage
             model = self.usage_info.get("model", "default")
             input_tokens = self.usage_info.get("input_tokens", 0)
             output_tokens = self.usage_info.get("output_tokens", 0)
 
-            costs = CostCalculator.calculate(model, type("Usage", (), {
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-            })())
+            usage = TokenUsage(input_tokens=input_tokens, output_tokens=output_tokens)
+            costs = CostCalculator.calculate(model, usage)
 
             result["usage"] = {
                 "input_tokens": input_tokens,
@@ -1996,7 +2269,7 @@ class DynamicMessages:
     """
 
     @staticmethod
-    def error_message(error: Exception, context: str = None) -> str:
+    def error_message(error: Exception, context: Optional[str] = None) -> str:
         """Generate a user-friendly error message based on the exception type"""
         error_str = str(error)
         type(error).__name__
@@ -2070,7 +2343,12 @@ class DynamicMessages:
         return f"⚠️ **Safety Notice**: {warning_count} potential issues detected:\n{formatted_warnings}\n\nPlease review and confirm if you'd like to proceed."
 
     @staticmethod
-    def port_conflict_message(port: int, process_name: str = None, process_cmd: str = None, alt_port: int = None) -> str:
+    def port_conflict_message(
+        port: int,
+        process_name: Optional[str] = None,
+        process_cmd: Optional[str] = None,
+        alt_port: Optional[int] = None,
+    ) -> str:
         """Generate a helpful port conflict message"""
         process_desc = f"`{process_name}`" if process_name else "another process"
         if process_cmd:
@@ -2089,7 +2367,9 @@ class DynamicMessages:
         return msg
 
     @staticmethod
-    def action_description(action_type: str, details: Dict[str, Any] = None) -> str:
+    def action_description(
+        action_type: str, details: Optional[Dict[str, Any]] = None
+    ) -> str:
         """Generate a natural description for an action"""
         details = details or {}
 
@@ -2112,7 +2392,9 @@ class DynamicMessages:
         return f"Performing {action_type.replace('_', ' ')}"
 
     @staticmethod
-    def success_message(action_type: str, details: Dict[str, Any] = None) -> str:
+    def success_message(
+        action_type: str, details: Optional[Dict[str, Any]] = None
+    ) -> str:
         """Generate a success message for completed actions"""
         details = details or {}
 
@@ -2186,7 +2468,9 @@ class WebSearchProvider:
     ]
 
     @classmethod
-    def should_search(cls, message: str, project_info: ProjectInfo = None) -> bool:
+    def should_search(
+        cls, message: str, project_info: Optional[ProjectInfo] = None
+    ) -> bool:
         """Determine if web search would be beneficial for this request"""
         message_lower = message.lower()
 
@@ -2261,7 +2545,9 @@ class WebSearchProvider:
         url = f"https://api.duckduckgo.com/?q={encoded_query}&format=json&no_html=1"
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=10) as response:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
                 if response.status == 200:
                     data = await response.json()
 
@@ -2303,7 +2589,7 @@ class WebSearchProvider:
                 "https://google.serper.dev/search",
                 headers=headers,
                 json=payload,
-                timeout=10
+                timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -2336,7 +2622,7 @@ class WebSearchProvider:
                 "https://api.tavily.com/search",
                 headers=headers,
                 json=payload,
-                timeout=10
+                timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -2462,7 +2748,9 @@ class ToolInstaller:
         return installers.get(system, [])
 
     @classmethod
-    def detect_required_tools(cls, project_info: ProjectInfo, message: str) -> List[str]:
+    def detect_required_tools(
+        cls, project_info: Optional[ProjectInfo], message: str
+    ) -> List[str]:
         """Detect which tools are required based on project and request"""
         required = set()
 
@@ -2886,7 +3174,9 @@ class DynamicContextProvider:
     }
 
     @classmethod
-    def detect_domains(cls, message: str, project_info: ProjectInfo = None) -> List[str]:
+    def detect_domains(
+        cls, message: str, project_info: Optional[ProjectInfo] = None
+    ) -> List[str]:
         """
         Detect which domains are relevant to this request.
         Returns a list of domains, not just one - requests often span multiple domains.
@@ -2920,7 +3210,9 @@ class DynamicContextProvider:
         return detected[:3] if detected else ["general"]
 
     @classmethod
-    def get_domain_context(cls, domains: List[str], project_info: ProjectInfo = None) -> str:
+    def get_domain_context(
+        cls, domains: List[str], project_info: Optional[ProjectInfo] = None
+    ) -> str:
         """
         Generate domain-specific context to help the LLM respond accurately.
         This is NOT hardcoded responses - it's context for the LLM to use.
@@ -3342,29 +3634,35 @@ FUNCTIONAL PROGRAMMING CONTEXT:
         import platform
         import shutil
 
-        context = {
+        context: Dict[str, Any] = {
             "platform": platform.system(),
             "python_version": platform.python_version(),
         }
 
         # Check for common tools
-        tools_available = {}
+        tools_available: Dict[str, bool] = {}
         for tool in ["node", "npm", "yarn", "pnpm", "python", "pip", "docker", "git", "go", "cargo"]:
             tools_available[tool] = shutil.which(tool) is not None
         context["tools_available"] = tools_available
 
         # Check for environment hints
-        env_hints = {}
+        env_hints: Dict[str, str] = {}
         for var in ["NODE_ENV", "PYTHON_ENV", "ENVIRONMENT", "CI", "DOCKER"]:
-            if os.getenv(var):
-                env_hints[var] = os.getenv(var)
+            value = os.getenv(var)
+            if value is not None:
+                env_hints[var] = value
         context["environment"] = env_hints
 
         return context
 
     @classmethod
-    async def enrich_context(cls, message: str, project_info: ProjectInfo,
-                             workspace_path: str, enable_web_search: bool = True) -> Dict[str, Any]:
+    async def enrich_context(
+        cls,
+        message: str,
+        project_info: Optional[ProjectInfo],
+        workspace_path: str,
+        enable_web_search: bool = True,
+    ) -> Dict[str, Any]:
         """
         Main method: Enrich the context for the LLM based on the request.
 
@@ -3873,7 +4171,9 @@ class TaskDecomposer:
         return has_complex_indicator or is_large_scope
 
     @classmethod
-    def decompose(cls, message: str, project_info: ProjectInfo = None) -> TaskPlan:
+    def decompose(
+        cls, message: str, project_info: Optional[ProjectInfo] = None
+    ) -> TaskPlan:
         """
         Create a task plan by decomposing the request into steps.
 
@@ -4060,7 +4360,9 @@ class SelfHealingEngine:
     }
 
     @classmethod
-    def diagnose(cls, error: str, context: Dict[str, Any] = None) -> ErrorDiagnosis:
+    def diagnose(
+        cls, error: str, context: Optional[Dict[str, Any]] = None
+    ) -> ErrorDiagnosis:
         """Diagnose an error and suggest fixes"""
         error_str = str(error)
 
@@ -4104,8 +4406,8 @@ class SelfHealingEngine:
         cls,
         error_type: str,
         fix: str,
-        captured_groups: tuple,
-        context: Dict[str, Any] = None
+        captured_groups: Sequence[Any],
+        context: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Generate specific recovery actions based on error type"""
         actions = []
@@ -4154,8 +4456,8 @@ class SelfHealingEngine:
         cls,
         error: str,
         failed_action: Dict[str, Any],
-        context: Dict[str, Any] = None,
-        retry_count: int = 0
+        context: Optional[Dict[str, Any]] = None,
+        retry_count: int = 0,
     ) -> Dict[str, Any]:
         """
         Attempt to recover from an error.
@@ -4211,9 +4513,9 @@ class CheckpointManager:
     async def create_checkpoint(
         self,
         description: str,
-        task_plan_id: str = None,
+        task_plan_id: Optional[str] = None,
         step_index: int = 0,
-        files_to_track: List[str] = None
+        files_to_track: Optional[List[str]] = None,
     ) -> Checkpoint:
         """Create a checkpoint of current state"""
         import hashlib
@@ -4279,7 +4581,9 @@ class CheckpointManager:
 
         checkpoint_file.write_text(json.dumps(checkpoint_data, indent=2))
 
-    def get_latest_checkpoint(self, task_plan_id: str = None) -> Optional[Checkpoint]:
+    def get_latest_checkpoint(
+        self, task_plan_id: Optional[str] = None
+    ) -> Optional[Checkpoint]:
         """Get the most recent checkpoint, optionally for a specific task"""
         relevant = self.checkpoints
         if task_plan_id:
@@ -4346,8 +4650,8 @@ class VerificationEngine:
     def get_verification_steps(
         cls,
         action_type: str,
-        file_path: str = None,
-        project_info: ProjectInfo = None
+        file_path: Optional[str] = None,
+        project_info: Optional[ProjectInfo] = None,
     ) -> List[Dict[str, Any]]:
         """Get appropriate verification steps for an action"""
         steps = []
@@ -4400,7 +4704,7 @@ class VerificationEngine:
         cls,
         step: TaskStep,
         workspace_path: str,
-        project_info: ProjectInfo = None
+        project_info: Optional[ProjectInfo] = None,
     ) -> Dict[str, Any]:
         """
         Verify that a completed step actually worked.
@@ -4476,7 +4780,7 @@ class EndToEndOrchestrator:
     async def plan_task(
         self,
         message: str,
-        project_info: ProjectInfo = None
+        project_info: Optional[ProjectInfo] = None,
     ) -> TaskPlan:
         """
         Create an execution plan for a complex task.
@@ -4506,7 +4810,7 @@ class EndToEndOrchestrator:
     async def execute_with_recovery(
         self,
         action: Dict[str, Any],
-        context: Dict[str, Any] = None
+        context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Execute an action with automatic error recovery.
@@ -5121,13 +5425,13 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
     def __init__(
         self,
         provider: str = "openai",
-        model: str = None,
-        api_key: str = None,
-        base_url: str = None,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
     ):
         self.provider = provider.lower()
         self.api_key = api_key or self._get_api_key_from_env()
-        self.model = model or self._get_default_model()
+        self.model = self._normalize_model(model or self._get_default_model())
         self.base_url = base_url or self._get_base_url()
         self.session: Optional[aiohttp.ClientSession] = None
         self.validator = SafetyValidator()
@@ -5138,7 +5442,9 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
         # Memory: cached personalized prompt per user
         self._personalized_prompts: Dict[str, str] = {}
 
-    def _get_personalized_system_prompt(self, context: NaviContext = None) -> str:
+    def _get_personalized_system_prompt(
+        self, context: Optional[NaviContext] = None
+    ) -> str:
         """
         Get personalized system prompt based on user preferences.
         Uses memory system to enhance the base prompt with user-specific instructions.
@@ -5192,6 +5498,28 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             "ollama": "llama3",
         }
         return defaults.get(self.provider, "claude-3-5-sonnet-20241022")
+
+    def _normalize_model(self, model: str) -> str:
+        """Normalize known model aliases to stable provider model IDs."""
+        if self.provider == "anthropic":
+            alias_map = {
+                "claude-sonnet-4-20250514": "claude-sonnet-4-20241022",
+                "claude-opus-4-20250514": "claude-3-opus-20240229",
+            }
+            return alias_map.get(model, model)
+        return model
+
+    def _fallback_model_on_error(self, model: str, error_text: str) -> Optional[str]:
+        """Return a fallback model if the provider reports an invalid model."""
+        if self.provider != "anthropic":
+            return None
+        lowered = error_text.lower()
+        if "model_not_found" in lowered or "not found" in lowered:
+            normalized = self._normalize_model(model)
+            if normalized != model:
+                return normalized
+            return "claude-3-5-sonnet-20241022"
+        return None
 
     def _get_base_url(self) -> str:
         """Get base URL for provider"""
@@ -5405,6 +5733,18 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             # Generate commands to run
             install_cmd = IntelligentResponder._get_install_command(project_info)
             dev_cmd, dev_url = IntelligentResponder._get_dev_command(project_info)
+            if not dev_cmd:
+                response_text = (
+                    f"I couldn't find a dev/start script for this **{project_info.project_type}** project. "
+                    "If you can share the preferred command, I can run it for you."
+                )
+                return NaviResponse(
+                    message=response_text,
+                    thinking_steps=thinking_steps,
+                    files_read=project_info.files_read,
+                    project_type=project_info.project_type,
+                    framework=project_info.framework,
+                )
 
             # INTELLIGENT PORT MANAGEMENT: Check port availability before starting
             # Use NaviConfig for dynamic port detection - NO HARDCODED 3000
@@ -5599,25 +5939,25 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             response.project_type = project_info.project_type
             response.framework = project_info.framework
 
-            # Store interaction for memory/learning (non-blocking)
+            # Store interaction for memory/learning (SYNCHRONOUS for reliable persistence)
+            # Changed from fire-and-forget to await to ensure memory is actually stored
             try:
                 user_id_int = int(context.user_id) if context.user_id else None
                 org_id_int = int(context.org_id) if context.org_id else None
                 if user_id_int:
-                    # Fire and forget - don't wait for storage to complete
-                    asyncio.create_task(
-                        _store_interaction_async(
-                            user_id=user_id_int,
-                            conversation_id=context.conversation_id,
-                            user_message=message,
-                            assistant_response=response.message,
-                            org_id=org_id_int,
-                            workspace_path=context.workspace_path,
-                            current_file=context.current_file,
-                        )
+                    # Await storage to ensure it completes before returning
+                    await _store_interaction_async(
+                        user_id=user_id_int,
+                        conversation_id=context.conversation_id,
+                        user_message=message,
+                        assistant_response=response.message,
+                        org_id=org_id_int,
+                        workspace_path=context.workspace_path,
+                        current_file=context.current_file,
                     )
+                    logger.info(f"[NAVI] Stored interaction for user {user_id_int} in conversation {context.conversation_id}")
             except Exception as store_error:
-                logger.warning(f"[NAVI] Failed to schedule interaction storage: {store_error}")
+                logger.warning(f"[NAVI] Failed to store interaction: {store_error}")
 
             return response
 
@@ -6295,8 +6635,11 @@ USER REQUEST: {message}
 Respond with JSON only."""
 
     async def _call_llm(
-        self, prompt: str, conversation_history: List[Dict] = None, context: NaviContext = None
-    ) -> tuple:
+        self,
+        prompt: str,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
+        context: Optional[NaviContext] = None,
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         Call the LLM provider with automatic retry on transient errors.
         Returns: (response_text, usage_info) tuple for token tracking.
@@ -6347,7 +6690,14 @@ Respond with JSON only."""
                 # Not retryable or out of retries
                 raise
 
-    async def _call_anthropic(self, prompt: str, history: List[Dict] = None, context: NaviContext = None) -> tuple:
+        raise RuntimeError("LLM call failed after retries")
+
+    async def _call_anthropic(
+        self,
+        prompt: str,
+        history: Optional[List[Dict[str, Any]]] = None,
+        context: Optional[NaviContext] = None,
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         Call Anthropic Claude API.
         Returns: (response_text, usage_info) tuple for token tracking.
@@ -6389,8 +6739,9 @@ Respond with JSON only."""
         # Use personalized system prompt based on user context
         system_prompt = self._get_personalized_system_prompt(context) if context else self.SYSTEM_PROMPT
 
+        model = self._normalize_model(self.model)
         payload = {
-            "model": self.model,
+            "model": model,
             "max_tokens": 16384,
             "system": system_prompt,
             "messages": messages,
@@ -6402,62 +6753,78 @@ Respond with JSON only."""
             "anthropic-version": "2023-06-01",
         }
 
-        async with session.post(
-            f"{self.base_url}/messages",
-            headers=headers,
-            json=payload,
-            timeout=aiohttp.ClientTimeout(total=120),
-        ) as response:
-            if response.status != 200:
-                error = await response.text()
-                raise Exception(f"Anthropic API error: {error}")
+        for attempt in range(2):
+            payload["model"] = model
+            async with session.post(
+                f"{self.base_url}/messages",
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=120),
+            ) as response:
+                if response.status != 200:
+                    error = await response.text()
+                    fallback_model = self._fallback_model_on_error(model, error)
+                    if fallback_model and fallback_model != model and attempt == 0:
+                        logger.warning(
+                            "[NAVI] Anthropic model %s not available, falling back to %s",
+                            model,
+                            fallback_model,
+                        )
+                        model = fallback_model
+                        continue
+                    raise Exception(f"Anthropic API error: {error}")
 
-            data = await response.json()
+                data = await response.json()
 
-            # Extract usage information for billing
-            usage_info = data.get("usage", {})
-            latency_ms = (time.time() - start_time) * 1000
+                # Extract usage information for billing
+                usage_info = data.get("usage", {})
+                latency_ms = (time.time() - start_time) * 1000
 
-            # Track token usage
-            try:
-                from backend.services.token_tracking import track_usage
-                track_usage(
-                    model=self.model,
-                    provider="anthropic",
-                    input_tokens=usage_info.get("input_tokens", 0),
-                    output_tokens=usage_info.get("output_tokens", 0),
-                    org_id=context.org_id if context else None,
-                    team_id=context.team_id if context else None,
-                    user_id=context.user_id if context else None,
-                    latency_ms=latency_ms,
-                )
-            except Exception as e:
-                logger.warning(f"Token tracking failed (non-fatal): {e}")
+                # Track token usage
+                try:
+                    from backend.services.token_tracking import track_usage
+                    track_usage(
+                        model=model,
+                        provider="anthropic",
+                        input_tokens=usage_info.get("input_tokens", 0),
+                        output_tokens=usage_info.get("output_tokens", 0),
+                        org_id=context.org_id if context else None,
+                        team_id=context.team_id if context else None,
+                        user_id=context.user_id if context else None,
+                        latency_ms=latency_ms,
+                    )
+                except Exception as e:
+                    logger.warning(f"Token tracking failed (non-fatal): {e}")
 
-            # Safe extraction with fallback
-            content = data.get("content", [])
-            response_text = ""
-            if isinstance(content, list) and content:
-                first_block = content[0]
-                if isinstance(first_block, dict):
-                    response_text = first_block.get("text", "")
-                elif isinstance(first_block, str):
-                    response_text = first_block
-            elif isinstance(content, str):
-                response_text = content
+                # Safe extraction with fallback
+                content = data.get("content", [])
+                response_text = ""
+                if isinstance(content, list) and content:
+                    first_block = content[0]
+                    if isinstance(first_block, dict):
+                        response_text = first_block.get("text", "")
+                    elif isinstance(first_block, str):
+                        response_text = first_block
+                elif isinstance(content, str):
+                    response_text = content
 
-            # Return both response and usage info
-            return response_text, {
-                "input_tokens": usage_info.get("input_tokens", 0),
-                "output_tokens": usage_info.get("output_tokens", 0),
-                "total_tokens": usage_info.get("input_tokens", 0) + usage_info.get("output_tokens", 0),
-                "latency_ms": latency_ms,
-                "model": self.model,
-                "provider": "anthropic",
-            }
+                # Return both response and usage info
+                return response_text, {
+                    "input_tokens": usage_info.get("input_tokens", 0),
+                    "output_tokens": usage_info.get("output_tokens", 0),
+                    "total_tokens": usage_info.get("input_tokens", 0) + usage_info.get("output_tokens", 0),
+                    "latency_ms": latency_ms,
+                    "model": model,
+                    "provider": "anthropic",
+                }
+
+        raise Exception("Anthropic API error: failed to resolve a valid model")
 
     async def _call_openai_compatible(
-        self, prompt: str, history: List[Dict] = None, context: NaviContext = None
+        self,
+        prompt: str,
+        history: Optional[List[Dict[str, Any]]] = None,
+        context: Optional[NaviContext] = None,
     ) -> str:
         """Call OpenAI-compatible API (OpenAI, Groq, OpenRouter, etc.)"""
         session = await self._get_session()
@@ -6551,7 +6918,12 @@ Respond with JSON only."""
             )
         )
 
-    async def _call_ollama(self, prompt: str, history: List[Dict] = None, context: NaviContext = None) -> str:
+    async def _call_ollama(
+        self,
+        prompt: str,
+        history: Optional[List[Dict[str, Any]]] = None,
+        context: Optional[NaviContext] = None,
+    ) -> str:
         """Call local Ollama"""
         session = await self._get_session()
 
@@ -6594,7 +6966,9 @@ Respond with JSON only."""
     # ==================== STREAMING LLM METHODS ====================
 
     async def _call_llm_streaming(
-        self, prompt: str, conversation_history: List[Dict] = None
+        self,
+        prompt: str,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Streaming version of LLM call that yields thinking tokens and final response.
@@ -6611,11 +6985,11 @@ Respond with JSON only."""
                 yield chunk
         else:
             # Fallback to non-streaming
-            result = await self._call_llm(prompt, conversation_history)
-            yield {"complete": result}
+            result_text, _ = await self._call_llm(prompt, conversation_history)
+            yield {"complete": result_text}
 
     async def _call_anthropic_streaming(
-        self, prompt: str, history: List[Dict] = None
+        self, prompt: str, history: Optional[List[Dict[str, Any]]] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Streaming call to Anthropic Claude API"""
         session = await self._get_session()
@@ -6637,8 +7011,9 @@ Respond with JSON only."""
                     messages.append({"role": "user", "content": str(msg)})
         messages.append({"role": "user", "content": prompt})
 
+        model = self._normalize_model(self.model)
         payload = {
-            "model": self.model,
+            "model": model,
             "max_tokens": 16384,
             "system": self.SYSTEM_PROMPT,
             "messages": messages,
@@ -6654,56 +7029,70 @@ Respond with JSON only."""
         full_response = ""
         thinking_buffer = ""
 
-        async with session.post(
-            f"{self.base_url}/messages",
-            headers=headers,
-            json=payload,
-            timeout=aiohttp.ClientTimeout(total=120),
-        ) as response:
-            if response.status != 200:
-                error = await response.text()
-                raise Exception(f"Anthropic API error: {error}")
+        for attempt in range(2):
+            payload["model"] = model
+            async with session.post(
+                f"{self.base_url}/messages",
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=120),
+            ) as response:
+                if response.status != 200:
+                    error = await response.text()
+                    fallback_model = self._fallback_model_on_error(model, error)
+                    if fallback_model and fallback_model != model and attempt == 0:
+                        logger.warning(
+                            "[NAVI] Anthropic model %s not available, falling back to %s",
+                            model,
+                            fallback_model,
+                        )
+                        model = fallback_model
+                        continue
+                    raise Exception(f"Anthropic API error: {error}")
 
-            async for line in response.content:
-                line = line.decode("utf-8").strip()
-                if not line or not line.startswith("data: "):
-                    continue
+                async for line in response.content:
+                    line = line.decode("utf-8").strip()
+                    if not line or not line.startswith("data: "):
+                        continue
 
-                data_str = line[6:]  # Remove "data: " prefix
-                if data_str == "[DONE]":
-                    break
-
-                try:
-                    data = json.loads(data_str)
-                    event_type = data.get("type", "")
-
-                    if event_type == "content_block_delta":
-                        delta = data.get("delta", {})
-                        text = delta.get("text", "")
-                        if text:
-                            full_response += text
-                            thinking_buffer += text
-
-                            # Yield thinking chunks (every ~50 chars for smooth streaming)
-                            if len(thinking_buffer) >= 50:
-                                yield {"thinking": thinking_buffer}
-                                thinking_buffer = ""
-
-                    elif event_type == "message_stop":
+                    data_str = line[6:]  # Remove "data: " prefix
+                    if data_str == "[DONE]":
                         break
 
-                except json.JSONDecodeError:
-                    continue
+                    try:
+                        data = json.loads(data_str)
+                        event_type = data.get("type", "")
 
-            # Yield any remaining buffer
-            if thinking_buffer:
-                yield {"thinking": thinking_buffer}
+                        if event_type == "content_block_delta":
+                            delta = data.get("delta", {})
+                            text = delta.get("text", "")
+                            if text:
+                                full_response += text
+                                thinking_buffer += text
 
-            # Yield complete response
-            yield {"complete": full_response}
+                                # Yield thinking chunks (every ~50 chars for smooth streaming)
+                                if len(thinking_buffer) >= 50:
+                                    yield {"thinking": thinking_buffer}
+                                    thinking_buffer = ""
+
+                        elif event_type == "message_stop":
+                            break
+
+                    except json.JSONDecodeError:
+                        continue
+
+                # Yield any remaining buffer
+                if thinking_buffer:
+                    yield {"thinking": thinking_buffer}
+
+                # Yield complete response
+                yield {"complete": full_response}
+                return
+
+        raise Exception("Anthropic API error: failed to resolve a valid model")
 
     async def _call_openai_streaming(
-        self, prompt: str, history: List[Dict] = None
+        self, prompt: str, history: Optional[List[Dict[str, Any]]] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Streaming call to OpenAI-compatible API"""
         session = await self._get_session()
@@ -6938,8 +7327,8 @@ class NaviEngine:
         self,
         workspace_path: str,
         llm_provider: str = "openai",
-        llm_model: str = None,
-        api_key: str = None,
+        llm_model: Optional[str] = None,
+        api_key: Optional[str] = None,
     ):
         self.workspace_path = workspace_path
         self.brain = NaviBrain(
@@ -7020,12 +7409,12 @@ class NaviEngine:
     async def process(
         self,
         message: str,
-        current_file: str = None,
-        current_file_content: str = None,
-        selection: str = None,
-        open_files: List[str] = None,
-        errors: List[Dict] = None,
-        conversation_history: List[Dict] = None,
+        current_file: Optional[str] = None,
+        current_file_content: Optional[str] = None,
+        selection: Optional[str] = None,
+        open_files: Optional[List[str]] = None,
+        errors: Optional[List[Dict]] = None,
+        conversation_history: Optional[List[Dict]] = None,
     ) -> Dict[str, Any]:
         """
         Process user message and execute actions.
@@ -7318,14 +7707,14 @@ async def process_navi_request(
     message: str,
     workspace_path: str,
     llm_provider: str = "openai",
-    llm_model: str = None,
-    api_key: str = None,
-    current_file: str = None,
-    current_file_content: str = None,
-    selection: str = None,
-    open_files: List[str] = None,
-    errors: List[Dict] = None,
-    conversation_history: List[Dict] = None,
+    llm_model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    current_file: Optional[str] = None,
+    current_file_content: Optional[str] = None,
+    selection: Optional[str] = None,
+    open_files: Optional[List[str]] = None,
+    errors: Optional[List[Dict]] = None,
+    conversation_history: Optional[List[Dict]] = None,
 ) -> Dict[str, Any]:
     """
     Main API function - process a NAVI request with safety features.
@@ -7371,14 +7760,14 @@ async def process_navi_request_streaming(
     message: str,
     workspace_path: str,
     llm_provider: str = "openai",
-    llm_model: str = None,
-    api_key: str = None,
-    current_file: str = None,
-    current_file_content: str = None,
-    selection: str = None,
-    open_files: List[str] = None,
-    errors: List[Dict] = None,
-    conversation_history: List[Dict] = None,
+    llm_model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    current_file: Optional[str] = None,
+    current_file_content: Optional[str] = None,
+    selection: Optional[str] = None,
+    open_files: Optional[List[str]] = None,
+    errors: Optional[List[Dict]] = None,
+    conversation_history: Optional[List[Dict]] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Streaming version of process_navi_request that yields real-time progress events.
@@ -7403,12 +7792,68 @@ async def process_navi_request_streaming(
     )
 
     try:
+        # STEP 0: Intent Classification (NEW - wired up existing classifier)
+        detected_intent = None
+        try:
+            from backend.agent.intent_classifier import classify_intent
+
+            yield {
+                "activity": {
+                    "kind": "intent",
+                    "label": "Understanding request",
+                    "detail": "Classifying intent...",
+                    "status": "running"
+                }
+            }
+
+            # Classify intent with context
+            detected_intent = classify_intent(
+                message,
+                metadata={
+                    "files": [current_file] if current_file else [],
+                    "language": _detect_language(current_file) if current_file else None,
+                }
+            )
+
+            # Emit intent detection result
+            confidence_pct = int(detected_intent.confidence * 100)
+            yield {
+                "intent": {
+                    "family": detected_intent.family.value if hasattr(detected_intent.family, 'value') else str(detected_intent.family),
+                    "kind": detected_intent.kind.value if hasattr(detected_intent.kind, 'value') else str(detected_intent.kind),
+                    "confidence": detected_intent.confidence,
+                }
+            }
+
+            yield {
+                "activity": {
+                    "kind": "intent",
+                    "label": "Understanding request",
+                    "detail": f"Detected: {detected_intent.kind.value if hasattr(detected_intent.kind, 'value') else detected_intent.kind} ({confidence_pct}%)",
+                    "status": "done"
+                }
+            }
+
+            # Emit narrative about what we understand
+            from backend.services.narrative_generator import NarrativeGenerator
+            intent_narrative = NarrativeGenerator.for_intent(
+                detected_intent.kind.value if hasattr(detected_intent.kind, 'value') else str(detected_intent.kind),
+                detected_intent.confidence,
+                message
+            )
+            yield {"narrative": intent_narrative}
+
+        except ImportError:
+            logger.debug("Intent classifier not available, skipping classification")
+        except Exception as e:
+            logger.warning(f"Intent classification failed: {e}")
+
         # STEP 1: Project detection (happens in engine init)
         yield {
             "activity": {
                 "kind": "detection",
-                "label": "Detecting",
-                "detail": f"Project type: {engine.project_type}",
+                "label": "Detected",
+                "detail": engine.project_type,
                 "status": "done"
             }
         }
@@ -7418,7 +7863,7 @@ async def process_navi_request_streaming(
             "activity": {
                 "kind": "context",
                 "label": "Building context",
-                "detail": "Gathering workspace information...",
+                "detail": "Gathering workspace information",
                 "status": "running"
             }
         }
@@ -7446,19 +7891,17 @@ async def process_navi_request_streaming(
             }
         }
 
-        # STEP 3: Project analysis (reading files) - done silently, no need to show activity
-        # Try to use persisted RAG index for faster context if available
+        # STEP 3: Try to use persisted RAG index for faster context if available
         try:
             from backend.services.workspace_rag import load_workspace_index, get_context_for_task
             persisted_index = await load_workspace_index(workspace_path)
             if persisted_index and persisted_index.total_chunks > 0:
-                # Use RAG to get relevant context based on the message
                 await get_context_for_task(workspace_path, message)
                 yield {
                     "activity": {
                         "kind": "rag",
-                        "label": "Using cached index",
-                        "detail": f"{persisted_index.total_chunks} code symbols loaded",
+                        "label": "Searching code index",
+                        "detail": f"{persisted_index.total_chunks} symbols indexed",
                         "status": "done"
                     }
                 }
@@ -7467,24 +7910,32 @@ async def process_navi_request_streaming(
 
         project_info = ProjectAnalyzer.analyze(workspace_path)
 
-        # STEP 3.5: Read actual source files (like GitHub Copilot does)
-        # This is what makes responses detailed and specific
-        source_files = ProjectAnalyzer.analyze_source_files(workspace_path, max_files=10)
+        # STEP 3.5: Read actual source files with REAL-TIME streaming
+        # This shows file read activities as they happen (like GitHub Copilot)
+        file_count = ProjectAnalyzer.get_important_files_count(workspace_path)
+        source_files: Dict[str, str] = {}
 
-        # Emit activity for each source file read
-        for file_path in source_files.keys():
-            yield {
-                "activity": {
-                    "kind": "file_read",
-                    "label": "Read",
-                    "detail": file_path,
-                    "status": "done"
-                }
-            }
+        # Stream file reads with real-time activity events
+        async for event in ProjectAnalyzer.analyze_source_files_streaming(
+            workspace_path, max_files=file_count
+        ):
+            if "activity" in event:
+                # Forward activity events to the frontend in real-time
+                yield event
+            elif "files" in event:
+                # Capture the final files dict
+                source_files = event["files"]
 
         # Add source files to project info for context
         project_info.source_files = source_files
         project_info.files_read.extend(list(source_files.keys()))
+
+        # Emit narrative about what we found (Copilot-style conversational update)
+        if source_files:
+            framework = project_info.framework or project_info.project_type
+            yield {
+                "narrative": f"I've analyzed {len(source_files)} files from this **{framework}** project.",
+            }
 
         # STEP 4: Check for smart response - distinguish ACTION vs INFORMATION requests
         message_lower = message.lower()
@@ -7548,7 +7999,7 @@ async def process_navi_request_streaming(
             install_cmd = IntelligentResponder._get_install_command(project_info)
             dev_cmd, dev_url = IntelligentResponder._get_dev_command(project_info)
 
-            # Build actions for immediate execution
+            # Build actions for immediate execution with dependency tracking
             actions = []
             if install_cmd:
                 actions.append({
@@ -7557,6 +8008,7 @@ async def process_navi_request_streaming(
                     "title": "Install dependencies",
                     "description": f"Run {install_cmd} to install project dependencies",
                     "cwd": workspace_path,
+                    "requiresPreviousSuccess": False,  # First command, no dependency
                 })
             if dev_cmd:
                 actions.append({
@@ -7565,6 +8017,7 @@ async def process_navi_request_streaming(
                     "title": "Start development server",
                     "description": f"Run {dev_cmd} to start the dev server" + (f" at {dev_url}" if dev_url else ""),
                     "cwd": workspace_path,
+                    "requiresPreviousSuccess": bool(install_cmd),  # Only run if install succeeds
                 })
 
             # Generate a natural, action-oriented response
@@ -7664,7 +8117,7 @@ async def process_navi_request_streaming(
             "activity": {
                 "kind": "prompt",
                 "label": "Building prompt",
-                "detail": "Preparing context for LLM...",
+                "detail": "Preparing context for LLM",
                 "status": "running"
             }
         }
@@ -7682,13 +8135,33 @@ async def process_navi_request_streaming(
 
         # STEP 6: Call LLM with STREAMING to show real-time thinking
         model_display = llm_model or engine.brain.model
-        provider_display = llm_provider.capitalize()
+
+        # Detect actual provider from model name if not explicitly set
+        actual_provider = llm_provider
+        if model_display:
+            model_lower = model_display.lower()
+            if "claude" in model_lower or "anthropic" in model_lower:
+                actual_provider = "anthropic"
+            elif "gpt" in model_lower or "o1" in model_lower or "o3" in model_lower:
+                actual_provider = "openai"
+            elif "gemini" in model_lower:
+                actual_provider = "google"
+
+        provider_display = actual_provider.capitalize()
+
+        # Log for debugging
+        logger.info(
+            "[LLM Activity] provider=%s -> actual_provider=%s, model=%s",
+            llm_provider,
+            actual_provider,
+            model_display,
+        )
 
         yield {
             "activity": {
                 "kind": "llm_call",
                 "label": f"Calling {provider_display}",
-                "detail": f"Model: {model_display}",
+                "detail": model_display,
                 "status": "running"
             }
         }
@@ -7823,8 +8296,8 @@ async def process_navi_request_streaming(
             response.framework = project_info.framework
 
             # Build file_edits array for VS Code (same format as NaviEngine.process)
-            file_edits = []
-            validation_results = {}
+            file_edits: List[Dict[str, Any]] = []
+            validation_results: Dict[str, Any] = {}
 
             # Validate generated code before presenting to user
             try:
@@ -7843,7 +8316,7 @@ async def process_navi_request_streaming(
                 logger.warning(f"Code validation failed: {e}")
 
             for file_path, content in response.files_to_modify.items():
-                edit = {
+                edit: Dict[str, Any] = {
                     "type": "editFile",
                     "filePath": file_path,
                     "content": content,
@@ -7855,7 +8328,7 @@ async def process_navi_request_streaming(
                 file_edits.append(edit)
 
             for file_path, content in response.files_to_create.items():
-                edit = {
+                edit: Dict[str, Any] = {
                     "type": "editFile",
                     "filePath": file_path,
                     "content": content,
@@ -7917,7 +8390,8 @@ async def process_navi_request_streaming(
 
         except Exception as e:
             logger.error(f"NAVI processing error: {e}", exc_info=True)
-            error_summary = str(e)[:50]
+            # Show more error detail (increased from 50 to 500 characters)
+            error_summary = str(e)[:500]
             yield {
                 "activity": {
                     "kind": "error",

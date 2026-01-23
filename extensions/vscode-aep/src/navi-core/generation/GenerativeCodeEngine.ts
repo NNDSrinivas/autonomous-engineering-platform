@@ -183,7 +183,7 @@ Generate the files:`;
         // Choose model based on intent complexity
         const model = this.selectModel(intent);
 
-        const response = await fetch('http://127.0.0.1:8787/api/navi/chat', {
+        const response = await fetch('http://127.0.0.1:8000/api/navi/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

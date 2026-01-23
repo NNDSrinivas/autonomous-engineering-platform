@@ -996,3 +996,125 @@
   background: linear-gradient(135deg, rgba(22, 163, 74, 0.18), rgba(13, 148, 136, 0.12));
   box-shadow: 0 0 12px rgba(22, 163, 74, 0.2), inset 0 0 8px rgba(22, 163, 74, 0.05);
 }
+
+/* ==========================================================================
+   Activity Panel Sidebar
+   Live activity stream showing autonomous tasks in progress
+   ========================================================================== */
+
+.navi-activity-sidebar {
+  position: relative;
+  width: 320px;
+  min-width: 320px;
+  max-width: 400px;
+  background: var(--navi-bg-darker);
+  border-left: 1px solid var(--navi-border);
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.navi-activity-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  background: rgba(var(--navi-error-rgb), 0.1);
+  border: 1px solid rgba(var(--navi-error-rgb), 0.2);
+  color: var(--navi-error);
+  border-radius: var(--navi-radius-md);
+  padding: 6px;
+  cursor: pointer;
+  transition: all var(--navi-transition-fast);
+}
+
+.navi-activity-close:hover {
+  background: rgba(var(--navi-error-rgb), 0.2);
+  border-color: rgba(var(--navi-error-rgb), 0.4);
+  transform: scale(1.1);
+  box-shadow: 0 0 8px rgba(var(--navi-error-rgb), 0.3);
+}
+
+/* Activity Button in Header */
+.navi-activity-btn.is-active {
+  background: rgba(var(--navi-primary-rgb), 0.1);
+  border-color: rgba(var(--navi-primary-rgb), 0.3);
+}
+
+.navi-activity-btn.is-active .navi-icon-glow {
+  opacity: 1;
+  background: radial-gradient(
+    circle,
+    rgba(var(--navi-primary-rgb), 0.3) 0%,
+    transparent 70%
+  );
+}
+
+.navi-activity-icon {
+  animation: activityPulse 2s ease-in-out infinite;
+}
+
+@keyframes activityPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
+}
+
+.navi-activity-btn:hover .navi-activity-icon {
+  animation: activitySpin 1s linear infinite;
+}
+
+@keyframes activitySpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Activity Panel Component Overrides */
+.navi-activity-sidebar .activity-panel {
+  height: 100%;
+  background: transparent;
+  border: none;
+}
+
+.navi-activity-sidebar .activity-panel > div:first-child {
+  background: rgba(var(--navi-primary-rgb), 0.05);
+  border-bottom: 1px solid rgba(var(--navi-primary-rgb), 0.1);
+}
+
+/* Custom scrollbar for activity panel */
+.navi-activity-sidebar ::-webkit-scrollbar {
+  width: 6px;
+}
+
+.navi-activity-sidebar ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.navi-activity-sidebar ::-webkit-scrollbar-thumb {
+  background: rgba(var(--navi-primary-rgb), 0.3);
+  border-radius: 3px;
+}
+
+.navi-activity-sidebar ::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--navi-primary-rgb), 0.5);
+}

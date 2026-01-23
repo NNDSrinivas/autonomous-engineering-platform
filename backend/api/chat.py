@@ -5,7 +5,7 @@ Provides context-aware responses with team intelligence + Navi diff review
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, TypedDict
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -528,7 +528,7 @@ MODEL_ALIASES: Dict[str, Dict[str, str]] = {
     "openai/gpt-4o-mini": {"provider": "openai", "model": "gpt-4o-mini", "label": "GPT-4o Mini"},
     "openai/gpt-4-turbo": {"provider": "openai", "model": "gpt-4-turbo", "label": "GPT-4 Turbo"},
     # Anthropic models
-    "anthropic/claude-sonnet-4": {"provider": "anthropic", "model": "claude-sonnet-4-20250514", "label": "Claude Sonnet 4"},
+    "anthropic/claude-sonnet-4": {"provider": "anthropic", "model": "claude-3-5-sonnet-20241022", "label": "Claude Sonnet 4"},
     "anthropic/claude-opus-4": {"provider": "anthropic", "model": "claude-opus-4-20250514", "label": "Claude Opus 4"},
     "anthropic/claude-3.5-sonnet": {"provider": "anthropic", "model": "claude-3-5-sonnet-20241022", "label": "Claude 3.5 Sonnet"},
     "anthropic/claude-3-opus": {"provider": "anthropic", "model": "claude-3-opus-20240229", "label": "Claude 3 Opus"},
@@ -754,7 +754,12 @@ async def stream_llm_response(question: str, context: Dict[str, Any]):
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 
-def _openai_token_kwargs(model: str, max_tokens: int) -> Dict[str, int]:
+class _OpenAITokenKwargs(TypedDict, total=False):
+    max_tokens: int
+    max_completion_tokens: int
+
+
+def _openai_token_kwargs(model: str, max_tokens: int) -> _OpenAITokenKwargs:
     normalized = (model or "").lower()
     if any(
         token in normalized
@@ -762,6 +767,27 @@ def _openai_token_kwargs(model: str, max_tokens: int) -> Dict[str, int]:
     ):
         return {"max_completion_tokens": max_tokens}
     return {"max_tokens": max_tokens}
+
+
+def _normalize_conversation_history(
+    history: Optional[List[ChatMessage]],
+) -> Optional[List[Dict[str, Any]]]:
+    if not history:
+        return None
+
+    normalized: List[Dict[str, Any]] = []
+    for msg in history:
+        if isinstance(msg, dict):
+            role = msg.get("type") or msg.get("role", "user")
+            content = msg.get("content", "")
+        else:
+            role = getattr(msg, "type", getattr(msg, "role", "user"))
+            content = getattr(msg, "content", "")
+
+        if content:
+            normalized.append({"role": role, "content": content})
+
+    return normalized or None
 
 
 # ------------------------------------------------------------------------------
@@ -845,8 +871,129 @@ async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_d
                 },
             )
 
+        # =====================================================================
+        # UNIFIED AGENT: Route action-oriented requests to the agentic engine
+        # =====================================================================
+        # Check if this is an action request that should use native tool-use
+        if _should_use_unified_agent(request.message):
+            logger.info(f"[NAVI Stream] 🚀 Routing to Unified Agent for action request: {request.message[:50]}...")
+            from backend.services.unified_agent import UnifiedAgent, AgentEventType
+
+            provider = request.provider or llm_provider or os.environ.get("DEFAULT_LLM_PROVIDER", "anthropic")
+            model = request.model or llm_model
+
+            # Build project context from request
+            project_context = None
+            if getattr(request, 'current_file', None) or getattr(request, 'errors', None):
+                project_context = {
+                    "current_file": getattr(request, 'current_file', None),
+                    "errors": getattr(request, 'errors', None),
+                }
+
+            async def unified_agent_stream():
+                """Stream unified agent events as SSE for action requests."""
+                try:
+                    agent = UnifiedAgent(
+                        provider=provider,
+                        model=model,
+                    )
+
+                    # Emit start event with router info
+                    yield f"data: {json.dumps({'router_info': {'provider': provider, 'model': model or 'auto', 'mode': 'unified_agent', 'task_type': 'action'}})}\n\n"
+                    yield f"data: {json.dumps({'activity': {'kind': 'agent_start', 'label': 'Agent', 'detail': 'Starting unified agent with native tool-use...', 'status': 'running'}})}\n\n"
+
+                    # Normalize conversation history
+                    conversation_history = _normalize_conversation_history(
+                        request.conversationHistory
+                    )
+
+                    async for event in agent.run(
+                        message=request.message,
+                        workspace_path=request.workspace_root,
+                        conversation_history=conversation_history,
+                        project_context=project_context,
+                    ):
+                        # Convert agent events to SSE format
+                        if event.type == AgentEventType.THINKING:
+                            yield f"data: {json.dumps({'activity': {'kind': 'thinking', 'label': 'Thinking', 'detail': event.data.get('message', ''), 'status': 'running'}})}\n\n"
+
+                        elif event.type == AgentEventType.TEXT:
+                            yield f"data: {json.dumps({'content': event.data})}\n\n"
+
+                        elif event.type == AgentEventType.TOOL_CALL:
+                            tool_name = event.data.get('name', 'unknown')
+                            tool_args = event.data.get('arguments', {})
+
+                            kind = 'command'
+                            label = tool_name
+                            detail = ''
+
+                            if tool_name == 'read_file':
+                                kind = 'read'
+                                label = 'Reading'
+                                detail = tool_args.get('path', '')
+                            elif tool_name == 'write_file':
+                                kind = 'create'
+                                label = 'Creating'
+                                detail = tool_args.get('path', '')
+                            elif tool_name == 'edit_file':
+                                kind = 'edit'
+                                label = 'Editing'
+                                detail = tool_args.get('path', '')
+                            elif tool_name == 'run_command':
+                                kind = 'command'
+                                label = 'Running'
+                                detail = tool_args.get('command', '')
+                            elif tool_name == 'search_files':
+                                kind = 'search'
+                                label = 'Searching'
+                                detail = tool_args.get('pattern', '')
+                            elif tool_name == 'list_directory':
+                                kind = 'read'
+                                label = 'Listing'
+                                detail = tool_args.get('path', '')
+
+                            yield f"data: {json.dumps({'activity': {'kind': kind, 'label': label, 'detail': detail, 'status': 'running'}})}\n\n"
+
+                        elif event.type == AgentEventType.TOOL_RESULT:
+                            result = event.data
+                            success = result.get('success', False)
+                            status = 'done' if success else 'error'
+                            yield f"data: {json.dumps({'activity': {'kind': 'tool_result', 'label': 'Result', 'detail': result.get('output', '')[:200], 'status': status}})}\n\n"
+
+                        elif event.type == AgentEventType.VERIFICATION:
+                            yield f"data: {json.dumps({'verification': event.data})}\n\n"
+
+                        elif event.type == AgentEventType.FIXING:
+                            yield f"data: {json.dumps({'activity': {'kind': 'fixing', 'label': 'Fixing', 'detail': event.data.get('message', ''), 'status': 'running'}})}\n\n"
+
+                        elif event.type == AgentEventType.DONE:
+                            yield f"data: {json.dumps({'activity': {'kind': 'done', 'label': 'Complete', 'detail': event.data.get('summary', 'Task completed'), 'status': 'done'}})}\n\n"
+                            yield f"data: {json.dumps({'done': True, 'summary': event.data})}\n\n"
+
+                        elif event.type == AgentEventType.ERROR:
+                            yield f"data: {json.dumps({'error': event.data.get('message', 'Unknown error')})}\n\n"
+
+                except Exception as e:
+                    logger.exception(f"[NAVI Unified Agent] Error: {e}")
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+            return StreamingResponse(
+                unified_agent_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                    "Connection": "keep-alive",
+                },
+            )
+
+        # =====================================================================
+        # NAVI BRAIN: For analysis, explanation, and conversation requests
+        # =====================================================================
         # Use NAVI brain for intelligent code analysis (Agent / Agent Full Access)
         from backend.services.navi_brain import process_navi_request_streaming
+        workspace_path = request.workspace_root or str(Path.cwd())
 
         # Extract context from request
         current_file = getattr(request, "current_file", None)
@@ -887,11 +1034,24 @@ async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_d
                     error_details = last_error.get('errorDetails', '')
                     failed_action = last_error.get('action', {})
                     failed_path = failed_action.get('filePath', 'unknown path')
+                    exit_code = last_error.get('exitCode')
+                    command_output = (
+                        last_error.get('commandOutput')
+                        or last_error.get('stderr')
+                        or last_error.get('stdout')
+                        or ''
+                    )
+                    command_output = command_output.strip()[:4000]
 
                     # Prepend error context so NAVI knows to debug and continue
                     actual_message = f"""[AUTO-RECOVERY] The previous action failed with error:
 Error: {error_msg}
 Details: {error_details}
+Exit code: {exit_code if exit_code is not None else 'unknown'}
+Command output:
+```
+{command_output or 'No output captured'}
+```
 Failed action type: {failed_action.get('type', 'unknown')}
 Failed file path: {failed_path}
 
@@ -908,9 +1068,12 @@ Please debug this issue and continue with the original task. The user's new mess
                 navi_result = None
                 files_read_live = []
 
+                conversation_history = _normalize_conversation_history(
+                    request.conversationHistory
+                )
                 async for event in process_navi_request_streaming(
                     message=actual_message,
-                    workspace_path=request.workspace_root,
+                    workspace_path=workspace_path,
                     llm_provider=llm_provider,
                     llm_model=llm_model,
                     api_key=None,
@@ -919,11 +1082,7 @@ Please debug this issue and continue with the original task. The user's new mess
                     selection=selection,
                     open_files=None,
                     errors=errors,
-                    conversation_history=(
-                        request.conversationHistory
-                        if hasattr(request, "conversationHistory")
-                        else None
-                    ),
+                    conversation_history=conversation_history,
                 ):
                     # Stream activity events directly to the frontend
                     if "activity" in event:
@@ -1081,6 +1240,8 @@ async def navi_chat(
         f"🔵 CHAT.PY navi_chat handler called with message: {request.message[:50]}"
     )
 
+    llm_context: Dict[str, Any] = {}
+
     try:
         # 🚀 LLM-FIRST NAVI BRAIN - Pure LLM intelligence for code generation and execution
         # Uses new clean NAVI brain with safety features and multi-provider LLM support
@@ -1089,6 +1250,7 @@ async def navi_chat(
         if not request.workspace_root:
             logger.warning("⚠️ workspace_root is None, skipping NAVI brain processing")
             raise ValueError("workspace_root is required for NAVI processing")
+        workspace_path = request.workspace_root
 
         from backend.services.navi_brain import process_navi_request
 
@@ -1129,9 +1291,12 @@ async def navi_chat(
         llm_model = llm_context.get("resolved_model") or None
 
         # Call the new LLM-first NAVI brain with full context
+        conversation_history = _normalize_conversation_history(
+            request.conversationHistory
+        )
         navi_result = await process_navi_request(
             message=request.message,
-            workspace_path=request.workspace_root,
+            workspace_path=workspace_path,
             llm_provider=llm_provider,
             llm_model=llm_model,
             api_key=None,  # Will use environment variable
@@ -1140,11 +1305,7 @@ async def navi_chat(
             selection=selection,
             open_files=None,
             errors=errors,
-            conversation_history=(
-                request.conversationHistory
-                if hasattr(request, "conversationHistory")
-                else None
-            ),
+            conversation_history=conversation_history,
         )
 
         logger.info(
@@ -1608,6 +1769,8 @@ Would you like to try again with different settings?
             logger.error("=== ENTERING EXECUTION BLOCK ===")
             try:
                 task_id = request.state.get("task_id")
+                if not task_id:
+                    raise ValueError("Missing task_id in request state")
                 current_step_index = request.state.get("current_step", 0)
                 logger.error(f"Task ID: {task_id}, Current Step: {current_step_index}")
 
@@ -3323,7 +3486,8 @@ Respond with ONLY the category name (e.g., "code_help"). No explanation."""
                 max_tokens=20,
             )
 
-            intent_type = response.choices[0].message.content.strip().lower()
+            intent_content = response.choices[0].message.content or ""
+            intent_type = intent_content.strip().lower()
 
             # Validate the response
             valid_intents = [
@@ -3754,3 +3918,197 @@ def _format_time_ago(timestamp: Any) -> str:
     except Exception as e:
         logger.warning(f"Error formatting timestamp {timestamp}: {e}")
         return "recently"
+
+
+# ------------------------------------------------------------------------------
+# UNIFIED AGENT ENDPOINT - Native Tool-Use Agentic Loop
+# ------------------------------------------------------------------------------
+# This is the new architecture that makes NAVI competitive with Cline, Copilot,
+# and Claude Code by using native LLM tool-use APIs.
+
+
+@navi_router.post("/agent/stream")
+async def navi_agent_stream(request: NaviChatRequest):
+    """
+    Streaming endpoint for the unified agentic agent.
+
+    This endpoint uses native LLM tool-use (not text parsing) and implements
+    a continuous agentic loop where:
+    1. LLM receives tools and decides what to do
+    2. Tools are executed and results fed back
+    3. Loop continues until task is complete
+
+    Returns SSE events for real-time UI updates.
+    """
+    from backend.services.unified_agent import UnifiedAgent, AgentEventType
+
+    # Validate workspace
+    if not request.workspace_root:
+        async def error_stream():
+            yield f"data: {json.dumps({'error': 'workspace_root is required for agent mode'})}\n\n"
+        return StreamingResponse(
+            error_stream(),
+            media_type="text/event-stream",
+        )
+
+    # Get provider/model from request or environment
+    provider = request.provider or os.environ.get("DEFAULT_LLM_PROVIDER", "anthropic")
+    model = request.model
+
+    # Build project context from request
+    project_context = None
+    if request.current_file or request.errors:
+        project_context = {
+            "current_file": request.current_file,
+            "errors": request.errors,
+        }
+
+    async def agent_event_stream():
+        """Stream unified agent events as SSE."""
+        try:
+            agent = UnifiedAgent(
+                provider=provider,
+                model=model,
+            )
+
+            # Emit start event with router info
+            yield f"data: {json.dumps({'router_info': {'provider': provider, 'model': model or 'auto', 'mode': 'unified_agent'}})}\n\n"
+
+            # Normalize conversation history
+            conversation_history = _normalize_conversation_history(
+                request.conversationHistory
+            )
+
+            async for event in agent.run(
+                message=request.message,
+                workspace_path=request.workspace_root,
+                conversation_history=conversation_history,
+                project_context=project_context,
+            ):
+                # Convert agent events to SSE format that frontend understands
+                if event.type == AgentEventType.THINKING:
+                    yield f"data: {json.dumps({'activity': {'kind': 'thinking', 'label': 'Thinking', 'detail': event.data.get('message', ''), 'status': 'running'}})}\n\n"
+
+                elif event.type == AgentEventType.TEXT:
+                    # Stream text content
+                    yield f"data: {json.dumps({'content': event.data})}\n\n"
+
+                elif event.type == AgentEventType.TOOL_CALL:
+                    # Map tool calls to activity events
+                    tool_name = event.data.get('name', 'unknown')
+                    tool_args = event.data.get('arguments', {})
+
+                    kind = 'command'
+                    label = tool_name
+                    detail = ''
+
+                    if tool_name == 'read_file':
+                        kind = 'read'
+                        label = 'Reading'
+                        detail = tool_args.get('path', '')
+                    elif tool_name == 'write_file':
+                        kind = 'create'
+                        label = 'Creating'
+                        detail = tool_args.get('path', '')
+                    elif tool_name == 'edit_file':
+                        kind = 'edit'
+                        label = 'Editing'
+                        detail = tool_args.get('path', '')
+                    elif tool_name == 'run_command':
+                        kind = 'command'
+                        label = 'Running'
+                        detail = tool_args.get('command', '')
+                    elif tool_name == 'search_files':
+                        kind = 'search'
+                        label = 'Searching'
+                        detail = tool_args.get('pattern', '')
+                    elif tool_name == 'list_directory':
+                        kind = 'read'
+                        label = 'Listing'
+                        detail = tool_args.get('path', '')
+
+                    yield f"data: {json.dumps({'activity': {'kind': kind, 'label': label, 'detail': detail, 'status': 'running', 'tool_id': event.data.get('id')}})}\n\n"
+
+                elif event.type == AgentEventType.TOOL_RESULT:
+                    # Update activity status based on result
+                    result = event.data.get('result', {})
+                    success = result.get('success', True)
+                    status = 'done' if success else 'error'
+
+                    yield f"data: {json.dumps({'activity': {'kind': 'tool_result', 'label': event.data.get('name', 'Tool'), 'detail': 'completed' if success else result.get('error', 'failed'), 'status': status, 'tool_id': event.data.get('id')}})}\n\n"
+
+                    # Also emit the result content for display
+                    if result.get('stdout'):
+                        yield f"data: {json.dumps({'tool_output': {'type': 'stdout', 'content': result['stdout'][:2000]}})}\n\n"
+                    if result.get('stderr'):
+                        yield f"data: {json.dumps({'tool_output': {'type': 'stderr', 'content': result['stderr'][:2000]}})}\n\n"
+                    if result.get('content'):
+                        # File content - truncate for large files
+                        content = result['content']
+                        if len(content) > 5000:
+                            content = content[:5000] + f"\n... (truncated, {len(result['content'])} total chars)"
+                        yield f"data: {json.dumps({'tool_output': {'type': 'file_content', 'path': result.get('path'), 'content': content}})}\n\n"
+
+                elif event.type == AgentEventType.ERROR:
+                    yield f"data: {json.dumps({'error': event.data.get('error', 'Unknown error')})}\n\n"
+
+                elif event.type == AgentEventType.DONE:
+                    # Emit summary
+                    yield f"data: {json.dumps({'done': {'task_id': event.data.get('task_id'), 'iterations': event.data.get('iterations'), 'files_read': event.data.get('files_read', []), 'files_modified': event.data.get('files_modified', []), 'commands_run': event.data.get('commands_run', [])}})}\n\n"
+
+            yield "data: [DONE]\n\n"
+
+        except Exception as e:
+            logger.error(f"[NAVI Agent] Error in agent stream: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        agent_event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+def _should_use_unified_agent(message: str) -> bool:
+    """
+    Detect if a message should use the unified agent (action-oriented requests).
+
+    Returns True for requests that involve taking action rather than just chatting.
+    """
+    action_patterns = [
+        # File/code creation
+        r'\b(create|write|make|add|build|generate)\b.*\b(file|component|function|class|test|module|page)\b',
+        # Running things - more permissive
+        r'\b(run|execute|start|stop|restart|launch)\b.*(project|server|test|build|app|application|script|command)',
+        r'\b(run|execute)\s+(the\s+)?(project|tests?|build|server|app)',  # "run the project", "run tests"
+        # Bug fixing
+        r'\b(fix|debug|repair|resolve|solve)\b.*\b(bug|error|issue|problem|crash|failure)\b',
+        # Code editing
+        r'\b(edit|modify|update|change|refactor|rename)\b.*\b(file|code|function|variable|class)\b',
+        # Package management
+        r'\b(install|uninstall|add|remove|upgrade|update)\b.*\b(package|dependency|module|library)\b',
+        r'\bnpm\s+(install|run|start|build|test)',  # npm commands
+        r'\byarn\s+(install|add|run|start|build|test)',  # yarn commands
+        r'\bpip\s+(install|uninstall)',  # pip commands
+        r'\bcargo\s+(build|run|test)',  # cargo commands
+        r'\bgo\s+(build|run|test|get)',  # go commands
+        r'\bpython\s+',  # python scripts
+        r'\bnode\s+',  # node scripts
+        # Git commands
+        r'\bgit\s+(commit|push|pull|merge|rebase|checkout|branch)',
+        # Imperative action phrases
+        r'^(please\s+)?(can\s+you\s+)?(run|execute|start|create|fix|install|build)',  # "run...", "can you run..."
+        # Direct command patterns
+        r'^\s*(npm|yarn|pip|cargo|go|python|node|git)\s+',  # Commands at start of message
+    ]
+
+    message_lower = message.lower()
+    for pattern in action_patterns:
+        if re.search(pattern, message_lower, re.IGNORECASE):
+            return True
+
+    return False

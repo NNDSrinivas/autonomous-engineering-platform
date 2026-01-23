@@ -124,6 +124,16 @@ providers:
         coding_accuracy: 5
         smart_auto_rank: 4
 
+      claude-sonnet-4-20241022:
+        provider: anthropic
+        type: text
+        max_context: 200000
+        speed_index: 4
+        cost_index: 3
+        coding_accuracy: 5
+        smart_auto_rank: 4
+        recommended: true
+
       claude-sonnet-4-20250514:
         provider: anthropic
         type: text

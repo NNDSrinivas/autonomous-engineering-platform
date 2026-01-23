@@ -63,6 +63,7 @@ import { naviClient, McpExecutionResult } from "../../api/navi/client";
 import NaviChatPanel from "../navi/NaviChatPanel";
 import { HistoryPanel } from "../navi/HistoryPanel";
 import { SidebarPanel } from "../sidebar/SidebarPanel";
+import { ActivityPanel } from "../ActivityPanel";
 import { useActivityPanel } from "../../hooks/useActivityPanel";
 import { postMessage, onMessage } from "../../utils/vscodeApi";
 import "../../styles/futuristic.css";
@@ -500,6 +501,7 @@ export function CodeCompanionShell() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<UserInfo | undefined>(undefined);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [activityPanelOpen, setActivityPanelOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [externalPanelRequest, setExternalPanelRequest] = useState<SidebarPanelType>(null);
@@ -828,6 +830,19 @@ export function CodeCompanionShell() {
                 <Clock className="h-4 w-4 navi-history-icon" />
               </button>
 
+              {/* Activity Button - Live stream animation */}
+              <button
+                className={`navi-header-icon-btn navi-animated-icon navi-activity-btn ${activityPanelOpen ? 'is-active' : ''}`}
+                title="Activity Stream"
+                onClick={() => setActivityPanelOpen(prev => !prev)}
+              >
+                <span className="navi-icon-glow" />
+                <Activity className="h-4 w-4 navi-activity-icon" />
+                {activityPanelState.steps.length > 0 && (
+                  <span className="navi-notification-badge">{activityPanelState.steps.filter(s => s.status === 'in_progress').length || activityPanelState.steps.length}</span>
+                )}
+              </button>
+
               {/* Notifications with Badge - Bell ring animation */}
               <button className="navi-header-icon-btn navi-animated-icon navi-has-badge navi-bell-btn" title="Notifications">
                 <span className="navi-icon-glow" />
@@ -953,7 +968,7 @@ export function CodeCompanionShell() {
                   <button
                     className="navi-header-icon-btn navi-animated-icon navi-settings-btn"
                     title="Settings"
-                    onClick={() => setExternalPanelRequest({ panel: 'account' })}
+                    onClick={() => setExternalPanelRequest('account')}
                   >
                     <span className="navi-icon-glow" />
                     <Settings className="h-4 w-4 navi-settings-icon" />
@@ -982,9 +997,8 @@ export function CodeCompanionShell() {
         <div className="flex min-h-0 flex-1">
           {/* Left Sidebar */}
           <aside
-            className={`navi-sidebar transition-all duration-300 ease-in-out ${
-              sidebarCollapsed ? "w-0 overflow-hidden" : "w-72"
-            }`}
+            className={`navi-sidebar transition-all duration-300 ease-in-out ${sidebarCollapsed ? "w-0 overflow-hidden" : "w-72"
+              }`}
           >
             {!sidebarCollapsed && (
               <SidebarPanel
@@ -1004,6 +1018,32 @@ export function CodeCompanionShell() {
           <main className="flex min-h-0 flex-1 flex-col">
             <div className="flex min-h-0 flex-1 overflow-hidden">
               <NaviChatPanel activityPanelState={activityPanelState} />
+
+              {/* Activity Panel - Right Sidebar */}
+              {activityPanelOpen && activityPanelState.isVisible && (
+                <aside className="navi-activity-sidebar">
+                  <ActivityPanel
+                    steps={activityPanelState.steps}
+                    currentStep={activityPanelState.currentStep}
+                    onFileClick={(filePath) => {
+                      postMessage({ type: 'openFile', filePath });
+                    }}
+                    onAcceptAll={() => {
+                      console.log('[Activity] Accept all changes');
+                    }}
+                    onRejectAll={() => {
+                      console.log('[Activity] Reject all changes');
+                    }}
+                  />
+                  <button
+                    className="navi-activity-close"
+                    onClick={() => setActivityPanelOpen(false)}
+                    title="Close Activity Panel"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </aside>
+              )}
             </div>
           </main>
         </div>
@@ -1348,110 +1388,110 @@ export function CodeCompanionShell() {
                         return matchesSearch && matchesCategory;
                       })
                       .map((connector) => (
-                      <div key={connector.id} className={`navi-cc-connector ${connector.status === 'connected' ? 'is-connected' : ''}`}>
-                        <div className="navi-cc-connector__header">
-                          <div className="navi-cc-connector__icon">
-                            {connector.logoUrl ? (
-                              <img
-                                src={connector.logoUrl}
-                                alt={`${connector.name} logo`}
-                                onError={(e) => {
-                                  // Fallback to icon if logo fails to load
-                                  e.currentTarget.style.display = 'none';
-                                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                                }}
-                              />
-                            ) : null}
-                            <span className={`navi-cc-connector__icon-fallback ${connector.logoUrl ? 'hidden' : ''}`}>
-                              {connector.icon}
-                            </span>
+                        <div key={connector.id} className={`navi-cc-connector ${connector.status === 'connected' ? 'is-connected' : ''}`}>
+                          <div className="navi-cc-connector__header">
+                            <div className="navi-cc-connector__icon">
+                              {connector.logoUrl ? (
+                                <img
+                                  src={connector.logoUrl}
+                                  alt={`${connector.name} logo`}
+                                  onError={(e) => {
+                                    // Fallback to icon if logo fails to load
+                                    e.currentTarget.style.display = 'none';
+                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                  }}
+                                />
+                              ) : null}
+                              <span className={`navi-cc-connector__icon-fallback ${connector.logoUrl ? 'hidden' : ''}`}>
+                                {connector.icon}
+                              </span>
+                            </div>
+                            <div className="navi-cc-connector__info">
+                              <h4>{connector.name}</h4>
+                              <p>{connector.description}</p>
+                              <span className="navi-cc-connector__category-tag">
+                                {CONNECTOR_CATEGORIES.find(c => c.id === connector.category)?.label || connector.category}
+                              </span>
+                            </div>
+                            <div className={`navi-cc-connector__status ${connector.status}`}>
+                              {connector.status === 'connected' ? (
+                                <><CheckCircle className="h-4 w-4" /> Connected</>
+                              ) : connector.status === 'error' ? (
+                                <><AlertCircle className="h-4 w-4" /> Error</>
+                              ) : (
+                                <><Unlink className="h-4 w-4" /> Disconnected</>
+                              )}
+                            </div>
                           </div>
-                          <div className="navi-cc-connector__info">
-                            <h4>{connector.name}</h4>
-                            <p>{connector.description}</p>
-                            <span className="navi-cc-connector__category-tag">
-                              {CONNECTOR_CATEGORIES.find(c => c.id === connector.category)?.label || connector.category}
-                            </span>
-                          </div>
-                          <div className={`navi-cc-connector__status ${connector.status}`}>
+
+                          <div className="navi-cc-connector__body">
                             {connector.status === 'connected' ? (
-                              <><CheckCircle className="h-4 w-4" /> Connected</>
-                            ) : connector.status === 'error' ? (
-                              <><AlertCircle className="h-4 w-4" /> Error</>
+                              <>
+                                {connector.lastSync && (
+                                  <span className="navi-cc-connector__sync">
+                                    Last synced: {new Date(connector.lastSync).toLocaleString()}
+                                  </span>
+                                )}
+                                <button
+                                  className="navi-cc-connector__btn navi-cc-connector__btn--disconnect"
+                                  onClick={() => handleConnectorDisconnect(connector.id)}
+                                >
+                                  <Unlink className="h-4 w-4" />
+                                  Disconnect
+                                </button>
+                              </>
+                            ) : configuringConnector === connector.id ? (
+                              <div className="navi-cc-connector__config">
+                                {connector.configFields?.map((field) => (
+                                  <div key={field.key} className="navi-cc-connector__field">
+                                    <label>{field.label}</label>
+                                    <input
+                                      type={field.type}
+                                      placeholder={field.placeholder}
+                                      value={connectorConfig[field.key] || ''}
+                                      onChange={(e) => setConnectorConfig(prev => ({ ...prev, [field.key]: e.target.value }))}
+                                    />
+                                  </div>
+                                ))}
+                                <div className="navi-cc-connector__actions">
+                                  <button
+                                    className="navi-cc-connector__btn"
+                                    onClick={() => handleConnectorApiKey(connector.id)}
+                                  >
+                                    <Check className="h-4 w-4" /> Save
+                                  </button>
+                                  <button
+                                    className="navi-cc-connector__btn navi-cc-connector__btn--cancel"
+                                    onClick={() => {
+                                      setConfiguringConnector(null);
+                                      setConnectorConfig({});
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
                             ) : (
-                              <><Unlink className="h-4 w-4" /> Disconnected</>
+                              <button
+                                className="navi-cc-connector__btn navi-cc-connector__btn--connect"
+                                onClick={() => {
+                                  if (connector.authType === 'api_key') {
+                                    setConfiguringConnector(connector.id);
+                                  } else {
+                                    handleConnectorOAuth(connector.id);
+                                  }
+                                }}
+                              >
+                                {connector.authType === 'oauth' ? (
+                                  <><ExternalLink className="h-4 w-4" /> Connect with OAuth</>
+                                ) : (
+                                  <><Key className="h-4 w-4" /> Configure API Key</>
+                                )}
+                              </button>
                             )}
                           </div>
                         </div>
-
-                        <div className="navi-cc-connector__body">
-                          {connector.status === 'connected' ? (
-                            <>
-                              {connector.lastSync && (
-                                <span className="navi-cc-connector__sync">
-                                  Last synced: {new Date(connector.lastSync).toLocaleString()}
-                                </span>
-                              )}
-                              <button
-                                className="navi-cc-connector__btn navi-cc-connector__btn--disconnect"
-                                onClick={() => handleConnectorDisconnect(connector.id)}
-                              >
-                                <Unlink className="h-4 w-4" />
-                                Disconnect
-                              </button>
-                            </>
-                          ) : configuringConnector === connector.id ? (
-                            <div className="navi-cc-connector__config">
-                              {connector.configFields?.map((field) => (
-                                <div key={field.key} className="navi-cc-connector__field">
-                                  <label>{field.label}</label>
-                                  <input
-                                    type={field.type}
-                                    placeholder={field.placeholder}
-                                    value={connectorConfig[field.key] || ''}
-                                    onChange={(e) => setConnectorConfig(prev => ({ ...prev, [field.key]: e.target.value }))}
-                                  />
-                                </div>
-                              ))}
-                              <div className="navi-cc-connector__actions">
-                                <button
-                                  className="navi-cc-connector__btn"
-                                  onClick={() => handleConnectorApiKey(connector.id)}
-                                >
-                                  <Check className="h-4 w-4" /> Save
-                                </button>
-                                <button
-                                  className="navi-cc-connector__btn navi-cc-connector__btn--cancel"
-                                  onClick={() => {
-                                    setConfiguringConnector(null);
-                                    setConnectorConfig({});
-                                  }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              className="navi-cc-connector__btn navi-cc-connector__btn--connect"
-                              onClick={() => {
-                                if (connector.authType === 'api_key') {
-                                  setConfiguringConnector(connector.id);
-                                } else {
-                                  handleConnectorOAuth(connector.id);
-                                }
-                              }}
-                            >
-                              {connector.authType === 'oauth' ? (
-                                <><ExternalLink className="h-4 w-4" /> Connect with OAuth</>
-                              ) : (
-                                <><Key className="h-4 w-4" /> Configure API Key</>
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
                   </div>
 
                   {/* Empty state */}
@@ -1464,15 +1504,15 @@ export function CodeCompanionShell() {
                       c.category === selectedConnectorCategory;
                     return matchesSearch && matchesCategory;
                   }).length === 0 && (
-                    <div className="navi-cc-integrations__empty">
-                      <Search className="h-12 w-12" />
-                      <h4>No integrations found</h4>
-                      <p>Try adjusting your search or category filter</p>
-                      <button onClick={() => { setConnectorSearchQuery(''); setSelectedConnectorCategory('all'); }}>
-                        Clear filters
-                      </button>
-                    </div>
-                  )}
+                      <div className="navi-cc-integrations__empty">
+                        <Search className="h-12 w-12" />
+                        <h4>No integrations found</h4>
+                        <p>Try adjusting your search or category filter</p>
+                        <button onClick={() => { setConnectorSearchQuery(''); setSelectedConnectorCategory('all'); }}>
+                          Clear filters
+                        </button>
+                      </div>
+                    )}
                 </div>
               )}
 

@@ -35,12 +35,12 @@ async def call_llm(
     """
     Call LLM with message and context.
 
-    Uses the multi-provider LLM router which respects DEFAULT_LLM_PROVIDER.
+    Uses the multi-provider LLM router which respects the model parameter.
 
     Args:
         message: User's message
         context: Full context from context_builder
-        model: LLM model to use (may be overridden by DEFAULT_LLM_PROVIDER)
+        model: LLM model to use (e.g., "gpt-4o", "openai/gpt-4o", "claude-3-5-sonnet")
         mode: "chat" or "agent-full"
 
     Returns:
@@ -56,11 +56,28 @@ async def call_llm(
         # Build system prompt with context
         system_prompt = _build_system_prompt(context)
 
-        # Call LLM through router (respects DEFAULT_LLM_PROVIDER)
+        # Parse model string (may be "provider/model" format)
+        provider = None
+        model_name = model
+        if model and "/" in model:
+            parts = model.split("/", 1)
+            provider = parts[0].lower()
+            model_name = parts[1]
+            # Normalize provider names
+            if provider in ("openai", "gpt"):
+                provider = "openai"
+            elif provider in ("anthropic", "claude"):
+                provider = "anthropic"
+            elif provider in ("google", "gemini"):
+                provider = "google"
+
+        # Call LLM through router (uses provided model if specified)
         response = await router.run(
             prompt=message,
             system_prompt=system_prompt,
-            use_smart_auto=False,  # Let DEFAULT_LLM_PROVIDER take precedence
+            model=model_name if model_name else None,
+            provider=provider,
+            use_smart_auto=False,  # Use explicit model if provided
             temperature=0.6,
         )
 

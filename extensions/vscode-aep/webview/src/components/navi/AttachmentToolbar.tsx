@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import {
   FileText,
   Paperclip,
+  Plus,
   SquareDashedMousePointer,
   Image,
   FolderTree,
@@ -93,15 +94,8 @@ export const AttachmentToolbar: React.FC<AttachmentToolbarProps> = ({
     setMenuOpen(false);
   };
 
+  // Reordered: Most common actions first
   const attachmentOptions: AttachmentOption[] = [
-    {
-      id: 'selection',
-      icon: <SquareDashedMousePointer className="h-4 w-4" />,
-      label: 'Selection',
-      description: 'Attach selected text from editor',
-      action: handleSelection,
-      shortcut: '⌘⇧S'
-    },
     {
       id: 'current-file',
       icon: <FileText className="h-4 w-4" />,
@@ -109,6 +103,14 @@ export const AttachmentToolbar: React.FC<AttachmentToolbarProps> = ({
       description: 'Attach the active file',
       action: handleCurrentFile,
       shortcut: '⌘⇧F'
+    },
+    {
+      id: 'selection',
+      icon: <SquareDashedMousePointer className="h-4 w-4" />,
+      label: 'Selection',
+      description: 'Attach selected text from editor',
+      action: handleSelection,
+      shortcut: '⌘⇧S'
     },
     {
       id: 'files-folders',
@@ -154,44 +156,40 @@ export const AttachmentToolbar: React.FC<AttachmentToolbarProps> = ({
 
   return (
     <div className={rootClass}>
-      {/* Main attachment button with popup - using Paperclip icon */}
+      {/* Single compact "+" button that opens attachment menu */}
       <div className="navi-attachment-menu-container">
         <button
           ref={buttonRef}
           type="button"
-          className={`navi-attachment-icon navi-icon-button navi-attachment-main-btn ${menuOpen ? 'is-active' : ''}`}
+          className={`navi-attachment-plus-btn ${menuOpen ? 'is-active' : ''}`}
           onClick={() => setMenuOpen(!menuOpen)}
           title="Add context (files, images, URLs)"
           aria-label="Open attachments menu"
           aria-expanded={menuOpen}
         >
-          <Paperclip className={`h-4 w-4 navi-icon-3d transition-transform duration-200 ${menuOpen ? 'rotate-12' : ''}`} />
+          <Plus className="h-4 w-4" />
         </button>
 
-        {/* Popup menu */}
+        {/* Popup menu - positioned above button */}
         {menuOpen && (
           <>
             <div className="navi-attachment-backdrop" onClick={() => setMenuOpen(false)} />
-            <div ref={menuRef} className="navi-attachment-menu">
+            <div ref={menuRef} className="navi-attachment-menu navi-attachment-menu--compact">
               <div className="navi-attachment-menu-header">
                 <span className="navi-attachment-menu-title">Add Context</span>
-                <span className="navi-attachment-menu-hint">Attach files, media, or code</span>
               </div>
-              <div className="navi-attachment-menu-grid">
+              <div className="navi-attachment-menu-list">
                 {attachmentOptions.map((option) => (
                   <button
                     key={option.id}
                     type="button"
-                    className="navi-attachment-option"
+                    className="navi-attachment-menu-item"
                     onClick={option.action}
                   >
-                    <div className="navi-attachment-option-icon">{option.icon}</div>
-                    <div className="navi-attachment-option-content">
-                      <span className="navi-attachment-option-label">{option.label}</span>
-                      <span className="navi-attachment-option-desc">{option.description}</span>
-                    </div>
+                    <span className="navi-attachment-menu-item-icon">{option.icon}</span>
+                    <span className="navi-attachment-menu-item-label">{option.label}</span>
                     {option.shortcut && (
-                      <kbd className="navi-attachment-option-shortcut">{option.shortcut}</kbd>
+                      <kbd className="navi-attachment-menu-item-shortcut">{option.shortcut}</kbd>
                     )}
                   </button>
                 ))}
@@ -200,17 +198,6 @@ export const AttachmentToolbar: React.FC<AttachmentToolbarProps> = ({
           </>
         )}
       </div>
-
-      {/* Quick access button for current file */}
-      <button
-        type="button"
-        className="navi-attachment-icon navi-icon-button"
-        onClick={handleCurrentFile}
-        title="Attach current file"
-        aria-label="Attach current file"
-      >
-        <FileText className="h-4 w-4 navi-icon-3d" />
-      </button>
     </div>
   );
 };

@@ -156,7 +156,6 @@ async def list_bitbucket_repos(
         sources = []
 
         for repo in repos:
-            repo.get("name", "Unnamed")
             full_name = repo.get("full_name", "")
             description = repo.get("description", "No description")
             url = repo.get("url", "")

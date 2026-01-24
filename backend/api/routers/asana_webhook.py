@@ -140,7 +140,7 @@ async def _handle_task_event(
     change = event.get("change") or {}
     field = change.get("field") or ""
     new_value = change.get("new_value")
-    change.get("action") or action
+    action = change.get("action") or action
 
     # Build description
     if action == "added":

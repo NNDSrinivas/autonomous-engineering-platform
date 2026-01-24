@@ -117,7 +117,6 @@ async def list_vercel_deployments(
             deploy_state = d.get("state", "unknown")
             target = d.get("target", "preview")
             url = d.get("url", "")
-            d.get("created_at", "")
 
             emoji = state_emoji.get(deploy_state, "❓")
             lines.append(f"- {emoji} **{name}** ({target})")

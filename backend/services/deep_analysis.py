@@ -3453,7 +3453,7 @@ class CodeDebugger:
             try:
                 full_path = Path(workspace_path) / file_path
                 all_code_content += full_path.read_text(encoding='utf-8', errors='ignore')
-            except:
+            except Exception:
                 continue
 
         for symbol_name, locations in analysis.symbol_table.items():

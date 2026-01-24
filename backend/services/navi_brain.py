@@ -3605,7 +3605,7 @@ FUNCTIONAL PROGRAMMING CONTEXT:
 
         # Enhanced domain knowledge for code generation
         try:
-            from backend.services.domain_knowledge import detect_domain, get_domain_context as get_enhanced_context, DomainType
+            from backend.services.domain_knowledge import get_domain_context as get_enhanced_context, DomainType
             # Map our domains to the enhanced domain types
             domain_mapping = {
                 "web_backend": [DomainType.BACKEND_PYTHON, DomainType.BACKEND_NODE],

@@ -90,7 +90,7 @@ def extract_code_from_response(response):
             if json_match:
                 data = json.loads(json_match.group())
                 return data.get("files_to_create", {})
-    except:
+    except Exception:
         pass
 
     # Fallback: extract from actions

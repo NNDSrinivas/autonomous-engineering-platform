@@ -316,7 +316,7 @@ async def send_navi_request(prompt: str, workspace: str) -> Dict:
                             thinking += data["thinking"]
                         if "actions" in data:
                             actions.extend(data["actions"])
-                    except:
+                    except Exception:
                         pass
 
             return {"content": content, "thinking": thinking, "actions": actions}

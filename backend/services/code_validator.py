@@ -164,7 +164,7 @@ class CodeValidator:
                 timeout=5
             )
             return True
-        except:
+        except Exception:
             return False
 
     def detect_language(self, filepath: str, content: str = None) -> str:

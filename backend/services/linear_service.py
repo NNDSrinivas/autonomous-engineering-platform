@@ -111,7 +111,7 @@ class LinearService(ConnectorServiceBase):
                             "team": issue.get("team"),
                             "project": issue.get("project"),
                             "cycle": issue.get("cycle"),
-                            "labels": [l for l in issue.get("labels", {}).get("nodes", [])],
+                            "labels": [label for label in issue.get("labels", {}).get("nodes", [])],
                             "creator": issue.get("creator"),
                             "assignee": issue.get("assignee"),
                         }

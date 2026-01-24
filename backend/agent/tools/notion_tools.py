@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional
 import logging
 import structlog
 
+from backend.services.connector_base import ToolResult
+
 logger = logging.getLogger(__name__)
 notion_logger = structlog.get_logger(__name__)
 

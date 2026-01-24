@@ -293,7 +293,7 @@ class UserMemoryService:
         return {
             "total_activities": total or 0,
             "by_type": {t: c for t, c in type_counts},
-            "by_language": {l: c for l, c in language_counts if l},
+            "by_language": {lang: cnt for lang, cnt in language_counts if lang},
             "period_days": days,
         }
 

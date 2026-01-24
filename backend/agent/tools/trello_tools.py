@@ -112,7 +112,7 @@ async def list_my_trello_cards(
             if due:
                 lines.append(f"  - Due: {due[:10]}")
             if labels:
-                label_names = [l.get("name") or l.get("color") for l in labels]
+                label_names = [lbl.get("name") or lbl.get("color") for lbl in labels]
                 lines.append(f"  - Labels: {', '.join(label_names)}")
             if url:
                 lines.append(f"  - [Open Card]({url})")

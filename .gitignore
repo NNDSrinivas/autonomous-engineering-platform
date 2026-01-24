@@ -104,3 +104,9 @@ frontend/auth_config.json
 
 # Generated workspace index files
 workspace_index_result.json
+
+# Legacy imports and backups
+_imports/
+__MACOSX/
+*.bak
+aep-venv.bak-*/

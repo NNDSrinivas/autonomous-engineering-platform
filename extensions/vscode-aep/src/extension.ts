@@ -773,7 +773,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Initialize ContextService for workspace analysis
   const config = vscode.workspace.getConfiguration('aep.navi');
-  const backendUrl = config.get<string>('backendUrl') || 'http://127.0.0.1:8000';
+  const backendUrl = config.get<string>('backendUrl') || 'http://127.0.0.1:8787';
   const naviClient = new NaviClient(backendUrl, backendUrl, 'default');
 
   // Configure ContextService with limits that can be customized via settings
@@ -1549,7 +1549,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
     console.log('[AEP] getBackendBaseUrl - raw config value:', raw);
 
-    // Turn http://127.0.0.1:8000/api/navi/chat → http://127.0.0.1:8000
+    // Turn http://127.0.0.1:8787/api/navi/chat → http://127.0.0.1:8787
     try {
       const url = new URL(raw);
       url.pathname = url.pathname.replace(/\/api\/navi\/chat\/?$/, '');
@@ -3012,9 +3012,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             break;
           }
 
+          case 'openFile':
           case 'OPEN_FILE': {
             const filePath = String(msg.path || msg.filePath || '').trim();
             if (!filePath) return;
+            console.log('[AEP] Opening file:', filePath);
             const resolvedPath = this.resolveWorkspacePath(filePath);
             const line = typeof msg.line === 'number' ? msg.line : undefined;
             await this.handleReactOpenFile(resolvedPath, line);
@@ -4813,7 +4815,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
             try {
               // Open the Connectors Hub
               const config = vscode.workspace.getConfiguration('aep');
-              const backendUrl = config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8000';
+              const backendUrl = config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787';
               const cleanBaseUrl = backendUrl.replace(/\/api\/navi\/chat$/, '');
 
               console.log('[AEP] Opening ConnectorsPanel with baseUrl:', cleanBaseUrl);
@@ -7624,6 +7626,11 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       } else {
         streamUrl = `${this.getBackendBaseUrl()}/api/navi/chat/stream`;
       }
+      // Debug logging for endpoint selection
+      console.log(`[AEP] 📡 Streaming URL: ${streamUrl}`);
+      console.log(`[AEP] 🎯 Is action request: ${isActionRequest}`);
+      console.log(`[AEP] 🤖 Using autonomous: ${useAutonomous}`);
+      console.log(`[AEP] 📝 Message: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
       const nonStreamUrl = targetUrl;
 
       // Try streaming first, fall back to non-streaming if it fails
@@ -7827,7 +7834,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                 }
 
                 // Handle V2 streaming events (tool-use based, Claude Code style)
-                // These have a 'type' field: text, tool_call, tool_result, done
+                // These have a 'type' field: text, thinking, tool_call, tool_result, done
                 if (parsed.type === 'text' && parsed.text) {
                   // Stream narrative text - this is the LLM explaining what it's doing
                   console.log('[AEP] 📝 V2 Text chunk:', parsed.text.substring(0, 50) + '...');
@@ -7839,10 +7846,10 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                     chunk: parsed.text,
                     fullContent: streamedContent,
                   });
-                  // ALWAYS emit narrative for Claude Code-style interleaved display
-                  // This ensures text is shown between command/tool activities
-                  // The UI will handle deduplication - narratives show in activity section,
-                  // regular message content is hidden when narratives are present
+                  // ALSO send as narrative event for interleaved display with activities
+                  // This allows narrative text to be timestamp-sorted with tool activities
+                  // The webview will use narrativeLines for interleaved display, falling back to
+                  // m.content only if no narratives exist (prevents duplication)
                   this.postToWebview({
                     type: 'navi.narrative',
                     text: parsed.text,
@@ -7851,6 +7858,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   if (!hasSeenToolCalls) {
                     hasSeenToolCalls = true;
                   }
+                }
+
+                // Handle extended thinking events (Claude's internal reasoning)
+                if (parsed.type === 'thinking' && parsed.thinking) {
+                  console.log('[AEP] 🧠 V2 Thinking chunk:', parsed.thinking.substring(0, 50) + '...');
+                  this.postToWebview({
+                    type: 'navi.thinking',
+                    thinking: parsed.thinking,
+                  });
                 }
 
                 if (parsed.type === 'tool_call' && parsed.tool_call) {
@@ -7920,6 +7936,15 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
                 if (parsed.type === 'done') {
                   console.log('[AEP] ✅ V2 Stream complete');
+                }
+
+                // Handle backend 'done' event with summary (different format: {done: true, summary: {...}})
+                if (parsed.done === true && parsed.summary) {
+                  console.log('[AEP] 🏁 Task done with summary:', parsed.summary);
+                  this.postToWebview({
+                    type: 'navi.task.complete',
+                    summary: parsed.summary,
+                  });
                 }
 
                 if (parsed.type === 'error') {
@@ -8002,13 +8027,38 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
                   });
                 }
 
-                // Step progress updates
-                if (parsed.type === 'step_update') {
+                // Step progress updates (legacy format)
+                if (parsed.type === 'step_update' && parsed.step_id !== undefined) {
                   console.log('[AEP] 📊 Step update:', parsed.step_id, parsed.status);
                   this.postToWebview({
                     type: 'navi.step_update',
                     step_id: parsed.step_id,
                     status: parsed.status,
+                  });
+                }
+
+                // Execution Plan events - visual task step tracking
+                if (parsed.type === 'plan_start' && parsed.data) {
+                  console.log('[AEP] ⚡ Execution plan started:', parsed.data.plan_id);
+                  this.postToWebview({
+                    type: 'plan_start',
+                    data: parsed.data,
+                  });
+                }
+
+                if (parsed.type === 'step_update' && parsed.data) {
+                  console.log('[AEP] ⚡ Step update:', parsed.data.step_index, '->', parsed.data.status);
+                  this.postToWebview({
+                    type: 'step_update',
+                    data: parsed.data,
+                  });
+                }
+
+                if (parsed.type === 'plan_complete' && parsed.data) {
+                  console.log('[AEP] ⚡ Execution plan completed:', parsed.data.plan_id);
+                  this.postToWebview({
+                    type: 'plan_complete',
+                    data: parsed.data,
                   });
                 }
 
@@ -8607,15 +8657,23 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     this.emitLiveProgress("Preparing diagnostics...", 20);
     const diagnosticsCommandsArray = workspaceRoot ? await detectDiagnosticsCommands(workspaceRoot) : [];
 
-    const mappedAttachments = (attachments ?? []).map((att) => ({
-      ...att,
-      kind:
-        (att as any).kind === 'currentFile' || (att as any).kind === 'pickedFile'
-          ? 'file'
-          : (att as any).kind === 'diff'
-            ? 'diff'
-            : 'selection',
-    }));
+    const mappedAttachments = (attachments ?? []).map((att) => {
+      const attKind = (att as any).kind;
+      // Preserve image/video kinds for vision AI processing
+      if (attKind === 'image' || attKind === 'video') {
+        return { ...att, kind: attKind };
+      }
+      // Map file-related kinds to 'file'
+      if (attKind === 'currentFile' || attKind === 'pickedFile') {
+        return { ...att, kind: 'file' };
+      }
+      // Preserve diff kind
+      if (attKind === 'diff') {
+        return { ...att, kind: 'diff' };
+      }
+      // Default to selection
+      return { ...att, kind: 'selection' };
+    });
 
     const payload: any = {
       message: messageWithContext,
@@ -8931,7 +8989,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
     const config = vscode.workspace.getConfiguration('aep');
     const raw = (config.get<string>('navi.backendUrl') || '').trim();
     const normalize = (u: string) => u.replace(/\/+$/, '');
-    const defaultBase = 'http://127.0.0.1:8000';
+    const defaultBase = 'http://127.0.0.1:8787';
     let baseUrl = raw ? normalize(raw) : defaultBase;
     baseUrl = baseUrl
       .replace(/\/api\/navi\/chat\/?$/i, '')
@@ -9384,7 +9442,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
       const workspaceContext = await collectWorkspaceContext();
 
       // Call backend orchestrator
-      const response = await fetch('http://127.0.0.1:8000/api/orchestrator/execute', {
+      const response = await fetch('http://127.0.0.1:8787/api/orchestrator/execute', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -9425,7 +9483,7 @@ class NaviWebviewProvider implements vscode.WebviewViewProvider {
 
       // Call backend to generate AI patch
       const response = await fetch(
-        `http://127.0.0.1:8000/api/repo/fix/${entry.fixId}`,
+        `http://127.0.0.1:8787/api/repo/fix/${entry.fixId}`,
         { method: "POST" }
       );
 

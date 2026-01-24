@@ -1967,14 +1967,20 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
 
                 actions_context = "\n".join(actions_taken) if actions_taken else "No files created or modified yet."
 
-                # Build failed approaches summary
+                # Build failed approaches summary with detailed guidance
                 failed_approaches_text = ""
                 if context.failed_approaches:
                     approach_list = []
                     for fa in context.failed_approaches[-5:]:  # Last 5 failed approaches
-                        approach_list.append(f"  - Iteration {fa.iteration}: {fa.description}")
-                        approach_list.append(f"    → Result: {fa.error_summary}")
-                    failed_approaches_text = "\n**FAILED APPROACHES (DO NOT REPEAT):**\n" + "\n".join(approach_list)
+                        approach_list.append(f"  ❌ Iteration {fa.iteration}: {fa.description}")
+                        approach_list.append(f"     Error: {fa.error_summary[:150]}")
+                    failed_approaches_text = f"""
+**FAILED APPROACHES (DO NOT REPEAT THESE):**
+{chr(10).join(approach_list)}
+
+⚠️ You have tried {len(context.failed_approaches)} approach(es) that did NOT work.
+Each new attempt MUST be FUNDAMENTALLY DIFFERENT from those listed above.
+DO NOT make minor variations of the same approach - try something completely new."""
 
                 # Build loop detection guidance
                 approach_hint = ""

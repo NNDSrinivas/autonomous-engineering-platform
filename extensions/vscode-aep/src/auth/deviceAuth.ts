@@ -28,10 +28,10 @@ export class DeviceAuthService {
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
-    // Default to 8000 which is the standard AEP backend port
+    // Default to 8787 which is the standard AEP backend port
     this.apiBaseUrl =
       vscode.workspace.getConfiguration("aep").get("apiUrl") ||
-      "http://localhost:8000";
+      "http://localhost:8787";
   }
 
   /**

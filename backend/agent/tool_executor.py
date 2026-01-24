@@ -255,6 +255,11 @@ def get_available_tools():
             "datadog.list_incidents",
             "datadog.list_dashboards",
             "datadog.mute_monitor",
+            # Deployment tools
+            "deploy.detect_project",
+            "deploy.check_cli",
+            "deploy.get_info",
+            "deploy.list_platforms",
         }
     )
 
@@ -518,6 +523,10 @@ async def execute_tool(
     # Datadog integration tools -----------------------------------------------------
     if tool_name.startswith("datadog."):
         return await _dispatch_datadog_tool(user_id, tool_name, args, db)
+
+    # Deployment tools -------------------------------------------------------------
+    if tool_name.startswith("deploy."):
+        return await _dispatch_deployment_tool(user_id, tool_name, args, workspace)
 
     # Project-management stubs (future expansion) --------------------------------
     if tool_name.startswith("pm."):
@@ -2120,3 +2129,41 @@ async def _dispatch_datadog_tool(
     except Exception as exc:
         logger.error("Datadog tool error: %s - %s", tool_name, exc)
         return {"tool": tool_name, "text": f"Error executing Datadog tool: {exc}"}
+
+
+async def _dispatch_deployment_tool(
+    user_id: str, tool_name: str, args: Dict[str, Any], workspace: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Dispatch deployment tools to their implementations."""
+    from backend.agent.tools.deployment_tools import DEPLOYMENT_TOOLS
+
+    context = {"user_id": user_id}
+
+    # Get workspace path for project detection
+    workspace_path = None
+    if workspace:
+        workspace_path = workspace.get("workspace_root")
+
+    tool_func = DEPLOYMENT_TOOLS.get(tool_name)
+    if not tool_func:
+        return {"tool": tool_name, "text": f"Deployment tool '{tool_name}' is not implemented."}
+
+    try:
+        # Call tools with appropriate arguments
+        if tool_name == "deploy.detect_project":
+            result = await tool_func(context, workspace_path=workspace_path)
+        elif tool_name == "deploy.check_cli":
+            platform = args.get("platform", "")
+            result = await tool_func(context, platform=platform)
+        elif tool_name == "deploy.get_info":
+            platform = args.get("platform", "")
+            result = await tool_func(context, platform=platform)
+        elif tool_name == "deploy.list_platforms":
+            result = await tool_func(context)
+        else:
+            return {"tool": tool_name, "text": f"Deployment tool '{tool_name}' dispatch not configured."}
+
+        return {"tool": tool_name, "text": result.output, "sources": result.sources}
+    except Exception as exc:
+        logger.error("Deployment tool error: %s - %s", tool_name, exc)
+        return {"tool": tool_name, "text": f"Error executing deployment tool: {exc}"}

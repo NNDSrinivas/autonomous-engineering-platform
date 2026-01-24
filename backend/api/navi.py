@@ -557,6 +557,44 @@ async def generate_plan(request: PlanRequest) -> Dict[str, Any]:
                 "requires_approval": False,
             }
 
+            # Register the plan in active_runs so /next can find it
+            plan_obj = Plan(
+                id=run_id,
+                goal=plan["goal"],
+                steps=[
+                    PlanStep(
+                        id=step["id"],
+                        title=step["title"],
+                        rationale=step.get("rationale"),
+                        tool=step.get("tool"),
+                        requires_approval=step.get("requires_approval", False),
+                        verify=step.get("verify", []),
+                        status=step.get("status", "pending"),
+                    )
+                    for step in plan["steps"]
+                ],
+                requires_approval=plan.get("requires_approval", False),
+                confidence=plan.get("confidence", 1.0),
+                reasoning=f"Generated deterministic {planner_response.intent.value} plan",
+            )
+
+            # Create RunState and register it
+            run_state = RunState(
+                run_id=run_id,
+                user_message=request.message,
+                intent=NaviIntent(kind=intent_kind, confidence=1.0, raw_text=request.message),
+                context=ContextPack(
+                    workspaceRoot=request.context.get("workspace", {}).get("root", ""),
+                    errors=[],
+                    diagnostics=request.context.get("diagnostics", []),
+                ),
+                plan=plan_obj,
+                current_step=0,
+                status="executing",
+            )
+            active_runs[run_id] = run_state
+            logger.info(f"[NAVI] Registered plan {run_id} in active_runs")
+
             return {
                 "success": True,
                 "plan": plan,
@@ -579,15 +617,22 @@ async def generate_plan(request: PlanRequest) -> Dict[str, Any]:
 
 
 # Phase 4.1.2: Next Step Execution Endpoint
+class NextStepRequest(BaseModel):
+    """Request body for next step execution"""
+    run_id: str
+    tool_result: Optional[Dict[str, Any]] = None
+
+
 @router.post("/next")
-async def execute_next_step(
-    run_id: str, tool_result: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+async def execute_next_step(request: NextStepRequest) -> Dict[str, Any]:
     """
     Execute next step in plan or process tool result.
     Returns either ToolRequest or AssistantMessage.
     """
     try:
+        run_id = request.run_id
+        tool_result = request.tool_result
+
         if run_id not in active_runs:
             raise HTTPException(status_code=404, detail="Run not found")
 
@@ -4180,10 +4225,11 @@ async def handle_coverage_check_fast_path(
 
 
 class FileAttachment(BaseModel):
-    kind: Literal["selection", "currentFile", "pickedFile", "file"]
-    path: str
+    kind: Literal["selection", "currentFile", "pickedFile", "file", "image", "local_file"]
+    path: Optional[str] = None  # Optional for images
     language: Optional[str] = None
     content: str
+    label: Optional[str] = None  # Display label for images
 
 
 class ChatRequest(BaseModel):
@@ -5718,15 +5764,58 @@ async def navi_chat_stream(
             # Emit initial activity
             yield f"data: {json.dumps({'activity': {'kind': 'context', 'label': 'Starting', 'detail': 'Processing your request...', 'status': 'running'}})}\n\n"
 
+            # =================================================================
+            # IMAGE PROCESSING: Check for image attachments and analyze them
+            # =================================================================
+            image_context = ""
+            if request.attachments:
+                for att in request.attachments:
+                    att_kind = getattr(att, "kind", None) or (
+                        att.get("kind") if isinstance(att, dict) else None
+                    )
+                    if att_kind == "image":
+                        att_content = getattr(att, "content", None) or (
+                            att.get("content") if isinstance(att, dict) else None
+                        )
+                        if att_content:
+                            yield f"data: {json.dumps({'activity': {'kind': 'detection', 'label': 'Analyzing Image', 'detail': 'Processing image with vision AI...', 'status': 'running'}})}\n\n"
+                            try:
+                                from backend.services.vision_service import VisionClient, VisionProvider
+                                # Extract base64 data from data URL
+                                if att_content.startswith("data:"):
+                                    # Format: data:image/png;base64,<data>
+                                    base64_data = att_content.split(",", 1)[1] if "," in att_content else att_content
+                                else:
+                                    base64_data = att_content
+
+                                # Use vision AI to analyze the image
+                                analysis_prompt = f"Analyze this image in detail. The user's question is: {request.message}\n\nProvide a comprehensive analysis including:\n1. What you see in the image\n2. Any text, code, or data visible\n3. UI elements if it's a screenshot\n4. Any errors or issues visible\n5. Relevant information to answer the user's question"
+
+                                vision_response = await VisionClient.analyze_image(
+                                    image_data=base64_data,
+                                    prompt=analysis_prompt,
+                                    provider=VisionProvider.ANTHROPIC,
+                                )
+                                image_context += f"\n\n=== IMAGE ANALYSIS ===\n{vision_response}\n"
+                                yield f"data: {json.dumps({'activity': {'kind': 'detection', 'label': 'Image Analyzed', 'detail': 'Vision AI analysis complete', 'status': 'done'}})}\n\n"
+                            except Exception as img_err:
+                                logger.warning(f"[NAVI-STREAM] Image analysis failed: {img_err}")
+                                yield f"data: {json.dumps({'activity': {'kind': 'detection', 'label': 'Image Analysis', 'detail': 'Could not analyze image', 'status': 'error'}})}\n\n"
+
+            # Augment the message with image context if present
+            augmented_message = request.message
+            if image_context:
+                augmented_message = f"{request.message}\n\n[CONTEXT FROM ATTACHED IMAGE(S)]{image_context}"
+
             # Check if we have workspace for agent mode
             if not workspace_root:
                 # No workspace - use simple chat mode
                 logger.info("[NAVI-STREAM] No workspace, using simple chat mode")
 
-                # Call agent loop for response
+                # Call agent loop for response (use augmented_message with image context)
                 agent_result = await run_agent_loop(
                     user_id=user_id,
-                    message=request.message,
+                    message=augmented_message,
                     model=_resolve_model(request.model),
                     mode=mode,
                     db=db,
@@ -5807,7 +5896,7 @@ async def navi_chat_stream(
                     )
 
                     async for event in agent.run(
-                        message=request.message,
+                        message=augmented_message,
                         workspace_path=workspace_root,
                         conversation_history=conv_history,
                         project_context=project_context,

@@ -798,13 +798,9 @@ export function CodeCompanionShell() {
 
             </div>
 
-            {/* Center Section: Status Indicator - Minimal */}
+            {/* Center Section: Reserved for future use */}
             <div className="navi-header-center">
-              {/* Status chip - subtle and clean */}
-              <div className="navi-status-chip navi-status-chip--online" title="NAVI Connected">
-                <span className="navi-status-chip__indicator" />
-                <span className="navi-status-chip__label">Online</span>
-              </div>
+              {/* Status indicator removed - cleaner UI */}
             </div>
 
             {/* Right Section: Actions + User */}
@@ -978,7 +974,7 @@ export function CodeCompanionShell() {
         </header>
 
         {/* Main Content */}
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           {/* Left Sidebar */}
           <aside
             className={`navi-sidebar transition-all duration-300 ease-in-out ${sidebarCollapsed ? "w-0 overflow-hidden" : "w-72"
@@ -999,8 +995,8 @@ export function CodeCompanionShell() {
           </aside>
 
           {/* Main Chat Area */}
-          <main className="flex min-h-0 flex-1 flex-col">
-            <div className="flex min-h-0 flex-1 overflow-hidden">
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
               <NaviChatPanel activityPanelState={activityPanelState} />
 
               {/* Activity Panel - Right Sidebar */}

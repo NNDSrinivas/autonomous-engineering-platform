@@ -1097,6 +1097,11 @@ Please debug this issue and continue with the original task. The user's new mess
                         thinking_text = event["thinking"]
                         yield f"data: {json.dumps({'thinking': thinking_text})}\n\n"
 
+                    # Stream narrative text for interleaved display (Claude Code style)
+                    elif "narrative" in event:
+                        narrative_text = event["narrative"]
+                        yield f"data: {json.dumps({'type': 'navi.narrative', 'text': narrative_text})}\n\n"
+
                     # Capture the final result
                     elif "result" in event:
                         navi_result = event["result"]
@@ -1176,6 +1181,18 @@ Please debug this issue and continue with the original task. The user's new mess
 
                     if actions:
                         logger.info(f"[NAVI STREAM] Sending {len(actions)} actions: {[a.get('type') for a in actions]}")
+                        # Emit narrative before actions for interleaved display
+                        action_types = [a.get('type') for a in actions]
+                        if 'runCommand' in action_types:
+                            cmd_count = sum(1 for a in actions if a.get('type') == 'runCommand')
+                            plural = "s" if cmd_count > 1 else ""
+                            narrative = f"Now I'll run {cmd_count} command{plural} to complete this task."
+                            yield f"data: {json.dumps({'type': 'navi.narrative', 'text': narrative})}\n\n"
+                        if any(t in ['editFile', 'createFile'] for t in action_types):
+                            file_count = sum(1 for a in actions if a.get('type') in ['editFile', 'createFile'])
+                            plural = "s" if file_count > 1 else ""
+                            narrative = f"Making changes to {file_count} file{plural}."
+                            yield f"data: {json.dumps({'type': 'navi.narrative', 'text': narrative})}\n\n"
                         yield f"data: {json.dumps({'actions': actions})}\n\n"
 
                     # Include next_steps if available

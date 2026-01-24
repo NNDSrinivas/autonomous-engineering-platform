@@ -960,6 +960,39 @@ class IntentClassifier:
             ):
                 return IntentKind.UPDATE_DEPENDENCIES
 
+            # Deployment intents
+            if _contains_any(
+                text,
+                (
+                    "deploy",
+                    "deploy to",
+                    "deploy this",
+                    "push to production",
+                    "push to prod",
+                    "ship to",
+                    "ship it",
+                    "go live",
+                    "release to",
+                    "deploy to vercel",
+                    "deploy to railway",
+                    "deploy to fly",
+                    "deploy to netlify",
+                    "deploy to heroku",
+                    "deploy to render",
+                    "deploy to cloudflare",
+                    "deploy to aws",
+                    "deploy to gcp",
+                    "deploy to azure",
+                    "vercel deploy",
+                    "railway up",
+                    "fly deploy",
+                    "netlify deploy",
+                    "production deployment",
+                    "staging deployment",
+                ),
+            ):
+                return IntentKind.DEPLOY
+
             if _contains_any(
                 text,
                 (
@@ -1527,6 +1560,7 @@ class IntentClassifier:
             IntentKind.CREATE_TICKET,
             IntentKind.REVIEW_PR,
             IntentKind.GENERATE_RELEASE_NOTES,
+            IntentKind.DEPLOY,
         }:
             return 0.85
         return 0.6

@@ -468,7 +468,7 @@ export class SmartModeSSEClient {
     const config = vscode.workspace.getConfiguration('aep');
 
     return {
-      backendUrl: config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8000',
+      backendUrl: config.get<string>('navi.backendUrl') || 'http://127.0.0.1:8787',
       autoApplyThreshold: config.get<number>('smartMode.autoApplyThreshold') || 0.3,
       showProgressNotifications: config.get<boolean>('smartMode.showProgressNotifications') || true,
       enableSmartVerification: config.get<boolean>('smartMode.enableSmartVerification') || true

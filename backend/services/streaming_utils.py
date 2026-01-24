@@ -248,6 +248,90 @@ class StreamingSession:
         """
         return {"metrics": self.metrics.to_dict()}
 
+    def heartbeat(self, message: str = "Working...", count: int = 0) -> Dict[str, Any]:
+        """
+        Emit a heartbeat event to keep the connection alive.
+
+        Returns:
+            Dict with 'heartbeat' key
+        """
+        elapsed = time.time() - self.metrics.start_time
+        return {
+            "heartbeat": True,
+            "message": message,
+            "elapsed_seconds": round(elapsed, 1),
+            "heartbeat_count": count,
+        }
+
+
+async def heartbeat_generator(
+    session: "StreamingSession",
+    interval_seconds: float = 15.0,
+    messages: Optional[List[str]] = None,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """
+    Generate periodic heartbeat events for long-running operations.
+
+    Args:
+        session: The streaming session
+        interval_seconds: Seconds between heartbeats (default: 15s)
+        messages: List of rotating messages to show
+
+    Yields:
+        Heartbeat events
+    """
+    default_messages = [
+        "Still working on your request...",
+        "Processing...",
+        "This may take a moment...",
+        "Working on it...",
+        "Almost there...",
+    ]
+    messages = messages or default_messages
+    count = 0
+
+    while True:
+        await asyncio.sleep(interval_seconds)
+        message = messages[count % len(messages)]
+        count += 1
+        yield session.heartbeat(message, count)
+
+
+async def stream_with_heartbeat(
+    main_generator: AsyncGenerator[Dict[str, Any], None],
+    session: Optional["StreamingSession"] = None,
+    heartbeat_interval: float = 15.0,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """
+    Wrap a generator with automatic heartbeats for long-running operations.
+
+    This ensures the frontend receives periodic updates even when the main
+    operation takes a long time.
+
+    Args:
+        main_generator: The main async generator to wrap
+        session: Optional streaming session (creates one if not provided)
+        heartbeat_interval: Seconds between heartbeats
+
+    Yields:
+        Events from main generator, interspersed with heartbeats
+    """
+    import asyncio
+
+    session = session or StreamingSession()
+    heartbeat_count = 0
+    last_heartbeat_time = time.time()
+
+    async for event in main_generator:
+        yield event
+
+        # Check if we need to send a heartbeat
+        now = time.time()
+        if now - last_heartbeat_time >= heartbeat_interval:
+            heartbeat_count += 1
+            yield session.heartbeat(f"Working... ({heartbeat_count * int(heartbeat_interval)}s elapsed)", heartbeat_count)
+            last_heartbeat_time = now
+
 
 async def stream_text_with_typing(
     text: str,

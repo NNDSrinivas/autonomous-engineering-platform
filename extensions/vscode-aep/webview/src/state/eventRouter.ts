@@ -83,6 +83,24 @@ export function routeEventToUI(event: any, dispatch: Dispatch<UIAction>) {
       stepFail(dispatch, event.step || "unknown");
       break;
 
+    case "RUN_STARTED":
+      if (event.runId) {
+        dispatch({ type: "RUN_STARTED", runId: event.runId });
+      }
+      break;
+
+    case "RUN_FINISHED":
+      if (event.runId) {
+        dispatch({ type: "RUN_FINISHED", runId: event.runId });
+      }
+      break;
+
+    case "ACTIVITY_EVENT_APPEND":
+      if (event.event) {
+        dispatch({ type: "ACTIVITY_APPEND", event: event.event });
+      }
+      break;
+
     case "navi.assistant.message":
       if (!shouldSkipDuplicateAssistantMessage(String(event.content || ""))) {
         dispatch({ type: "ADD_ASSISTANT_MESSAGE", content: event.content });
@@ -453,6 +471,56 @@ export function routeEventToUI(event: any, dispatch: Dispatch<UIAction>) {
       });
       if (commandId) {
         commandBuffers.delete(commandId);
+      }
+      break;
+    }
+
+    case "action.complete": {
+      // Track file changes from completed actions
+      const action = event.action;
+      if (action && (action.type === "editFile" || action.type === "createFile" || action.type === "edit" || action.type === "create" || action.type === "deleteFile" || action.type === "delete")) {
+        const filePath = action.filePath || action.path;
+        if (filePath && event.success) {
+          const isCreate = action.type === "createFile" || action.type === "create";
+          const isDelete = action.type === "deleteFile" || action.type === "delete";
+          dispatch({
+            type: "AGENT_ADD_FILE_CHANGE",
+            fileChange: {
+              path: filePath,
+              status: isCreate ? "added" : isDelete ? "deleted" : "modified",
+              additions: event.data?.diffStats?.additions ?? 0,
+              deletions: event.data?.diffStats?.deletions ?? 0
+            }
+          });
+        }
+      }
+      break;
+    }
+
+    case "action.start": {
+      // We only track completed file changes to avoid confusion
+      // The UI will show "in progress" state elsewhere
+      break;
+    }
+
+    case "navi.streaming.metrics": {
+      // Handle streaming performance metrics for debugging/display
+      if (event.metrics) {
+        dispatch({
+          type: "UPDATE_STREAMING_METRICS",
+          metrics: event.metrics
+        });
+      }
+      break;
+    }
+
+    case "navi.content.chunk": {
+      // Handle real-time content streaming (Cline-style token-by-token)
+      if (event.content) {
+        dispatch({
+          type: "APPEND_STREAMING_CONTENT",
+          content: event.content
+        });
       }
       break;
     }

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode } from "react";
+import type { ActivityEvent } from "../types/activity";
 
 // Canonical types locked for Phase 4 baseline
 export type AgentStatus = "idle" | "running" | "awaiting_approval" | "error";
@@ -64,6 +65,21 @@ export interface AgentWorkflowState {
   isActive: boolean;
 }
 
+export interface ActivityRunState {
+  events: ActivityEvent[];
+  collapsedPhaseIds: Record<string, boolean>;
+  status: "running" | "done";
+}
+
+export interface StreamingMetrics {
+  time_to_first_token_ms?: number;
+  total_duration_ms?: number;
+  total_tokens?: number;
+  total_chars?: number;
+  tokens_per_second?: number;
+  activity_events?: number;
+}
+
 export interface UIState {
   // Chat state
   messages: Message[];
@@ -80,6 +96,13 @@ export interface UIState {
     tool_request: any;
     session_id: string;
   };
+  // Activity panel state
+  activeRunId: string | null;
+  activityByRunId: Record<string, ActivityRunState>;
+  activityRunOrder: string[];
+  // Streaming state (Cline-style real-time)
+  streamingContent: string;
+  streamingMetrics?: StreamingMetrics;
 }
 
 export interface WorkflowState {
@@ -100,7 +123,13 @@ const initialUIState: UIState = {
     filesChanged: [],
     isActive: false
   },
-  pendingToolApproval: undefined
+  pendingToolApproval: undefined,
+  activeRunId: null,
+  activityByRunId: {},
+  activityRunOrder: [],
+  // Streaming state
+  streamingContent: "",
+  streamingMetrics: undefined
 };
 
 // Workflow template for when workflow is actually started
@@ -122,7 +151,7 @@ const initialWorkflowState: WorkflowState = {
 
 export type UIAction =
   | { type: "ADD_USER_MESSAGE"; content: string }
-  | { type: "ADD_ASSISTANT_MESSAGE"; content: string; messageType?: 'text' | 'thinking' | 'step' | 'command' | 'result' | 'proposal'; error?: string }
+  | { type: "ADD_ASSISTANT_MESSAGE"; content: string; messageType?: 'text' | 'thinking' | 'step' | 'command' | 'result' | 'proposal' | 'error'; error?: string }
   | { type: "SET_THINKING"; thinking: boolean }
   | { type: "CLEAR_MESSAGES" }
   | { type: "ADD_ATTACHMENT"; attachment: Attachment }
@@ -150,7 +179,20 @@ export type UIAction =
   | { type: "AGENT_UPDATE_TODO"; id: string; status: TodoItem['status'] }
   | { type: "AGENT_ADD_FILE_CHANGE"; fileChange: FileChangeSummary }
   | { type: "AGENT_REQUEST_PERMISSION"; permission: PermissionRequest }
-  | { type: "AGENT_STOP" };
+  | { type: "AGENT_STOP" }
+  // Activity actions
+  | { type: "RUN_STARTED"; runId: string }
+  | { type: "RUN_FINISHED"; runId: string }
+  | { type: "ACTIVITY_APPEND"; event: ActivityEvent }
+  | { type: "ACTIVITY_CLEAR"; runId?: string }
+  | { type: "PHASE_TOGGLE_COLLAPSE"; runId: string; phaseId: string }
+  | { type: "SET_ACTIVE_RUN"; runId: string | null }
+  // Streaming actions (Cline-style real-time)
+  | { type: "APPEND_STREAMING_CONTENT"; content: string }
+  | { type: "CLEAR_STREAMING_CONTENT" }
+  | { type: "UPDATE_STREAMING_METRICS"; metrics: StreamingMetrics };
+
+const MAX_ACTIVITY_RUNS = 10;
 
 function reducer(state: UIState, action: UIAction): UIState {
   switch (action.type) {
@@ -201,7 +243,10 @@ function reducer(state: UIState, action: UIAction): UIState {
           filesChanged: [],
           isActive: false
         },
-        pendingToolApproval: undefined
+        pendingToolApproval: undefined,
+        activeRunId: null,
+        activityByRunId: {},
+        activityRunOrder: []
       };
 
     case "ADD_ATTACHMENT": {
@@ -235,6 +280,13 @@ function reducer(state: UIState, action: UIAction): UIState {
       };
 
     case "ADD_ARTIFACT_MESSAGE": {
+      // Don't create separate chat bubbles for context artifacts - they clutter the chat
+      // Context info should be shown in the activity panel or merged with the response
+      if (action.artifact.kind === "context") {
+        // Skip creating a message for context - it will be shown in activity panel
+        return state;
+      }
+
       const artifactMessage: Message = {
         id: `artifact-${Date.now()}`,
         role: "assistant",
@@ -284,6 +336,37 @@ function reducer(state: UIState, action: UIAction): UIState {
           todos: state.agentWorkflow.todos.map(todo =>
             todo.id === action.id ? { ...todo, status: action.status } : todo
           )
+        }
+      };
+
+    case "AGENT_ADD_FILE_CHANGE":
+      // Check if file already exists to avoid duplicates
+      const existingFileIndex = state.agentWorkflow.filesChanged.findIndex(
+        f => f.path === action.fileChange.path
+      );
+      if (existingFileIndex >= 0) {
+        // Update existing file change
+        const updatedFiles = [...state.agentWorkflow.filesChanged];
+        updatedFiles[existingFileIndex] = {
+          ...updatedFiles[existingFileIndex],
+          ...action.fileChange
+        };
+        return {
+          ...state,
+          agentWorkflow: {
+            ...state.agentWorkflow,
+            isActive: true, // Automatically activate when files are changed
+            filesChanged: updatedFiles
+          }
+        };
+      }
+      // Add new file change
+      return {
+        ...state,
+        agentWorkflow: {
+          ...state.agentWorkflow,
+          isActive: true, // Automatically activate when files are changed
+          filesChanged: [...state.agentWorkflow.filesChanged, action.fileChange]
         }
       };
 
@@ -434,6 +517,163 @@ function reducer(state: UIState, action: UIAction): UIState {
       return {
         ...state,
         pendingToolApproval: undefined
+      };
+
+    case "RUN_STARTED": {
+      const runId = action.runId;
+      const existing = state.activityByRunId[runId];
+      const nextRun: ActivityRunState = existing || {
+        events: [],
+        collapsedPhaseIds: {},
+        status: "running"
+      };
+
+      const runOrder = state.activityRunOrder.filter((id) => id !== runId);
+      runOrder.push(runId);
+
+      let nextByRun: Record<string, ActivityRunState> = {
+        ...state.activityByRunId,
+        [runId]: { ...nextRun, status: "running" as const }
+      };
+
+      let nextRunOrder = runOrder;
+      if (runOrder.length > MAX_ACTIVITY_RUNS) {
+        const toRemove = runOrder.slice(0, runOrder.length - MAX_ACTIVITY_RUNS);
+        nextRunOrder = runOrder.slice(-MAX_ACTIVITY_RUNS);
+        const pruned = { ...nextByRun };
+        toRemove.forEach((id) => delete pruned[id]);
+        nextByRun = pruned;
+      }
+
+      return {
+        ...state,
+        activeRunId: runId,
+        activityByRunId: nextByRun,
+        activityRunOrder: nextRunOrder
+      };
+    }
+
+    case "RUN_FINISHED": {
+      const runId = action.runId;
+      const existing = state.activityByRunId[runId];
+      if (!existing) return state;
+      return {
+        ...state,
+        activityByRunId: {
+          ...state.activityByRunId,
+          [runId]: { ...existing, status: "done" }
+        }
+      };
+    }
+
+    case "ACTIVITY_APPEND": {
+      const { event } = action;
+      const runId = event.runId;
+      const existing = state.activityByRunId[runId];
+      const run: ActivityRunState = existing || {
+        events: [],
+        collapsedPhaseIds: {},
+        status: "running"
+      };
+
+      const existingIndex = run.events.findIndex((e) => e.id === event.id);
+      const nextEvents =
+        existingIndex >= 0
+          ? run.events.map((e, index) => (index === existingIndex ? event : e))
+          : [...run.events, event];
+
+      const runOrder = state.activityRunOrder.includes(runId)
+        ? state.activityRunOrder
+        : [...state.activityRunOrder, runId];
+
+      let nextByRun = {
+        ...state.activityByRunId,
+        [runId]: { ...run, events: nextEvents }
+      };
+
+      let nextRunOrder = runOrder;
+      if (runOrder.length > MAX_ACTIVITY_RUNS) {
+        const toRemove = runOrder.slice(0, runOrder.length - MAX_ACTIVITY_RUNS);
+        nextRunOrder = runOrder.slice(-MAX_ACTIVITY_RUNS);
+        const pruned = { ...nextByRun };
+        toRemove.forEach((id) => delete pruned[id]);
+        nextByRun = pruned;
+      }
+
+      return {
+        ...state,
+        activeRunId: state.activeRunId ?? runId,
+        activityByRunId: nextByRun,
+        activityRunOrder: nextRunOrder
+      };
+    }
+
+    case "ACTIVITY_CLEAR": {
+      if (!action.runId) {
+        return {
+          ...state,
+          activeRunId: null,
+          activityByRunId: {},
+          activityRunOrder: []
+        };
+      }
+
+      const existing = state.activityByRunId[action.runId];
+      if (!existing) return state;
+
+      return {
+        ...state,
+        activityByRunId: {
+          ...state.activityByRunId,
+          [action.runId]: { ...existing, events: [], collapsedPhaseIds: {} }
+        }
+      };
+    }
+
+    case "PHASE_TOGGLE_COLLAPSE": {
+      const { runId, phaseId } = action;
+      const existing = state.activityByRunId[runId];
+      if (!existing) return state;
+      const current = Boolean(existing.collapsedPhaseIds[phaseId]);
+      return {
+        ...state,
+        activityByRunId: {
+          ...state.activityByRunId,
+          [runId]: {
+            ...existing,
+            collapsedPhaseIds: {
+              ...existing.collapsedPhaseIds,
+              [phaseId]: !current
+            }
+          }
+        }
+      };
+    }
+
+    case "SET_ACTIVE_RUN":
+      return {
+        ...state,
+        activeRunId: action.runId
+      };
+
+    // Streaming actions (Cline-style real-time)
+    case "APPEND_STREAMING_CONTENT":
+      return {
+        ...state,
+        streamingContent: state.streamingContent + action.content
+      };
+
+    case "CLEAR_STREAMING_CONTENT":
+      return {
+        ...state,
+        streamingContent: "",
+        streamingMetrics: undefined
+      };
+
+    case "UPDATE_STREAMING_METRICS":
+      return {
+        ...state,
+        streamingMetrics: action.metrics
       };
 
     default:

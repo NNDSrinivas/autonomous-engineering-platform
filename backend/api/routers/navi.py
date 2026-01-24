@@ -25,8 +25,8 @@ class NaviRequest(BaseModel):
 
     # LLM configuration (user's choice)
     llm_provider: str = Field(
-        default="anthropic",
-        description="LLM provider: anthropic, openai, google, groq, mistral, openrouter, ollama",
+        default="openai",
+        description="LLM provider: openai, anthropic, google, groq, mistral, openrouter, ollama",
     )
     llm_model: Optional[str] = Field(
         default=None,
@@ -39,6 +39,16 @@ class NaviRequest(BaseModel):
     # Context from VS Code
     context: Optional[Dict[str, Any]] = Field(
         default=None, description="Additional context (current file, selection, etc.)"
+    )
+
+    # Conversation context for multi-turn conversations
+    conversation_id: Optional[str] = Field(
+        default=None,
+        description="Unique conversation/session ID for tracking multi-turn conversations",
+    )
+    conversation_history: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Recent conversation history (last N messages) for context",
     )
 
 
@@ -166,8 +176,11 @@ async def process_navi_request(request: NaviRequest):
         selection = context.get("selection")
         open_files = context.get("openFiles") or context.get("open_files")
         errors = context.get("errors")
-        conversation_history = context.get("conversationHistory") or context.get(
-            "conversation_history"
+        # Use direct field if provided, otherwise fallback to context
+        conversation_history = (
+            request.conversation_history
+            or context.get("conversationHistory")
+            or context.get("conversation_history")
         )
 
         # Process with clean LLM-first system

@@ -74,7 +74,7 @@ class LLMService:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.7,
-                max_tokens=1500,
+                **self._openai_token_kwargs(1500),
             )
 
             content = response.choices[0].message.content
@@ -146,7 +146,7 @@ class LLMService:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,  # Lower temperature for code analysis
-                max_tokens=2000,
+                **self._openai_token_kwargs(2000),
             )
 
             content = response.choices[0].message.content
@@ -211,7 +211,7 @@ class LLMService:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.7,
-                max_tokens=2500,
+                **self._openai_token_kwargs(2500),
             )
 
             content = response.choices[0].message.content
@@ -265,6 +265,18 @@ class LLMService:
             base_prompt += f"\nTech stack: {', '.join(context['tech_stack'])}"
 
         return base_prompt
+
+    def _openai_token_kwargs(self, max_tokens: int) -> Dict[str, int]:
+        if self._requires_max_completion_tokens():
+            return {"max_completion_tokens": max_tokens}
+        return {"max_tokens": max_tokens}
+
+    def _requires_max_completion_tokens(self) -> bool:
+        model = (self.model or "").lower()
+        return any(
+            token in model
+            for token in ("gpt-5", "gpt-4.2", "gpt-4.1", "gpt-4o", "o1", "o3", "o4")
+        )
 
     def _build_user_prompt(self, question: str, context: Dict[str, Any]) -> str:
         """Build user prompt with relevant context"""

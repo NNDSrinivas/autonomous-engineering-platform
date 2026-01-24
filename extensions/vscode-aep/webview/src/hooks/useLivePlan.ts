@@ -58,11 +58,11 @@ export function usePlan(planId?: string): UseQueryResult<LivePlan, Error> {
  * Hook to list plans
  */
 export function usePlanList(archived?: boolean): UseQueryResult<{ plans: LivePlan[]; count: number }, Error> {
-  return useQuery({
+  return useQuery<{ plans: LivePlan[]; count: number }, Error>({
     queryKey: ['plans', archived],
-    queryFn: async () => {
+    queryFn: async (): Promise<{ plans: LivePlan[]; count: number }> => {
       const params = archived !== undefined ? { archived } : {};
-      const response = await api.get('/api/plan/list', { params });
+      const response = await api.get<{ plans: LivePlan[]; count: number }>('/api/plan/list', { params });
       return response.data;
     },
     staleTime: 10000, // 10 seconds
@@ -74,10 +74,10 @@ export function usePlanList(archived?: boolean): UseQueryResult<{ plans: LivePla
  */
 export function useStartPlan(): UseMutationResult<{ plan_id: string; status: string }, Error, StartPlanRequest> {
   const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (req: StartPlanRequest) => {
-      const response = await api.post('/api/plan/start', req);
+
+  return useMutation<{ plan_id: string; status: string }, Error, StartPlanRequest>({
+    mutationFn: async (req: StartPlanRequest): Promise<{ plan_id: string; status: string }> => {
+      const response = await api.post<{ plan_id: string; status: string }>('/api/plan/start', req);
       return response.data;
     },
     onSuccess: () => {
@@ -91,10 +91,10 @@ export function useStartPlan(): UseMutationResult<{ plan_id: string; status: str
  */
 export function useAddStep(): UseMutationResult<{ status: string; step: PlanStep }, Error, AddStepRequest> {
   const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (req: AddStepRequest) => {
-      const response = await api.post('/api/plan/step', req);
+
+  return useMutation<{ status: string; step: PlanStep }, Error, AddStepRequest>({
+    mutationFn: async (req: AddStepRequest): Promise<{ status: string; step: PlanStep }> => {
+      const response = await api.post<{ status: string; step: PlanStep }>('/api/plan/step', req);
       return response.data;
     },
     onSuccess: (_, variables) => {
@@ -112,10 +112,10 @@ export function useArchivePlan(): UseMutationResult<
   string
 > {
   const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (planId: string) => {
-      const response = await api.post(`/api/plan/${planId}/archive`);
+
+  return useMutation<{ status: string; plan_id: string; memory_node_id: number }, Error, string>({
+    mutationFn: async (planId: string): Promise<{ status: string; plan_id: string; memory_node_id: number }> => {
+      const response = await api.post<{ status: string; plan_id: string; memory_node_id: number }>(`/api/plan/${planId}/archive`);
       return response.data;
     },
     onSuccess: (_, planId) => {

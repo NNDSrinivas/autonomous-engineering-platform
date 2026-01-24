@@ -42,15 +42,29 @@ export class CommandActionHandler extends BaseActionHandler {
     }
 
     private isVSCodeCommand(command: string, action: any): boolean {
-        // Check if explicitly marked as VS Code command
+        // Explicitly marked as VS Code command
         if (action.type === 'vscode_command' || action.commandType === 'vscode') {
             return true;
         }
 
-        // Check if command looks like a VS Code command
-        return command.startsWith('vscode.') ||
-               command.startsWith('workbench.') ||
-               command.includes('.');  // Most VS Code commands have dots
+        // Shell commands almost always contain whitespace (e.g., "git diff file.ts")
+        if (/\s/.test(command)) {
+            return false;
+        }
+
+        // Only treat known VS Code command namespaces as VS Code commands
+        const vscodePrefixes = [
+            'vscode.',
+            'workbench.',
+            'editor.',
+            'terminal.',
+            'debug.',
+            'extensions.',
+            'git.',
+            'testing.',
+            'views.',
+        ];
+        return vscodePrefixes.some((prefix) => command.startsWith(prefix));
     }
 
     private async executeVSCodeCommand(
@@ -61,7 +75,7 @@ export class CommandActionHandler extends BaseActionHandler {
         console.log(`[CommandHandler] Executing VS Code command: ${command} with args:`, args);
 
         try {
-            // Special handling for vscode.openFolder - requires URI object
+            // Special handling for commands that require URI objects
             if (command === 'vscode.openFolder' && args.length > 0 && typeof args[0] === 'string') {
                 const folderPath = args[0];
                 const uri = vscode.Uri.file(folderPath);
@@ -70,6 +84,40 @@ export class CommandActionHandler extends BaseActionHandler {
                 return {
                     success: true,
                     message: `Opened folder: ${folderPath}`,
+                    data: result
+                };
+            }
+
+            // vscode.open requires a URI object for file paths
+            if (command === 'vscode.open' && args.length > 0 && typeof args[0] === 'string') {
+                const filePath = args[0];
+                const uri = vscode.Uri.file(filePath);
+                const result = await vscode.commands.executeCommand(command, uri);
+
+                return {
+                    success: true,
+                    message: `Opened file: ${filePath}`,
+                    data: result
+                };
+            }
+
+            // workbench.action.openRecent and similar also may need URI handling
+            if ((command === 'workbench.action.openRecent' ||
+                 command === 'vscode.openWith' ||
+                 command === 'vscode.diff') &&
+                args.length > 0 && typeof args[0] === 'string') {
+                // Convert string paths to URIs
+                const convertedArgs = args.map((arg, index) => {
+                    if (typeof arg === 'string' && (arg.startsWith('/') || arg.match(/^[A-Za-z]:\\/))) {
+                        return vscode.Uri.file(arg);
+                    }
+                    return arg;
+                });
+                const result = await vscode.commands.executeCommand(command, ...convertedArgs);
+
+                return {
+                    success: true,
+                    message: `VS Code command executed: ${command}`,
                     data: result
                 };
             }
@@ -170,18 +218,25 @@ export class CommandActionHandler extends BaseActionHandler {
 
                 if (context.postMessage) {
                     context.postMessage({
-                        type: 'command.complete',
+                        type: 'command.done',
                         commandId,
                         exitCode,
                         durationMs,
+                        stdout,
+                        stderr,
                     });
                 }
+
+                const exitError = exitCode === 0
+                    ? undefined
+                    : new Error(`Command failed with exit code ${exitCode}: ${command}`);
 
                 resolve({
                     success: exitCode === 0,
                     message: exitCode === 0
                         ? `Command executed successfully: ${command}`
                         : `Command failed with exit code ${exitCode}: ${command}`,
+                    error: exitError,
                     data: {
                         command,
                         cwd: workspaceRoot,

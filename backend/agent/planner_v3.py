@@ -251,6 +251,115 @@ class PlannerV3:
                     summary="Listing your assigned GitHub items",
                 )
 
+            # Linear routing
+            if intent.provider == Provider.LINEAR and intent.kind in (
+                IntentKind.LIST_MY_ITEMS,
+            ):
+                return PlanResult(
+                    steps=[
+                        PlannedStep(
+                            id="linear_my_issues",
+                            description="List Linear issues assigned to the current user",
+                            tool="linear.list_my_issues",
+                            arguments={
+                                "status": intent.filters.get("status"),
+                                "max_results": intent.filters.get("limit", 20),
+                            },
+                        )
+                    ],
+                    summary="Listing your assigned Linear issues",
+                )
+
+            # GitLab routing
+            if intent.provider == Provider.GITLAB and intent.kind in (
+                IntentKind.LIST_MY_ITEMS,
+            ):
+                object_type = intent.object_type or "merge_request"
+                if object_type in ("mr", "merge_request"):
+                    return PlanResult(
+                        steps=[
+                            PlannedStep(
+                                id="gitlab_my_mrs",
+                                description="List GitLab merge requests assigned to the current user",
+                                tool="gitlab.list_my_merge_requests",
+                                arguments={
+                                    "status": intent.filters.get("status"),
+                                    "max_results": intent.filters.get("limit", 20),
+                                },
+                            )
+                        ],
+                        summary="Listing your assigned GitLab merge requests",
+                    )
+                else:
+                    return PlanResult(
+                        steps=[
+                            PlannedStep(
+                                id="gitlab_my_issues",
+                                description="List GitLab issues assigned to the current user",
+                                tool="gitlab.list_my_issues",
+                                arguments={
+                                    "status": intent.filters.get("status"),
+                                    "max_results": intent.filters.get("limit", 20),
+                                },
+                            )
+                        ],
+                        summary="Listing your assigned GitLab issues",
+                    )
+
+            # Asana routing
+            if intent.provider == Provider.ASANA and intent.kind in (
+                IntentKind.LIST_MY_ITEMS,
+            ):
+                return PlanResult(
+                    steps=[
+                        PlannedStep(
+                            id="asana_my_tasks",
+                            description="List Asana tasks assigned to the current user",
+                            tool="asana.list_my_tasks",
+                            arguments={
+                                "status": intent.filters.get("status"),
+                                "max_results": intent.filters.get("limit", 20),
+                            },
+                        )
+                    ],
+                    summary="Listing your assigned Asana tasks",
+                )
+
+            # Notion routing
+            if intent.provider == Provider.NOTION and intent.kind in (
+                IntentKind.LIST_MY_ITEMS,
+            ):
+                query = intent.filters.get("query", "")
+                if query:
+                    return PlanResult(
+                        steps=[
+                            PlannedStep(
+                                id="notion_search",
+                                description=f"Search Notion pages for '{query}'",
+                                tool="notion.search_pages",
+                                arguments={
+                                    "query": query,
+                                    "max_results": intent.filters.get("limit", 20),
+                                },
+                            )
+                        ],
+                        summary=f"Searching Notion pages for '{query}'",
+                    )
+                else:
+                    return PlanResult(
+                        steps=[
+                            PlannedStep(
+                                id="notion_recent",
+                                description="List recent Notion pages",
+                                tool="notion.list_recent_pages",
+                                arguments={
+                                    "max_results": intent.filters.get("limit", 20),
+                                },
+                            )
+                        ],
+                        summary="Listing your recent Notion pages",
+                    )
+
             # Generic cross-provider item details
             if intent.kind == IntentKind.SHOW_ITEM_DETAILS and intent.object_id:
                 return PlanResult(
@@ -351,84 +460,140 @@ class PlannerV3:
     async def _plan_engineering_family(
         self, intent: NaviIntent, context: Dict[str, Any]
     ) -> PlanResult:
-        """Plan ENGINEERING family intents using generic approach."""
+        """
+        Plan ENGINEERING family intents using safe, executable tools.
+
+        This ensures the agent can gather context and let the LLM explain
+        results, rather than falling back to safety mode.
+        """
         kind_value = (
             intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
         )
+
+        # Use safe tools (repo.inspect, code.read_files, code.search) for engineering tasks
+        # These tools execute immediately and let the LLM explain the results
         steps = [
             PlannedStep(
-                id="engineering_action",
-                description=f"Execute {kind_value} engineering action",
-                tool="engineering.generic",
+                id="repo-overview-1",
+                description="Inspect the repository structure and main folders.",
+                tool="repo.inspect",
+                arguments={"max_depth": 3, "max_files": 200},
+            ),
+            PlannedStep(
+                id="repo-overview-2",
+                description="Read key files like README and main entrypoints.",
+                tool="code.read_files",
                 arguments={
-                    "intent_family": intent.family.value,
-                    "intent_kind": kind_value,
-                    "context": context,
+                    "paths": [
+                        "README.md",
+                        "readme.md",
+                        "package.json",
+                        "pyproject.toml",
+                        "pom.xml",
+                        "setup.py",
+                        "main.py",
+                        "src/main.py",
+                        "src/index.tsx",
+                        "src/index.ts",
+                    ]
                 },
-            )
+            ),
         ]
 
         return PlanResult(
             steps=steps,
-            summary=f"Engineering {kind_value} plan",
+            summary=f"Analyzing codebase for {kind_value}",
         )
 
     async def _plan_project_management_family(
         self, intent: NaviIntent, context: Dict[str, Any]
     ) -> PlanResult:
-        """Plan PROJECT_MANAGEMENT family intents using generic approach."""
+        """
+        Plan PROJECT_MANAGEMENT family intents using safe tools.
+
+        Gathers context about the project so LLM can provide relevant guidance.
+        """
         kind_value = (
             intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
         )
 
+        # Use safe tools to gather project context
         steps = [
             PlannedStep(
-                id="project_management_action",
-                description=f"Execute {kind_value} project management action",
-                tool="project.generic",
+                id="repo-overview-1",
+                description="Inspect the repository structure.",
+                tool="repo.inspect",
+                arguments={"max_depth": 2, "max_files": 100},
+            ),
+            PlannedStep(
+                id="repo-overview-2",
+                description="Read project configuration files.",
+                tool="code.read_files",
                 arguments={
-                    "intent_family": intent.family.value,
-                    "intent_kind": kind_value,
-                    "context": context,
+                    "paths": [
+                        "README.md",
+                        "package.json",
+                        "pyproject.toml",
+                        ".github/workflows",
+                    ]
                 },
-            )
+            ),
         ]
 
         return PlanResult(
             steps=steps,
-            summary=f"Project Management {kind_value} plan",
+            summary=f"Gathering project context for {kind_value}",
         )
 
     async def _plan_autonomous_family(
         self, intent: NaviIntent, context: Dict[str, Any]
     ) -> PlanResult:
-        """Plan AUTONOMOUS_ORCHESTRATION family intents using generic approach."""
+        """
+        Plan AUTONOMOUS_ORCHESTRATION family intents using safe tools.
+
+        For autonomous tasks, we need to first gather context about the workspace.
+        """
         kind_value = (
             intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
         )
 
+        # Use safe tools to gather workspace context
         steps = [
             PlannedStep(
-                id="autonomous_action",
-                description=f"Execute {kind_value} autonomous action",
-                tool="autonomous.generic",
+                id="repo-overview-1",
+                description="Inspect the repository structure.",
+                tool="repo.inspect",
+                arguments={"max_depth": 3, "max_files": 200},
+            ),
+            PlannedStep(
+                id="repo-overview-2",
+                description="Read project configuration and entry points.",
+                tool="code.read_files",
                 arguments={
-                    "intent_family": intent.family.value,
-                    "intent_kind": kind_value,
-                    "context": context,
+                    "paths": [
+                        "README.md",
+                        "package.json",
+                        "pyproject.toml",
+                        "main.py",
+                        "src/index.ts",
+                    ]
                 },
-            )
+            ),
         ]
 
         return PlanResult(
             steps=steps,
-            summary=f"Autonomous {kind_value} plan",
+            summary=f"Gathering context for {kind_value}",
         )
 
     async def _plan_default_family(
         self, intent: NaviIntent, context: Dict[str, Any]
     ) -> PlanResult:
-        """Fallback planning for any intent family."""
+        """
+        Fallback planning using safe tools for any intent family.
+
+        This ensures we always have executable steps that gather context.
+        """
         family_value = (
             intent.family.value
             if hasattr(intent.family, "value")
@@ -438,30 +603,160 @@ class PlannerV3:
             intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
         )
 
+        # Use safe tools to gather context
         steps = [
             PlannedStep(
-                id="generic_action",
-                description=f"Execute {family_value} {kind_value} action",
-                tool="generic",
-                arguments={
-                    "intent_family": family_value,
-                    "intent_kind": kind_value,
-                    "context": context,
-                },
-            )
+                id="repo-overview-1",
+                description="Inspect the repository structure.",
+                tool="repo.inspect",
+                arguments={"max_depth": 2, "max_files": 100},
+            ),
+            PlannedStep(
+                id="repo-overview-2",
+                description="Read key project files.",
+                tool="code.read_files",
+                arguments={"paths": ["README.md", "package.json", "pyproject.toml"]},
+            ),
         ]
 
         return PlanResult(
             steps=steps,
-            summary=f"Generic {family_value} {kind_value} plan",
+            summary=f"Gathering context for {family_value} {kind_value}",
         )
+
+    async def plan_fix(
+        self,
+        fix_context: Dict[str, Any],
+    ) -> PlanResult:
+        """
+        Generate a plan to fix test failures.
+
+        This is used in iterative mode when tests fail after code changes.
+        The plan focuses on analyzing and fixing the specific failures.
+
+        Args:
+            fix_context: Context from iteration_controller.create_fix_context()
+                Contains:
+                - original_request: The user's original request
+                - iteration: Current iteration number
+                - test_results: Test pass/fail counts
+                - failure_summary: Summary of failed tests
+                - fix_hints: Suggestions from debug analysis
+                - instruction: Guidance for fixing
+
+        Returns:
+            PlanResult with steps to fix the failures
+        """
+        failure_summary = fix_context.get("failure_summary", "Unknown failures")
+        iteration = fix_context.get("iteration", 1)
+        fix_hints = fix_context.get("fix_hints", [])
+
+        logger.info(
+            "[PLANNER] Generating fix plan for iteration %d: %s",
+            iteration,
+            failure_summary[:100],
+        )
+
+        # Build steps to analyze and fix the failures
+        steps = []
+
+        # Step 1: Read the failing test files to understand what's expected
+        # Extract file paths from failure summary
+        test_files = self._extract_test_files_from_failures(failure_summary)
+        if test_files:
+            steps.append(
+                PlannedStep(
+                    id="fix-read-tests",
+                    description="Read failing test files to understand expected behavior",
+                    tool="code.read_files",
+                    arguments={"paths": test_files[:5]},  # Limit to 5 files
+                )
+            )
+
+        # Step 2: Search for related code that might need fixing
+        steps.append(
+            PlannedStep(
+                id="fix-search-related",
+                description="Search for code related to the failing tests",
+                tool="code.search",
+                arguments={
+                    "query": self._extract_search_terms(failure_summary),
+                    "max_results": 10,
+                },
+            )
+        )
+
+        # Step 3: Apply fixes based on the analysis
+        # The actual fix would be generated by the LLM based on context
+        steps.append(
+            PlannedStep(
+                id="fix-apply-changes",
+                description=f"Apply fixes for test failures (iteration {iteration})",
+                tool="code.apply_patch",
+                arguments={
+                    "context": {
+                        "failures": failure_summary,
+                        "hints": fix_hints,
+                        "iteration": iteration,
+                    },
+                    "auto_generate": True,  # Signal that LLM should generate the patch
+                },
+            )
+        )
+
+        # Build summary with fix hints
+        hint_text = ""
+        if fix_hints:
+            hint_text = f" Hints: {', '.join(fix_hints[:2])}"
+
+        return PlanResult(
+            steps=steps,
+            summary=f"Fixing test failures (iteration {iteration}).{hint_text}",
+        )
+
+    def _extract_test_files_from_failures(self, failure_summary: str) -> list:
+        """Extract test file paths from failure summary."""
+        import re
+
+        # Match common test file patterns
+        patterns = [
+            r"([^\s:]+(?:_test|test_|\.test|\.spec)\.[a-z]+)",  # test files
+            r"\(([^:]+\.(?:py|js|ts|go|rs|java)):",  # file:line patterns
+        ]
+
+        files = set()
+        for pattern in patterns:
+            for match in re.finditer(pattern, failure_summary, re.IGNORECASE):
+                files.add(match.group(1))
+
+        return list(files)
+
+    def _extract_search_terms(self, failure_summary: str) -> str:
+        """Extract search terms from failure summary."""
+        import re
+
+        # Look for function/class names in common error patterns
+        patterns = [
+            r"(?:test_|Test)(\w+)",  # Test names
+            r"(\w+Error|Exception)",  # Error types
+            r"'(\w+)'",  # Quoted identifiers
+        ]
+
+        terms = []
+        for pattern in patterns:
+            for match in re.finditer(pattern, failure_summary):
+                terms.append(match.group(1))
+
+        # Return first few unique terms
+        unique_terms = list(dict.fromkeys(terms))[:3]
+        return " ".join(unique_terms) if unique_terms else "test failure"
 
 
 class SimplePlanner:
-    """Minimal planner for FastAPI integration."""
+    """Minimal planner for FastAPI integration using safe tools."""
 
     async def plan(self, intent: NaviIntent, context: Dict[str, Any]) -> PlanResult:
-        """Create a simple single-step plan."""
+        """Create a plan with safe, executable tools."""
         family_value = (
             intent.family.value
             if hasattr(intent.family, "value")
@@ -471,18 +766,23 @@ class SimplePlanner:
             intent.kind.value if hasattr(intent.kind, "value") else str(intent.kind)
         )
 
-        step = PlannedStep(
-            id="simple_step",
-            description=f"Execute {family_value} {kind_value}",
-            tool="simple",
-            arguments={
-                "intent_family": family_value,
-                "intent_kind": kind_value,
-                "context": context,
-            },
-        )
+        # Use safe tools that execute immediately
+        steps = [
+            PlannedStep(
+                id="repo-overview-1",
+                description="Inspect the repository structure.",
+                tool="repo.inspect",
+                arguments={"max_depth": 2, "max_files": 100},
+            ),
+            PlannedStep(
+                id="repo-overview-2",
+                description="Read key project files.",
+                tool="code.read_files",
+                arguments={"paths": ["README.md", "package.json", "pyproject.toml"]},
+            ),
+        ]
 
         return PlanResult(
-            steps=[step],
-            summary=f"Simple {family_value} {kind_value} plan",
+            steps=steps,
+            summary=f"Gathering context for {family_value} {kind_value}",
         )

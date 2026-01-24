@@ -97,8 +97,8 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
           .select('preference_value')
           .eq('user_id', session.user.id)
           .eq('preference_key', 'default_model')
-          .single();
-        
+          .single() as { data: { preference_value: unknown } | null; error: unknown };
+
         if (data?.preference_value) {
           const pref = data.preference_value as { modelId: string; providerId: string };
           setSelectedModel(pref.modelId);
@@ -126,7 +126,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
   const streamChat = useCallback(async (
     userMessage: string,
     onDelta: (delta: string) => void,
-    onDone: (modelUsed: { id: string; name: string }) => void,
+    onDone: (modelUsed: { id: string; name: string }, metadata?: Record<string, unknown>) => void,
     onError: (error: string) => void,
     overrideModel?: string
   ) => {
@@ -308,7 +308,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
       id: Date.now().toString(),
       role: 'user',
       content: input,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -328,7 +328,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
           id: (Date.now() + 1).toString(),
           role: 'assistant' as const,
           content: assistantContent,
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
         }];
       });
     };
@@ -362,7 +362,7 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
           id: (Date.now() + 2).toString(),
           role: 'assistant',
           content: `Sorry, I encountered an error: ${error}. Please try again.`,
-          timestamp: new Date(),
+          timestamp: new Date().toISOString(),
         }]);
       },
       overrideModel
@@ -412,9 +412,9 @@ export function useNaviChat({ selectedTask, userName }: UseNaviChatProps) {
   const resetModelPreference = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
-      await supabase
+      await (supabase
         .from('user_preferences')
-        .delete()
+        .delete() as unknown as { eq: (col: string, val: string) => { eq: (col: string, val: string) => Promise<void> } })
         .eq('user_id', session.user.id)
         .eq('preference_key', 'default_model');
     }

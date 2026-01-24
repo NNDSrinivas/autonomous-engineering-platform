@@ -9,6 +9,9 @@
   "categories": [
     "Other"
   ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "icon": "media/aep-icon-256.png",
   "contributes": {
@@ -91,6 +94,16 @@
           "minimum": 5,
           "maximum": 500,
           "description": "Maximum total number of search results to return when gathering context"
+        },
+        "aep.navi.useToolStreaming": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable advanced streaming mode with real-time tool execution and interactive progress updates"
+        },
+        "aep.navi.useAutonomousMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable autonomous mode for end-to-end task completion with automatic verification, self-healing, and iteration until success"
         }
       }
     },

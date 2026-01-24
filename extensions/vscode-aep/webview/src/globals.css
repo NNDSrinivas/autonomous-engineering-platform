@@ -1,229 +1,568 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import './styles/futuristic.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Phase 4.0.2 - Global animations for Copilot-level polish */
-@keyframes fadeInUp {
+@layer base {
+  :root {
+    --background: 220 15% 8%;
+    --foreground: 220 10% 92%;
+
+    --card: 220 15% 10%;
+    --card-foreground: 220 10% 92%;
+
+    --popover: 220 15% 12%;
+    --popover-foreground: 220 10% 92%;
+
+    --primary: 200 100% 50%;
+    --primary-foreground: 220 15% 8%;
+
+    --secondary: 220 15% 15%;
+    --secondary-foreground: 220 10% 85%;
+
+    --muted: 220 15% 18%;
+    --muted-foreground: 220 10% 55%;
+
+    --accent: 270 80% 60%;
+    --accent-foreground: 220 10% 92%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 220 10% 92%;
+
+    --border: 220 15% 20%;
+    --input: 220 15% 15%;
+    --ring: 200 100% 50%;
+
+    --radius: 0.5rem;
+
+    /* Custom IDE tokens */
+    --editor-bg: 220 15% 6%;
+    --editor-line: 220 15% 12%;
+    --editor-selection: 200 100% 50%;
+    --editor-gutter: 220 10% 35%;
+
+    --sidebar-bg: 220 15% 9%;
+    --sidebar-hover: 220 15% 14%;
+    --sidebar-active: 200 100% 50%;
+
+    --ai-glow: 200 100% 50%;
+    --ai-gradient-start: 200 100% 50%;
+    --ai-gradient-end: 270 80% 60%;
+
+    --syntax-keyword: 270 80% 70%;
+    --syntax-string: 140 70% 55%;
+    --syntax-number: 30 90% 60%;
+    --syntax-function: 200 100% 65%;
+    --syntax-comment: 220 10% 45%;
+    --syntax-variable: 220 10% 85%;
+    --syntax-type: 45 90% 60%;
+
+    --terminal-bg: 220 15% 5%;
+    --terminal-text: 140 70% 65%;
+
+    --shadow-glow: 0 0 20px hsl(200 100% 50% / 0.3);
+    --shadow-ai: 0 0 30px hsl(200 100% 50% / 0.2), 0 0 60px hsl(270 80% 60% / 0.1);
+
+    /* Integration colors */
+    --jira-blue: 210 100% 50%;
+    --slack-purple: 280 60% 55%;
+    --teams-purple: 260 80% 55%;
+    --confluence-blue: 210 70% 50%;
+    --github-green: 140 70% 45%;
+    --zoom-blue: 210 90% 55%;
+    --cicd-orange: 25 90% 55%;
+
+    /* Status colors */
+    --status-success: 140 70% 45%;
+    --status-warning: 40 90% 55%;
+    --status-error: 0 70% 55%;
+    --status-info: 200 100% 55%;
+
+    /* Panel colors */
+    --panel-header: 220 15% 11%;
+    --panel-content: 220 15% 8%;
+  }
+
+  .light {
+    /* Modern Light Theme - Clean, Professional, Warm */
+    --background: 220 20% 98%;
+    --foreground: 220 20% 18%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 18%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 18%;
+
+    /* Vibrant teal-blue primary */
+    --primary: 190 85% 42%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Warm gray secondary with subtle blue tint */
+    --secondary: 220 20% 94%;
+    --secondary-foreground: 220 20% 30%;
+
+    /* Soft muted tones */
+    --muted: 220 15% 96%;
+    --muted-foreground: 220 15% 48%;
+
+    /* Rich violet accent */
+    --accent: 262 75% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Subtle warm borders */
+    --border: 220 18% 88%;
+    --input: 220 18% 94%;
+    --ring: 190 85% 42%;
+
+    /* Custom IDE tokens - light mode */
+    --editor-bg: 220 20% 99%;
+    --editor-line: 220 18% 96%;
+    --editor-selection: 190 85% 92%;
+    --editor-gutter: 220 15% 55%;
+
+    /* Warm sidebar with subtle gradient feel */
+    --sidebar-bg: 225 22% 97%;
+    --sidebar-hover: 220 20% 93%;
+    --sidebar-active: 190 85% 42%;
+
+    /* AI accent colors for light mode */
+    --ai-glow: 190 85% 42%;
+    --ai-gradient-start: 190 85% 42%;
+    --ai-gradient-end: 262 75% 55%;
+
+    /* Enhanced syntax highlighting for light mode */
+    --syntax-keyword: 262 75% 48%;
+    --syntax-string: 150 65% 32%;
+    --syntax-number: 25 90% 45%;
+    --syntax-function: 205 90% 38%;
+    --syntax-comment: 220 15% 52%;
+    --syntax-variable: 220 20% 25%;
+    --syntax-type: 38 90% 42%;
+
+    /* Clean terminal */
+    --terminal-bg: 220 20% 97%;
+    --terminal-text: 150 65% 32%;
+
+    /* Refined shadows for light mode */
+    --shadow-glow: 0 0 25px hsl(190 85% 42% / 0.18);
+    --shadow-ai: 0 0 30px hsl(190 85% 42% / 0.12), 0 0 60px hsl(262 75% 55% / 0.06);
+
+    /* Status colors - more vibrant for light mode */
+    --status-success: 152 68% 38%;
+    --status-warning: 38 95% 48%;
+    --status-error: 0 72% 50%;
+    --status-info: 205 90% 45%;
+
+    /* Integration colors - slightly adjusted for light */
+    --github-green: 142 68% 38%;
+
+    /* Panel colors - light mode */
+    --panel-header: 220 20% 97%;
+    --panel-content: 220 20% 99%;
+  }
+
+  .dark {
+    --background: 220 15% 8%;
+    --foreground: 220 10% 92%;
+  }
+
+  /* Smooth theme transition */
+  .theme-transition,
+  .theme-transition *,
+  .theme-transition *::before,
+  .theme-transition *::after {
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, fill 0.3s ease, stroke 0.3s ease, box-shadow 0.3s ease !important;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  html,
+  body,
+  #root,
+  .aep-webview-container {
+    height: 100%;
+    width: 100%;
+    max-width: 100vw !important;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden !important; /* Prevent horizontal scroll */
+    box-sizing: border-box;
+  }
+
+  /* Force all text to wrap within containers */
+  * {
+    max-width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  /* Ensure flex containers don't cause overflow */
+  .flex, [class*="flex"] {
+    min-width: 0;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .font-sans {
+    font-family: 'Inter', sans-serif;
+  }
+
+  .glow-primary {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .glow-ai {
+    box-shadow: var(--shadow-ai);
+  }
+
+  .gradient-ai {
+    background: linear-gradient(135deg, hsl(var(--ai-gradient-start)), hsl(var(--ai-gradient-end)));
+  }
+
+  .gradient-ai-text {
+    background: linear-gradient(135deg, hsl(var(--ai-gradient-start)), hsl(var(--ai-gradient-end)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-typing {
+    animation: typing 1.5s steps(3) infinite;
+  }
+
+  @keyframes typing {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .code-line:hover {
+    @apply bg-editor-line;
+  }
+
+  /* Copilot-style panel animations */
+  @keyframes slideInRight {
     from {
-        opacity: 0;
-        transform: translateY(4px);
+      opacity: 0;
+      transform: translateX(20px);
     }
-
     to {
-        opacity: 1;
-        transform: translateY(0);
+      opacity: 1;
+      transform: translateX(0);
     }
-}
+  }
 
-@keyframes pulse-ring {
+  @keyframes slideOutRight {
+    from {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+  }
 
-    75%,
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
     100% {
-        transform: scale(1.4);
-        opacity: 0;
+      background-position: 200% 0;
     }
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% {
+      box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+    }
+    50% {
+      box-shadow: 0 0 40px hsl(var(--primary) / 0.5), 0 0 60px hsl(var(--accent) / 0.2);
+    }
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .animate-slide-out-right {
+    animation: slideOutRight 0.2s ease-out;
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--secondary)) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  .animate-glow-pulse {
+    animation: glow-pulse 2s ease-in-out infinite;
+  }
+
+  /* Smooth hover transitions */
+  .hover-lift {
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px hsl(var(--primary) / 0.15);
+  }
+
+  /* Glass morphism effect */
+  .glass {
+    background: hsl(var(--background) / 0.8);
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  /* Panel transitions */
+  .panel-transition {
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Prism syntax highlighting overrides */
+  pre[class*="language-"] {
+    background: hsl(var(--terminal-bg)) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  code[class*="language-"] {
+    color: hsl(var(--syntax-variable)) !important;
+    text-shadow: none !important;
+  }
+
+  .token.keyword {
+    color: hsl(var(--syntax-keyword)) !important;
+  }
+
+  .token.string,
+  .token.template-string {
+    color: hsl(var(--syntax-string)) !important;
+  }
+
+  .token.number {
+    color: hsl(var(--syntax-number)) !important;
+  }
+
+  .token.function {
+    color: hsl(var(--syntax-function)) !important;
+  }
+
+  .token.comment {
+    color: hsl(var(--syntax-comment)) !important;
+  }
+
+  .token.class-name,
+  .token.type {
+    color: hsl(var(--syntax-type)) !important;
+  }
+
+  .token.operator,
+  .token.punctuation {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  .token.property {
+    color: hsl(var(--primary)) !important;
+  }
+
+  .token.boolean {
+    color: hsl(var(--syntax-number)) !important;
+  }
 }
 
+/* Additional NAVI-specific helpers (kept for existing components) */
 @keyframes navi-typing {
-    0%,
-    80%,
-    100% {
-        opacity: 0.3;
-        transform: translateY(0);
-    }
-    40% {
-        opacity: 1;
-        transform: translateY(-2px);
-    }
-}
-
-@keyframes artifactIn {
-    from {
-        opacity: 0;
-        transform: translateY(6px) scale(0.98);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-/* Custom animation classes */
-.animate-fade-in-up {
-    animation: fadeInUp 180ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.animate-artifact-in {
-    animation: artifactIn 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.animate-pulse-ring {
-    animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
 }
 
 .navi-typing-dots {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .navi-typing-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 999px;
-    background: rgba(190, 195, 210, 0.7);
-    animation: navi-typing 1s ease-in-out infinite;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(190, 195, 210, 0.7);
+  animation: navi-typing 1s ease-in-out infinite;
 }
 
 .navi-typing-dot:nth-child(2) {
-    animation-delay: 0.15s;
+  animation-delay: 0.15s;
 }
 
 .navi-typing-dot:nth-child(3) {
-    animation-delay: 0.3s;
+  animation-delay: 0.3s;
 }
 
-/* Smooth transitions everywhere */
-* {
-    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    transition-duration: 150ms;
-}
-
-html,
-body,
-#root,
-.aep-webview-container {
-    height: 100%;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-}
-
-* {
-    box-sizing: border-box;
-}
-
-/* NAVI System-Grade Components */
-.placeholder-composer-text::placeholder {
-    color: rgba(200, 205, 215, 0.55);
-}
-
-/* Send State Animations - Copilot-Level Polish */
 @keyframes rotate-90 {
-    from {
-        transform: rotate(0deg);
-    }
+  from {
+    transform: rotate(0deg);
+  }
 
-    to {
-        transform: rotate(90deg);
-    }
+  to {
+    transform: rotate(90deg);
+  }
 }
 
 @keyframes pulse-ring {
-    0% {
-        box-shadow: 0 0 0 0 rgba(120, 180, 255, 0.4);
-    }
+  0% {
+    box-shadow: 0 0 0 0 rgba(120, 180, 255, 0.4);
+  }
 
-    75%,
-    100% {
-        box-shadow: 0 0 0 8px rgba(120, 180, 255, 0);
-    }
+  75%,
+  100% {
+    box-shadow: 0 0 0 8px rgba(120, 180, 255, 0);
+  }
 }
 
 .navi-send-executing {
-    animation: rotate-90 160ms ease-out, pulse-ring 1s ease-out;
+  animation: rotate-90 160ms ease-out, pulse-ring 1s ease-out;
 }
 
 .navi-action-rail {
-    display: flex;
-    gap: 14px;
-    margin-top: 6px;
-    opacity: 0;
-    transition: opacity 120ms ease;
+  display: flex;
+  gap: 14px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 120ms ease;
 }
 
 .navi-assistant-bubble:hover .navi-action-rail {
-    opacity: 1;
+  opacity: 1;
 }
 
 .navi-action-btn {
-    color: rgba(190, 195, 210, 0.55);
-    transition: color 120ms ease;
+  color: rgba(190, 195, 210, 0.55);
+  transition: color 120ms ease;
 }
 
 .navi-action-btn:hover {
-    color: #e6f0ff;
+  color: #e6f0ff;
 }
 
 .navi-model-provider {
-    font-size: 11px;
-    text-transform: uppercase;
-    opacity: 0.45;
-    margin-top: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  opacity: 0.45;
+  margin-top: 6px;
 }
 
 @keyframes connector-panel-in {
-    from {
-        opacity: 0;
-        transform: translateY(12px) scale(0.98);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes connector-card-in {
-    from {
-        opacity: 0;
-        transform: translateY(8px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes connector-sheen {
-    0% {
-        transform: translateX(-120%);
-        opacity: 0;
-    }
-    40% {
-        opacity: 0.6;
-    }
-    100% {
-        transform: translateX(120%);
-        opacity: 0;
-    }
+  0% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
 }
 
-@keyframes connector-float {
-    0% {
-        transform: translateY(0px);
-    }
-    50% {
-        transform: translateY(-2px);
-    }
-    100% {
-        transform: translateY(0px);
-    }
-}
-
-.connector-panel-enter {
-    animation: connector-panel-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.connector-card-enter {
-    animation: connector-card-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.connector-sheen {
-    background: linear-gradient(110deg, transparent, rgba(148, 163, 184, 0.2), transparent);
-    animation: connector-sheen 4s ease-in-out infinite;
-}
-
-.connector-float-slow {
-    animation: connector-float 3.5s ease-in-out infinite;
+/* Send button scan effect */
+@keyframes scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(200%);
+  }
 }

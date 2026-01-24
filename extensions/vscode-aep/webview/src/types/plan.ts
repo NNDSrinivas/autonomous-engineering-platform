@@ -32,6 +32,7 @@ export interface Plan {
   requires_approval: boolean;
   confidence: number;
   reasoning: string;
+  task_id?: string; // Top-level task ID for execution tracking
   diagnostics?: {
     total_count?: number;
     error_count?: number;

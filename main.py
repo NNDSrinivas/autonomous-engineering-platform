@@ -55,6 +55,10 @@ from backend.api.navi_brief import (  # noqa: E402
 from backend.api.navi import (  # noqa: E402
     router as navi_router,
 )
+from backend.api.chat import (  # noqa: E402
+    router as chat_router,
+    navi_router as navi_chat_router,
+)
 from backend.api.navi_analyze import (  # noqa: E402
     router as navi_analyze_router,
 )
@@ -74,6 +78,57 @@ from backend.api.routers.slack_webhook import (  # noqa: E402
 )
 from backend.api.routers.teams_webhook import (  # noqa: E402
     router as teams_webhook_router,
+)
+from backend.api.routers.gitlab_webhook import (  # noqa: E402
+    router as gitlab_webhook_router,
+)
+from backend.api.routers.linear_webhook import (  # noqa: E402
+    router as linear_webhook_router,
+)
+from backend.api.routers.bitbucket_webhook import (  # noqa: E402
+    router as bitbucket_webhook_router,
+)
+from backend.api.routers.discord_webhook import (  # noqa: E402
+    router as discord_webhook_router,
+)
+from backend.api.routers.figma_webhook import (  # noqa: E402
+    router as figma_webhook_router,
+)
+from backend.api.routers.circleci_webhook import (  # noqa: E402
+    router as circleci_webhook_router,
+)
+from backend.api.routers.vercel_webhook import (  # noqa: E402
+    router as vercel_webhook_router,
+)
+from backend.api.routers.asana_webhook import (  # noqa: E402
+    router as asana_webhook_router,
+)
+from backend.api.routers.trello_webhook import (  # noqa: E402
+    router as trello_webhook_router,
+)
+from backend.api.routers.pagerduty_webhook import (  # noqa: E402
+    router as pagerduty_webhook_router,
+)
+from backend.api.routers.sentry_webhook import (  # noqa: E402
+    router as sentry_webhook_router,
+)
+from backend.api.routers.saas import (  # noqa: E402
+    router as saas_router,
+)
+from backend.api.routers.navi_planner import (  # noqa: E402
+    router as navi_planner_router,
+)
+from backend.api.routers.navi_enhanced import (  # noqa: E402
+    router as navi_enhanced_router,
+)
+from backend.api.routers.user_sync import (  # noqa: E402
+    router as user_sync_router,
+)
+from backend.api.routers.navi_memory import (  # noqa: E402
+    router as navi_memory_router,
+)
+from backend.api.routers.advanced_operations import (  # noqa: E402
+    router as advanced_operations_router,
 )
 
 # Add project root to path
@@ -135,6 +190,8 @@ app.include_router(agent_planning_router, prefix="/api")
 app.include_router(ai_codegen_router, prefix="/api")
 app.include_router(ai_feedback_router, prefix="/api")
 app.include_router(navi_router)  # STEP K: NAVI chat with agent orchestrator
+app.include_router(chat_router)  # Chat API routes
+app.include_router(navi_chat_router)  # NAVI chat/stream with mode-based routing
 app.include_router(
     navi_analyze_router
 )  # Phase 4.2: NAVI analyze problems with task grounding
@@ -149,6 +206,23 @@ app.include_router(jira_webhook_router)  # Jira webhook ingestion
 app.include_router(github_webhook_router)  # GitHub webhook ingestion
 app.include_router(slack_webhook_router)  # Slack webhook ingestion
 app.include_router(teams_webhook_router)  # Teams webhook ingestion
+app.include_router(gitlab_webhook_router)  # GitLab webhook ingestion
+app.include_router(linear_webhook_router)  # Linear webhook ingestion
+app.include_router(bitbucket_webhook_router)  # Bitbucket webhook ingestion
+app.include_router(discord_webhook_router)  # Discord webhook ingestion
+app.include_router(figma_webhook_router)  # Figma webhook ingestion
+app.include_router(circleci_webhook_router)  # CircleCI webhook ingestion
+app.include_router(vercel_webhook_router)  # Vercel webhook ingestion
+app.include_router(asana_webhook_router)  # Asana webhook ingestion
+app.include_router(trello_webhook_router)  # Trello webhook ingestion
+app.include_router(pagerduty_webhook_router)  # PagerDuty webhook ingestion
+app.include_router(sentry_webhook_router)  # Sentry webhook ingestion
+app.include_router(saas_router)  # SaaS management (org/team/user, RAG, feedback)
+app.include_router(navi_planner_router)  # NAVI Plan Mode (clarifying questions, structured plans)
+app.include_router(navi_enhanced_router)  # NAVI Enhanced (RAG, Vision, Testing, Persistence)
+app.include_router(user_sync_router)  # User sync from Auth0
+app.include_router(navi_memory_router)  # NAVI Memory System (preferences, knowledge, conversations)
+app.include_router(advanced_operations_router)  # Advanced Git, DB, Debugging operations + MCP
 
 # CORS middleware - Allow VS Code webviews and other origins
 app.add_middleware(
@@ -248,8 +322,10 @@ async def health_check():
                 max_tokens=5,
             )
             openai_status = True
-        except (ImportError, ValueError, TypeError, AttributeError) as e:
+        except Exception as e:
+            # Catch all errors including rate limits, quota exceeded, etc.
             logger.warning("OpenAI connection test failed: %s", e)
+            openai_status = False
 
     return {
         "status": "healthy",

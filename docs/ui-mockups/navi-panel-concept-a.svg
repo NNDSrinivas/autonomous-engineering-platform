@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="640" viewBox="0 0 900 640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0f14"/>
+      <stop offset="1" stop-color="#111b24"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2bd3b3"/>
+      <stop offset="1" stop-color="#63e6c8"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="900" height="640" fill="url(#bg)"/>
+
+  <!-- Panel -->
+  <rect x="40" y="20" width="820" height="600" rx="18" fill="#0f141b" stroke="#1f2a36" stroke-width="2"/>
+
+  <!-- Header -->
+  <rect x="40" y="20" width="820" height="70" rx="18" fill="#121a24"/>
+  <rect x="40" y="70" width="820" height="1" fill="#1f2a36"/>
+
+  <circle cx="80" cy="55" r="9" fill="url(#accent)"/>
+  <text x="100" y="60" fill="#e6edf3" font-size="18" font-family="Space Grotesk, Segoe UI, sans-serif" font-weight="600">NAVI</text>
+  <text x="162" y="60" fill="#8ea1b5" font-size="12" font-family="Space Grotesk, Segoe UI, sans-serif">Agent</text>
+
+  <rect x="340" y="38" width="220" height="34" rx="17" fill="#0c1117" stroke="#223042"/>
+  <text x="360" y="60" fill="#bcd0e5" font-size="12" font-family="Space Grotesk, Segoe UI, sans-serif">Workspace: autonomous-engineering-platform</text>
+
+  <rect x="610" y="38" width="90" height="34" rx="17" fill="#0c1117" stroke="#223042"/>
+  <text x="628" y="60" fill="#9fb4c8" font-size="12" font-family="Space Grotesk, Segoe UI, sans-serif">GPT-5.1</text>
+
+  <rect x="715" y="38" width="125" height="34" rx="17" fill="#0c1117" stroke="#223042"/>
+  <circle cx="732" cy="55" r="5" fill="#2bd3b3"/>
+  <text x="744" y="60" fill="#9fb4c8" font-size="12" font-family="Space Grotesk, Segoe UI, sans-serif">Connected</text>
+
+  <!-- Left section: timeline -->
+  <text x="70" y="120" fill="#8ea1b5" font-size="11" font-family="Space Grotesk, Segoe UI, sans-serif" letter-spacing="1">SESSION</text>
+  <text x="70" y="145" fill="#e6edf3" font-size="16" font-family="Space Grotesk, Segoe UI, sans-serif" font-weight="600">Sprint: AEP-32</text>
+
+  <!-- Chat area -->
+  <rect x="70" y="170" width="760" height="330" rx="14" fill="#0b1118" stroke="#1f2a36"/>
+
+  <!-- Assistant message -->
+  <rect x="90" y="195" width="560" height="90" rx="12" fill="#151f2a" stroke="#1f2a36"/>
+  <text x="110" y="220" fill="#bcd0e5" font-size="12" font-family="Space Grotesk, Segoe UI, sans-serif">Plan ready. I will implement the auth flow, wire approvals, then run tests.</text>
+  <text x="110" y="242" fill="#7f94a8" font-size="11" font-family="Space Grotesk, Segoe UI, sans-serif">Steps: 1) auth storage 2) UI connect 3) tool approvals 4) verify</text>
+  <rect x="110" y="255" width="92" height="24" rx="12" fill="#0c1117" stroke="#2bd3b3"/>
+  <text x="128" y="271" fill="#2bd3b3" font-size="11" font-family="Space Grotesk, Segoe UI, sans-serif">Review Plan</text>
+
+  <!-- User message -->
+  <rect x="350" y="300" width="460" height="70" rx="12" fill="#1f2a36" stroke="#263242"/>
+  <text x="370" y="325" fill="#e6edf3" font-size="12" font-family="Space Grotesk, Segoe UI, sans-serif">Proceed. Ask before running commands. Prefer minimal changes.</text>
+
+  <!-- Tool card -->
+  <rect x="90" y="385" width="720" height="92" rx="12" fill="#0f151d" stroke="#223042"/>
+  <text x="110" y="412" fill="#9fb4c8" font-size="11" font-family="Space Grotesk, Segoe UI, sans-serif">Tool request</text>
+  <text x="110" y="435" fill="#e6edf3" font-size="13" font-family="JetBrains Mono, Consolas, monospace">npm run test:extension</text>
+  <rect x="625" y="405" width="80" height="30" rx="8" fill="#0c1117" stroke="#2bd3b3"/>
+  <text x="644" y="426" fill="#2bd3b3" font-size="12" font-family="Space Grotesk, Segoe UI, sans-serif">Approve</text>
+  <rect x="710" y="405" width="80" height="30" rx="8" fill="#0c1117" stroke="#3a4a5d"/>
+  <text x="733" y="426" fill="#9fb4c8" font-size="12" font-family="Space Grotesk, Segoe UI, sans-serif">Deny</text>
+
+  <!-- Composer -->
+  <rect x="70" y="520" width="760" height="70" rx="14" fill="#0c1117" stroke="#223042"/>
+  <text x="96" y="562" fill="#6f8296" font-size="12" font-family="Space Grotesk, Segoe UI, sans-serif">Ask NAVI to plan, code, or review. Use shift+enter for newline.</text>
+
+  <rect x="730" y="540" width="80" height="34" rx="10" fill="url(#accent)"/>
+  <text x="752" y="562" fill="#0b0f14" font-size="12" font-family="Space Grotesk, Segoe UI, sans-serif" font-weight="600">Send</text>
+</svg>

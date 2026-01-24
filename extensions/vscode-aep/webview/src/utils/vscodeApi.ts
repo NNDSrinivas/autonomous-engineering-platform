@@ -6,17 +6,13 @@
 export type VsCodeMessage = any;
 type Listener = (message: VsCodeMessage) => void;
 
+// Extend Window for the cached API instance (not redefining acquireVsCodeApi)
 declare global {
   interface Window {
-    acquireVsCodeApi?: () => {
-      postMessage: (message: any) => void;
-      getState: () => any;
-      setState: (state: any) => void;
-    };
     __AEP_VSCODE_API__?: {
-      postMessage: (message: any) => void;
-      getState: () => any;
-      setState: (state: any) => void;
+      postMessage: (message: unknown) => void;
+      getState: () => unknown;
+      setState: (state: unknown) => void;
     };
   }
 }

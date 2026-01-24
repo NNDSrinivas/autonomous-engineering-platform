@@ -1,3 +1,8 @@
+export type ChatSessionTag = {
+  label: string;
+  color?: string; // CSS color or preset name like 'blue', 'green', 'purple', 'orange', 'red'
+};
+
 export type ChatSessionSummary = {
   id: string;
   title: string;
@@ -7,6 +12,10 @@ export type ChatSessionSummary = {
   lastMessagePreview?: string;
   repoName?: string;
   workspaceRoot?: string;
+  isStarred?: boolean;
+  isArchived?: boolean;
+  isPinned?: boolean;
+  tags?: ChatSessionTag[];
 };
 
 const SESSIONS_KEY = "aep.navi.chatSessions.v1";
@@ -70,6 +79,10 @@ const normalizeSession = (entry: any): ChatSessionSummary | null => {
       typeof entry.lastMessagePreview === "string" ? entry.lastMessagePreview : undefined,
     repoName: typeof entry.repoName === "string" ? entry.repoName : undefined,
     workspaceRoot: typeof entry.workspaceRoot === "string" ? entry.workspaceRoot : undefined,
+    isStarred: typeof entry.isStarred === "boolean" ? entry.isStarred : false,
+    isArchived: typeof entry.isArchived === "boolean" ? entry.isArchived : false,
+    isPinned: typeof entry.isPinned === "boolean" ? entry.isPinned : false,
+    tags: Array.isArray(entry.tags) ? entry.tags : undefined,
   };
 };
 
@@ -171,6 +184,81 @@ export const deleteSession = (id: string) => {
       removeStorage(ACTIVE_SESSION_KEY);
     }
   }
+};
+
+export const toggleSessionStar = (id: string): boolean => {
+  const session = getSession(id);
+  if (!session) return false;
+  const newValue = !session.isStarred;
+  updateSession(id, { isStarred: newValue });
+  return newValue;
+};
+
+export const toggleSessionArchive = (id: string): boolean => {
+  const session = getSession(id);
+  if (!session) return false;
+  const newValue = !session.isArchived;
+  updateSession(id, { isArchived: newValue });
+  return newValue;
+};
+
+export const listActiveSessions = (): ChatSessionSummary[] => {
+  return listSessions().filter((session) => !session.isArchived);
+};
+
+export const listArchivedSessions = (): ChatSessionSummary[] => {
+  return listSessions().filter((session) => session.isArchived);
+};
+
+export const listStarredSessions = (): ChatSessionSummary[] => {
+  return listSessions().filter((session) => session.isStarred && !session.isArchived);
+};
+
+export const listPinnedSessions = (): ChatSessionSummary[] => {
+  return listSessions().filter((session) => session.isPinned && !session.isArchived);
+};
+
+export const toggleSessionPin = (id: string): boolean => {
+  const session = getSession(id);
+  if (!session) return false;
+  const newValue = !session.isPinned;
+  updateSession(id, { isPinned: newValue });
+  return newValue;
+};
+
+export const addSessionTag = (id: string, tag: ChatSessionTag): boolean => {
+  const session = getSession(id);
+  if (!session) return false;
+  const currentTags = session.tags || [];
+  // Don't add duplicate tags
+  if (currentTags.some(t => t.label.toLowerCase() === tag.label.toLowerCase())) return false;
+  updateSession(id, { tags: [...currentTags, tag] });
+  return true;
+};
+
+export const removeSessionTag = (id: string, tagLabel: string): boolean => {
+  const session = getSession(id);
+  if (!session || !session.tags) return false;
+  const newTags = session.tags.filter(t => t.label.toLowerCase() !== tagLabel.toLowerCase());
+  updateSession(id, { tags: newTags.length > 0 ? newTags : undefined });
+  return true;
+};
+
+// Helper to format relative time
+export const formatRelativeTime = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  return date.toLocaleDateString();
 };
 
 export const loadSessionMessages = <T = unknown>(id: string): T[] => {

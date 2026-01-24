@@ -822,3 +822,45 @@ def find_connector_by_config(
 def connectors_available(db: Optional[Session]) -> bool:
     """Return True if the connectors table is reachable."""
     return bool(db) and _table_exists(db, "connectors")
+
+
+def save_generic_connection(
+    user_id: str,
+    provider: str,
+    config: Optional[Dict[str, Any]] = None,
+    secrets: Optional[Dict[str, Any]] = None,
+    db: Optional[Session] = None,
+    *,
+    org_id: Optional[str] = None,
+    name: str = "default",
+) -> Optional[int]:
+    """
+    Save a generic connector connection.
+
+    This is a simplified interface for saving OAuth connections for providers
+    that don't have specific save functions (Linear, GitLab, Notion, Asana, etc.).
+
+    Args:
+        user_id: User ID
+        provider: Provider name (e.g., "linear", "gitlab", "notion", "asana")
+        config: Configuration dict (will be JSON-encoded)
+        secrets: Secrets dict (will be encrypted)
+        db: Database session
+        org_id: Optional organization ID
+        name: Connection name (default: "default")
+
+    Returns:
+        Connector ID if successful, None otherwise
+    """
+    full_config = config or {}
+    if org_id:
+        full_config["org_id"] = org_id
+
+    return upsert_connector(
+        db=db,
+        user_id=user_id,
+        provider=provider.lower(),
+        name=name,
+        config=full_config,
+        secrets=secrets,
+    )

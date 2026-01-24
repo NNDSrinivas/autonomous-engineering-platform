@@ -49,6 +49,15 @@ export interface ActionContext {
 }
 
 /**
+ * Diff statistics for file edits
+ */
+export interface DiffStats {
+    additions: number;
+    deletions: number;
+    changes: number;
+}
+
+/**
  * Result of action execution
  */
 export interface ActionResult {
@@ -56,6 +65,7 @@ export interface ActionResult {
     message?: string;
     data?: any;
     error?: Error;
+    diffStats?: DiffStats;
 }
 
 /**

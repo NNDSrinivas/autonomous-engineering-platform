@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+# E402: Module level import not at top of file - intentional due to conditional imports
 from __future__ import annotations
 
 import importlib
@@ -38,7 +40,7 @@ from backend.core.health.router import router as health_router
 from backend.core.health.shutdown import on_startup, on_shutdown
 from backend.core.resilience.resilience_middleware import ResilienceMiddleware
 
-from backend.core.settings import settings
+from backend.core.config import settings
 
 # removed unused: setup_logging (using obs logging instead)
 # removed unused: metrics_router (using new /metrics mount)
@@ -62,7 +64,6 @@ from .routers.policy import router as policy_router
 from .routers.audit import router as audit_router
 from .change import router as change_router
 from .chat import router as chat_router
-from .chat import navi_router as navi_chat_router  # Diff-aware Navi chat
 from .routers.autonomous_coding import (
     router as autonomous_coding_router,
 )  # Project scaffolding + autonomous coding
@@ -104,6 +105,9 @@ from backend.extensions.api import (
 )  # Phase 7.2: Extension Execution API
 from .routers.rate_limit_admin import router as rate_limit_admin_router
 from .routers.github_webhook import router as github_webhook_router
+from .routers.advanced_operations import (
+    router as advanced_operations_router,
+)  # MCP Tools
 from .review_stream import router as review_stream_router  # SSE streaming for reviews
 from .real_review_stream import (
     router as real_review_stream_router,
@@ -124,6 +128,16 @@ from ..ci_api import router as ci_api_router  # CI Failure Analysis API
 
 # VS Code Extension API endpoints
 from .routers.oauth_device_auth0 import router as oauth_device_auth0_router
+
+# Conditionally import in-memory OAuth device router for development mode
+# This router requires OAUTH_DEVICE_USE_IN_MEMORY_STORE=true to be set
+oauth_device_dev_router = None
+if settings.oauth_device_use_in_memory_store:
+    try:
+        from .routers.oauth_device import router as oauth_device_dev_router
+    except RuntimeError:
+        # Module throws RuntimeError if env var not set - shouldn't happen since we checked
+        pass
 from .routers.me import router as me_router
 from .routers.jira_integration import router as jira_integration_router
 from .routers.agent_planning import router as agent_planning_router
@@ -173,7 +187,7 @@ async def lifespan(app: FastAPI):
         logger.warning("Shutdown warning occurred during cleanup", exc_info=True)
 
 
-app = FastAPI(title=f"{settings.APP_NAME} - Core API", lifespan=lifespan)
+app = FastAPI(title=f"{settings.app_name} - Core API", lifespan=lifespan)
 
 # Instrument app with OpenTelemetry after creation (PR-28)
 instrument_fastapi_app(app)
@@ -212,7 +226,7 @@ dev_origins = [
     "vscode-webview://",
 ]
 
-if settings.CORS_ORIGINS == "*":
+if settings.cors_origins == "*":
     # Development: allow all localhost + pattern + vscode-webview
     cors_origins = dev_origins + ["*"]  # Allow all origins in dev
     cors_regex = r"^(https?://(localhost|127\.0\.0\.1):\d+|vscode-webview://.*)$"
@@ -239,7 +253,7 @@ app.add_middleware(CacheMiddleware)  # PR-27: Distributed caching headers
 
 # Conditional audit logging (disabled in test/CI environments to prevent DB errors)
 # Check for explicit test environment using app_env
-is_test_env = settings.APP_ENV in ["test", "ci"]
+is_test_env = settings.app_env in ["test", "ci"]
 if not is_test_env and settings.enable_audit_logging:
     app.add_middleware(AuditMiddleware, service_name="core")
     app.add_middleware(EnhancedAuditMiddleware)  # PR-25: Enhanced audit logging
@@ -265,7 +279,7 @@ def ping():
 
 @app.get("/version")
 def version():
-    return {"name": settings.APP_SLUG, "env": settings.APP_ENV, "version": "0.1.0"}
+    return {"name": settings.app_name, "env": settings.app_env, "version": "0.1.0"}
 
 
 _OPTIONAL_ROUTER_LOCK = threading.Lock()
@@ -358,7 +372,7 @@ def _load_all_optional_routers(app: FastAPI) -> None:
         _load_optional_router_group(app, group)
 
 
-if settings.DEFER_OPTIONAL_ROUTERS:
+if hasattr(settings, "defer_optional_routers") and settings.defer_optional_routers:
 
     @app.middleware("http")
     async def deferred_optional_router_loader(request: Request, call_next):
@@ -376,15 +390,17 @@ app.include_router(deliver_router)
 app.include_router(policy_router)
 app.include_router(change_router)
 app.include_router(chat_router)  # Enhanced conversational interface
-app.include_router(navi_chat_router)  # Diff-aware Navi chat (/api/navi/chat) - ACTIVE
+# DISABLED: navi_chat_router was taking precedence over navi_router, preventing deep analysis
+# The navi_router from navi.py uses the full agent_loop with project overview and deep analysis
+# app.include_router(navi_chat_router)  # Diff-aware Navi chat - DISABLED, use navi_router instead
 app.include_router(autonomous_coding_router)  # Autonomous coding + project scaffolding
 # Removed: navi_chat_enhanced_router - unused duplicate
 app.include_router(
     memory_enhanced_router
 )  # Enhanced memory management from code-companion
 app.include_router(
-    navi_router, prefix="/api/navi"
-)  # PR-5B/PR-6: NAVI VS Code extension
+    navi_router  # PR-5B/PR-6: NAVI VS Code extension (already has /api/navi prefix)
+)
 app.include_router(
     navi_engine_router
 )  # Aggressive NAVI engine with code generation, git ops, dependency management
@@ -450,6 +466,16 @@ app.include_router(meet_webhook_router)  # Meet webhook ingestion
 # app.include_router(orchestrator_router)  # Multi-Agent Orchestrator API
 
 app.include_router(oauth_device_auth0_router)
+
+# Register in-memory OAuth device router for development mode
+# This provides a simple device code flow without Auth0 for local development
+if oauth_device_dev_router is not None:
+    app.include_router(oauth_device_dev_router)
+    logger.warning(
+        "🚨 DEVELOPMENT MODE: In-memory OAuth device router enabled. "
+        "This is NOT suitable for production. Set OAUTH_DEVICE_USE_IN_MEMORY_STORE=false for production."
+    )
+
 app.include_router(connectors_router)
 app.include_router(me_router)
 app.include_router(jira_integration_router)
@@ -463,6 +489,9 @@ app.include_router(admin_rbac_router)
 
 # Rate limiting admin endpoints (PR-26)
 app.include_router(rate_limit_admin_router)
+
+# MCP Tools - Advanced Git, Database, Debugging operations
+app.include_router(advanced_operations_router)
 
 # Context Pack endpoint for IDE Bridge
 ctx_router = APIRouter(prefix="/api/context", tags=["context"])
@@ -896,4 +925,4 @@ def manual_generate(body: GenerateReq):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host=settings.API_HOST, port=settings.API_PORT)
+    uvicorn.run(app, host=settings.api_host, port=settings.api_port)

@@ -1063,7 +1063,7 @@ async def navi_chat_stream(request: NaviChatRequest, db: Session = Depends(get_d
 
                     async for event in agent.run(
                         message=request.message,
-                        workspace_path=request.workspace_root,
+                        workspace_path=request.workspace_root or ".",
                         conversation_history=conversation_history,
                         project_context=project_context,
                     ):
@@ -4208,7 +4208,7 @@ async def navi_agent_stream(request: NaviChatRequest):
 
             async for event in agent.run(
                 message=request.message,
-                workspace_path=request.workspace_root,
+                workspace_path=request.workspace_root or ".",
                 conversation_history=conversation_history,
                 project_context=project_context,
             ):

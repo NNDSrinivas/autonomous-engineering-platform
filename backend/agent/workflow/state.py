@@ -85,9 +85,9 @@ class WorkflowState:
 
         # Execution history
         self.step_history: List[Dict[str, Any]] = []
-        self.errors: List[Union[str, Dict[str, Any]]] = (
-            []
-        )  # Can store string or dict errors
+        self.errors: List[
+            Union[str, Dict[str, Any]]
+        ] = []  # Can store string or dict errors
 
         # Approval tracking
         self.pending_approval: Optional[Dict[str, Any]] = None

@@ -83,7 +83,6 @@ async def run_scenario_tests():
     failed = 0
 
     async with aiohttp.ClientSession() as session:
-
         # ================================================================
         # SCENARIO 1: Complex error analysis with stack trace
         # ================================================================

@@ -146,7 +146,6 @@ async def run_true_e2e_tests():
     results = []
 
     async with aiohttp.ClientSession() as session:
-
         # ================================================================
         # TEST 1: Create a working Python utility
         # ================================================================

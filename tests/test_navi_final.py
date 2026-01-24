@@ -110,7 +110,6 @@ async def run_tests():
     tests = []
 
     async with aiohttp.ClientSession() as session:
-
         # TEST 1: Project Understanding
         print("\n" + "=" * 60)
         print("TEST 1: Project Understanding")

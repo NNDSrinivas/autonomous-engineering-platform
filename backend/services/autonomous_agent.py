@@ -202,7 +202,6 @@ class ProjectAnalyzer:
             or os.path.exists(os.path.join(workspace_path, "setup.py"))
             or os.path.exists(os.path.join(workspace_path, "requirements.txt"))
         ):
-
             framework = "python"
             if os.path.exists(os.path.join(workspace_path, "manage.py")):
                 framework = "django"
@@ -765,9 +764,11 @@ class AutonomousAgent:
         self.verifier = VerificationRunner(workspace_path)
 
         # Detect project and get verification commands
-        self.project_type, self.framework, self.verification_commands = (
-            ProjectAnalyzer.detect_project_type(workspace_path)
-        )
+        (
+            self.project_type,
+            self.framework,
+            self.verification_commands,
+        ) = ProjectAnalyzer.detect_project_type(workspace_path)
 
         logger.info(f"[AutonomousAgent] Project: {self.project_type}/{self.framework}")
         logger.info(
@@ -1783,14 +1784,14 @@ Return ONLY the JSON, no markdown or explanations."""
                 base_url = "https://api.openai.com/v1"
                 if self.provider == "openrouter":
                     base_url = "https://openrouter.ai/api/v1"
-                    headers["Authorization"] = (
-                        f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
-                    )
+                    headers[
+                        "Authorization"
+                    ] = f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
                 elif self.provider == "groq":
                     base_url = "https://api.groq.com/openai/v1"
-                    headers["Authorization"] = (
-                        f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
-                    )
+                    headers[
+                        "Authorization"
+                    ] = f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
 
                 async with session.post(
                     f"{base_url}/chat/completions",
@@ -2170,9 +2171,11 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 context.error_signatures.extend(new_signatures)
 
                 # Detect iteration loops
-                is_looping, loop_severity, loop_suggestions = (
-                    self._detect_iteration_loop(context)
-                )
+                (
+                    is_looping,
+                    loop_severity,
+                    loop_suggestions,
+                ) = self._detect_iteration_loop(context)
 
                 # Record this as a failed approach
                 error_summary = "; ".join(

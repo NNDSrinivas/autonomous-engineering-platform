@@ -355,7 +355,6 @@ async def approve_plan(plan_id: str, approve_request: ApproveRequest):
         }
     """
     try:
-
         # Get the brain instance (in production, you'd store this globally)
         # For now, we'll track plans globally in the module
         brain = getattr(approve_plan, "_brain_instance", None)
@@ -394,7 +393,6 @@ async def get_plan(plan_id: str):
     Returns the full plan including actions and status.
     """
     try:
-
         brain = getattr(approve_plan, "_brain_instance", None)
         if not brain:
             raise HTTPException(status_code=404, detail="Plan not found")

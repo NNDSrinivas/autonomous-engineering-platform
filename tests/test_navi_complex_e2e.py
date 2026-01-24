@@ -169,7 +169,6 @@ async def run_complex_tests():
     results = []
 
     async with aiohttp.ClientSession() as session:
-
         # ================================================================
         # TEST 1: COMPLEX FEATURE - Build a complete caching system
         # ================================================================

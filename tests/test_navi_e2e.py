@@ -320,7 +320,6 @@ async def run_all_tests():
     """Run comprehensive NAVI tests."""
 
     async with NaviTester() as tester:
-
         # ====================================================================
         # TEST 1: Basic project understanding
         # ====================================================================

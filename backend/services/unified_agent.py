@@ -107,9 +107,9 @@ class ProjectAnalyzer:
                     commands["typecheck"] = "npx tsc --noEmit"
 
                 if "test" in scripts:
-                    commands["test"] = (
-                        f"{run_cmd} test -- --passWithNoTests --watchAll=false"
-                    )
+                    commands[
+                        "test"
+                    ] = f"{run_cmd} test -- --passWithNoTests --watchAll=false"
                 elif "jest" in deps:
                     commands["test"] = "npx jest --passWithNoTests"
                 elif "vitest" in deps:
@@ -134,7 +134,6 @@ class ProjectAnalyzer:
             or os.path.exists(os.path.join(workspace_path, "setup.py"))
             or os.path.exists(os.path.join(workspace_path, "requirements.txt"))
         ):
-
             framework = "python"
             if os.path.exists(os.path.join(workspace_path, "manage.py")):
                 framework = "django"
@@ -1579,9 +1578,11 @@ class UnifiedAgent:
             verification, fixing, done, error
         """
         # Detect project type and verification commands
-        project_type, framework, verification_commands = (
-            ProjectAnalyzer.detect_project_type(workspace_path)
-        )
+        (
+            project_type,
+            framework,
+            verification_commands,
+        ) = ProjectAnalyzer.detect_project_type(workspace_path)
 
         ctx = AgentContext(
             task_id=str(uuid.uuid4()),

@@ -919,7 +919,9 @@ class StreamingToolExecutor:
                     error_msg = (
                         result.stderr[:200]
                         if result.stderr
-                        else result.stdout[:200] if result.stdout else "Command failed"
+                        else result.stdout[:200]
+                        if result.stdout
+                        else "Command failed"
                     )
                     self.failed_commands.append(
                         {

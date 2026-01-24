@@ -309,9 +309,11 @@ def upgrade():
         ),
     )
     op.create_index("idx_org_context_org", "org_context", ["org_id"])
-    op.create_unique_constraint(
-        "uq_org_context", "org_context", ["org_id", "context_type", "context_key"]
-    )
+    # SQLite doesn't support ALTER constraints - only create on PostgreSQL
+    if is_postgres:
+        op.create_unique_constraint(
+            "uq_org_context", "org_context", ["org_id", "context_type", "context_key"]
+        )
 
     # =========================================================================
     # CONVERSATION MEMORY TABLES
@@ -449,9 +451,13 @@ def upgrade():
         ),
     )
     op.create_index("idx_codebase_index_user", "codebase_index", ["user_id"])
-    op.create_unique_constraint(
-        "uq_codebase_index_user_path", "codebase_index", ["user_id", "workspace_path"]
-    )
+    # SQLite doesn't support ALTER constraints - only create on PostgreSQL
+    if is_postgres:
+        op.create_unique_constraint(
+            "uq_codebase_index_user_path",
+            "codebase_index",
+            ["user_id", "workspace_path"],
+        )
 
     # Code Symbols
     op.create_table(
@@ -536,7 +542,10 @@ def downgrade():
     op.drop_table("code_symbols")
 
     # Codebase Index
-    op.drop_constraint("uq_codebase_index_user_path", "codebase_index", type_="unique")
+    if is_postgres:
+        op.drop_constraint(
+            "uq_codebase_index_user_path", "codebase_index", type_="unique"
+        )
     op.drop_index("idx_codebase_index_user", "codebase_index")
     op.drop_table("codebase_index")
 
@@ -555,7 +564,8 @@ def downgrade():
     op.drop_table("navi_conversations")
 
     # Org Context
-    op.drop_constraint("uq_org_context", "org_context", type_="unique")
+    if is_postgres:
+        op.drop_constraint("uq_org_context", "org_context", type_="unique")
     op.drop_index("idx_org_context_org", "org_context")
     op.drop_table("org_context")
 

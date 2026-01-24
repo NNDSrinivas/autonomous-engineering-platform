@@ -330,7 +330,9 @@ class CircleCIClient:
         job_number: int,
     ) -> Dict[str, Any]:
         """Cancel a running job."""
-        resp = await self.client.post(f"/project/{project_slug}/job/{job_number}/cancel")
+        resp = await self.client.post(
+            f"/project/{project_slug}/job/{job_number}/cancel"
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -561,7 +563,9 @@ class CircleCIClient:
         project_slug: str,
     ) -> Dict[str, Any]:
         """List webhooks for a project."""
-        resp = await self.client.get(f"/webhook?scope-type=project&scope-id={project_slug}")
+        resp = await self.client.get(
+            f"/webhook?scope-type=project&scope-id={project_slug}"
+        )
         resp.raise_for_status()
         return resp.json()
 

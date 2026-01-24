@@ -27,6 +27,7 @@ from backend.services.condition_registry import BaseCondition, ConditionResult
 
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
@@ -35,6 +36,7 @@ except ImportError:
 # =============================================================================
 # Network Conditions
 # =============================================================================
+
 
 class HTTPCondition(BaseCondition):
     name = "http"
@@ -62,7 +64,7 @@ class HTTPCondition(BaseCondition):
 
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 status = response.status
-                body_preview = response.read(500).decode('utf-8', errors='ignore')
+                body_preview = response.read(500).decode("utf-8", errors="ignore")
 
                 success = True
                 if expected_status is not None:
@@ -77,22 +79,22 @@ class HTTPCondition(BaseCondition):
                         "url": url,
                         "status": status,
                         "responding": True,
-                        "body_preview": body_preview[:200]
-                    }
+                        "body_preview": body_preview[:200],
+                    },
                 )
         except urllib.error.HTTPError as e:
             return ConditionResult(
                 success=expected_status == e.code if expected_status else False,
                 condition_type=self.name,
                 details={"url": url, "status": e.code, "responding": True},
-                error=str(e)
+                error=str(e),
             )
         except Exception as e:
             return ConditionResult(
                 success=False,
                 condition_type=self.name,
                 details={"url": url, "responding": False},
-                error=str(e)
+                error=str(e),
             )
 
 
@@ -121,13 +123,11 @@ class PortCondition(BaseCondition):
             return ConditionResult(
                 success=listening,
                 condition_type=self.name,
-                details={"port": port, "host": host, "listening": listening}
+                details={"port": port, "host": host, "listening": listening},
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
@@ -157,8 +157,10 @@ class TCPCondition(BaseCondition):
 
             response_data = None
             if send_data:
-                sock.send(send_data.encode() if isinstance(send_data, str) else send_data)
-                response_data = sock.recv(1024).decode('utf-8', errors='replace')
+                sock.send(
+                    send_data.encode() if isinstance(send_data, str) else send_data
+                )
+                response_data = sock.recv(1024).decode("utf-8", errors="replace")
 
             sock.close()
 
@@ -173,14 +175,12 @@ class TCPCondition(BaseCondition):
                     "host": host,
                     "port": port,
                     "connected": True,
-                    "response": response_data
-                }
+                    "response": response_data,
+                },
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
@@ -199,14 +199,21 @@ class SSLCondition(BaseCondition):
 
         try:
             from datetime import datetime
+
             context = ssl.create_default_context()
             with socket.create_connection((host, port), timeout=5) as sock:
                 with context.wrap_socket(sock, server_hostname=host) as ssock:
                     cert = ssock.getpeercert()
 
-                    not_after = cert.get('notAfter', '')
-                    expiry = datetime.strptime(not_after, '%b %d %H:%M:%S %Y %Z') if not_after else None
-                    days_until_expiry = (expiry - datetime.now()).days if expiry else None
+                    not_after = cert.get("notAfter", "")
+                    expiry = (
+                        datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
+                        if not_after
+                        else None
+                    )
+                    days_until_expiry = (
+                        (expiry - datetime.now()).days if expiry else None
+                    )
 
                     return ConditionResult(
                         success=True,
@@ -217,20 +224,18 @@ class SSLCondition(BaseCondition):
                             "valid": True,
                             "expires": not_after,
                             "days_until_expiry": days_until_expiry,
-                            "expired": days_until_expiry < 0 if days_until_expiry else None
-                        }
+                            "expired": (
+                                days_until_expiry < 0 if days_until_expiry else None
+                            ),
+                        },
                     )
         except ssl.SSLError as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=f"SSL error: {e}"
+                success=False, condition_type=self.name, error=f"SSL error: {e}"
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
@@ -250,18 +255,14 @@ class DNSCondition(BaseCondition):
             return ConditionResult(
                 success=True,
                 condition_type=self.name,
-                details={
-                    "hostname": hostname,
-                    "resolved": True,
-                    "address": result
-                }
+                details={"hostname": hostname, "resolved": True, "address": result},
             )
         except socket.gaierror as e:
             return ConditionResult(
                 success=False,
                 condition_type=self.name,
                 details={"hostname": hostname},
-                error=str(e)
+                error=str(e),
             )
 
 
@@ -289,7 +290,7 @@ class WebSocketCondition(BaseCondition):
             return ConditionResult(
                 success=True,
                 condition_type=self.name,
-                details={"url": url, "connected": True}
+                details={"url": url, "connected": True},
             )
         except ImportError:
             # Fallback to HTTP upgrade check
@@ -306,33 +307,32 @@ class WebSocketCondition(BaseCondition):
                         return ConditionResult(
                             success=True,
                             condition_type=self.name,
-                            details={"url": url, "connected": True}
+                            details={"url": url, "connected": True},
                         )
 
                 return ConditionResult(
                     success=False,
                     condition_type=self.name,
                     details={"url": url},
-                    error="WebSocket not supported"
+                    error="WebSocket not supported",
                 )
             except Exception as e:
                 return ConditionResult(
-                    success=False,
-                    condition_type=self.name,
-                    error=str(e)
+                    success=False, condition_type=self.name, error=str(e)
                 )
         except Exception as e:
             return ConditionResult(
                 success=False,
                 condition_type=self.name,
                 details={"url": url},
-                error=str(e)
+                error=str(e),
             )
 
 
 # =============================================================================
 # File System Conditions
 # =============================================================================
+
 
 class FileExistsCondition(BaseCondition):
     name = "file_exists"
@@ -354,8 +354,10 @@ class FileExistsCondition(BaseCondition):
                 "exists": exists,
                 "is_file": os.path.isfile(path) if exists else None,
                 "is_dir": os.path.isdir(path) if exists else None,
-                "size_bytes": os.path.getsize(path) if exists and os.path.isfile(path) else None
-            }
+                "size_bytes": (
+                    os.path.getsize(path) if exists and os.path.isfile(path) else None
+                ),
+            },
         )
 
 
@@ -373,7 +375,7 @@ class FileContainsCondition(BaseCondition):
         pattern = kwargs.get("pattern")
 
         try:
-            with open(path, 'r', errors='replace') as f:
+            with open(path, "r", errors="replace") as f:
                 content = f.read()
 
             found = bool(re.search(pattern, content))
@@ -386,20 +388,19 @@ class FileContainsCondition(BaseCondition):
                     "path": path,
                     "pattern": pattern,
                     "found": found,
-                    "matches": matches
-                }
+                    "matches": matches,
+                },
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
 # =============================================================================
 # Process Conditions
 # =============================================================================
+
 
 class ProcessRunningCondition(BaseCondition):
     name = "process_running"
@@ -416,21 +417,22 @@ class ProcessRunningCondition(BaseCondition):
 
         if not HAS_PSUTIL:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error="psutil not installed"
+                success=False, condition_type=self.name, error="psutil not installed"
             )
 
         try:
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
                 try:
-                    proc_name = proc.info['name']
-                    cmdline = ' '.join(proc.info['cmdline'] or [])
+                    proc_name = proc.info["name"]
+                    cmdline = " ".join(proc.info["cmdline"] or [])
 
                     if exact:
                         match = name == proc_name
                     else:
-                        match = name.lower() in proc_name.lower() or name.lower() in cmdline.lower()
+                        match = (
+                            name.lower() in proc_name.lower()
+                            or name.lower() in cmdline.lower()
+                        )
 
                     if match:
                         return ConditionResult(
@@ -439,9 +441,9 @@ class ProcessRunningCondition(BaseCondition):
                             details={
                                 "name": name,
                                 "running": True,
-                                "pid": proc.info['pid'],
-                                "process_name": proc_name
-                            }
+                                "pid": proc.info["pid"],
+                                "process_name": proc_name,
+                            },
                         )
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
@@ -449,13 +451,11 @@ class ProcessRunningCondition(BaseCondition):
             return ConditionResult(
                 success=False,
                 condition_type=self.name,
-                details={"name": name, "running": False}
+                details={"name": name, "running": False},
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
@@ -480,7 +480,7 @@ class CommandSucceedsCondition(BaseCondition):
                 shell=True,
                 cwd=working_dir,
                 capture_output=True,
-                timeout=timeout
+                timeout=timeout,
             )
 
             return ConditionResult(
@@ -489,27 +489,26 @@ class CommandSucceedsCondition(BaseCondition):
                 details={
                     "command": command,
                     "exit_code": result.returncode,
-                    "stdout": result.stdout.decode('utf-8', errors='replace')[:1000],
-                    "stderr": result.stderr.decode('utf-8', errors='replace')[:500]
-                }
+                    "stdout": result.stdout.decode("utf-8", errors="replace")[:1000],
+                    "stderr": result.stderr.decode("utf-8", errors="replace")[:500],
+                },
             )
         except subprocess.TimeoutExpired:
             return ConditionResult(
                 success=False,
                 condition_type=self.name,
-                error=f"Timeout after {timeout}s"
+                error=f"Timeout after {timeout}s",
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
 # =============================================================================
 # Resource Conditions
 # =============================================================================
+
 
 class DiskSpaceCondition(BaseCondition):
     name = "disk_space"
@@ -528,9 +527,7 @@ class DiskSpaceCondition(BaseCondition):
 
         if not HAS_PSUTIL:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error="psutil not installed"
+                success=False, condition_type=self.name, error="psutil not installed"
             )
 
         try:
@@ -548,14 +545,12 @@ class DiskSpaceCondition(BaseCondition):
                     "total_gb": usage.total / 1024 / 1024 / 1024,
                     "free_gb": free_gb,
                     "used_percent": used_percent,
-                    "threshold_met": success
-                }
+                    "threshold_met": success,
+                },
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
@@ -574,9 +569,7 @@ class MemoryCondition(BaseCondition):
 
         if not HAS_PSUTIL:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error="psutil not installed"
+                success=False, condition_type=self.name, error="psutil not installed"
             )
 
         try:
@@ -584,7 +577,9 @@ class MemoryCondition(BaseCondition):
             available_gb = mem.available / 1024 / 1024 / 1024
             used_percent = mem.percent
 
-            success = available_gb >= min_available_gb and used_percent <= max_used_percent
+            success = (
+                available_gb >= min_available_gb and used_percent <= max_used_percent
+            )
 
             return ConditionResult(
                 success=success,
@@ -593,14 +588,12 @@ class MemoryCondition(BaseCondition):
                     "total_gb": mem.total / 1024 / 1024 / 1024,
                     "available_gb": available_gb,
                     "used_percent": used_percent,
-                    "threshold_met": success
-                }
+                    "threshold_met": success,
+                },
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
@@ -617,9 +610,7 @@ class CPUCondition(BaseCondition):
 
         if not HAS_PSUTIL:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error="psutil not installed"
+                success=False, condition_type=self.name, error="psutil not installed"
             )
 
         try:
@@ -633,20 +624,19 @@ class CPUCondition(BaseCondition):
                     "cpu_percent": cpu_percent,
                     "max_percent": max_percent,
                     "threshold_met": success,
-                    "cpu_count": psutil.cpu_count()
-                }
+                    "cpu_count": psutil.cpu_count(),
+                },
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
 # =============================================================================
 # Environment Conditions
 # =============================================================================
+
 
 class EnvVarCondition(BaseCondition):
     name = "env_var"
@@ -669,7 +659,7 @@ class EnvVarCondition(BaseCondition):
             return ConditionResult(
                 success=False,
                 condition_type=self.name,
-                details={"name": name, "exists": False}
+                details={"name": name, "exists": False},
             )
 
         success = True
@@ -679,7 +669,13 @@ class EnvVarCondition(BaseCondition):
             success = bool(re.search(pattern, value))
 
         # Mask sensitive values
-        display_value = "***" if any(s in name.lower() for s in ['password', 'secret', 'token', 'key', 'api']) else value
+        display_value = (
+            "***"
+            if any(
+                s in name.lower() for s in ["password", "secret", "token", "key", "api"]
+            )
+            else value
+        )
 
         return ConditionResult(
             success=success,
@@ -688,14 +684,15 @@ class EnvVarCondition(BaseCondition):
                 "name": name,
                 "exists": True,
                 "value": display_value,
-                "matches": success
-            }
+                "matches": success,
+            },
         )
 
 
 # =============================================================================
 # Database Conditions
 # =============================================================================
+
 
 class DatabaseCondition(BaseCondition):
     name = "database"
@@ -718,9 +715,12 @@ class DatabaseCondition(BaseCondition):
 
         # Default ports
         default_ports = {
-            "postgres": 5432, "postgresql": 5432,
-            "mysql": 3306, "mariadb": 3306,
-            "mongodb": 27017, "mongo": 27017,
+            "postgres": 5432,
+            "postgresql": 5432,
+            "mysql": 3306,
+            "mariadb": 3306,
+            "mongodb": 27017,
+            "mongo": 27017,
             "redis": 6379,
         }
         port = port or default_ports.get(db_type, 5432)
@@ -732,36 +732,45 @@ class DatabaseCondition(BaseCondition):
                 success=False,
                 condition_type=self.name,
                 details={"db_type": db_type, "host": host, "port": port},
-                error=f"Port {port} not listening"
+                error=f"Port {port} not listening",
             )
 
         # Try specific database check
         try:
             if db_type in ("postgres", "postgresql"):
                 result = subprocess.run(
-                    f"pg_isready -h {host} -p {port}" + (f" -d {database}" if database else ""),
-                    shell=True, capture_output=True, timeout=5
+                    f"pg_isready -h {host} -p {port}"
+                    + (f" -d {database}" if database else ""),
+                    shell=True,
+                    capture_output=True,
+                    timeout=5,
                 )
                 connected = result.returncode == 0
 
             elif db_type in ("mysql", "mariadb"):
                 result = subprocess.run(
                     f"mysqladmin ping -h {host} -P {port} --silent",
-                    shell=True, capture_output=True, timeout=5
+                    shell=True,
+                    capture_output=True,
+                    timeout=5,
                 )
                 connected = result.returncode == 0
 
             elif db_type in ("mongodb", "mongo"):
                 result = subprocess.run(
                     f"mongosh --host {host} --port {port} --eval 'db.runCommand({{ping: 1}})' --quiet",
-                    shell=True, capture_output=True, timeout=5
+                    shell=True,
+                    capture_output=True,
+                    timeout=5,
                 )
                 connected = result.returncode == 0
 
             elif db_type == "redis":
                 result = subprocess.run(
                     f"redis-cli -h {host} -p {port} ping",
-                    shell=True, capture_output=True, timeout=5
+                    shell=True,
+                    capture_output=True,
+                    timeout=5,
                 )
                 connected = "PONG" in result.stdout.decode()
 
@@ -776,20 +785,19 @@ class DatabaseCondition(BaseCondition):
                     "db_type": db_type,
                     "host": host,
                     "port": port,
-                    "connected": connected
-                }
+                    "connected": connected,
+                },
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
 # =============================================================================
 # Container Conditions
 # =============================================================================
+
 
 class DockerCondition(BaseCondition):
     name = "docker"
@@ -807,7 +815,9 @@ class DockerCondition(BaseCondition):
         try:
             result = subprocess.run(
                 f"docker inspect --format='{{{{.State.Status}}}}' {container}",
-                shell=True, capture_output=True, timeout=10
+                shell=True,
+                capture_output=True,
+                timeout=10,
             )
 
             if result.returncode != 0:
@@ -815,7 +825,7 @@ class DockerCondition(BaseCondition):
                     success=False,
                     condition_type=self.name,
                     details={"container": container},
-                    error="Container not found"
+                    error="Container not found",
                 )
 
             status = result.stdout.decode().strip().strip("'")
@@ -824,14 +834,20 @@ class DockerCondition(BaseCondition):
                 return ConditionResult(
                     success=False,
                     condition_type=self.name,
-                    details={"container": container, "status": status, "running": False}
+                    details={
+                        "container": container,
+                        "status": status,
+                        "running": False,
+                    },
                 )
 
             health_status = None
             if check_health:
                 health_result = subprocess.run(
                     f"docker inspect --format='{{{{.State.Health.Status}}}}' {container}",
-                    shell=True, capture_output=True, timeout=10
+                    shell=True,
+                    capture_output=True,
+                    timeout=10,
                 )
                 if health_result.returncode == 0:
                     health_status = health_result.stdout.decode().strip().strip("'")
@@ -843,14 +859,12 @@ class DockerCondition(BaseCondition):
                     "container": container,
                     "status": status,
                     "running": True,
-                    "health_status": health_status
-                }
+                    "health_status": health_status,
+                },
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
@@ -872,20 +886,23 @@ class DockerComposeCondition(BaseCondition):
         try:
             result = subprocess.run(
                 f"docker-compose -f {compose_file} ps --format json",
-                shell=True, capture_output=True, timeout=10, cwd=working_dir
+                shell=True,
+                capture_output=True,
+                timeout=10,
+                cwd=working_dir,
             )
 
             if result.returncode != 0:
                 return ConditionResult(
                     success=False,
                     condition_type=self.name,
-                    error=result.stderr.decode()
+                    error=result.stderr.decode(),
                 )
 
             output = result.stdout.decode()
             running_services = []
 
-            for line in output.strip().split('\n'):
+            for line in output.strip().split("\n"):
                 if line:
                     try:
                         svc = json.loads(line)
@@ -901,8 +918,8 @@ class DockerComposeCondition(BaseCondition):
                     details={
                         "service": service,
                         "running": found,
-                        "all_services": running_services
-                    }
+                        "all_services": running_services,
+                    },
                 )
             else:
                 return ConditionResult(
@@ -910,14 +927,12 @@ class DockerComposeCondition(BaseCondition):
                     condition_type=self.name,
                     details={
                         "services": running_services,
-                        "count": len(running_services)
-                    }
+                        "count": len(running_services),
+                    },
                 )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
@@ -957,7 +972,7 @@ class KubernetesCondition(BaseCondition):
                     success=False,
                     condition_type=self.name,
                     details={"resource_type": resource_type, "name": name},
-                    error=result.stderr.decode()
+                    error=result.stderr.decode(),
                 )
 
             output = result.stdout.decode().strip().strip("'")
@@ -977,20 +992,19 @@ class KubernetesCondition(BaseCondition):
                     "resource_type": resource_type,
                     "name": name,
                     "namespace": namespace,
-                    "status": output
-                }
+                    "status": output,
+                },
             )
         except Exception as e:
             return ConditionResult(
-                success=False,
-                condition_type=self.name,
-                error=str(e)
+                success=False, condition_type=self.name, error=str(e)
             )
 
 
 # =============================================================================
 # Health Aggregate Condition
 # =============================================================================
+
 
 class HealthAggregateCondition(BaseCondition):
     name = "health_aggregate"
@@ -1027,14 +1041,15 @@ class HealthAggregateCondition(BaseCondition):
             details={
                 "checks": results,
                 "passed": sum(1 for r in results if r.get("success")),
-                "total": len(results)
-            }
+                "total": len(results),
+            },
         )
 
 
 # =============================================================================
 # Factory Function
 # =============================================================================
+
 
 def get_builtin_conditions() -> List[BaseCondition]:
     """Return all built-in condition instances."""
@@ -1046,31 +1061,24 @@ def get_builtin_conditions() -> List[BaseCondition]:
         SSLCondition(),
         DNSCondition(),
         WebSocketCondition(),
-
         # Filesystem
         FileExistsCondition(),
         FileContainsCondition(),
-
         # Process
         ProcessRunningCondition(),
         CommandSucceedsCondition(),
-
         # Resources
         DiskSpaceCondition(),
         MemoryCondition(),
         CPUCondition(),
-
         # Environment
         EnvVarCondition(),
-
         # Database
         DatabaseCondition(),
-
         # Container
         DockerCondition(),
         DockerComposeCondition(),
         KubernetesCondition(),
-
         # Aggregate
         HealthAggregateCondition(),
     ]

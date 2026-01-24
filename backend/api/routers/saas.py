@@ -57,8 +57,10 @@ router = APIRouter(prefix="/saas", tags=["SaaS Management"])
 # PYDANTIC MODELS
 # ============================================================
 
+
 class CodingStandardCreate(BaseModel):
     """Request to create a coding standard."""
+
     name: str
     description: str
     language: Optional[str] = None
@@ -71,6 +73,7 @@ class CodingStandardCreate(BaseModel):
 
 class ArchitecturePatternCreate(BaseModel):
     """Request to create an architecture pattern."""
+
     name: str
     description: str
     pattern_type: str
@@ -81,6 +84,7 @@ class ArchitecturePatternCreate(BaseModel):
 
 class OrganizationCreate(BaseModel):
     """Request to create an organization."""
+
     org_id: str
     name: str
     preferred_languages: List[str] = []
@@ -102,6 +106,7 @@ class OrganizationCreate(BaseModel):
 
 class OrganizationUpdate(BaseModel):
     """Request to update an organization."""
+
     name: Optional[str] = None
     preferred_languages: Optional[List[str]] = None
     preferred_frameworks: Optional[Dict[str, List[str]]] = None
@@ -122,6 +127,7 @@ class OrganizationUpdate(BaseModel):
 
 class TeamCreate(BaseModel):
     """Request to create a team."""
+
     team_id: str
     org_id: str
     name: str
@@ -132,6 +138,7 @@ class TeamCreate(BaseModel):
 
 class UserPreferencesUpdate(BaseModel):
     """Request to update user preferences."""
+
     verbose_explanations: Optional[bool] = None
     auto_apply_changes: Optional[bool] = None
     preferred_languages: Optional[List[str]] = None
@@ -139,6 +146,7 @@ class UserPreferencesUpdate(BaseModel):
 
 class DocumentIngest(BaseModel):
     """Request to ingest a document into RAG."""
+
     content: str
     doc_type: str  # coding_standard, architecture_doc, code_review, etc.
     language: Optional[str] = None
@@ -150,6 +158,7 @@ class DocumentIngest(BaseModel):
 
 class FeedbackSubmit(BaseModel):
     """Request to submit feedback on a suggestion."""
+
     suggestion_id: str
     feedback_type: str  # accepted, modified, rejected, ignored
     original_content: str
@@ -160,6 +169,7 @@ class FeedbackSubmit(BaseModel):
 
 class ApprovalAction(BaseModel):
     """Request to approve or reject an operation."""
+
     request_id: str
     action: str  # approve, reject
     comment: Optional[str] = None
@@ -169,6 +179,7 @@ class ApprovalAction(BaseModel):
 # ============================================================
 # ORGANIZATION ENDPOINTS
 # ============================================================
+
 
 @router.post("/organizations")
 async def create_organization(org: OrganizationCreate):
@@ -296,6 +307,7 @@ async def add_coding_standard(org_id: str, standard: CodingStandardCreate):
 
     # Create standard
     import hashlib
+
     std_id = hashlib.sha256(
         f"{org_id}:{standard.name}:{datetime.now().isoformat()}".encode()
     ).hexdigest()[:16]
@@ -329,6 +341,7 @@ async def add_architecture_pattern(org_id: str, pattern: ArchitecturePatternCrea
         raise HTTPException(status_code=404, detail="Organization not found")
 
     import hashlib
+
     pattern_id = hashlib.sha256(
         f"{org_id}:{pattern.name}:{datetime.now().isoformat()}".encode()
     ).hexdigest()[:16]
@@ -353,6 +366,7 @@ async def add_architecture_pattern(org_id: str, pattern: ArchitecturePatternCrea
 # ============================================================
 # TEAM ENDPOINTS
 # ============================================================
+
 
 @router.post("/teams")
 async def create_team(team: TeamCreate):
@@ -413,6 +427,7 @@ async def add_team_standard(team_id: str, standard: CodingStandardCreate):
         raise HTTPException(status_code=404, detail="Team not found")
 
     import hashlib
+
     std_id = hashlib.sha256(
         f"{team_id}:{standard.name}:{datetime.now().isoformat()}".encode()
     ).hexdigest()[:16]
@@ -439,6 +454,7 @@ async def add_team_standard(team_id: str, standard: CodingStandardCreate):
 # ============================================================
 # USER ENDPOINTS
 # ============================================================
+
 
 @router.get("/users/{user_id}/preferences")
 async def get_user_preferences(user_id: str):
@@ -505,6 +521,7 @@ async def update_user_preferences(
 # KNOWLEDGE BASE (RAG) ENDPOINTS
 # ============================================================
 
+
 @router.post("/knowledge/{org_id}/ingest")
 async def ingest_document(
     org_id: str,
@@ -530,7 +547,7 @@ async def ingest_document(
             "tags": doc.tags,
             "source_url": doc.source_url,
             "author": doc.author,
-        }
+        },
     )
 
     return {"status": "ingested", "document_id": result.id}
@@ -618,13 +635,14 @@ async def search_knowledge(
                 "framework": r.document.framework,
             }
             for r in results
-        ]
+        ],
     }
 
 
 # ============================================================
 # FEEDBACK ENDPOINTS
 # ============================================================
+
 
 @router.post("/feedback")
 async def submit_feedback(
@@ -640,8 +658,7 @@ async def submit_feedback(
         feedback_type = FeedbackType(feedback.feedback_type)
     except ValueError:
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid feedback_type: {feedback.feedback_type}"
+            status_code=400, detail=f"Invalid feedback_type: {feedback.feedback_type}"
         )
 
     manager.record_user_feedback(
@@ -710,6 +727,7 @@ async def get_learning_insights(
 # APPROVAL ENDPOINTS
 # ============================================================
 
+
 @router.post("/approvals/evaluate")
 async def evaluate_operation(
     operation_type: str = Body(...),
@@ -759,8 +777,7 @@ async def get_pending_approvals(
         requests = manager.get_pending_for_approver(approver_role, org_id, team_id)
     else:
         raise HTTPException(
-            status_code=400,
-            detail="Must specify either user_id or approver_role"
+            status_code=400, detail="Must specify either user_id or approver_role"
         )
 
     return {
@@ -775,7 +792,7 @@ async def get_pending_approvals(
                 "expires_at": r.expires_at.isoformat() if r.expires_at else None,
             }
             for r in requests
-        ]
+        ],
     }
 
 
@@ -812,7 +829,9 @@ async def process_approval_action(
         return {"status": "rejected", "request_id": action.request_id}
 
     else:
-        raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
+        raise HTTPException(
+            status_code=400, detail="Action must be 'approve' or 'reject'"
+        )
 
 
 @router.get("/approvals/{request_id}")
@@ -828,7 +847,11 @@ async def get_approval_request(request_id: str):
         "request_id": request.id,
         "operation_type": request.operation_type,
         "filepath": request.filepath,
-        "content_preview": request.content[:500] + "..." if len(request.content) > 500 else request.content,
+        "content_preview": (
+            request.content[:500] + "..."
+            if len(request.content) > 500
+            else request.content
+        ),
         "risk_summary": manager.get_risk_summary(request),
         "status": request.status,
         "approvals": request.approvals,
@@ -841,6 +864,7 @@ async def get_approval_request(request_id: str):
 # ============================================================
 # CONTEXT RESOLUTION ENDPOINT
 # ============================================================
+
 
 @router.get("/context")
 async def get_full_context(
@@ -882,11 +906,16 @@ async def get_full_context(
     )
 
     # Combine all contexts
-    full_context = "\n\n".join(filter(None, [
-        org_team_context,
-        rag_context,
-        learning_ctx,
-    ]))
+    full_context = "\n\n".join(
+        filter(
+            None,
+            [
+                org_team_context,
+                rag_context,
+                learning_ctx,
+            ],
+        )
+    )
 
     return {
         "context": full_context,
@@ -899,6 +928,7 @@ async def get_full_context(
 # ============================================================
 # USAGE & BILLING ENDPOINTS
 # ============================================================
+
 
 @router.get("/usage/summary")
 async def get_usage_stats(
@@ -944,14 +974,18 @@ async def get_usage_stats(
             }
             for model, data in summary.by_model.items()
         },
-        "by_user": {
-            user: {
-                "requests": data["requests"],
-                "tokens": data["tokens"],
-                "cost": f"${data['cost']:.4f}",
+        "by_user": (
+            {
+                user: {
+                    "requests": data["requests"],
+                    "tokens": data["tokens"],
+                    "cost": f"${data['cost']:.4f}",
+                }
+                for user, data in summary.by_user.items()
             }
-            for user, data in summary.by_user.items()
-        } if summary.by_user else None,
+            if summary.by_user
+            else None
+        ),
     }
 
 
@@ -993,7 +1027,7 @@ async def get_recent_usage(
                 "user_id": r.user_id,
             }
             for r in records
-        ]
+        ],
     }
 
 
@@ -1036,5 +1070,5 @@ async def estimate_cost(
         "breakdown": {
             "input_cost": f"${(input_tokens / 1_000_000) * pricing['input']:.6f}",
             "output_cost": f"${(estimated_output_tokens / 1_000_000) * pricing['output']:.6f}",
-        }
+        },
     }

@@ -27,7 +27,9 @@ from backend.services.memory.semantic_search import get_semantic_search_service
 from backend.services.intelligence.pattern_detector import get_pattern_detector
 from backend.services.intelligence.preference_learner import get_preference_learner
 from backend.services.intelligence.context_predictor import get_context_predictor
-from backend.services.intelligence.response_personalizer import get_response_personalizer
+from backend.services.intelligence.response_personalizer import (
+    get_response_personalizer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,10 +119,12 @@ class NaviMemoryIntegration:
 
             # 3. Get conversation context if in a conversation
             if conversation_id:
-                context["conversation_context"] = self.conversation_memory.build_conversation_context(
-                    conversation_id,
-                    max_messages=20,
-                    include_summary=True,
+                context["conversation_context"] = (
+                    self.conversation_memory.build_conversation_context(
+                        conversation_id,
+                        max_messages=20,
+                        include_summary=True,
+                    )
                 )
 
             # 4. Search for relevant code context
@@ -134,8 +138,10 @@ class NaviMemoryIntegration:
             )
 
             # 6. Get personalization context
-            context["personalization"] = self.response_personalizer.build_personalization_context(
-                user_id, org_id
+            context["personalization"] = (
+                self.response_personalizer.build_personalization_context(
+                    user_id, org_id
+                )
             )
 
             # 7. Predict additional relevant context
@@ -159,9 +165,7 @@ class NaviMemoryIntegration:
 
         try:
             # Get relevant knowledge
-            knowledge = await self.org_memory.search_knowledge(
-                org_id, query, limit=5
-            )
+            knowledge = await self.org_memory.search_knowledge(org_id, query, limit=5)
             org_context["knowledge"] = knowledge
 
             # Get coding standards
@@ -395,17 +399,15 @@ class NaviMemoryIntegration:
 
         try:
             # Get message content for context
-            messages = self.conversation_memory.get_messages(
-                conversation_id, limit=10
-            )
+            messages = self.conversation_memory.get_messages(conversation_id, limit=10)
             query_text = None
             response_text = None
 
             for i, msg in enumerate(messages):
                 if str(msg.id) == str(message_id):
                     response_text = msg.content
-                    if i > 0 and messages[i-1].role == "user":
-                        query_text = messages[i-1].content
+                    if i > 0 and messages[i - 1].role == "user":
+                        query_text = messages[i - 1].content
                     break
 
             # Record feedback
@@ -422,10 +424,7 @@ class NaviMemoryIntegration:
 
             # Trigger learning if enough feedback collected
             feedback_count = len(
-                self.db.query(type(feedback))
-                .filter_by(user_id=user_id)
-                .limit(10)
-                .all()
+                self.db.query(type(feedback)).filter_by(user_id=user_id).limit(10).all()
             )
 
             if feedback_count >= 5:

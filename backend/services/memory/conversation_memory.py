@@ -130,8 +130,7 @@ class ConversationMemoryService:
             query = query.filter(Conversation.status != "deleted")
 
         return (
-            query
-            .order_by(desc(Conversation.updated_at))
+            query.order_by(desc(Conversation.updated_at))
             .offset(offset)
             .limit(limit)
             .all()
@@ -246,7 +245,9 @@ class ConversationMemoryService:
 
         return message
 
-    def _auto_generate_title(self, conversation: Conversation, first_message: str) -> None:
+    def _auto_generate_title(
+        self, conversation: Conversation, first_message: str
+    ) -> None:
         """Generate conversation title from first message."""
         # Simple title generation: first 50 chars of first message
         title = first_message[:50].strip()
@@ -274,7 +275,9 @@ class ConversationMemoryService:
         Returns:
             List of Message objects
         """
-        query = self.db.query(Message).filter(Message.conversation_id == conversation_id)
+        query = self.db.query(Message).filter(
+            Message.conversation_id == conversation_id
+        )
 
         if before:
             query = query.filter(Message.created_at < before)
@@ -467,24 +470,36 @@ class ConversationMemoryService:
                     continue
 
                 msg_embedding = list(msg.embedding_text)
-                similarity = self.embedding_service.cosine_similarity(query_embedding, msg_embedding)
+                similarity = self.embedding_service.cosine_similarity(
+                    query_embedding, msg_embedding
+                )
 
                 if similarity > best_similarity:
                     best_similarity = similarity
                     best_message = msg
 
             if best_similarity >= min_similarity:
-                results.append({
-                    "conversation_id": str(conv.id),
-                    "title": conv.title,
-                    "similarity": best_similarity,
-                    "matching_message": {
-                        "id": str(best_message.id),
-                        "role": best_message.role,
-                        "content": best_message.content[:200] + "..." if len(best_message.content) > 200 else best_message.content,
-                    } if best_message else None,
-                    "updated_at": conv.updated_at.isoformat(),
-                })
+                results.append(
+                    {
+                        "conversation_id": str(conv.id),
+                        "title": conv.title,
+                        "similarity": best_similarity,
+                        "matching_message": (
+                            {
+                                "id": str(best_message.id),
+                                "role": best_message.role,
+                                "content": (
+                                    best_message.content[:200] + "..."
+                                    if len(best_message.content) > 200
+                                    else best_message.content
+                                ),
+                            }
+                            if best_message
+                            else None
+                        ),
+                        "updated_at": conv.updated_at.isoformat(),
+                    }
+                )
 
         # Sort by similarity
         results.sort(key=lambda x: x["similarity"], reverse=True)
@@ -530,16 +545,20 @@ class ConversationMemoryService:
                 continue
 
             msg_embedding = list(msg.embedding_text)
-            similarity = self.embedding_service.cosine_similarity(query_embedding, msg_embedding)
+            similarity = self.embedding_service.cosine_similarity(
+                query_embedding, msg_embedding
+            )
 
             if similarity >= min_similarity:
-                results.append({
-                    "id": str(msg.id),
-                    "role": msg.role,
-                    "content": msg.content,
-                    "similarity": similarity,
-                    "created_at": msg.created_at.isoformat(),
-                })
+                results.append(
+                    {
+                        "id": str(msg.id),
+                        "role": msg.role,
+                        "content": msg.content,
+                        "similarity": similarity,
+                        "created_at": msg.created_at.isoformat(),
+                    }
+                )
 
         # Sort by similarity
         results.sort(key=lambda x: x["similarity"], reverse=True)
@@ -645,7 +664,9 @@ class ConversationMemoryService:
         ) or 0
 
         # Average messages per conversation
-        avg_messages = total_messages / total_conversations if total_conversations > 0 else 0
+        avg_messages = (
+            total_messages / total_conversations if total_conversations > 0 else 0
+        )
 
         return {
             "total_conversations": total_conversations,

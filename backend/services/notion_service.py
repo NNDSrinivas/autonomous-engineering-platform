@@ -307,9 +307,7 @@ class NotionService(ConnectorServiceBase):
                         data=page,
                     )
                 else:
-                    return WriteResult(
-                        success=False, error=f"Unknown action: {action}"
-                    )
+                    return WriteResult(success=False, error=f"Unknown action: {action}")
 
         except Exception as e:
             logger.error("notion_service.write_item.error", error=str(e))

@@ -15,6 +15,7 @@ import os
 # WORKSPACE RAG TESTS
 # ============================================================
 
+
 class TestWorkspaceRAG:
     """Test full codebase RAG capabilities"""
 
@@ -48,7 +49,7 @@ class MyClass:
         """Test JavaScript code parsing"""
         from backend.services.workspace_rag import CodeParser
 
-        code = '''
+        code = """
 function greet(name) {
     return `Hello, ${name}!`;
 }
@@ -60,7 +61,7 @@ class Calculator {
         this.value = 0;
     }
 }
-'''
+"""
         chunks = CodeParser.parse_file("test.js", code)
 
         # Should extract functions and class
@@ -107,7 +108,8 @@ class Calculator {
         with tempfile.TemporaryDirectory() as workspace:
             # Create a Python file
             with open(os.path.join(workspace, "main.py"), "w") as f:
-                f.write('''
+                f.write(
+                    '''
 def main():
     """Main entry point"""
     print("Hello")
@@ -115,15 +117,18 @@ def main():
 class App:
     def run(self):
         pass
-''')
+'''
+                )
 
             # Create a JS file
             with open(os.path.join(workspace, "app.js"), "w") as f:
-                f.write('''
+                f.write(
+                    """
 function start() {
     console.log("Starting");
 }
-''')
+"""
+                )
 
             # Index the workspace
             index = await WorkspaceIndexer.index_workspace(
@@ -147,7 +152,8 @@ function start() {
         with tempfile.TemporaryDirectory() as workspace:
             # Create test files with distinct purposes
             with open(os.path.join(workspace, "auth.py"), "w") as f:
-                f.write('''
+                f.write(
+                    '''
 def login(username, password):
     """Authenticate user with credentials"""
     return validate_credentials(username, password)
@@ -155,10 +161,12 @@ def login(username, password):
 def logout(session_id):
     """End user session"""
     invalidate_session(session_id)
-''')
+'''
+                )
 
             with open(os.path.join(workspace, "database.py"), "w") as f:
-                f.write('''
+                f.write(
+                    '''
 def query_users(filter_by):
     """Query users from database"""
     return db.execute("SELECT * FROM users")
@@ -166,10 +174,13 @@ def query_users(filter_by):
 def insert_record(table, data):
     """Insert record into database"""
     pass
-''')
+'''
+                )
 
             # Index
-            index = await WorkspaceIndexer.index_workspace(workspace, generate_embeddings=True)
+            index = await WorkspaceIndexer.index_workspace(
+                workspace, generate_embeddings=True
+            )
             store_index(index)
 
             # Search for auth-related code
@@ -189,6 +200,7 @@ def insert_record(table, data):
 # VISION SERVICE TESTS
 # ============================================================
 
+
 class TestVisionService:
     """Test UI screenshot analysis"""
 
@@ -203,7 +215,7 @@ class TestVisionService:
         from backend.services.vision_service import UIAnalyzer
 
         # Mock a vision API response
-        json_response = '''
+        json_response = """
 {
     "description": "A dashboard with sidebar",
     "layout": {
@@ -231,7 +243,7 @@ class TestVisionService:
     "framework": "react",
     "cssFramework": "tailwind"
 }
-'''
+"""
         analysis = UIAnalyzer._parse_analysis(json_response)
 
         assert analysis.description == "A dashboard with sidebar"
@@ -241,7 +253,12 @@ class TestVisionService:
 
     def test_code_template_generation(self):
         """Test UI code template generation"""
-        from backend.services.vision_service import UICodeGenerator, UIAnalysis, LayoutAnalysis, UIComponent
+        from backend.services.vision_service import (
+            UICodeGenerator,
+            UIAnalysis,
+            LayoutAnalysis,
+            UIComponent,
+        )
 
         analysis = UIAnalysis(
             description="Test dashboard",
@@ -270,6 +287,7 @@ class TestVisionService:
 # ============================================================
 # TEST EXECUTOR TESTS
 # ============================================================
+
 
 class TestTestExecutor:
     """Test the test execution service"""
@@ -329,7 +347,11 @@ class TestTestExecutor:
 
     def test_parse_pytest_output(self):
         """Test pytest output parsing"""
-        from backend.services.test_executor import TestRunner, TestFramework, TestSuiteResult
+        from backend.services.test_executor import (
+            TestRunner,
+            TestFramework,
+            TestSuiteResult,
+        )
 
         output = """
 ============================= test session starts ==============================
@@ -347,7 +369,9 @@ FAILED tests/test_example.py::test_three - AssertionError: Expected 1 got 2
 ======================= 3 passed, 1 failed, 1 skipped in 1.23s =================
 """
 
-        suite = TestSuiteResult(framework=TestFramework.PYTEST, raw_output=output, exit_code=1)
+        suite = TestSuiteResult(
+            framework=TestFramework.PYTEST, raw_output=output, exit_code=1
+        )
         parsed = TestRunner._parse_pytest(suite, output)
 
         assert parsed.passed == 3
@@ -375,6 +399,7 @@ FAILED tests/test_example.py::test_three - AssertionError: Expected 1 got 2
 # ============================================================
 # PLAN PERSISTENCE TESTS
 # ============================================================
+
 
 class TestPlanPersistence:
     """Test plan storage and checkpointing"""
@@ -422,6 +447,7 @@ class TestPlanPersistence:
 
             # Import the store class to use custom db path
             from backend.services.plan_persistence import PlanStore
+
             PlanStore.save_plan(plan, db_path)
 
             loaded = PlanStore.load_plan("test-plan-001", db_path)
@@ -457,8 +483,18 @@ class TestPlanPersistence:
                 "status": "in_progress",
                 "questions": [],
                 "tasks": [
-                    {"id": "t1", "title": "Task 1", "task_type": "test", "status": "completed"},
-                    {"id": "t2", "title": "Task 2", "task_type": "test", "status": "pending"},
+                    {
+                        "id": "t1",
+                        "title": "Task 1",
+                        "task_type": "test",
+                        "status": "completed",
+                    },
+                    {
+                        "id": "t2",
+                        "title": "Task 2",
+                        "task_type": "test",
+                        "status": "pending",
+                    },
                 ],
             }
             PlanStore.save_plan(plan, db_path)
@@ -474,7 +510,9 @@ class TestPlanPersistence:
             assert checkpoint_id > 0
 
             # Get checkpoint
-            checkpoint = CheckpointManager.get_latest_checkpoint("checkpoint-test-001", db_path)
+            checkpoint = CheckpointManager.get_latest_checkpoint(
+                "checkpoint-test-001", db_path
+            )
 
             assert checkpoint is not None
             assert checkpoint["task_id"] == "t1"
@@ -582,6 +620,7 @@ class TestPlanPersistence:
 # INTEGRATION TESTS
 # ============================================================
 
+
 class TestEnhancedAPIIntegration:
     """Integration tests for enhanced API endpoints"""
 
@@ -651,6 +690,7 @@ def run_all_tests():
     print("=" * 60)
 
     import sys
+
     sys.exit(pytest.main([__file__, "-v", "--tb=short"]))
 
 

@@ -288,7 +288,9 @@ class AsanaClient:
             params["assignee"] = assignee_gid
             params["workspace"] = workspace_gid
         else:
-            raise ValueError("Must provide project_gid, section_gid, or assignee_gid+workspace_gid")
+            raise ValueError(
+                "Must provide project_gid, section_gid, or assignee_gid+workspace_gid"
+            )
 
         resp = await self.client.get(url, params=params)
         resp.raise_for_status()
@@ -536,7 +538,9 @@ class AsanaClient:
         if offset:
             params["offset"] = offset
 
-        resp = await self.client.get(f"/workspaces/{workspace_gid}/teams", params=params)
+        resp = await self.client.get(
+            f"/workspaces/{workspace_gid}/teams", params=params
+        )
         resp.raise_for_status()
         return resp.json()
 

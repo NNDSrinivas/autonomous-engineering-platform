@@ -66,13 +66,17 @@ async def list_sentry_issues(
             user_count = issue.get("user_count", 0)
             project = issue.get("project", "")
             url = issue.get("url", "")
-            last_seen = issue.get("last_seen", "")[:10] if issue.get("last_seen") else ""
+            last_seen = (
+                issue.get("last_seen", "")[:10] if issue.get("last_seen") else ""
+            )
 
             emoji = level_emoji.get(level, "⚪")
             status_icon = "✅" if status == "resolved" else "🔄"
 
             lines.append(f"- {emoji} **{title}**")
-            lines.append(f"  - {status_icon} {status.title()} | Events: {count} | Users: {user_count}")
+            lines.append(
+                f"  - {status_icon} {status.title()} | Events: {count} | Users: {user_count}"
+            )
             if project:
                 lines.append(f"  - Project: {project}")
             if last_seen:

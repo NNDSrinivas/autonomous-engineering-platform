@@ -65,7 +65,9 @@ class GoogleDocsClient:
     ) -> Any:
         """Make a GET request."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         response = await self._client.get(url, params=params)
         response.raise_for_status()
@@ -127,7 +129,9 @@ class GoogleDocsClient:
             Documents list
         """
         query = "mimeType='application/vnd.google-apps.document'"
-        return await self.list_files(query=query, page_size=page_size, page_token=page_token)
+        return await self.list_files(
+            query=query, page_size=page_size, page_token=page_token
+        )
 
     async def list_spreadsheets(
         self,
@@ -145,7 +149,9 @@ class GoogleDocsClient:
             Spreadsheets list
         """
         query = "mimeType='application/vnd.google-apps.spreadsheet'"
-        return await self.list_files(query=query, page_size=page_size, page_token=page_token)
+        return await self.list_files(
+            query=query, page_size=page_size, page_token=page_token
+        )
 
     async def list_presentations(
         self,
@@ -163,7 +169,9 @@ class GoogleDocsClient:
             Presentations list
         """
         query = "mimeType='application/vnd.google-apps.presentation'"
-        return await self.list_files(query=query, page_size=page_size, page_token=page_token)
+        return await self.list_files(
+            query=query, page_size=page_size, page_token=page_token
+        )
 
     async def get_file(self, file_id: str) -> Dict[str, Any]:
         """
@@ -213,7 +221,9 @@ class GoogleDocsClient:
             Document content and metadata
         """
         doc = await self._get(f"{self.DOCS_API_URL}/documents/{document_id}")
-        logger.info("Google Doc fetched", document_id=document_id, title=doc.get("title"))
+        logger.info(
+            "Google Doc fetched", document_id=document_id, title=doc.get("title")
+        )
         return doc
 
     def extract_document_text(self, document: Dict[str, Any]) -> str:
@@ -308,7 +318,11 @@ class GoogleDocsClient:
             Spreadsheet metadata
         """
         sheet = await self._get(f"{self.SHEETS_API_URL}/spreadsheets/{spreadsheet_id}")
-        logger.info("Google Sheet fetched", spreadsheet_id=spreadsheet_id, title=sheet.get("properties", {}).get("title"))
+        logger.info(
+            "Google Sheet fetched",
+            spreadsheet_id=spreadsheet_id,
+            title=sheet.get("properties", {}).get("title"),
+        )
         return sheet
 
     async def get_sheet_values(
@@ -331,7 +345,11 @@ class GoogleDocsClient:
             f"{self.SHEETS_API_URL}/spreadsheets/{spreadsheet_id}/values/{encoded_range}"
         )
         values = data.get("values", [])
-        logger.info("Google Sheet values fetched", spreadsheet_id=spreadsheet_id, rows=len(values))
+        logger.info(
+            "Google Sheet values fetched",
+            spreadsheet_id=spreadsheet_id,
+            rows=len(values),
+        )
         return data
 
     def extract_sheet_text(self, values_response: Dict[str, Any]) -> str:
@@ -404,5 +422,7 @@ class GoogleDocsClient:
             return self.extract_sheet_text(values)
 
         else:
-            logger.info("Unsupported file type for content extraction", mime_type=mime_type)
+            logger.info(
+                "Unsupported file type for content extraction", mime_type=mime_type
+            )
             return None

@@ -173,8 +173,12 @@ class BitbucketService(ConnectorServiceBase):
                                     "workspace": workspace,
                                     "repo_slug": repo_slug,
                                     "author": author,
-                                    "source_branch": pr.get("source", {}).get("branch", {}).get("name"),
-                                    "destination_branch": pr.get("destination", {}).get("branch", {}).get("name"),
+                                    "source_branch": pr.get("source", {})
+                                    .get("branch", {})
+                                    .get("name"),
+                                    "destination_branch": pr.get("destination", {})
+                                    .get("branch", {})
+                                    .get("name"),
                                     "comment_count": pr.get("comment_count"),
                                     "task_count": pr.get("task_count"),
                                     "merge_commit": pr.get("merge_commit"),
@@ -318,9 +322,7 @@ class BitbucketService(ConnectorServiceBase):
                     )
 
                 else:
-                    return WriteResult(
-                        success=False, error=f"Unknown action: {action}"
-                    )
+                    return WriteResult(success=False, error=f"Unknown action: {action}")
 
         except Exception as e:
             logger.error("bitbucket_service.write_item.error", error=str(e))
@@ -382,19 +384,27 @@ class BitbucketService(ConnectorServiceBase):
                         for pr in repo_prs:
                             author = pr.get("author", {}).get("username", "")
                             if author == username:
-                                prs.append({
-                                    "id": pr.get("id"),
-                                    "title": pr.get("title"),
-                                    "description": pr.get("description"),
-                                    "state": pr.get("state"),
-                                    "url": pr.get("links", {}).get("html", {}).get("href"),
-                                    "workspace": workspace,
-                                    "repo_slug": repo_slug,
-                                    "source_branch": pr.get("source", {}).get("branch", {}).get("name"),
-                                    "destination_branch": pr.get("destination", {}).get("branch", {}).get("name"),
-                                    "created_on": pr.get("created_on"),
-                                    "updated_on": pr.get("updated_on"),
-                                })
+                                prs.append(
+                                    {
+                                        "id": pr.get("id"),
+                                        "title": pr.get("title"),
+                                        "description": pr.get("description"),
+                                        "state": pr.get("state"),
+                                        "url": pr.get("links", {})
+                                        .get("html", {})
+                                        .get("href"),
+                                        "workspace": workspace,
+                                        "repo_slug": repo_slug,
+                                        "source_branch": pr.get("source", {})
+                                        .get("branch", {})
+                                        .get("name"),
+                                        "destination_branch": pr.get("destination", {})
+                                        .get("branch", {})
+                                        .get("name"),
+                                        "created_on": pr.get("created_on"),
+                                        "updated_on": pr.get("updated_on"),
+                                    }
+                                )
 
                         if len(prs) >= max_results:
                             break
@@ -507,7 +517,11 @@ class BitbucketService(ConnectorServiceBase):
                         "uuid": pipeline.get("uuid"),
                         "build_number": pipeline.get("build_number"),
                         "state": pipeline.get("state", {}).get("name"),
-                        "result": pipeline.get("state", {}).get("result", {}).get("name") if pipeline.get("state", {}).get("result") else None,
+                        "result": (
+                            pipeline.get("state", {}).get("result", {}).get("name")
+                            if pipeline.get("state", {}).get("result")
+                            else None
+                        ),
                         "creator": pipeline.get("creator", {}).get("display_name"),
                         "target": pipeline.get("target", {}).get("ref_name"),
                         "created_on": pipeline.get("created_on"),

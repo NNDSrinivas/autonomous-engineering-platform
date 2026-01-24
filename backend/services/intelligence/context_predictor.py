@@ -106,16 +106,12 @@ class ContextPredictor:
             context["code_context"] = code_context
 
         # Get relevant past conversations
-        conversation_context = await self._predict_conversation_context(
-            query, user_id
-        )
+        conversation_context = await self._predict_conversation_context(query, user_id)
         context["conversation_context"] = conversation_context
 
         # Get relevant organization knowledge
         if org_id:
-            knowledge_context = await self._predict_knowledge_context(
-                query, org_id
-            )
+            knowledge_context = await self._predict_knowledge_context(query, org_id)
             context["knowledge_context"] = knowledge_context
 
         # Predict follow-up needs
@@ -129,7 +125,9 @@ class ContextPredictor:
         query_lower = query.lower()
 
         # Code-related queries
-        if any(kw in query_lower for kw in ["implement", "write", "create", "add", "code"]):
+        if any(
+            kw in query_lower for kw in ["implement", "write", "create", "add", "code"]
+        ):
             return "implement"
 
         if any(kw in query_lower for kw in ["bug", "error", "fix", "debug", "issue"]):
@@ -149,7 +147,10 @@ class ContextPredictor:
             return "document"
 
         # Architecture queries
-        if any(kw in query_lower for kw in ["architecture", "design", "pattern", "structure"]):
+        if any(
+            kw in query_lower
+            for kw in ["architecture", "design", "pattern", "structure"]
+        ):
             return "architecture"
 
         return "general"
@@ -194,12 +195,12 @@ class ContextPredictor:
                 }
                 for p in patterns
             ],
-            "recent_files": list(set(
-                a.file_path for a in recent_activity if a.file_path
-            ))[:5],
-            "recent_languages": list(set(
-                a.language for a in recent_activity if a.language
-            ))[:3],
+            "recent_files": list(
+                set(a.file_path for a in recent_activity if a.file_path)
+            )[:5],
+            "recent_languages": list(
+                set(a.language for a in recent_activity if a.language)
+            )[:3],
             "session_activity_count": len(recent_activity),
         }
 
@@ -215,11 +216,13 @@ class ContextPredictor:
 
         # If we have a current file, prioritize it
         if current_file:
-            context.append({
-                "type": "current_file",
-                "file": current_file,
-                "relevance": 1.0,
-            })
+            context.append(
+                {
+                    "type": "current_file",
+                    "file": current_file,
+                    "relevance": 1.0,
+                }
+            )
 
         # Search for relevant symbols using query embedding
         try:
@@ -247,18 +250,20 @@ class ContextPredictor:
                 )
 
                 if similarity >= self.MIN_SIMILARITY:
-                    ranked_symbols.append({
-                        "type": "code_symbol",
-                        "symbol_type": symbol.symbol_type,
-                        "name": symbol.symbol_name,
-                        "file": symbol.file_path,
-                        "line": symbol.line_start,
-                        "relevance": round(similarity, 2),
-                    })
+                    ranked_symbols.append(
+                        {
+                            "type": "code_symbol",
+                            "symbol_type": symbol.symbol_type,
+                            "name": symbol.symbol_name,
+                            "file": symbol.file_path,
+                            "line": symbol.line_start,
+                            "relevance": round(similarity, 2),
+                        }
+                    )
 
             # Sort by relevance
             ranked_symbols.sort(key=lambda x: x["relevance"], reverse=True)
-            context.extend(ranked_symbols[:self.MAX_CONTEXT_ITEMS])
+            context.extend(ranked_symbols[: self.MAX_CONTEXT_ITEMS])
 
         except Exception as e:
             logger.warning(f"Error predicting code context: {e}")
@@ -323,17 +328,19 @@ class ContextPredictor:
                         best_message = msg
 
                 if best_similarity >= self.MIN_SIMILARITY:
-                    context.append({
-                        "type": "past_conversation",
-                        "conversation_id": str(conv.id),
-                        "title": conv.title,
-                        "relevance": round(best_similarity, 2),
-                        "matching_content": (
-                            best_message.content[:100] + "..."
-                            if best_message and len(best_message.content) > 100
-                            else best_message.content if best_message else None
-                        ),
-                    })
+                    context.append(
+                        {
+                            "type": "past_conversation",
+                            "conversation_id": str(conv.id),
+                            "title": conv.title,
+                            "relevance": round(best_similarity, 2),
+                            "matching_content": (
+                                best_message.content[:100] + "..."
+                                if best_message and len(best_message.content) > 100
+                                else best_message.content if best_message else None
+                            ),
+                        }
+                    )
 
             # Sort by relevance
             context.sort(key=lambda x: x["relevance"], reverse=True)
@@ -341,7 +348,7 @@ class ContextPredictor:
         except Exception as e:
             logger.warning(f"Error predicting conversation context: {e}")
 
-        return context[:self.MAX_CONTEXT_ITEMS]
+        return context[: self.MAX_CONTEXT_ITEMS]
 
     async def _predict_knowledge_context(
         self,
@@ -378,13 +385,19 @@ class ContextPredictor:
                 )
 
                 if similarity >= self.MIN_SIMILARITY:
-                    context.append({
-                        "type": "org_knowledge",
-                        "knowledge_type": item.knowledge_type,
-                        "title": item.title,
-                        "content_preview": item.content[:150] + "..." if len(item.content) > 150 else item.content,
-                        "relevance": round(similarity, 2),
-                    })
+                    context.append(
+                        {
+                            "type": "org_knowledge",
+                            "knowledge_type": item.knowledge_type,
+                            "title": item.title,
+                            "content_preview": (
+                                item.content[:150] + "..."
+                                if len(item.content) > 150
+                                else item.content
+                            ),
+                            "relevance": round(similarity, 2),
+                        }
+                    )
 
             # Sort by relevance
             context.sort(key=lambda x: x["relevance"], reverse=True)
@@ -392,7 +405,7 @@ class ContextPredictor:
         except Exception as e:
             logger.warning(f"Error predicting knowledge context: {e}")
 
-        return context[:self.MAX_CONTEXT_ITEMS]
+        return context[: self.MAX_CONTEXT_ITEMS]
 
     def _predict_followups(
         self,
@@ -405,32 +418,52 @@ class ContextPredictor:
 
         # Based on query type, predict common follow-ups
         if query_type == "implement":
-            predictions.extend([
-                {"type": "likely_followup", "content": "User may ask about tests"},
-                {"type": "likely_followup", "content": "User may ask about error handling"},
-            ])
+            predictions.extend(
+                [
+                    {"type": "likely_followup", "content": "User may ask about tests"},
+                    {
+                        "type": "likely_followup",
+                        "content": "User may ask about error handling",
+                    },
+                ]
+            )
 
         elif query_type == "debug":
-            predictions.extend([
-                {"type": "likely_followup", "content": "User may want to see related code"},
-                {"type": "likely_followup", "content": "User may need help with fix implementation"},
-            ])
+            predictions.extend(
+                [
+                    {
+                        "type": "likely_followup",
+                        "content": "User may want to see related code",
+                    },
+                    {
+                        "type": "likely_followup",
+                        "content": "User may need help with fix implementation",
+                    },
+                ]
+            )
 
         elif query_type == "explain":
-            predictions.extend([
-                {"type": "likely_followup", "content": "User may ask for examples"},
-                {"type": "likely_followup", "content": "User may want deeper explanation"},
-            ])
+            predictions.extend(
+                [
+                    {"type": "likely_followup", "content": "User may ask for examples"},
+                    {
+                        "type": "likely_followup",
+                        "content": "User may want deeper explanation",
+                    },
+                ]
+            )
 
         # Based on user patterns
         user_patterns = context.get("user_context", {}).get("patterns", [])
         for pattern in user_patterns:
             if pattern["type"] == "workflow":
-                predictions.append({
-                    "type": "pattern_based",
-                    "content": f"User typically follows pattern: {pattern['key']}",
-                    "confidence": pattern["confidence"],
-                })
+                predictions.append(
+                    {
+                        "type": "pattern_based",
+                        "content": f"User typically follows pattern: {pattern['key']}",
+                        "confidence": pattern["confidence"],
+                    }
+                )
 
         return predictions[:5]
 
@@ -471,28 +504,35 @@ class ContextPredictor:
         )
 
         # Analyze recent activity for suggestions
-        error_activities = [a for a in recent_activity if "error" in a.activity_type.lower()]
+        error_activities = [
+            a for a in recent_activity if "error" in a.activity_type.lower()
+        ]
         if len(error_activities) >= 3:
-            suggestions.append({
-                "type": "proactive",
-                "category": "debugging",
-                "content": "I noticed you've encountered several errors. Would you like help debugging?",
-                "confidence": 0.8,
-            })
+            suggestions.append(
+                {
+                    "type": "proactive",
+                    "category": "debugging",
+                    "content": "I noticed you've encountered several errors. Would you like help debugging?",
+                    "confidence": 0.8,
+                }
+            )
 
         # Check for repetitive activities
         activity_types = [a.activity_type for a in recent_activity]
         from collections import Counter
+
         type_counts = Counter(activity_types)
         most_common = type_counts.most_common(1)
 
         if most_common and most_common[0][1] >= 5:
-            suggestions.append({
-                "type": "proactive",
-                "category": "automation",
-                "content": f"You've been doing a lot of '{most_common[0][0]}'. Would you like me to help automate this?",
-                "confidence": 0.7,
-            })
+            suggestions.append(
+                {
+                    "type": "proactive",
+                    "category": "automation",
+                    "content": f"You've been doing a lot of '{most_common[0][0]}'. Would you like me to help automate this?",
+                    "confidence": 0.7,
+                }
+            )
 
         return suggestions
 

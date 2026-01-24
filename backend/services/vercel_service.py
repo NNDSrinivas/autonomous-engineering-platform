@@ -104,7 +104,11 @@ class VercelService(ConnectorServiceBase):
                         item_type="deployment",
                         external_id=deploy_id,
                         title=name,
-                        url=f"https://{url}" if url and not url.startswith("http") else url,
+                        url=(
+                            f"https://{url}"
+                            if url and not url.startswith("http")
+                            else url
+                        ),
                         metadata={
                             "state": state,
                             "target": deploy.get("target"),
@@ -162,7 +166,9 @@ class VercelService(ConnectorServiceBase):
                 if not deployment_id:
                     raise ValueError("deployment_id is required")
 
-                result = await client.redeploy(deployment_id=deployment_id, target=target)
+                result = await client.redeploy(
+                    deployment_id=deployment_id, target=target
+                )
 
                 return {
                     "success": True,
@@ -312,7 +318,11 @@ class VercelService(ConnectorServiceBase):
                 "name": deployment.get("name", "Untitled"),
                 "state": deployment.get("readyState", "unknown"),
                 "target": deployment.get("target", "preview"),
-                "url": f"https://{deployment.get('url', '')}" if deployment.get("url") else "",
+                "url": (
+                    f"https://{deployment.get('url', '')}"
+                    if deployment.get("url")
+                    else ""
+                ),
                 "created_at": deployment.get("createdAt", ""),
                 "ready_at": deployment.get("ready"),
                 "error_message": deployment.get("errorMessage"),

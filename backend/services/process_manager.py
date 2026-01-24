@@ -69,20 +69,21 @@ logger = logging.getLogger(__name__)
 # Secret Masking
 # =============================================================================
 
+
 class SecretMasker:
     """Masks sensitive values in output."""
 
     # Common patterns that indicate secrets
     SECRET_PATTERNS = [
-        r'(?i)(password|passwd|pwd)\s*[=:]\s*\S+',
-        r'(?i)(api[_-]?key|apikey)\s*[=:]\s*\S+',
-        r'(?i)(secret|token|auth)\s*[=:]\s*\S+',
-        r'(?i)(access[_-]?key|private[_-]?key)\s*[=:]\s*\S+',
-        r'(?i)bearer\s+\S+',
-        r'(?i)basic\s+[A-Za-z0-9+/=]+',
-        r'ghp_[A-Za-z0-9]{36}',  # GitHub PAT
-        r'sk-[A-Za-z0-9]{48}',   # OpenAI key
-        r'sk-ant-[A-Za-z0-9-]+', # Anthropic key
+        r"(?i)(password|passwd|pwd)\s*[=:]\s*\S+",
+        r"(?i)(api[_-]?key|apikey)\s*[=:]\s*\S+",
+        r"(?i)(secret|token|auth)\s*[=:]\s*\S+",
+        r"(?i)(access[_-]?key|private[_-]?key)\s*[=:]\s*\S+",
+        r"(?i)bearer\s+\S+",
+        r"(?i)basic\s+[A-Za-z0-9+/=]+",
+        r"ghp_[A-Za-z0-9]{36}",  # GitHub PAT
+        r"sk-[A-Za-z0-9]{48}",  # OpenAI key
+        r"sk-ant-[A-Za-z0-9-]+",  # Anthropic key
     ]
 
     def __init__(self):
@@ -101,11 +102,11 @@ class SecretMasker:
         # Mask explicit secrets
         for secret in self.explicit_secrets:
             if secret in result:
-                result = result.replace(secret, '***MASKED***')
+                result = result.replace(secret, "***MASKED***")
 
         # Mask pattern-based secrets
         for pattern in self._compiled_patterns:
-            result = pattern.sub(lambda m: m.group(0)[:10] + '***MASKED***', result)
+            result = pattern.sub(lambda m: m.group(0)[:10] + "***MASKED***", result)
 
         return result
 
@@ -128,9 +129,11 @@ def register_secret(secret: str):
 # Process Management
 # =============================================================================
 
+
 @dataclass
 class ManagedProcess:
     """A background process managed by the ProcessManager."""
+
     process_id: str
     command: str
     pid: int
@@ -146,10 +149,9 @@ class ManagedProcess:
     def add_output(self, line: str):
         """Add a line of output to the buffer (with masking)."""
         masked_line = mask_secrets(line)
-        self.output_buffer.append({
-            "time": datetime.now().isoformat(),
-            "text": masked_line
-        })
+        self.output_buffer.append(
+            {"time": datetime.now().isoformat(), "text": masked_line}
+        )
 
     def get_recent_output(self, lines: int = 50) -> str:
         """Get the most recent output lines."""
@@ -181,7 +183,7 @@ class ProcessManager:
     - Process groups and cleanup
     """
 
-    _instance: Optional['ProcessManager'] = None
+    _instance: Optional["ProcessManager"] = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -207,7 +209,7 @@ class ProcessManager:
         command: str,
         working_dir: str,
         env: Optional[Dict[str, str]] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Start a command in background and return immediately.
@@ -226,7 +228,7 @@ class ProcessManager:
             if env:
                 full_env.update(env)
                 # Register any secrets in env
-                for key in ['PASSWORD', 'SECRET', 'TOKEN', 'API_KEY', 'APIKEY']:
+                for key in ["PASSWORD", "SECRET", "TOKEN", "API_KEY", "APIKEY"]:
                     for env_key, env_val in env.items():
                         if key.lower() in env_key.lower():
                             register_secret(env_val)
@@ -238,7 +240,7 @@ class ProcessManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 env=full_env,
-                preexec_fn=os.setsid if hasattr(os, 'setsid') else None
+                preexec_fn=os.setsid if hasattr(os, "setsid") else None,
             )
 
             # Create managed process record
@@ -250,7 +252,7 @@ class ProcessManager:
                 working_dir=working_dir,
                 process=process,
                 env=env,
-                tags=set(tags) if tags else {self._session_id}
+                tags=set(tags) if tags else {self._session_id},
             )
 
             async with self._lock:
@@ -260,13 +262,15 @@ class ProcessManager:
             task = asyncio.create_task(self._collect_output(process_id, process))
             self._output_tasks[process_id] = task
 
-            logger.info(f"[ProcessManager] Started background process {process_id}: {command[:50]}...")
+            logger.info(
+                f"[ProcessManager] Started background process {process_id}: {command[:50]}..."
+            )
 
             return {
                 "success": True,
                 "process_id": process_id,
                 "pid": process.pid,
-                "message": f"Process started. Use check_process('{process_id}') to monitor."
+                "message": f"Process started. Use check_process('{process_id}') to monitor.",
             }
 
         except Exception as e:
@@ -279,7 +283,7 @@ class ProcessManager:
         working_dir: str,
         inputs: List[Dict[str, str]],
         timeout: int = 60,
-        env: Optional[Dict[str, str]] = None
+        env: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
         Run an interactive command that requires stdin input.
@@ -309,7 +313,7 @@ class ProcessManager:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
-                env=full_env
+                env=full_env,
             )
 
             output_lines = []
@@ -322,13 +326,12 @@ class ProcessManager:
                 while True:
                     try:
                         chunk = await asyncio.wait_for(
-                            process.stdout.read(100),
-                            timeout=5
+                            process.stdout.read(100), timeout=5
                         )
                         if not chunk:
                             break
 
-                        text = chunk.decode('utf-8', errors='replace')
+                        text = chunk.decode("utf-8", errors="replace")
                         buffer += text
                         output_lines.append(text)
 
@@ -356,7 +359,7 @@ class ProcessManager:
                     "success": False,
                     "error": f"Timeout after {timeout}s",
                     "output": mask_secrets("".join(output_lines)),
-                    "inputs_sent": input_index
+                    "inputs_sent": input_index,
                 }
 
             await process.wait()
@@ -366,7 +369,7 @@ class ProcessManager:
                 "exit_code": process.returncode,
                 "output": mask_secrets("".join(output_lines)),
                 "inputs_sent": input_index,
-                "all_inputs_used": input_index == len(inputs)
+                "all_inputs_used": input_index == len(inputs),
             }
 
         except Exception as e:
@@ -377,7 +380,7 @@ class ProcessManager:
         commands: List[Dict[str, Any]],
         working_dir: str,
         timeout: int = 300,
-        fail_fast: bool = False
+        fail_fast: bool = False,
     ) -> Dict[str, Any]:
         """
         Run multiple commands in parallel and wait for all to complete.
@@ -407,19 +410,22 @@ class ProcessManager:
                     command,
                     cwd=working_dir,
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    stderr=asyncio.subprocess.PIPE,
                 )
 
                 stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=timeout
+                    process.communicate(), timeout=timeout
                 )
 
                 return name, {
                     "success": process.returncode == 0,
                     "exit_code": process.returncode,
-                    "stdout": mask_secrets(stdout.decode('utf-8', errors='replace')[:5000]),
-                    "stderr": mask_secrets(stderr.decode('utf-8', errors='replace')[:2000])
+                    "stdout": mask_secrets(
+                        stdout.decode("utf-8", errors="replace")[:5000]
+                    ),
+                    "stderr": mask_secrets(
+                        stderr.decode("utf-8", errors="replace")[:2000]
+                    ),
                 }
             except asyncio.TimeoutError:
                 return name, {"success": False, "error": "Timeout"}
@@ -457,10 +463,12 @@ class ProcessManager:
             "results": results,
             "total": len(commands),
             "passed": sum(1 for r in results.values() if r.get("success")),
-            "failed": sum(1 for r in results.values() if not r.get("success"))
+            "failed": sum(1 for r in results.values() if not r.get("success")),
         }
 
-    async def _collect_output(self, process_id: str, process: asyncio.subprocess.Process):
+    async def _collect_output(
+        self, process_id: str, process: asyncio.subprocess.Process
+    ):
         """Background task to collect output from a process."""
         try:
             while True:
@@ -468,7 +476,7 @@ class ProcessManager:
                 if not line:
                     break
 
-                text = line.decode('utf-8', errors='replace').rstrip()
+                text = line.decode("utf-8", errors="replace").rstrip()
 
                 async with self._lock:
                     if process_id in self.processes:
@@ -481,7 +489,9 @@ class ProcessManager:
                     self.processes[process_id].is_running = False
                     self.processes[process_id].exit_code = exit_code
 
-            logger.info(f"[ProcessManager] Process {process_id} exited with code {exit_code}")
+            logger.info(
+                f"[ProcessManager] Process {process_id} exited with code {exit_code}"
+            )
 
         except asyncio.CancelledError:
             pass
@@ -495,7 +505,7 @@ class ProcessManager:
                 return {
                     "success": False,
                     "error": f"Unknown process: {process_id}",
-                    "known_processes": list(self.processes.keys())
+                    "known_processes": list(self.processes.keys()),
                 }
 
             proc = self.processes[process_id]
@@ -509,7 +519,7 @@ class ProcessManager:
                 "exit_code": proc.exit_code,
                 "uptime_seconds": (datetime.now() - proc.start_time).total_seconds(),
                 "recent_output": proc.get_recent_output(20),
-                "output_lines": len(proc.output_buffer)
+                "output_lines": len(proc.output_buffer),
             }
 
     async def get_output(self, process_id: str, lines: int = 50) -> Dict[str, Any]:
@@ -524,15 +534,11 @@ class ProcessManager:
                 "process_id": process_id,
                 "is_running": proc.is_running,
                 "output": proc.get_recent_output(lines),
-                "total_lines": len(proc.output_buffer)
+                "total_lines": len(proc.output_buffer),
             }
 
     async def wait_for_log_pattern(
-        self,
-        process_id: str,
-        pattern: str,
-        timeout: int = 60,
-        interval: float = 0.5
+        self, process_id: str, pattern: str, timeout: int = 60, interval: float = 0.5
     ) -> Dict[str, Any]:
         """
         Wait for a specific pattern to appear in process output.
@@ -555,7 +561,10 @@ class ProcessManager:
         while time.time() - start_time < timeout:
             async with self._lock:
                 if process_id not in self.processes:
-                    return {"success": False, "error": f"Process {process_id} not found"}
+                    return {
+                        "success": False,
+                        "error": f"Process {process_id} not found",
+                    }
 
                 proc = self.processes[process_id]
                 output_list = list(proc.output_buffer)
@@ -567,7 +576,7 @@ class ProcessManager:
                             "success": True,
                             "pattern": pattern,
                             "matched_line": item["text"],
-                            "elapsed_seconds": time.time() - start_time
+                            "elapsed_seconds": time.time() - start_time,
                         }
 
                 checked_lines = len(output_list)
@@ -578,7 +587,7 @@ class ProcessManager:
                         "success": False,
                         "error": "Process exited before pattern was found",
                         "exit_code": proc.exit_code,
-                        "recent_output": proc.get_recent_output(20)
+                        "recent_output": proc.get_recent_output(20),
                     }
 
             await asyncio.sleep(interval)
@@ -587,16 +596,24 @@ class ProcessManager:
             "success": False,
             "error": f"Pattern not found after {timeout}s",
             "pattern": pattern,
-            "recent_output": self.processes.get(process_id, ManagedProcess(
-                process_id="", command="", pid=0, start_time=datetime.now(), working_dir=""
-            )).get_recent_output(30) if process_id in self.processes else ""
+            "recent_output": (
+                self.processes.get(
+                    process_id,
+                    ManagedProcess(
+                        process_id="",
+                        command="",
+                        pid=0,
+                        start_time=datetime.now(),
+                        working_dir="",
+                    ),
+                ).get_recent_output(30)
+                if process_id in self.processes
+                else ""
+            ),
         }
 
     async def kill_process(
-        self,
-        process_id: str,
-        signal_type: str = "TERM",
-        timeout: int = 10
+        self, process_id: str, signal_type: str = "TERM", timeout: int = 10
     ) -> Dict[str, Any]:
         """
         Kill a background process.
@@ -616,14 +633,14 @@ class ProcessManager:
                 return {
                     "success": True,
                     "message": "Process already stopped",
-                    "exit_code": proc.exit_code
+                    "exit_code": proc.exit_code,
                 }
 
             try:
                 sig = signal.SIGKILL if signal_type == "KILL" else signal.SIGTERM
 
                 # Kill the entire process group
-                if hasattr(os, 'killpg'):
+                if hasattr(os, "killpg"):
                     try:
                         os.killpg(os.getpgid(proc.pid), sig)
                     except ProcessLookupError:
@@ -641,7 +658,7 @@ class ProcessManager:
                 if proc.is_running and signal_type == "TERM":
                     await asyncio.sleep(timeout)
                     if proc.is_running:
-                        if hasattr(os, 'killpg'):
+                        if hasattr(os, "killpg"):
                             try:
                                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
                             except ProcessLookupError:
@@ -652,16 +669,14 @@ class ProcessManager:
                 return {
                     "success": True,
                     "message": f"Process {process_id} killed",
-                    "pid": proc.pid
+                    "pid": proc.pid,
                 }
 
             except Exception as e:
                 return {"success": False, "error": f"Failed to kill: {e}"}
 
     async def cleanup_session(
-        self,
-        tags: Optional[List[str]] = None,
-        force: bool = False
+        self, tags: Optional[List[str]] = None, force: bool = False
     ) -> Dict[str, Any]:
         """
         Clean up processes, optionally filtered by tags.
@@ -682,8 +697,7 @@ class ProcessManager:
 
         for proc_id in to_kill:
             result = await self.kill_process(
-                proc_id,
-                signal_type="KILL" if force else "TERM"
+                proc_id, signal_type="KILL" if force else "TERM"
             )
             if result.get("success"):
                 killed.append(proc_id)
@@ -692,7 +706,9 @@ class ProcessManager:
 
         # Remove stopped processes from tracking
         async with self._lock:
-            stopped = [pid for pid, proc in self.processes.items() if not proc.is_running]
+            stopped = [
+                pid for pid, proc in self.processes.items() if not proc.is_running
+            ]
             for pid in stopped:
                 del self.processes[pid]
                 if pid in self._output_tasks:
@@ -703,7 +719,7 @@ class ProcessManager:
             "success": len(errors) == 0,
             "killed": killed,
             "errors": errors,
-            "cleaned_up": len(stopped)
+            "cleaned_up": len(stopped),
         }
 
     async def list_processes(self) -> Dict[str, Any]:
@@ -711,21 +727,31 @@ class ProcessManager:
         async with self._lock:
             processes = []
             for proc_id, proc in self.processes.items():
-                processes.append({
-                    "process_id": proc_id,
-                    "command": proc.command[:50] + "..." if len(proc.command) > 50 else proc.command,
-                    "pid": proc.pid,
-                    "is_running": proc.is_running,
-                    "uptime_seconds": (datetime.now() - proc.start_time).total_seconds() if proc.is_running else None,
-                    "exit_code": proc.exit_code,
-                    "tags": list(proc.tags)
-                })
+                processes.append(
+                    {
+                        "process_id": proc_id,
+                        "command": (
+                            proc.command[:50] + "..."
+                            if len(proc.command) > 50
+                            else proc.command
+                        ),
+                        "pid": proc.pid,
+                        "is_running": proc.is_running,
+                        "uptime_seconds": (
+                            (datetime.now() - proc.start_time).total_seconds()
+                            if proc.is_running
+                            else None
+                        ),
+                        "exit_code": proc.exit_code,
+                        "tags": list(proc.tags),
+                    }
+                )
 
             return {
                 "success": True,
                 "processes": processes,
                 "total": len(processes),
-                "running": sum(1 for p in processes if p["is_running"])
+                "running": sum(1 for p in processes if p["is_running"]),
             }
 
 
@@ -733,9 +759,9 @@ class ProcessManager:
 # Service Orchestration
 # =============================================================================
 
+
 async def start_service_chain(
-    services: List[Dict[str, Any]],
-    working_dir: str
+    services: List[Dict[str, Any]], working_dir: str
 ) -> Dict[str, Any]:
     """
     Start multiple services in order, with dependency handling.
@@ -799,7 +825,7 @@ async def start_service_chain(
             if dep not in started_services:
                 results[service_name] = {
                     "success": False,
-                    "error": f"Dependency '{dep}' not started"
+                    "error": f"Dependency '{dep}' not started",
                 }
                 continue
 
@@ -807,7 +833,7 @@ async def start_service_chain(
         start_result = await pm.start_background(
             command=service["command"],
             working_dir=working_dir,
-            tags=[service_name, "service-chain"]
+            tags=[service_name, "service-chain"],
         )
 
         if not start_result.get("success"):
@@ -824,7 +850,7 @@ async def start_service_chain(
             health_result = await wait_for_condition(
                 condition_type=health_check.get("type", "port"),
                 timeout=timeout,
-                **{k: v for k, v in health_check.items() if k != "type"}
+                **{k: v for k, v in health_check.items() if k != "type"},
             )
 
             if not health_result.get("success"):
@@ -832,7 +858,7 @@ async def start_service_chain(
                     "success": False,
                     "process_id": process_id,
                     "error": f"Health check failed: {health_result.get('error')}",
-                    "health_check": health_result
+                    "health_check": health_result,
                 }
                 continue
 
@@ -840,7 +866,7 @@ async def start_service_chain(
         results[service_name] = {
             "success": True,
             "process_id": process_id,
-            "pid": start_result.get("pid")
+            "pid": start_result.get("pid"),
         }
 
     all_success = all(r.get("success", False) for r in results.values())
@@ -849,7 +875,7 @@ async def start_service_chain(
         "success": all_success,
         "services": results,
         "started": list(started_services.keys()),
-        "failed": [name for name, r in results.items() if not r.get("success")]
+        "failed": [name for name, r in results.items() if not r.get("success")],
     }
 
 
@@ -857,9 +883,9 @@ async def start_service_chain(
 # Resource Monitoring
 # =============================================================================
 
+
 async def check_resources(
-    process_id: Optional[str] = None,
-    pid: Optional[int] = None
+    process_id: Optional[str] = None, pid: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Check resource usage of a process or the system.
@@ -890,7 +916,9 @@ async def check_resources(
                         "memory_percent": proc.memory_percent(),
                         "num_threads": proc.num_threads(),
                         "status": proc.status(),
-                        "create_time": datetime.fromtimestamp(proc.create_time()).isoformat()
+                        "create_time": datetime.fromtimestamp(
+                            proc.create_time()
+                        ).isoformat(),
                     }
             except psutil.NoSuchProcess:
                 return {"success": False, "error": f"Process {pid} not found"}
@@ -902,17 +930,20 @@ async def check_resources(
             "cpu_percent": psutil.cpu_percent(interval=0.1),
             "cpu_count": psutil.cpu_count(),
             "memory_total_gb": psutil.virtual_memory().total / 1024 / 1024 / 1024,
-            "memory_available_gb": psutil.virtual_memory().available / 1024 / 1024 / 1024,
+            "memory_available_gb": psutil.virtual_memory().available
+            / 1024
+            / 1024
+            / 1024,
             "memory_percent": psutil.virtual_memory().percent,
-            "disk_total_gb": psutil.disk_usage('/').total / 1024 / 1024 / 1024,
-            "disk_free_gb": psutil.disk_usage('/').free / 1024 / 1024 / 1024,
-            "disk_percent": psutil.disk_usage('/').percent
+            "disk_total_gb": psutil.disk_usage("/").total / 1024 / 1024 / 1024,
+            "disk_free_gb": psutil.disk_usage("/").free / 1024 / 1024 / 1024,
+            "disk_percent": psutil.disk_usage("/").percent,
         }
 
     except ImportError:
         return {
             "success": False,
-            "error": "psutil not installed. Run: pip install psutil"
+            "error": "psutil not installed. Run: pip install psutil",
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -922,10 +953,8 @@ async def check_resources(
 # Condition Verification (Extended)
 # =============================================================================
 
-async def verify_condition(
-    condition_type: str,
-    **kwargs
-) -> Dict[str, Any]:
+
+async def verify_condition(condition_type: str, **kwargs) -> Dict[str, Any]:
     """
     Verify if a condition is true. Comprehensive verification for any scenario.
 
@@ -957,7 +986,7 @@ async def verify_condition(
 
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 status = response.status
-                body_preview = response.read(500).decode('utf-8', errors='ignore')
+                body_preview = response.read(500).decode("utf-8", errors="ignore")
 
                 success = True
                 if expected_status is not None:
@@ -971,7 +1000,7 @@ async def verify_condition(
                     "url": url,
                     "status": status,
                     "responding": True,
-                    "body_preview": body_preview[:200]
+                    "body_preview": body_preview[:200],
                 }
         except urllib.error.HTTPError as e:
             return {
@@ -980,7 +1009,7 @@ async def verify_condition(
                 "url": url,
                 "status": e.code,
                 "responding": True,
-                "error": str(e)
+                "error": str(e),
             }
         except Exception as e:
             return {
@@ -988,7 +1017,7 @@ async def verify_condition(
                 "condition": "http",
                 "url": url,
                 "responding": False,
-                "error": str(e)
+                "error": str(e),
             }
 
     elif condition_type == "port":
@@ -1008,7 +1037,7 @@ async def verify_condition(
                 "condition": "port",
                 "port": port,
                 "host": host,
-                "listening": listening
+                "listening": listening,
             }
         except Exception as e:
             return {"success": False, "condition": "port", "error": str(e)}
@@ -1027,8 +1056,10 @@ async def verify_condition(
 
             response_data = None
             if send_data:
-                sock.send(send_data.encode() if isinstance(send_data, str) else send_data)
-                response_data = sock.recv(1024).decode('utf-8', errors='replace')
+                sock.send(
+                    send_data.encode() if isinstance(send_data, str) else send_data
+                )
+                response_data = sock.recv(1024).decode("utf-8", errors="replace")
 
             sock.close()
 
@@ -1042,7 +1073,7 @@ async def verify_condition(
                 "host": host,
                 "port": port,
                 "connected": True,
-                "response": response_data
+                "response": response_data,
             }
         except Exception as e:
             return {"success": False, "condition": "tcp", "error": str(e)}
@@ -1058,7 +1089,9 @@ async def verify_condition(
             "exists": exists,
             "is_file": os.path.isfile(path) if exists else None,
             "is_dir": os.path.isdir(path) if exists else None,
-            "size_bytes": os.path.getsize(path) if exists and os.path.isfile(path) else None
+            "size_bytes": (
+                os.path.getsize(path) if exists and os.path.isfile(path) else None
+            ),
         }
 
     elif condition_type == "file_contains":
@@ -1066,7 +1099,7 @@ async def verify_condition(
         pattern = kwargs.get("pattern")
 
         try:
-            with open(path, 'r', errors='replace') as f:
+            with open(path, "r", errors="replace") as f:
                 content = f.read()
 
             found = bool(re.search(pattern, content))
@@ -1078,7 +1111,7 @@ async def verify_condition(
                 "path": path,
                 "pattern": pattern,
                 "found": found,
-                "matches": matches
+                "matches": matches,
             }
         except Exception as e:
             return {"success": False, "condition": "file_contains", "error": str(e)}
@@ -1088,15 +1121,18 @@ async def verify_condition(
         exact = kwargs.get("exact", False)
 
         try:
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
                 try:
-                    proc_name = proc.info['name']
-                    cmdline = ' '.join(proc.info['cmdline'] or [])
+                    proc_name = proc.info["name"]
+                    cmdline = " ".join(proc.info["cmdline"] or [])
 
                     if exact:
                         match = name == proc_name
                     else:
-                        match = name.lower() in proc_name.lower() or name.lower() in cmdline.lower()
+                        match = (
+                            name.lower() in proc_name.lower()
+                            or name.lower() in cmdline.lower()
+                        )
 
                     if match:
                         return {
@@ -1104,8 +1140,8 @@ async def verify_condition(
                             "condition": "process_running",
                             "name": name,
                             "running": True,
-                            "pid": proc.info['pid'],
-                            "process_name": proc_name
+                            "pid": proc.info["pid"],
+                            "process_name": proc_name,
                         }
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
@@ -1114,7 +1150,7 @@ async def verify_condition(
                 "success": False,
                 "condition": "process_running",
                 "name": name,
-                "running": False
+                "running": False,
             }
         except Exception as e:
             return {"success": False, "condition": "process_running", "error": str(e)}
@@ -1130,7 +1166,7 @@ async def verify_condition(
                 shell=True,
                 cwd=working_dir,
                 capture_output=True,
-                timeout=timeout
+                timeout=timeout,
             )
 
             return {
@@ -1138,11 +1174,19 @@ async def verify_condition(
                 "condition": "command_succeeds",
                 "command": command,
                 "exit_code": result.returncode,
-                "stdout": mask_secrets(result.stdout.decode('utf-8', errors='replace')[:1000]),
-                "stderr": mask_secrets(result.stderr.decode('utf-8', errors='replace')[:500])
+                "stdout": mask_secrets(
+                    result.stdout.decode("utf-8", errors="replace")[:1000]
+                ),
+                "stderr": mask_secrets(
+                    result.stderr.decode("utf-8", errors="replace")[:500]
+                ),
             }
         except subprocess.TimeoutExpired:
-            return {"success": False, "condition": "command_succeeds", "error": f"Timeout after {timeout}s"}
+            return {
+                "success": False,
+                "condition": "command_succeeds",
+                "error": f"Timeout after {timeout}s",
+            }
         except Exception as e:
             return {"success": False, "condition": "command_succeeds", "error": str(e)}
 
@@ -1160,11 +1204,14 @@ async def verify_condition(
 
         # Default ports
         default_ports = {
-            "postgres": 5432, "postgresql": 5432,
-            "mysql": 3306, "mariadb": 3306,
-            "mongodb": 27017, "mongo": 27017,
+            "postgres": 5432,
+            "postgresql": 5432,
+            "mysql": 3306,
+            "mariadb": 3306,
+            "mongodb": 27017,
+            "mongo": 27017,
             "redis": 6379,
-            "sqlite": None
+            "sqlite": None,
         }
         port = port or default_ports.get(db_type, 5432)
 
@@ -1177,7 +1224,7 @@ async def verify_condition(
                     "condition": "database",
                     "db_type": db_type,
                     "error": f"Port {port} not listening",
-                    "port_check": port_check
+                    "port_check": port_check,
                 }
 
         # Try actual connection based on db type
@@ -1185,29 +1232,38 @@ async def verify_condition(
             if db_type in ("postgres", "postgresql"):
                 # Try psycopg2 or pg_isready
                 result = subprocess.run(
-                    f"pg_isready -h {host} -p {port}" + (f" -d {database}" if database else ""),
-                    shell=True, capture_output=True, timeout=5
+                    f"pg_isready -h {host} -p {port}"
+                    + (f" -d {database}" if database else ""),
+                    shell=True,
+                    capture_output=True,
+                    timeout=5,
                 )
                 connected = result.returncode == 0
 
             elif db_type in ("mysql", "mariadb"):
                 result = subprocess.run(
                     f"mysqladmin ping -h {host} -P {port} --silent",
-                    shell=True, capture_output=True, timeout=5
+                    shell=True,
+                    capture_output=True,
+                    timeout=5,
                 )
                 connected = result.returncode == 0
 
             elif db_type in ("mongodb", "mongo"):
                 result = subprocess.run(
                     f"mongosh --host {host} --port {port} --eval 'db.runCommand({{ping: 1}})' --quiet",
-                    shell=True, capture_output=True, timeout=5
+                    shell=True,
+                    capture_output=True,
+                    timeout=5,
                 )
                 connected = result.returncode == 0
 
             elif db_type == "redis":
                 result = subprocess.run(
                     f"redis-cli -h {host} -p {port} ping",
-                    shell=True, capture_output=True, timeout=5
+                    shell=True,
+                    capture_output=True,
+                    timeout=5,
                 )
                 connected = "PONG" in result.stdout.decode()
 
@@ -1221,7 +1277,7 @@ async def verify_condition(
                 "db_type": db_type,
                 "host": host,
                 "port": port,
-                "connected": connected
+                "connected": connected,
             }
         except Exception as e:
             return {"success": False, "condition": "database", "error": str(e)}
@@ -1242,7 +1298,7 @@ async def verify_condition(
                 "success": True,
                 "condition": "websocket",
                 "url": url,
-                "connected": True
+                "connected": True,
             }
         except ImportError:
             # Fallback to basic HTTP upgrade check
@@ -1257,13 +1313,28 @@ async def verify_condition(
                 except urllib.error.HTTPError as e:
                     # 101 Switching Protocols or 426 Upgrade Required indicates WS support
                     if e.code in (101, 426):
-                        return {"success": True, "condition": "websocket", "url": url, "connected": True}
+                        return {
+                            "success": True,
+                            "condition": "websocket",
+                            "url": url,
+                            "connected": True,
+                        }
 
-                return {"success": False, "condition": "websocket", "url": url, "error": "WebSocket not supported"}
+                return {
+                    "success": False,
+                    "condition": "websocket",
+                    "url": url,
+                    "error": "WebSocket not supported",
+                }
             except Exception as e:
                 return {"success": False, "condition": "websocket", "error": str(e)}
         except Exception as e:
-            return {"success": False, "condition": "websocket", "url": url, "error": str(e)}
+            return {
+                "success": False,
+                "condition": "websocket",
+                "url": url,
+                "error": str(e),
+            }
 
     elif condition_type == "ssl":
         host = kwargs.get("host")
@@ -1276,9 +1347,15 @@ async def verify_condition(
                     cert = ssock.getpeercert()
 
                     # Parse expiry
-                    not_after = cert.get('notAfter', '')
-                    expiry = datetime.strptime(not_after, '%b %d %H:%M:%S %Y %Z') if not_after else None
-                    days_until_expiry = (expiry - datetime.now()).days if expiry else None
+                    not_after = cert.get("notAfter", "")
+                    expiry = (
+                        datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
+                        if not_after
+                        else None
+                    )
+                    days_until_expiry = (
+                        (expiry - datetime.now()).days if expiry else None
+                    )
 
                     return {
                         "success": True,
@@ -1286,11 +1363,11 @@ async def verify_condition(
                         "host": host,
                         "port": port,
                         "valid": True,
-                        "issuer": dict(x[0] for x in cert.get('issuer', [])),
-                        "subject": dict(x[0] for x in cert.get('subject', [])),
+                        "issuer": dict(x[0] for x in cert.get("issuer", [])),
+                        "subject": dict(x[0] for x in cert.get("subject", [])),
                         "expires": not_after,
                         "days_until_expiry": days_until_expiry,
-                        "expired": days_until_expiry < 0 if days_until_expiry else None
+                        "expired": days_until_expiry < 0 if days_until_expiry else None,
                     }
         except ssl.SSLError as e:
             return {"success": False, "condition": "ssl", "error": f"SSL error: {e}"}
@@ -1310,7 +1387,7 @@ async def verify_condition(
                     "hostname": hostname,
                     "record_type": record_type,
                     "resolved": True,
-                    "address": result
+                    "address": result,
                 }
             else:
                 # Use getaddrinfo for more control
@@ -1321,10 +1398,15 @@ async def verify_condition(
                     "condition": "dns",
                     "hostname": hostname,
                     "resolved": len(addresses) > 0,
-                    "addresses": addresses
+                    "addresses": addresses,
                 }
         except socket.gaierror as e:
-            return {"success": False, "condition": "dns", "hostname": hostname, "error": str(e)}
+            return {
+                "success": False,
+                "condition": "dns",
+                "hostname": hostname,
+                "error": str(e),
+            }
         except Exception as e:
             return {"success": False, "condition": "dns", "error": str(e)}
 
@@ -1349,7 +1431,7 @@ async def verify_condition(
             "condition": "health_aggregate",
             "checks": results,
             "passed": sum(1 for r in results if r.get("success")),
-            "total": len(results)
+            "total": len(results),
         }
 
     elif condition_type == "docker":
@@ -1361,7 +1443,9 @@ async def verify_condition(
             # Check if container is running
             result = subprocess.run(
                 f"docker inspect --format='{{{{.State.Status}}}}' {container}",
-                shell=True, capture_output=True, timeout=10
+                shell=True,
+                capture_output=True,
+                timeout=10,
             )
 
             if result.returncode != 0:
@@ -1369,7 +1453,7 @@ async def verify_condition(
                     "success": False,
                     "condition": "docker",
                     "container": container,
-                    "error": "Container not found"
+                    "error": "Container not found",
                 }
 
             status = result.stdout.decode().strip().strip("'")
@@ -1380,7 +1464,7 @@ async def verify_condition(
                     "condition": "docker",
                     "container": container,
                     "status": status,
-                    "running": False
+                    "running": False,
                 }
 
             # Check health status if requested
@@ -1388,7 +1472,9 @@ async def verify_condition(
             if check_health:
                 health_result = subprocess.run(
                     f"docker inspect --format='{{{{.State.Health.Status}}}}' {container}",
-                    shell=True, capture_output=True, timeout=10
+                    shell=True,
+                    capture_output=True,
+                    timeout=10,
                 )
                 if health_result.returncode == 0:
                     health_status = health_result.stdout.decode().strip().strip("'")
@@ -1399,7 +1485,7 @@ async def verify_condition(
                 "container": container,
                 "status": status,
                 "running": True,
-                "health_status": health_status
+                "health_status": health_status,
             }
         except Exception as e:
             return {"success": False, "condition": "docker", "error": str(e)}
@@ -1413,20 +1499,23 @@ async def verify_condition(
         try:
             result = subprocess.run(
                 f"docker-compose -f {compose_file} ps --format json",
-                shell=True, capture_output=True, timeout=10, cwd=working_dir
+                shell=True,
+                capture_output=True,
+                timeout=10,
+                cwd=working_dir,
             )
 
             if result.returncode != 0:
                 return {
                     "success": False,
                     "condition": "docker_compose",
-                    "error": result.stderr.decode()
+                    "error": result.stderr.decode(),
                 }
 
             output = result.stdout.decode()
             running_services = []
 
-            for line in output.strip().split('\n'):
+            for line in output.strip().split("\n"):
                 if line:
                     try:
                         svc = json.loads(line)
@@ -1441,14 +1530,14 @@ async def verify_condition(
                     "condition": "docker_compose",
                     "service": service,
                     "running": found,
-                    "all_services": running_services
+                    "all_services": running_services,
                 }
             else:
                 return {
                     "success": len(running_services) > 0,
                     "condition": "docker_compose",
                     "services": running_services,
-                    "count": len(running_services)
+                    "count": len(running_services),
                 }
         except Exception as e:
             return {"success": False, "condition": "docker_compose", "error": str(e)}
@@ -1465,7 +1554,7 @@ async def verify_condition(
             "kafka": 9092,
             "redis": 6379,  # Redis can be used as queue
             "nats": 4222,
-            "sqs": None  # AWS SQS is HTTP-based
+            "sqs": None,  # AWS SQS is HTTP-based
         }
         port = port or default_ports.get(queue_type, 5672)
 
@@ -1475,9 +1564,7 @@ async def verify_condition(
                 mgmt_port = kwargs.get("management_port", 15672)
                 try:
                     result = await verify_condition(
-                        "http",
-                        url=f"http://{host}:{mgmt_port}/api/overview",
-                        timeout=5
+                        "http", url=f"http://{host}:{mgmt_port}/api/overview", timeout=5
                     )
                     if result.get("success"):
                         return {
@@ -1486,7 +1573,7 @@ async def verify_condition(
                             "queue_type": queue_type,
                             "host": host,
                             "connected": True,
-                            "via": "management_api"
+                            "via": "management_api",
                         }
                 except Exception:
                     pass
@@ -1500,7 +1587,7 @@ async def verify_condition(
                     "host": host,
                     "port": port,
                     "connected": port_result.get("success"),
-                    "via": "port_check"
+                    "via": "port_check",
                 }
 
             elif queue_type == "kafka":
@@ -1512,7 +1599,7 @@ async def verify_condition(
                     "queue_type": queue_type,
                     "host": host,
                     "port": port,
-                    "connected": port_result.get("success")
+                    "connected": port_result.get("success"),
                 }
 
             else:
@@ -1524,7 +1611,7 @@ async def verify_condition(
                     "queue_type": queue_type,
                     "host": host,
                     "port": port,
-                    "connected": port_result.get("success")
+                    "connected": port_result.get("success"),
                 }
         except Exception as e:
             return {"success": False, "condition": "queue", "error": str(e)}
@@ -1535,15 +1622,15 @@ async def verify_condition(
         timeout = kwargs.get("timeout", 5)
 
         try:
-            introspection_query = json.dumps({
-                "query": "{ __schema { types { name } } }"
-            }).encode()
+            introspection_query = json.dumps(
+                {"query": "{ __schema { types { name } } }"}
+            ).encode()
 
             req = urllib.request.Request(
                 url,
                 data=introspection_query,
                 headers={"Content-Type": "application/json"},
-                method="POST"
+                method="POST",
             )
 
             with urllib.request.urlopen(req, timeout=timeout) as response:
@@ -1557,10 +1644,15 @@ async def verify_condition(
                     "condition": "graphql",
                     "url": url,
                     "responding": True,
-                    "has_schema": has_schema
+                    "has_schema": has_schema,
                 }
         except Exception as e:
-            return {"success": False, "condition": "graphql", "url": url, "error": str(e)}
+            return {
+                "success": False,
+                "condition": "graphql",
+                "url": url,
+                "error": str(e),
+            }
 
     elif condition_type == "grpc":
         # Check gRPC health
@@ -1571,7 +1663,9 @@ async def verify_condition(
             # Try grpc_health_probe if available
             result = subprocess.run(
                 f"grpc_health_probe -addr={host}:{port}",
-                shell=True, capture_output=True, timeout=5
+                shell=True,
+                capture_output=True,
+                timeout=5,
             )
 
             if result.returncode == 0:
@@ -1581,7 +1675,7 @@ async def verify_condition(
                     "host": host,
                     "port": port,
                     "healthy": True,
-                    "via": "grpc_health_probe"
+                    "via": "grpc_health_probe",
                 }
 
             # Fallback to port check
@@ -1592,7 +1686,7 @@ async def verify_condition(
                 "host": host,
                 "port": port,
                 "connected": port_result.get("success"),
-                "via": "port_check"
+                "via": "port_check",
             }
         except Exception as e:
             return {"success": False, "condition": "grpc", "error": str(e)}
@@ -1624,7 +1718,7 @@ async def verify_condition(
                     "port": port,
                     "cluster_status": status,
                     "number_of_nodes": data.get("number_of_nodes"),
-                    "active_shards": data.get("active_shards")
+                    "active_shards": data.get("active_shards"),
                 }
         except Exception as e:
             return {"success": False, "condition": "elasticsearch", "error": str(e)}
@@ -1656,7 +1750,7 @@ async def verify_condition(
                     "condition": "kubernetes",
                     "resource_type": resource_type,
                     "name": name,
-                    "error": result.stderr.decode()
+                    "error": result.stderr.decode(),
                 }
 
             output = result.stdout.decode().strip().strip("'")
@@ -1675,7 +1769,7 @@ async def verify_condition(
                 "resource_type": resource_type,
                 "name": name,
                 "namespace": namespace,
-                "status": output
+                "status": output,
             }
         except Exception as e:
             return {"success": False, "condition": "kubernetes", "error": str(e)}
@@ -1698,7 +1792,7 @@ async def verify_condition(
                 "condition": "s3",
                 "bucket": bucket,
                 "accessible": result.returncode == 0,
-                "error": result.stderr.decode() if result.returncode != 0 else None
+                "error": result.stderr.decode() if result.returncode != 0 else None,
             }
         except Exception as e:
             return {"success": False, "condition": "s3", "error": str(e)}
@@ -1725,7 +1819,7 @@ async def verify_condition(
                 "condition": "smtp",
                 "host": host,
                 "port": port,
-                "connected": True
+                "connected": True,
             }
         except ImportError:
             # Fallback to port check
@@ -1736,7 +1830,7 @@ async def verify_condition(
                 "host": host,
                 "port": port,
                 "connected": port_result.get("success"),
-                "via": "port_check"
+                "via": "port_check",
             }
         except Exception as e:
             return {"success": False, "condition": "smtp", "error": str(e)}
@@ -1757,7 +1851,7 @@ async def verify_condition(
                     "condition": "ssh",
                     "host": host,
                     "port": port,
-                    "error": "SSH port not accessible"
+                    "error": "SSH port not accessible",
                 }
 
             # Try actual SSH connection
@@ -1776,7 +1870,7 @@ async def verify_condition(
                 "host": host,
                 "port": port,
                 "connected": success,
-                "error": result.stderr.decode() if not success else None
+                "error": result.stderr.decode() if not success else None,
             }
         except Exception as e:
             return {"success": False, "condition": "ssh", "error": str(e)}
@@ -1796,7 +1890,7 @@ async def verify_condition(
                 "condition": "ldap",
                 "host": host,
                 "port": actual_port,
-                "connected": port_result.get("success")
+                "connected": port_result.get("success"),
             }
         except Exception as e:
             return {"success": False, "condition": "ldap", "error": str(e)}
@@ -1817,7 +1911,7 @@ async def verify_condition(
                 "host": host,
                 "port": actual_port,
                 "protocol": "sftp" if sftp else "ftp",
-                "connected": port_result.get("success")
+                "connected": port_result.get("success"),
             }
         except Exception as e:
             return {"success": False, "condition": "ftp", "error": str(e)}
@@ -1841,7 +1935,7 @@ async def verify_condition(
                     "url": url,
                     "status": response.status,
                     "accessible": True,
-                    "content_type": response.headers.get("Content-Type")
+                    "content_type": response.headers.get("Content-Type"),
                 }
 
                 if content_length:
@@ -1857,10 +1951,15 @@ async def verify_condition(
                 "condition": "url_accessible",
                 "url": url,
                 "status": e.code,
-                "error": str(e)
+                "error": str(e),
             }
         except Exception as e:
-            return {"success": False, "condition": "url_accessible", "url": url, "error": str(e)}
+            return {
+                "success": False,
+                "condition": "url_accessible",
+                "url": url,
+                "error": str(e),
+            }
 
     elif condition_type == "git_remote":
         # Check if git remote is accessible
@@ -1870,7 +1969,9 @@ async def verify_condition(
         try:
             result = subprocess.run(
                 f"git ls-remote --exit-code {url} HEAD",
-                shell=True, capture_output=True, timeout=timeout
+                shell=True,
+                capture_output=True,
+                timeout=timeout,
             )
 
             return {
@@ -1878,7 +1979,7 @@ async def verify_condition(
                 "condition": "git_remote",
                 "url": url,
                 "accessible": result.returncode == 0,
-                "error": result.stderr.decode() if result.returncode != 0 else None
+                "error": result.stderr.decode() if result.returncode != 0 else None,
             }
         except Exception as e:
             return {"success": False, "condition": "git_remote", "error": str(e)}
@@ -1900,7 +2001,7 @@ async def verify_condition(
                     "condition": "npm_registry",
                     "registry": registry,
                     "accessible": True,
-                    "package": package
+                    "package": package,
                 }
         except Exception as e:
             return {"success": False, "condition": "npm_registry", "error": str(e)}
@@ -1925,7 +2026,7 @@ async def verify_condition(
                         "success": True,
                         "condition": "docker_registry",
                         "registry": registry,
-                        "accessible": True
+                        "accessible": True,
                     }
             except urllib.error.HTTPError as e:
                 # 401 is expected for registries requiring auth
@@ -1935,7 +2036,7 @@ async def verify_condition(
                         "condition": "docker_registry",
                         "registry": registry,
                         "accessible": True,
-                        "requires_auth": True
+                        "requires_auth": True,
                     }
                 raise
         except Exception as e:
@@ -1948,7 +2049,9 @@ async def verify_condition(
         try:
             result = subprocess.run(
                 f"systemctl is-active {service}",
-                shell=True, capture_output=True, timeout=5
+                shell=True,
+                capture_output=True,
+                timeout=5,
             )
 
             status = result.stdout.decode().strip()
@@ -1959,7 +2062,7 @@ async def verify_condition(
                 "condition": "systemd_service",
                 "service": service,
                 "status": status,
-                "active": active
+                "active": active,
             }
         except Exception as e:
             return {"success": False, "condition": "systemd_service", "error": str(e)}
@@ -1971,7 +2074,9 @@ async def verify_condition(
         try:
             result = subprocess.run(
                 f"launchctl list | grep {service}",
-                shell=True, capture_output=True, timeout=5
+                shell=True,
+                capture_output=True,
+                timeout=5,
             )
 
             running = result.returncode == 0 and service in result.stdout.decode()
@@ -1980,7 +2085,7 @@ async def verify_condition(
                 "success": running,
                 "condition": "launchd_service",
                 "service": service,
-                "running": running
+                "running": running,
             }
         except Exception as e:
             return {"success": False, "condition": "launchd_service", "error": str(e)}
@@ -2005,7 +2110,7 @@ async def verify_condition(
                 "total_gb": usage.total / 1024 / 1024 / 1024,
                 "free_gb": free_gb,
                 "used_percent": used_percent,
-                "threshold_met": success
+                "threshold_met": success,
             }
         except Exception as e:
             return {"success": False, "condition": "disk_space", "error": str(e)}
@@ -2020,7 +2125,9 @@ async def verify_condition(
             available_gb = mem.available / 1024 / 1024 / 1024
             used_percent = mem.percent
 
-            success = available_gb >= min_available_gb and used_percent <= max_used_percent
+            success = (
+                available_gb >= min_available_gb and used_percent <= max_used_percent
+            )
 
             return {
                 "success": success,
@@ -2028,7 +2135,7 @@ async def verify_condition(
                 "total_gb": mem.total / 1024 / 1024 / 1024,
                 "available_gb": available_gb,
                 "used_percent": used_percent,
-                "threshold_met": success
+                "threshold_met": success,
             }
         except Exception as e:
             return {"success": False, "condition": "memory_available", "error": str(e)}
@@ -2048,7 +2155,7 @@ async def verify_condition(
                 "cpu_percent": cpu_percent,
                 "max_percent": max_percent,
                 "threshold_met": success,
-                "cpu_count": psutil.cpu_count()
+                "cpu_count": psutil.cpu_count(),
             }
         except Exception as e:
             return {"success": False, "condition": "cpu_usage", "error": str(e)}
@@ -2067,7 +2174,7 @@ async def verify_condition(
                     "success": False,
                     "condition": "env_var",
                     "name": name,
-                    "exists": False
+                    "exists": False,
                 }
 
             success = True
@@ -2082,7 +2189,7 @@ async def verify_condition(
                 "name": name,
                 "exists": True,
                 "value": mask_secrets(value) if value else None,
-                "matches": success
+                "matches": success,
             }
         except Exception as e:
             return {"success": False, "condition": "env_var", "error": str(e)}
@@ -2134,7 +2241,7 @@ async def verify_condition(
                     "condition": "json_schema",
                     "url": url,
                     "valid": valid,
-                    "data_type": type(data).__name__
+                    "data_type": type(data).__name__,
                 }
         except Exception as e:
             return {"success": False, "condition": "json_schema", "error": str(e)}
@@ -2186,14 +2293,14 @@ async def verify_condition(
                     "condition": "api_response",
                     "url": url,
                     "status": status,
-                    "body_preview": body_content[:200] if body_content else None
+                    "body_preview": body_content[:200] if body_content else None,
                 }
         except urllib.error.HTTPError as e:
             return {
                 "success": e.code == expected_status,
                 "condition": "api_response",
                 "url": url,
-                "status": e.code
+                "status": e.code,
             }
         except Exception as e:
             return {"success": False, "condition": "api_response", "error": str(e)}
@@ -2207,24 +2314,28 @@ async def verify_condition(
             user_arg = f"-u {user}" if user else ""
             result = subprocess.run(
                 f"crontab {user_arg} -l 2>/dev/null",
-                shell=True, capture_output=True, timeout=5
+                shell=True,
+                capture_output=True,
+                timeout=5,
             )
 
             if result.returncode != 0:
                 return {
                     "success": False,
                     "condition": "cron_job",
-                    "error": "No crontab or access denied"
+                    "error": "No crontab or access denied",
                 }
 
             crontab = result.stdout.decode()
-            found = bool(re.search(pattern, crontab)) if pattern else bool(crontab.strip())
+            found = (
+                bool(re.search(pattern, crontab)) if pattern else bool(crontab.strip())
+            )
 
             return {
                 "success": found,
                 "condition": "cron_job",
                 "pattern": pattern,
-                "found": found
+                "found": found,
             }
         except Exception as e:
             return {"success": False, "condition": "cron_job", "error": str(e)}
@@ -2244,11 +2355,13 @@ async def verify_condition(
                         "success": False,
                         "condition": "network_interface",
                         "interface": interface,
-                        "exists": False
+                        "exists": False,
                     }
 
                 is_up = stats.get(interface, {}).isup if interface in stats else False
-                has_ip = any(a.family.name == "AF_INET" for a in addrs.get(interface, []))
+                has_ip = any(
+                    a.family.name == "AF_INET" for a in addrs.get(interface, [])
+                )
 
                 success = is_up and (has_ip if check_ip else True)
 
@@ -2257,7 +2370,7 @@ async def verify_condition(
                     "condition": "network_interface",
                     "interface": interface,
                     "is_up": is_up,
-                    "has_ip": has_ip
+                    "has_ip": has_ip,
                 }
             else:
                 # List all interfaces
@@ -2265,16 +2378,12 @@ async def verify_condition(
                 for name, addr_list in addrs.items():
                     is_up = stats.get(name, {}).isup if name in stats else False
                     has_ip = any(a.family.name == "AF_INET" for a in addr_list)
-                    interfaces.append({
-                        "name": name,
-                        "is_up": is_up,
-                        "has_ip": has_ip
-                    })
+                    interfaces.append({"name": name, "is_up": is_up, "has_ip": has_ip})
 
                 return {
                     "success": True,
                     "condition": "network_interface",
-                    "interfaces": interfaces
+                    "interfaces": interfaces,
                 }
         except Exception as e:
             return {"success": False, "condition": "network_interface", "error": str(e)}
@@ -2297,7 +2406,7 @@ async def verify_condition(
                     "condition": "sse",
                     "url": url,
                     "is_sse": is_sse,
-                    "content_type": content_type
+                    "content_type": content_type,
                 }
         except Exception as e:
             return {"success": False, "condition": "sse", "error": str(e)}
@@ -2321,9 +2430,13 @@ async def verify_condition(
                     "success": state == "Active",
                     "condition": "aws_lambda",
                     "function_name": function_name,
-                    "state": state
+                    "state": state,
                 }
-            return {"success": False, "condition": "aws_lambda", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "aws_lambda",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "aws_lambda", "error": str(e)}
 
@@ -2344,9 +2457,13 @@ async def verify_condition(
                     "condition": "aws_ecs",
                     "cluster": cluster,
                     "service": service,
-                    "running_count": running
+                    "running_count": running,
                 }
-            return {"success": False, "condition": "aws_ecs", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "aws_ecs",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "aws_ecs", "error": str(e)}
 
@@ -2365,9 +2482,13 @@ async def verify_condition(
                     "success": status == "available",
                     "condition": "aws_rds",
                     "instance_id": instance_id,
-                    "status": status
+                    "status": status,
                 }
-            return {"success": False, "condition": "aws_rds", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "aws_rds",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "aws_rds", "error": str(e)}
 
@@ -2390,9 +2511,13 @@ async def verify_condition(
                     "success": success,
                     "condition": "aws_sqs",
                     "queue_url": queue_url,
-                    "message_count": count
+                    "message_count": count,
                 }
-            return {"success": False, "condition": "aws_sqs", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "aws_sqs",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "aws_sqs", "error": str(e)}
 
@@ -2411,11 +2536,19 @@ async def verify_condition(
                     "success": state == "OK",
                     "condition": "aws_cloudwatch_alarm",
                     "alarm_name": alarm_name,
-                    "state": state
+                    "state": state,
                 }
-            return {"success": False, "condition": "aws_cloudwatch_alarm", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "aws_cloudwatch_alarm",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
-            return {"success": False, "condition": "aws_cloudwatch_alarm", "error": str(e)}
+            return {
+                "success": False,
+                "condition": "aws_cloudwatch_alarm",
+                "error": str(e),
+            }
 
     elif condition_type == "gcp_cloud_run":
         # Check Google Cloud Run service
@@ -2434,9 +2567,13 @@ async def verify_condition(
                     "success": status == "True",
                     "condition": "gcp_cloud_run",
                     "service": service,
-                    "ready": status == "True"
+                    "ready": status == "True",
                 }
-            return {"success": False, "condition": "gcp_cloud_run", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "gcp_cloud_run",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "gcp_cloud_run", "error": str(e)}
 
@@ -2456,9 +2593,13 @@ async def verify_condition(
                     "success": state == "RUNNABLE",
                     "condition": "gcp_cloud_sql",
                     "instance": instance,
-                    "state": state
+                    "state": state,
                 }
-            return {"success": False, "condition": "gcp_cloud_sql", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "gcp_cloud_sql",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "gcp_cloud_sql", "error": str(e)}
 
@@ -2477,9 +2618,13 @@ async def verify_condition(
                     "success": state == "Running",
                     "condition": "azure_app_service",
                     "name": name,
-                    "state": state
+                    "state": state,
                 }
-            return {"success": False, "condition": "azure_app_service", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "azure_app_service",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "azure_app_service", "error": str(e)}
 
@@ -2504,9 +2649,13 @@ async def verify_condition(
                     "condition": "github_actions",
                     "repo": repo,
                     "workflow": workflow,
-                    "conclusion": conclusion
+                    "conclusion": conclusion,
                 }
-            return {"success": False, "condition": "github_actions", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "github_actions",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "github_actions", "error": str(e)}
 
@@ -2519,12 +2668,14 @@ async def verify_condition(
             cmd = f"glab ci status --repo {project} --ref {ref}"
             result = subprocess.run(cmd, shell=True, capture_output=True, timeout=15)
 
-            success = result.returncode == 0 and "passed" in result.stdout.decode().lower()
+            success = (
+                result.returncode == 0 and "passed" in result.stdout.decode().lower()
+            )
             return {
                 "success": success,
                 "condition": "gitlab_pipeline",
                 "project": project,
-                "output": result.stdout.decode()[:200]
+                "output": result.stdout.decode()[:200],
             }
         except Exception as e:
             return {"success": False, "condition": "gitlab_pipeline", "error": str(e)}
@@ -2542,6 +2693,7 @@ async def verify_condition(
 
             if user and token:
                 import base64
+
                 credentials = base64.b64encode(f"{user}:{token}".encode()).decode()
                 req.add_header("Authorization", f"Basic {credentials}")
 
@@ -2554,7 +2706,7 @@ async def verify_condition(
                     "condition": "jenkins_job",
                     "job": job,
                     "result": result_status,
-                    "building": data.get("building", False)
+                    "building": data.get("building", False),
                 }
         except Exception as e:
             return {"success": False, "condition": "jenkins_job", "error": str(e)}
@@ -2579,9 +2731,13 @@ async def verify_condition(
                     "condition": "argocd_app",
                     "app": app,
                     "sync_status": sync_status,
-                    "health_status": health_status
+                    "health_status": health_status,
                 }
-            return {"success": False, "condition": "argocd_app", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "argocd_app",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "argocd_app", "error": str(e)}
 
@@ -2602,9 +2758,13 @@ async def verify_condition(
                     "success": status == "deployed",
                     "condition": "helm_release",
                     "release": release,
-                    "status": status
+                    "status": status,
                 }
-            return {"success": False, "condition": "helm_release", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "helm_release",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "helm_release", "error": str(e)}
 
@@ -2615,7 +2775,9 @@ async def verify_condition(
 
         try:
             cmd = "terraform state list"
-            result = subprocess.run(cmd, shell=True, capture_output=True, timeout=30, cwd=working_dir)
+            result = subprocess.run(
+                cmd, shell=True, capture_output=True, timeout=30, cwd=working_dir
+            )
 
             if result.returncode == 0:
                 resources = result.stdout.decode().strip().split("\n")
@@ -2625,14 +2787,18 @@ async def verify_condition(
                         "success": found,
                         "condition": "terraform_state",
                         "resource": resource,
-                        "found": found
+                        "found": found,
                     }
                 return {
                     "success": len(resources) > 0,
                     "condition": "terraform_state",
-                    "resource_count": len(resources)
+                    "resource_count": len(resources),
                 }
-            return {"success": False, "condition": "terraform_state", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "terraform_state",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "terraform_state", "error": str(e)}
 
@@ -2654,14 +2820,19 @@ async def verify_condition(
                 with urllib.request.urlopen(req, timeout=10) as response:
                     data = json.loads(response.read().decode())
                     alerts = data.get("data", {}).get("alerts", [])
-                    firing = [a for a in alerts if a.get("labels", {}).get("alertname") == alert_name and a.get("state") == "firing"]
+                    firing = [
+                        a
+                        for a in alerts
+                        if a.get("labels", {}).get("alertname") == alert_name
+                        and a.get("state") == "firing"
+                    ]
 
                     return {
                         "success": len(firing) == 0,  # Success if alert NOT firing
                         "condition": "prometheus",
                         "alert_name": alert_name,
                         "firing": len(firing) > 0,
-                        "count": len(firing)
+                        "count": len(firing),
                     }
             elif query:
                 api_url = f"{url}/api/v1/query?query={urllib.parse.quote(query)}"
@@ -2676,9 +2847,13 @@ async def verify_condition(
                         "condition": "prometheus",
                         "query": query,
                         "result_count": len(results),
-                        "results": results[:5]
+                        "results": results[:5],
                     }
-            return {"success": False, "condition": "prometheus", "error": "Provide query or alert_name"}
+            return {
+                "success": False,
+                "condition": "prometheus",
+                "error": "Provide query or alert_name",
+            }
         except Exception as e:
             return {"success": False, "condition": "prometheus", "error": str(e)}
 
@@ -2701,7 +2876,7 @@ async def verify_condition(
                     "condition": "grafana",
                     "url": url,
                     "database": data.get("database"),
-                    "version": data.get("version")
+                    "version": data.get("version"),
                 }
         except Exception as e:
             return {"success": False, "condition": "grafana", "error": str(e)}
@@ -2729,13 +2904,13 @@ async def verify_condition(
                         "success": found,
                         "condition": "jaeger",
                         "service": service,
-                        "found": found
+                        "found": found,
                     }
                 return {
                     "success": len(services) > 0,
                     "condition": "jaeger",
                     "services": services[:10],
-                    "service_count": len(services)
+                    "service_count": len(services),
                 }
         except Exception as e:
             return {"success": False, "condition": "jaeger", "error": str(e)}
@@ -2760,7 +2935,7 @@ async def verify_condition(
                     "condition": "sentry",
                     "project": project,
                     "status": data.get("status"),
-                    "platform": data.get("platform")
+                    "platform": data.get("platform"),
                 }
         except Exception as e:
             return {"success": False, "condition": "sentry", "error": str(e)}
@@ -2788,7 +2963,7 @@ async def verify_condition(
                 "condition": "memcached",
                 "host": host,
                 "port": port,
-                "connected": True
+                "connected": True,
             }
         except Exception as e:
             return {"success": False, "condition": "memcached", "error": str(e)}
@@ -2807,9 +2982,13 @@ async def verify_condition(
                     "condition": "varnish",
                     "host": host,
                     "port": port,
-                    "responding": True
+                    "responding": True,
                 }
-            return {"success": False, "condition": "varnish", "error": "Varnish not responding"}
+            return {
+                "success": False,
+                "condition": "varnish",
+                "error": "Varnish not responding",
+            }
         except Exception as e:
             return {"success": False, "condition": "varnish", "error": str(e)}
 
@@ -2831,7 +3010,7 @@ async def verify_condition(
                 "condition": "cassandra",
                 "host": host,
                 "port": port,
-                "connected": result.returncode == 0
+                "connected": result.returncode == 0,
             }
         except Exception:
             # Fallback to port check
@@ -2849,7 +3028,7 @@ async def verify_condition(
                     "success": response.status == 200,
                     "condition": "neo4j",
                     "url": url,
-                    "connected": True
+                    "connected": True,
                 }
         except Exception as e:
             return {"success": False, "condition": "neo4j", "error": str(e)}
@@ -2870,7 +3049,7 @@ async def verify_condition(
                     "condition": "clickhouse",
                     "host": host,
                     "port": port,
-                    "connected": True
+                    "connected": True,
                 }
         except Exception as e:
             return {"success": False, "condition": "clickhouse", "error": str(e)}
@@ -2891,7 +3070,7 @@ async def verify_condition(
                     "success": status == "pass",
                     "condition": "influxdb",
                     "url": url,
-                    "status": status
+                    "status": status,
                 }
         except Exception as e:
             return {"success": False, "condition": "influxdb", "error": str(e)}
@@ -2920,13 +3099,9 @@ async def verify_condition(
                         "success": found,
                         "condition": "pinecone",
                         "index": index,
-                        "found": found
+                        "found": found,
                     }
-                return {
-                    "success": True,
-                    "condition": "pinecone",
-                    "indexes": indexes
-                }
+                return {"success": True, "condition": "pinecone", "indexes": indexes}
         except Exception as e:
             return {"success": False, "condition": "pinecone", "error": str(e)}
 
@@ -2943,7 +3118,7 @@ async def verify_condition(
                     "success": response.status == 200,
                     "condition": "weaviate",
                     "url": url,
-                    "ready": True
+                    "ready": True,
                 }
         except Exception as e:
             return {"success": False, "condition": "weaviate", "error": str(e)}
@@ -2961,7 +3136,7 @@ async def verify_condition(
                     "success": response.status == 200,
                     "condition": "qdrant",
                     "url": url,
-                    "healthy": True
+                    "healthy": True,
                 }
         except Exception as e:
             return {"success": False, "condition": "qdrant", "error": str(e)}
@@ -2980,7 +3155,7 @@ async def verify_condition(
                     "success": True,
                     "condition": "chromadb",
                     "url": url,
-                    "nanosecond_heartbeat": data.get("nanosecond heartbeat")
+                    "nanosecond_heartbeat": data.get("nanosecond heartbeat"),
                 }
         except Exception as e:
             return {"success": False, "condition": "chromadb", "error": str(e)}
@@ -3012,14 +3187,14 @@ async def verify_condition(
                         "success": True,
                         "condition": "ollama",
                         "model": model,
-                        "available": True
+                        "available": True,
                     }
                 models = [m.get("name") for m in data.get("models", [])]
                 return {
                     "success": True,
                     "condition": "ollama",
                     "models": models,
-                    "model_count": len(models)
+                    "model_count": len(models),
                 }
         except Exception as e:
             return {"success": False, "condition": "ollama", "error": str(e)}
@@ -3044,12 +3219,12 @@ async def verify_condition(
                         "success": found,
                         "condition": "openai_api",
                         "model": model,
-                        "available": found
+                        "available": found,
                     }
                 return {
                     "success": True,
                     "condition": "openai_api",
-                    "model_count": len(models)
+                    "model_count": len(models),
                 }
         except Exception as e:
             return {"success": False, "condition": "openai_api", "error": str(e)}
@@ -3072,7 +3247,7 @@ async def verify_condition(
                         "success": True,
                         "condition": "huggingface",
                         "model": model,
-                        "available": True
+                        "available": True,
                     }
             except urllib.error.HTTPError as e:
                 if e.code == 503:
@@ -3081,7 +3256,7 @@ async def verify_condition(
                         "condition": "huggingface",
                         "model": model,
                         "loading": True,
-                        "error": "Model is loading"
+                        "error": "Model is loading",
                     }
                 raise
         except Exception as e:
@@ -3102,7 +3277,7 @@ async def verify_condition(
                     "success": True,
                     "condition": "mlflow",
                     "url": url,
-                    "experiment_count": len(data.get("experiments", []))
+                    "experiment_count": len(data.get("experiments", [])),
                 }
         except Exception as e:
             return {"success": False, "condition": "mlflow", "error": str(e)}
@@ -3127,9 +3302,13 @@ async def verify_condition(
                     "condition": "kafka_topic",
                     "topic": topic,
                     "exists": True,
-                    "info": output[:500]
+                    "info": output[:500],
                 }
-            return {"success": False, "condition": "kafka_topic", "error": result.stderr.decode()}
+            return {
+                "success": False,
+                "condition": "kafka_topic",
+                "error": result.stderr.decode(),
+            }
         except Exception as e:
             return {"success": False, "condition": "kafka_topic", "error": str(e)}
 
@@ -3145,7 +3324,7 @@ async def verify_condition(
                 "condition": "mqtt",
                 "host": host,
                 "port": port,
-                "connected": port_result.get("success")
+                "connected": port_result.get("success"),
             }
         except Exception as e:
             return {"success": False, "condition": "mqtt", "error": str(e)}
@@ -3173,7 +3352,7 @@ async def verify_condition(
                     "success": True,
                     "condition": "nginx",
                     "url": url,
-                    "active_connections": active_connections
+                    "active_connections": active_connections,
                 }
         except Exception as e:
             return {"success": False, "condition": "nginx", "error": str(e)}
@@ -3193,8 +3372,12 @@ async def verify_condition(
                     "success": True,
                     "condition": "traefik",
                     "url": url,
-                    "http_routers": data.get("http", {}).get("routers", {}).get("total", 0),
-                    "http_services": data.get("http", {}).get("services", {}).get("total", 0)
+                    "http_routers": data.get("http", {})
+                    .get("routers", {})
+                    .get("total", 0),
+                    "http_services": data.get("http", {})
+                    .get("services", {})
+                    .get("total", 0),
                 }
         except Exception as e:
             return {"success": False, "condition": "traefik", "error": str(e)}
@@ -3215,7 +3398,7 @@ async def verify_condition(
                     "condition": "kong",
                     "url": url,
                     "database_reachable": data.get("database", {}).get("reachable"),
-                    "server": data.get("server", {})
+                    "server": data.get("server", {}),
                 }
         except Exception as e:
             return {"success": False, "condition": "kong", "error": str(e)}
@@ -3237,7 +3420,7 @@ async def verify_condition(
                 return {
                     "success": response.status == 200,
                     "condition": "slack_webhook",
-                    "accessible": True
+                    "accessible": True,
                 }
         except Exception as e:
             return {"success": False, "condition": "slack_webhook", "error": str(e)}
@@ -3256,7 +3439,7 @@ async def verify_condition(
                     "success": True,
                     "condition": "discord_webhook",
                     "name": data.get("name"),
-                    "guild_id": data.get("guild_id")
+                    "guild_id": data.get("guild_id"),
                 }
         except Exception as e:
             return {"success": False, "condition": "discord_webhook", "error": str(e)}
@@ -3281,7 +3464,8 @@ async def verify_condition(
                     "condition": "auth0",
                     "domain": domain,
                     "issuer": data.get("issuer"),
-                    "authorization_endpoint": data.get("authorization_endpoint") is not None
+                    "authorization_endpoint": data.get("authorization_endpoint")
+                    is not None,
                 }
         except Exception as e:
             return {"success": False, "condition": "auth0", "error": str(e)}
@@ -3303,7 +3487,7 @@ async def verify_condition(
                     "condition": "keycloak",
                     "url": url,
                     "realm": realm,
-                    "issuer": data.get("issuer")
+                    "issuer": data.get("issuer"),
                 }
         except Exception as e:
             return {"success": False, "condition": "keycloak", "error": str(e)}
@@ -3323,8 +3507,9 @@ async def verify_condition(
                     "success": True,
                     "condition": "oidc",
                     "issuer": issuer,
-                    "authorization_endpoint": data.get("authorization_endpoint") is not None,
-                    "token_endpoint": data.get("token_endpoint") is not None
+                    "authorization_endpoint": data.get("authorization_endpoint")
+                    is not None,
+                    "token_endpoint": data.get("token_endpoint") is not None,
                 }
         except Exception as e:
             return {"success": False, "condition": "oidc", "error": str(e)}
@@ -3354,12 +3539,12 @@ async def verify_condition(
                         "condition": "launchdarkly",
                         "flag_key": flag_key,
                         "found": flag is not None,
-                        "on": flag.get("on") if flag else None
+                        "on": flag.get("on") if flag else None,
                     }
                 return {
                     "success": True,
                     "condition": "launchdarkly",
-                    "flag_count": len(flags)
+                    "flag_count": len(flags),
                 }
         except Exception as e:
             return {"success": False, "condition": "launchdarkly", "error": str(e)}
@@ -3378,10 +3563,14 @@ async def verify_condition(
                 "success": result.get("success"),
                 "condition": "webpack_dev_server",
                 "url": url,
-                "running": result.get("success")
+                "running": result.get("success"),
             }
         except Exception as e:
-            return {"success": False, "condition": "webpack_dev_server", "error": str(e)}
+            return {
+                "success": False,
+                "condition": "webpack_dev_server",
+                "error": str(e),
+            }
 
     elif condition_type == "vite_dev_server":
         # Check Vite dev server
@@ -3393,7 +3582,7 @@ async def verify_condition(
                 "success": result.get("success"),
                 "condition": "vite_dev_server",
                 "url": url,
-                "running": result.get("success")
+                "running": result.get("success"),
             }
         except Exception as e:
             return {"success": False, "condition": "vite_dev_server", "error": str(e)}
@@ -3408,7 +3597,7 @@ async def verify_condition(
                 "success": result.get("success"),
                 "condition": "next_dev_server",
                 "url": url,
-                "running": result.get("success")
+                "running": result.get("success"),
             }
         except Exception as e:
             return {"success": False, "condition": "next_dev_server", "error": str(e)}
@@ -3437,14 +3626,14 @@ async def verify_condition(
                         "condition": "pypi",
                         "package": package,
                         "version": version,
-                        "found": found
+                        "found": found,
                     }
                 return {
                     "success": True,
                     "condition": "pypi",
                     "package": package,
                     "latest_version": data.get("info", {}).get("version"),
-                    "version_count": len(versions)
+                    "version_count": len(versions),
                 }
         except Exception as e:
             return {"success": False, "condition": "pypi", "error": str(e)}
@@ -3470,13 +3659,13 @@ async def verify_condition(
                         "condition": "maven",
                         "artifact": f"{group_id}:{artifact_id}",
                         "version": version,
-                        "found": found
+                        "found": found,
                     }
                 return {
                     "success": True,
                     "condition": "maven",
                     "artifact": f"{group_id}:{artifact_id}",
-                    "accessible": True
+                    "accessible": True,
                 }
         except Exception as e:
             return {"success": False, "condition": "maven", "error": str(e)}
@@ -3503,14 +3692,14 @@ async def verify_condition(
                         "condition": "cargo",
                         "crate": crate,
                         "version": version,
-                        "found": found
+                        "found": found,
                     }
                 return {
                     "success": True,
                     "condition": "cargo",
                     "crate": crate,
                     "max_version": crate_data.get("max_version"),
-                    "downloads": crate_data.get("downloads")
+                    "downloads": crate_data.get("downloads"),
                 }
         except Exception as e:
             return {"success": False, "condition": "cargo", "error": str(e)}
@@ -3537,7 +3726,7 @@ async def verify_condition(
                     "url": url,
                     "response_time_ms": round(elapsed_ms, 2),
                     "max_ms": max_ms,
-                    "within_threshold": elapsed_ms <= max_ms
+                    "within_threshold": elapsed_ms <= max_ms,
                 }
         except Exception as e:
             return {"success": False, "condition": "response_time", "error": str(e)}
@@ -3568,7 +3757,7 @@ async def verify_condition(
                 "error_rate_percent": round(error_rate, 2),
                 "max_error_percent": max_error_percent,
                 "requests": requests_count,
-                "errors": errors
+                "errors": errors,
             }
         except Exception as e:
             return {"success": False, "condition": "error_rate", "error": str(e)}
@@ -3580,11 +3769,10 @@ async def verify_condition(
     elif condition_type == "security_headers":
         # Check security headers
         url = kwargs.get("url")
-        required_headers = kwargs.get("required_headers", [
-            "X-Content-Type-Options",
-            "X-Frame-Options",
-            "X-XSS-Protection"
-        ])
+        required_headers = kwargs.get(
+            "required_headers",
+            ["X-Content-Type-Options", "X-Frame-Options", "X-XSS-Protection"],
+        )
 
         try:
             req = urllib.request.Request(url)
@@ -3598,7 +3786,7 @@ async def verify_condition(
                     "condition": "security_headers",
                     "url": url,
                     "missing_headers": missing,
-                    "present_headers": [h for h in required_headers if h in headers]
+                    "present_headers": [h for h in required_headers if h in headers],
                 }
         except Exception as e:
             return {"success": False, "condition": "security_headers", "error": str(e)}
@@ -3626,7 +3814,7 @@ async def verify_condition(
                     "origin": origin,
                     "allowed": allowed,
                     "allow_origin": allow_origin,
-                    "allow_methods": allow_methods
+                    "allow_methods": allow_methods,
                 }
         except Exception as e:
             return {"success": False, "condition": "cors", "error": str(e)}
@@ -3637,50 +3825,119 @@ async def verify_condition(
             "error": f"Unknown condition type: {condition_type}",
             "supported_types": [
                 # Network & Connectivity
-                "http", "port", "tcp", "websocket", "ssl", "dns", "ssh", "ftp", "smtp", "ldap", "mqtt",
+                "http",
+                "port",
+                "tcp",
+                "websocket",
+                "ssl",
+                "dns",
+                "ssh",
+                "ftp",
+                "smtp",
+                "ldap",
+                "mqtt",
                 # Files & System
-                "file_exists", "file_contains", "process_running", "command_succeeds",
-                "disk_space", "memory_available", "cpu_usage", "env_var", "cron_job",
+                "file_exists",
+                "file_contains",
+                "process_running",
+                "command_succeeds",
+                "disk_space",
+                "memory_available",
+                "cpu_usage",
+                "env_var",
+                "cron_job",
                 # Databases
-                "database", "elasticsearch", "cassandra", "neo4j", "clickhouse", "influxdb",
+                "database",
+                "elasticsearch",
+                "cassandra",
+                "neo4j",
+                "clickhouse",
+                "influxdb",
                 # Vector DBs
-                "pinecone", "weaviate", "qdrant", "chromadb",
+                "pinecone",
+                "weaviate",
+                "qdrant",
+                "chromadb",
                 # Containers & Orchestration
-                "docker", "docker_compose", "kubernetes", "helm_release", "argocd_app",
+                "docker",
+                "docker_compose",
+                "kubernetes",
+                "helm_release",
+                "argocd_app",
                 # Cloud Providers
-                "aws_lambda", "aws_ecs", "aws_rds", "aws_sqs", "aws_cloudwatch_alarm",
-                "gcp_cloud_run", "gcp_cloud_sql", "azure_app_service",
+                "aws_lambda",
+                "aws_ecs",
+                "aws_rds",
+                "aws_sqs",
+                "aws_cloudwatch_alarm",
+                "gcp_cloud_run",
+                "gcp_cloud_sql",
+                "azure_app_service",
                 # CI/CD
-                "github_actions", "gitlab_pipeline", "jenkins_job", "terraform_state",
+                "github_actions",
+                "gitlab_pipeline",
+                "jenkins_job",
+                "terraform_state",
                 # Monitoring
-                "prometheus", "grafana", "jaeger", "sentry",
+                "prometheus",
+                "grafana",
+                "jaeger",
+                "sentry",
                 # Caching
-                "memcached", "varnish",
+                "memcached",
+                "varnish",
                 # Message Queues
-                "queue", "kafka_topic",
+                "queue",
+                "kafka_topic",
                 # APIs & Protocols
-                "graphql", "grpc", "sse", "api_response", "json_schema", "url_accessible",
+                "graphql",
+                "grpc",
+                "sse",
+                "api_response",
+                "json_schema",
+                "url_accessible",
                 # ML/AI
-                "ollama", "openai_api", "huggingface", "mlflow",
+                "ollama",
+                "openai_api",
+                "huggingface",
+                "mlflow",
                 # API Gateways
-                "nginx", "traefik", "kong",
+                "nginx",
+                "traefik",
+                "kong",
                 # Webhooks
-                "slack_webhook", "discord_webhook",
+                "slack_webhook",
+                "discord_webhook",
                 # Auth Providers
-                "auth0", "keycloak", "oidc", "launchdarkly",
+                "auth0",
+                "keycloak",
+                "oidc",
+                "launchdarkly",
                 # Storage & Registries
-                "s3", "npm_registry", "docker_registry", "git_remote", "pypi", "maven", "cargo",
+                "s3",
+                "npm_registry",
+                "docker_registry",
+                "git_remote",
+                "pypi",
+                "maven",
+                "cargo",
                 # Services
-                "systemd_service", "launchd_service", "network_interface",
+                "systemd_service",
+                "launchd_service",
+                "network_interface",
                 # Dev Servers
-                "webpack_dev_server", "vite_dev_server", "next_dev_server",
+                "webpack_dev_server",
+                "vite_dev_server",
+                "next_dev_server",
                 # Performance
-                "response_time", "error_rate",
+                "response_time",
+                "error_rate",
                 # Security
-                "security_headers", "cors",
+                "security_headers",
+                "cors",
                 # Aggregation
-                "health_aggregate"
-            ]
+                "health_aggregate",
+            ],
         }
 
 
@@ -3690,7 +3947,7 @@ async def wait_for_condition(
     interval: float = 1.0,
     backoff: str = "linear",  # "linear", "exponential", "none"
     max_interval: float = 10.0,
-    **kwargs
+    **kwargs,
 ) -> Dict[str, Any]:
     """
     Wait for a condition to become true with configurable retry strategy.
@@ -3719,7 +3976,7 @@ async def wait_for_condition(
                 "condition": condition_type,
                 "attempts": attempts,
                 "elapsed_seconds": time.time() - start_time,
-                "result": result
+                "result": result,
             }
 
         # Calculate next interval based on backoff strategy
@@ -3736,7 +3993,7 @@ async def wait_for_condition(
         "condition": condition_type,
         "error": f"Timeout after {timeout} seconds",
         "attempts": attempts,
-        "last_result": last_result
+        "last_result": last_result,
     }
 
 
@@ -3744,10 +4001,9 @@ async def wait_for_condition(
 # Environment Management
 # =============================================================================
 
+
 async def create_environment(
-    env_type: str,
-    version: Optional[str] = None,
-    working_dir: Optional[str] = None
+    env_type: str, version: Optional[str] = None, working_dir: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Create/activate a development environment.
@@ -3772,7 +4028,9 @@ async def create_environment(
             # Get node path from nvm
             result = subprocess.run(
                 f'source "{nvm_dir}/nvm.sh" && nvm which {version}',
-                shell=True, capture_output=True, executable='/bin/bash'
+                shell=True,
+                capture_output=True,
+                executable="/bin/bash",
             )
             if result.returncode == 0:
                 node_path = result.stdout.decode().strip()
@@ -3784,7 +4042,7 @@ async def create_environment(
                     "version_manager": "nvm",
                     "version": version,
                     "env": env,
-                    "shell_prefix": f'source "{nvm_dir}/nvm.sh" && nvm use {version} && '
+                    "shell_prefix": f'source "{nvm_dir}/nvm.sh" && nvm use {version} && ',
                 }
 
         # Check for fnm
@@ -3794,7 +4052,7 @@ async def create_environment(
                 "success": True,
                 "env_type": "node",
                 "version_manager": "fnm",
-                "shell_prefix": f'eval "$(fnm env)" && fnm use {version} && '
+                "shell_prefix": f'eval "$(fnm env)" && fnm use {version} && ',
             }
 
         # Check for volta
@@ -3806,10 +4064,13 @@ async def create_environment(
                 "success": True,
                 "env_type": "node",
                 "version_manager": "volta",
-                "env": env
+                "env": env,
             }
 
-        return {"success": False, "error": "No Node version manager found (nvm, fnm, volta)"}
+        return {
+            "success": False,
+            "error": "No Node version manager found (nvm, fnm, volta)",
+        }
 
     elif env_type == "python":
         version = version or "3"
@@ -3824,7 +4085,7 @@ async def create_environment(
                 "env_type": "python",
                 "version_manager": "pyenv",
                 "env": env,
-                "shell_prefix": f'eval "$(pyenv init -)" && pyenv shell {version} && '
+                "shell_prefix": f'eval "$(pyenv init -)" && pyenv shell {version} && ',
             }
 
         # Create virtualenv if working_dir specified
@@ -3833,10 +4094,14 @@ async def create_environment(
             if not os.path.exists(venv_path):
                 result = subprocess.run(
                     f"python{version} -m venv {venv_path}",
-                    shell=True, capture_output=True
+                    shell=True,
+                    capture_output=True,
                 )
                 if result.returncode != 0:
-                    return {"success": False, "error": f"Failed to create venv: {result.stderr.decode()}"}
+                    return {
+                        "success": False,
+                        "error": f"Failed to create venv: {result.stderr.decode()}",
+                    }
 
             # Add venv to path
             venv_bin = os.path.join(venv_path, "bin")
@@ -3849,7 +4114,7 @@ async def create_environment(
                 "version_manager": "venv",
                 "venv_path": venv_path,
                 "env": env,
-                "shell_prefix": f"source {venv_bin}/activate && "
+                "shell_prefix": f"source {venv_bin}/activate && ",
             }
 
         return {"success": True, "env_type": "python", "env": env}
@@ -3864,7 +4129,7 @@ async def create_environment(
                 "env_type": "ruby",
                 "version_manager": "rbenv",
                 "env": env,
-                "shell_prefix": 'eval "$(rbenv init -)" && '
+                "shell_prefix": 'eval "$(rbenv init -)" && ',
             }
 
         # Check for rvm
@@ -3874,7 +4139,7 @@ async def create_environment(
                 "success": True,
                 "env_type": "ruby",
                 "version_manager": "rvm",
-                "shell_prefix": f'source "{rvm_path}/scripts/rvm" && rvm use {version or "default"} && '
+                "shell_prefix": f'source "{rvm_path}/scripts/rvm" && rvm use {version or "default"} && ',
             }
 
         return {"success": False, "error": "No Ruby version manager found (rbenv, rvm)"}
@@ -3887,7 +4152,7 @@ async def create_environment(
                 "success": True,
                 "env_type": "java",
                 "version_manager": "sdkman",
-                "shell_prefix": f'source "{sdkman_dir}/bin/sdkman-init.sh" && sdk use java {version or ""} && '
+                "shell_prefix": f'source "{sdkman_dir}/bin/sdkman-init.sh" && sdk use java {version or ""} && ',
             }
 
         # Check for jenv
@@ -3899,16 +4164,19 @@ async def create_environment(
                 "env_type": "java",
                 "version_manager": "jenv",
                 "env": env,
-                "shell_prefix": 'eval "$(jenv init -)" && '
+                "shell_prefix": 'eval "$(jenv init -)" && ',
             }
 
-        return {"success": False, "error": "No Java version manager found (sdkman, jenv)"}
+        return {
+            "success": False,
+            "error": "No Java version manager found (sdkman, jenv)",
+        }
 
     else:
         return {
             "success": False,
             "error": f"Unsupported environment type: {env_type}",
-            "supported_types": ["node", "python", "ruby", "java"]
+            "supported_types": ["node", "python", "ruby", "java"],
         }
 
 
@@ -3917,7 +4185,7 @@ async def run_with_environment(
     working_dir: str,
     env_type: str,
     version: Optional[str] = None,
-    timeout: int = 120
+    timeout: int = 120,
 ) -> Dict[str, Any]:
     """
     Run a command with a specific environment activated.
@@ -3942,22 +4210,19 @@ async def run_with_environment(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
-            executable='/bin/bash'
+            executable="/bin/bash",
         )
 
-        stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
         return {
             "success": process.returncode == 0,
             "exit_code": process.returncode,
-            "stdout": mask_secrets(stdout.decode('utf-8', errors='replace')),
-            "stderr": mask_secrets(stderr.decode('utf-8', errors='replace')),
+            "stdout": mask_secrets(stdout.decode("utf-8", errors="replace")),
+            "stderr": mask_secrets(stderr.decode("utf-8", errors="replace")),
             "command": command,
             "environment": env_type,
-            "version": version
+            "version": version,
         }
     except asyncio.TimeoutError:
         return {"success": False, "error": f"Timeout after {timeout}s"}
@@ -3969,12 +4234,13 @@ async def run_with_environment(
 # OAuth / Browser Flow Handling
 # =============================================================================
 
+
 async def run_oauth_flow(
     command: str,
     working_dir: str,
     callback_port: int = 0,
     timeout: int = 300,
-    success_patterns: Optional[List[str]] = None
+    success_patterns: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Run a command that triggers OAuth/browser authentication.
@@ -3995,16 +4261,14 @@ async def run_oauth_flow(
     success_patterns = success_patterns or [
         r"(?i)success|logged in|authenticated|authorized",
         r"(?i)welcome|hello",
-        r"(?i)token saved|credentials saved"
+        r"(?i)token saved|credentials saved",
     ]
 
     pm = ProcessManager()
 
     # Start the auth command
     result = await pm.start_background(
-        command=command,
-        working_dir=working_dir,
-        tags=["oauth-flow"]
+        command=command, working_dir=working_dir, tags=["oauth-flow"]
     )
 
     if not result.get("success"):
@@ -4016,9 +4280,7 @@ async def run_oauth_flow(
     combined_pattern = "|".join(f"({p})" for p in success_patterns)
 
     auth_result = await pm.wait_for_log_pattern(
-        process_id=process_id,
-        pattern=combined_pattern,
-        timeout=timeout
+        process_id=process_id, pattern=combined_pattern, timeout=timeout
     )
 
     if auth_result.get("success"):
@@ -4030,7 +4292,7 @@ async def run_oauth_flow(
             "success": True,
             "message": "Authentication successful",
             "matched_line": auth_result.get("matched_line"),
-            "output": output.get("output", "")
+            "output": output.get("output", ""),
         }
     else:
         # Get output for debugging
@@ -4040,7 +4302,7 @@ async def run_oauth_flow(
             "success": False,
             "error": "Authentication did not complete",
             "output": output.get("output", ""),
-            "hint": "Check if browser opened. You may need to complete auth manually."
+            "hint": "Check if browser opened. You may need to complete auth manually.",
         }
 
 
@@ -4057,10 +4319,14 @@ PROCESS_TOOLS = [
             "properties": {
                 "command": {"type": "string", "description": "Command to run"},
                 "env": {"type": "object", "description": "Environment variables"},
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for grouping"}
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Tags for grouping",
+                },
             },
-            "required": ["command"]
-        }
+            "required": ["command"],
+        },
     },
     {
         "name": "run_interactive",
@@ -4074,16 +4340,22 @@ PROCESS_TOOLS = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "expect": {"type": "string", "description": "Pattern to wait for"},
-                            "send": {"type": "string", "description": "Response to send"}
-                        }
+                            "expect": {
+                                "type": "string",
+                                "description": "Pattern to wait for",
+                            },
+                            "send": {
+                                "type": "string",
+                                "description": "Response to send",
+                            },
+                        },
                     },
-                    "description": "Expect/send pairs for automation"
+                    "description": "Expect/send pairs for automation",
                 },
-                "timeout": {"type": "integer", "default": 60}
+                "timeout": {"type": "integer", "default": 60},
             },
-            "required": ["command", "inputs"]
-        }
+            "required": ["command", "inputs"],
+        },
     },
     {
         "name": "run_parallel",
@@ -4097,27 +4369,25 @@ PROCESS_TOOLS = [
                         "type": "object",
                         "properties": {
                             "command": {"type": "string"},
-                            "name": {"type": "string"}
+                            "name": {"type": "string"},
                         },
-                        "required": ["command"]
-                    }
+                        "required": ["command"],
+                    },
                 },
                 "timeout": {"type": "integer", "default": 300},
-                "fail_fast": {"type": "boolean", "default": False}
+                "fail_fast": {"type": "boolean", "default": False},
             },
-            "required": ["commands"]
-        }
+            "required": ["commands"],
+        },
     },
     {
         "name": "check_process",
         "description": "Check status and recent output of a background process.",
         "input_schema": {
             "type": "object",
-            "properties": {
-                "process_id": {"type": "string"}
-            },
-            "required": ["process_id"]
-        }
+            "properties": {"process_id": {"type": "string"}},
+            "required": ["process_id"],
+        },
     },
     {
         "name": "get_process_output",
@@ -4126,10 +4396,10 @@ PROCESS_TOOLS = [
             "type": "object",
             "properties": {
                 "process_id": {"type": "string"},
-                "lines": {"type": "integer", "default": 50}
+                "lines": {"type": "integer", "default": 50},
             },
-            "required": ["process_id"]
-        }
+            "required": ["process_id"],
+        },
     },
     {
         "name": "wait_for_log_pattern",
@@ -4139,10 +4409,10 @@ PROCESS_TOOLS = [
             "properties": {
                 "process_id": {"type": "string"},
                 "pattern": {"type": "string", "description": "Regex pattern to match"},
-                "timeout": {"type": "integer", "default": 60}
+                "timeout": {"type": "integer", "default": 60},
             },
-            "required": ["process_id", "pattern"]
-        }
+            "required": ["process_id", "pattern"],
+        },
     },
     {
         "name": "kill_process",
@@ -4151,10 +4421,10 @@ PROCESS_TOOLS = [
             "type": "object",
             "properties": {
                 "process_id": {"type": "string"},
-                "force": {"type": "boolean", "default": False}
+                "force": {"type": "boolean", "default": False},
             },
-            "required": ["process_id"]
-        }
+            "required": ["process_id"],
+        },
     },
     {
         "name": "cleanup_session",
@@ -4162,15 +4432,19 @@ PROCESS_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "Only clean processes with these tags"},
-                "force": {"type": "boolean", "default": False}
-            }
-        }
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Only clean processes with these tags",
+                },
+                "force": {"type": "boolean", "default": False},
+            },
+        },
     },
     {
         "name": "list_processes",
         "description": "List all managed background processes.",
-        "input_schema": {"type": "object", "properties": {}}
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "start_service_chain",
@@ -4185,16 +4459,19 @@ PROCESS_TOOLS = [
                         "properties": {
                             "name": {"type": "string"},
                             "command": {"type": "string"},
-                            "depends_on": {"type": "array", "items": {"type": "string"}},
+                            "depends_on": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
                             "health_check": {"type": "object"},
-                            "startup_timeout": {"type": "integer", "default": 30}
+                            "startup_timeout": {"type": "integer", "default": 30},
                         },
-                        "required": ["name", "command"]
-                    }
+                        "required": ["name", "command"],
+                    },
                 }
             },
-            "required": ["services"]
-        }
+            "required": ["services"],
+        },
     },
     {
         "name": "check_resources",
@@ -4202,10 +4479,16 @@ PROCESS_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "process_id": {"type": "string", "description": "Check specific process (optional)"},
-                "pid": {"type": "integer", "description": "Direct PID to check (optional)"}
-            }
-        }
+                "process_id": {
+                    "type": "string",
+                    "description": "Check specific process (optional)",
+                },
+                "pid": {
+                    "type": "integer",
+                    "description": "Direct PID to check (optional)",
+                },
+            },
+        },
     },
     {
         "name": "verify_condition",
@@ -4213,7 +4496,23 @@ PROCESS_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "condition_type": {"type": "string", "enum": ["http", "port", "tcp", "file_exists", "file_contains", "process_running", "command_succeeds", "database", "websocket", "ssl", "dns", "health_aggregate"]},
+                "condition_type": {
+                    "type": "string",
+                    "enum": [
+                        "http",
+                        "port",
+                        "tcp",
+                        "file_exists",
+                        "file_contains",
+                        "process_running",
+                        "command_succeeds",
+                        "database",
+                        "websocket",
+                        "ssl",
+                        "dns",
+                        "health_aggregate",
+                    ],
+                },
                 "url": {"type": "string"},
                 "port": {"type": "integer"},
                 "host": {"type": "string"},
@@ -4226,10 +4525,13 @@ PROCESS_TOOLS = [
                 "user": {"type": "string"},
                 "password": {"type": "string"},
                 "hostname": {"type": "string"},
-                "checks": {"type": "array", "description": "For health_aggregate: list of checks"}
+                "checks": {
+                    "type": "array",
+                    "description": "For health_aggregate: list of checks",
+                },
             },
-            "required": ["condition_type"]
-        }
+            "required": ["condition_type"],
+        },
     },
     {
         "name": "wait_for_condition",
@@ -4240,15 +4542,19 @@ PROCESS_TOOLS = [
                 "condition_type": {"type": "string"},
                 "timeout": {"type": "integer", "default": 30},
                 "interval": {"type": "number", "default": 1.0},
-                "backoff": {"type": "string", "enum": ["none", "linear", "exponential"], "default": "linear"},
+                "backoff": {
+                    "type": "string",
+                    "enum": ["none", "linear", "exponential"],
+                    "default": "linear",
+                },
                 "url": {"type": "string"},
                 "port": {"type": "integer"},
                 "path": {"type": "string"},
                 "pattern": {"type": "string"},
-                "name": {"type": "string"}
+                "name": {"type": "string"},
             },
-            "required": ["condition_type"]
-        }
+            "required": ["condition_type"],
+        },
     },
     {
         "name": "create_environment",
@@ -4256,11 +4562,17 @@ PROCESS_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "env_type": {"type": "string", "enum": ["node", "python", "ruby", "java"]},
-                "version": {"type": "string", "description": "Version to use (e.g., '18', '3.11')"}
+                "env_type": {
+                    "type": "string",
+                    "enum": ["node", "python", "ruby", "java"],
+                },
+                "version": {
+                    "type": "string",
+                    "description": "Version to use (e.g., '18', '3.11')",
+                },
             },
-            "required": ["env_type"]
-        }
+            "required": ["env_type"],
+        },
     },
     {
         "name": "run_with_environment",
@@ -4269,12 +4581,15 @@ PROCESS_TOOLS = [
             "type": "object",
             "properties": {
                 "command": {"type": "string"},
-                "env_type": {"type": "string", "enum": ["node", "python", "ruby", "java"]},
+                "env_type": {
+                    "type": "string",
+                    "enum": ["node", "python", "ruby", "java"],
+                },
                 "version": {"type": "string"},
-                "timeout": {"type": "integer", "default": 120}
+                "timeout": {"type": "integer", "default": 120},
             },
-            "required": ["command", "env_type"]
-        }
+            "required": ["command", "env_type"],
+        },
     },
     {
         "name": "run_oauth_flow",
@@ -4283,9 +4598,9 @@ PROCESS_TOOLS = [
             "type": "object",
             "properties": {
                 "command": {"type": "string"},
-                "timeout": {"type": "integer", "default": 300}
+                "timeout": {"type": "integer", "default": 300},
             },
-            "required": ["command"]
-        }
-    }
+            "required": ["command"],
+        },
+    },
 ]

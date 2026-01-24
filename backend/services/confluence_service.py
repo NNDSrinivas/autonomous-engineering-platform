@@ -87,7 +87,9 @@ class ConfluenceService(ConnectorServiceBase):
                         item_type="page",
                         external_id=page_id,
                         title=title,
-                        content=ConfluenceClient.html_to_text(body)[:2000] if body else "",
+                        content=(
+                            ConfluenceClient.html_to_text(body)[:2000] if body else ""
+                        ),
                         url=page_url,
                         metadata={
                             "space_key": space_info.get("key"),
@@ -170,16 +172,18 @@ class ConfluenceService(ConnectorServiceBase):
                 if base_url:
                     page_url = f"{base_url}/wiki/spaces/{space_info.get('key', '')}/pages/{page_id}"
 
-                results.append({
-                    "id": page_id,
-                    "title": page.get("title", "Untitled"),
-                    "space_key": space_info.get("key"),
-                    "space_name": space_info.get("name"),
-                    "url": page_url,
-                    "excerpt": ConfluenceClient.html_to_text(
-                        page.get("body", {}).get("storage", {}).get("value", "")
-                    )[:200],
-                })
+                results.append(
+                    {
+                        "id": page_id,
+                        "title": page.get("title", "Untitled"),
+                        "space_key": space_info.get("key"),
+                        "space_name": space_info.get("name"),
+                        "url": page_url,
+                        "excerpt": ConfluenceClient.html_to_text(
+                            page.get("body", {}).get("storage", {}).get("value", "")
+                        )[:200],
+                    }
+                )
 
             return results
         finally:
@@ -302,17 +306,23 @@ def search_pages(
 
     normalized = []
     for page in pages or []:
-        normalized.append({
-            "id": str(page.get("id") or ""),
-            "title": page.get("title") or "",
-            "excerpt": ConfluenceClient.html_to_text(
-                page.get("body", {}).get("storage", {}).get("value", "")
-            )[:200],
-            "body": page.get("body", {}).get("storage", {}).get("value", ""),
-            "url": page.get("_links", {}).get("webui"),
-            "updated_at": page.get("version", {}).get("when"),
-            "space": page.get("space", {}).get("key") if isinstance(page.get("space"), dict) else page.get("space"),
-            "labels": page.get("labels") or [],
-        })
+        normalized.append(
+            {
+                "id": str(page.get("id") or ""),
+                "title": page.get("title") or "",
+                "excerpt": ConfluenceClient.html_to_text(
+                    page.get("body", {}).get("storage", {}).get("value", "")
+                )[:200],
+                "body": page.get("body", {}).get("storage", {}).get("value", ""),
+                "url": page.get("_links", {}).get("webui"),
+                "updated_at": page.get("version", {}).get("when"),
+                "space": (
+                    page.get("space", {}).get("key")
+                    if isinstance(page.get("space"), dict)
+                    else page.get("space")
+                ),
+                "labels": page.get("labels") or [],
+            }
+        )
 
     return normalized

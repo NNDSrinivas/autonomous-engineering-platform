@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 class MCPTransport(Enum):
     """Supported MCP transport protocols."""
+
     STDIO = "stdio"
     HTTP = "http"
     WEBSOCKET = "websocket"
@@ -28,6 +29,7 @@ class MCPTransport(Enum):
 @dataclass
 class MCPToolParameter:
     """Definition of a tool parameter."""
+
     name: str
     type: str  # string, number, boolean, array, object
     description: str
@@ -39,6 +41,7 @@ class MCPToolParameter:
 @dataclass
 class MCPTool:
     """Definition of an MCP tool."""
+
     name: str
     description: str
     parameters: List[MCPToolParameter]
@@ -50,6 +53,7 @@ class MCPTool:
 @dataclass
 class MCPToolResult:
     """Result from a tool execution."""
+
     success: bool
     data: Any
     error: Optional[str] = None
@@ -99,742 +103,810 @@ class MCPServer:
     def _register_git_tools(self):
         """Register advanced git operation tools."""
         # Cherry-pick
-        self.register_tool(MCPTool(
-            name="git_cherry_pick",
-            description="Cherry-pick one or more commits to the current branch",
-            category="git_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the git repository",
-                ),
-                MCPToolParameter(
-                    name="commit_hashes",
-                    type="array",
-                    description="List of commit hashes to cherry-pick",
-                ),
-                MCPToolParameter(
-                    name="no_commit",
-                    type="boolean",
-                    description="Stage changes without committing",
-                    required=False,
-                    default=False,
-                ),
-            ],
-            handler=self._handle_git_cherry_pick,
-            requires_approval=True,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="git_cherry_pick",
+                description="Cherry-pick one or more commits to the current branch",
+                category="git_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the git repository",
+                    ),
+                    MCPToolParameter(
+                        name="commit_hashes",
+                        type="array",
+                        description="List of commit hashes to cherry-pick",
+                    ),
+                    MCPToolParameter(
+                        name="no_commit",
+                        type="boolean",
+                        description="Stage changes without committing",
+                        required=False,
+                        default=False,
+                    ),
+                ],
+                handler=self._handle_git_cherry_pick,
+                requires_approval=True,
+            )
+        )
 
         # Interactive Rebase
-        self.register_tool(MCPTool(
-            name="git_rebase",
-            description="Rebase current branch onto another branch or commit",
-            category="git_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the git repository",
-                ),
-                MCPToolParameter(
-                    name="onto",
-                    type="string",
-                    description="Branch or commit to rebase onto",
-                ),
-                MCPToolParameter(
-                    name="interactive",
-                    type="boolean",
-                    description="Use interactive rebase",
-                    required=False,
-                    default=False,
-                ),
-            ],
-            handler=self._handle_git_rebase,
-            requires_approval=True,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="git_rebase",
+                description="Rebase current branch onto another branch or commit",
+                category="git_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the git repository",
+                    ),
+                    MCPToolParameter(
+                        name="onto",
+                        type="string",
+                        description="Branch or commit to rebase onto",
+                    ),
+                    MCPToolParameter(
+                        name="interactive",
+                        type="boolean",
+                        description="Use interactive rebase",
+                        required=False,
+                        default=False,
+                    ),
+                ],
+                handler=self._handle_git_rebase,
+                requires_approval=True,
+            )
+        )
 
         # Squash Commits
-        self.register_tool(MCPTool(
-            name="git_squash",
-            description="Squash multiple commits into one",
-            category="git_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the git repository",
-                ),
-                MCPToolParameter(
-                    name="num_commits",
-                    type="number",
-                    description="Number of recent commits to squash",
-                ),
-                MCPToolParameter(
-                    name="message",
-                    type="string",
-                    description="New commit message for squashed commit",
-                ),
-            ],
-            handler=self._handle_git_squash,
-            requires_approval=True,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="git_squash",
+                description="Squash multiple commits into one",
+                category="git_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the git repository",
+                    ),
+                    MCPToolParameter(
+                        name="num_commits",
+                        type="number",
+                        description="Number of recent commits to squash",
+                    ),
+                    MCPToolParameter(
+                        name="message",
+                        type="string",
+                        description="New commit message for squashed commit",
+                    ),
+                ],
+                handler=self._handle_git_squash,
+                requires_approval=True,
+            )
+        )
 
         # Stash Operations
-        self.register_tool(MCPTool(
-            name="git_stash",
-            description="Manage git stash (save, pop, list, apply, drop)",
-            category="git_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the git repository",
-                ),
-                MCPToolParameter(
-                    name="operation",
-                    type="string",
-                    description="Stash operation to perform",
-                    enum=["save", "pop", "list", "apply", "drop", "clear"],
-                ),
-                MCPToolParameter(
-                    name="message",
-                    type="string",
-                    description="Message for stash save operation",
-                    required=False,
-                ),
-                MCPToolParameter(
-                    name="stash_id",
-                    type="string",
-                    description="Stash ID for apply/drop operations (e.g., 'stash@{0}')",
-                    required=False,
-                ),
-            ],
-            handler=self._handle_git_stash,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="git_stash",
+                description="Manage git stash (save, pop, list, apply, drop)",
+                category="git_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the git repository",
+                    ),
+                    MCPToolParameter(
+                        name="operation",
+                        type="string",
+                        description="Stash operation to perform",
+                        enum=["save", "pop", "list", "apply", "drop", "clear"],
+                    ),
+                    MCPToolParameter(
+                        name="message",
+                        type="string",
+                        description="Message for stash save operation",
+                        required=False,
+                    ),
+                    MCPToolParameter(
+                        name="stash_id",
+                        type="string",
+                        description="Stash ID for apply/drop operations (e.g., 'stash@{0}')",
+                        required=False,
+                    ),
+                ],
+                handler=self._handle_git_stash,
+            )
+        )
 
         # Git Bisect
-        self.register_tool(MCPTool(
-            name="git_bisect",
-            description="Use binary search to find commit that introduced a bug",
-            category="git_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the git repository",
-                ),
-                MCPToolParameter(
-                    name="operation",
-                    type="string",
-                    description="Bisect operation",
-                    enum=["start", "good", "bad", "reset", "skip", "run"],
-                ),
-                MCPToolParameter(
-                    name="commit",
-                    type="string",
-                    description="Commit hash for good/bad marking",
-                    required=False,
-                ),
-                MCPToolParameter(
-                    name="script",
-                    type="string",
-                    description="Script to run for automated bisect",
-                    required=False,
-                ),
-            ],
-            handler=self._handle_git_bisect,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="git_bisect",
+                description="Use binary search to find commit that introduced a bug",
+                category="git_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the git repository",
+                    ),
+                    MCPToolParameter(
+                        name="operation",
+                        type="string",
+                        description="Bisect operation",
+                        enum=["start", "good", "bad", "reset", "skip", "run"],
+                    ),
+                    MCPToolParameter(
+                        name="commit",
+                        type="string",
+                        description="Commit hash for good/bad marking",
+                        required=False,
+                    ),
+                    MCPToolParameter(
+                        name="script",
+                        type="string",
+                        description="Script to run for automated bisect",
+                        required=False,
+                    ),
+                ],
+                handler=self._handle_git_bisect,
+            )
+        )
 
         # Reflog Recovery
-        self.register_tool(MCPTool(
-            name="git_reflog",
-            description="Access reference logs to recover lost commits",
-            category="git_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the git repository",
-                ),
-                MCPToolParameter(
-                    name="operation",
-                    type="string",
-                    description="Reflog operation",
-                    enum=["show", "recover"],
-                ),
-                MCPToolParameter(
-                    name="ref",
-                    type="string",
-                    description="Reference to show/recover (e.g., 'HEAD@{5}')",
-                    required=False,
-                ),
-                MCPToolParameter(
-                    name="limit",
-                    type="number",
-                    description="Number of reflog entries to show",
-                    required=False,
-                    default=20,
-                ),
-            ],
-            handler=self._handle_git_reflog,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="git_reflog",
+                description="Access reference logs to recover lost commits",
+                category="git_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the git repository",
+                    ),
+                    MCPToolParameter(
+                        name="operation",
+                        type="string",
+                        description="Reflog operation",
+                        enum=["show", "recover"],
+                    ),
+                    MCPToolParameter(
+                        name="ref",
+                        type="string",
+                        description="Reference to show/recover (e.g., 'HEAD@{5}')",
+                        required=False,
+                    ),
+                    MCPToolParameter(
+                        name="limit",
+                        type="number",
+                        description="Number of reflog entries to show",
+                        required=False,
+                        default=20,
+                    ),
+                ],
+                handler=self._handle_git_reflog,
+            )
+        )
 
         # Branch Cleanup
-        self.register_tool(MCPTool(
-            name="git_cleanup_branches",
-            description="Clean up merged or stale branches",
-            category="git_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the git repository",
-                ),
-                MCPToolParameter(
-                    name="dry_run",
-                    type="boolean",
-                    description="List branches to delete without actually deleting",
-                    required=False,
-                    default=True,
-                ),
-                MCPToolParameter(
-                    name="include_remote",
-                    type="boolean",
-                    description="Also prune remote tracking branches",
-                    required=False,
-                    default=False,
-                ),
-            ],
-            handler=self._handle_git_cleanup_branches,
-            requires_approval=True,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="git_cleanup_branches",
+                description="Clean up merged or stale branches",
+                category="git_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the git repository",
+                    ),
+                    MCPToolParameter(
+                        name="dry_run",
+                        type="boolean",
+                        description="List branches to delete without actually deleting",
+                        required=False,
+                        default=True,
+                    ),
+                    MCPToolParameter(
+                        name="include_remote",
+                        type="boolean",
+                        description="Also prune remote tracking branches",
+                        required=False,
+                        default=False,
+                    ),
+                ],
+                handler=self._handle_git_cleanup_branches,
+                requires_approval=True,
+            )
+        )
 
     def _register_database_tools(self):
         """Register database operation tools."""
         # Schema Diff
-        self.register_tool(MCPTool(
-            name="db_schema_diff",
-            description="Compare database schema between environments or models",
-            category="database_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the project with database models",
-                ),
-                MCPToolParameter(
-                    name="source",
-                    type="string",
-                    description="Source to compare (models, database, migration)",
-                    enum=["models", "database", "migration"],
-                ),
-                MCPToolParameter(
-                    name="target",
-                    type="string",
-                    description="Target to compare against",
-                    enum=["models", "database", "migration"],
-                ),
-            ],
-            handler=self._handle_db_schema_diff,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="db_schema_diff",
+                description="Compare database schema between environments or models",
+                category="database_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the project with database models",
+                    ),
+                    MCPToolParameter(
+                        name="source",
+                        type="string",
+                        description="Source to compare (models, database, migration)",
+                        enum=["models", "database", "migration"],
+                    ),
+                    MCPToolParameter(
+                        name="target",
+                        type="string",
+                        description="Target to compare against",
+                        enum=["models", "database", "migration"],
+                    ),
+                ],
+                handler=self._handle_db_schema_diff,
+            )
+        )
 
         # Generate Migration
-        self.register_tool(MCPTool(
-            name="db_generate_migration",
-            description="Generate database migration from model changes",
-            category="database_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the project",
-                ),
-                MCPToolParameter(
-                    name="message",
-                    type="string",
-                    description="Migration message/description",
-                ),
-                MCPToolParameter(
-                    name="autogenerate",
-                    type="boolean",
-                    description="Auto-detect changes from models",
-                    required=False,
-                    default=True,
-                ),
-            ],
-            handler=self._handle_db_generate_migration,
-            requires_approval=True,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="db_generate_migration",
+                description="Generate database migration from model changes",
+                category="database_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the project",
+                    ),
+                    MCPToolParameter(
+                        name="message",
+                        type="string",
+                        description="Migration message/description",
+                    ),
+                    MCPToolParameter(
+                        name="autogenerate",
+                        type="boolean",
+                        description="Auto-detect changes from models",
+                        required=False,
+                        default=True,
+                    ),
+                ],
+                handler=self._handle_db_generate_migration,
+                requires_approval=True,
+            )
+        )
 
         # Apply Migration
-        self.register_tool(MCPTool(
-            name="db_apply_migration",
-            description="Apply pending database migrations",
-            category="database_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the project",
-                ),
-                MCPToolParameter(
-                    name="revision",
-                    type="string",
-                    description="Specific revision to migrate to (default: head)",
-                    required=False,
-                    default="head",
-                ),
-                MCPToolParameter(
-                    name="dry_run",
-                    type="boolean",
-                    description="Show SQL without executing",
-                    required=False,
-                    default=False,
-                ),
-            ],
-            handler=self._handle_db_apply_migration,
-            requires_approval=True,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="db_apply_migration",
+                description="Apply pending database migrations",
+                category="database_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the project",
+                    ),
+                    MCPToolParameter(
+                        name="revision",
+                        type="string",
+                        description="Specific revision to migrate to (default: head)",
+                        required=False,
+                        default="head",
+                    ),
+                    MCPToolParameter(
+                        name="dry_run",
+                        type="boolean",
+                        description="Show SQL without executing",
+                        required=False,
+                        default=False,
+                    ),
+                ],
+                handler=self._handle_db_apply_migration,
+                requires_approval=True,
+            )
+        )
 
         # Rollback Migration
-        self.register_tool(MCPTool(
-            name="db_rollback_migration",
-            description="Rollback database migrations",
-            category="database_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the project",
-                ),
-                MCPToolParameter(
-                    name="steps",
-                    type="number",
-                    description="Number of migrations to rollback",
-                    required=False,
-                    default=1,
-                ),
-                MCPToolParameter(
-                    name="revision",
-                    type="string",
-                    description="Specific revision to rollback to",
-                    required=False,
-                ),
-            ],
-            handler=self._handle_db_rollback_migration,
-            requires_approval=True,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="db_rollback_migration",
+                description="Rollback database migrations",
+                category="database_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the project",
+                    ),
+                    MCPToolParameter(
+                        name="steps",
+                        type="number",
+                        description="Number of migrations to rollback",
+                        required=False,
+                        default=1,
+                    ),
+                    MCPToolParameter(
+                        name="revision",
+                        type="string",
+                        description="Specific revision to rollback to",
+                        required=False,
+                    ),
+                ],
+                handler=self._handle_db_rollback_migration,
+                requires_approval=True,
+            )
+        )
 
         # Migration History
-        self.register_tool(MCPTool(
-            name="db_migration_history",
-            description="Show database migration history",
-            category="database_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the project",
-                ),
-                MCPToolParameter(
-                    name="verbose",
-                    type="boolean",
-                    description="Show detailed information",
-                    required=False,
-                    default=False,
-                ),
-            ],
-            handler=self._handle_db_migration_history,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="db_migration_history",
+                description="Show database migration history",
+                category="database_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the project",
+                    ),
+                    MCPToolParameter(
+                        name="verbose",
+                        type="boolean",
+                        description="Show detailed information",
+                        required=False,
+                        default=False,
+                    ),
+                ],
+                handler=self._handle_db_migration_history,
+            )
+        )
 
         # Seed Database
-        self.register_tool(MCPTool(
-            name="db_seed",
-            description="Seed database with test/initial data",
-            category="database_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the project",
-                ),
-                MCPToolParameter(
-                    name="seed_file",
-                    type="string",
-                    description="Path to seed data file",
-                    required=False,
-                ),
-                MCPToolParameter(
-                    name="environment",
-                    type="string",
-                    description="Environment to seed (dev, test, staging)",
-                    enum=["dev", "test", "staging"],
-                    required=False,
-                    default="dev",
-                ),
-            ],
-            handler=self._handle_db_seed,
-            requires_approval=True,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="db_seed",
+                description="Seed database with test/initial data",
+                category="database_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the project",
+                    ),
+                    MCPToolParameter(
+                        name="seed_file",
+                        type="string",
+                        description="Path to seed data file",
+                        required=False,
+                    ),
+                    MCPToolParameter(
+                        name="environment",
+                        type="string",
+                        description="Environment to seed (dev, test, staging)",
+                        enum=["dev", "test", "staging"],
+                        required=False,
+                        default="dev",
+                    ),
+                ],
+                handler=self._handle_db_seed,
+                requires_approval=True,
+            )
+        )
 
     def _register_debugging_tools(self):
         """Register code debugging tools."""
         # Comprehensive Error Analysis
-        self.register_tool(MCPTool(
-            name="debug_analyze_error",
-            description="Analyze error output from any language (15+ supported)",
-            category="code_debugging",
-            parameters=[
-                MCPToolParameter(
-                    name="error_output",
-                    type="string",
-                    description="The error output/traceback to analyze",
-                ),
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the workspace for context",
-                    required=False,
-                ),
-                MCPToolParameter(
-                    name="language",
-                    type="string",
-                    description="Programming language hint",
-                    required=False,
-                    enum=[
-                        "python", "javascript", "typescript", "go", "rust",
-                        "java", "kotlin", "swift", "c", "cpp", "csharp",
-                        "ruby", "php", "scala", "elixir", "haskell", "dart"
-                    ],
-                ),
-            ],
-            handler=self._handle_debug_analyze_error,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="debug_analyze_error",
+                description="Analyze error output from any language (15+ supported)",
+                category="code_debugging",
+                parameters=[
+                    MCPToolParameter(
+                        name="error_output",
+                        type="string",
+                        description="The error output/traceback to analyze",
+                    ),
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the workspace for context",
+                        required=False,
+                    ),
+                    MCPToolParameter(
+                        name="language",
+                        type="string",
+                        description="Programming language hint",
+                        required=False,
+                        enum=[
+                            "python",
+                            "javascript",
+                            "typescript",
+                            "go",
+                            "rust",
+                            "java",
+                            "kotlin",
+                            "swift",
+                            "c",
+                            "cpp",
+                            "csharp",
+                            "ruby",
+                            "php",
+                            "scala",
+                            "elixir",
+                            "haskell",
+                            "dart",
+                        ],
+                    ),
+                ],
+                handler=self._handle_debug_analyze_error,
+            )
+        )
 
         # Performance Analysis
-        self.register_tool(MCPTool(
-            name="debug_performance",
-            description="Detect performance issues in code",
-            category="code_debugging",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the codebase",
-                ),
-                MCPToolParameter(
-                    name="file_path",
-                    type="string",
-                    description="Specific file to analyze",
-                    required=False,
-                ),
-                MCPToolParameter(
-                    name="include_patterns",
-                    type="array",
-                    description="Patterns to include (e.g., ['**/*.py'])",
-                    required=False,
-                ),
-            ],
-            handler=self._handle_debug_performance,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="debug_performance",
+                description="Detect performance issues in code",
+                category="code_debugging",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the codebase",
+                    ),
+                    MCPToolParameter(
+                        name="file_path",
+                        type="string",
+                        description="Specific file to analyze",
+                        required=False,
+                    ),
+                    MCPToolParameter(
+                        name="include_patterns",
+                        type="array",
+                        description="Patterns to include (e.g., ['**/*.py'])",
+                        required=False,
+                    ),
+                ],
+                handler=self._handle_debug_performance,
+            )
+        )
 
         # Dead Code Detection
-        self.register_tool(MCPTool(
-            name="debug_dead_code",
-            description="Find unused/dead code in the codebase",
-            category="code_debugging",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the codebase",
-                ),
-                MCPToolParameter(
-                    name="language",
-                    type="string",
-                    description="Language to analyze",
-                    required=False,
-                ),
-            ],
-            handler=self._handle_debug_dead_code,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="debug_dead_code",
+                description="Find unused/dead code in the codebase",
+                category="code_debugging",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the codebase",
+                    ),
+                    MCPToolParameter(
+                        name="language",
+                        type="string",
+                        description="Language to analyze",
+                        required=False,
+                    ),
+                ],
+                handler=self._handle_debug_dead_code,
+            )
+        )
 
         # Circular Dependencies
-        self.register_tool(MCPTool(
-            name="debug_circular_deps",
-            description="Detect circular dependencies in imports",
-            category="code_debugging",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the codebase",
-                ),
-            ],
-            handler=self._handle_debug_circular_deps,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="debug_circular_deps",
+                description="Detect circular dependencies in imports",
+                category="code_debugging",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the codebase",
+                    ),
+                ],
+                handler=self._handle_debug_circular_deps,
+            )
+        )
 
         # Code Smells
-        self.register_tool(MCPTool(
-            name="debug_code_smells",
-            description="Detect code smells and anti-patterns",
-            category="code_debugging",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the codebase",
-                ),
-                MCPToolParameter(
-                    name="severity",
-                    type="string",
-                    description="Minimum severity to report",
-                    enum=["info", "warning", "error"],
-                    required=False,
-                    default="warning",
-                ),
-            ],
-            handler=self._handle_debug_code_smells,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="debug_code_smells",
+                description="Detect code smells and anti-patterns",
+                category="code_debugging",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the codebase",
+                    ),
+                    MCPToolParameter(
+                        name="severity",
+                        type="string",
+                        description="Minimum severity to report",
+                        enum=["info", "warning", "error"],
+                        required=False,
+                        default="warning",
+                    ),
+                ],
+                handler=self._handle_debug_code_smells,
+            )
+        )
 
         # Auto-fix Suggestions
-        self.register_tool(MCPTool(
-            name="debug_auto_fix",
-            description="Generate auto-fix suggestions for detected issues",
-            category="code_debugging",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the codebase",
-                ),
-                MCPToolParameter(
-                    name="issue_type",
-                    type="string",
-                    description="Type of issue to fix",
-                    required=False,
-                ),
-                MCPToolParameter(
-                    name="apply",
-                    type="boolean",
-                    description="Apply fixes automatically",
-                    required=False,
-                    default=False,
-                ),
-            ],
-            handler=self._handle_debug_auto_fix,
-            requires_approval=True,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="debug_auto_fix",
+                description="Generate auto-fix suggestions for detected issues",
+                category="code_debugging",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the codebase",
+                    ),
+                    MCPToolParameter(
+                        name="issue_type",
+                        type="string",
+                        description="Type of issue to fix",
+                        required=False,
+                    ),
+                    MCPToolParameter(
+                        name="apply",
+                        type="boolean",
+                        description="Apply fixes automatically",
+                        required=False,
+                        default=False,
+                    ),
+                ],
+                handler=self._handle_debug_auto_fix,
+                requires_approval=True,
+            )
+        )
 
     def _register_file_tools(self):
         """Register file operation tools."""
-        self.register_tool(MCPTool(
-            name="file_search",
-            description="Search for files by pattern or content",
-            category="file_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to search in",
-                ),
-                MCPToolParameter(
-                    name="pattern",
-                    type="string",
-                    description="Glob pattern or search query",
-                ),
-                MCPToolParameter(
-                    name="content_search",
-                    type="boolean",
-                    description="Search file contents instead of names",
-                    required=False,
-                    default=False,
-                ),
-                MCPToolParameter(
-                    name="regex",
-                    type="boolean",
-                    description="Use regex for content search",
-                    required=False,
-                    default=False,
-                ),
-            ],
-            handler=self._handle_file_search,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="file_search",
+                description="Search for files by pattern or content",
+                category="file_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to search in",
+                    ),
+                    MCPToolParameter(
+                        name="pattern",
+                        type="string",
+                        description="Glob pattern or search query",
+                    ),
+                    MCPToolParameter(
+                        name="content_search",
+                        type="boolean",
+                        description="Search file contents instead of names",
+                        required=False,
+                        default=False,
+                    ),
+                    MCPToolParameter(
+                        name="regex",
+                        type="boolean",
+                        description="Use regex for content search",
+                        required=False,
+                        default=False,
+                    ),
+                ],
+                handler=self._handle_file_search,
+            )
+        )
 
-        self.register_tool(MCPTool(
-            name="file_read",
-            description="Read file contents",
-            category="file_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="file_path",
-                    type="string",
-                    description="Path to the file",
-                ),
-                MCPToolParameter(
-                    name="start_line",
-                    type="number",
-                    description="Starting line number",
-                    required=False,
-                ),
-                MCPToolParameter(
-                    name="end_line",
-                    type="number",
-                    description="Ending line number",
-                    required=False,
-                ),
-            ],
-            handler=self._handle_file_read,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="file_read",
+                description="Read file contents",
+                category="file_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="file_path",
+                        type="string",
+                        description="Path to the file",
+                    ),
+                    MCPToolParameter(
+                        name="start_line",
+                        type="number",
+                        description="Starting line number",
+                        required=False,
+                    ),
+                    MCPToolParameter(
+                        name="end_line",
+                        type="number",
+                        description="Ending line number",
+                        required=False,
+                    ),
+                ],
+                handler=self._handle_file_read,
+            )
+        )
 
-        self.register_tool(MCPTool(
-            name="file_write",
-            description="Write or update file contents",
-            category="file_operations",
-            parameters=[
-                MCPToolParameter(
-                    name="file_path",
-                    type="string",
-                    description="Path to the file",
-                ),
-                MCPToolParameter(
-                    name="content",
-                    type="string",
-                    description="Content to write",
-                ),
-                MCPToolParameter(
-                    name="create_dirs",
-                    type="boolean",
-                    description="Create parent directories if needed",
-                    required=False,
-                    default=True,
-                ),
-            ],
-            handler=self._handle_file_write,
-            requires_approval=True,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="file_write",
+                description="Write or update file contents",
+                category="file_operations",
+                parameters=[
+                    MCPToolParameter(
+                        name="file_path",
+                        type="string",
+                        description="Path to the file",
+                    ),
+                    MCPToolParameter(
+                        name="content",
+                        type="string",
+                        description="Content to write",
+                    ),
+                    MCPToolParameter(
+                        name="create_dirs",
+                        type="boolean",
+                        description="Create parent directories if needed",
+                        required=False,
+                        default=True,
+                    ),
+                ],
+                handler=self._handle_file_write,
+                requires_approval=True,
+            )
+        )
 
     def _register_test_tools(self):
         """Register test execution tools."""
-        self.register_tool(MCPTool(
-            name="test_run",
-            description="Run tests in the project",
-            category="test_execution",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the project",
-                ),
-                MCPToolParameter(
-                    name="test_path",
-                    type="string",
-                    description="Specific test file or directory",
-                    required=False,
-                ),
-                MCPToolParameter(
-                    name="pattern",
-                    type="string",
-                    description="Test name pattern to match",
-                    required=False,
-                ),
-                MCPToolParameter(
-                    name="verbose",
-                    type="boolean",
-                    description="Verbose output",
-                    required=False,
-                    default=True,
-                ),
-                MCPToolParameter(
-                    name="coverage",
-                    type="boolean",
-                    description="Run with coverage",
-                    required=False,
-                    default=False,
-                ),
-            ],
-            handler=self._handle_test_run,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="test_run",
+                description="Run tests in the project",
+                category="test_execution",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the project",
+                    ),
+                    MCPToolParameter(
+                        name="test_path",
+                        type="string",
+                        description="Specific test file or directory",
+                        required=False,
+                    ),
+                    MCPToolParameter(
+                        name="pattern",
+                        type="string",
+                        description="Test name pattern to match",
+                        required=False,
+                    ),
+                    MCPToolParameter(
+                        name="verbose",
+                        type="boolean",
+                        description="Verbose output",
+                        required=False,
+                        default=True,
+                    ),
+                    MCPToolParameter(
+                        name="coverage",
+                        type="boolean",
+                        description="Run with coverage",
+                        required=False,
+                        default=False,
+                    ),
+                ],
+                handler=self._handle_test_run,
+            )
+        )
 
-        self.register_tool(MCPTool(
-            name="test_discover",
-            description="Discover available tests",
-            category="test_execution",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the project",
-                ),
-            ],
-            handler=self._handle_test_discover,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="test_discover",
+                description="Discover available tests",
+                category="test_execution",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the project",
+                    ),
+                ],
+                handler=self._handle_test_discover,
+            )
+        )
 
     def _register_analysis_tools(self):
         """Register code analysis tools."""
-        self.register_tool(MCPTool(
-            name="analyze_project",
-            description="Analyze project structure and detect type",
-            category="code_analysis",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the project",
-                ),
-            ],
-            handler=self._handle_analyze_project,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="analyze_project",
+                description="Analyze project structure and detect type",
+                category="code_analysis",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the project",
+                    ),
+                ],
+                handler=self._handle_analyze_project,
+            )
+        )
 
-        self.register_tool(MCPTool(
-            name="analyze_dependencies",
-            description="Analyze project dependencies",
-            category="code_analysis",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to the project",
-                ),
-                MCPToolParameter(
-                    name="include_dev",
-                    type="boolean",
-                    description="Include dev dependencies",
-                    required=False,
-                    default=True,
-                ),
-                MCPToolParameter(
-                    name="check_outdated",
-                    type="boolean",
-                    description="Check for outdated packages",
-                    required=False,
-                    default=False,
-                ),
-            ],
-            handler=self._handle_analyze_dependencies,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="analyze_dependencies",
+                description="Analyze project dependencies",
+                category="code_analysis",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to the project",
+                    ),
+                    MCPToolParameter(
+                        name="include_dev",
+                        type="boolean",
+                        description="Include dev dependencies",
+                        required=False,
+                        default=True,
+                    ),
+                    MCPToolParameter(
+                        name="check_outdated",
+                        type="boolean",
+                        description="Check for outdated packages",
+                        required=False,
+                        default=False,
+                    ),
+                ],
+                handler=self._handle_analyze_dependencies,
+            )
+        )
 
-        self.register_tool(MCPTool(
-            name="analyze_complexity",
-            description="Analyze code complexity metrics",
-            category="code_analysis",
-            parameters=[
-                MCPToolParameter(
-                    name="workspace_path",
-                    type="string",
-                    description="Path to analyze",
-                ),
-                MCPToolParameter(
-                    name="threshold",
-                    type="number",
-                    description="Complexity threshold to report",
-                    required=False,
-                    default=10,
-                ),
-            ],
-            handler=self._handle_analyze_complexity,
-        ))
+        self.register_tool(
+            MCPTool(
+                name="analyze_complexity",
+                description="Analyze code complexity metrics",
+                category="code_analysis",
+                parameters=[
+                    MCPToolParameter(
+                        name="workspace_path",
+                        type="string",
+                        description="Path to analyze",
+                    ),
+                    MCPToolParameter(
+                        name="threshold",
+                        type="number",
+                        description="Complexity threshold to report",
+                        required=False,
+                        default=10,
+                    ),
+                ],
+                handler=self._handle_analyze_complexity,
+            )
+        )
 
     def register_tool(self, tool: MCPTool):
         """Register a tool with the MCP server."""
@@ -863,19 +935,21 @@ class MCPServer:
                 if param.required:
                     required.append(param.name)
 
-            definitions.append({
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required,
-                },
-                "metadata": {
-                    "category": tool.category,
-                    "requires_approval": tool.requires_approval,
-                },
-            })
+            definitions.append(
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required,
+                    },
+                    "metadata": {
+                        "category": tool.category,
+                        "requires_approval": tool.requires_approval,
+                    },
+                }
+            )
 
         return definitions
 
@@ -939,6 +1013,7 @@ class MCPServer:
     async def _handle_git_cherry_pick(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle git cherry-pick operation."""
         from backend.services.deep_analysis import AdvancedGitOperations
+
         return await AdvancedGitOperations.cherry_pick(
             workspace_path=args["workspace_path"],
             commit_hashes=args["commit_hashes"],
@@ -948,6 +1023,7 @@ class MCPServer:
     async def _handle_git_rebase(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle git rebase operation."""
         from backend.services.deep_analysis import AdvancedGitOperations
+
         return await AdvancedGitOperations.rebase(
             workspace_path=args["workspace_path"],
             onto=args["onto"],
@@ -957,6 +1033,7 @@ class MCPServer:
     async def _handle_git_squash(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle git squash operation."""
         from backend.services.deep_analysis import AdvancedGitOperations
+
         return await AdvancedGitOperations.squash_commits(
             workspace_path=args["workspace_path"],
             num_commits=args["num_commits"],
@@ -966,6 +1043,7 @@ class MCPServer:
     async def _handle_git_stash(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle git stash operations."""
         from backend.services.deep_analysis import AdvancedGitOperations
+
         operation = args["operation"]
         workspace = args["workspace_path"]
 
@@ -996,6 +1074,7 @@ class MCPServer:
     async def _handle_git_bisect(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle git bisect operations."""
         from backend.services.deep_analysis import AdvancedGitOperations
+
         return await AdvancedGitOperations.bisect(
             workspace_path=args["workspace_path"],
             operation=args["operation"],
@@ -1006,6 +1085,7 @@ class MCPServer:
     async def _handle_git_reflog(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle git reflog operations."""
         from backend.services.deep_analysis import AdvancedGitOperations
+
         return await AdvancedGitOperations.reflog(
             workspace_path=args["workspace_path"],
             operation=args["operation"],
@@ -1013,9 +1093,12 @@ class MCPServer:
             limit=args.get("limit", 20),
         )
 
-    async def _handle_git_cleanup_branches(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_git_cleanup_branches(
+        self, args: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle branch cleanup."""
         from backend.services.deep_analysis import AdvancedGitOperations
+
         return await AdvancedGitOperations.cleanup_merged_branches(
             workspace_path=args["workspace_path"],
             dry_run=args.get("dry_run", True),
@@ -1025,15 +1108,19 @@ class MCPServer:
     async def _handle_db_schema_diff(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle database schema diff."""
         from backend.services.deep_analysis import AdvancedDatabaseOperations
+
         return await AdvancedDatabaseOperations.schema_diff(
             workspace_path=args["workspace_path"],
             source=args["source"],
             target=args["target"],
         )
 
-    async def _handle_db_generate_migration(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_db_generate_migration(
+        self, args: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle migration generation."""
         from backend.services.deep_analysis import AdvancedDatabaseOperations
+
         return await AdvancedDatabaseOperations.generate_migration(
             workspace_path=args["workspace_path"],
             message=args["message"],
@@ -1043,24 +1130,31 @@ class MCPServer:
     async def _handle_db_apply_migration(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle migration application."""
         from backend.services.deep_analysis import AdvancedDatabaseOperations
+
         return await AdvancedDatabaseOperations.apply_migration(
             workspace_path=args["workspace_path"],
             revision=args.get("revision", "head"),
             dry_run=args.get("dry_run", False),
         )
 
-    async def _handle_db_rollback_migration(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_db_rollback_migration(
+        self, args: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle migration rollback."""
         from backend.services.deep_analysis import AdvancedDatabaseOperations
+
         return await AdvancedDatabaseOperations.rollback_migration(
             workspace_path=args["workspace_path"],
             steps=args.get("steps", 1),
             revision=args.get("revision"),
         )
 
-    async def _handle_db_migration_history(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_db_migration_history(
+        self, args: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle migration history query."""
         from backend.services.deep_analysis import AdvancedDatabaseOperations
+
         return await AdvancedDatabaseOperations.migration_history(
             workspace_path=args["workspace_path"],
             verbose=args.get("verbose", False),
@@ -1069,6 +1163,7 @@ class MCPServer:
     async def _handle_db_seed(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle database seeding."""
         from backend.services.deep_analysis import AdvancedDatabaseOperations
+
         return await AdvancedDatabaseOperations.seed_database(
             workspace_path=args["workspace_path"],
             seed_file=args.get("seed_file"),
@@ -1078,6 +1173,7 @@ class MCPServer:
     async def _handle_debug_analyze_error(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle comprehensive error analysis."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
+
         return await ComprehensiveDebugger.analyze(
             error_output=args["error_output"],
             workspace_path=args.get("workspace_path", "."),
@@ -1087,6 +1183,7 @@ class MCPServer:
     async def _handle_debug_performance(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle performance issue detection."""
         from backend.services.deep_analysis import CodeDebugger
+
         return await CodeDebugger.detect_performance_issues(
             workspace_path=args["workspace_path"],
             file_path=args.get("file_path"),
@@ -1095,6 +1192,7 @@ class MCPServer:
     async def _handle_debug_dead_code(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle dead code detection."""
         from backend.services.deep_analysis import CodeDebugger
+
         return await CodeDebugger.detect_dead_code(
             workspace_path=args["workspace_path"],
         )
@@ -1102,6 +1200,7 @@ class MCPServer:
     async def _handle_debug_circular_deps(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle circular dependency detection."""
         from backend.services.deep_analysis import CodeDebugger
+
         return await CodeDebugger.detect_circular_dependencies(
             workspace_path=args["workspace_path"],
         )
@@ -1109,6 +1208,7 @@ class MCPServer:
     async def _handle_debug_code_smells(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle code smell detection."""
         from backend.services.deep_analysis import CodeDebugger
+
         return await CodeDebugger.detect_code_smells(
             workspace_path=args["workspace_path"],
         )
@@ -1116,6 +1216,7 @@ class MCPServer:
     async def _handle_debug_auto_fix(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle auto-fix generation."""
         from backend.services.deep_analysis import CodeDebugger
+
         return await CodeDebugger.auto_fix(
             workspace_path=args["workspace_path"],
             dry_run=not args.get("apply", False),
@@ -1138,20 +1239,29 @@ class MCPServer:
             # Search file contents
             for root, dirs, files in os.walk(workspace):
                 # Skip hidden and common ignore dirs
-                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ['node_modules', '__pycache__', 'venv']]
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not d.startswith(".")
+                    and d not in ["node_modules", "__pycache__", "venv"]
+                ]
 
                 for file in files:
                     file_path = os.path.join(root, file)
                     try:
-                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        with open(
+                            file_path, "r", encoding="utf-8", errors="ignore"
+                        ) as f:
                             content = f.read()
                             if use_regex:
                                 matches = re.findall(pattern, content)
                                 if matches:
-                                    results.append({
-                                        "file": file_path,
-                                        "matches": len(matches),
-                                    })
+                                    results.append(
+                                        {
+                                            "file": file_path,
+                                            "matches": len(matches),
+                                        }
+                                    )
                             elif pattern in content:
                                 results.append({"file": file_path})
                     except Exception:
@@ -1170,7 +1280,7 @@ class MCPServer:
         end_line = args.get("end_line")
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
             if start_line is not None or end_line is not None:
@@ -1198,7 +1308,7 @@ class MCPServer:
             if create_dirs:
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
             return {"success": True, "file_path": file_path}
@@ -1227,11 +1337,15 @@ class MCPServer:
     async def _handle_analyze_project(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle project analysis."""
         from backend.services.navi_brain import ProjectAnalyzer
+
         return await ProjectAnalyzer.detect_project_type(args["workspace_path"])
 
-    async def _handle_analyze_dependencies(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_analyze_dependencies(
+        self, args: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle dependency analysis."""
         from backend.services.navi_brain import ProjectAnalyzer
+
         return await ProjectAnalyzer.analyze_dependencies(
             workspace_path=args["workspace_path"],
             include_dev=args.get("include_dev", True),
@@ -1241,6 +1355,7 @@ class MCPServer:
     async def _handle_analyze_complexity(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Handle complexity analysis."""
         from backend.services.deep_analysis import CodeDebugger
+
         return await CodeDebugger.analyze_complexity(
             workspace_path=args["workspace_path"],
             threshold=args.get("threshold", 10),
@@ -1263,7 +1378,9 @@ class MCPServer:
     async def start(self):
         """Start the MCP server."""
         self._running = True
-        logger.info(f"Starting MCP server '{self.name}' v{self.version} with {self.transport.value} transport")
+        logger.info(
+            f"Starting MCP server '{self.name}' v{self.version} with {self.transport.value} transport"
+        )
 
         if self.transport == MCPTransport.STDIO:
             await self._run_stdio()
@@ -1328,7 +1445,11 @@ class MCPServer:
                     "content": [
                         {
                             "type": "text",
-                            "text": json.dumps(tool_result.data) if tool_result.success else tool_result.error,
+                            "text": (
+                                json.dumps(tool_result.data)
+                                if tool_result.success
+                                else tool_result.error
+                            ),
                         }
                     ],
                     "isError": not tool_result.success,
@@ -1361,6 +1482,7 @@ def get_mcp_server() -> MCPServer:
     global _mcp_server
     if _mcp_server is None:
         from backend.core.config import settings
+
         _mcp_server = MCPServer(
             name=settings.mcp_server_name,
             version=settings.mcp_server_version,

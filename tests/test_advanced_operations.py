@@ -125,7 +125,11 @@ class TestAdvancedGitOperations:
                 os.system(f"cd {tmpdir} && git add . && git commit -m 'Commit {i}' -q")
 
             # Get first commit hash
-            first_commit = os.popen(f"cd {tmpdir} && git rev-list --max-parents=0 HEAD").read().strip()
+            first_commit = (
+                os.popen(f"cd {tmpdir} && git rev-list --max-parents=0 HEAD")
+                .read()
+                .strip()
+            )
 
             # Start bisect
             start_result = await AdvancedGitOperations.bisect_start(
@@ -205,7 +209,8 @@ class TestAdvancedDatabaseOperations:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a models file
             models_file = Path(tmpdir) / "models.py"
-            models_file.write_text('''
+            models_file.write_text(
+                """
 from sqlalchemy import Column, Integer, String
 from database import Base
 
@@ -219,7 +224,8 @@ class Post(Base):
     __tablename__ = "posts"
     id = Column(Integer, primary_key=True)
     title = Column(String(200))
-''')
+"""
+            )
 
             result = await AdvancedDatabaseOperations.schema_diff(tmpdir)
 
@@ -259,7 +265,9 @@ class Post(Base):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Without confirm=True
-            result = await AdvancedDatabaseOperations.reset_database(tmpdir, confirm=False)
+            result = await AdvancedDatabaseOperations.reset_database(
+                tmpdir, confirm=False
+            )
 
             assert not result.get("success")
             assert "confirm" in result.get("message", "").lower() or "warning" in result
@@ -273,14 +281,14 @@ class TestCodeDebugger:
         """Test analyzing Python traceback."""
         from backend.services.deep_analysis import CodeDebugger
 
-        traceback = '''
+        traceback = """
 Traceback (most recent call last):
   File "/app/main.py", line 10, in main
     result = process_data(data)
   File "/app/processor.py", line 25, in process_data
     return data["key"]
 KeyError: 'key'
-'''
+"""
 
         result = await CodeDebugger.analyze_errors(".", None, traceback)
 
@@ -296,11 +304,11 @@ KeyError: 'key'
         """Test analyzing JavaScript error."""
         from backend.services.deep_analysis import CodeDebugger
 
-        traceback = '''
+        traceback = """
 TypeError: Cannot read property 'map' of undefined
     at processItems (/app/utils.js:15:20)
     at main (/app/index.js:42:10)
-'''
+"""
 
         result = await CodeDebugger.analyze_errors(".", None, traceback)
 
@@ -317,7 +325,8 @@ TypeError: Cannot read property 'map' of undefined
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a Python file with performance issues
             py_file = Path(tmpdir) / "app.py"
-            py_file.write_text('''
+            py_file.write_text(
+                """
 import *
 from typing import List
 
@@ -331,7 +340,8 @@ def process_data(items):
     data = open("large_file.txt").read()  # Reads entire file
 
     return result
-''')
+"""
+            )
 
             result = await CodeDebugger.detect_performance_issues(tmpdir)
 
@@ -347,7 +357,8 @@ def process_data(items):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a file with potentially unused function
             py_file = Path(tmpdir) / "utils.py"
-            py_file.write_text('''
+            py_file.write_text(
+                '''
 def used_function():
     return 42
 
@@ -356,7 +367,8 @@ def unused_helper():
     return "never used"
 
 result = used_function()
-''')
+'''
+            )
 
             result = await CodeDebugger.detect_dead_code(tmpdir)
 
@@ -370,18 +382,22 @@ result = used_function()
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create files that could have circular deps
-            (Path(tmpdir) / "module_a.py").write_text('''
+            (Path(tmpdir) / "module_a.py").write_text(
+                """
 from module_b import function_b
 
 def function_a():
     return function_b()
-''')
-            (Path(tmpdir) / "module_b.py").write_text('''
+"""
+            )
+            (Path(tmpdir) / "module_b.py").write_text(
+                """
 from module_a import function_a
 
 def function_b():
     return "b"
-''')
+"""
+            )
 
             result = await CodeDebugger.detect_circular_dependencies(tmpdir)
 
@@ -396,7 +412,8 @@ def function_b():
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a file with code smells
             py_file = Path(tmpdir) / "smelly.py"
-            py_file.write_text('''
+            py_file.write_text(
+                """
 password = "hardcoded123"
 api_key = "sk-12345abcdef"
 
@@ -407,7 +424,8 @@ def process():
         pass  # Empty catch
 
     magic_value = 86400  # Magic number
-''')
+"""
+            )
 
             result = await CodeDebugger.detect_code_smells(tmpdir)
 
@@ -423,8 +441,10 @@ def process():
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a file with fixable issue
             py_file = Path(tmpdir) / "fixable.py"
-            py_file.write_text('''print("debug message")
-''')
+            py_file.write_text(
+                """print("debug message")
+"""
+            )
 
             result = await CodeDebugger.auto_fix(
                 tmpdir, "fixable.py", "print_statement", 1, dry_run=True
@@ -488,12 +508,12 @@ class TestProjectAnalyzerIntegration:
         """Test error analysis through ProjectAnalyzer."""
         from backend.services.navi_brain import ProjectAnalyzer
 
-        traceback = '''
+        traceback = """
 Traceback (most recent call last):
   File "test.py", line 1, in <module>
     raise ValueError("test error")
 ValueError: test error
-'''
+"""
 
         result = await ProjectAnalyzer.analyze_error(".", traceback=traceback)
         assert isinstance(result, dict)
@@ -507,7 +527,9 @@ class TestErrorSuggestions:
         """Test suggestions for ImportError."""
         from backend.services.deep_analysis import CodeDebugger
 
-        suggestions = CodeDebugger._get_error_suggestions("ImportError", "No module named 'foo'", "python")
+        suggestions = CodeDebugger._get_error_suggestions(
+            "ImportError", "No module named 'foo'", "python"
+        )
         assert len(suggestions) >= 1
         assert any("install" in s.lower() or "import" in s.lower() for s in suggestions)
 
@@ -515,7 +537,9 @@ class TestErrorSuggestions:
         """Test suggestions for KeyError."""
         from backend.services.deep_analysis import CodeDebugger
 
-        suggestions = CodeDebugger._get_error_suggestions("KeyError", "'missing_key'", "python")
+        suggestions = CodeDebugger._get_error_suggestions(
+            "KeyError", "'missing_key'", "python"
+        )
         assert len(suggestions) >= 1
         assert any("key" in s.lower() or "get" in s.lower() for s in suggestions)
 
@@ -523,7 +547,9 @@ class TestErrorSuggestions:
         """Test suggestions for ConnectionError."""
         from backend.services.deep_analysis import CodeDebugger
 
-        suggestions = CodeDebugger._get_error_suggestions("ConnectionError", "Connection refused", "python")
+        suggestions = CodeDebugger._get_error_suggestions(
+            "ConnectionError", "Connection refused", "python"
+        )
         assert len(suggestions) >= 1
         assert any("network" in s.lower() or "retry" in s.lower() for s in suggestions)
 
@@ -536,7 +562,7 @@ class TestMultiLanguageErrorAnalysis:
         """Test analyzing Go panic."""
         from backend.services.deep_analysis import CodeDebugger
 
-        traceback = '''
+        traceback = """
 panic: runtime error: index out of range [5] with length 3
 
 goroutine 1 [running]:
@@ -544,7 +570,7 @@ main.processData(0xc0000b4000, 0x3, 0x3, 0x5)
         /app/main.go:25 +0x123
 main.main()
         /app/main.go:15 +0x45
-'''
+"""
 
         result = await CodeDebugger.analyze_errors(".", None, traceback)
 
@@ -562,10 +588,10 @@ main.main()
         """Test analyzing Rust panic."""
         from backend.services.deep_analysis import CodeDebugger
 
-        traceback = '''
+        traceback = """
 thread 'main' panicked at 'called `Option::unwrap()` on a `None` value', src/main.rs:10:5
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-'''
+"""
 
         result = await CodeDebugger.analyze_errors(".", None, traceback)
 
@@ -581,14 +607,14 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
         """Test analyzing Java exception."""
         from backend.services.deep_analysis import CodeDebugger
 
-        traceback = '''
+        traceback = """
 java.lang.NullPointerException: Cannot invoke method on null object
     at com.example.UserService.getUser(UserService.java:42)
     at com.example.Controller.handleRequest(Controller.java:28)
     at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:897)
 Caused by: java.lang.IllegalStateException: Database connection not initialized
     at com.example.Database.connect(Database.java:15)
-'''
+"""
 
         result = await CodeDebugger.analyze_errors(".", None, traceback)
 
@@ -606,12 +632,12 @@ Caused by: java.lang.IllegalStateException: Database connection not initialized
         """Test analyzing Ruby exception."""
         from backend.services.deep_analysis import CodeDebugger
 
-        traceback = '''
+        traceback = """
 NoMethodError: undefined method `name' for nil:NilClass
     from /app/models/user.rb:15:in `display_name'
     from /app/controllers/users_controller.rb:28:in `show'
     from /app/lib/router.rb:42:in `dispatch'
-'''
+"""
 
         result = await CodeDebugger.analyze_errors(".", None, traceback)
 
@@ -627,11 +653,11 @@ NoMethodError: undefined method `name' for nil:NilClass
         """Test analyzing C# exception."""
         from backend.services.deep_analysis import CodeDebugger
 
-        traceback = '''
+        traceback = """
 System.NullReferenceException: Object reference not set to an instance of an object.
    at MyApp.Services.UserService.GetUser(Int32 id) in C:\\Projects\\MyApp\\Services\\UserService.cs:line 45
    at MyApp.Controllers.UserController.Get(Int32 id) in C:\\Projects\\MyApp\\Controllers\\UserController.cs:line 22
-'''
+"""
 
         result = await CodeDebugger.analyze_errors(".", None, traceback)
 
@@ -647,14 +673,14 @@ System.NullReferenceException: Object reference not set to an instance of an obj
         """Test analyzing PHP error."""
         from backend.services.deep_analysis import CodeDebugger
 
-        traceback = '''
+        traceback = """
 Fatal error: Uncaught TypeError: count(): Argument #1 ($value) must be of type Countable|array, null given in /var/www/app/src/UserService.php on line 45
 
 Stack trace:
 #0 /var/www/app/src/UserService.php(45): count(NULL)
 #1 /var/www/app/src/Controller.php(28): UserService->getUsers()
 #2 /var/www/app/public/index.php(15): Controller->handle()
-'''
+"""
 
         result = await CodeDebugger.analyze_errors(".", None, traceback)
 
@@ -667,7 +693,9 @@ Stack trace:
         """Test Go-specific error suggestions."""
         from backend.services.deep_analysis import CodeDebugger
 
-        suggestions = CodeDebugger._get_error_suggestions("panic", "nil pointer dereference", "go")
+        suggestions = CodeDebugger._get_error_suggestions(
+            "panic", "nil pointer dereference", "go"
+        )
         assert len(suggestions) >= 1
         assert any("nil" in s.lower() or "recover" in s.lower() for s in suggestions)
 
@@ -675,7 +703,9 @@ Stack trace:
         """Test Rust-specific error suggestions."""
         from backend.services.deep_analysis import CodeDebugger
 
-        suggestions = CodeDebugger._get_error_suggestions("panic", "unwrap on None", "rust")
+        suggestions = CodeDebugger._get_error_suggestions(
+            "panic", "unwrap on None", "rust"
+        )
         assert len(suggestions) >= 1
         assert any("result" in s.lower() or "unwrap" in s.lower() for s in suggestions)
 
@@ -683,7 +713,9 @@ Stack trace:
         """Test Java-specific error suggestions."""
         from backend.services.deep_analysis import CodeDebugger
 
-        suggestions = CodeDebugger._get_error_suggestions("NullPointerException", "null object", "java")
+        suggestions = CodeDebugger._get_error_suggestions(
+            "NullPointerException", "null object", "java"
+        )
         assert len(suggestions) >= 1
         assert any("null" in s.lower() or "optional" in s.lower() for s in suggestions)
 
@@ -691,7 +723,9 @@ Stack trace:
         """Test C#-specific error suggestions."""
         from backend.services.deep_analysis import CodeDebugger
 
-        suggestions = CodeDebugger._get_error_suggestions("NullReferenceException", "object reference", "csharp")
+        suggestions = CodeDebugger._get_error_suggestions(
+            "NullReferenceException", "object reference", "csharp"
+        )
         assert len(suggestions) >= 1
         assert any("null" in s.lower() for s in suggestions)
 
@@ -703,6 +737,7 @@ def run_all_tests():
     print("=" * 60)
 
     import sys
+
     sys.exit(pytest.main([__file__, "-v", "--tb=short"]))
 
 

@@ -21,14 +21,14 @@ class TestPythonParsing:
         """Test Python traceback parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        traceback = '''
+        traceback = """
 Traceback (most recent call last):
   File "/app/main.py", line 10, in main
     result = process_data(data)
   File "/app/processor.py", line 25, in process_data
     return data["key"]
 KeyError: 'key'
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_python_error(traceback, ".")
 
@@ -44,12 +44,12 @@ KeyError: 'key'
         """Test Python syntax error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
   File "test.py", line 5
     print("hello"
                ^
 SyntaxError: unexpected EOF while parsing
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_python_error(output, ".")
 
@@ -61,10 +61,10 @@ SyntaxError: unexpected EOF while parsing
         """Test pytest failure parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 FAILED tests/test_app.py::test_login - AssertionError: expected True
 FAILED tests/test_app.py::test_signup - ValueError: invalid email
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_pytest_output(output, ".")
 
@@ -76,11 +76,11 @@ FAILED tests/test_app.py::test_signup - ValueError: invalid email
         """Test mypy output parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 app.py:10: error: Incompatible types in assignment (expression has type "str", variable has type "int")
 app.py:15:5: error: Function is missing a return type annotation
 app.py:20: warning: Unused variable "x"
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_mypy_output(output, ".")
 
@@ -92,11 +92,11 @@ app.py:20: warning: Unused variable "x"
         """Test pylint output parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 app.py:10:0: E0001: Syntax error in type comment (syntax-error)
 app.py:15:4: W0611: Unused import os (unused-import)
 app.py:20:0: C0114: Missing module docstring (missing-module-docstring)
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_pylint_output(output, ".")
 
@@ -113,12 +113,12 @@ class TestJavaScriptParsing:
         """Test JavaScript error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 TypeError: Cannot read property 'map' of undefined
     at processItems (/app/utils.js:15:20)
     at main (/app/index.js:42:10)
     at Object.<anonymous> (/app/index.js:50:1)
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_javascript_error(output, ".")
 
@@ -133,11 +133,11 @@ TypeError: Cannot read property 'map' of undefined
         """Test TypeScript compiler error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 src/app.ts(10,5): error TS2322: Type 'string' is not assignable to type 'number'.
 src/app.ts(15,10): error TS2339: Property 'foo' does not exist on type 'Bar'.
 src/utils.ts(5,1): warning TS6133: 'x' is declared but its value is never read.
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_typescript_error(output, ".")
 
@@ -150,14 +150,14 @@ src/utils.ts(5,1): warning TS6133: 'x' is declared but its value is never read.
         """Test ESLint output parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 /app/src/app.js
   10:5   error  'foo' is not defined          no-undef
   15:10  warning  Unexpected console statement  no-console
 
 /app/src/utils.js
   5:1  error  Missing semicolon  semi
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_eslint_output(output, ".")
 
@@ -169,14 +169,14 @@ src/utils.ts(5,1): warning TS6133: 'x' is declared but its value is never read.
         """Test Jest test output parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 ● Login Component › should render login form
 
   expect(received).toBe(expected)
 
   Expected: true
   Received: false
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_jest_output(output, ".")
 
@@ -192,7 +192,7 @@ class TestGoParsing:
         """Test Go panic parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 panic: runtime error: index out of range [5] with length 3
 
 goroutine 1 [running]:
@@ -200,7 +200,7 @@ main.processData(0xc0000b4000, 0x3, 0x3, 0x5)
         /app/main.go:25 +0x123
 main.main()
         /app/main.go:15 +0x45
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_go_error(output, ".")
 
@@ -216,11 +216,11 @@ main.main()
         """Test Go compiler error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 ./main.go:10:5: undefined: foo
 ./main.go:15:10: cannot use "hello" (type string) as type int
 ./utils.go:5:1: imported and not used: "fmt"
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_go_compiler_error(output, ".")
 
@@ -233,12 +233,12 @@ main.main()
         """Test go test output parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 --- FAIL: TestProcessData (0.01s)
     main_test.go:15: expected 10, got 5
 --- FAIL: TestValidate (0.02s)
     validate_test.go:20: validation failed
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_go_test_output(output, ".")
 
@@ -254,10 +254,10 @@ class TestRustParsing:
         """Test Rust panic parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 thread 'main' panicked at 'called `Option::unwrap()` on a `None` value', src/main.rs:10:5
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_rust_error(output, ".")
 
@@ -272,7 +272,7 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
         """Test Rust compiler error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 error[E0382]: borrow of moved value: `x`
   --> src/main.rs:5:10
    |
@@ -282,7 +282,7 @@ error[E0382]: borrow of moved value: `x`
    |             - value moved here
 5  |     println!("{}", x);
    |                    ^ value borrowed here after move
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_rustc_error(output, ".")
 
@@ -295,7 +295,7 @@ error[E0382]: borrow of moved value: `x`
         """Test cargo test output parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 running 3 tests
 test tests::test_add ... ok
 test tests::test_sub ... FAILED
@@ -304,7 +304,7 @@ test tests::test_mul ... FAILED
 failures:
     tests::test_sub
     tests::test_mul
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_cargo_test_output(output, ".")
 
@@ -320,14 +320,14 @@ class TestJavaParsing:
         """Test Java exception parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 java.lang.NullPointerException: Cannot invoke method on null object
     at com.example.UserService.getUser(UserService.java:42)
     at com.example.Controller.handleRequest(Controller.java:28)
     at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:897)
 Caused by: java.lang.IllegalStateException: Database connection not initialized
     at com.example.Database.connect(Database.java:15)
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_java_error(output, ".")
 
@@ -343,14 +343,14 @@ Caused by: java.lang.IllegalStateException: Database connection not initialized
         """Test javac compiler error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 App.java:10: error: cannot find symbol
         foo.bar();
            ^
   symbol:   method bar()
   location: variable foo of type Foo
 App.java:15: warning: [deprecation] oldMethod() in Utils has been deprecated
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_javac_error(output, ".")
 
@@ -362,10 +362,10 @@ App.java:15: warning: [deprecation] oldMethod() in Utils has been deprecated
         """Test Maven build error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 [ERROR] /project/src/main/java/App.java:[10,5] cannot find symbol
 [ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.8.1:compile
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_maven_error(output, ".")
 
@@ -381,9 +381,9 @@ class TestCCppParsing:
         """Test segmentation fault detection."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 Segmentation fault (core dumped)
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_c_cpp_error(output, ".")
 
@@ -396,11 +396,11 @@ Segmentation fault (core dumped)
         """Test GCC compiler error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 main.c:10:5: error: implicit declaration of function 'foo'
 main.c:15:10: warning: unused variable 'x' [-Wunused-variable]
 main.cpp:20:8: error: 'Bar' was not declared in this scope
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_gcc_clang_error(output, ".")
 
@@ -413,13 +413,13 @@ main.cpp:20:8: error: 'Bar' was not declared in this scope
         """Test Valgrind output parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 ==12345== 40 bytes in 1 blocks are definitely lost in loss record 1 of 1
 ==12345==    at 0x4C2FB0F: malloc (in /usr/lib/valgrind/vgpreload_memcheck-amd64-linux.so)
 ==12345==    by 0x108681: main (main.c:10)
 ==12345== Invalid read of size 4
 ==12345==    at 0x108690: process (utils.c:15)
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_valgrind_output(output, ".")
 
@@ -432,9 +432,9 @@ main.cpp:20:8: error: 'Bar' was not declared in this scope
         """Test AddressSanitizer output parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 ==12345==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000000014
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_sanitizer_output(output, ".")
 
@@ -450,11 +450,11 @@ class TestOtherLanguages:
         """Test Ruby exception parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 NoMethodError: undefined method `name' for nil:NilClass
     from /app/models/user.rb:15:in `display_name'
     from /app/controllers/users_controller.rb:28:in `show'
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_ruby_error(output, ".")
 
@@ -467,13 +467,13 @@ NoMethodError: undefined method `name' for nil:NilClass
         """Test PHP error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 Fatal error: Uncaught TypeError: count(): Argument #1 must be countable in /var/www/app/src/UserService.php on line 45
 
 Stack trace:
 #0 /var/www/app/src/UserService.php(45): count(NULL)
 #1 /var/www/app/src/Controller.php(28): UserService->getUsers()
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_php_error(output, ".")
 
@@ -486,11 +486,11 @@ Stack trace:
         """Test C# exception parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 System.NullReferenceException: Object reference not set to an instance of an object.
    at MyApp.Services.UserService.GetUser(Int32 id) in C:\\Projects\\MyApp\\Services\\UserService.cs:line 45
    at MyApp.Controllers.UserController.Get(Int32 id) in C:\\Projects\\MyApp\\Controllers\\UserController.cs:line 22
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_csharp_error(output, ".")
 
@@ -503,9 +503,9 @@ System.NullReferenceException: Object reference not set to an instance of an obj
         """Test Swift error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 Fatal error: Unexpectedly found nil while unwrapping an Optional value
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_swift_error(output, ".")
 
@@ -517,11 +517,11 @@ Fatal error: Unexpectedly found nil while unwrapping an Optional value
         """Test Scala compiler error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 App.scala:10: error: type mismatch;
  found   : String
  required: Int
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_scala_error(output, ".")
 
@@ -533,9 +533,9 @@ App.scala:10: error: type mismatch;
         """Test Elixir error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 ** (CompileError) lib/app.ex:10: undefined function foo/1
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_elixir_error(output, ".")
 
@@ -547,10 +547,10 @@ App.scala:10: error: type mismatch;
         """Test Haskell/GHC error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 Main.hs:10:5: error:
     • Variable not in scope: foo :: Int -> Int
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_haskell_error(output, ".")
 
@@ -562,9 +562,9 @@ Main.hs:10:5: error:
         """Test Dart analyzer error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 lib/main.dart:10:5 • The argument type 'String' can't be assigned to the parameter type 'int' • argument_type_not_assignable
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_dart_error(output, ".")
 
@@ -580,13 +580,13 @@ class TestBuildSystemParsing:
         """Test npm error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 npm ERR! code ENOENT
 npm ERR! syscall open
 npm ERR! path /app/package.json
 npm ERR! errno -2
 npm ERR! enoent ENOENT: no such file or directory
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_npm_error(output, ".")
 
@@ -598,10 +598,10 @@ npm ERR! enoent ENOENT: no such file or directory
         """Test pip error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 ERROR: Could not find a version that satisfies the requirement nonexistent-package
 ERROR: No matching distribution found for nonexistent-package
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_pip_error(output, ".")
 
@@ -613,10 +613,10 @@ ERROR: No matching distribution found for nonexistent-package
         """Test Cargo build error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 error[E0433]: failed to resolve: use of undeclared crate or module `foo`
 error: aborting due to previous error
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_cargo_error(output, ".")
 
@@ -628,10 +628,10 @@ error: aborting due to previous error
         """Test CMake error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 CMake Error at CMakeLists.txt:10 (find_package):
   Could not find a package configuration file provided by "Boost"
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_cmake_error(output, ".")
 
@@ -643,9 +643,9 @@ CMake Error at CMakeLists.txt:10 (find_package):
         """Test Make error parsing."""
         from backend.services.comprehensive_debugger import ComprehensiveDebugger
 
-        output = '''
+        output = """
 make: *** [Makefile:10: build] Error 2
-'''
+"""
 
         errors = ComprehensiveDebugger._parse_make_error(output, ".")
 
@@ -661,12 +661,12 @@ class TestComprehensiveAnalysis:
         """Test full comprehensive analysis."""
         from backend.services.comprehensive_debugger import analyze_errors
 
-        error_output = '''
+        error_output = """
 Traceback (most recent call last):
   File "app.py", line 10, in main
     result = process()
 TypeError: process() missing 1 required argument
-'''
+"""
 
         result = await analyze_errors(error_output, ".")
 
@@ -680,10 +680,10 @@ TypeError: process() missing 1 required argument
         """Test integration with ProjectAnalyzer."""
         from backend.services.navi_brain import ProjectAnalyzer
 
-        error_output = '''
+        error_output = """
 TypeError: Cannot read property 'length' of undefined
     at processItems (/app/utils.js:15:20)
-'''
+"""
 
         result = await ProjectAnalyzer.analyze_error_comprehensive(".", error_output)
 
@@ -736,6 +736,7 @@ def run_all_tests():
     print("=" * 60)
 
     import sys
+
     sys.exit(pytest.main([__file__, "-v", "--tb=short"]))
 
 

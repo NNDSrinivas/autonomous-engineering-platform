@@ -34,6 +34,7 @@ from backend.core.db import Base
 # pgvector support
 try:
     from pgvector.sqlalchemy import Vector
+
     HAS_PGVECTOR = True
 except ImportError:
     HAS_PGVECTOR = False
@@ -137,7 +138,9 @@ class UserPreferences(Base):
     user = relationship("DBUser", backref="preferences", uselist=False)
 
     def __repr__(self) -> str:
-        return f"<UserPreferences(user_id={self.user_id}, lang={self.preferred_language})>"
+        return (
+            f"<UserPreferences(user_id={self.user_id}, lang={self.preferred_language})>"
+        )
 
 
 class UserActivity(Base):
@@ -286,7 +289,9 @@ class UserPattern(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("user_id", "pattern_type", "pattern_key", name="uq_user_pattern"),
+        UniqueConstraint(
+            "user_id", "pattern_type", "pattern_key", name="uq_user_pattern"
+        ),
         Index("idx_user_pattern_type", "user_id", "pattern_type"),
     )
 
@@ -450,9 +455,7 @@ class OrgKnowledge(Base):
         onupdate=func.now(),
     )
 
-    __table_args__ = (
-        Index("idx_org_knowledge_org_type", "org_id", "knowledge_type"),
-    )
+    __table_args__ = (Index("idx_org_knowledge_org_type", "org_id", "knowledge_type"),)
 
     def __repr__(self) -> str:
         return f"<OrgKnowledge(id={self.id}, title={self.title[:30]}...)>"
@@ -529,7 +532,9 @@ class OrgStandard(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("org_id", "standard_type", "standard_name", name="uq_org_standard"),
+        UniqueConstraint(
+            "org_id", "standard_type", "standard_name", name="uq_org_standard"
+        ),
         Index("idx_org_standard_type", "org_id", "standard_type"),
     )
 
@@ -600,7 +605,9 @@ class OrgContext(Base):
     parent = relationship("OrgContext", remote_side=[id], backref="children")
 
     __table_args__ = (
-        UniqueConstraint("org_id", "context_type", "context_key", name="uq_org_context"),
+        UniqueConstraint(
+            "org_id", "context_type", "context_key", name="uq_org_context"
+        ),
         Index("idx_org_context_type", "org_id", "context_type"),
     )
 
@@ -843,9 +850,7 @@ class ConversationSummary(Base):
         back_populates="summaries",
     )
 
-    __table_args__ = (
-        Index("idx_summary_conversation", "conversation_id"),
-    )
+    __table_args__ = (Index("idx_summary_conversation", "conversation_id"),)
 
     def __repr__(self) -> str:
         return f"<ConversationSummary(id={self.id}, messages={self.message_count})>"
@@ -946,7 +951,9 @@ class CodebaseIndex(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("user_id", "workspace_path", name="uq_codebase_user_workspace"),
+        UniqueConstraint(
+            "user_id", "workspace_path", name="uq_codebase_user_workspace"
+        ),
         Index("idx_codebase_status", "index_status"),
         Index("idx_codebase_org", "org_id"),
     )

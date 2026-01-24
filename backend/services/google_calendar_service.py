@@ -91,7 +91,8 @@ class GoogleCalendarService(ConnectorServiceBase):
                 url=event.get("htmlLink", ""),
                 metadata={
                     "start": start_time,
-                    "end": event.get("end", {}).get("dateTime") or event.get("end", {}).get("date", ""),
+                    "end": event.get("end", {}).get("dateTime")
+                    or event.get("end", {}).get("date", ""),
                     "status": event.get("status"),
                     "organizer": event.get("organizer", {}).get("email"),
                     "location": event.get("location"),
@@ -167,8 +168,10 @@ class GoogleCalendarService(ConnectorServiceBase):
             {
                 "id": e.get("id", ""),
                 "summary": e.get("summary", "Untitled Event"),
-                "start": e.get("start", {}).get("dateTime") or e.get("start", {}).get("date", ""),
-                "end": e.get("end", {}).get("dateTime") or e.get("end", {}).get("date", ""),
+                "start": e.get("start", {}).get("dateTime")
+                or e.get("start", {}).get("date", ""),
+                "end": e.get("end", {}).get("dateTime")
+                or e.get("end", {}).get("date", ""),
                 "location": e.get("location", ""),
                 "description": e.get("description", ""),
                 "status": e.get("status", ""),

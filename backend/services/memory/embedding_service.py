@@ -46,7 +46,9 @@ class EmbeddingService:
             max_tokens: Maximum tokens per embedding request
         """
         settings = get_settings()
-        self.model = model or getattr(settings, "embedding_model", "text-embedding-3-small")
+        self.model = model or getattr(
+            settings, "embedding_model", "text-embedding-3-small"
+        )
         self.dimensions = dimensions
         self.max_tokens = max_tokens
         self._client = None
@@ -62,6 +64,7 @@ class EmbeddingService:
         if self._client is None:
             try:
                 from openai import OpenAI
+
                 settings = get_settings()
                 self._client = OpenAI(api_key=settings.openai_api_key)
             except ImportError:
@@ -195,7 +198,7 @@ class EmbeddingService:
         # Batch embed remaining texts
         if texts_to_embed:
             for batch_start in range(0, len(texts_to_embed), batch_size):
-                batch = texts_to_embed[batch_start:batch_start + batch_size]
+                batch = texts_to_embed[batch_start : batch_start + batch_size]
                 batch_texts = [t[1] for t in batch]
 
                 try:

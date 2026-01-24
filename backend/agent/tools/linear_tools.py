@@ -257,12 +257,14 @@ async def create_linear_issue(
         if result.success:
             sources = []
             if result.url:
-                sources.append({
-                    "name": f"{result.external_id}: {title[:50]}",
-                    "type": "linear",
-                    "connector": "linear",
-                    "url": result.url,
-                })
+                sources.append(
+                    {
+                        "name": f"{result.external_id}: {title[:50]}",
+                        "type": "linear",
+                        "connector": "linear",
+                        "url": result.url,
+                    }
+                )
 
             output = "Successfully created Linear issue:\n\n"
             output += f"• **{result.external_id}**: {title}\n"
@@ -283,9 +285,7 @@ async def create_linear_issue(
 
     except Exception as exc:
         linear_logger.error("linear_tools.create_issue.error", error=str(exc))
-        return ToolResult(
-            output=f"Error creating Linear issue: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error creating Linear issue: {str(exc)}", sources=[])
 
 
 async def update_linear_issue_status(
@@ -418,9 +418,7 @@ async def list_linear_teams(context: Dict[str, Any]) -> "ToolResult":
 
     except Exception as exc:
         linear_logger.error("linear_tools.list_teams.error", error=str(exc))
-        return ToolResult(
-            output=f"Error listing Linear teams: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error listing Linear teams: {str(exc)}", sources=[])
 
 
 # Tool function registry for NAVI

@@ -398,7 +398,9 @@ class UserMemoryService:
         Returns:
             Dictionary of coding style patterns
         """
-        patterns = self.get_patterns(user_id, pattern_type="coding_style", min_confidence=0.5)
+        patterns = self.get_patterns(
+            user_id, pattern_type="coding_style", min_confidence=0.5
+        )
 
         style = {}
         for p in patterns:
@@ -546,7 +548,9 @@ class UserMemoryService:
         for pattern in patterns:
             if pattern.pattern_type not in context["patterns"]:
                 context["patterns"][pattern.pattern_type] = {}
-            context["patterns"][pattern.pattern_type][pattern.pattern_key] = pattern.pattern_data
+            context["patterns"][pattern.pattern_type][
+                pattern.pattern_key
+            ] = pattern.pattern_data
 
         return context
 

@@ -90,7 +90,9 @@ async def list_upcoming_events(
                 lines.append(f"  - [Open in Calendar]({url})")
 
             if url:
-                sources.append({"type": "google_calendar_event", "name": summary, "url": url})
+                sources.append(
+                    {"type": "google_calendar_event", "name": summary, "url": url}
+                )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -156,7 +158,11 @@ async def get_todays_events(
                 except Exception:
                     end_time = ""
 
-                time_str = f"{start_time} - {end_time}" if start_time and end_time else start_time
+                time_str = (
+                    f"{start_time} - {end_time}"
+                    if start_time and end_time
+                    else start_time
+                )
             else:
                 time_str = "All day"
 
@@ -172,7 +178,9 @@ async def get_todays_events(
             lines.append("")
 
             if url:
-                sources.append({"type": "google_calendar_event", "name": summary, "url": url})
+                sources.append(
+                    {"type": "google_calendar_event", "name": summary, "url": url}
+                )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -259,7 +267,9 @@ async def get_event_details(
 
         sources = []
         if url:
-            sources.append({"type": "google_calendar_event", "name": summary, "url": url})
+            sources.append(
+                {"type": "google_calendar_event", "name": summary, "url": url}
+            )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 

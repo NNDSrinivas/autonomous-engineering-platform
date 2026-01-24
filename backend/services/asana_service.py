@@ -169,14 +169,18 @@ class AsanaService(ConnectorServiceBase):
                                 if full_task.get("created_at"):
                                     try:
                                         created_at = datetime.fromisoformat(
-                                            full_task["created_at"].replace("Z", "+00:00")
+                                            full_task["created_at"].replace(
+                                                "Z", "+00:00"
+                                            )
                                         )
                                     except Exception:
                                         pass
                                 if full_task.get("modified_at"):
                                     try:
                                         updated_at = datetime.fromisoformat(
-                                            full_task["modified_at"].replace("Z", "+00:00")
+                                            full_task["modified_at"].replace(
+                                                "Z", "+00:00"
+                                            )
                                         )
                                     except Exception:
                                         pass
@@ -206,7 +210,8 @@ class AsanaService(ConnectorServiceBase):
                                     title=full_task.get("name"),
                                     description=full_task.get("notes"),
                                     status=status,
-                                    url=full_task.get("permalink_url") or f"https://app.asana.com/0/{external_id}",
+                                    url=full_task.get("permalink_url")
+                                    or f"https://app.asana.com/0/{external_id}",
                                     assignee=assignee,
                                     user_id=user_id,
                                     org_id=org_id,
@@ -332,7 +337,8 @@ class AsanaService(ConnectorServiceBase):
                         success=True,
                         item_id=task.get("gid"),
                         external_id=task.get("gid"),
-                        url=task.get("permalink_url") or f"https://app.asana.com/0/{task.get('gid')}",
+                        url=task.get("permalink_url")
+                        or f"https://app.asana.com/0/{task.get('gid')}",
                         data=task,
                     )
 
@@ -340,7 +346,8 @@ class AsanaService(ConnectorServiceBase):
                     task_gid = data.get("task_gid")
                     if not task_gid:
                         return WriteResult(
-                            success=False, error="task_gid is required for complete_task"
+                            success=False,
+                            error="task_gid is required for complete_task",
                         )
 
                     task = await client.update_task(task_gid, completed=True)
@@ -381,9 +388,7 @@ class AsanaService(ConnectorServiceBase):
                     )
 
                 else:
-                    return WriteResult(
-                        success=False, error=f"Unknown action: {action}"
-                    )
+                    return WriteResult(success=False, error=f"Unknown action: {action}")
 
         except Exception as e:
             logger.error("asana_service.write_item.error", error=str(e))

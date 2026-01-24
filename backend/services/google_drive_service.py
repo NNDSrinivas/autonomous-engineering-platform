@@ -195,7 +195,9 @@ class GoogleDriveService(ConnectorServiceBase):
                 query_parts.append(f"mimeType = '{mime_type_map[file_type]}'")
 
         query = " and ".join(query_parts)
-        return await cls.list_files(db, connection, query=query, max_results=max_results)
+        return await cls.list_files(
+            db, connection, query=query, max_results=max_results
+        )
 
     @classmethod
     async def get_file_content(

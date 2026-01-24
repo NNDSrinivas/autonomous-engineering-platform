@@ -165,8 +165,14 @@ MODEL_ALIASES: Dict[str, Dict[str, str]] = {
     "openai/gpt-4o": {"provider": "openai", "model": "gpt-4o"},
     "openai/gpt-4o-mini": {"provider": "openai", "model": "gpt-4o-mini"},
     # Anthropic models
-    "anthropic/claude-sonnet-4": {"provider": "anthropic", "model": "claude-3-5-sonnet-20241022"},
-    "anthropic/claude-opus-4": {"provider": "anthropic", "model": "claude-opus-4-20250514"},
+    "anthropic/claude-sonnet-4": {
+        "provider": "anthropic",
+        "model": "claude-3-5-sonnet-20241022",
+    },
+    "anthropic/claude-opus-4": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-20250514",
+    },
     # Google models
     "google/gemini-2.5-pro": {"provider": "google", "model": "gemini-2.0-flash-exp"},
     "google/gemini-2.5-flash": {"provider": "google", "model": "gemini-2.0-flash-exp"},
@@ -193,6 +199,7 @@ def _resolve_model(model: Optional[str]) -> str:
         return model_name  # Return the model part
 
     return model  # Return as-is if not an alias
+
 
 router = APIRouter(prefix="/api/navi", tags=["navi-extension"])
 agent_router = APIRouter(prefix="/api/agent", tags=["agent-classify"])
@@ -582,7 +589,9 @@ async def generate_plan(request: PlanRequest) -> Dict[str, Any]:
             run_state = RunState(
                 run_id=run_id,
                 user_message=request.message,
-                intent=NaviIntent(kind=intent_kind, confidence=1.0, raw_text=request.message),
+                intent=NaviIntent(
+                    kind=intent_kind, confidence=1.0, raw_text=request.message
+                ),
                 context=ContextPack(
                     workspaceRoot=request.context.get("workspace", {}).get("root", ""),
                     errors=[],
@@ -619,6 +628,7 @@ async def generate_plan(request: PlanRequest) -> Dict[str, Any]:
 # Phase 4.1.2: Next Step Execution Endpoint
 class NextStepRequest(BaseModel):
     """Request body for next step execution"""
+
     run_id: str
     tool_result: Optional[Dict[str, Any]] = None
 
@@ -2825,61 +2835,124 @@ def _collect_repo_snapshot(root: Path, max_files: int = 500) -> tuple[str, list[
     # Extended code file extensions for thorough analysis (50+ languages)
     CODE_EXTENSIONS = {
         # JavaScript/TypeScript ecosystem
-        ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
         # Python
-        ".py", ".pyw", ".pyi",  # .pyi for type stubs
+        ".py",
+        ".pyw",
+        ".pyi",  # .pyi for type stubs
         # JVM languages
-        ".java", ".kt", ".kts", ".scala", ".groovy", ".clj", ".cljs", ".cljc",
+        ".java",
+        ".kt",
+        ".kts",
+        ".scala",
+        ".groovy",
+        ".clj",
+        ".cljs",
+        ".cljc",
         # Go
         ".go",
         # Rust
         ".rs",
         # Ruby
-        ".rb", ".rake", ".erb",
+        ".rb",
+        ".rake",
+        ".erb",
         # PHP
-        ".php", ".phtml",
+        ".php",
+        ".phtml",
         # .NET / C#
-        ".cs", ".fs", ".fsx", ".vb",
+        ".cs",
+        ".fs",
+        ".fsx",
+        ".vb",
         # C/C++
-        ".cpp", ".c", ".h", ".hpp", ".cc", ".cxx", ".hxx",
+        ".cpp",
+        ".c",
+        ".h",
+        ".hpp",
+        ".cc",
+        ".cxx",
+        ".hxx",
         # Swift / Objective-C
-        ".swift", ".m", ".mm",
+        ".swift",
+        ".m",
+        ".mm",
         # Frontend frameworks
-        ".vue", ".svelte", ".astro",
+        ".vue",
+        ".svelte",
+        ".astro",
         # GraphQL
-        ".graphql", ".gql",
+        ".graphql",
+        ".gql",
         # SQL
-        ".sql", ".psql", ".plsql",
+        ".sql",
+        ".psql",
+        ".plsql",
         # Shell scripts
-        ".sh", ".bash", ".zsh", ".fish",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
         # Data Science / ML
-        ".r", ".R", ".jl", ".ipynb",  # R, Julia, Jupyter
+        ".r",
+        ".R",
+        ".jl",
+        ".ipynb",  # R, Julia, Jupyter
         # Functional languages
-        ".ex", ".exs",  # Elixir
-        ".hs", ".lhs",  # Haskell
-        ".erl", ".hrl",  # Erlang
-        ".ml", ".mli",  # OCaml
+        ".ex",
+        ".exs",  # Elixir
+        ".hs",
+        ".lhs",  # Haskell
+        ".erl",
+        ".hrl",  # Erlang
+        ".ml",
+        ".mli",  # OCaml
         ".elm",  # Elm
         # Mobile
         ".dart",  # Flutter/Dart
         # Scripting
-        ".lua", ".pl", ".pm",  # Lua, Perl
+        ".lua",
+        ".pl",
+        ".pm",  # Lua, Perl
         # Systems programming
-        ".zig", ".nim", ".v",  # Zig, Nim, V
+        ".zig",
+        ".nim",
+        ".v",  # Zig, Nim, V
         # Web markup/styling
-        ".html", ".htm", ".css", ".scss", ".sass", ".less",
+        ".html",
+        ".htm",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
         # Config as code
-        ".hcl", ".tf", ".tfvars",  # Terraform
-        ".jsonnet", ".libsonnet",  # Jsonnet
+        ".hcl",
+        ".tf",
+        ".tfvars",  # Terraform
+        ".jsonnet",
+        ".libsonnet",  # Jsonnet
         ".dhall",  # Dhall
         # Data formats (useful for understanding config)
-        ".yaml", ".yml", ".toml", ".json", ".xml",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".json",
+        ".xml",
         # Documentation
-        ".md", ".mdx", ".rst",  # Markdown, MDX, reStructuredText
+        ".md",
+        ".mdx",
+        ".rst",  # Markdown, MDX, reStructuredText
         # Build/CI config
-        ".dockerfile", ".containerfile",
+        ".dockerfile",
+        ".containerfile",
         # WebAssembly
-        ".wat", ".wast",
+        ".wat",
+        ".wast",
     }
 
     try:
@@ -2943,10 +3016,29 @@ def _collect_repo_snapshot(root: Path, max_files: int = 500) -> tuple[str, list[
 
     # Priority directories for source code discovery
     PRIORITY_DIRS = {
-        "app/", "src/", "pages/", "components/", "api/", "lib/", "utils/",
-        "services/", "hooks/", "routes/", "controllers/", "models/",
-        "views/", "handlers/", "middleware/", "core/", "modules/",
-        "features/", "domains/", "backend/", "frontend/", "server/", "client/",
+        "app/",
+        "src/",
+        "pages/",
+        "components/",
+        "api/",
+        "lib/",
+        "utils/",
+        "services/",
+        "hooks/",
+        "routes/",
+        "controllers/",
+        "models/",
+        "views/",
+        "handlers/",
+        "middleware/",
+        "core/",
+        "modules/",
+        "features/",
+        "domains/",
+        "backend/",
+        "frontend/",
+        "server/",
+        "client/",
     }
 
     # Collect source code files from priority directories
@@ -2997,7 +3089,8 @@ def _collect_repo_snapshot(root: Path, max_files: int = 500) -> tuple[str, list[
     logger.info(
         "[NAVI-REPO] Selected %d key files for analysis: %s",
         len(key_files),
-        [str(f.relative_to(root)) for f in key_files[:10]] + (["..."] if len(key_files) > 10 else []),
+        [str(f.relative_to(root)) for f in key_files[:10]]
+        + (["..."] if len(key_files) > 10 else []),
     )
 
     structure_md = "\n".join(dir_entries) if dir_entries else "(empty repo?)"
@@ -3010,53 +3103,80 @@ def _extract_code_signatures(text: str, file_ext: str) -> list[str]:
     Returns a list of signature strings.
     """
     import re
+
     signatures = []
 
     # Python signatures
     if file_ext in {".py", ".pyw", ".pyi"}:
         # Classes
-        for match in re.finditer(r'^class\s+(\w+)(?:\([^)]*\))?:', text, re.MULTILINE):
+        for match in re.finditer(r"^class\s+(\w+)(?:\([^)]*\))?:", text, re.MULTILINE):
             signatures.append(f"class {match.group(1)}")
         # Functions/methods
-        for match in re.finditer(r'^(?:async\s+)?def\s+(\w+)\s*\([^)]*\)(?:\s*->\s*[^:]+)?:', text, re.MULTILINE):
+        for match in re.finditer(
+            r"^(?:async\s+)?def\s+(\w+)\s*\([^)]*\)(?:\s*->\s*[^:]+)?:",
+            text,
+            re.MULTILINE,
+        ):
             signatures.append(f"def {match.group(1)}()")
 
     # TypeScript/JavaScript signatures
     elif file_ext in {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}:
         # Exported functions
-        for match in re.finditer(r'^export\s+(?:async\s+)?function\s+(\w+)', text, re.MULTILINE):
+        for match in re.finditer(
+            r"^export\s+(?:async\s+)?function\s+(\w+)", text, re.MULTILINE
+        ):
             signatures.append(f"export function {match.group(1)}()")
         # Exported classes
-        for match in re.finditer(r'^export\s+class\s+(\w+)', text, re.MULTILINE):
+        for match in re.finditer(r"^export\s+class\s+(\w+)", text, re.MULTILINE):
             signatures.append(f"export class {match.group(1)}")
         # Exported const components/functions
-        for match in re.finditer(r'^export\s+const\s+(\w+)\s*[=:]', text, re.MULTILINE):
+        for match in re.finditer(r"^export\s+const\s+(\w+)\s*[=:]", text, re.MULTILINE):
             signatures.append(f"export const {match.group(1)}")
         # React components
-        for match in re.finditer(r'^(?:export\s+)?(?:default\s+)?function\s+([A-Z]\w+)\s*\(', text, re.MULTILINE):
+        for match in re.finditer(
+            r"^(?:export\s+)?(?:default\s+)?function\s+([A-Z]\w+)\s*\(",
+            text,
+            re.MULTILINE,
+        ):
             signatures.append(f"function {match.group(1)}()")
 
     # Go signatures
     elif file_ext == ".go":
-        for match in re.finditer(r'^func\s+(?:\([^)]+\)\s*)?(\w+)\s*\(', text, re.MULTILINE):
+        for match in re.finditer(
+            r"^func\s+(?:\([^)]+\)\s*)?(\w+)\s*\(", text, re.MULTILINE
+        ):
             signatures.append(f"func {match.group(1)}()")
-        for match in re.finditer(r'^type\s+(\w+)\s+(?:struct|interface)', text, re.MULTILINE):
+        for match in re.finditer(
+            r"^type\s+(\w+)\s+(?:struct|interface)", text, re.MULTILINE
+        ):
             signatures.append(f"type {match.group(1)}")
 
     # Rust signatures
     elif file_ext == ".rs":
-        for match in re.finditer(r'^(?:pub\s+)?(?:async\s+)?fn\s+(\w+)', text, re.MULTILINE):
+        for match in re.finditer(
+            r"^(?:pub\s+)?(?:async\s+)?fn\s+(\w+)", text, re.MULTILINE
+        ):
             signatures.append(f"fn {match.group(1)}()")
-        for match in re.finditer(r'^(?:pub\s+)?struct\s+(\w+)', text, re.MULTILINE):
+        for match in re.finditer(r"^(?:pub\s+)?struct\s+(\w+)", text, re.MULTILINE):
             signatures.append(f"struct {match.group(1)}")
-        for match in re.finditer(r'^(?:pub\s+)?impl(?:\s+\w+)?\s+(?:for\s+)?(\w+)', text, re.MULTILINE):
+        for match in re.finditer(
+            r"^(?:pub\s+)?impl(?:\s+\w+)?\s+(?:for\s+)?(\w+)", text, re.MULTILINE
+        ):
             signatures.append(f"impl {match.group(1)}")
 
     # Java/Kotlin signatures
     elif file_ext in {".java", ".kt", ".kts"}:
-        for match in re.finditer(r'^(?:public|private|protected)?\s*(?:static\s+)?class\s+(\w+)', text, re.MULTILINE):
+        for match in re.finditer(
+            r"^(?:public|private|protected)?\s*(?:static\s+)?class\s+(\w+)",
+            text,
+            re.MULTILINE,
+        ):
             signatures.append(f"class {match.group(1)}")
-        for match in re.finditer(r'^(?:public|private|protected)?\s*(?:static\s+)?(?:fun|void|\w+)\s+(\w+)\s*\(', text, re.MULTILINE):
+        for match in re.finditer(
+            r"^(?:public|private|protected)?\s*(?:static\s+)?(?:fun|void|\w+)\s+(\w+)\s*\(",
+            text,
+            re.MULTILINE,
+        ):
             signatures.append(f"fun {match.group(1)}()")
 
     return signatures[:30]  # Limit to top 30 signatures
@@ -3065,18 +3185,23 @@ def _extract_code_signatures(text: str, file_ext: str) -> list[str]:
 def _extract_imports(text: str, file_ext: str) -> list[str]:
     """Extract import statements from code."""
     import re
+
     imports = []
 
     if file_ext in {".py", ".pyw", ".pyi"}:
-        for match in re.finditer(r'^(?:from\s+\S+\s+)?import\s+.+$', text, re.MULTILINE):
+        for match in re.finditer(
+            r"^(?:from\s+\S+\s+)?import\s+.+$", text, re.MULTILINE
+        ):
             imports.append(match.group(0).strip())
 
     elif file_ext in {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}:
-        for match in re.finditer(r'^import\s+.+$', text, re.MULTILINE):
+        for match in re.finditer(r"^import\s+.+$", text, re.MULTILINE):
             imports.append(match.group(0).strip())
 
     elif file_ext == ".go":
-        for match in re.finditer(r'^import\s+(?:\(\s*)?("[^"]+"|[\w/]+)', text, re.MULTILINE):
+        for match in re.finditer(
+            r'^import\s+(?:\(\s*)?("[^"]+"|[\w/]+)', text, re.MULTILINE
+        ):
             imports.append(match.group(0).strip())
 
     return imports[:20]  # Limit to top 20 imports
@@ -3111,7 +3236,7 @@ def _read_file_smart(path: Path, max_chars: int = 5000) -> str:
 
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     file_ext = path.suffix.lower()
-    total_lines = text.count('\n') + 1
+    total_lines = text.count("\n") + 1
 
     # Small files: return full content
     if len(text) <= max_chars:
@@ -3140,7 +3265,9 @@ def _read_file_smart(path: Path, max_chars: int = 5000) -> str:
     first_portion_size = max_chars // 2
     result_parts.append(f"\n## Content (first {first_portion_size} chars):")
     result_parts.append(text[:first_portion_size])
-    result_parts.append(f"\n...[{len(text) - first_portion_size} more chars truncated]...")
+    result_parts.append(
+        f"\n...[{len(text) - first_portion_size} more chars truncated]..."
+    )
 
     return "\n".join(result_parts)
 
@@ -4225,7 +4352,9 @@ async def handle_coverage_check_fast_path(
 
 
 class FileAttachment(BaseModel):
-    kind: Literal["selection", "currentFile", "pickedFile", "file", "image", "local_file"]
+    kind: Literal[
+        "selection", "currentFile", "pickedFile", "file", "image", "local_file"
+    ]
     path: Optional[str] = None  # Optional for images
     language: Optional[str] = None
     content: str
@@ -5614,6 +5743,7 @@ To get started, I need to analyze your codebase and create a detailed implementa
         if requires_approval and actions:
             # Generate plan ID and format actions with risk assessment
             import uuid
+
             plan_id = str(uuid.uuid4())
 
             for action in actions:
@@ -5624,7 +5754,10 @@ To get started, I need to analyze your codebase and create a detailed implementa
                 risk = "low"
                 warnings = []
 
-                if action_type == "fileEdit" or tool in ["code.apply_patch", "code.write_file"]:
+                if action_type == "fileEdit" or tool in [
+                    "code.apply_patch",
+                    "code.write_file",
+                ]:
                     risk = "medium"
                     warnings.append("This will modify files in your workspace")
                 elif tool.startswith("pm."):
@@ -5634,17 +5767,19 @@ To get started, I need to analyze your codebase and create a detailed implementa
                     risk = "medium"
                     warnings.append("This will execute a command")
 
-                actions_with_risk.append({
-                    "type": action.get("type", "generic"),
-                    "path": action.get("filePath"),
-                    "command": action.get("command"),
-                    "content": action.get("content"),
-                    "risk": risk,
-                    "warnings": warnings,
-                    "preview": action.get("description", ""),
-                    "tool": tool,
-                    "arguments": action.get("arguments", {}),
-                })
+                actions_with_risk.append(
+                    {
+                        "type": action.get("type", "generic"),
+                        "path": action.get("filePath"),
+                        "command": action.get("command"),
+                        "content": action.get("content"),
+                        "risk": risk,
+                        "warnings": warnings,
+                        "preview": action.get("description", ""),
+                        "tool": tool,
+                        "arguments": action.get("arguments", {}),
+                    }
+                )
 
         # Map `reply` -> `content` for the extension
         return ChatResponse(
@@ -5688,29 +5823,29 @@ def _should_use_unified_agent(message: str) -> bool:
     """
     action_patterns = [
         # File/code creation
-        r'\b(create|write|make|add|build|generate)\b.*\b(file|component|function|class|test|module|page)\b',
+        r"\b(create|write|make|add|build|generate)\b.*\b(file|component|function|class|test|module|page)\b",
         # Running things - more permissive
-        r'\b(run|execute|start|stop|restart|launch)\b.*(project|server|test|build|app|application|script|command)',
-        r'\b(run|execute)\s+(the\s+)?(project|tests?|build|server|app)',  # "run the project", "run tests"
+        r"\b(run|execute|start|stop|restart|launch)\b.*(project|server|test|build|app|application|script|command)",
+        r"\b(run|execute)\s+(the\s+)?(project|tests?|build|server|app)",  # "run the project", "run tests"
         # Bug fixing
-        r'\b(fix|debug|repair|resolve|solve)\b.*\b(bug|error|issue|problem|crash|failure)\b',
+        r"\b(fix|debug|repair|resolve|solve)\b.*\b(bug|error|issue|problem|crash|failure)\b",
         # Code editing
-        r'\b(edit|modify|update|change|refactor|rename)\b.*\b(file|code|function|variable|class)\b',
+        r"\b(edit|modify|update|change|refactor|rename)\b.*\b(file|code|function|variable|class)\b",
         # Package management
-        r'\b(install|uninstall|add|remove|upgrade|update)\b.*\b(package|dependency|module|library)\b',
-        r'\bnpm\s+(install|run|start|build|test)',  # npm commands
-        r'\byarn\s+(install|add|run|start|build|test)',  # yarn commands
-        r'\bpip\s+(install|uninstall)',  # pip commands
-        r'\bcargo\s+(build|run|test)',  # cargo commands
-        r'\bgo\s+(build|run|test|get)',  # go commands
-        r'\bpython\s+',  # python scripts
-        r'\bnode\s+',  # node scripts
+        r"\b(install|uninstall|add|remove|upgrade|update)\b.*\b(package|dependency|module|library)\b",
+        r"\bnpm\s+(install|run|start|build|test)",  # npm commands
+        r"\byarn\s+(install|add|run|start|build|test)",  # yarn commands
+        r"\bpip\s+(install|uninstall)",  # pip commands
+        r"\bcargo\s+(build|run|test)",  # cargo commands
+        r"\bgo\s+(build|run|test|get)",  # go commands
+        r"\bpython\s+",  # python scripts
+        r"\bnode\s+",  # node scripts
         # Git commands
-        r'\bgit\s+(commit|push|pull|merge|rebase|checkout|branch)',
+        r"\bgit\s+(commit|push|pull|merge|rebase|checkout|branch)",
         # Imperative action phrases
-        r'^(please\s+)?(can\s+you\s+)?(run|execute|start|create|fix|install|build)',  # "run...", "can you run..."
+        r"^(please\s+)?(can\s+you\s+)?(run|execute|start|create|fix|install|build)",  # "run...", "can you run..."
         # Direct command patterns
-        r'^\s*(npm|yarn|pip|cargo|go|python|node|git)\s+',  # Commands at start of message
+        r"^\s*(npm|yarn|pip|cargo|go|python|node|git)\s+",  # Commands at start of message
     ]
 
     message_lower = message.lower()
@@ -5780,11 +5915,19 @@ async def navi_chat_stream(
                         if att_content:
                             yield f"data: {json.dumps({'activity': {'kind': 'detection', 'label': 'Analyzing Image', 'detail': 'Processing image with vision AI...', 'status': 'running'}})}\n\n"
                             try:
-                                from backend.services.vision_service import VisionClient, VisionProvider
+                                from backend.services.vision_service import (
+                                    VisionClient,
+                                    VisionProvider,
+                                )
+
                                 # Extract base64 data from data URL
                                 if att_content.startswith("data:"):
                                     # Format: data:image/png;base64,<data>
-                                    base64_data = att_content.split(",", 1)[1] if "," in att_content else att_content
+                                    base64_data = (
+                                        att_content.split(",", 1)[1]
+                                        if "," in att_content
+                                        else att_content
+                                    )
                                 else:
                                     base64_data = att_content
 
@@ -5796,10 +5939,14 @@ async def navi_chat_stream(
                                     prompt=analysis_prompt,
                                     provider=VisionProvider.ANTHROPIC,
                                 )
-                                image_context += f"\n\n=== IMAGE ANALYSIS ===\n{vision_response}\n"
+                                image_context += (
+                                    f"\n\n=== IMAGE ANALYSIS ===\n{vision_response}\n"
+                                )
                                 yield f"data: {json.dumps({'activity': {'kind': 'detection', 'label': 'Image Analyzed', 'detail': 'Vision AI analysis complete', 'status': 'done'}})}\n\n"
                             except Exception as img_err:
-                                logger.warning(f"[NAVI-STREAM] Image analysis failed: {img_err}")
+                                logger.warning(
+                                    f"[NAVI-STREAM] Image analysis failed: {img_err}"
+                                )
                                 yield f"data: {json.dumps({'activity': {'kind': 'detection', 'label': 'Image Analysis', 'detail': 'Could not analyze image', 'status': 'error'}})}\n\n"
 
             # Augment the message with image context if present
@@ -5909,52 +6056,56 @@ async def navi_chat_stream(
                             yield f"data: {json.dumps({'content': event.data})}\n\n"
 
                         elif event.type == AgentEventType.TOOL_CALL:
-                            tool_name = event.data.get('name', 'unknown')
-                            tool_args = event.data.get('arguments', {})
+                            tool_name = event.data.get("name", "unknown")
+                            tool_args = event.data.get("arguments", {})
 
-                            kind = 'command'
+                            kind = "command"
                             label = tool_name
-                            detail = ''
+                            detail = ""
 
-                            if tool_name == 'read_file':
-                                kind = 'read'
-                                label = 'Reading'
-                                detail = tool_args.get('path', '')
-                            elif tool_name == 'write_file':
-                                kind = 'create'
-                                label = 'Creating'
-                                detail = tool_args.get('path', '')
-                            elif tool_name == 'edit_file':
-                                kind = 'edit'
-                                label = 'Editing'
-                                detail = tool_args.get('path', '')
-                            elif tool_name == 'run_command':
-                                kind = 'command'
-                                label = 'Running'
-                                detail = tool_args.get('command', '')
-                            elif tool_name == 'search_files':
-                                kind = 'search'
-                                label = 'Searching'
-                                detail = tool_args.get('pattern', '')
-                            elif tool_name == 'list_directory':
-                                kind = 'read'
-                                label = 'Listing'
-                                detail = tool_args.get('path', '')
+                            if tool_name == "read_file":
+                                kind = "read"
+                                label = "Reading"
+                                detail = tool_args.get("path", "")
+                            elif tool_name == "write_file":
+                                kind = "create"
+                                label = "Creating"
+                                detail = tool_args.get("path", "")
+                            elif tool_name == "edit_file":
+                                kind = "edit"
+                                label = "Editing"
+                                detail = tool_args.get("path", "")
+                            elif tool_name == "run_command":
+                                kind = "command"
+                                label = "Running"
+                                detail = tool_args.get("command", "")
+                            elif tool_name == "search_files":
+                                kind = "search"
+                                label = "Searching"
+                                detail = tool_args.get("pattern", "")
+                            elif tool_name == "list_directory":
+                                kind = "read"
+                                label = "Listing"
+                                detail = tool_args.get("path", "")
 
                             yield f"data: {json.dumps({'activity': {'kind': kind, 'label': label, 'detail': detail, 'status': 'running'}})}\n\n"
 
                         elif event.type == AgentEventType.TOOL_RESULT:
                             # event.data = {"id": ..., "name": ..., "result": {...}}
-                            tool_result = event.data.get('result', {})
-                            success = tool_result.get('success', False)
-                            status = 'done' if success else 'error'
+                            tool_result = event.data.get("result", {})
+                            success = tool_result.get("success", False)
+                            status = "done" if success else "error"
                             # Get meaningful output preview
                             output_preview = (
-                                tool_result.get('message', '') or
-                                tool_result.get('content', '')[:200] if tool_result.get('content') else
-                                tool_result.get('error', '') or
-                                str(tool_result.get('items', [])[:3]) if tool_result.get('items') else
-                                ''
+                                tool_result.get("message", "")
+                                or tool_result.get("content", "")[:200]
+                                if tool_result.get("content")
+                                else (
+                                    tool_result.get("error", "")
+                                    or str(tool_result.get("items", [])[:3])
+                                    if tool_result.get("items")
+                                    else ""
+                                )
                             )
                             yield f"data: {json.dumps({'activity': {'kind': 'tool_result', 'label': 'Result', 'detail': output_preview[:200], 'status': status}})}\n\n"
 
@@ -6081,9 +6232,7 @@ async def navi_chat_stream(
 
             # Process final result
             if navi_result:
-                logger.info(
-                    "[NAVI-STREAM] Result keys: %s", list(navi_result.keys())
-                )
+                logger.info("[NAVI-STREAM] Result keys: %s", list(navi_result.keys()))
 
                 # Emit activity for files to create/modify
                 files_created = navi_result.get("files_created", [])
@@ -6167,6 +6316,7 @@ async def navi_chat_stream(
                 try:
                     if request.conversation_id:
                         from uuid import UUID
+
                         memory_service = ConversationMemoryService(db)
                         conv_uuid = UUID(request.conversation_id)
 
@@ -6178,19 +6328,23 @@ async def navi_chat_stream(
                             # For now, we'll use a hash of the user_id string
                             user_id_int = abs(hash(user_id)) % (10**9)
                             memory_service.db.execute(
-                                text("""
+                                text(
+                                    """
                                     INSERT INTO conversations (id, user_id, workspace_path, status, created_at, updated_at)
                                     VALUES (:id, :user_id, :workspace_path, 'active', NOW(), NOW())
                                     ON CONFLICT (id) DO NOTHING
-                                """),
+                                """
+                                ),
                                 {
                                     "id": str(conv_uuid),
                                     "user_id": user_id_int,
                                     "workspace_path": workspace_root,
-                                }
+                                },
                             )
                             memory_service.db.commit()
-                            logger.info("[NAVI-STREAM] Created conversation %s", conv_uuid)
+                            logger.info(
+                                "[NAVI-STREAM] Created conversation %s", conv_uuid
+                            )
 
                         # Store user message
                         await memory_service.add_message(
@@ -6294,8 +6448,10 @@ async def _apply_auto_fix_by_id(
 # NAVI V2: Tool-Use Streaming Endpoint (Claude Code Style)
 # ============================================================================
 
+
 class ToolStreamRequest(BaseModel):
     """Request for tool-use streaming endpoint."""
+
     message: str
     provider: Optional[str] = None
     model: Optional[str] = None
@@ -6404,7 +6560,9 @@ async def navi_chat_stream_v2(
             # This is key to being DYNAMIC - we don't do heavy analysis for simple greetings
             intent = classify_intent(request.message)
 
-            logger.info(f"[NAVI V2] Classified intent: family={intent.family.value}, kind={intent.kind.value}, confidence={intent.confidence}")
+            logger.info(
+                f"[NAVI V2] Classified intent: family={intent.family.value}, kind={intent.kind.value}, confidence={intent.confidence}"
+            )
 
             # Emit intent detection activity
             intent_activity = {
@@ -6413,8 +6571,8 @@ async def navi_chat_stream_v2(
                     "kind": "intent",
                     "label": "Understanding request",
                     "detail": f"Detected: {intent.kind.value} ({int(intent.confidence * 100)}%)",
-                    "status": "done"
-                }
+                    "status": "done",
+                },
             }
             yield f"data: {json.dumps(intent_activity)}\n\n"
 
@@ -6424,8 +6582,8 @@ async def navi_chat_stream_v2(
                 "intent": {
                     "family": intent.family.value,
                     "kind": intent.kind.value,
-                    "confidence": intent.confidence
-                }
+                    "confidence": intent.confidence,
+                },
             }
             yield f"data: {json.dumps(intent_event)}\n\n"
 
@@ -6480,7 +6638,10 @@ async def navi_chat_stream_v2(
                 ):
                     if "activity" in event:
                         # Emit file read activity to frontend
-                        activity_data = {"type": "activity", "activity": event["activity"]}
+                        activity_data = {
+                            "type": "activity",
+                            "activity": event["activity"],
+                        }
                         yield f"data: {json.dumps(activity_data)}\n\n"
                         await asyncio.sleep(0.02)  # Small delay for UI to update
                     elif "files" in event:
@@ -6490,11 +6651,13 @@ async def navi_chat_stream_v2(
                 # Note: Don't emit file count here - it will be tracked dynamically by frontend
                 # The LLM may read additional files via tool calls, so count would be misleading
                 if source_files:
-                    narrative = NarrativeGenerator.for_project_detection({
-                        "project_type": project_info.project_type,
-                        "framework": project_info.framework,
-                        "dependencies": project_info.dependencies,
-                    })
+                    narrative = NarrativeGenerator.for_project_detection(
+                        {
+                            "project_type": project_info.project_type,
+                            "framework": project_info.framework,
+                            "dependencies": project_info.dependencies,
+                        }
+                    )
                     # Don't include file count - let frontend track total from activities
                     narrative_data = {"type": "narrative", "content": narrative}
                     yield f"data: {json.dumps(narrative_data)}\n\n"
@@ -6509,26 +6672,43 @@ async def navi_chat_stream_v2(
                 if source_files:
                     files_summary = []
                     # Prioritize important files: package.json, configs, main entry points
-                    priority_patterns = ['package.json', 'tsconfig', 'next.config', 'index.', '_app.', 'main.']
+                    priority_patterns = [
+                        "package.json",
+                        "tsconfig",
+                        "next.config",
+                        "index.",
+                        "_app.",
+                        "main.",
+                    ]
                     sorted_files = sorted(
                         source_files.items(),
                         key=lambda x: (
-                            0 if any(p in x[0].lower() for p in priority_patterns) else 1,
-                            x[0]
-                        )
+                            (
+                                0
+                                if any(p in x[0].lower() for p in priority_patterns)
+                                else 1
+                            ),
+                            x[0],
+                        ),
                     )
                     for path, content in sorted_files[:10]:  # Top 10 files
-                        files_summary.append(f"--- {path} ---\n{content[:3000]}")  # More content per file
-                    enhanced_context["source_files_preview"] = "\n\n".join(files_summary)
+                        files_summary.append(
+                            f"--- {path} ---\n{content[:3000]}"
+                        )  # More content per file
+                    enhanced_context["source_files_preview"] = "\n\n".join(
+                        files_summary
+                    )
             else:
                 # For simple intents like GREET, just log and continue without analysis
-                logger.info(f"[NAVI V2] Skipping project analysis for intent: {intent.kind.value}")
+                logger.info(
+                    f"[NAVI V2] Skipping project analysis for intent: {intent.kind.value}"
+                )
 
             # Add intent info to context for LLM
             enhanced_context["detected_intent"] = {
                 "family": intent.family.value,
                 "kind": intent.kind.value,
-                "confidence": intent.confidence
+                "confidence": intent.confidence,
             }
 
             # PHASE 3: Stream LLM response with tools
@@ -6600,12 +6780,14 @@ async def navi_chat_stream_v2(
 # NAVI V3: Autonomous Agent Endpoint (End-to-End Task Completion)
 # ============================================================================
 
+
 class AutonomousTaskRequest(BaseModel):
     """Request for autonomous task execution.
 
     Accepts both workspace_path (direct) and workspace_root (from VS Code extension).
     Also handles model ID mapping for different providers.
     """
+
     message: str
     provider: Optional[str] = None
     model: Optional[str] = None
@@ -6654,9 +6836,20 @@ def _map_model_to_provider(model: Optional[str]) -> tuple[str, str]:
     model_lower = model_name.lower()
 
     # OpenAI models
-    if provider_hint == "openai" or any(x in model_lower for x in ["gpt-4", "gpt-3", "o1-", "o3-", "davinci", "curie"]):
+    if provider_hint == "openai" or any(
+        x in model_lower for x in ["gpt-4", "gpt-3", "o1-", "o3-", "davinci", "curie"]
+    ):
         # Validate model name - only return known OpenAI models
-        valid_openai = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo", "o1-preview", "o1-mini", "o3-mini"]
+        valid_openai = [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4-turbo",
+            "gpt-4",
+            "gpt-3.5-turbo",
+            "o1-preview",
+            "o1-mini",
+            "o3-mini",
+        ]
         if model_name in valid_openai:
             return "openai", model_name
         # Default to gpt-4o for unknown OpenAI models
@@ -6727,7 +6920,9 @@ async def navi_autonomous_task(
     else:
         provider, model = _map_model_to_provider(request.model)
 
-    logger.info(f"[NAVI Autonomous] Provider: {provider}, Model: {model}, Workspace: {workspace_path}")
+    logger.info(
+        f"[NAVI Autonomous] Provider: {provider}, Model: {model}, Workspace: {workspace_path}"
+    )
 
     # Get API key based on provider
     if provider == "anthropic":

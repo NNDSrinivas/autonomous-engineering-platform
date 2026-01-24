@@ -62,7 +62,9 @@ class GitLabClient:
     ) -> Any:
         """Make a GET request to the GitLab API."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.api_url}{endpoint}"
         response = await self._client.get(url, params=params)
@@ -76,7 +78,9 @@ class GitLabClient:
     ) -> Any:
         """Make a POST request to the GitLab API."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.api_url}{endpoint}"
         response = await self._client.post(url, json=data)
@@ -213,7 +217,9 @@ class GitLabClient:
         Returns:
             Merge request with changes/diffs included
         """
-        return await self._get(f"/projects/{project_id}/merge_requests/{mr_iid}/changes")
+        return await self._get(
+            f"/projects/{project_id}/merge_requests/{mr_iid}/changes"
+        )
 
     # -------------------------------------------------------------------------
     # Issue Methods
@@ -302,7 +308,9 @@ class GitLabClient:
             params["ref"] = ref
 
         pipelines = await self._get(f"/projects/{project_id}/pipelines", params=params)
-        logger.info("GitLab pipelines listed", project_id=project_id, count=len(pipelines))
+        logger.info(
+            "GitLab pipelines listed", project_id=project_id, count=len(pipelines)
+        )
         return pipelines
 
     async def get_pipeline(
@@ -403,7 +411,11 @@ class GitLabClient:
             data["token"] = token
 
         webhook = await self._post(f"/projects/{project_id}/hooks", data=data)
-        logger.info("GitLab webhook created", project_id=project_id, webhook_id=webhook.get("id"))
+        logger.info(
+            "GitLab webhook created",
+            project_id=project_id,
+            webhook_id=webhook.get("id"),
+        )
         return webhook
 
     # -------------------------------------------------------------------------
@@ -426,7 +438,9 @@ class GitLabClient:
             List of branch dictionaries
         """
         params = {"per_page": per_page}
-        return await self._get(f"/projects/{project_id}/repository/branches", params=params)
+        return await self._get(
+            f"/projects/{project_id}/repository/branches", params=params
+        )
 
     async def get_file(
         self,
@@ -446,6 +460,7 @@ class GitLabClient:
             File content and metadata
         """
         import urllib.parse
+
         encoded_path = urllib.parse.quote(file_path, safe="")
         params = {"ref": ref}
         return await self._get(

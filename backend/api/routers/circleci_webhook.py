@@ -66,7 +66,9 @@ async def ingest(
     - job-completed: A job has finished
     """
     body = await request.body()
-    verify_circleci_signature(circleci_signature, body, settings.circleci_webhook_secret)
+    verify_circleci_signature(
+        circleci_signature, body, settings.circleci_webhook_secret
+    )
 
     payload = await request.json()
 
@@ -141,7 +143,7 @@ async def _handle_workflow_completed(
         node_type="circleci_workflow",
         title=f"CircleCI: {workflow_name} [{status_emoji}]",
         text=f"Workflow '{workflow_name}' {workflow_status} for {project_name}. "
-             f"Branch: {branch}, Commit: {commit_sha}",
+        f"Branch: {branch}, Commit: {commit_sha}",
         meta_json={
             "workflow_id": workflow_id,
             "workflow_name": workflow_name,
@@ -214,6 +216,7 @@ async def _handle_job_completed(
     if started_at and stopped_at:
         try:
             from datetime import datetime as dt
+
             start = dt.fromisoformat(started_at.replace("Z", "+00:00"))
             stop = dt.fromisoformat(stopped_at.replace("Z", "+00:00"))
             duration = stop - start

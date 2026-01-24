@@ -52,19 +52,38 @@ LANGUAGE_EXTENSIONS = {
 
 # Directories to ignore during indexing
 IGNORE_DIRS = {
-    ".git", ".svn", ".hg",
-    "node_modules", "vendor", "venv", ".venv", "env", ".env",
-    "__pycache__", ".pytest_cache", ".mypy_cache",
-    "dist", "build", "target", "out",
-    ".idea", ".vscode", ".vs",
-    "coverage", ".coverage",
+    ".git",
+    ".svn",
+    ".hg",
+    "node_modules",
+    "vendor",
+    "venv",
+    ".venv",
+    "env",
+    ".env",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    "dist",
+    "build",
+    "target",
+    "out",
+    ".idea",
+    ".vscode",
+    ".vs",
+    "coverage",
+    ".coverage",
 }
 
 # Files to ignore
 IGNORE_FILES = {
-    ".DS_Store", "Thumbs.db",
-    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-    "poetry.lock", "Pipfile.lock",
+    ".DS_Store",
+    "Thumbs.db",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+    "Pipfile.lock",
 }
 
 
@@ -145,11 +164,7 @@ class CodebaseMemoryService:
         Returns:
             CodebaseIndex or None if not found
         """
-        return (
-            self.db.query(CodebaseIndex)
-            .filter(CodebaseIndex.id == index_id)
-            .first()
-        )
+        return self.db.query(CodebaseIndex).filter(CodebaseIndex.id == index_id).first()
 
     def get_index_by_path(
         self,
@@ -253,9 +268,7 @@ class CodebaseMemoryService:
             True if deleted, False if not found
         """
         result = (
-            self.db.query(CodebaseIndex)
-            .filter(CodebaseIndex.id == index_id)
-            .delete()
+            self.db.query(CodebaseIndex).filter(CodebaseIndex.id == index_id).delete()
         )
         self.db.commit()
         return result > 0
@@ -317,13 +330,15 @@ class CodebaseMemoryService:
                 if language:
                     try:
                         stat = file_path.stat()
-                        files.append({
-                            "path": str(file_path),
-                            "relative_path": str(file_path.relative_to(workspace)),
-                            "language": language,
-                            "size": stat.st_size,
-                            "modified": datetime.fromtimestamp(stat.st_mtime),
-                        })
+                        files.append(
+                            {
+                                "path": str(file_path),
+                                "relative_path": str(file_path.relative_to(workspace)),
+                                "language": language,
+                                "size": stat.st_size,
+                                "modified": datetime.fromtimestamp(stat.st_mtime),
+                            }
+                        )
                     except OSError as e:
                         logger.warning(f"Failed to stat file {file_path}: {e}")
 
@@ -444,7 +459,11 @@ class CodebaseMemoryService:
         if file_path:
             query = query.filter(CodeSymbol.file_path == file_path)
 
-        return query.order_by(CodeSymbol.file_path, CodeSymbol.line_start).limit(limit).all()
+        return (
+            query.order_by(CodeSymbol.file_path, CodeSymbol.line_start)
+            .limit(limit)
+            .all()
+        )
 
     def find_symbol_by_name(
         self,
@@ -516,20 +535,24 @@ class CodebaseMemoryService:
                 continue
 
             symbol_embedding = list(symbol.embedding_text)
-            similarity = self.embedding_service.cosine_similarity(query_embedding, symbol_embedding)
+            similarity = self.embedding_service.cosine_similarity(
+                query_embedding, symbol_embedding
+            )
 
             if similarity >= min_similarity:
-                results.append({
-                    "id": str(symbol.id),
-                    "name": symbol.symbol_name,
-                    "qualified_name": symbol.qualified_name,
-                    "type": symbol.symbol_type,
-                    "file_path": symbol.file_path,
-                    "line_start": symbol.line_start,
-                    "line_end": symbol.line_end,
-                    "documentation": symbol.documentation,
-                    "similarity": similarity,
-                })
+                results.append(
+                    {
+                        "id": str(symbol.id),
+                        "name": symbol.symbol_name,
+                        "qualified_name": symbol.qualified_name,
+                        "type": symbol.symbol_type,
+                        "file_path": symbol.file_path,
+                        "line_start": symbol.line_start,
+                        "line_end": symbol.line_end,
+                        "documentation": symbol.documentation,
+                        "similarity": similarity,
+                    }
+                )
 
         # Sort by similarity
         results.sort(key=lambda x: x["similarity"], reverse=True)

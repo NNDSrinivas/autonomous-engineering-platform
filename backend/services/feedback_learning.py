@@ -27,15 +27,17 @@ logger = logging.getLogger(__name__)
 
 class FeedbackType(Enum):
     """Types of user feedback on NAVI suggestions."""
-    ACCEPTED = "accepted"           # User accepted as-is
+
+    ACCEPTED = "accepted"  # User accepted as-is
     ACCEPTED_MODIFIED = "modified"  # User accepted with changes
-    REJECTED = "rejected"           # User rejected completely
-    IGNORED = "ignored"             # User didn't respond (timeout)
-    PARTIAL = "partial"             # User accepted some parts
+    REJECTED = "rejected"  # User rejected completely
+    IGNORED = "ignored"  # User didn't respond (timeout)
+    PARTIAL = "partial"  # User accepted some parts
 
 
 class SuggestionCategory(Enum):
     """Categories of NAVI suggestions."""
+
     FILE_CREATE = "file_create"
     FILE_EDIT = "file_edit"
     FILE_DELETE = "file_delete"
@@ -50,6 +52,7 @@ class SuggestionCategory(Enum):
 @dataclass
 class Suggestion:
     """A single suggestion made by NAVI."""
+
     id: str
     category: SuggestionCategory
     content: str  # The suggested code/command/etc.
@@ -67,6 +70,7 @@ class Suggestion:
 @dataclass
 class FeedbackRecord:
     """Record of user feedback on a suggestion."""
+
     id: str
     suggestion_id: str
     feedback_type: FeedbackType
@@ -95,8 +99,11 @@ class FeedbackRecord:
 @dataclass
 class LearningInsight:
     """An insight learned from feedback patterns."""
+
     id: str
-    insight_type: str  # "pattern_preferred", "pattern_avoided", "style_preference", etc.
+    insight_type: (
+        str  # "pattern_preferred", "pattern_avoided", "style_preference", etc.
+    )
     description: str
 
     # What triggered this insight
@@ -123,10 +130,10 @@ class FeedbackStore:
     """
 
     def __init__(self, storage_path: str = None):
-        self.storage_path = Path(storage_path or os.getenv(
-            "NAVI_FEEDBACK_PATH",
-            os.path.expanduser("~/.navi/feedback")
-        ))
+        self.storage_path = Path(
+            storage_path
+            or os.getenv("NAVI_FEEDBACK_PATH", os.path.expanduser("~/.navi/feedback"))
+        )
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
         # In-memory state
@@ -254,7 +261,9 @@ class FeedbackStore:
                     "language": i.language,
                     "framework": i.framework,
                     "created_at": i.created_at.isoformat() if i.created_at else None,
-                    "last_reinforced": i.last_reinforced.isoformat() if i.last_reinforced else None,
+                    "last_reinforced": (
+                        i.last_reinforced.isoformat() if i.last_reinforced else None
+                    ),
                     "times_reinforced": i.times_reinforced,
                 }
                 for i in self.insights.values()
@@ -396,7 +405,9 @@ class FeedbackAnalyzer:
             return None
 
         # Detect what kind of changes were made
-        changes = self._diff_content(feedback.original_content, feedback.modified_content)
+        changes = self._diff_content(
+            feedback.original_content, feedback.modified_content
+        )
 
         insight_id = hashlib.sha256(
             f"modified:{suggestion.category.value}:{feedback.org_id}:{changes.get('type', 'unknown')}".encode()
@@ -478,16 +489,24 @@ class FeedbackAnalyzer:
         # Detect style changes
         if len(added) == len(removed):
             # Might be style change
-            if any("'" in line for line in added) and any('"' in line for line in removed):
+            if any("'" in line for line in added) and any(
+                '"' in line for line in removed
+            ):
                 changes["type"] = "style_change"
                 changes["preference"] = "single_quotes"
-            elif any('"' in line for line in added) and any("'" in line for line in removed):
+            elif any('"' in line for line in added) and any(
+                "'" in line for line in removed
+            ):
                 changes["type"] = "style_change"
                 changes["preference"] = "double_quotes"
-            elif any("\t" in line for line in added) and any("  " in line for line in removed):
+            elif any("\t" in line for line in added) and any(
+                "  " in line for line in removed
+            ):
                 changes["type"] = "style_change"
                 changes["preference"] = "tabs"
-            elif any("  " in line for line in added) and any("\t" in line for line in removed):
+            elif any("  " in line for line in added) and any(
+                "\t" in line for line in removed
+            ):
                 changes["type"] = "style_change"
                 changes["preference"] = "spaces"
 
@@ -500,7 +519,9 @@ class FeedbackAnalyzer:
         insights = []
 
         # Acceptance rate by category
-        category_stats = defaultdict(lambda: {"accepted": 0, "rejected": 0, "modified": 0})
+        category_stats = defaultdict(
+            lambda: {"accepted": 0, "rejected": 0, "modified": 0}
+        )
 
         for feedback in self.store.feedback_records.values():
             if feedback.org_id != org_id:
@@ -533,23 +554,27 @@ class FeedbackAnalyzer:
             ).hexdigest()[:16]
 
             if acceptance_rate < 0.5:
-                insights.append(LearningInsight(
-                    id=insight_id,
-                    insight_type="low_acceptance",
-                    description=f"{category} suggestions have low acceptance ({acceptance_rate:.0%}). Review approach.",
-                    confidence=min(0.9, 0.3 + (total / 20)),
-                    org_id=org_id,
-                    team_id=team_id,
-                ))
+                insights.append(
+                    LearningInsight(
+                        id=insight_id,
+                        insight_type="low_acceptance",
+                        description=f"{category} suggestions have low acceptance ({acceptance_rate:.0%}). Review approach.",
+                        confidence=min(0.9, 0.3 + (total / 20)),
+                        org_id=org_id,
+                        team_id=team_id,
+                    )
+                )
             elif acceptance_rate > 0.8:
-                insights.append(LearningInsight(
-                    id=insight_id,
-                    insight_type="high_acceptance",
-                    description=f"{category} suggestions have high acceptance ({acceptance_rate:.0%}). Good pattern.",
-                    confidence=min(0.9, 0.3 + (total / 20)),
-                    org_id=org_id,
-                    team_id=team_id,
-                ))
+                insights.append(
+                    LearningInsight(
+                        id=insight_id,
+                        insight_type="high_acceptance",
+                        description=f"{category} suggestions have high acceptance ({acceptance_rate:.0%}). Good pattern.",
+                        confidence=min(0.9, 0.3 + (total / 20)),
+                        org_id=org_id,
+                        team_id=team_id,
+                    )
+                )
 
         return insights
 
@@ -639,7 +664,9 @@ class FeedbackLearningManager:
         for insight in insights:
             self.store.add_insight(insight)
 
-        logger.info(f"Recorded {feedback_type.value} feedback for suggestion {suggestion_id}")
+        logger.info(
+            f"Recorded {feedback_type.value} feedback for suggestion {suggestion_id}"
+        )
 
     def get_learning_context(
         self,
@@ -729,9 +756,9 @@ class FeedbackLearningManager:
             stats["by_category"][category]["total"] += 1
 
         if stats["total"] > 0:
-            stats["acceptance_rate"] = (
-                (stats["accepted"] + stats["modified"]) / stats["total"]
-            )
+            stats["acceptance_rate"] = (stats["accepted"] + stats["modified"]) / stats[
+                "total"
+            ]
 
         return stats
 

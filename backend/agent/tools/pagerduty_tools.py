@@ -88,7 +88,9 @@ async def list_pagerduty_incidents(
             lines.append("")
 
             if url:
-                sources.append({"type": "pagerduty_incident", "name": title[:40], "url": url})
+                sources.append(
+                    {"type": "pagerduty_incident", "name": title[:40], "url": url}
+                )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 

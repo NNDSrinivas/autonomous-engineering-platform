@@ -158,7 +158,9 @@ class FigmaService(ConnectorServiceBase):
                 message = kwargs.get("message")
 
                 if not file_key or not message:
-                    raise ValueError("file_key and message are required for post_comment")
+                    raise ValueError(
+                        "file_key and message are required for post_comment"
+                    )
 
                 result = await client.post_comment(
                     file_key=file_key,

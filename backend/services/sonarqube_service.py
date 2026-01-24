@@ -40,7 +40,9 @@ class SonarQubeService(ConnectorServiceBase):
         item_types: Optional[List[str]] = None,
     ) -> SyncResult:
         """Sync projects from SonarQube."""
-        logger.info("sonarqube_service.sync_items.start", connector_id=connection.get("id"))
+        logger.info(
+            "sonarqube_service.sync_items.start", connector_id=connection.get("id")
+        )
 
         try:
             credentials = cls.get_credentials(connection)
@@ -234,7 +236,9 @@ class SonarQubeService(ConnectorServiceBase):
 
                 return {
                     "status": gate_data.get("projectStatus", {}).get("status"),
-                    "conditions": gate_data.get("projectStatus", {}).get("conditions", []),
+                    "conditions": gate_data.get("projectStatus", {}).get(
+                        "conditions", []
+                    ),
                 }
 
         except Exception as e:

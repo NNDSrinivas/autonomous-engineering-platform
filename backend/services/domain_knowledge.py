@@ -21,6 +21,7 @@ class DomainType(Enum):
     All supported domains for NAVI's universal capabilities.
     NAVI works with ANY language, framework, or technology.
     """
+
     # Backend Languages
     BACKEND_PYTHON = "backend_python"
     BACKEND_NODE = "backend_node"
@@ -141,7 +142,7 @@ BACKEND_PYTHON = DomainKnowledge(
         "Write docstrings for public functions and classes",
     ],
     common_patterns={
-        "fastapi_router": '''from fastapi import APIRouter, Depends, HTTPException
+        "fastapi_router": """from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from .models import ItemCreate, ItemResponse
 from .service import ItemService
@@ -154,9 +155,8 @@ async def list_items(service: ItemService = Depends()):
 
 @router.post("/", response_model=ItemResponse, status_code=201)
 async def create_item(item: ItemCreate, service: ItemService = Depends()):
-    return await service.create(item)''',
-
-        "pydantic_model": '''from pydantic import BaseModel, Field, validator
+    return await service.create(item)""",
+        "pydantic_model": """from pydantic import BaseModel, Field, validator
 from typing import Optional
 from datetime import datetime
 
@@ -173,9 +173,8 @@ class ItemResponse(ItemBase):
     created_at: datetime
 
     class Config:
-        from_attributes = True''',
-
-        "sqlalchemy_model": '''from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+        from_attributes = True""",
+        "sqlalchemy_model": """from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
@@ -190,9 +189,8 @@ class Item(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     user_id = Column(Integer, ForeignKey("users.id"))
 
-    user = relationship("User", back_populates="items")''',
-
-        "repository_pattern": '''from abc import ABC, abstractmethod
+    user = relationship("User", back_populates="items")""",
+        "repository_pattern": """from abc import ABC, abstractmethod
 from typing import List, Optional, TypeVar, Generic
 from sqlalchemy.orm import Session
 
@@ -217,7 +215,7 @@ class Repository(ABC, Generic[T]):
 
     @abstractmethod
     async def delete(self, id: int) -> bool:
-        pass''',
+        pass""",
     },
     antipatterns=[
         "Don't use mutable default arguments",
@@ -273,7 +271,7 @@ BACKEND_NODE = DomainKnowledge(
         "Use structured logging (winston, pino)",
     ],
     common_patterns={
-        "express_app": '''import express from 'express';
+        "express_app": """import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { errorHandler } from './middleware/errorHandler';
@@ -288,9 +286,8 @@ app.use(express.json());
 app.use('/api/users', userRouter);
 app.use(errorHandler);
 
-export default app;''',
-
-        "express_router": '''import { Router } from 'express';
+export default app;""",
+        "express_router": """import { Router } from 'express';
 import { UserController } from '../controllers/userController';
 import { validateRequest } from '../middleware/validateRequest';
 import { createUserSchema } from '../schemas/userSchema';
@@ -304,9 +301,8 @@ router.post('/', validateRequest(createUserSchema), controller.create);
 router.put('/:id', validateRequest(createUserSchema), controller.update);
 router.delete('/:id', controller.delete);
 
-export { router as userRouter };''',
-
-        "typescript_interface": '''export interface User {
+export { router as userRouter };""",
+        "typescript_interface": """export interface User {
   id: string;
   email: string;
   name: string;
@@ -323,7 +319,7 @@ export interface CreateUserDTO {
 export interface UpdateUserDTO {
   name?: string;
   email?: string;
-}''',
+}""",
     },
     antipatterns=[
         "Don't use var, use const/let",
@@ -376,7 +372,7 @@ FRONTEND_REACT = DomainKnowledge(
         "Implement proper loading and error states",
     ],
     common_patterns={
-        "functional_component": '''import { useState, useEffect } from 'react';
+        "functional_component": """import { useState, useEffect } from 'react';
 
 interface Props {
   initialValue?: string;
@@ -398,9 +394,8 @@ export const MyComponent: React.FC<Props> = ({ initialValue = '', onChange }) =>
       />
     </div>
   );
-};''',
-
-        "custom_hook": '''import { useState, useCallback } from 'react';
+};""",
+        "custom_hook": """import { useState, useCallback } from 'react';
 
 interface UseToggleReturn {
   value: boolean;
@@ -417,9 +412,8 @@ export const useToggle = (initialValue = false): UseToggleReturn => {
   const setFalse = useCallback(() => setValue(false), []);
 
   return { value, toggle, setTrue, setFalse };
-};''',
-
-        "context_provider": '''import { createContext, useContext, useState, ReactNode } from 'react';
+};""",
+        "context_provider": """import { createContext, useContext, useState, ReactNode } from 'react';
 
 interface AuthContextType {
   user: User | null;
@@ -455,7 +449,7 @@ export const useAuth = () => {
     throw new Error('useAuth must be used within AuthProvider');
   }
   return context;
-};''',
+};""",
     },
     antipatterns=[
         "Don't use index as key in lists with dynamic items",
@@ -505,7 +499,7 @@ DEVOPS_DOCKER = DomainKnowledge(
         "Don't store secrets in images",
     ],
     common_patterns={
-        "node_multistage": '''# Build stage
+        "node_multistage": """# Build stage
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -521,9 +515,8 @@ COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 USER nodejs
 EXPOSE 3000
-CMD ["node", "dist/main.js"]''',
-
-        "python_dockerfile": '''FROM python:3.11-slim
+CMD ["node", "dist/main.js"]""",
+        "python_dockerfile": """FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -539,9 +532,8 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]''',
-
-        "docker_compose": '''version: '3.8'
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]""",
+        "docker_compose": """version: '3.8'
 
 services:
   app:
@@ -576,7 +568,7 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:''',
+  redis_data:""",
     },
     antipatterns=[
         "Don't use :latest tags in production",
@@ -620,7 +612,7 @@ DEVOPS_CICD = DomainKnowledge(
         "Implement security scanning in pipeline",
     ],
     common_patterns={
-        "github_actions_ci": '''name: CI
+        "github_actions_ci": """name: CI
 
 on:
   push:
@@ -654,9 +646,8 @@ jobs:
         run: npm test -- --coverage
 
       - name: Build
-        run: npm run build''',
-
-        "github_actions_deploy": '''name: Deploy
+        run: npm run build""",
+        "github_actions_deploy": """name: Deploy
 
 on:
   push:
@@ -692,7 +683,7 @@ jobs:
 
       - name: Deploy to ECS
         run: |
-          aws ecs update-service --cluster my-cluster --service my-service --force-new-deployment''',
+          aws ecs update-service --cluster my-cluster --service my-service --force-new-deployment""",
     },
     antipatterns=[
         "Don't store secrets in workflow files",
@@ -731,7 +722,7 @@ DATA_PANDAS = DomainKnowledge(
         "Profile data before processing",
     ],
     common_patterns={
-        "data_pipeline": '''import pandas as pd
+        "data_pipeline": """import pandas as pd
 from typing import Optional
 
 class DataPipeline:
@@ -768,7 +759,7 @@ class DataPipeline:
         return df.dropna(subset=['id'])
 
     def _convert_types(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df.astype({'category_col': 'category'})''',
+        return df.astype({'category_col': 'category'})""",
     },
     antipatterns=[
         "Don't iterate over DataFrame rows (use vectorized operations)",
@@ -808,7 +799,9 @@ DOMAIN_KNOWLEDGE_MAP = {
 }
 
 
-def detect_domain(message: str, project_type: str = None, technologies: List[str] = None) -> DomainType:
+def detect_domain(
+    message: str, project_type: str = None, technologies: List[str] = None
+) -> DomainType:
     """
     Detect the domain based on message content and project context.
     Supports ALL major languages, frameworks, and technology stacks.
@@ -818,33 +811,66 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
     tech_lower = [t.lower() for t in technologies]
 
     # Backend Python
-    if any(kw in message_lower for kw in ["fastapi", "django", "flask", "pydantic", "sqlalchemy", "celery"]):
+    if any(
+        kw in message_lower
+        for kw in ["fastapi", "django", "flask", "pydantic", "sqlalchemy", "celery"]
+    ):
         return DomainType.BACKEND_PYTHON
     if project_type == "python" or "python" in tech_lower:
         return DomainType.BACKEND_PYTHON
 
     # Backend Node
-    if any(kw in message_lower for kw in ["express", "nestjs", "koa", "hapi", "npm", "yarn", "bun"]):
+    if any(
+        kw in message_lower
+        for kw in ["express", "nestjs", "koa", "hapi", "npm", "yarn", "bun"]
+    ):
         return DomainType.BACKEND_NODE
     if project_type in ["nodejs", "node"] or "node" in tech_lower:
         return DomainType.BACKEND_NODE
 
     # Backend Go
-    if any(kw in message_lower for kw in ["golang", " go ", "gin", "echo", "fiber", "goroutine"]):
+    if any(
+        kw in message_lower
+        for kw in ["golang", " go ", "gin", "echo", "fiber", "goroutine"]
+    ):
         return DomainType.BACKEND_GO
     if project_type == "go" or "go" in tech_lower:
         return DomainType.BACKEND_GO
 
     # Backend Java
-    if any(kw in message_lower for kw in ["spring", "springboot", "java", "maven", "gradle", "jpa", "hibernate"]):
+    if any(
+        kw in message_lower
+        for kw in [
+            "spring",
+            "springboot",
+            "java",
+            "maven",
+            "gradle",
+            "jpa",
+            "hibernate",
+        ]
+    ):
         return DomainType.BACKEND_JAVA
     if project_type == "java" or "java" in tech_lower:
         return DomainType.BACKEND_JAVA
 
     # Backend C#
-    if any(kw in message_lower for kw in ["c#", "csharp", ".net", "dotnet", "aspnet", "asp.net", "entity framework"]):
+    if any(
+        kw in message_lower
+        for kw in [
+            "c#",
+            "csharp",
+            ".net",
+            "dotnet",
+            "aspnet",
+            "asp.net",
+            "entity framework",
+        ]
+    ):
         return DomainType.BACKEND_CSHARP
-    if project_type in ["csharp", "dotnet"] or any(t in tech_lower for t in ["csharp", ".net"]):
+    if project_type in ["csharp", "dotnet"] or any(
+        t in tech_lower for t in ["csharp", ".net"]
+    ):
         return DomainType.BACKEND_CSHARP
 
     # Backend Rust
@@ -860,27 +886,41 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.BACKEND_RUBY
 
     # Backend PHP
-    if any(kw in message_lower for kw in ["php", "laravel", "symfony", "composer", "wordpress"]):
+    if any(
+        kw in message_lower
+        for kw in ["php", "laravel", "symfony", "composer", "wordpress"]
+    ):
         return DomainType.BACKEND_PHP
     if project_type == "php" or "php" in tech_lower:
         return DomainType.BACKEND_PHP
 
     # Frontend React
-    if any(kw in message_lower for kw in ["react", "jsx", "tsx", "hooks", "useState", "useEffect", "redux"]):
+    if any(
+        kw in message_lower
+        for kw in ["react", "jsx", "tsx", "hooks", "useState", "useEffect", "redux"]
+    ):
         return DomainType.FRONTEND_REACT
     if "react" in tech_lower:
         return DomainType.FRONTEND_REACT
 
     # Frontend Next.js
-    if any(kw in message_lower for kw in ["next.js", "nextjs", "next", "getserverside", "getstatic"]):
+    if any(
+        kw in message_lower
+        for kw in ["next.js", "nextjs", "next", "getserverside", "getstatic"]
+    ):
         return DomainType.FRONTEND_NEXTJS
 
     # Frontend Vue
-    if any(kw in message_lower for kw in ["vue", "vuex", "pinia", "composition api", "nuxt"]):
+    if any(
+        kw in message_lower
+        for kw in ["vue", "vuex", "pinia", "composition api", "nuxt"]
+    ):
         return DomainType.FRONTEND_VUE
 
     # Frontend Angular
-    if any(kw in message_lower for kw in ["angular", "rxjs", "ngrx", "ng ", "ngmodule"]):
+    if any(
+        kw in message_lower for kw in ["angular", "rxjs", "ngrx", "ng ", "ngmodule"]
+    ):
         return DomainType.FRONTEND_ANGULAR
 
     # Frontend Svelte
@@ -896,31 +936,50 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.MOBILE_FLUTTER
 
     # Mobile iOS
-    if any(kw in message_lower for kw in ["swift", "ios", "xcode", "uikit", "swiftui", "cocoapods"]):
+    if any(
+        kw in message_lower
+        for kw in ["swift", "ios", "xcode", "uikit", "swiftui", "cocoapods"]
+    ):
         return DomainType.MOBILE_IOS_SWIFT
 
     # Mobile Android
-    if any(kw in message_lower for kw in ["kotlin", "android", "jetpack", "gradle android"]):
+    if any(
+        kw in message_lower for kw in ["kotlin", "android", "jetpack", "gradle android"]
+    ):
         return DomainType.MOBILE_ANDROID_KOTLIN
 
     # DevOps Docker
-    if any(kw in message_lower for kw in ["docker", "dockerfile", "container", "compose"]):
+    if any(
+        kw in message_lower for kw in ["docker", "dockerfile", "container", "compose"]
+    ):
         return DomainType.DEVOPS_DOCKER
 
     # DevOps Kubernetes
-    if any(kw in message_lower for kw in ["kubernetes", "k8s", "kubectl", "helm", "pod", "deployment"]):
+    if any(
+        kw in message_lower
+        for kw in ["kubernetes", "k8s", "kubectl", "helm", "pod", "deployment"]
+    ):
         return DomainType.DEVOPS_KUBERNETES
 
     # DevOps Terraform
-    if any(kw in message_lower for kw in ["terraform", "hcl", "tf ", "infrastructure as code"]):
+    if any(
+        kw in message_lower
+        for kw in ["terraform", "hcl", "tf ", "infrastructure as code"]
+    ):
         return DomainType.DEVOPS_TERRAFORM
 
     # DevOps AWS
-    if any(kw in message_lower for kw in ["aws", "lambda", "s3", "ec2", "cloudformation", "cdk"]):
+    if any(
+        kw in message_lower
+        for kw in ["aws", "lambda", "s3", "ec2", "cloudformation", "cdk"]
+    ):
         return DomainType.DEVOPS_AWS
 
     # DevOps GCP
-    if any(kw in message_lower for kw in ["gcp", "google cloud", "gke", "cloud run", "bigquery"]):
+    if any(
+        kw in message_lower
+        for kw in ["gcp", "google cloud", "gke", "cloud run", "bigquery"]
+    ):
         return DomainType.DEVOPS_GCP
 
     # DevOps Azure
@@ -928,15 +987,23 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.DEVOPS_AZURE
 
     # DevOps CI/CD
-    if any(kw in message_lower for kw in ["github actions", "ci/cd", "jenkins", "gitlab ci", "circleci"]):
+    if any(
+        kw in message_lower
+        for kw in ["github actions", "ci/cd", "jenkins", "gitlab ci", "circleci"]
+    ):
         return DomainType.DEVOPS_CICD
 
     # Data Pandas
-    if any(kw in message_lower for kw in ["pandas", "dataframe", "etl", "data pipeline"]):
+    if any(
+        kw in message_lower for kw in ["pandas", "dataframe", "etl", "data pipeline"]
+    ):
         return DomainType.DATA_PANDAS
 
     # Data SQL
-    if any(kw in message_lower for kw in ["sql", "query", "database", "postgresql", "mysql", "sqlite"]):
+    if any(
+        kw in message_lower
+        for kw in ["sql", "query", "database", "postgresql", "mysql", "sqlite"]
+    ):
         return DomainType.DATA_SQL
 
     # Data Spark
@@ -944,7 +1011,10 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.DATA_SPARK
 
     # Data ML
-    if any(kw in message_lower for kw in ["machine learning", "ml", "tensorflow", "pytorch", "scikit", "model"]):
+    if any(
+        kw in message_lower
+        for kw in ["machine learning", "ml", "tensorflow", "pytorch", "scikit", "model"]
+    ):
         return DomainType.DATA_ML
 
     # Data Airflow
@@ -952,7 +1022,9 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.DATA_AIRFLOW
 
     # Systems C
-    if any(kw in message_lower for kw in [" c ", "gcc", "makefile", "pointer", "malloc"]):
+    if any(
+        kw in message_lower for kw in [" c ", "gcc", "makefile", "pointer", "malloc"]
+    ):
         return DomainType.SYSTEMS_C
 
     # Systems C++
@@ -960,7 +1032,10 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.SYSTEMS_CPP
 
     # Scripting Bash
-    if any(kw in message_lower for kw in ["bash", "shell", "sh ", "#!/bin", "linux command"]):
+    if any(
+        kw in message_lower
+        for kw in ["bash", "shell", "sh ", "#!/bin", "linux command"]
+    ):
         return DomainType.SCRIPTING_BASH
 
     # Scripting PowerShell
@@ -970,35 +1045,74 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
     # ==================== NEW DOMAINS ====================
 
     # Backend Scala
-    if any(kw in message_lower for kw in ["scala", "sbt", "akka", "play framework", "zio", "cats"]):
+    if any(
+        kw in message_lower
+        for kw in ["scala", "sbt", "akka", "play framework", "zio", "cats"]
+    ):
         return DomainType.BACKEND_SCALA
     if project_type == "scala" or "scala" in tech_lower:
         return DomainType.BACKEND_SCALA
 
     # Backend Elixir
-    if any(kw in message_lower for kw in ["elixir", "phoenix", "erlang", "otp", "genserver", "ecto"]):
+    if any(
+        kw in message_lower
+        for kw in ["elixir", "phoenix", "erlang", "otp", "genserver", "ecto"]
+    ):
         return DomainType.BACKEND_ELIXIR
     if project_type == "elixir" or "elixir" in tech_lower:
         return DomainType.BACKEND_ELIXIR
 
     # Backend Kotlin (server-side)
-    if any(kw in message_lower for kw in ["ktor", "kotlin server", "kotlin backend", "spring kotlin"]):
+    if any(
+        kw in message_lower
+        for kw in ["ktor", "kotlin server", "kotlin backend", "spring kotlin"]
+    ):
         return DomainType.BACKEND_KOTLIN
 
     # Blockchain Solidity / Ethereum
-    if any(kw in message_lower for kw in ["solidity", "smart contract", "ethereum", "hardhat", "truffle", "foundry", "erc20", "erc721"]):
+    if any(
+        kw in message_lower
+        for kw in [
+            "solidity",
+            "smart contract",
+            "ethereum",
+            "hardhat",
+            "truffle",
+            "foundry",
+            "erc20",
+            "erc721",
+        ]
+    ):
         return DomainType.BLOCKCHAIN_SOLIDITY
 
     # Blockchain Solana
-    if any(kw in message_lower for kw in ["solana", "anchor", "rust solana", "spl token"]):
+    if any(
+        kw in message_lower for kw in ["solana", "anchor", "rust solana", "spl token"]
+    ):
         return DomainType.BLOCKCHAIN_SOLANA
 
     # Blockchain Web3 General
-    if any(kw in message_lower for kw in ["web3", "blockchain", "defi", "nft", "dapp", "metamask", "wagmi", "ethers.js", "viem"]):
+    if any(
+        kw in message_lower
+        for kw in [
+            "web3",
+            "blockchain",
+            "defi",
+            "nft",
+            "dapp",
+            "metamask",
+            "wagmi",
+            "ethers.js",
+            "viem",
+        ]
+    ):
         return DomainType.BLOCKCHAIN_WEB3
 
     # Data Kafka
-    if any(kw in message_lower for kw in ["kafka", "kafka streams", "confluent", "ksql", "schema registry"]):
+    if any(
+        kw in message_lower
+        for kw in ["kafka", "kafka streams", "confluent", "ksql", "schema registry"]
+    ):
         return DomainType.DATA_KAFKA
 
     # Data Snowflake
@@ -1006,11 +1120,17 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.DATA_SNOWFLAKE
 
     # Data dbt
-    if any(kw in message_lower for kw in ["dbt", "dbt model", "dbt test", "data build tool"]):
+    if any(
+        kw in message_lower
+        for kw in ["dbt", "dbt model", "dbt test", "data build tool"]
+    ):
         return DomainType.DATA_DBT
 
     # DevOps Ansible
-    if any(kw in message_lower for kw in ["ansible", "playbook", "ansible role", "ansible vault"]):
+    if any(
+        kw in message_lower
+        for kw in ["ansible", "playbook", "ansible role", "ansible vault"]
+    ):
         return DomainType.DEVOPS_ANSIBLE
 
     # DevOps Pulumi
@@ -1018,7 +1138,19 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.DEVOPS_PULUMI
 
     # Systems Embedded
-    if any(kw in message_lower for kw in ["embedded", "arduino", "esp32", "raspberry pi", "microcontroller", "rtos", "freertos", "firmware"]):
+    if any(
+        kw in message_lower
+        for kw in [
+            "embedded",
+            "arduino",
+            "esp32",
+            "raspberry pi",
+            "microcontroller",
+            "rtos",
+            "freertos",
+            "firmware",
+        ]
+    ):
         return DomainType.SYSTEMS_EMBEDDED
 
     # Systems WebAssembly
@@ -1026,23 +1158,43 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.SYSTEMS_WEBASSEMBLY
 
     # Functional Haskell
-    if any(kw in message_lower for kw in ["haskell", "cabal", "stack haskell", "ghc", "monad"]):
+    if any(
+        kw in message_lower
+        for kw in ["haskell", "cabal", "stack haskell", "ghc", "monad"]
+    ):
         return DomainType.FUNCTIONAL_HASKELL
 
     # Functional Clojure
-    if any(kw in message_lower for kw in ["clojure", "clojurescript", "leiningen", "deps.edn"]):
+    if any(
+        kw in message_lower
+        for kw in ["clojure", "clojurescript", "leiningen", "deps.edn"]
+    ):
         return DomainType.FUNCTIONAL_CLOJURE
 
     # Functional Programming General
-    if any(kw in message_lower for kw in ["functional programming", "pure function", "immutable", "functor", "algebraic data type"]):
+    if any(
+        kw in message_lower
+        for kw in [
+            "functional programming",
+            "pure function",
+            "immutable",
+            "functor",
+            "algebraic data type",
+        ]
+    ):
         return DomainType.FUNCTIONAL_FP
 
     # Game Development Unity
-    if any(kw in message_lower for kw in ["unity", "c# unity", "unity3d", "unity game"]):
+    if any(
+        kw in message_lower for kw in ["unity", "c# unity", "unity3d", "unity game"]
+    ):
         return DomainType.GAMEDEV_UNITY
 
     # Game Development Unreal
-    if any(kw in message_lower for kw in ["unreal", "unreal engine", "blueprint", "ue4", "ue5"]):
+    if any(
+        kw in message_lower
+        for kw in ["unreal", "unreal engine", "blueprint", "ue4", "ue5"]
+    ):
         return DomainType.GAMEDEV_UNREAL
 
     # Game Development Godot
@@ -1050,11 +1202,16 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.GAMEDEV_GODOT
 
     # API GraphQL
-    if any(kw in message_lower for kw in ["graphql", "apollo", "schema graphql", "resolver", "gql"]):
+    if any(
+        kw in message_lower
+        for kw in ["graphql", "apollo", "schema graphql", "resolver", "gql"]
+    ):
         return DomainType.API_GRAPHQL
 
     # API gRPC
-    if any(kw in message_lower for kw in ["grpc", "protobuf", "protocol buffer", ".proto"]):
+    if any(
+        kw in message_lower for kw in ["grpc", "protobuf", "protocol buffer", ".proto"]
+    ):
         return DomainType.API_GRPC
 
     # API REST
@@ -1062,11 +1219,36 @@ def detect_domain(message: str, project_type: str = None, technologies: List[str
         return DomainType.API_REST
 
     # Observability
-    if any(kw in message_lower for kw in ["prometheus", "grafana", "datadog", "newrelic", "jaeger", "opentelemetry", "logging", "monitoring", "alerting"]):
+    if any(
+        kw in message_lower
+        for kw in [
+            "prometheus",
+            "grafana",
+            "datadog",
+            "newrelic",
+            "jaeger",
+            "opentelemetry",
+            "logging",
+            "monitoring",
+            "alerting",
+        ]
+    ):
         return DomainType.OBSERVABILITY
 
     # Security
-    if any(kw in message_lower for kw in ["security", "auth", "oauth", "jwt", "encryption", "vulnerability", "penetration", "owasp"]):
+    if any(
+        kw in message_lower
+        for kw in [
+            "security",
+            "auth",
+            "oauth",
+            "jwt",
+            "encryption",
+            "vulnerability",
+            "penetration",
+            "owasp",
+        ]
+    ):
         return DomainType.SECURITY_GENERAL
 
     # Frontend HTMX

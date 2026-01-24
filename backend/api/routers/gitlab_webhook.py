@@ -65,7 +65,9 @@ async def ingest(
 
     # Extract project info
     project = payload.get("project") or {}
-    project_name = project.get("path_with_namespace") or project.get("name") or "unknown"
+    project_name = (
+        project.get("path_with_namespace") or project.get("name") or "unknown"
+    )
     project_url = project.get("web_url") or ""
 
     org_id = x_org_id or settings.x_org_id
@@ -87,7 +89,9 @@ async def ingest(
             await _handle_note(payload, project_name, project_url, org_id, db)
 
         else:
-            logger.info("gitlab_webhook.unhandled_event", extra={"event": x_gitlab_event})
+            logger.info(
+                "gitlab_webhook.unhandled_event", extra={"event": x_gitlab_event}
+            )
 
     except Exception as exc:
         logger.error(
@@ -118,7 +122,8 @@ async def _handle_push(
         org_id=org_id,
         node_type="gitlab_push",
         title=f"Push to {project_name}:{branch}",
-        text=f"User {user_name} pushed {len(commits)} commit(s):\n" + "\n".join(commit_messages),
+        text=f"User {user_name} pushed {len(commits)} commit(s):\n"
+        + "\n".join(commit_messages),
         meta_json={
             "project": project_name,
             "project_url": project_url,

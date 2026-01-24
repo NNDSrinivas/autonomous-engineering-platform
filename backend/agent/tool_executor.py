@@ -1779,10 +1779,15 @@ async def _dispatch_bitbucket_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = BITBUCKET_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Bitbucket tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Bitbucket tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Bitbucket tool error: %s - %s", tool_name, exc)
@@ -1798,10 +1803,15 @@ async def _dispatch_discord_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = DISCORD_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Discord tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Discord tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Discord tool error: %s - %s", tool_name, exc)
@@ -1817,10 +1827,15 @@ async def _dispatch_loom_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = LOOM_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Loom tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Loom tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Loom tool error: %s - %s", tool_name, exc)
@@ -1836,10 +1851,15 @@ async def _dispatch_trello_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = TRELLO_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Trello tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Trello tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Trello tool error: %s - %s", tool_name, exc)
@@ -1855,10 +1875,15 @@ async def _dispatch_clickup_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = CLICKUP_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"ClickUp tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"ClickUp tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("ClickUp tool error: %s - %s", tool_name, exc)
@@ -1874,10 +1899,15 @@ async def _dispatch_sonarqube_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = SONARQUBE_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"SonarQube tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"SonarQube tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("SonarQube tool error: %s - %s", tool_name, exc)
@@ -1893,10 +1923,15 @@ async def _dispatch_confluence_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = CONFLUENCE_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Confluence tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Confluence tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Confluence tool error: %s - %s", tool_name, exc)
@@ -1912,10 +1947,15 @@ async def _dispatch_figma_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = FIGMA_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Figma tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Figma tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Figma tool error: %s - %s", tool_name, exc)
@@ -1931,10 +1971,15 @@ async def _dispatch_sentry_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = SENTRY_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Sentry tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Sentry tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Sentry tool error: %s - %s", tool_name, exc)
@@ -1950,10 +1995,15 @@ async def _dispatch_snyk_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = SNYK_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Snyk tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Snyk tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Snyk tool error: %s - %s", tool_name, exc)
@@ -1969,14 +2019,22 @@ async def _dispatch_github_actions_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = GITHUB_ACTIONS_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"GitHub Actions tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"GitHub Actions tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("GitHub Actions tool error: %s - %s", tool_name, exc)
-        return {"tool": tool_name, "text": f"Error executing GitHub Actions tool: {exc}"}
+        return {
+            "tool": tool_name,
+            "text": f"Error executing GitHub Actions tool: {exc}",
+        }
 
 
 async def _dispatch_circleci_tool(
@@ -1988,10 +2046,15 @@ async def _dispatch_circleci_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = CIRCLECI_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"CircleCI tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"CircleCI tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("CircleCI tool error: %s - %s", tool_name, exc)
@@ -2007,10 +2070,15 @@ async def _dispatch_vercel_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = VERCEL_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Vercel tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Vercel tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Vercel tool error: %s - %s", tool_name, exc)
@@ -2026,10 +2094,15 @@ async def _dispatch_pagerduty_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = PAGERDUTY_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"PagerDuty tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"PagerDuty tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("PagerDuty tool error: %s - %s", tool_name, exc)
@@ -2045,10 +2118,15 @@ async def _dispatch_google_drive_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = GOOGLE_DRIVE_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Google Drive tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Google Drive tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Google Drive tool error: %s - %s", tool_name, exc)
@@ -2064,10 +2142,15 @@ async def _dispatch_zoom_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = ZOOM_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Zoom tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Zoom tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Zoom tool error: %s - %s", tool_name, exc)
@@ -2083,14 +2166,22 @@ async def _dispatch_google_calendar_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = GOOGLE_CALENDAR_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Google Calendar tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Google Calendar tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Google Calendar tool error: %s - %s", tool_name, exc)
-        return {"tool": tool_name, "text": f"Error executing Google Calendar tool: {exc}"}
+        return {
+            "tool": tool_name,
+            "text": f"Error executing Google Calendar tool: {exc}",
+        }
 
 
 async def _dispatch_monday_tool(
@@ -2102,10 +2193,15 @@ async def _dispatch_monday_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = MONDAY_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Monday.com tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Monday.com tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Monday.com tool error: %s - %s", tool_name, exc)
@@ -2121,10 +2217,15 @@ async def _dispatch_datadog_tool(
     context = {"user_id": user_id, "org_id": args.get("org_id")}
     tool_func = DATADOG_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Datadog tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Datadog tool '{tool_name}' is not implemented.",
+        }
 
     try:
-        result = await tool_func(context, **{k: v for k, v in args.items() if k not in ["org_id"]})
+        result = await tool_func(
+            context, **{k: v for k, v in args.items() if k not in ["org_id"]}
+        )
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:
         logger.error("Datadog tool error: %s - %s", tool_name, exc)
@@ -2132,7 +2233,10 @@ async def _dispatch_datadog_tool(
 
 
 async def _dispatch_deployment_tool(
-    user_id: str, tool_name: str, args: Dict[str, Any], workspace: Optional[Dict[str, Any]] = None
+    user_id: str,
+    tool_name: str,
+    args: Dict[str, Any],
+    workspace: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Dispatch deployment tools to their implementations."""
     from backend.agent.tools.deployment_tools import DEPLOYMENT_TOOLS
@@ -2146,7 +2250,10 @@ async def _dispatch_deployment_tool(
 
     tool_func = DEPLOYMENT_TOOLS.get(tool_name)
     if not tool_func:
-        return {"tool": tool_name, "text": f"Deployment tool '{tool_name}' is not implemented."}
+        return {
+            "tool": tool_name,
+            "text": f"Deployment tool '{tool_name}' is not implemented.",
+        }
 
     try:
         # Call tools with appropriate arguments
@@ -2161,7 +2268,10 @@ async def _dispatch_deployment_tool(
         elif tool_name == "deploy.list_platforms":
             result = await tool_func(context)
         else:
-            return {"tool": tool_name, "text": f"Deployment tool '{tool_name}' dispatch not configured."}
+            return {
+                "tool": tool_name,
+                "text": f"Deployment tool '{tool_name}' dispatch not configured.",
+            }
 
         return {"tool": tool_name, "text": result.output, "sources": result.sources}
     except Exception as exc:

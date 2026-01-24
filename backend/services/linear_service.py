@@ -100,7 +100,9 @@ class LinearService(ConnectorServiceBase):
                         # Determine assignee
                         assignee = None
                         if issue.get("assignee"):
-                            assignee = issue["assignee"].get("name") or issue["assignee"].get("email")
+                            assignee = issue["assignee"].get("name") or issue[
+                                "assignee"
+                            ].get("email")
 
                         # Build data dict with full issue details
                         data = {
@@ -111,7 +113,10 @@ class LinearService(ConnectorServiceBase):
                             "team": issue.get("team"),
                             "project": issue.get("project"),
                             "cycle": issue.get("cycle"),
-                            "labels": [label for label in issue.get("labels", {}).get("nodes", [])],
+                            "labels": [
+                                label
+                                for label in issue.get("labels", {}).get("nodes", [])
+                            ],
                             "creator": issue.get("creator"),
                             "assignee": issue.get("assignee"),
                         }
@@ -154,7 +159,9 @@ class LinearService(ConnectorServiceBase):
 
                         if result:
                             items_synced += 1
-                            items_created += 1  # Simplified - could track actual creates vs updates
+                            items_created += (
+                                1  # Simplified - could track actual creates vs updates
+                            )
 
                     logger.info(
                         "linear_service.sync_items.issues_synced",
@@ -354,9 +361,7 @@ class LinearService(ConnectorServiceBase):
                     )
 
                 else:
-                    return WriteResult(
-                        success=False, error=f"Unknown action: {action}"
-                    )
+                    return WriteResult(success=False, error=f"Unknown action: {action}")
 
         except Exception as e:
             logger.error("linear_service.write_item.error", error=str(e))

@@ -397,11 +397,15 @@ class MondayClient:
         }
         """
         import json
-        data = await self._query(query, {
-            "boardId": board_id,
-            "itemId": item_id,
-            "columnValues": json.dumps({"name": name}),
-        })
+
+        data = await self._query(
+            query,
+            {
+                "boardId": board_id,
+                "itemId": item_id,
+                "columnValues": json.dumps({"name": name}),
+            },
+        )
         return data.get("change_multiple_column_values", {})
 
     async def update_column_value(
@@ -420,12 +424,15 @@ class MondayClient:
             }
         }
         """
-        data = await self._query(query, {
-            "boardId": board_id,
-            "itemId": item_id,
-            "columnId": column_id,
-            "value": value,
-        })
+        data = await self._query(
+            query,
+            {
+                "boardId": board_id,
+                "itemId": item_id,
+                "columnId": column_id,
+                "value": value,
+            },
+        )
         return data.get("change_column_value", {})
 
     async def move_item_to_group(

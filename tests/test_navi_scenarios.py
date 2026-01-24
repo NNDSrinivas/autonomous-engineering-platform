@@ -87,9 +87,9 @@ async def run_scenario_tests():
         # ================================================================
         # SCENARIO 1: Complex error analysis with stack trace
         # ================================================================
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("SCENARIO 1: Complex Error Analysis")
-        print("="*60)
+        print("=" * 60)
 
         error_message = """
 I'm getting this error in production:
@@ -108,8 +108,18 @@ The API call sometimes returns a different format. How do I make this more robus
         # Check quality
         checks = [
             ("Has meaningful content", len(content) > 100),
-            ("Mentions KeyError/choices", "keyerror" in (content + thinking).lower() or "choices" in (content + thinking).lower()),
-            ("Suggests defensive coding", any(k in (content + thinking).lower() for k in [".get(", "try", "except", "if ", "check"])),
+            (
+                "Mentions KeyError/choices",
+                "keyerror" in (content + thinking).lower()
+                or "choices" in (content + thinking).lower(),
+            ),
+            (
+                "Suggests defensive coding",
+                any(
+                    k in (content + thinking).lower()
+                    for k in [".get(", "try", "except", "if ", "check"]
+                ),
+            ),
         ]
 
         all_passed = all(c[1] for c in checks)
@@ -124,24 +134,35 @@ The API call sometimes returns a different format. How do I make this more robus
         else:
             failed += 1
 
-
         # ================================================================
         # SCENARIO 2: Architecture decision request
         # ================================================================
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("SCENARIO 2: Architecture Decision")
-        print("="*60)
+        print("=" * 60)
 
         content, thinking, actions, activities, metrics = await send_navi_request(
             session,
-            "Should I use Redis or PostgreSQL for caching LLM responses? Consider that we have 100k+ users and responses can be up to 10KB each."
+            "Should I use Redis or PostgreSQL for caching LLM responses? Consider that we have 100k+ users and responses can be up to 10KB each.",
         )
 
         checks = [
             ("Has meaningful content", len(content) > 200),
             ("Discusses Redis", "redis" in (content + thinking).lower()),
-            ("Discusses PostgreSQL", any(k in (content + thinking).lower() for k in ["postgresql", "postgres", "pg"])),
-            ("Considers scale", any(k in (content + thinking).lower() for k in ["scale", "user", "100k", "performance"])),
+            (
+                "Discusses PostgreSQL",
+                any(
+                    k in (content + thinking).lower()
+                    for k in ["postgresql", "postgres", "pg"]
+                ),
+            ),
+            (
+                "Considers scale",
+                any(
+                    k in (content + thinking).lower()
+                    for k in ["scale", "user", "100k", "performance"]
+                ),
+            ),
         ]
 
         all_passed = all(c[1] for c in checks)
@@ -155,25 +176,40 @@ The API call sometimes returns a different format. How do I make this more robus
             passed += 1
         else:
             failed += 1
-
 
         # ================================================================
         # SCENARIO 3: Multi-file refactoring plan
         # ================================================================
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("SCENARIO 3: Multi-file Refactoring")
-        print("="*60)
+        print("=" * 60)
 
         content, thinking, actions, activities, metrics = await send_navi_request(
             session,
-            "I want to extract all the LLM-related code from navi_brain.py into a separate module. Give me a step-by-step refactoring plan."
+            "I want to extract all the LLM-related code from navi_brain.py into a separate module. Give me a step-by-step refactoring plan.",
         )
 
         checks = [
             ("Has meaningful content", len(content) > 200),
-            ("Mentions files/modules", any(k in (content + thinking).lower() for k in ["module", "file", ".py", "import"])),
-            ("Has steps", any(k in (content + thinking).lower() for k in ["step", "1.", "first", "then", "next"])),
-            ("Mentions navi_brain", "navi_brain" in (content + thinking).lower() or "navi" in (content + thinking).lower()),
+            (
+                "Mentions files/modules",
+                any(
+                    k in (content + thinking).lower()
+                    for k in ["module", "file", ".py", "import"]
+                ),
+            ),
+            (
+                "Has steps",
+                any(
+                    k in (content + thinking).lower()
+                    for k in ["step", "1.", "first", "then", "next"]
+                ),
+            ),
+            (
+                "Mentions navi_brain",
+                "navi_brain" in (content + thinking).lower()
+                or "navi" in (content + thinking).lower(),
+            ),
         ]
 
         all_passed = all(c[1] for c in checks)
@@ -187,24 +223,35 @@ The API call sometimes returns a different format. How do I make this more robus
             passed += 1
         else:
             failed += 1
-
 
         # ================================================================
         # SCENARIO 4: Debugging intermittent issue
         # ================================================================
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("SCENARIO 4: Intermittent Bug Debugging")
-        print("="*60)
+        print("=" * 60)
 
         content, thinking, actions, activities, metrics = await send_navi_request(
             session,
-            "Users report that sometimes the chat just shows a loading spinner forever but only about 10% of the time. How do I debug this?"
+            "Users report that sometimes the chat just shows a loading spinner forever but only about 10% of the time. How do I debug this?",
         )
 
         checks = [
             ("Has meaningful content", len(content) > 100),
-            ("Suggests debugging approaches", any(k in (content + thinking).lower() for k in ["log", "debug", "trace", "monitor", "timeout"])),
-            ("Addresses intermittent nature", any(k in (content + thinking).lower() for k in ["intermittent", "sometimes", "random", "race", "async"])),
+            (
+                "Suggests debugging approaches",
+                any(
+                    k in (content + thinking).lower()
+                    for k in ["log", "debug", "trace", "monitor", "timeout"]
+                ),
+            ),
+            (
+                "Addresses intermittent nature",
+                any(
+                    k in (content + thinking).lower()
+                    for k in ["intermittent", "sometimes", "random", "race", "async"]
+                ),
+            ),
         ]
 
         all_passed = all(c[1] for c in checks)
@@ -219,23 +266,34 @@ The API call sometimes returns a different format. How do I make this more robus
         else:
             failed += 1
 
-
         # ================================================================
         # SCENARIO 5: Create complete feature with tests
         # ================================================================
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("SCENARIO 5: Complete Feature Implementation")
-        print("="*60)
+        print("=" * 60)
 
         content, thinking, actions, activities, metrics = await send_navi_request(
             session,
-            "Create a health check endpoint at /health that returns the status of all dependencies (database, LLM providers, Redis if configured). Include tests."
+            "Create a health check endpoint at /health that returns the status of all dependencies (database, LLM providers, Redis if configured). Include tests.",
         )
 
         checks = [
             ("Has content", len(content) > 50),
-            ("Proposes code or actions", len(actions) > 0 or "def " in content or "async def" in content or "```" in content),
-            ("Mentions health/status", any(k in (content + thinking).lower() for k in ["health", "status", "check", "endpoint"])),
+            (
+                "Proposes code or actions",
+                len(actions) > 0
+                or "def " in content
+                or "async def" in content
+                or "```" in content,
+            ),
+            (
+                "Mentions health/status",
+                any(
+                    k in (content + thinking).lower()
+                    for k in ["health", "status", "check", "endpoint"]
+                ),
+            ),
         ]
 
         all_passed = all(c[1] for c in checks)
@@ -246,7 +304,9 @@ The API call sometimes returns a different format. How do I make this more robus
         if actions:
             print(f"   Actions: {len(actions)} proposed")
             for a in actions[:3]:
-                print(f"      - {a.get('type')}: {str(a.get('filePath', a.get('command', '')))[:50]}")
+                print(
+                    f"      - {a.get('type')}: {str(a.get('filePath', a.get('command', '')))[:50]}"
+                )
         print(f"   Content: {content[:200]}...")
 
         if all_passed:
@@ -254,37 +314,63 @@ The API call sometimes returns a different format. How do I make this more robus
         else:
             failed += 1
 
-
         # ================================================================
         # SCENARIO 6: Security vulnerability scan
         # ================================================================
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("SCENARIO 6: Security Analysis")
-        print("="*60)
+        print("=" * 60)
 
-        vuln_code = '''
+        vuln_code = """
 @app.get("/user/{user_id}")
 async def get_user(user_id: str, db: Session = Depends(get_db)):
     query = f"SELECT * FROM users WHERE id = '{user_id}'"
     result = db.execute(query)
     return result.fetchone()
-'''
+"""
         content, thinking, actions, activities, metrics = await send_navi_request(
             session,
             "Is this code secure? What are the vulnerabilities?",
-            attachments=[{
-                "kind": "code",
-                "path": "vulnerable.py",
-                "content": vuln_code,
-                "language": "python"
-            }]
+            attachments=[
+                {
+                    "kind": "code",
+                    "path": "vulnerable.py",
+                    "content": vuln_code,
+                    "language": "python",
+                }
+            ],
         )
 
         combined = (content + thinking).lower()
         checks = [
             ("Has content", len(content) > 50 or len(thinking) > 100),
-            ("Identifies SQL injection", any(k in combined for k in ["sql injection", "injection", "f-string", "parameterized", "sanitize"])),
-            ("Suggests fix", any(k in combined for k in ["parameterized", "prepared", "bind", "placeholder", "?", ":"])),
+            (
+                "Identifies SQL injection",
+                any(
+                    k in combined
+                    for k in [
+                        "sql injection",
+                        "injection",
+                        "f-string",
+                        "parameterized",
+                        "sanitize",
+                    ]
+                ),
+            ),
+            (
+                "Suggests fix",
+                any(
+                    k in combined
+                    for k in [
+                        "parameterized",
+                        "prepared",
+                        "bind",
+                        "placeholder",
+                        "?",
+                        ":",
+                    ]
+                ),
+            ),
         ]
 
         all_passed = all(c[1] for c in checks)
@@ -301,13 +387,12 @@ async def get_user(user_id: str, db: Session = Depends(get_db)):
         else:
             failed += 1
 
-
     # ================================================================
     # SUMMARY
     # ================================================================
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("SCENARIO TEST SUMMARY")
-    print("="*60)
+    print("=" * 60)
     print(f"Passed: {passed}")
     print(f"Failed: {failed}")
     print(f"Total: {passed + failed}")

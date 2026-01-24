@@ -26,10 +26,11 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # ============================================================
 
+
 class VisionProvider(Enum):
     ANTHROPIC = "anthropic"  # Claude 3.5 Sonnet
-    OPENAI = "openai"        # GPT-4 Vision
-    GOOGLE = "google"        # Gemini Pro Vision
+    OPENAI = "openai"  # GPT-4 Vision
+    GOOGLE = "google"  # Gemini Pro Vision
 
 
 # Provider configurations
@@ -59,14 +60,16 @@ PROVIDER_CONFIG = {
 # DATA CLASSES
 # ============================================================
 
+
 @dataclass
 class UIComponent:
     """A detected UI component"""
+
     component_type: str  # button, input, card, table, nav, etc.
     description: str
     position: str  # relative position in layout
     properties: Dict[str, Any] = field(default_factory=dict)
-    children: List['UIComponent'] = field(default_factory=list)
+    children: List["UIComponent"] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -81,6 +84,7 @@ class UIComponent:
 @dataclass
 class LayoutAnalysis:
     """Analysis of UI layout structure"""
+
     layout_type: str  # grid, flex, sidebar, stack, etc.
     columns: int = 1
     rows: int = 1
@@ -100,6 +104,7 @@ class LayoutAnalysis:
 @dataclass
 class UIAnalysis:
     """Complete analysis of a UI screenshot"""
+
     description: str
     layout: LayoutAnalysis
     components: List[UIComponent] = field(default_factory=list)
@@ -137,14 +142,18 @@ class UIAnalysis:
                 parts.append(f"  - {comp.component_type}: {comp.description}")
 
         if self.color_scheme:
-            parts.append(f"\n**Colors**: {', '.join(f'{k}: {v}' for k, v in self.color_scheme.items())}")
+            parts.append(
+                f"\n**Colors**: {', '.join(f'{k}: {v}' for k, v in self.color_scheme.items())}"
+            )
 
         if self.implementation_hints:
             parts.append("\n**Implementation Hints**:")
             for hint in self.implementation_hints:
                 parts.append(f"  - {hint}")
 
-        parts.append(f"\n**Suggested Stack**: {self.suggested_framework} + {self.suggested_css}")
+        parts.append(
+            f"\n**Suggested Stack**: {self.suggested_framework} + {self.suggested_css}"
+        )
 
         return "\n".join(parts)
 
@@ -152,6 +161,7 @@ class UIAnalysis:
 # ============================================================
 # VISION API CLIENTS
 # ============================================================
+
 
 class VisionClient:
     """Base class for vision API clients"""
@@ -185,11 +195,17 @@ class VisionClient:
 
         try:
             if provider == VisionProvider.ANTHROPIC:
-                return await cls._call_anthropic(image_data, prompt, api_key, config, timeout)
+                return await cls._call_anthropic(
+                    image_data, prompt, api_key, config, timeout
+                )
             elif provider == VisionProvider.OPENAI:
-                return await cls._call_openai(image_data, prompt, api_key, config, timeout)
+                return await cls._call_openai(
+                    image_data, prompt, api_key, config, timeout
+                )
             elif provider == VisionProvider.GOOGLE:
-                return await cls._call_google(image_data, prompt, api_key, config, timeout)
+                return await cls._call_google(
+                    image_data, prompt, api_key, config, timeout
+                )
         except Exception as e:
             logger.error(f"Vision API error ({provider.value}): {e}")
             return cls._fallback_analysis(prompt)
@@ -249,7 +265,9 @@ class VisionClient:
                 data = response.json()
                 return data["content"][0]["text"]
             else:
-                logger.error(f"Anthropic API error: {response.status_code} - {response.text}")
+                logger.error(
+                    f"Anthropic API error: {response.status_code} - {response.text}"
+                )
                 raise Exception(f"API error: {response.status_code}")
 
     @classmethod
@@ -297,7 +315,9 @@ class VisionClient:
                 data = response.json()
                 return data["choices"][0]["message"]["content"]
             else:
-                logger.error(f"OpenAI API error: {response.status_code} - {response.text}")
+                logger.error(
+                    f"OpenAI API error: {response.status_code} - {response.text}"
+                )
                 raise Exception(f"API error: {response.status_code}")
 
     @classmethod
@@ -341,7 +361,9 @@ class VisionClient:
                 data = response.json()
                 return data["candidates"][0]["content"]["parts"][0]["text"]
             else:
-                logger.error(f"Google API error: {response.status_code} - {response.text}")
+                logger.error(
+                    f"Google API error: {response.status_code} - {response.text}"
+                )
                 raise Exception(f"API error: {response.status_code}")
 
     @classmethod
@@ -381,6 +403,7 @@ For accurate analysis, please configure a vision API key:
 # ============================================================
 # UI ANALYZER
 # ============================================================
+
 
 class UIAnalyzer:
     """Analyze UI screenshots and extract structured information"""
@@ -482,7 +505,7 @@ Be specific about:
                     elif char == "}":
                         depth -= 1
                         if depth == 0:
-                            json_match = raw_response[start:i+1]
+                            json_match = raw_response[start : i + 1]
                             break
 
             if json_match:
@@ -510,12 +533,14 @@ Be specific about:
         # Parse components
         components = []
         for comp_data in data.get("components", []):
-            components.append(UIComponent(
-                component_type=comp_data.get("type", "unknown"),
-                description=comp_data.get("description", ""),
-                position=comp_data.get("position", "main"),
-                properties=comp_data.get("properties", {}),
-            ))
+            components.append(
+                UIComponent(
+                    component_type=comp_data.get("type", "unknown"),
+                    description=comp_data.get("description", ""),
+                    position=comp_data.get("position", "main"),
+                    properties=comp_data.get("properties", {}),
+                )
+            )
 
         return UIAnalysis(
             description=data.get("description", "UI Screenshot"),
@@ -543,6 +568,7 @@ Be specific about:
 # ============================================================
 # CODE GENERATOR FROM UI
 # ============================================================
+
 
 class UICodeGenerator:
     """Generate code from UI analysis"""
@@ -613,13 +639,15 @@ Generate a complete, working component that matches the UI design."""
                     '<nav className="flex gap-4">{/* Navigation items */}</nav>'
                 )
             else:
-                components_jsx.append(
-                    f'<div className="p-4">{comp.description}</div>'
-                )
+                components_jsx.append(f'<div className="p-4">{comp.description}</div>')
 
-        components_code = "\n        ".join(components_jsx) if components_jsx else "{/* Add components here */}"
+        components_code = (
+            "\n        ".join(components_jsx)
+            if components_jsx
+            else "{/* Add components here */}"
+        )
 
-        return f'''import React from 'react';
+        return f"""import React from 'react';
 
 interface Props {{
   // Add props as needed
@@ -659,12 +687,13 @@ export const Component: React.FC<Props> = () => {{
 }};
 
 export default Component;
-'''
+"""
 
 
 # ============================================================
 # PUBLIC API
 # ============================================================
+
 
 async def analyze_ui_screenshot(
     image_data: str,

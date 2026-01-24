@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class ActivityKind(str, Enum):
     """Activity event types for real-time UI updates."""
+
     # Context building
     DETECTION = "detection"
     CONTEXT = "context"
@@ -58,6 +59,7 @@ class ActivityKind(str, Enum):
 
 class ActivityStatus(str, Enum):
     """Status of an activity."""
+
     PENDING = "pending"
     RUNNING = "running"
     DONE = "done"
@@ -67,6 +69,7 @@ class ActivityStatus(str, Enum):
 @dataclass
 class ActivityEvent:
     """Structured activity event for frontend consumption."""
+
     kind: ActivityKind
     label: str
     detail: str
@@ -79,10 +82,16 @@ class ActivityEvent:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
-            "kind": self.kind.value if isinstance(self.kind, ActivityKind) else self.kind,
+            "kind": (
+                self.kind.value if isinstance(self.kind, ActivityKind) else self.kind
+            ),
             "label": self.label,
             "detail": self.detail,
-            "status": self.status.value if isinstance(self.status, ActivityStatus) else self.status,
+            "status": (
+                self.status.value
+                if isinstance(self.status, ActivityStatus)
+                else self.status
+            ),
         }
         if self.progress is not None:
             result["progress"] = round(self.progress, 2)
@@ -96,6 +105,7 @@ class ActivityEvent:
 @dataclass
 class StreamingMetrics:
     """Metrics for streaming performance tracking."""
+
     start_time: float = field(default_factory=time.time)
     first_token_time: Optional[float] = None
     last_token_time: Optional[float] = None
@@ -328,7 +338,10 @@ async def stream_with_heartbeat(
         now = time.time()
         if now - last_heartbeat_time >= heartbeat_interval:
             heartbeat_count += 1
-            yield session.heartbeat(f"Working... ({heartbeat_count * int(heartbeat_interval)}s elapsed)", heartbeat_count)
+            yield session.heartbeat(
+                f"Working... ({heartbeat_count * int(heartbeat_interval)}s elapsed)",
+                heartbeat_count,
+            )
             last_heartbeat_time = now
 
 
@@ -350,32 +363,32 @@ async def stream_text_with_typing(
     Yields:
         Text chunks
     """
-    lines = text.split('\n')
+    lines = text.split("\n")
 
     for line_idx, line in enumerate(lines):
         if not line.strip():
             # Empty line, yield newline
             if line_idx > 0:
-                yield '\n'
+                yield "\n"
             continue
 
         # Check if this is a code block marker
-        if line.strip().startswith('```'):
+        if line.strip().startswith("```"):
             if line_idx > 0:
-                yield '\n'
+                yield "\n"
             yield line
             continue
 
         # Stream words within this line
-        words = line.split(' ')
+        words = line.split(" ")
 
         for i in range(0, len(words), chunk_size):
-            chunk_words = words[i:i + chunk_size]
-            chunk = ' '.join(chunk_words)
+            chunk_words = words[i : i + chunk_size]
+            chunk = " ".join(chunk_words)
 
             # Add space after chunk if not at end
             if i + chunk_size < len(words):
-                chunk += ' '
+                chunk += " "
 
             yield chunk
 
@@ -384,7 +397,7 @@ async def stream_text_with_typing(
 
         # Add newline after each line (except last)
         if line_idx < len(lines) - 1:
-            yield '\n'
+            yield "\n"
 
 
 async def stream_file_operation(
@@ -483,6 +496,7 @@ def format_activity_for_sse(activity_dict: Dict[str, Any]) -> str:
         SSE-formatted string
     """
     import json
+
     return f"data: {json.dumps(activity_dict)}\n\n"
 
 

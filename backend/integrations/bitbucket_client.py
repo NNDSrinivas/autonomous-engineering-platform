@@ -63,7 +63,9 @@ class BitbucketClient:
     ) -> Any:
         """Make a GET request to the Bitbucket API."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.api_url}{endpoint}"
         response = await self._client.get(url, params=params)
@@ -77,7 +79,9 @@ class BitbucketClient:
     ) -> Any:
         """Make a POST request to the Bitbucket API."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.api_url}{endpoint}"
         response = await self._client.post(url, json=data)
@@ -91,7 +95,9 @@ class BitbucketClient:
     ) -> Any:
         """Make a PUT request to the Bitbucket API."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.api_url}{endpoint}"
         response = await self._client.put(url, json=data)
@@ -301,7 +307,9 @@ class BitbucketClient:
             Diff as string
         """
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.api_url}/repositories/{workspace}/{repo_slug}/pullrequests/{pr_id}/diff"
         response = await self._client.get(url)
@@ -546,9 +554,7 @@ class BitbucketClient:
         Returns:
             Webhook list
         """
-        return await self._get(
-            f"/repositories/{workspace}/{repo_slug}/hooks"
-        )
+        return await self._get(f"/repositories/{workspace}/{repo_slug}/hooks")
 
     async def create_webhook(
         self,
@@ -625,13 +631,17 @@ class BitbucketClient:
             webhook_uuid: Webhook UUID
         """
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         # Ensure UUID has braces
         if not webhook_uuid.startswith("{"):
             webhook_uuid = f"{{{webhook_uuid}}}"
 
-        url = f"{self.api_url}/repositories/{workspace}/{repo_slug}/hooks/{webhook_uuid}"
+        url = (
+            f"{self.api_url}/repositories/{workspace}/{repo_slug}/hooks/{webhook_uuid}"
+        )
         response = await self._client.delete(url)
         response.raise_for_status()
         logger.info(

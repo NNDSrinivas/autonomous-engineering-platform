@@ -304,7 +304,9 @@ class PagerDutyService(ConnectorServiceBase):
                     "user": oc.get("user", {}).get("summary", "Unknown"),
                     "user_email": oc.get("user", {}).get("email", ""),
                     "schedule": oc.get("schedule", {}).get("summary", ""),
-                    "escalation_policy": oc.get("escalation_policy", {}).get("summary", ""),
+                    "escalation_policy": oc.get("escalation_policy", {}).get(
+                        "summary", ""
+                    ),
                     "escalation_level": oc.get("escalation_level"),
                     "start": oc.get("start", ""),
                     "end": oc.get("end", ""),

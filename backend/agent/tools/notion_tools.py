@@ -172,9 +172,7 @@ async def list_recent_notion_pages(
 
     except Exception as exc:
         notion_logger.error("notion_tools.list_recent_pages.error", error=str(exc))
-        return ToolResult(
-            output=f"Error listing Notion pages: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error listing Notion pages: {str(exc)}", sources=[])
 
 
 async def get_notion_page_content(
@@ -224,18 +222,24 @@ async def get_notion_page_content(
                 limit=100,
             )
             page_item = next(
-                (i for i in items if i.external_id == page_id or page_id in str(i.external_id)),
+                (
+                    i
+                    for i in items
+                    if i.external_id == page_id or page_id in str(i.external_id)
+                ),
                 None,
             )
 
             sources = []
             if page_item and page_item.url:
-                sources.append({
-                    "name": page_item.title or "Page",
-                    "type": "notion",
-                    "connector": "notion",
-                    "url": page_item.url,
-                })
+                sources.append(
+                    {
+                        "name": page_item.title or "Page",
+                        "type": "notion",
+                        "connector": "notion",
+                        "url": page_item.url,
+                    }
+                )
 
             notion_logger.info(
                 "notion_tools.get_page_content.done",
@@ -392,12 +396,16 @@ async def create_notion_page(
             children = []
             for para in content.split("\n\n"):
                 if para.strip():
-                    children.append({
-                        "type": "paragraph",
-                        "paragraph": {
-                            "rich_text": [{"type": "text", "text": {"content": para.strip()}}]
+                    children.append(
+                        {
+                            "type": "paragraph",
+                            "paragraph": {
+                                "rich_text": [
+                                    {"type": "text", "text": {"content": para.strip()}}
+                                ]
+                            },
                         }
-                    })
+                    )
 
         result = await NotionService.write_item(
             db=db,
@@ -416,12 +424,14 @@ async def create_notion_page(
         if result.success:
             sources = []
             if result.url:
-                sources.append({
-                    "name": title[:50],
-                    "type": "notion",
-                    "connector": "notion",
-                    "url": result.url,
-                })
+                sources.append(
+                    {
+                        "name": title[:50],
+                        "type": "notion",
+                        "connector": "notion",
+                        "url": result.url,
+                    }
+                )
 
             output = "Successfully created Notion page:\n\n"
             output += f"• **{title}**\n"
@@ -442,9 +452,7 @@ async def create_notion_page(
 
     except Exception as exc:
         notion_logger.error("notion_tools.create_page.error", error=str(exc))
-        return ToolResult(
-            output=f"Error creating Notion page: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error creating Notion page: {str(exc)}", sources=[])
 
 
 # Tool function registry for NAVI

@@ -615,9 +615,7 @@ class PlannerV3:
                 id="repo-overview-2",
                 description="Read key project files.",
                 tool="code.read_files",
-                arguments={
-                    "paths": ["README.md", "package.json", "pyproject.toml"]
-                },
+                arguments={"paths": ["README.md", "package.json", "pyproject.toml"]},
             ),
         ]
 
@@ -722,8 +720,8 @@ class PlannerV3:
 
         # Match common test file patterns
         patterns = [
-            r'([^\s:]+(?:_test|test_|\.test|\.spec)\.[a-z]+)',  # test files
-            r'\(([^:]+\.(?:py|js|ts|go|rs|java)):',  # file:line patterns
+            r"([^\s:]+(?:_test|test_|\.test|\.spec)\.[a-z]+)",  # test files
+            r"\(([^:]+\.(?:py|js|ts|go|rs|java)):",  # file:line patterns
         ]
 
         files = set()
@@ -739,8 +737,8 @@ class PlannerV3:
 
         # Look for function/class names in common error patterns
         patterns = [
-            r'(?:test_|Test)(\w+)',  # Test names
-            r'(\w+Error|Exception)',  # Error types
+            r"(?:test_|Test)(\w+)",  # Test names
+            r"(\w+Error|Exception)",  # Error types
             r"'(\w+)'",  # Quoted identifiers
         ]
 
@@ -780,9 +778,7 @@ class SimplePlanner:
                 id="repo-overview-2",
                 description="Read key project files.",
                 tool="code.read_files",
-                arguments={
-                    "paths": ["README.md", "package.json", "pyproject.toml"]
-                },
+                arguments={"paths": ["README.md", "package.json", "pyproject.toml"]},
             ),
         ]
 

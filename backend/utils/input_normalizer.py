@@ -348,7 +348,9 @@ def normalize_history(
             normalized.append({"role": "user", "content": item})
         elif hasattr(item, "__dict__"):
             # Handle Pydantic models or dataclasses
-            role = normalize_role(getattr(item, "role", None) or getattr(item, "type", None))
+            role = normalize_role(
+                getattr(item, "role", None) or getattr(item, "type", None)
+            )
             content = normalize_message(item.__dict__)
             if content:
                 normalized.append({"role": role, "content": content})

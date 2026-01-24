@@ -17,7 +17,12 @@ class DatadogService(ConnectorServiceBase):
 
     PROVIDER = "datadog"
     SUPPORTED_ITEM_TYPES = ["monitor", "incident", "dashboard"]
-    WRITE_OPERATIONS = ["create_event", "mute_monitor", "unmute_monitor", "create_incident"]
+    WRITE_OPERATIONS = [
+        "create_event",
+        "mute_monitor",
+        "unmute_monitor",
+        "create_incident",
+    ]
 
     @classmethod
     async def sync_items(
@@ -325,7 +330,9 @@ class DatadogService(ConnectorServiceBase):
                     "title": inc.get("attributes", {}).get("title", "Untitled"),
                     "status": inc.get("attributes", {}).get("state", ""),
                     "severity": inc.get("attributes", {}).get("severity", ""),
-                    "customer_impacted": inc.get("attributes", {}).get("customer_impacted", False),
+                    "customer_impacted": inc.get("attributes", {}).get(
+                        "customer_impacted", False
+                    ),
                     "created": inc.get("attributes", {}).get("created", ""),
                     "url": f"https://app.{site}/incidents/{inc.get('id', '')}",
                 }

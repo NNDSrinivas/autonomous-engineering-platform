@@ -42,7 +42,9 @@ from backend.services.llm import call_llm
 logger = logging.getLogger(__name__)
 
 
-def _extract_images_from_attachments(attachments: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def _extract_images_from_attachments(
+    attachments: Optional[List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
     """
     Extract image attachments for vision processing.
 
@@ -58,9 +60,7 @@ def _extract_images_from_attachments(attachments: Optional[List[Dict[str, Any]]]
 
 
 async def _analyze_images_with_vision(
-    images: List[Dict[str, Any]],
-    message: str,
-    workspace_root: Optional[str] = None
+    images: List[Dict[str, Any]], message: str, workspace_root: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Analyze images using the vision service.
@@ -92,7 +92,7 @@ async def _analyze_images_with_vision(
         analysis = await analyze_ui_screenshot(
             image_data=image_content,
             context=message,
-            provider="anthropic"  # Default to Anthropic/Claude vision
+            provider="anthropic",  # Default to Anthropic/Claude vision
         )
 
         logger.info("[AGENT] Vision analysis completed: %d chars", len(str(analysis)))
@@ -110,10 +110,18 @@ async def _analyze_images_with_vision(
 
     except ImportError:
         logger.warning("[AGENT] Vision service not available")
-        return {"has_images": True, "image_count": len(images), "analysis_error": "Vision service not available"}
+        return {
+            "has_images": True,
+            "image_count": len(images),
+            "analysis_error": "Vision service not available",
+        }
     except Exception as e:
         logger.error("[AGENT] Vision analysis failed: %s", e)
-        return {"has_images": True, "image_count": len(images), "analysis_error": str(e)}
+        return {
+            "has_images": True,
+            "image_count": len(images),
+            "analysis_error": str(e),
+        }
 
 
 def _format_ui_analysis_for_context(analysis: Dict[str, Any]) -> str:
@@ -162,8 +170,7 @@ def _format_ui_analysis_for_context(analysis: Dict[str, Any]) -> str:
 
 
 async def _verify_with_tests(
-    workspace_path: str,
-    modified_files: Optional[List[str]] = None
+    workspace_path: str, modified_files: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """
     Run tests to verify code changes work correctly.
@@ -186,7 +193,9 @@ async def _verify_with_tests(
         # First check if there's a test framework
         framework = detect_framework(workspace_path)
         if framework == "unknown":
-            logger.info("[AGENT] No test framework detected, skipping test verification")
+            logger.info(
+                "[AGENT] No test framework detected, skipping test verification"
+            )
             return {
                 "skipped": True,
                 "reason": "no_test_framework",
@@ -328,9 +337,7 @@ async def _analyze_errors_with_debugger(
             # Try to read code context if we have file and line info
             if error.get("file") and error.get("line"):
                 code_context = await _get_code_context(
-                    workspace_path,
-                    error["file"],
-                    error["line"]
+                    workspace_path, error["file"], error["line"]
                 )
                 if code_context:
                     enhanced["code_context"] = code_context
@@ -349,17 +356,18 @@ async def _analyze_errors_with_debugger(
 
     except ImportError:
         logger.warning("[AGENT] Comprehensive debugger not available")
-        return {"errors": [], "warnings": [], "analysis_error": "Debugger not available"}
+        return {
+            "errors": [],
+            "warnings": [],
+            "analysis_error": "Debugger not available",
+        }
     except Exception as e:
         logger.error("[AGENT] Error analysis failed: %s", e)
         return {"errors": [], "warnings": [], "analysis_error": str(e)}
 
 
 async def _get_code_context(
-    workspace_path: str,
-    file_path: str,
-    line_number: int,
-    context_lines: int = 5
+    workspace_path: str, file_path: str, line_number: int, context_lines: int = 5
 ) -> Optional[str]:
     """
     Get code context around a specific line for error analysis.
@@ -385,7 +393,7 @@ async def _get_code_context(
         if not os.path.exists(full_path):
             return None
 
-        with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
 
         # Calculate line range
@@ -430,7 +438,9 @@ def _format_debug_analysis_for_response(analysis: Dict[str, Any]) -> str:
     # Summary
     summary = analysis.get("summary", {})
     if summary:
-        parts.append(f"Found {summary.get('total_errors', 0)} error(s), {summary.get('total_warnings', 0)} warning(s)")
+        parts.append(
+            f"Found {summary.get('total_errors', 0)} error(s), {summary.get('total_warnings', 0)} warning(s)"
+        )
 
     # Detailed errors
     for i, error in enumerate(errors[:3], 1):
@@ -458,7 +468,9 @@ def _format_debug_analysis_for_response(analysis: Dict[str, Any]) -> str:
     if auto_fixes:
         parts.append("\n**Suggested Commands**:")
         for fix in auto_fixes[:3]:
-            parts.append(f"  - `{fix.get('command', '')}` - {fix.get('description', '')}")
+            parts.append(
+                f"  - `{fix.get('command', '')}` - {fix.get('description', '')}"
+            )
 
     return "\n".join(parts)
 
@@ -813,11 +825,14 @@ async def _handle_plan_mode_request(
     }
 
     # Update user state
-    update_user_state(user_id, {
-        "plan_mode_active": True,
-        "plan_mode_state": plan_mode_state,
-        "original_request": message,
-    })
+    update_user_state(
+        user_id,
+        {
+            "plan_mode_active": True,
+            "plan_mode_state": plan_mode_state,
+            "original_request": message,
+        },
+    )
 
     return {
         "reply": options_message,
@@ -917,11 +932,14 @@ async def _handle_execution_mode_choice(
         plan_mode_state["execution_started"] = True
 
     # Update state
-    update_user_state(user_id, {
-        "plan_mode_active": True,
-        "plan_mode_state": plan_mode_state,
-        "original_request": previous_state.get("original_request"),
-    })
+    update_user_state(
+        user_id,
+        {
+            "plan_mode_active": True,
+            "plan_mode_state": plan_mode_state,
+            "original_request": previous_state.get("original_request"),
+        },
+    )
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
 
@@ -1012,7 +1030,7 @@ async def _execute_plan_with_mode(
         tool = step_data.get("tool", "")
         description = step_data.get("description", f"Step {i+1}")
 
-        logger.info("[AGENT] Executing step %d/%d: %s", i+1, len(steps), description)
+        logger.info("[AGENT] Executing step %d/%d: %s", i + 1, len(steps), description)
 
         # Get the operation name for this step type
         operation = STEP_TYPE_TO_OPERATION.get(step_type)
@@ -1021,7 +1039,9 @@ async def _execute_plan_with_mode(
         needs_approval = False
         if operation is not None:
             # Use settings to check if this operation requires approval
-            command_context = {"command": step_data.get("arguments", {}).get("command", "")}
+            command_context = {
+                "command": step_data.get("arguments", {}).get("command", "")
+            }
             needs_approval = settings.requires_approval_for(operation, command_context)
             logger.info(
                 "[AGENT] Step %d: operation=%s, needs_approval=%s (settings-based)",
@@ -1053,15 +1073,22 @@ async def _execute_plan_with_mode(
                 "execution_started": True,
             }
 
-            update_user_state(user_id, {
-                "plan_mode_active": True,
-                "plan_mode_state": plan_mode_state,
-                "original_request": original_request,
-            })
+            update_user_state(
+                user_id,
+                {
+                    "plan_mode_active": True,
+                    "plan_mode_state": plan_mode_state,
+                    "original_request": original_request,
+                },
+            )
 
             elapsed_ms = int((time.monotonic() - started) * 1000)
             return {
-                "reply": "\n\n".join(all_outputs) + "\n\n" + approval_message if all_outputs else approval_message,
+                "reply": (
+                    "\n\n".join(all_outputs) + "\n\n" + approval_message
+                    if all_outputs
+                    else approval_message
+                ),
                 "actions": [],
                 "should_stream": False,
                 "state": {
@@ -1089,7 +1116,7 @@ async def _execute_plan_with_mode(
             completed_count += 1
 
         except Exception as e:
-            logger.error("[AGENT] Step %d failed: %s", i+1, e)
+            logger.error("[AGENT] Step %d failed: %s", i + 1, e)
             all_outputs.append(f"**Step {i+1}: {description}** - Failed: {e}")
             failed_count += 1
 
@@ -1513,11 +1540,15 @@ async def _run_iterative_agent_loop(
         )
         iteration_duration = int((time.monotonic() - iteration_start) * 1000)
 
-        all_replies.append(f"\n\n**Iteration {iteration_num}**:\n{result.get('reply', '')}")
+        all_replies.append(
+            f"\n\n**Iteration {iteration_num}**:\n{result.get('reply', '')}"
+        )
 
         # Check test results
         test_results = result.get("state", {}).get("test_results", {})
-        success = test_results.get("success", False) or test_results.get("skipped", False)
+        success = test_results.get("success", False) or test_results.get(
+            "skipped", False
+        )
 
         controller.record_iteration(
             success=success,
@@ -1663,9 +1694,13 @@ async def run_agent_loop(
                     "code.overwrite_file",
                 ]
                 if tool_name in code_modifying_tools:
-                    workspace_root = workspace.get("workspace_root") if workspace else None
+                    workspace_root = (
+                        workspace.get("workspace_root") if workspace else None
+                    )
                     if workspace_root:
-                        logger.info("[AGENT] Code modified, running test verification...")
+                        logger.info(
+                            "[AGENT] Code modified, running test verification..."
+                        )
                         test_result = await _verify_with_tests(workspace_root)
                         response_state["test_results"] = test_result
 
@@ -1674,20 +1709,26 @@ async def run_agent_loop(
                         reply_text += test_summary
 
                         # If tests failed, run enhanced debug analysis
-                        if not test_result.get("success") and not test_result.get("skipped"):
+                        if not test_result.get("success") and not test_result.get(
+                            "skipped"
+                        ):
                             failed_tests = test_result.get("failed_tests", [])
                             if failed_tests:
                                 # Combine error messages and stack traces for analysis
-                                error_output = "\n\n".join([
-                                    f"{ft.get('name', 'unknown')}: {ft.get('error_message', '')}\n{ft.get('stack_trace', '')}"
-                                    for ft in failed_tests[:5]
-                                ])
+                                error_output = "\n\n".join(
+                                    [
+                                        f"{ft.get('name', 'unknown')}: {ft.get('error_message', '')}\n{ft.get('stack_trace', '')}"
+                                        for ft in failed_tests[:5]
+                                    ]
+                                )
                                 debug_analysis = await _analyze_errors_with_debugger(
                                     error_output=error_output,
-                                    workspace_path=workspace_root
+                                    workspace_path=workspace_root,
                                 )
                                 response_state["debug_analysis"] = debug_analysis
-                                reply_text += _format_debug_analysis_for_response(debug_analysis)
+                                reply_text += _format_debug_analysis_for_response(
+                                    debug_analysis
+                                )
 
                 elapsed_ms = int((time.monotonic() - started) * 1000)
                 # Return unified result with sources
@@ -1802,9 +1843,7 @@ async def run_agent_loop(
             logger.info("[AGENT] Processing %d image attachment(s)", len(images))
             workspace_root = workspace.get("workspace_root") if workspace else None
             image_analysis = await _analyze_images_with_vision(
-                images=images,
-                message=message,
-                workspace_root=workspace_root
+                images=images, message=message, workspace_root=workspace_root
             )
             # Add image analysis to context for LLM and planning
             full_context["image_analysis"] = image_analysis
@@ -1813,7 +1852,9 @@ async def run_agent_loop(
             # If analysis contains UI description, add to combined context
             if image_analysis.get("analysis"):
                 analysis_text = f"\n\n[IMAGE ANALYSIS]\n{image_analysis['analysis']}\n"
-                full_context["combined"] = full_context.get("combined", "") + analysis_text
+                full_context["combined"] = (
+                    full_context.get("combined", "") + analysis_text
+                )
                 logger.info("[AGENT] Added image analysis to context")
 
         # ---------------------------------------------------------
@@ -1967,7 +2008,11 @@ async def run_agent_loop(
         enhanced_context = dict(full_context)
         enhanced_context["grounded_task"] = grounding_result.task.__dict__
         # Confidence is on the task, not the grounding result
-        grounding_confidence = getattr(grounding_result.task, 'confidence', 1.0) if grounding_result.task else 1.0
+        grounding_confidence = (
+            getattr(grounding_result.task, "confidence", 1.0)
+            if grounding_result.task
+            else 1.0
+        )
         enhanced_context["grounding_confidence"] = grounding_confidence
 
         plan = await planner.plan(intent, enhanced_context)

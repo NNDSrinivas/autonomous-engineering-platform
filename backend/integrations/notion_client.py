@@ -63,7 +63,9 @@ class NotionClient:
     ) -> Any:
         """Make a GET request to the Notion API."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.API_URL}{endpoint}"
         response = await self._client.get(url, params=params)
@@ -77,7 +79,9 @@ class NotionClient:
     ) -> Any:
         """Make a POST request to the Notion API."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.API_URL}{endpoint}"
         response = await self._client.post(url, json=data or {})
@@ -91,7 +95,9 @@ class NotionClient:
     ) -> Any:
         """Make a PATCH request to the Notion API."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.API_URL}{endpoint}"
         response = await self._client.patch(url, json=data or {})
@@ -274,15 +280,11 @@ class NotionClient:
             if properties is None:
                 properties = {}
             if "title" not in properties and "Name" not in properties:
-                properties["Name"] = {
-                    "title": [{"text": {"content": title}}]
-                }
+                properties["Name"] = {"title": [{"text": {"content": title}}]}
             payload["properties"] = properties
         else:
             # Regular page - title is in properties
-            payload["properties"] = {
-                "title": [{"text": {"content": title}}]
-            }
+            payload["properties"] = {"title": [{"text": {"content": title}}]}
 
         if children:
             payload["children"] = children
@@ -364,7 +366,9 @@ class NotionClient:
 
         data = await self._post(f"/databases/{database_id}/query", payload)
         results = data.get("results", [])
-        logger.info("Notion database queried", database_id=database_id, count=len(results))
+        logger.info(
+            "Notion database queried", database_id=database_id, count=len(results)
+        )
         return data
 
     async def query_all_database(

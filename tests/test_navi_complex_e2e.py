@@ -159,9 +159,9 @@ def analyze_response(result: Dict, requirements: Dict) -> Tuple[bool, List[str]]
 async def run_complex_tests():
     """Run complex end-to-end tests."""
 
-    print("="*70)
+    print("=" * 70)
     print("NAVI COMPLEX END-TO-END TESTS")
-    print("="*70)
+    print("=" * 70)
     print(f"Testing against: {BASE_URL}")
     print(f"Workspace: {WORKSPACE_ROOT}")
     print()
@@ -173,10 +173,10 @@ async def run_complex_tests():
         # ================================================================
         # TEST 1: COMPLEX FEATURE - Build a complete caching system
         # ================================================================
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST 1: COMPLEX FEATURE DEVELOPMENT")
         print("Build a complete Redis caching layer for LLM responses")
-        print("="*70)
+        print("=" * 70)
 
         result = await send_navi_request(
             session,
@@ -188,41 +188,49 @@ async def run_complex_tests():
             5. Handle cache failures gracefully (fallback to LLM)
             6. Support cache invalidation
 
-            Generate the complete implementation with all necessary files."""
+            Generate the complete implementation with all necessary files.""",
         )
 
-        passed, issues = analyze_response(result, {
-            "min_content_length": 200,
-            "required_any_keywords": ["redis", "cache", "ttl", "key"],
-            "has_code": True,
-            "no_error_patterns": ["i don't understand", "please try again"],
-        })
+        passed, issues = analyze_response(
+            result,
+            {
+                "min_content_length": 200,
+                "required_any_keywords": ["redis", "cache", "ttl", "key"],
+                "has_code": True,
+                "no_error_patterns": ["i don't understand", "please try again"],
+            },
+        )
 
-        print(f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)")
+        print(
+            f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)"
+        )
         if issues:
             for issue in issues:
                 print(f"   ⚠️ {issue}")
         print(f"\nActivities: {len(result['activities'])}")
         print(f"Actions proposed: {len(result['actions'])}")
-        if result['actions']:
-            for a in result['actions'][:5]:
-                print(f"   - {a.get('type')}: {str(a.get('filePath', a.get('command', '')))[:60]}")
+        if result["actions"]:
+            for a in result["actions"][:5]:
+                print(
+                    f"   - {a.get('type')}: {str(a.get('filePath', a.get('command', '')))[:60]}"
+                )
         print(f"\nResponse preview: {result['content'][:300]}...")
-        if result['thinking']:
+        if result["thinking"]:
             print(f"Thinking preview: {result['thinking'][:300]}...")
 
-        results.append(("Complex Feature: Caching System", passed, result['duration_ms']))
-
+        results.append(
+            ("Complex Feature: Caching System", passed, result["duration_ms"])
+        )
 
         # ================================================================
         # TEST 2: COMPLEX BUG - Debug race condition
         # ================================================================
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST 2: COMPLEX BUG DEBUGGING")
         print("Debug a race condition in async code")
-        print("="*70)
+        print("=" * 70)
 
-        buggy_code = '''
+        buggy_code = """
 import asyncio
 from typing import Dict
 
@@ -255,43 +263,56 @@ class UserSessionManager:
 # we sometimes get duplicate sessions or incorrect active_count.
 # Example: 10 concurrent requests for user "alice" might create 10 sessions
 # instead of 1, and active_count ends up wrong.
-'''
+"""
 
         result = await send_navi_request(
             session,
             "Debug this race condition. Users report that concurrent requests cause duplicate sessions and incorrect counts. Find the bug and fix it.",
-            attachments=[{
-                "kind": "code",
-                "path": "session_manager.py",
-                "content": buggy_code,
-                "language": "python"
-            }]
+            attachments=[
+                {
+                    "kind": "code",
+                    "path": "session_manager.py",
+                    "content": buggy_code,
+                    "language": "python",
+                }
+            ],
         )
 
-        passed, issues = analyze_response(result, {
-            "min_content_length": 100,
-            "required_any_keywords": ["race", "lock", "mutex", "asyncio.lock", "concurrent", "atomic"],
-            "no_error_patterns": ["i don't understand"],
-        })
+        passed, issues = analyze_response(
+            result,
+            {
+                "min_content_length": 100,
+                "required_any_keywords": [
+                    "race",
+                    "lock",
+                    "mutex",
+                    "asyncio.lock",
+                    "concurrent",
+                    "atomic",
+                ],
+                "no_error_patterns": ["i don't understand"],
+            },
+        )
 
-        print(f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)")
+        print(
+            f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)"
+        )
         if issues:
             for issue in issues:
                 print(f"   ⚠️ {issue}")
         print(f"\nResponse preview: {result['content'][:400]}...")
-        if result['thinking']:
+        if result["thinking"]:
             print(f"Thinking preview: {result['thinking'][:400]}...")
 
-        results.append(("Complex Bug: Race Condition", passed, result['duration_ms']))
-
+        results.append(("Complex Bug: Race Condition", passed, result["duration_ms"]))
 
         # ================================================================
         # TEST 3: BUILD MINI-PROJECT - REST API for task management
         # ================================================================
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST 3: BUILD COMPLETE MINI-PROJECT")
         print("Create a task management REST API from scratch")
-        print("="*70)
+        print("=" * 70)
 
         result = await send_navi_request(
             session,
@@ -313,37 +334,48 @@ class UserSessionManager:
                - Proper error handling
                - Status filtering on list endpoint
 
-            Generate all the code needed to run this API."""
+            Generate all the code needed to run this API.""",
         )
 
-        passed, issues = analyze_response(result, {
-            "min_content_length": 300,
-            "required_any_keywords": ["fastapi", "pydantic", "task", "endpoint", "post", "get"],
-            "has_code": True,
-            "no_error_patterns": ["i don't understand", "please try again"],
-        })
+        passed, issues = analyze_response(
+            result,
+            {
+                "min_content_length": 300,
+                "required_any_keywords": [
+                    "fastapi",
+                    "pydantic",
+                    "task",
+                    "endpoint",
+                    "post",
+                    "get",
+                ],
+                "has_code": True,
+                "no_error_patterns": ["i don't understand", "please try again"],
+            },
+        )
 
-        print(f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)")
+        print(
+            f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)"
+        )
         if issues:
             for issue in issues:
                 print(f"   ⚠️ {issue}")
         print(f"Actions proposed: {len(result['actions'])}")
         print(f"\nResponse preview: {result['content'][:400]}...")
-        if result['thinking']:
+        if result["thinking"]:
             print(f"Thinking preview: {result['thinking'][:400]}...")
 
-        results.append(("Mini-Project: Task API", passed, result['duration_ms']))
-
+        results.append(("Mini-Project: Task API", passed, result["duration_ms"]))
 
         # ================================================================
         # TEST 4: COMPLEX DEBUGGING - Memory leak investigation
         # ================================================================
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST 4: COMPLEX DEBUGGING - Memory Leak")
         print("Investigate and fix a memory leak")
-        print("="*70)
+        print("=" * 70)
 
-        leaky_code = '''
+        leaky_code = """
 import asyncio
 from typing import Callable, Any
 
@@ -382,45 +414,60 @@ async def process_requests():
         # handler goes out of scope but...
 
 # After 100k requests, memory usage is very high. Why?
-'''
+"""
 
         result = await send_navi_request(
             session,
             "We have a memory leak. After processing 100k requests, memory usage is extremely high. The RequestHandler objects should be garbage collected but they're not. Find the leak and fix it.",
-            attachments=[{
-                "kind": "code",
-                "path": "event_emitter.py",
-                "content": leaky_code,
-                "language": "python"
-            }]
+            attachments=[
+                {
+                    "kind": "code",
+                    "path": "event_emitter.py",
+                    "content": leaky_code,
+                    "language": "python",
+                }
+            ],
         )
 
-        passed, issues = analyze_response(result, {
-            "min_content_length": 100,
-            "required_any_keywords": ["listener", "reference", "garbage", "remove", "off", "unsubscribe", "cleanup", "weak"],
-            "no_error_patterns": ["i don't understand"],
-        })
+        passed, issues = analyze_response(
+            result,
+            {
+                "min_content_length": 100,
+                "required_any_keywords": [
+                    "listener",
+                    "reference",
+                    "garbage",
+                    "remove",
+                    "off",
+                    "unsubscribe",
+                    "cleanup",
+                    "weak",
+                ],
+                "no_error_patterns": ["i don't understand"],
+            },
+        )
 
-        print(f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)")
+        print(
+            f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)"
+        )
         if issues:
             for issue in issues:
                 print(f"   ⚠️ {issue}")
         print(f"\nResponse preview: {result['content'][:400]}...")
-        if result['thinking']:
+        if result["thinking"]:
             print(f"Thinking preview: {result['thinking'][:400]}...")
 
-        results.append(("Complex Debug: Memory Leak", passed, result['duration_ms']))
-
+        results.append(("Complex Debug: Memory Leak", passed, result["duration_ms"]))
 
         # ================================================================
         # TEST 5: MULTI-STEP WORKFLOW - Refactoring with tests
         # ================================================================
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST 5: MULTI-STEP WORKFLOW")
         print("Refactor code and add tests")
-        print("="*70)
+        print("=" * 70)
 
-        legacy_code = '''
+        legacy_code = """
 def process_order(order_data):
     # Validate
     if not order_data.get("items"):
@@ -459,7 +506,7 @@ def process_order(order_data):
 
     # Would save to database here
     return {"success": True, "order": order}
-'''
+"""
 
         result = await send_navi_request(
             session,
@@ -472,39 +519,52 @@ def process_order(order_data):
             5. Write unit tests for all functions
 
             Show me the refactored code with tests.""",
-            attachments=[{
-                "kind": "code",
-                "path": "order_processor.py",
-                "content": legacy_code,
-                "language": "python"
-            }]
+            attachments=[
+                {
+                    "kind": "code",
+                    "path": "order_processor.py",
+                    "content": legacy_code,
+                    "language": "python",
+                }
+            ],
         )
 
-        passed, issues = analyze_response(result, {
-            "min_content_length": 200,
-            "required_any_keywords": ["class", "def", "test", "dataclass", "pydantic", "typing"],
-            "has_code": True,
-            "no_error_patterns": ["i don't understand"],
-        })
+        passed, issues = analyze_response(
+            result,
+            {
+                "min_content_length": 200,
+                "required_any_keywords": [
+                    "class",
+                    "def",
+                    "test",
+                    "dataclass",
+                    "pydantic",
+                    "typing",
+                ],
+                "has_code": True,
+                "no_error_patterns": ["i don't understand"],
+            },
+        )
 
-        print(f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)")
+        print(
+            f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)"
+        )
         if issues:
             for issue in issues:
                 print(f"   ⚠️ {issue}")
         print(f"\nResponse preview: {result['content'][:400]}...")
-        if result['thinking']:
+        if result["thinking"]:
             print(f"Thinking preview: {result['thinking'][:400]}...")
 
-        results.append(("Multi-Step: Refactor + Tests", passed, result['duration_ms']))
-
+        results.append(("Multi-Step: Refactor + Tests", passed, result["duration_ms"]))
 
         # ================================================================
         # TEST 6: COMPLEX INTEGRATION - OAuth2 Implementation
         # ================================================================
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST 6: COMPLEX INTEGRATION")
         print("Implement OAuth2 authentication flow")
-        print("="*70)
+        print("=" * 70)
 
         result = await send_navi_request(
             session,
@@ -517,34 +577,46 @@ def process_order(order_data):
             5. Protected route decorator
             6. User model with proper security
 
-            Generate production-ready code with security best practices."""
+            Generate production-ready code with security best practices.""",
         )
 
-        passed, issues = analyze_response(result, {
-            "min_content_length": 200,
-            "required_any_keywords": ["jwt", "token", "oauth", "bcrypt", "hash", "secret", "bearer"],
-            "has_code": True,
-            "no_error_patterns": ["i don't understand"],
-        })
+        passed, issues = analyze_response(
+            result,
+            {
+                "min_content_length": 200,
+                "required_any_keywords": [
+                    "jwt",
+                    "token",
+                    "oauth",
+                    "bcrypt",
+                    "hash",
+                    "secret",
+                    "bearer",
+                ],
+                "has_code": True,
+                "no_error_patterns": ["i don't understand"],
+            },
+        )
 
-        print(f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)")
+        print(
+            f"\n{'✅ PASSED' if passed else '❌ FAILED'} ({result['duration_ms']:.0f}ms)"
+        )
         if issues:
             for issue in issues:
                 print(f"   ⚠️ {issue}")
         print(f"Actions proposed: {len(result['actions'])}")
         print(f"\nResponse preview: {result['content'][:400]}...")
-        if result['thinking']:
+        if result["thinking"]:
             print(f"Thinking preview: {result['thinking'][:400]}...")
 
-        results.append(("Complex Integration: OAuth2", passed, result['duration_ms']))
-
+        results.append(("Complex Integration: OAuth2", passed, result["duration_ms"]))
 
     # ================================================================
     # FINAL SUMMARY
     # ================================================================
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("COMPLEX E2E TEST SUMMARY")
-    print("="*70)
+    print("=" * 70)
 
     passed_count = sum(1 for _, p, _ in results if p)
     total_count = len(results)

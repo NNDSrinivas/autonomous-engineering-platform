@@ -33,7 +33,8 @@ class TestDeepCodeAnalyzer:
         # Create a temp directory with a Python file
         with tempfile.TemporaryDirectory() as tmpdir:
             py_file = Path(tmpdir) / "test_module.py"
-            py_file.write_text('''
+            py_file.write_text(
+                '''
 """Test module docstring."""
 
 import os
@@ -58,7 +59,8 @@ def helper_function(x: int) -> int:
 async def async_fetch(url: str) -> str:
     """Async function example."""
     return url
-''')
+'''
+            )
 
             # Analyze workspace
             analysis = await DeepCodeAnalyzer.analyze_workspace(tmpdir)
@@ -90,7 +92,8 @@ async def async_fetch(url: str) -> str:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             ts_file = Path(tmpdir) / "service.ts"
-            ts_file.write_text('''
+            ts_file.write_text(
+                """
 import { User } from './types';
 import axios from 'axios';
 
@@ -107,7 +110,8 @@ export class UserServiceImpl implements UserService {
 export const fetchData = async (url: string): Promise<any> => {
     return axios.get(url);
 };
-''')
+"""
+            )
 
             analysis = await DeepCodeAnalyzer.analyze_workspace(tmpdir)
 
@@ -126,16 +130,20 @@ export const fetchData = async (url: string): Promise<any> => {
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create multiple files with the same symbol
             file1 = Path(tmpdir) / "module1.py"
-            file1.write_text('''
+            file1.write_text(
+                """
 def process_data(data):
     return data
-''')
+"""
+            )
             file2 = Path(tmpdir) / "module2.py"
-            file2.write_text('''
+            file2.write_text(
+                """
 from module1 import process_data
 
 result = process_data([1, 2, 3])
-''')
+"""
+            )
 
             results = await DeepCodeAnalyzer.find_symbol(tmpdir, "process_data")
 
@@ -174,7 +182,7 @@ class TestDatabaseDebugger:
         """Test parsing SQLAlchemy model definitions."""
         from backend.services.deep_analysis import DatabaseDebugger
 
-        content = '''
+        content = """
 from sqlalchemy import Column, Integer, String
 from database import Base
 
@@ -191,7 +199,7 @@ class Post(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String(200))
     user_id = Column(Integer)
-'''
+"""
 
         models = DatabaseDebugger._parse_sqlalchemy_models(content)
 
@@ -209,7 +217,7 @@ class Post(Base):
         """Test parsing Django model definitions."""
         from backend.services.deep_analysis import DatabaseDebugger
 
-        content = '''
+        content = """
 from django.db import models
 
 class Article(models.Model):
@@ -221,7 +229,7 @@ class Article(models.Model):
 class Comment(models.Model):
     text = models.TextField()
     article = models.ForeignKey(Article, on_delete=models.CASCADE)
-'''
+"""
 
         models = DatabaseDebugger._parse_django_models(content)
 
@@ -236,7 +244,7 @@ class Comment(models.Model):
         """Test parsing Prisma schema models."""
         from backend.services.deep_analysis import DatabaseDebugger
 
-        content = '''
+        content = """
 model User {
   id        Int      @id @default(autoincrement())
   email     String   @unique
@@ -252,7 +260,7 @@ model Post {
   author    User     @relation(fields: [authorId], references: [id])
   authorId  Int
 }
-'''
+"""
 
         models = DatabaseDebugger._parse_prisma_models(content)
 
@@ -270,14 +278,16 @@ model Post {
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a models.py file
             models_file = Path(tmpdir) / "models.py"
-            models_file.write_text('''
+            models_file.write_text(
+                """
 from sqlalchemy import Column, Integer, String
 from database import Base
 
 class User(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String)
-''')
+"""
+            )
 
             analysis = await DatabaseDebugger.analyze_database(tmpdir)
 
@@ -333,7 +343,11 @@ class TestGitDebugger:
             analysis = await GitDebugger.analyze_repository(tmpdir)
 
             # Should detect uncommitted changes
-            assert len(analysis.status.unstaged_files) > 0 or len(analysis.status.staged_files) > 0 or len(analysis.issues) > 0
+            assert (
+                len(analysis.status.unstaged_files) > 0
+                or len(analysis.status.staged_files) > 0
+                or len(analysis.issues) > 0
+            )
 
     @pytest.mark.asyncio
     async def test_detect_untracked_files(self):
@@ -376,23 +390,27 @@ class TestDeepAnalysisService:
 
             # Create some code
             py_file = Path(tmpdir) / "app.py"
-            py_file.write_text('''
+            py_file.write_text(
+                """
 def main():
     print("Hello")
 
 if __name__ == "__main__":
     main()
-''')
+"""
+            )
 
             # Create models
             models_file = Path(tmpdir) / "models.py"
-            models_file.write_text('''
+            models_file.write_text(
+                """
 from sqlalchemy import Column, Integer, String
 from database import Base
 
 class User(Base):
     id = Column(Integer, primary_key=True)
-''')
+"""
+            )
 
             # Initial commit
             os.system(f"cd {tmpdir} && git add . && git commit -m 'Initial' -q")
@@ -442,12 +460,16 @@ class TestProjectAnalyzerIntegration:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a file with a function
             py_file = Path(tmpdir) / "utils.py"
-            py_file.write_text('''
+            py_file.write_text(
+                """
 def calculate_total(items):
     return sum(items)
-''')
+"""
+            )
 
-            results = await ProjectAnalyzer.find_symbol_in_codebase(tmpdir, "calculate_total")
+            results = await ProjectAnalyzer.find_symbol_in_codebase(
+                tmpdir, "calculate_total"
+            )
 
             assert isinstance(results, list)
             if results:
@@ -485,14 +507,16 @@ def calculate_total(items):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a models file
             models_file = Path(tmpdir) / "models.py"
-            models_file.write_text('''
+            models_file.write_text(
+                """
 from sqlalchemy import Column, Integer, String
 from database import Base
 
 class User(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String)
-''')
+"""
+            )
 
             result = await ProjectAnalyzer.analyze_and_fix_database(tmpdir)
 
@@ -508,6 +532,7 @@ def run_all_tests():
     print("=" * 60)
 
     import sys
+
     sys.exit(pytest.main([__file__, "-v", "--tb=short"]))
 
 

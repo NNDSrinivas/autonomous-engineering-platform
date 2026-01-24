@@ -90,7 +90,9 @@ class SentryService(ConnectorServiceBase):
 
             # Sync issues
             if "issue" in types_to_sync and org_slug:
-                issues_data = await client.list_issues(org_slug=org_slug, statsPeriod="24h")
+                issues_data = await client.list_issues(
+                    org_slug=org_slug, statsPeriod="24h"
+                )
                 issues = issues_data.get("issues", [])
                 counts["issue"] = 0
 

@@ -32,30 +32,100 @@ logger = logging.getLogger(__name__)
 # File extensions to index
 INDEXABLE_EXTENSIONS = {
     # Languages
-    ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".kt", ".scala",
-    ".go", ".rs", ".rb", ".php", ".cs", ".cpp", ".c", ".h", ".hpp",
-    ".swift", ".m", ".mm", ".lua", ".r", ".jl", ".ex", ".exs",
-    ".clj", ".cljs", ".hs", ".ml", ".fs", ".erl", ".elm",
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".java",
+    ".kt",
+    ".scala",
+    ".go",
+    ".rs",
+    ".rb",
+    ".php",
+    ".cs",
+    ".cpp",
+    ".c",
+    ".h",
+    ".hpp",
+    ".swift",
+    ".m",
+    ".mm",
+    ".lua",
+    ".r",
+    ".jl",
+    ".ex",
+    ".exs",
+    ".clj",
+    ".cljs",
+    ".hs",
+    ".ml",
+    ".fs",
+    ".erl",
+    ".elm",
     # Web
-    ".html", ".css", ".scss", ".sass", ".less", ".vue", ".svelte",
+    ".html",
+    ".css",
+    ".scss",
+    ".sass",
+    ".less",
+    ".vue",
+    ".svelte",
     # Config
-    ".json", ".yaml", ".yml", ".toml", ".xml", ".ini", ".env.example",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".xml",
+    ".ini",
+    ".env.example",
     # Data
-    ".sql", ".graphql", ".prisma",
+    ".sql",
+    ".graphql",
+    ".prisma",
     # Docs
-    ".md", ".mdx", ".rst", ".txt",
+    ".md",
+    ".mdx",
+    ".rst",
+    ".txt",
     # DevOps
-    ".dockerfile", ".tf", ".hcl",
+    ".dockerfile",
+    ".tf",
+    ".hcl",
     # Shell
-    ".sh", ".bash", ".zsh", ".ps1",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".ps1",
 }
 
 # Directories to skip
 SKIP_DIRECTORIES = {
-    "node_modules", ".git", "__pycache__", ".pytest_cache", ".mypy_cache",
-    "venv", ".venv", "env", ".env", "dist", "build", "target", "out",
-    ".next", ".nuxt", ".cache", "coverage", ".coverage", ".tox",
-    "vendor", "packages", ".idea", ".vscode", "*.egg-info",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    "venv",
+    ".venv",
+    "env",
+    ".env",
+    "dist",
+    "build",
+    "target",
+    "out",
+    ".next",
+    ".nuxt",
+    ".cache",
+    "coverage",
+    ".coverage",
+    ".tox",
+    "vendor",
+    "packages",
+    ".idea",
+    ".vscode",
+    "*.egg-info",
 }
 
 # Max file size to index (1MB)
@@ -69,6 +139,7 @@ CHUNK_OVERLAP = 200  # overlap between chunks
 # ============================================================
 # DATA CLASSES
 # ============================================================
+
 
 class CodeChunkType(Enum):
     FUNCTION = "function"
@@ -85,6 +156,7 @@ class CodeChunkType(Enum):
 @dataclass
 class CodeChunk:
     """A chunk of code with metadata for RAG retrieval"""
+
     id: str
     file_path: str
     content: str
@@ -112,7 +184,9 @@ class CodeChunk:
         return {
             "id": self.id,
             "file_path": self.file_path,
-            "content": self.content[:500] + "..." if len(self.content) > 500 else self.content,
+            "content": (
+                self.content[:500] + "..." if len(self.content) > 500 else self.content
+            ),
             "chunk_type": self.chunk_type.value,
             "start_line": self.start_line,
             "end_line": self.end_line,
@@ -125,6 +199,7 @@ class CodeChunk:
 @dataclass
 class FileIndex:
     """Index entry for a single file"""
+
     path: str
     relative_path: str
     language: str
@@ -150,6 +225,7 @@ class FileIndex:
 @dataclass
 class DependencyEdge:
     """An edge in the dependency graph"""
+
     source: str  # file path
     target: str  # file path or module name
     edge_type: str  # "import", "extends", "implements", "uses"
@@ -158,6 +234,7 @@ class DependencyEdge:
 @dataclass
 class WorkspaceIndex:
     """Complete index of a workspace"""
+
     workspace_path: str
     files: Dict[str, FileIndex] = field(default_factory=dict)
     chunks: List[CodeChunk] = field(default_factory=list)
@@ -189,14 +266,17 @@ class WorkspaceIndex:
 # CODE PARSER - Extract semantic chunks from code
 # ============================================================
 
+
 class CodeParser:
     """Parse code files into semantic chunks"""
 
     # Language detection by extension
     LANGUAGE_MAP = {
         ".py": "python",
-        ".js": "javascript", ".jsx": "javascript",
-        ".ts": "typescript", ".tsx": "typescript",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".ts": "typescript",
+        ".tsx": "typescript",
         ".java": "java",
         ".kt": "kotlin",
         ".scala": "scala",
@@ -205,18 +285,24 @@ class CodeParser:
         ".rb": "ruby",
         ".php": "php",
         ".cs": "csharp",
-        ".cpp": "cpp", ".c": "c", ".h": "c", ".hpp": "cpp",
+        ".cpp": "cpp",
+        ".c": "c",
+        ".h": "c",
+        ".hpp": "cpp",
         ".swift": "swift",
         ".sql": "sql",
         ".md": "markdown",
         ".json": "json",
-        ".yaml": "yaml", ".yml": "yaml",
+        ".yaml": "yaml",
+        ".yml": "yaml",
         ".html": "html",
-        ".css": "css", ".scss": "scss",
+        ".css": "css",
+        ".scss": "scss",
         ".vue": "vue",
         ".svelte": "svelte",
         ".tf": "terraform",
-        ".sh": "bash", ".bash": "bash",
+        ".sh": "bash",
+        ".bash": "bash",
     }
 
     # Regex patterns for extracting code structures
@@ -287,10 +373,18 @@ class CodeParser:
 
         # Find all functions/classes
         if "function" in patterns:
-            chunks.extend(cls._extract_functions(file_path, content, lines, patterns["function"], language))
+            chunks.extend(
+                cls._extract_functions(
+                    file_path, content, lines, patterns["function"], language
+                )
+            )
 
         if "class" in patterns:
-            chunks.extend(cls._extract_classes(file_path, content, lines, patterns["class"], language))
+            chunks.extend(
+                cls._extract_classes(
+                    file_path, content, lines, patterns["class"], language
+                )
+            )
 
         # If no structured chunks found, use generic chunking
         if not chunks:
@@ -344,25 +438,29 @@ class CodeParser:
             end_line = cls._find_block_end(lines, start_line - 1, language)
 
             # Extract content
-            func_content = "\n".join(lines[start_line-1:end_line])
+            func_content = "\n".join(lines[start_line - 1 : end_line])
 
             # Extract docstring if present
             docstring = cls._extract_docstring(func_content, language)
 
-            chunk_id = hashlib.md5(f"{file_path}:{name}:{start_line}".encode()).hexdigest()[:12]
+            chunk_id = hashlib.md5(
+                f"{file_path}:{name}:{start_line}".encode()
+            ).hexdigest()[:12]
 
-            chunks.append(CodeChunk(
-                id=chunk_id,
-                file_path=file_path,
-                content=func_content,
-                chunk_type=CodeChunkType.FUNCTION,
-                start_line=start_line,
-                end_line=end_line,
-                name=name,
-                signature=match.group(0).strip(),
-                docstring=docstring,
-                language=language,
-            ))
+            chunks.append(
+                CodeChunk(
+                    id=chunk_id,
+                    file_path=file_path,
+                    content=func_content,
+                    chunk_type=CodeChunkType.FUNCTION,
+                    start_line=start_line,
+                    end_line=end_line,
+                    name=name,
+                    signature=match.group(0).strip(),
+                    docstring=docstring,
+                    language=language,
+                )
+            )
 
         return chunks
 
@@ -387,23 +485,27 @@ class CodeParser:
             start_line = content[:start_pos].count("\n") + 1
             end_line = cls._find_block_end(lines, start_line - 1, language)
 
-            class_content = "\n".join(lines[start_line-1:end_line])
+            class_content = "\n".join(lines[start_line - 1 : end_line])
             docstring = cls._extract_docstring(class_content, language)
 
-            chunk_id = hashlib.md5(f"{file_path}:{name}:{start_line}".encode()).hexdigest()[:12]
+            chunk_id = hashlib.md5(
+                f"{file_path}:{name}:{start_line}".encode()
+            ).hexdigest()[:12]
 
-            chunks.append(CodeChunk(
-                id=chunk_id,
-                file_path=file_path,
-                content=class_content,
-                chunk_type=CodeChunkType.CLASS,
-                start_line=start_line,
-                end_line=end_line,
-                name=name,
-                signature=match.group(0).strip(),
-                docstring=docstring,
-                language=language,
-            ))
+            chunks.append(
+                CodeChunk(
+                    id=chunk_id,
+                    file_path=file_path,
+                    content=class_content,
+                    chunk_type=CodeChunkType.CLASS,
+                    start_line=start_line,
+                    end_line=end_line,
+                    name=name,
+                    signature=match.group(0).strip(),
+                    docstring=docstring,
+                    language=language,
+                )
+            )
 
         return chunks
 
@@ -455,21 +557,23 @@ class CodeParser:
 
         elif language in ["javascript", "typescript", "java", "go", "rust"]:
             # JSDoc / JavaDoc style
-            match = re.search(r'/\*\*([\s\S]*?)\*/', content)
+            match = re.search(r"/\*\*([\s\S]*?)\*/", content)
             if match:
                 return match.group(1).strip()
 
         return None
 
     @classmethod
-    def _generic_chunk(cls, file_path: str, content: str, language: str) -> List[CodeChunk]:
+    def _generic_chunk(
+        cls, file_path: str, content: str, language: str
+    ) -> List[CodeChunk]:
         """Fall back to generic chunking for unsupported languages"""
         chunks = []
         content.split("\n")
 
         # Split into chunks of CHUNK_SIZE characters with overlap
         for i in range(0, len(content), CHUNK_SIZE - CHUNK_OVERLAP):
-            chunk_content = content[i:i + CHUNK_SIZE]
+            chunk_content = content[i : i + CHUNK_SIZE]
 
             # Find line numbers
             start_line = content[:i].count("\n") + 1
@@ -477,15 +581,17 @@ class CodeParser:
 
             chunk_id = hashlib.md5(f"{file_path}:{i}".encode()).hexdigest()[:12]
 
-            chunks.append(CodeChunk(
-                id=chunk_id,
-                file_path=file_path,
-                content=chunk_content,
-                chunk_type=CodeChunkType.GENERIC,
-                start_line=start_line,
-                end_line=end_line,
-                language=language,
-            ))
+            chunks.append(
+                CodeChunk(
+                    id=chunk_id,
+                    file_path=file_path,
+                    content=chunk_content,
+                    chunk_type=CodeChunkType.GENERIC,
+                    start_line=start_line,
+                    end_line=end_line,
+                    language=language,
+                )
+            )
 
         return chunks
 
@@ -493,6 +599,7 @@ class CodeParser:
 # ============================================================
 # EMBEDDINGS - Generate embeddings for semantic search
 # ============================================================
+
 
 class EmbeddingProvider:
     """Generate embeddings for code chunks"""
@@ -507,7 +614,7 @@ class EmbeddingProvider:
         # In production, use OpenAI text-embedding-ada-002 or similar
 
         # Tokenize and create term frequencies
-        tokens = re.findall(r'\b\w+\b', text.lower())
+        tokens = re.findall(r"\b\w+\b", text.lower())
         vocab = list(set(tokens))[:100]  # Limit vocab size
 
         # Create simple frequency-based embedding
@@ -523,7 +630,9 @@ class EmbeddingProvider:
         return embedding[:100]
 
     @classmethod
-    async def generate_embedding_async(cls, text: str, provider: str = "local") -> List[float]:
+    async def generate_embedding_async(
+        cls, text: str, provider: str = "local"
+    ) -> List[float]:
         """Generate embedding asynchronously"""
         if provider == "local":
             return cls.generate_embedding(text)
@@ -532,6 +641,7 @@ class EmbeddingProvider:
             # Use OpenAI embeddings API
             try:
                 import httpx
+
                 api_key = os.environ.get("OPENAI_API_KEY")
                 if not api_key:
                     return cls.generate_embedding(text)
@@ -574,6 +684,7 @@ class EmbeddingProvider:
 # WORKSPACE INDEXER - Index entire codebase
 # ============================================================
 
+
 class WorkspaceIndexer:
     """Index an entire workspace for RAG"""
 
@@ -606,7 +717,9 @@ class WorkspaceIndexer:
         # Index each file
         for i, file_path in enumerate(files_to_index):
             try:
-                file_index = await cls._index_file(file_path, workspace_path, generate_embeddings, embedding_provider)
+                file_index = await cls._index_file(
+                    file_path, workspace_path, generate_embeddings, embedding_provider
+                )
                 if file_index:
                     index.files[file_path] = file_index
                     index.chunks.extend(file_index.chunks)
@@ -621,33 +734,39 @@ class WorkspaceIndexer:
 
                     # Track dependencies
                     for imp in file_index.imports:
-                        index.dependencies.append(DependencyEdge(
-                            source=file_path,
-                            target=imp,
-                            edge_type="import",
-                        ))
+                        index.dependencies.append(
+                            DependencyEdge(
+                                source=file_path,
+                                target=imp,
+                                edge_type="import",
+                            )
+                        )
 
             except Exception as e:
                 logger.warning(f"Failed to index {file_path}: {e}")
 
             if on_progress and i % 10 == 0:
-                await on_progress({
-                    "type": "progress",
-                    "current": i + 1,
-                    "total": total_files,
-                    "file": file_path,
-                })
+                await on_progress(
+                    {
+                        "type": "progress",
+                        "current": i + 1,
+                        "total": total_files,
+                        "file": file_path,
+                    }
+                )
 
         index.total_files = len(index.files)
         index.total_chunks = len(index.chunks)
         index.updated_at = datetime.utcnow().isoformat()
 
         if on_progress:
-            await on_progress({
-                "type": "complete",
-                "total_files": index.total_files,
-                "total_chunks": index.total_chunks,
-            })
+            await on_progress(
+                {
+                    "type": "complete",
+                    "total_files": index.total_files,
+                    "total_chunks": index.total_chunks,
+                }
+            )
 
         return index
 
@@ -658,7 +777,9 @@ class WorkspaceIndexer:
 
         for root, dirs, filenames in os.walk(workspace_path):
             # Skip excluded directories
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRECTORIES and not d.startswith(".")]
+            dirs[:] = [
+                d for d in dirs if d not in SKIP_DIRECTORIES and not d.startswith(".")
+            ]
 
             for filename in filenames:
                 file_path = os.path.join(root, filename)
@@ -740,6 +861,7 @@ class WorkspaceIndexer:
 # SEMANTIC SEARCH - Find relevant code
 # ============================================================
 
+
 class SemanticSearch:
     """Search the workspace index semantically"""
 
@@ -775,7 +897,9 @@ class SemanticSearch:
         for chunk in index.chunks:
             # Apply filters
             if file_filter:
-                if not any(fnmatch.fnmatch(chunk.file_path, pattern) for pattern in file_filter):
+                if not any(
+                    fnmatch.fnmatch(chunk.file_path, pattern) for pattern in file_filter
+                ):
                     continue
 
             if language_filter:
@@ -784,7 +908,9 @@ class SemanticSearch:
 
             # Calculate similarity
             if chunk.embedding:
-                score = EmbeddingProvider.cosine_similarity(query_embedding, chunk.embedding)
+                score = EmbeddingProvider.cosine_similarity(
+                    query_embedding, chunk.embedding
+                )
             else:
                 # Fall back to keyword matching
                 score = cls._keyword_score(query, chunk)
@@ -800,8 +926,8 @@ class SemanticSearch:
     @classmethod
     def _keyword_score(cls, query: str, chunk: CodeChunk) -> float:
         """Simple keyword matching score"""
-        query_tokens = set(re.findall(r'\b\w+\b', query.lower()))
-        chunk_tokens = set(re.findall(r'\b\w+\b', chunk.content.lower()))
+        query_tokens = set(re.findall(r"\b\w+\b", query.lower()))
+        chunk_tokens = set(re.findall(r"\b\w+\b", chunk.content.lower()))
 
         if not query_tokens or not chunk_tokens:
             return 0.0
@@ -821,7 +947,9 @@ class SemanticSearch:
         return chunks
 
     @classmethod
-    def find_references(cls, symbol_name: str, index: WorkspaceIndex) -> List[CodeChunk]:
+    def find_references(
+        cls, symbol_name: str, index: WorkspaceIndex
+    ) -> List[CodeChunk]:
         """Find all references to a symbol"""
         chunks = []
 
@@ -884,6 +1012,7 @@ def list_indexes() -> List[str]:
 # PUBLIC API
 # ============================================================
 
+
 async def index_workspace(
     workspace_path: str,
     force_reindex: bool = False,
@@ -938,7 +1067,11 @@ async def search_codebase(
             "chunk": chunk.to_dict(),
             "score": score,
             "file_path": chunk.file_path,
-            "content_preview": chunk.content[:300] + "..." if len(chunk.content) > 300 else chunk.content,
+            "content_preview": (
+                chunk.content[:300] + "..."
+                if len(chunk.content) > 300
+                else chunk.content
+            ),
         }
         for chunk, score in results
     ]
@@ -983,6 +1116,7 @@ async def get_context_for_task(
 # ============================================================
 # DATABASE PERSISTENCE - Save and load indexes to/from database
 # ============================================================
+
 
 async def persist_workspace_index(
     workspace_path: str,
@@ -1029,7 +1163,7 @@ async def persist_workspace_index(
                 "total_files": index.total_files,
                 "total_chunks": index.total_chunks,
                 "total_lines": index.total_lines,
-            }
+            },
         )
 
         # Store symbols/chunks with embeddings
@@ -1110,11 +1244,14 @@ async def load_workspace_index(
             return None
 
         if codebase_index.index_status != "ready":
-            logger.info(f"Index for {workspace_path} is not ready (status: {codebase_index.index_status})")
+            logger.info(
+                f"Index for {workspace_path} is not ready (status: {codebase_index.index_status})"
+            )
             return None
 
         # Load symbols from database
         from backend.database.models.memory import CodeSymbol
+
         symbols = (
             db.query(CodeSymbol)
             .filter(CodeSymbol.codebase_id == codebase_index.id)
@@ -1130,8 +1267,12 @@ async def load_workspace_index(
         index = WorkspaceIndex(workspace_path=workspace_path)
         index.total_files = codebase_index.file_count or 0
         index.total_lines = codebase_index.total_lines or 0
-        index.created_at = codebase_index.created_at.isoformat() if codebase_index.created_at else ""
-        index.updated_at = codebase_index.updated_at.isoformat() if codebase_index.updated_at else ""
+        index.created_at = (
+            codebase_index.created_at.isoformat() if codebase_index.created_at else ""
+        )
+        index.updated_at = (
+            codebase_index.updated_at.isoformat() if codebase_index.updated_at else ""
+        )
 
         # Convert symbols to chunks
         for symbol in symbols:
@@ -1139,7 +1280,11 @@ async def load_workspace_index(
                 id=str(symbol.id),
                 file_path=symbol.file_path,
                 content=symbol.code_snippet or "",
-                chunk_type=CodeChunkType(symbol.symbol_type) if symbol.symbol_type in [t.value for t in CodeChunkType] else CodeChunkType.GENERIC,
+                chunk_type=(
+                    CodeChunkType(symbol.symbol_type)
+                    if symbol.symbol_type in [t.value for t in CodeChunkType]
+                    else CodeChunkType.GENERIC
+                ),
                 start_line=symbol.line_start,
                 end_line=symbol.line_end,
                 name=symbol.symbol_name,
@@ -1160,7 +1305,9 @@ async def load_workspace_index(
         # Cache in memory
         _workspace_indexes[workspace_path] = index
 
-        logger.info(f"Loaded {len(index.chunks)} symbols from database for {workspace_path}")
+        logger.info(
+            f"Loaded {len(index.chunks)} symbols from database for {workspace_path}"
+        )
         return index
 
     except Exception as e:

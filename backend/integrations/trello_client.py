@@ -76,7 +76,9 @@ class TrelloClient:
         member_id: str,
     ) -> Dict[str, Any]:
         """Get a specific member."""
-        resp = await self.client.get(f"/members/{member_id}", params=self._auth_params())
+        resp = await self.client.get(
+            f"/members/{member_id}", params=self._auth_params()
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -172,7 +174,9 @@ class TrelloClient:
         board_id: str,
     ) -> Dict[str, Any]:
         """Delete a board."""
-        resp = await self.client.delete(f"/boards/{board_id}", params=self._auth_params())
+        resp = await self.client.delete(
+            f"/boards/{board_id}", params=self._auth_params()
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -394,7 +398,9 @@ class TrelloClient:
     ) -> Dict[str, Any]:
         """Add a comment to a card."""
         params = {**self._auth_params(), "text": text}
-        resp = await self.client.post(f"/cards/{card_id}/actions/comments", params=params)
+        resp = await self.client.post(
+            f"/cards/{card_id}/actions/comments", params=params
+        )
         resp.raise_for_status()
         return resp.json()
 

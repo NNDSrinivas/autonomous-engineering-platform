@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class ExecutionStyle(Enum):
     """Overall execution style for NAVI."""
+
     FULLY_AUTONOMOUS = "fully_autonomous"  # Execute everything without asking
     SEMI_AUTONOMOUS = "semi_autonomous"  # Execute most things, ask for critical ops
     GUIDED = "guided"  # Always show plan, ask before execution
@@ -29,6 +30,7 @@ class ExecutionStyle(Enum):
 
 class ApprovalLevel(Enum):
     """When to require approval for an operation."""
+
     NEVER = "never"  # Never ask (fully trusted)
     DANGEROUS_ONLY = "dangerous_only"  # Only for destructive operations
     WRITES_ONLY = "writes_only"  # For any write operation
@@ -85,14 +87,22 @@ class ApprovalSettings:
             return False
         elif level == ApprovalLevel.WRITES_ONLY:
             # These are write operations by definition
-            return operation in ["file_create", "file_edit", "file_delete",
-                                "git_commit", "git_push", "deploy", "install_package"]
+            return operation in [
+                "file_create",
+                "file_edit",
+                "file_delete",
+                "git_commit",
+                "git_push",
+                "deploy",
+                "install_package",
+            ]
 
         return True  # Default to requiring approval
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ApprovalSettings":
         """Create ApprovalSettings from a dictionary."""
+
         def parse_level(key: str, default: ApprovalLevel) -> ApprovalLevel:
             value = data.get(key, default.value)
             try:
@@ -187,34 +197,40 @@ class SafetySettings:
     max_lines_changed: int = 500
 
     # Paths that NAVI should never modify
-    protected_paths: List[str] = field(default_factory=lambda: [
-        ".env",
-        ".env.local",
-        ".env.production",
-        "credentials.json",
-        "secrets.yaml",
-        "**/secrets/**",
-        "**/.git/**",
-    ])
+    protected_paths: List[str] = field(
+        default_factory=lambda: [
+            ".env",
+            ".env.local",
+            ".env.production",
+            "credentials.json",
+            "secrets.yaml",
+            "**/secrets/**",
+            "**/.git/**",
+        ]
+    )
 
     # Commands that should never be run
-    blocked_commands: List[str] = field(default_factory=lambda: [
-        "rm -rf /",
-        "rm -rf ~",
-        "DROP DATABASE",
-        "DROP TABLE",
-        "> /dev/sda",
-        ":(){ :|:& };:",
-    ])
+    blocked_commands: List[str] = field(
+        default_factory=lambda: [
+            "rm -rf /",
+            "rm -rf ~",
+            "DROP DATABASE",
+            "DROP TABLE",
+            "> /dev/sda",
+            ":(){ :|:& };:",
+        ]
+    )
 
     # Require confirmation for operations in production branches
     confirm_production_branches: bool = True
-    production_branches: List[str] = field(default_factory=lambda: [
-        "main",
-        "master",
-        "production",
-        "prod",
-    ])
+    production_branches: List[str] = field(
+        default_factory=lambda: [
+            "main",
+            "master",
+            "production",
+            "prod",
+        ]
+    )
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SafetySettings":
@@ -222,10 +238,19 @@ class SafetySettings:
         return cls(
             max_files_per_operation=data.get("max_files_per_operation", 20),
             max_lines_changed=data.get("max_lines_changed", 500),
-            protected_paths=data.get("protected_paths", cls.__dataclass_fields__["protected_paths"].default_factory()),
-            blocked_commands=data.get("blocked_commands", cls.__dataclass_fields__["blocked_commands"].default_factory()),
+            protected_paths=data.get(
+                "protected_paths",
+                cls.__dataclass_fields__["protected_paths"].default_factory(),
+            ),
+            blocked_commands=data.get(
+                "blocked_commands",
+                cls.__dataclass_fields__["blocked_commands"].default_factory(),
+            ),
             confirm_production_branches=data.get("confirm_production_branches", True),
-            production_branches=data.get("production_branches", cls.__dataclass_fields__["production_branches"].default_factory()),
+            production_branches=data.get(
+                "production_branches",
+                cls.__dataclass_fields__["production_branches"].default_factory(),
+            ),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -242,6 +267,7 @@ class SafetySettings:
     def is_path_protected(self, path: str) -> bool:
         """Check if a path is protected."""
         import fnmatch
+
         for pattern in self.protected_paths:
             if fnmatch.fnmatch(path, pattern):
                 return True
@@ -323,7 +349,9 @@ class NaviSettings:
         """Get maximum number of auto-iterations."""
         return self.auto_actions.max_auto_iterations
 
-    def requires_approval_for(self, operation: str, context: Optional[Dict] = None) -> bool:
+    def requires_approval_for(
+        self, operation: str, context: Optional[Dict] = None
+    ) -> bool:
         """Check if an operation requires approval."""
         # Fully autonomous mode skips most approvals
         if self.execution_style == ExecutionStyle.FULLY_AUTONOMOUS:
@@ -460,7 +488,9 @@ async def save_user_settings(user_id: str, settings: NaviSettings, db=None) -> b
     return True
 
 
-def update_user_settings_from_workspace(user_id: str, workspace_settings: Dict[str, Any]):
+def update_user_settings_from_workspace(
+    user_id: str, workspace_settings: Dict[str, Any]
+):
     """
     Update user settings from VS Code workspace settings.
 

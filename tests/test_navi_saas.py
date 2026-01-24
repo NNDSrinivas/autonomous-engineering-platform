@@ -49,7 +49,7 @@ class TestNaviUniversalCapabilities:
                 "technologies": [],
                 "current_file": None,
                 "errors": [],
-            }
+            },
         }
 
         try:
@@ -71,7 +71,7 @@ class TestNaviUniversalCapabilities:
         async with aiohttp.ClientSession() as session:
             result = await self.make_navi_request(
                 session,
-                "Create a FastAPI endpoint that returns user data with Pydantic validation"
+                "Create a FastAPI endpoint that returns user data with Pydantic validation",
             )
 
             assert "error" not in result or result.get("status") == 200
@@ -79,9 +79,17 @@ class TestNaviUniversalCapabilities:
 
             # Check for Python/FastAPI patterns in response
             response_text = str(result)
-            has_python = any(kw in response_text.lower() for kw in [
-                "fastapi", "pydantic", "def ", "async def", "@router", "@app"
-            ])
+            has_python = any(
+                kw in response_text.lower()
+                for kw in [
+                    "fastapi",
+                    "pydantic",
+                    "def ",
+                    "async def",
+                    "@router",
+                    "@app",
+                ]
+            )
             print(f"\n✅ Python FastAPI Test: {'PASS' if has_python else 'PARTIAL'}")
             print(f"   Content preview: {result.get('content', '')[:200]}...")
 
@@ -91,14 +99,22 @@ class TestNaviUniversalCapabilities:
         async with aiohttp.ClientSession() as session:
             result = await self.make_navi_request(
                 session,
-                "Create an Express.js REST API with GET and POST endpoints for products"
+                "Create an Express.js REST API with GET and POST endpoints for products",
             )
 
             assert "error" not in result or result.get("status") == 200
             response_text = str(result)
-            has_js = any(kw in response_text.lower() for kw in [
-                "express", "router", "app.get", "app.post", "req, res", "module.exports"
-            ])
+            has_js = any(
+                kw in response_text.lower()
+                for kw in [
+                    "express",
+                    "router",
+                    "app.get",
+                    "app.post",
+                    "req, res",
+                    "module.exports",
+                ]
+            )
             print(f"\n✅ JavaScript Express Test: {'PASS' if has_js else 'PARTIAL'}")
             print(f"   Content preview: {result.get('content', '')[:200]}...")
 
@@ -108,14 +124,21 @@ class TestNaviUniversalCapabilities:
         async with aiohttp.ClientSession() as session:
             result = await self.make_navi_request(
                 session,
-                "Create a Go HTTP handler that serves JSON data with proper error handling"
+                "Create a Go HTTP handler that serves JSON data with proper error handling",
             )
 
             assert "error" not in result or result.get("status") == 200
             response_text = str(result)
-            has_go = any(kw in response_text.lower() for kw in [
-                "func ", "http.handler", "json.marshal", "w http.responsewriter", "package"
-            ])
+            has_go = any(
+                kw in response_text.lower()
+                for kw in [
+                    "func ",
+                    "http.handler",
+                    "json.marshal",
+                    "w http.responsewriter",
+                    "package",
+                ]
+            )
             print(f"\n✅ Go HTTP Handler Test: {'PASS' if has_go else 'PARTIAL'}")
             print(f"   Content preview: {result.get('content', '')[:200]}...")
 
@@ -125,14 +148,22 @@ class TestNaviUniversalCapabilities:
         async with aiohttp.ClientSession() as session:
             result = await self.make_navi_request(
                 session,
-                "Create a Rust Actix-web handler that returns JSON with serde serialization"
+                "Create a Rust Actix-web handler that returns JSON with serde serialization",
             )
 
             assert "error" not in result or result.get("status") == 200
             response_text = str(result)
-            has_rust = any(kw in response_text.lower() for kw in [
-                "actix", "serde", "fn ", "async fn", "#[derive", "httpresponse"
-            ])
+            has_rust = any(
+                kw in response_text.lower()
+                for kw in [
+                    "actix",
+                    "serde",
+                    "fn ",
+                    "async fn",
+                    "#[derive",
+                    "httpresponse",
+                ]
+            )
             print(f"Rust Actix Test: {'PASS' if has_rust else 'PARTIAL'}")
 
     @pytest.mark.asyncio
@@ -141,14 +172,23 @@ class TestNaviUniversalCapabilities:
         async with aiohttp.ClientSession() as session:
             result = await self.make_navi_request(
                 session,
-                "Create a React component with hooks for a user profile card with TypeScript"
+                "Create a React component with hooks for a user profile card with TypeScript",
             )
 
             assert "error" not in result or result.get("status") == 200
             response_text = str(result)
-            has_react = any(kw in response_text.lower() for kw in [
-                "usestate", "useeffect", "react", "const ", "interface", "tsx", "jsx"
-            ])
+            has_react = any(
+                kw in response_text.lower()
+                for kw in [
+                    "usestate",
+                    "useeffect",
+                    "react",
+                    "const ",
+                    "interface",
+                    "tsx",
+                    "jsx",
+                ]
+            )
             print(f"React Component Test: {'PASS' if has_react else 'PARTIAL'}")
 
     @pytest.mark.asyncio
@@ -157,14 +197,22 @@ class TestNaviUniversalCapabilities:
         async with aiohttp.ClientSession() as session:
             result = await self.make_navi_request(
                 session,
-                "Create a Docker Compose file for a web app with PostgreSQL and Redis"
+                "Create a Docker Compose file for a web app with PostgreSQL and Redis",
             )
 
             assert "error" not in result or result.get("status") == 200
             response_text = str(result)
-            has_docker = any(kw in response_text.lower() for kw in [
-                "version:", "services:", "postgres", "redis", "docker-compose", "volumes:"
-            ])
+            has_docker = any(
+                kw in response_text.lower()
+                for kw in [
+                    "version:",
+                    "services:",
+                    "postgres",
+                    "redis",
+                    "docker-compose",
+                    "volumes:",
+                ]
+            )
             print(f"Docker Compose Test: {'PASS' if has_docker else 'PARTIAL'}")
 
     @pytest.mark.asyncio
@@ -173,14 +221,21 @@ class TestNaviUniversalCapabilities:
         async with aiohttp.ClientSession() as session:
             result = await self.make_navi_request(
                 session,
-                "Create Terraform configuration for an AWS Lambda function with API Gateway"
+                "Create Terraform configuration for an AWS Lambda function with API Gateway",
             )
 
             assert "error" not in result or result.get("status") == 200
             response_text = str(result)
-            has_terraform = any(kw in response_text.lower() for kw in [
-                "resource", "aws_lambda", "api_gateway", "terraform", "provider"
-            ])
+            has_terraform = any(
+                kw in response_text.lower()
+                for kw in [
+                    "resource",
+                    "aws_lambda",
+                    "api_gateway",
+                    "terraform",
+                    "provider",
+                ]
+            )
             print(f"Terraform AWS Test: {'PASS' if has_terraform else 'PARTIAL'}")
 
     @pytest.mark.asyncio
@@ -189,14 +244,21 @@ class TestNaviUniversalCapabilities:
         async with aiohttp.ClientSession() as session:
             result = await self.make_navi_request(
                 session,
-                "Create a PostgreSQL migration for a users table with proper indexes"
+                "Create a PostgreSQL migration for a users table with proper indexes",
             )
 
             assert "error" not in result or result.get("status") == 200
             response_text = str(result)
-            has_sql = any(kw in response_text.lower() for kw in [
-                "create table", "index", "primary key", "varchar", "timestamp"
-            ])
+            has_sql = any(
+                kw in response_text.lower()
+                for kw in [
+                    "create table",
+                    "index",
+                    "primary key",
+                    "varchar",
+                    "timestamp",
+                ]
+            )
             print(f"SQL Migration Test: {'PASS' if has_sql else 'PARTIAL'}")
 
 
@@ -213,7 +275,7 @@ class TestTokenUsageTracking:
                 "context": {
                     "workspace_path": workspace,
                     "project_type": "python",
-                }
+                },
             }
 
             async with session.post(
@@ -732,6 +794,7 @@ def run_all_tests():
 
     # Run pytest with verbose output
     import sys
+
     sys.exit(pytest.main([__file__, "-v", "--tb=short"]))
 
 

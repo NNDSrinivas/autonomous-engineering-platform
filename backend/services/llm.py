@@ -85,7 +85,9 @@ async def call_llm(
             logger.warning(f"[LLM] Router returned error: {response.text}")
             return "I couldn't generate a response. Please try again."
 
-        logger.info(f"[LLM] Generated response via {response.model}: {len(response.text)} chars")
+        logger.info(
+            f"[LLM] Generated response via {response.model}: {len(response.text)} chars"
+        )
         return response.text
 
     except Exception as e:

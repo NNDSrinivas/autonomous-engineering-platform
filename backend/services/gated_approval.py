@@ -34,28 +34,31 @@ logger = logging.getLogger(__name__)
 
 class ApprovalLevel(Enum):
     """Levels of approval required."""
-    NONE = "none"           # Auto-approve
-    USER = "user"           # User confirmation
-    TEAM_LEAD = "team_lead" # Team lead approval
-    SECURITY = "security"   # Security team review
-    MULTI_PARTY = "multi"   # Multiple approvers
+
+    NONE = "none"  # Auto-approve
+    USER = "user"  # User confirmation
+    TEAM_LEAD = "team_lead"  # Team lead approval
+    SECURITY = "security"  # Security team review
+    MULTI_PARTY = "multi"  # Multiple approvers
 
 
 class RiskCategory(Enum):
     """Categories of risk for operations."""
-    SECURITY = "security"           # Auth, encryption, secrets
-    DATA = "data"                   # Database, data manipulation
+
+    SECURITY = "security"  # Auth, encryption, secrets
+    DATA = "data"  # Database, data manipulation
     INFRASTRUCTURE = "infrastructure"  # Cloud, servers, deployment
-    FINANCIAL = "financial"         # Payments, billing, pricing
-    COMPLIANCE = "compliance"       # GDPR, HIPAA, SOC2
-    PRODUCTION = "production"       # Direct production changes
-    THIRD_PARTY = "third_party"     # External API integrations
-    CUSTOM = "custom"               # Organization-defined
+    FINANCIAL = "financial"  # Payments, billing, pricing
+    COMPLIANCE = "compliance"  # GDPR, HIPAA, SOC2
+    PRODUCTION = "production"  # Direct production changes
+    THIRD_PARTY = "third_party"  # External API integrations
+    CUSTOM = "custom"  # Organization-defined
 
 
 @dataclass
 class RiskIndicator:
     """A pattern that indicates risk."""
+
     id: str
     category: RiskCategory
     pattern: str  # Regex pattern to match
@@ -68,6 +71,7 @@ class RiskIndicator:
 @dataclass
 class ApprovalRequest:
     """A request for approval on a gated operation."""
+
     id: str
     operation_type: str  # "file_create", "file_edit", "command", etc.
     content: str
@@ -152,7 +156,6 @@ class RiskDetector:
             severity=7,
             required_approval=ApprovalLevel.SECURITY,
         ),
-
         # Data risks
         RiskIndicator(
             id="delete_cascade",
@@ -178,7 +181,6 @@ class RiskDetector:
             severity=8,
             required_approval=ApprovalLevel.TEAM_LEAD,
         ),
-
         # Infrastructure risks
         RiskIndicator(
             id="production_config",
@@ -212,7 +214,6 @@ class RiskDetector:
             severity=7,
             required_approval=ApprovalLevel.TEAM_LEAD,
         ),
-
         # Financial risks
         RiskIndicator(
             id="payment_logic",
@@ -222,7 +223,6 @@ class RiskDetector:
             severity=6,
             required_approval=ApprovalLevel.TEAM_LEAD,
         ),
-
         # Compliance risks
         RiskIndicator(
             id="pii_handling",
@@ -240,7 +240,6 @@ class RiskDetector:
             severity=7,
             required_approval=ApprovalLevel.SECURITY,
         ),
-
         # Third party risks
         RiskIndicator(
             id="new_dependency",
@@ -302,14 +301,16 @@ class RiskDetector:
             try:
                 matches = re.findall(pattern.pattern, content_lower, re.IGNORECASE)
                 if matches:
-                    detected.append({
-                        "id": pattern.id,
-                        "category": pattern.category,
-                        "description": pattern.description,
-                        "severity": pattern.severity,
-                        "required_approval": pattern.required_approval,
-                        "matches": matches[:3],  # First 3 matches
-                    })
+                    detected.append(
+                        {
+                            "id": pattern.id,
+                            "category": pattern.category,
+                            "description": pattern.description,
+                            "severity": pattern.severity,
+                            "required_approval": pattern.required_approval,
+                            "matches": matches[:3],  # First 3 matches
+                        }
+                    )
             except re.error as e:
                 logger.warning(f"Invalid regex pattern {pattern.id}: {e}")
 
@@ -382,7 +383,8 @@ class ApprovalPolicyEngine:
                 ]:
                     required_level = ApprovalLevel.SECURITY
                 elif level == ApprovalLevel.TEAM_LEAD and required_level not in [
-                    ApprovalLevel.MULTI_PARTY, ApprovalLevel.SECURITY
+                    ApprovalLevel.MULTI_PARTY,
+                    ApprovalLevel.SECURITY,
                 ]:
                     required_level = ApprovalLevel.TEAM_LEAD
 
@@ -394,8 +396,12 @@ class ApprovalPolicyEngine:
             if filepath and policy.get("protected_paths"):
                 for protected in policy["protected_paths"]:
                     if re.match(protected["pattern"], filepath):
-                        required_level = ApprovalLevel[protected.get("approval", "SECURITY").upper()]
-                        risk_reasons.append(f"Protected path: {protected.get('reason', filepath)}")
+                        required_level = ApprovalLevel[
+                            protected.get("approval", "SECURITY").upper()
+                        ]
+                        risk_reasons.append(
+                            f"Protected path: {protected.get('reason', filepath)}"
+                        )
 
             # Check operation type rules
             if policy.get("operation_rules", {}).get(operation_type):
@@ -431,10 +437,10 @@ class ApprovalWorkflowManager:
     """
 
     def __init__(self, storage_path: str = None):
-        self.storage_path = Path(storage_path or os.getenv(
-            "NAVI_APPROVAL_PATH",
-            os.path.expanduser("~/.navi/approvals")
-        ))
+        self.storage_path = Path(
+            storage_path
+            or os.getenv("NAVI_APPROVAL_PATH", os.path.expanduser("~/.navi/approvals"))
+        )
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
         self.policy_engine = ApprovalPolicyEngine()
@@ -454,7 +460,9 @@ class ApprovalWorkflowManager:
                         operation_type=r["operation_type"],
                         content=r["content"],
                         filepath=r.get("filepath"),
-                        risk_categories=[RiskCategory(c) for c in r.get("risk_categories", [])],
+                        risk_categories=[
+                            RiskCategory(c) for c in r.get("risk_categories", [])
+                        ],
                         risk_score=r.get("risk_score", 0),
                         risk_reasons=r.get("risk_reasons", []),
                         required_level=ApprovalLevel(r.get("required_level", "user")),
@@ -537,12 +545,14 @@ class ApprovalWorkflowManager:
             return False
 
         # Record approval
-        request.approvals.append({
-            "approver_id": approver_id,
-            "role": approver_role,
-            "comment": comment,
-            "timestamp": datetime.now().isoformat(),
-        })
+        request.approvals.append(
+            {
+                "approver_id": approver_id,
+                "role": approver_role,
+                "comment": comment,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
         # Check if fully approved
         if self._check_approval_complete(request):
@@ -563,11 +573,13 @@ class ApprovalWorkflowManager:
         request = self.pending_requests.get(request_id)
         if request:
             request.status = "rejected"
-            request.rejections.append({
-                "rejecter_id": rejecter_id,
-                "reason": reason,
-                "timestamp": datetime.now().isoformat(),
-            })
+            request.rejections.append(
+                {
+                    "rejecter_id": rejecter_id,
+                    "reason": reason,
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
             self._save_pending()
 
     def _check_approval_complete(self, request: ApprovalRequest) -> bool:
@@ -588,8 +600,7 @@ class ApprovalWorkflowManager:
         if request.required_level == ApprovalLevel.SECURITY:
             # Need security team approval
             return any(
-                a.get("role") in ["security", "admin"]
-                for a in request.approvals
+                a.get("role") in ["security", "admin"] for a in request.approvals
             )
 
         if request.required_level == ApprovalLevel.MULTI_PARTY:
@@ -605,7 +616,8 @@ class ApprovalWorkflowManager:
     def get_pending_for_user(self, user_id: str) -> List[ApprovalRequest]:
         """Get pending requests created by a user."""
         return [
-            r for r in self.pending_requests.values()
+            r
+            for r in self.pending_requests.values()
             if r.user_id == user_id and r.status == "pending"
         ]
 

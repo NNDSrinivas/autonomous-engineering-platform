@@ -40,7 +40,9 @@ def verify_pagerduty_signature(
         return
 
     if not signature:
-        raise HTTPException(status_code=401, detail="Missing x-pagerduty-signature header")
+        raise HTTPException(
+            status_code=401, detail="Missing x-pagerduty-signature header"
+        )
 
     # Extract signature from v1=<signature> format
     if signature.startswith("v1="):
@@ -80,7 +82,9 @@ async def ingest(
     - incident.status_update_published: Status update published
     """
     body = await request.body()
-    verify_pagerduty_signature(x_pagerduty_signature, body, settings.pagerduty_webhook_secret)
+    verify_pagerduty_signature(
+        x_pagerduty_signature, body, settings.pagerduty_webhook_secret
+    )
 
     payload = await request.json()
 

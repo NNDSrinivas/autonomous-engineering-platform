@@ -99,13 +99,19 @@ class SnykService(ConnectorServiceBase):
                 for proj in projects[:10]:  # Limit to first 10 projects
                     proj_id = proj.get("id", "")
                     try:
-                        issues_data = await client.list_issues(org_id=org_id, project_id=proj_id)
+                        issues_data = await client.list_issues(
+                            org_id=org_id, project_id=proj_id
+                        )
                         issues = issues_data.get("issues", [])
 
                         for issue in issues:
                             issue_id = issue.get("id", "")
-                            title = issue.get("title") or issue.get("issueData", {}).get("title", "Unknown")
-                            severity = issue.get("severity") or issue.get("issueData", {}).get("severity", "unknown")
+                            title = issue.get("title") or issue.get(
+                                "issueData", {}
+                            ).get("title", "Unknown")
+                            severity = issue.get("severity") or issue.get(
+                                "issueData", {}
+                            ).get("severity", "unknown")
 
                             cls.upsert_item(
                                 db=db,
@@ -277,12 +283,17 @@ class SnykService(ConnectorServiceBase):
             if project_id:
                 # Get issues for specific project
                 try:
-                    data = await client.list_issues(org_id=org_id, project_id=project_id)
+                    data = await client.list_issues(
+                        org_id=org_id, project_id=project_id
+                    )
                     issues = data.get("issues", [])
 
                     for issue in issues:
                         vuln = cls._format_vulnerability(issue, project_id, org_id)
-                        if severity and vuln.get("severity", "").lower() != severity.lower():
+                        if (
+                            severity
+                            and vuln.get("severity", "").lower() != severity.lower()
+                        ):
                             continue
                         results.append(vuln)
 
@@ -296,17 +307,26 @@ class SnykService(ConnectorServiceBase):
                 for proj in projects[:5]:
                     proj_id = proj.get("id", "")
                     try:
-                        data = await client.list_issues(org_id=org_id, project_id=proj_id)
+                        data = await client.list_issues(
+                            org_id=org_id, project_id=proj_id
+                        )
                         issues = data.get("issues", [])
 
                         for issue in issues:
-                            vuln = cls._format_vulnerability(issue, proj_id, org_id, proj.get("name"))
-                            if severity and vuln.get("severity", "").lower() != severity.lower():
+                            vuln = cls._format_vulnerability(
+                                issue, proj_id, org_id, proj.get("name")
+                            )
+                            if (
+                                severity
+                                and vuln.get("severity", "").lower() != severity.lower()
+                            ):
                                 continue
                             results.append(vuln)
 
                     except Exception as e:
-                        logger.warning("snyk.list_issues_failed", project_id=proj_id, error=str(e))
+                        logger.warning(
+                            "snyk.list_issues_failed", project_id=proj_id, error=str(e)
+                        )
 
         return results[:max_results]
 
@@ -326,7 +346,11 @@ class SnykService(ConnectorServiceBase):
             "title": issue_data.get("title") or issue.get("title", "Unknown"),
             "severity": issue_data.get("severity") or issue.get("severity", "unknown"),
             "package_name": issue.get("pkgName", ""),
-            "package_version": str(issue.get("pkgVersions", [""])[0]) if issue.get("pkgVersions") else "",
+            "package_version": (
+                str(issue.get("pkgVersions", [""])[0])
+                if issue.get("pkgVersions")
+                else ""
+            ),
             "project_id": project_id,
             "project_name": project_name,
             "url": f"https://app.snyk.io/org/{org_id}/project/{project_id}",

@@ -61,7 +61,9 @@ class DiscordClient:
     ) -> Any:
         """Make a GET request to the Discord API."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.API_URL}{endpoint}"
         response = await self._client.get(url, params=params)
@@ -75,7 +77,9 @@ class DiscordClient:
     ) -> Any:
         """Make a POST request to the Discord API."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         url = f"{self.API_URL}{endpoint}"
         response = await self._client.post(url, json=data)
@@ -221,7 +225,9 @@ class DiscordClient:
             params["around"] = around
 
         messages = await self._get(f"/channels/{channel_id}/messages", params=params)
-        logger.info("Discord messages fetched", channel_id=channel_id, count=len(messages))
+        logger.info(
+            "Discord messages fetched", channel_id=channel_id, count=len(messages)
+        )
         return messages
 
     async def send_message(
@@ -246,7 +252,9 @@ class DiscordClient:
             data["embeds"] = embeds
 
         message = await self._post(f"/channels/{channel_id}/messages", data)
-        logger.info("Discord message sent", channel_id=channel_id, message_id=message.get("id"))
+        logger.info(
+            "Discord message sent", channel_id=channel_id, message_id=message.get("id")
+        )
         return message
 
     # -------------------------------------------------------------------------
@@ -342,7 +350,11 @@ class DiscordClient:
             data["avatar"] = avatar
 
         webhook = await self._post(f"/channels/{channel_id}/webhooks", data)
-        logger.info("Discord webhook created", channel_id=channel_id, webhook_id=webhook.get("id"))
+        logger.info(
+            "Discord webhook created",
+            channel_id=channel_id,
+            webhook_id=webhook.get("id"),
+        )
         return webhook
 
     # -------------------------------------------------------------------------

@@ -52,7 +52,9 @@ async def list_sonarqube_projects(
             last_analysis = proj.get("last_analysis", "Never")
 
             lines.append(f"- **{name}** (`{key}`)")
-            lines.append(f"  - Last Analysis: {last_analysis[:10] if last_analysis else 'Never'}")
+            lines.append(
+                f"  - Last Analysis: {last_analysis[:10] if last_analysis else 'Never'}"
+            )
             if url:
                 lines.append(f"  - [Open Dashboard]({url})")
             lines.append("")
@@ -176,7 +178,9 @@ async def get_sonarqube_quality_gate(
                 metric = cond.get("metricKey", "unknown")
                 cond_status = cond.get("status", "UNKNOWN")
                 actual = cond.get("actualValue", "N/A")
-                threshold = cond.get("errorThreshold", cond.get("warningThreshold", "N/A"))
+                threshold = cond.get(
+                    "errorThreshold", cond.get("warningThreshold", "N/A")
+                )
 
                 emoji = "✅" if cond_status == "OK" else "❌"
                 lines.append(f"- {emoji} {metric}: {actual} (threshold: {threshold})")
@@ -186,11 +190,13 @@ async def get_sonarqube_quality_gate(
 
         return ToolResult(
             output="\n".join(lines),
-            sources=[{
-                "type": "sonarqube_project",
-                "name": project_key,
-                "url": f"{base_url}/dashboard?id={project_key}" if base_url else "",
-            }],
+            sources=[
+                {
+                    "type": "sonarqube_project",
+                    "name": project_key,
+                    "url": f"{base_url}/dashboard?id={project_key}" if base_url else "",
+                }
+            ],
         )
 
     except Exception as e:

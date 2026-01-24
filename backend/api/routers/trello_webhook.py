@@ -88,7 +88,9 @@ async def ingest(
 
     # Get callback URL for signature verification
     callback_url = str(request.url)
-    verify_trello_signature(x_trello_webhook, body, callback_url, settings.trello_webhook_secret)
+    verify_trello_signature(
+        x_trello_webhook, body, callback_url, settings.trello_webhook_secret
+    )
 
     payload = await request.json()
 
@@ -98,11 +100,22 @@ async def ingest(
 
     try:
         # Card actions
-        if action_type in ["createCard", "updateCard", "deleteCard", "copyCard", "moveCardToBoard"]:
+        if action_type in [
+            "createCard",
+            "updateCard",
+            "deleteCard",
+            "copyCard",
+            "moveCardToBoard",
+        ]:
             await _handle_card_action(payload, action_type, org_id, db)
 
         # List actions
-        elif action_type in ["createList", "updateList", "moveListFromBoard", "moveListToBoard"]:
+        elif action_type in [
+            "createList",
+            "updateList",
+            "moveListFromBoard",
+            "moveListToBoard",
+        ]:
             await _handle_list_action(payload, action_type, org_id, db)
 
         # Board actions
@@ -114,11 +127,20 @@ async def ingest(
             await _handle_comment_action(payload, action_type, org_id, db)
 
         # Member actions
-        elif action_type in ["addMemberToCard", "removeMemberFromCard", "addMemberToBoard", "removeMemberFromBoard"]:
+        elif action_type in [
+            "addMemberToCard",
+            "removeMemberFromCard",
+            "addMemberToBoard",
+            "removeMemberFromBoard",
+        ]:
             await _handle_member_action(payload, action_type, org_id, db)
 
         # Checklist actions
-        elif action_type in ["updateCheckItemStateOnCard", "addChecklistToCard", "createCheckItem"]:
+        elif action_type in [
+            "updateCheckItemStateOnCard",
+            "addChecklistToCard",
+            "createCheckItem",
+        ]:
             await _handle_checklist_action(payload, action_type, org_id, db)
 
         # Attachment actions
@@ -155,7 +177,11 @@ async def _handle_card_action(
     card = data.get("card") or {}
     card_id = card.get("id") or ""
     card_name = card.get("name") or "Untitled"
-    card_url = f"https://trello.com/c/{card.get('shortLink', card_id)}" if card.get("shortLink") else ""
+    card_url = (
+        f"https://trello.com/c/{card.get('shortLink', card_id)}"
+        if card.get("shortLink")
+        else ""
+    )
 
     board = data.get("board") or {}
     board_name = board.get("name") or ""
@@ -239,7 +265,9 @@ async def _handle_list_action(
     elif action_type == "updateList":
         old = data.get("old") or {}
         if "name" in old:
-            text = f"{member_name} renamed list from '{old.get('name')}' to '{list_name}'"
+            text = (
+                f"{member_name} renamed list from '{old.get('name')}' to '{list_name}'"
+            )
         else:
             text = f"{member_name} updated list '{list_name}'"
     else:
@@ -277,7 +305,9 @@ async def _handle_board_action(
     board = data.get("board") or {}
     board_id = board.get("id") or ""
     board_name = board.get("name") or "Untitled"
-    board_url = board.get("url") or f"https://trello.com/b/{board.get('shortLink', board_id)}"
+    board_url = (
+        board.get("url") or f"https://trello.com/b/{board.get('shortLink', board_id)}"
+    )
 
     member_name = member.get("fullName") or member.get("username") or "Someone"
 
@@ -321,7 +351,9 @@ async def _handle_comment_action(
 
     card = data.get("card") or {}
     card_name = card.get("name") or "Untitled"
-    card_url = f"https://trello.com/c/{card.get('shortLink')}" if card.get("shortLink") else ""
+    card_url = (
+        f"https://trello.com/c/{card.get('shortLink')}" if card.get("shortLink") else ""
+    )
 
     comment_text = data.get("text") or ""
     member_name = member.get("fullName") or member.get("username") or "Someone"
@@ -360,8 +392,12 @@ async def _handle_member_action(
 
     card_name = card.get("name") or ""
     board_name = board.get("name") or ""
-    target_name = target_member.get("name") or target_member.get("username") or "Someone"
-    member_name = member_creator.get("fullName") or member_creator.get("username") or "Someone"
+    target_name = (
+        target_member.get("name") or target_member.get("username") or "Someone"
+    )
+    member_name = (
+        member_creator.get("fullName") or member_creator.get("username") or "Someone"
+    )
 
     if action_type == "addMemberToCard":
         text = f"{member_name} assigned {target_name} to '{card_name}'"

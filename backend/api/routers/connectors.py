@@ -2376,9 +2376,7 @@ async def gitlab_oauth_callback(
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
     if resp.status_code >= 400:
-        raise HTTPException(
-            status_code=400, detail=f"GitLab OAuth failed: {resp.text}"
-        )
+        raise HTTPException(status_code=400, detail=f"GitLab OAuth failed: {resp.text}")
 
     data = resp.json()
     access_token = data.get("access_token")
@@ -2617,9 +2615,7 @@ async def linear_oauth_callback(
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
     if resp.status_code >= 400:
-        raise HTTPException(
-            status_code=400, detail=f"Linear OAuth failed: {resp.text}"
-        )
+        raise HTTPException(status_code=400, detail=f"Linear OAuth failed: {resp.text}")
 
     data = resp.json()
     access_token = data.get("access_token")
@@ -2833,7 +2829,9 @@ async def notion_oauth_callback(
     redirect_uri = _oauth_redirect("/api/connectors/notion/oauth/callback")
 
     # Notion uses Basic auth for token exchange
-    auth_bytes = f"{oauth_cfg['client_id']}:{oauth_cfg['client_secret']}".encode("utf-8")
+    auth_bytes = f"{oauth_cfg['client_id']}:{oauth_cfg['client_secret']}".encode(
+        "utf-8"
+    )
     basic_auth = base64.b64encode(auth_bytes).decode("utf-8")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -2850,9 +2848,7 @@ async def notion_oauth_callback(
             },
         )
     if resp.status_code >= 400:
-        raise HTTPException(
-            status_code=400, detail=f"Notion OAuth failed: {resp.text}"
-        )
+        raise HTTPException(status_code=400, detail=f"Notion OAuth failed: {resp.text}")
 
     data = resp.json()
     access_token = data.get("access_token")
@@ -2880,7 +2876,9 @@ async def notion_oauth_callback(
             "workspace_icon": workspace_icon,
             "bot_id": bot_id,
             "owner_type": owner.get("type"),
-            "owner_user": owner.get("user", {}).get("id") if owner.get("type") == "user" else None,
+            "owner_user": (
+                owner.get("user", {}).get("id") if owner.get("type") == "user" else None
+            ),
         },
         secrets={
             "access_token": access_token,
@@ -2990,7 +2988,9 @@ async def notion_sync(
         if page_ids:
             pages = [await notion.get_page(pid) for pid in page_ids]
         else:
-            search_results = await notion.search(query="", filter_type="page", page_size=50)
+            search_results = await notion.search(
+                query="", filter_type="page", page_size=50
+            )
             pages = search_results.get("results", [])
 
     return {
@@ -3089,7 +3089,9 @@ async def bitbucket_oauth_callback(
     redirect_uri = _oauth_redirect("/api/connectors/bitbucket/oauth/callback")
 
     # Bitbucket uses Basic auth for token exchange
-    auth_bytes = f"{oauth_cfg['client_id']}:{oauth_cfg['client_secret']}".encode("utf-8")
+    auth_bytes = f"{oauth_cfg['client_id']}:{oauth_cfg['client_secret']}".encode(
+        "utf-8"
+    )
     basic_auth = base64.b64encode(auth_bytes).decode("utf-8")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -3113,7 +3115,9 @@ async def bitbucket_oauth_callback(
     data = resp.json()
     access_token = data.get("access_token")
     if not access_token:
-        raise HTTPException(status_code=400, detail="Bitbucket OAuth missing access_token")
+        raise HTTPException(
+            status_code=400, detail="Bitbucket OAuth missing access_token"
+        )
 
     refresh_token = data.get("refresh_token")
     expires_at = _expires_at_iso(data.get("expires_in"))
@@ -3182,7 +3186,9 @@ async def bitbucket_list_repos(
         provider="bitbucket",
     )
     if not connector:
-        raise HTTPException(status_code=404, detail="Bitbucket connector not configured")
+        raise HTTPException(
+            status_code=404, detail="Bitbucket connector not configured"
+        )
 
     token = (connector.get("secrets") or {}).get("access_token")
     if not token:
@@ -3214,7 +3220,9 @@ async def bitbucket_sync(
         provider="bitbucket",
     )
     if not connector:
-        raise HTTPException(status_code=404, detail="Bitbucket connector not configured")
+        raise HTTPException(
+            status_code=404, detail="Bitbucket connector not configured"
+        )
 
     token = (connector.get("secrets") or {}).get("access_token")
     if not token:
@@ -3258,7 +3266,8 @@ def jira_oauth_start(
         org_id=getattr(current_user, "org_id", None),
         provider="jira",
         fallback_client_id=settings.jira_client_id or settings.confluence_client_id,
-        fallback_client_secret=settings.jira_client_secret or settings.confluence_client_secret,
+        fallback_client_secret=settings.jira_client_secret
+        or settings.confluence_client_secret,
         fallback_scopes=settings.jira_oauth_scopes,
     )
     if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
@@ -3323,7 +3332,8 @@ async def jira_oauth_callback(
         org_id=payload.get("org_id") or getattr(current_user, "org_id", None),
         provider="jira",
         fallback_client_id=settings.jira_client_id or settings.confluence_client_id,
-        fallback_client_secret=settings.jira_client_secret or settings.confluence_client_secret,
+        fallback_client_secret=settings.jira_client_secret
+        or settings.confluence_client_secret,
         fallback_scopes=settings.jira_oauth_scopes,
     )
     if not oauth_cfg["client_id"] or not oauth_cfg["client_secret"]:
@@ -3508,14 +3518,18 @@ async def discord_oauth_callback(
     data = token_resp.json()
     access_token = data.get("access_token")
     if not access_token:
-        raise HTTPException(status_code=400, detail="Discord OAuth missing access_token")
+        raise HTTPException(
+            status_code=400, detail="Discord OAuth missing access_token"
+        )
 
     refresh_token = data.get("refresh_token")
     expires_at = _expires_at_iso(data.get("expires_in"))
     scopes = _parse_scopes(data.get("scope"), delimiter=" ")
 
     connectors_service.save_generic_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         provider="discord",
         config={"scopes": scopes, "expires_at": expires_at},
@@ -3650,7 +3664,9 @@ async def figma_oauth_callback(
     user_id_figma = data.get("user_id")
 
     connectors_service.save_generic_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         provider="figma",
         config={"figma_user_id": user_id_figma, "expires_at": expires_at},
@@ -3784,7 +3800,9 @@ async def asana_oauth_callback(
     asana_user_name = asana_user.get("name")
 
     connectors_service.save_generic_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         provider="asana",
         config={
@@ -3915,7 +3933,9 @@ async def trello_oauth_callback(
     trello_username = trello_user.get("username")
 
     connectors_service.save_generic_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         provider="trello",
         config={
@@ -4035,7 +4055,9 @@ async def monday_oauth_callback(
         raise HTTPException(status_code=400, detail="Monday OAuth missing access_token")
 
     connectors_service.save_generic_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         provider="monday",
         config={},
@@ -4154,10 +4176,14 @@ async def clickup_oauth_callback(
     data = token_resp.json()
     access_token = data.get("access_token")
     if not access_token:
-        raise HTTPException(status_code=400, detail="ClickUp OAuth missing access_token")
+        raise HTTPException(
+            status_code=400, detail="ClickUp OAuth missing access_token"
+        )
 
     connectors_service.save_generic_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         provider="clickup",
         config={},
@@ -4285,14 +4311,18 @@ async def circleci_oauth_callback(
     data = token_resp.json()
     access_token = data.get("access_token")
     if not access_token:
-        raise HTTPException(status_code=400, detail="CircleCI OAuth missing access_token")
+        raise HTTPException(
+            status_code=400, detail="CircleCI OAuth missing access_token"
+        )
 
     refresh_token = data.get("refresh_token")
     expires_at = _expires_at_iso(data.get("expires_in"))
     scopes = _parse_scopes(data.get("scope"), delimiter=" ")
 
     connectors_service.save_generic_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         provider="circleci",
         config={"scopes": scopes, "expires_at": expires_at},
@@ -4421,7 +4451,9 @@ async def vercel_oauth_callback(
     user_id_vercel = data.get("user_id")
 
     connectors_service.save_generic_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         provider="vercel",
         config={"team_id": team_id, "vercel_user_id": user_id_vercel},
@@ -4556,7 +4588,9 @@ async def sentry_oauth_callback(
     scopes = _parse_scopes(data.get("scope"), delimiter=" ")
 
     connectors_service.save_generic_connection(
-        user_id=str(payload.get("user_id") or getattr(current_user, "user_id", "unknown")),
+        user_id=str(
+            payload.get("user_id") or getattr(current_user, "user_id", "unknown")
+        ),
         org_id=payload.get("org_id"),
         provider="sentry",
         config={"scopes": scopes, "expires_at": expires_at},

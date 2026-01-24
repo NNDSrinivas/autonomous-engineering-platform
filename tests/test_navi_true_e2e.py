@@ -86,7 +86,10 @@ def extract_code_from_response(response):
         # Find JSON in thinking
         if "files_to_create" in combined:
             import re
-            json_match = re.search(r'\{[\s\S]*"files_to_create"[\s\S]*?\}(?=\s*$|\s*```)', combined)
+
+            json_match = re.search(
+                r'\{[\s\S]*"files_to_create"[\s\S]*?\}(?=\s*$|\s*```)', combined
+            )
             if json_match:
                 data = json.loads(json_match.group())
                 return data.get("files_to_create", {})
@@ -134,9 +137,9 @@ def write_files(files: dict):
 async def run_true_e2e_tests():
     """Run true end-to-end tests where NAVI creates and we execute."""
 
-    print("="*70)
+    print("=" * 70)
     print("NAVI TRUE END-TO-END TESTS")
-    print("="*70)
+    print("=" * 70)
     print(f"Test directory: {TEST_DIR}")
     print()
 
@@ -147,9 +150,9 @@ async def run_true_e2e_tests():
         # ================================================================
         # TEST 1: Create a working Python utility
         # ================================================================
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST 1: Create and Run Python Utility")
-        print("="*70)
+        print("=" * 70)
 
         setup_test_directory()
 
@@ -164,7 +167,7 @@ async def run_true_e2e_tests():
             Also create a test file 'test_calculator.py' that tests all functions.
             Use assert statements for testing.
 
-            Make sure the code is complete and runnable."""
+            Make sure the code is complete and runnable.""",
         )
 
         if response.get("error"):
@@ -180,13 +183,18 @@ async def run_true_e2e_tests():
                 # Try to extract files_to_create from JSON in thinking
                 try:
                     import re
+
                     # Look for the JSON structure
-                    match = re.search(r'"files_to_create"\s*:\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}', thinking, re.DOTALL)
+                    match = re.search(
+                        r'"files_to_create"\s*:\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}',
+                        thinking,
+                        re.DOTALL,
+                    )
                     if match:
                         # Reconstruct and parse
-                        json_str = '{"files_to_create": {' + match.group(1) + '}}'
+                        json_str = '{"files_to_create": {' + match.group(1) + "}}"
                         # Clean up the JSON
-                        json_str = json_str.replace('\n', '\\n').replace('\t', '\\t')
+                        json_str = json_str.replace("\n", "\\n").replace("\t", "\\t")
                         data = json.loads(json_str)
                         files = data.get("files_to_create", {})
                 except Exception as e:
@@ -201,13 +209,24 @@ async def run_true_e2e_tests():
                 if "def add" in thinking:
                     # Extract the code block
                     import re
-                    calc_match = re.search(r'calculator\.py["\s:]+[`"]*\s*((?:def|#|from|import)[\s\S]*?)(?=["\n]\s*[,}]|```)', thinking)
-                    if calc_match:
-                        files["calculator.py"] = calc_match.group(1).replace('\\n', '\n').replace('\\"', '"')
 
-                    test_match = re.search(r'test_calculator\.py["\s:]+[`"]*\s*((?:def|#|from|import)[\s\S]*?)(?=["\n]\s*[,}]|```)', thinking)
+                    calc_match = re.search(
+                        r'calculator\.py["\s:]+[`"]*\s*((?:def|#|from|import)[\s\S]*?)(?=["\n]\s*[,}]|```)',
+                        thinking,
+                    )
+                    if calc_match:
+                        files["calculator.py"] = (
+                            calc_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+                        )
+
+                    test_match = re.search(
+                        r'test_calculator\.py["\s:]+[`"]*\s*((?:def|#|from|import)[\s\S]*?)(?=["\n]\s*[,}]|```)',
+                        thinking,
+                    )
                     if test_match:
-                        files["test_calculator.py"] = test_match.group(1).replace('\\n', '\n').replace('\\"', '"')
+                        files["test_calculator.py"] = (
+                            test_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+                        )
 
             if files:
                 print(f"   NAVI generated {len(files)} files")
@@ -225,7 +244,7 @@ async def run_true_e2e_tests():
                             ["python3", "-m", "py_compile", str(calc_file)],
                             capture_output=True,
                             text=True,
-                            timeout=10
+                            timeout=10,
                         )
 
                         if result.returncode == 0:
@@ -238,28 +257,54 @@ async def run_true_e2e_tests():
                                     capture_output=True,
                                     text=True,
                                     timeout=30,
-                                    cwd=str(TEST_DIR)
+                                    cwd=str(TEST_DIR),
                                 )
 
                                 if result.returncode == 0:
                                     print("   ✅ Tests passed!")
-                                    results.append(("Python Utility", True, "Code runs and tests pass"))
+                                    results.append(
+                                        (
+                                            "Python Utility",
+                                            True,
+                                            "Code runs and tests pass",
+                                        )
+                                    )
                                 else:
                                     print(f"   ⚠️ Tests failed: {result.stderr[:200]}")
-                                    results.append(("Python Utility", False, f"Tests failed: {result.stderr[:100]}"))
+                                    results.append(
+                                        (
+                                            "Python Utility",
+                                            False,
+                                            f"Tests failed: {result.stderr[:100]}",
+                                        )
+                                    )
                             else:
                                 # Just verify we can import
                                 result = subprocess.run(
-                                    ["python3", "-c", f"import sys; sys.path.insert(0, '{TEST_DIR}'); import calculator; print(calculator.add(2,3))"],
+                                    [
+                                        "python3",
+                                        "-c",
+                                        f"import sys; sys.path.insert(0, '{TEST_DIR}'); import calculator; print(calculator.add(2,3))",
+                                    ],
                                     capture_output=True,
                                     text=True,
-                                    timeout=10
+                                    timeout=10,
                                 )
                                 if result.returncode == 0 and "5" in result.stdout:
-                                    print(f"   ✅ calculator.add(2,3) = {result.stdout.strip()}")
-                                    results.append(("Python Utility", True, "Code runs correctly"))
+                                    print(
+                                        f"   ✅ calculator.add(2,3) = {result.stdout.strip()}"
+                                    )
+                                    results.append(
+                                        ("Python Utility", True, "Code runs correctly")
+                                    )
                                 else:
-                                    results.append(("Python Utility", False, f"Import failed: {result.stderr}"))
+                                    results.append(
+                                        (
+                                            "Python Utility",
+                                            False,
+                                            f"Import failed: {result.stderr}",
+                                        )
+                                    )
                         else:
                             print(f"   ❌ Syntax error: {result.stderr}")
                             results.append(("Python Utility", False, "Syntax error"))
@@ -275,13 +320,12 @@ async def run_true_e2e_tests():
                 print(f"   Thinking: {response.get('thinking', '')[:200]}")
                 results.append(("Python Utility", False, "No files generated"))
 
-
         # ================================================================
         # TEST 2: Create a FastAPI endpoint and test it
         # ================================================================
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST 2: Create FastAPI Endpoint")
-        print("="*70)
+        print("=" * 70)
 
         # Clean test dir
         if TEST_DIR.exists():
@@ -294,7 +338,7 @@ async def run_true_e2e_tests():
             - GET /health -> returns {"status": "ok"}
             - GET /add?a=1&b=2 -> returns {"result": 3}
 
-            Just the app file, nothing else. Make it minimal and runnable."""
+            Just the app file, nothing else. Make it minimal and runnable.""",
         )
 
         if response.get("error"):
@@ -312,12 +356,19 @@ async def run_true_e2e_tests():
                 # Look for FastAPI code
                 if "FastAPI" in combined or "fastapi" in combined:
                     import re
+
                     # Find code that starts with from fastapi or import
-                    code_match = re.search(r'(from fastapi[\s\S]*?)(?:```|"test|$)', combined)
+                    code_match = re.search(
+                        r'(from fastapi[\s\S]*?)(?:```|"test|$)', combined
+                    )
                     if code_match:
-                        code = code_match.group(1).replace('\\n', '\n').replace('\\"', '"')
+                        code = (
+                            code_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+                        )
                         # Clean up any trailing JSON artifacts
-                        code = re.sub(r'",?\s*"files_to_modify.*$', '', code, flags=re.DOTALL)
+                        code = re.sub(
+                            r'",?\s*"files_to_modify.*$', "", code, flags=re.DOTALL
+                        )
                         files["app.py"] = code.strip()
 
             if files:
@@ -331,7 +382,7 @@ async def run_true_e2e_tests():
                         ["python3", "-m", "py_compile", str(app_file)],
                         capture_output=True,
                         text=True,
-                        timeout=10
+                        timeout=10,
                     )
 
                     if result.returncode == 0:
@@ -348,12 +399,14 @@ print("APP_EXISTS" if app else "NO_APP")
                             ["python3", "-c", check_code],
                             capture_output=True,
                             text=True,
-                            timeout=10
+                            timeout=10,
                         )
 
                         if "APP_EXISTS" in result.stdout:
                             print("   ✅ FastAPI app created successfully")
-                            results.append(("FastAPI Endpoint", True, "App created and importable"))
+                            results.append(
+                                ("FastAPI Endpoint", True, "App created and importable")
+                            )
                         else:
                             print(f"   ⚠️ App import issue: {result.stderr[:100]}")
                             results.append(("FastAPI Endpoint", False, "Import failed"))
@@ -366,20 +419,19 @@ print("APP_EXISTS" if app else "NO_APP")
                 print("   ❌ No files generated")
                 results.append(("FastAPI Endpoint", False, "No files"))
 
-
         # ================================================================
         # TEST 3: Debug and fix broken code
         # ================================================================
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("TEST 3: Debug and Fix Broken Code")
-        print("="*70)
+        print("=" * 70)
 
         # Create broken code
         if TEST_DIR.exists():
             shutil.rmtree(TEST_DIR)
         TEST_DIR.mkdir(parents=True)
 
-        broken_code = '''
+        broken_code = """
 def process_data(items):
     total = 0
     for item in items:
@@ -389,7 +441,7 @@ def process_data(items):
 # This will crash:
 # result = process_data([{"name": "test"}])  # Missing "value" key
 # result = process_data([])  # Empty list
-'''
+"""
         broken_file = TEST_DIR / "broken.py"
         broken_file.write_text(broken_code)
 
@@ -405,7 +457,7 @@ def process_data(items):
 {broken_code}
             ```
 
-            The fixed code should handle both edge cases gracefully."""
+            The fixed code should handle both edge cases gracefully.""",
         )
 
         if response.get("error"):
@@ -419,9 +471,14 @@ def process_data(items):
                 thinking = response.get("thinking", "")
                 if "def process_data" in thinking:
                     import re
-                    code_match = re.search(r'(def process_data[\s\S]*?)(?:```|"message|$)', thinking)
+
+                    code_match = re.search(
+                        r'(def process_data[\s\S]*?)(?:```|"message|$)', thinking
+                    )
                     if code_match:
-                        code = code_match.group(1).replace('\\n', '\n').replace('\\"', '"')
+                        code = (
+                            code_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+                        )
                         files["fixed.py"] = code.strip()
 
             if files:
@@ -466,7 +523,7 @@ print("ALL_TESTS_PASSED")
                         ["python3", "-c", test_code],
                         capture_output=True,
                         text=True,
-                        timeout=10
+                        timeout=10,
                     )
 
                     if "ALL_TESTS_PASSED" in result.stdout:
@@ -474,7 +531,9 @@ print("ALL_TESTS_PASSED")
                         print(f"   Output: {result.stdout.strip()}")
                         results.append(("Debug & Fix", True, "All edge cases handled"))
                     else:
-                        print(f"   ⚠️ Some tests failed: {result.stdout} {result.stderr}")
+                        print(
+                            f"   ⚠️ Some tests failed: {result.stdout} {result.stderr}"
+                        )
                         results.append(("Debug & Fix", False, "Edge cases not handled"))
                 else:
                     results.append(("Debug & Fix", False, "Fixed file not created"))
@@ -482,13 +541,12 @@ print("ALL_TESTS_PASSED")
                 print("   ❌ No fix generated")
                 results.append(("Debug & Fix", False, "No fix generated"))
 
-
     # ================================================================
     # SUMMARY
     # ================================================================
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("TRUE E2E TEST SUMMARY")
-    print("="*70)
+    print("=" * 70)
 
     passed = sum(1 for _, p, _ in results if p)
     total = len(results)

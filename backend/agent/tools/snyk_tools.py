@@ -87,7 +87,9 @@ async def list_snyk_vulnerabilities(
             lines.append("")
 
             if url:
-                sources.append({"type": "snyk_vulnerability", "name": title[:40], "url": url})
+                sources.append(
+                    {"type": "snyk_vulnerability", "name": title[:40], "url": url}
+                )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -194,14 +196,18 @@ async def get_snyk_security_summary(
         ]
 
         if critical > 0 or high > 0:
-            lines.append("\n⚠️ **Action Required:** You have critical or high severity vulnerabilities that should be addressed.")
+            lines.append(
+                "\n⚠️ **Action Required:** You have critical or high severity vulnerabilities that should be addressed."
+            )
 
         org_id = connection.get("config", {}).get("org_id", "")
         url = f"https://app.snyk.io/org/{org_id}" if org_id else ""
 
         sources = []
         if url:
-            sources.append({"type": "snyk_dashboard", "name": "Snyk Dashboard", "url": url})
+            sources.append(
+                {"type": "snyk_dashboard", "name": "Snyk Dashboard", "url": url}
+            )
             lines.append(f"\n[View full report in Snyk]({url})")
 
         return ToolResult(output="\n".join(lines), sources=sources)
@@ -278,7 +284,9 @@ async def get_snyk_project_issues(
 
         sources = []
         if url:
-            sources.append({"type": "snyk_project", "name": f"Project {project_id}", "url": url})
+            sources.append(
+                {"type": "snyk_project", "name": f"Project {project_id}", "url": url}
+            )
             lines.append(f"[View in Snyk]({url})")
 
         return ToolResult(output="\n".join(lines), sources=sources)

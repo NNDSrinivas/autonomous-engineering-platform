@@ -69,7 +69,9 @@ async def ingest(
     """
     # Handle webhook handshake
     if x_hook_secret:
-        logger.info("asana_webhook.handshake", extra={"secret": x_hook_secret[:8] + "..."})
+        logger.info(
+            "asana_webhook.handshake", extra={"secret": x_hook_secret[:8] + "..."}
+        )
         return Response(
             content="",
             status_code=200,

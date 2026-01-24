@@ -187,8 +187,7 @@ async def search_zoom_recordings(
         # Filter by search term
         search_lower = search_term.lower()
         matches = [
-            rec for rec in recordings
-            if search_lower in rec.get("topic", "").lower()
+            rec for rec in recordings if search_lower in rec.get("topic", "").lower()
         ]
 
         if not matches:

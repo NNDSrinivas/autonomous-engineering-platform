@@ -429,7 +429,9 @@ class SentryClient:
     ) -> Dict[str, Any]:
         """Get event details."""
         slug = self._org_slug(org_slug)
-        resp = await self.client.get(f"/projects/{slug}/{project_slug}/events/{event_id}/")
+        resp = await self.client.get(
+            f"/projects/{slug}/{project_slug}/events/{event_id}/"
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -583,7 +585,9 @@ class SentryClient:
     ) -> List[Dict[str, Any]]:
         """List deployments for a release."""
         slug = self._org_slug(org_slug)
-        resp = await self.client.get(f"/organizations/{slug}/releases/{version}/deploys/")
+        resp = await self.client.get(
+            f"/organizations/{slug}/releases/{version}/deploys/"
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -653,7 +657,9 @@ class SentryClient:
     ) -> Dict[str, Any]:
         """Get alert rule details."""
         slug = self._org_slug(org_slug)
-        resp = await self.client.get(f"/projects/{slug}/{project_slug}/rules/{rule_id}/")
+        resp = await self.client.get(
+            f"/projects/{slug}/{project_slug}/rules/{rule_id}/"
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -793,7 +799,8 @@ class SentryClient:
                 # Extract cursor from URL
                 if "cursor=" in url_part:
                     import re
-                    match = re.search(r'cursor=([^&>]+)', url_part)
+
+                    match = re.search(r"cursor=([^&>]+)", url_part)
                     if match:
                         return match.group(1)
 

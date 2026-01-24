@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RateLimitConfig:
     """Configuration for rate limits."""
+
     # Per-user limits
     user_requests_per_minute: int = 30
     user_requests_per_hour: int = 500
@@ -43,27 +44,31 @@ class RateLimitConfig:
 
     # Per-provider global limits (across all users)
     # These should be set based on your API tier
-    provider_limits: Dict[str, Dict[str, int]] = field(default_factory=lambda: {
-        "anthropic": {
-            "requests_per_minute": 1000,
-            "tokens_per_minute": 100000,
-        },
-        "openai": {
-            "requests_per_minute": 3500,
-            "tokens_per_minute": 90000,
-        },
-        "google": {
-            "requests_per_minute": 1500,
-            "tokens_per_minute": 100000,
-        },
-    })
+    provider_limits: Dict[str, Dict[str, int]] = field(
+        default_factory=lambda: {
+            "anthropic": {
+                "requests_per_minute": 1000,
+                "tokens_per_minute": 100000,
+            },
+            "openai": {
+                "requests_per_minute": 3500,
+                "tokens_per_minute": 90000,
+            },
+            "google": {
+                "requests_per_minute": 1500,
+                "tokens_per_minute": 100000,
+            },
+        }
+    )
 
     # Priority levels (higher = more priority)
-    priority_levels: Dict[str, int] = field(default_factory=lambda: {
-        "enterprise": 100,
-        "pro": 50,
-        "free": 10,
-    })
+    priority_levels: Dict[str, int] = field(
+        default_factory=lambda: {
+            "enterprise": 100,
+            "pro": 50,
+            "free": 10,
+        }
+    )
 
     # Queue settings
     max_queue_size: int = 10000
@@ -76,6 +81,7 @@ class RateLimitConfig:
 @dataclass
 class SlidingWindowCounter:
     """Sliding window rate limiter counter."""
+
     window_size_seconds: int
     max_requests: int
     requests: List[float] = field(default_factory=list)
@@ -165,10 +171,13 @@ class ProviderRateLimiter:
     def __init__(self, provider: str, config: RateLimitConfig):
         self.provider = provider
         self.config = config
-        limits = config.provider_limits.get(provider, {
-            "requests_per_minute": 1000,
-            "tokens_per_minute": 50000,
-        })
+        limits = config.provider_limits.get(
+            provider,
+            {
+                "requests_per_minute": 1000,
+                "tokens_per_minute": 50000,
+            },
+        )
         self.request_counter = SlidingWindowCounter(60, limits["requests_per_minute"])
         self.token_counter = SlidingWindowCounter(60, limits["tokens_per_minute"])
         self.consecutive_errors = 0
@@ -204,7 +213,9 @@ class ProviderRateLimiter:
 
         if is_rate_limit or self.consecutive_errors >= 3:
             self.is_healthy = False
-            logger.warning(f"Provider {self.provider} marked unhealthy after {self.consecutive_errors} errors")
+            logger.warning(
+                f"Provider {self.provider} marked unhealthy after {self.consecutive_errors} errors"
+            )
 
     def record_success(self):
         """Record a successful request."""
@@ -215,6 +226,7 @@ class ProviderRateLimiter:
 @dataclass
 class QueuedRequest:
     """A request waiting in the queue."""
+
     user_id: str
     provider: str
     priority: int
@@ -265,7 +277,9 @@ class RateLimiter:
     def _get_provider_limiter(self, provider: str) -> ProviderRateLimiter:
         """Get or create provider rate limiter."""
         if provider not in self.provider_limiters:
-            self.provider_limiters[provider] = ProviderRateLimiter(provider, self.config)
+            self.provider_limiters[provider] = ProviderRateLimiter(
+                provider, self.config
+            )
         return self.provider_limiters[provider]
 
     async def check_rate_limit(
@@ -299,7 +313,9 @@ class RateLimiter:
 
         # Check provider rate limit
         provider_limiter = self._get_provider_limiter(provider)
-        provider_allowed, provider_wait = provider_limiter.check_and_record(estimated_tokens)
+        provider_allowed, provider_wait = provider_limiter.check_and_record(
+            estimated_tokens
+        )
 
         if not provider_allowed:
             self.stats["rate_limited_requests"] += 1
@@ -317,7 +333,11 @@ class RateLimiter:
             if alt == current:
                 continue
             limiter = self._get_provider_limiter(alt)
-            if limiter.is_healthy and limiter.request_counter.current_count < limiter.request_counter.max_requests * 0.8:
+            if (
+                limiter.is_healthy
+                and limiter.request_counter.current_count
+                < limiter.request_counter.max_requests * 0.8
+            ):
                 return alt
 
         return None
@@ -341,7 +361,8 @@ class RateLimiter:
                 "healthy": limiter.is_healthy,
                 "requests_in_window": limiter.request_counter.current_count,
                 "max_requests": limiter.request_counter.max_requests,
-                "utilization": limiter.request_counter.current_count / limiter.request_counter.max_requests,
+                "utilization": limiter.request_counter.current_count
+                / limiter.request_counter.max_requests,
                 "consecutive_errors": limiter.consecutive_errors,
             }
         return health
@@ -371,6 +392,7 @@ class RateLimiter:
 
     def rate_limited(self, provider: str = "anthropic", user_tier: str = "free"):
         """Decorator for rate-limited endpoints."""
+
         def decorator(func):
             @wraps(func)
             async def wrapper(*args, **kwargs):
@@ -383,6 +405,7 @@ class RateLimiter:
 
                 if not allowed:
                     from fastapi import HTTPException
+
                     headers = {"Retry-After": str(int(wait_time))}
                     if alternative:
                         headers["X-Alternative-Provider"] = alternative
@@ -393,7 +416,9 @@ class RateLimiter:
                     )
 
                 return await func(*args, **kwargs)
+
             return wrapper
+
         return decorator
 
 

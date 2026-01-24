@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 
 class UserSyncRequest(BaseModel):
     """Request body for user sync endpoint."""
+
     sub: str  # Auth0 subject (user ID)
     email: str
     name: Optional[str] = None
@@ -22,6 +23,7 @@ class UserSyncRequest(BaseModel):
 
 class UserSyncResponse(BaseModel):
     """Response body for user sync endpoint."""
+
     status: str
     user_id: str
     org_id: str

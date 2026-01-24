@@ -38,7 +38,7 @@ def test_navi_context_has_memory_fields():
     assert ctx.user_id == "123"
     assert ctx.org_id == "456"
     assert ctx.conversation_id == "conv-789"
-    assert hasattr(ctx, 'memory_context')
+    assert hasattr(ctx, "memory_context")
     assert ctx.memory_context == {}  # Should default to empty dict
 
 
@@ -50,7 +50,7 @@ def test_navi_brain_has_personalization_method():
     brain = NaviBrain(provider="openai", api_key="test-key")
 
     # Check that the method exists
-    assert hasattr(brain, '_get_personalized_system_prompt')
+    assert hasattr(brain, "_get_personalized_system_prompt")
     assert callable(brain._get_personalized_system_prompt)
 
     # Without context, should return base SYSTEM_PROMPT
@@ -69,7 +69,9 @@ async def test_memory_context_returns_empty_without_db():
     from backend.services.navi_brain import _get_memory_context_async
 
     # Mock the _get_memory_integration to return None (no memory system)
-    with patch('backend.services.navi_brain._get_memory_integration', return_value=None):
+    with patch(
+        "backend.services.navi_brain._get_memory_integration", return_value=None
+    ):
         result = await _get_memory_context_async(
             query="test query",
             user_id=1,
@@ -88,7 +90,9 @@ async def test_store_interaction_handles_missing_memory():
     from backend.services.navi_brain import _store_interaction_async
 
     # Mock the _get_memory_integration to return None (no memory system)
-    with patch('backend.services.navi_brain._get_memory_integration', return_value=None):
+    with patch(
+        "backend.services.navi_brain._get_memory_integration", return_value=None
+    ):
         # Should not raise any errors even when memory system is not available
         await _store_interaction_async(
             user_id=1,
@@ -109,7 +113,9 @@ def test_enhance_system_prompt_graceful_degradation():
     base_prompt = "You are a helpful assistant."
 
     # Mock the _get_memory_integration to return None (no memory system)
-    with patch('backend.services.navi_brain._get_memory_integration', return_value=None):
+    with patch(
+        "backend.services.navi_brain._get_memory_integration", return_value=None
+    ):
         # Without proper memory system, should return base prompt
         result = _enhance_system_prompt_with_memory(
             base_prompt=base_prompt,
@@ -135,7 +141,7 @@ def test_navi_context_memory_context_field():
         memory_context={
             "user_preferences": {"language": "python"},
             "past_conversations": [],
-        }
+        },
     )
     assert ctx2.memory_context["user_preferences"]["language"] == "python"
 
@@ -162,7 +168,7 @@ class TestMemoryIntegrationWithMocks:
         from backend.services.navi_brain import NaviBrain, NaviContext
 
         # Mock environment to avoid hanging on missing env vars
-        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
             brain = NaviBrain(provider="openai", api_key="test-key")
 
             ctx = NaviContext(
@@ -172,7 +178,9 @@ class TestMemoryIntegrationWithMocks:
             )
 
             # Mock the memory integration to return None
-            with patch('backend.services.navi_brain._get_memory_integration', return_value=None):
+            with patch(
+                "backend.services.navi_brain._get_memory_integration", return_value=None
+            ):
                 # First call
                 prompt1 = brain._get_personalized_system_prompt(ctx)
 

@@ -64,7 +64,9 @@ class DynamicNarrativeGenerator:
             try:
                 return await self._generate_with_llm(event_type, context, user_message)
             except Exception as e:
-                logger.warning(f"LLM narrative generation failed, using context-based: {e}")
+                logger.warning(
+                    f"LLM narrative generation failed, using context-based: {e}"
+                )
 
         return self._generate_from_context(event_type, context, user_message)
 
@@ -121,7 +123,9 @@ Narrative:"""
             return self._build_file_read_narrative(file_name, file_path, "start")
 
         elif event_type == "file_read_complete":
-            return self._build_file_read_narrative(file_name, file_path, "complete", context.get("summary"))
+            return self._build_file_read_narrative(
+                file_name, file_path, "complete", context.get("summary")
+            )
 
         elif event_type == "files_analyzed":
             files = context.get("files", [])
@@ -140,7 +144,9 @@ Narrative:"""
             return self._build_tool_narrative(tool_name, result, "complete")
 
         elif event_type == "error":
-            return f"I encountered an issue: {error}" if error else "Something went wrong."
+            return (
+                f"I encountered an issue: {error}" if error else "Something went wrong."
+            )
 
         elif event_type == "iteration":
             iteration = context.get("iteration", 1)
@@ -161,7 +167,9 @@ Narrative:"""
         # Fallback - build from available context
         return self._build_generic_narrative(event_type, context)
 
-    def _build_intent_narrative(self, intent_kind: str, confidence: float, message: str) -> str:
+    def _build_intent_narrative(
+        self, intent_kind: str, confidence: float, message: str
+    ) -> str:
         """Build narrative from actual intent and confidence - dynamically extracts action from intent."""
         # Convert intent kind to natural language dynamically
         intent_lower = intent_kind.lower().replace("_", " ")
@@ -281,11 +289,19 @@ Narrative:"""
 
         if count == 1:
             base = f"I've analyzed `{os.path.basename(files[0])}`"
-            return f"{base} from this {project_desc} project." if project_desc else f"{base}."
+            return (
+                f"{base} from this {project_desc} project."
+                if project_desc
+                else f"{base}."
+            )
         elif count <= 3:
             names = [f"`{os.path.basename(f)}`" for f in files]
             base = f"I've analyzed {', '.join(names)}"
-            return f"{base} from this {project_desc} project." if project_desc else f"{base}."
+            return (
+                f"{base} from this {project_desc} project."
+                if project_desc
+                else f"{base}."
+            )
         else:
             if project_desc:
                 return f"I've analyzed {count} files from this {project_desc} project."
@@ -336,7 +352,7 @@ Narrative:"""
             if path:
                 return f"Running {readable_name} on `{os.path.basename(path)}`..."
             elif command:
-                cmd_display = command[:50] + ('...' if len(command) > 50 else '')
+                cmd_display = command[:50] + ("..." if len(command) > 50 else "")
                 return f"Executing: `{cmd_display}`"
             elif query:
                 return f"Searching for `{query}`..."
@@ -357,7 +373,9 @@ Narrative:"""
                 return f"{readable_name.title()} found {count} results."
             return f"{readable_name.title()} completed."
 
-    def _build_iteration_narrative(self, iteration: int, max_iter: int, reason: str) -> str:
+    def _build_iteration_narrative(
+        self, iteration: int, max_iter: int, reason: str
+    ) -> str:
         """Build narrative from actual iteration state - user-friendly, no debug info."""
         # Don't show iteration numbers to users - just describe what's happening
         if iteration == 1:
@@ -413,7 +431,9 @@ Narrative:"""
 
 
 # Factory function for creating narrators
-def create_narrator(use_llm: bool = False, llm_callback: Optional[Callable] = None) -> DynamicNarrativeGenerator:
+def create_narrator(
+    use_llm: bool = False, llm_callback: Optional[Callable] = None
+) -> DynamicNarrativeGenerator:
     """Create a narrative generator instance."""
     return DynamicNarrativeGenerator(use_llm=use_llm, llm_callback=llm_callback)
 
@@ -429,7 +449,9 @@ class NarrativeGenerator:
     @staticmethod
     def for_intent(intent_kind: str, confidence: float, message: str = "") -> str:
         """Generate intent narrative dynamically."""
-        return _default_narrator._build_intent_narrative(intent_kind, confidence, message)
+        return _default_narrator._build_intent_narrative(
+            intent_kind, confidence, message
+        )
 
     @staticmethod
     def for_file_read_start(file_path: str, purpose: str = "") -> str:
@@ -486,9 +508,15 @@ class NarrativeGenerator:
         intent_lower = intent_kind.lower()
         if "explain" in intent_lower or "describe" in intent_lower:
             return "Let me explain what I found..."
-        elif "fix" in intent_lower or "debug" in intent_lower or "error" in intent_lower:
+        elif (
+            "fix" in intent_lower or "debug" in intent_lower or "error" in intent_lower
+        ):
             return "I've identified the issue. Here's my analysis..."
-        elif "implement" in intent_lower or "add" in intent_lower or "create" in intent_lower:
+        elif (
+            "implement" in intent_lower
+            or "add" in intent_lower
+            or "create" in intent_lower
+        ):
             return "I've planned the implementation. Here are my recommendations..."
         elif "refactor" in intent_lower or "optimize" in intent_lower:
             return "I've analyzed the code. Here are my suggestions..."
@@ -497,7 +525,9 @@ class NarrativeGenerator:
     @staticmethod
     def for_iteration(iteration: int, max_iterations: int, reason: str = "") -> str:
         """Generate iteration narrative dynamically."""
-        return _default_narrator._build_iteration_narrative(iteration, max_iterations, reason)
+        return _default_narrator._build_iteration_narrative(
+            iteration, max_iterations, reason
+        )
 
     @staticmethod
     def for_verification(results: Dict[str, Any]) -> str:

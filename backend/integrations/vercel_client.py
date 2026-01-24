@@ -121,7 +121,9 @@ class VercelClient:
     ) -> Dict[str, Any]:
         """Get a specific project."""
         params = self._add_team_param({})
-        resp = await self.client.get(f"/v9/projects/{project_id_or_name}", params=params)
+        resp = await self.client.get(
+            f"/v9/projects/{project_id_or_name}", params=params
+        )
         resp.raise_for_status()
         return resp.json()
 

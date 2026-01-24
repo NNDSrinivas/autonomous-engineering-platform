@@ -51,7 +51,9 @@ async def list_figma_files(
         for f in files:
             name = f.get("name", "Untitled")
             url = f.get("url", "")
-            last_modified = f.get("last_modified", "")[:10] if f.get("last_modified") else "Unknown"
+            last_modified = (
+                f.get("last_modified", "")[:10] if f.get("last_modified") else "Unknown"
+            )
 
             lines.append(f"- **{name}**")
             lines.append(f"  - Last Modified: {last_modified}")
@@ -101,7 +103,11 @@ async def get_figma_file(
 
         name = file_data.get("name", "Untitled")
         url = file_data.get("url", "")
-        last_modified = file_data.get("last_modified", "")[:10] if file_data.get("last_modified") else "Unknown"
+        last_modified = (
+            file_data.get("last_modified", "")[:10]
+            if file_data.get("last_modified")
+            else "Unknown"
+        )
         pages = file_data.get("pages", [])
 
         lines = [
@@ -269,7 +275,9 @@ async def add_figma_comment(
             url = f"https://www.figma.com/file/{file_key}"
             return ToolResult(
                 output=f"Comment added to Figma file.\n\n> {message}\n\n[View file]({url})",
-                sources=[{"type": "figma_file", "name": f"File {file_key}", "url": url}],
+                sources=[
+                    {"type": "figma_file", "name": f"File {file_key}", "url": url}
+                ],
             )
         else:
             return ToolResult(output="Failed to add comment.", sources=[])

@@ -231,8 +231,22 @@ async def redeploy_vercel_deployment(
             if url and not url.startswith("http"):
                 url = f"https://{url}"
             return ToolResult(
-                output=f"Deployment triggered successfully.\n\nURL: {url}" if url else "Deployment triggered.",
-                sources=[{"type": "vercel_deployment", "name": "New deployment", "url": url}] if url else [],
+                output=(
+                    f"Deployment triggered successfully.\n\nURL: {url}"
+                    if url
+                    else "Deployment triggered."
+                ),
+                sources=(
+                    [
+                        {
+                            "type": "vercel_deployment",
+                            "name": "New deployment",
+                            "url": url,
+                        }
+                    ]
+                    if url
+                    else []
+                ),
             )
         else:
             return ToolResult(output="Failed to trigger redeployment.", sources=[])

@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CacheEntry:
     """A cached LLM response."""
+
     response_text: str
     model: str
     provider: str
@@ -54,6 +55,7 @@ class CacheEntry:
 @dataclass
 class CacheStats:
     """Statistics for cache performance."""
+
     hits: int = 0
     misses: int = 0
     total_tokens_saved: int = 0
@@ -82,8 +84,8 @@ class LLMCache:
     # Cost per 1K tokens (approximate, for savings calculation)
     COST_PER_1K_TOKENS = {
         "anthropic": 0.003,  # Claude Sonnet
-        "openai": 0.002,     # GPT-4o-mini
-        "google": 0.001,     # Gemini Flash
+        "openai": 0.002,  # GPT-4o-mini
+        "google": 0.001,  # Gemini Flash
     }
 
     def __init__(
@@ -121,6 +123,7 @@ class LLMCache:
         if redis_url:
             try:
                 import redis.asyncio as redis
+
                 self._redis = redis.from_url(redis_url)
                 logger.info("[CACHE] Redis backend enabled")
             except ImportError:
@@ -146,12 +149,15 @@ class LLMCache:
         temp_rounded = round(temperature, 1)
 
         # Create composite key
-        key_data = json.dumps({
-            "p": prompt_normalized[:500],  # First 500 chars of prompt
-            "s": system_normalized[:200],   # First 200 chars of system prompt
-            "m": model,
-            "t": temp_rounded,
-        }, sort_keys=True)
+        key_data = json.dumps(
+            {
+                "p": prompt_normalized[:500],  # First 500 chars of prompt
+                "s": system_normalized[:200],  # First 200 chars of system prompt
+                "m": model,
+                "t": temp_rounded,
+            },
+            sort_keys=True,
+        )
 
         # Hash it
         key_hash = hashlib.sha256(key_data.encode()).hexdigest()[:32]
@@ -191,9 +197,13 @@ class LLMCache:
                 self.stats.hits += 1
                 if entry.tokens_used:
                     self.stats.total_tokens_saved += entry.tokens_used
-                    provider = entry.provider.split("-")[0]  # Handle "anthropic-offline" etc.
+                    provider = entry.provider.split("-")[
+                        0
+                    ]  # Handle "anthropic-offline" etc.
                     cost_per_1k = self.COST_PER_1K_TOKENS.get(provider, 0.002)
-                    self.stats.estimated_cost_saved += (entry.tokens_used / 1000) * cost_per_1k
+                    self.stats.estimated_cost_saved += (
+                        entry.tokens_used / 1000
+                    ) * cost_per_1k
 
                 logger.info(
                     f"[CACHE] HIT for {model} (hit_rate={self.stats.hit_rate:.1%}, "
@@ -266,12 +276,14 @@ class LLMCache:
             # Also store in Redis if available
             if self._redis:
                 try:
-                    data = json.dumps({
-                        "text": response_text,
-                        "model": model,
-                        "provider": provider,
-                        "tokens": tokens_used,
-                    })
+                    data = json.dumps(
+                        {
+                            "text": response_text,
+                            "model": model,
+                            "provider": provider,
+                            "tokens": tokens_used,
+                        }
+                    )
                     await self._redis.setex(cache_key, ttl, data)
                 except Exception as e:
                     logger.warning(f"[CACHE] Redis set failed: {e}")
@@ -296,10 +308,7 @@ class LLMCache:
                 return count
 
             # Pattern-based invalidation
-            keys_to_remove = [
-                k for k in self._cache.keys()
-                if pattern in k
-            ]
+            keys_to_remove = [k for k in self._cache.keys() if pattern in k]
             for key in keys_to_remove:
                 del self._cache[key]
 

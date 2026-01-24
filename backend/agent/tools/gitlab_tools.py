@@ -343,7 +343,9 @@ async def search_gitlab(
                 project = item.data.get("project_name", "")
                 type_prefix = "!" if item.item_type == "merge_request" else "#"
                 output += f"• **{type_prefix}{iid}** ({project}): {item.title or 'No title'}\n"
-                output += f"  Type: {item.item_type}, Status: {item.status or 'Unknown'}\n"
+                output += (
+                    f"  Type: {item.item_type}, Status: {item.status or 'Unknown'}\n"
+                )
                 if item.url:
                     output += f"  Link: {item.url}\n"
                 output += "\n"
@@ -359,9 +361,7 @@ async def search_gitlab(
 
     except Exception as exc:
         gitlab_logger.error("gitlab_tools.search.error", error=str(exc))
-        return ToolResult(
-            output=f"Error searching GitLab: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error searching GitLab: {str(exc)}", sources=[])
 
 
 # Tool function registry for NAVI

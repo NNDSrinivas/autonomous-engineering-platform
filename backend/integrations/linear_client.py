@@ -60,7 +60,9 @@ class LinearClient:
     ) -> Dict[str, Any]:
         """Execute a GraphQL query."""
         if not self._client:
-            raise RuntimeError("Client not initialized. Use async with context manager.")
+            raise RuntimeError(
+                "Client not initialized. Use async with context manager."
+            )
 
         payload: Dict[str, Any] = {"query": query}
         if variables:

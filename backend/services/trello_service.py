@@ -138,7 +138,11 @@ class TrelloService(ConnectorServiceBase):
                                     external_id=external_id,
                                     title=card.get("name"),
                                     description=card.get("desc"),
-                                    status="complete" if card.get("dueComplete") else "open",
+                                    status=(
+                                        "complete"
+                                        if card.get("dueComplete")
+                                        else "open"
+                                    ),
                                     url=card.get("url"),
                                     user_id=user_id,
                                     org_id=org_id,
@@ -284,22 +288,22 @@ class TrelloService(ConnectorServiceBase):
                     board_name = board.get("name")
 
                     try:
-                        board_data = await client.get_board(
-                            board_id, cards="open"
-                        )
+                        board_data = await client.get_board(board_id, cards="open")
                         board_cards = board_data.get("cards", [])
 
                         for card in board_cards:
                             if member_id in card.get("idMembers", []):
-                                cards.append({
-                                    "id": card.get("id"),
-                                    "name": card.get("name"),
-                                    "desc": card.get("desc"),
-                                    "url": card.get("url"),
-                                    "board_name": board_name,
-                                    "due": card.get("due"),
-                                    "labels": card.get("labels", []),
-                                })
+                                cards.append(
+                                    {
+                                        "id": card.get("id"),
+                                        "name": card.get("name"),
+                                        "desc": card.get("desc"),
+                                        "url": card.get("url"),
+                                        "board_name": board_name,
+                                        "due": card.get("due"),
+                                        "labels": card.get("labels", []),
+                                    }
+                                )
 
                     except Exception:
                         pass

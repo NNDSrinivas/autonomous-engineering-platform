@@ -140,7 +140,10 @@ class PagerDutyClient:
         payload: Dict[str, Any] = {
             "service": {
                 "name": name,
-                "escalation_policy": {"id": escalation_policy_id, "type": "escalation_policy_reference"},
+                "escalation_policy": {
+                    "id": escalation_policy_id,
+                    "type": "escalation_policy_reference",
+                },
                 "alert_creation": alert_creation,
             }
         }
@@ -171,7 +174,9 @@ class PagerDutyClient:
         if status:
             service["status"] = status
 
-        resp = await self.client.put(f"/services/{service_id}", json={"service": service})
+        resp = await self.client.put(
+            f"/services/{service_id}", json={"service": service}
+        )
         resp.raise_for_status()
         return resp.json().get("service", {})
 
@@ -298,7 +303,9 @@ class PagerDutyClient:
         if assignments:
             incident["assignments"] = assignments
 
-        resp = await self.client.put(f"/incidents/{incident_id}", json={"incident": incident})
+        resp = await self.client.put(
+            f"/incidents/{incident_id}", json={"incident": incident}
+        )
         resp.raise_for_status()
         return resp.json().get("incident", {})
 
@@ -317,7 +324,9 @@ class PagerDutyClient:
         resolution: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Resolve an incident."""
-        return await self.update_incident(incident_id, status="resolved", resolution=resolution)
+        return await self.update_incident(
+            incident_id, status="resolved", resolution=resolution
+        )
 
     async def merge_incidents(
         self,
@@ -327,8 +336,7 @@ class PagerDutyClient:
     ) -> Dict[str, Any]:
         """Merge incidents."""
         source_incidents = [
-            {"id": sid, "type": "incident_reference"}
-            for sid in source_incident_ids
+            {"id": sid, "type": "incident_reference"} for sid in source_incident_ids
         ]
         payload = {"source_incidents": source_incidents}
         headers = {"From": from_email}

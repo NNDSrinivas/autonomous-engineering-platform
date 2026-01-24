@@ -20,7 +20,10 @@ from backend.services.memory.user_memory import get_user_memory_service
 from backend.services.memory.org_memory import get_org_memory_service
 from backend.services.memory.conversation_memory import get_conversation_memory_service
 from backend.services.memory.codebase_memory import get_codebase_memory_service
-from backend.services.memory.semantic_search import get_semantic_search_service, SearchScope
+from backend.services.memory.semantic_search import (
+    get_semantic_search_service,
+    SearchScope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,7 @@ router = APIRouter(prefix="/api/navi-memory", tags=["navi-memory"])
 
 class UserPreferencesUpdate(BaseModel):
     """Request model for updating user preferences."""
+
     preferred_language: Optional[str] = None
     preferred_framework: Optional[str] = None
     code_style: Optional[Dict[str, Any]] = None
@@ -44,6 +48,7 @@ class UserPreferencesUpdate(BaseModel):
 
 class UserPreferencesResponse(BaseModel):
     """Response model for user preferences."""
+
     user_id: int
     preferred_language: Optional[str]
     preferred_framework: Optional[str]
@@ -56,6 +61,7 @@ class UserPreferencesResponse(BaseModel):
 
 class FeedbackRequest(BaseModel):
     """Request model for submitting feedback."""
+
     message_id: UUID
     conversation_id: UUID
     feedback_type: str = Field(..., pattern="^(positive|negative|correction)$")
@@ -66,6 +72,7 @@ class FeedbackRequest(BaseModel):
 
 class KnowledgeCreate(BaseModel):
     """Request model for adding organization knowledge."""
+
     knowledge_type: str
     title: str
     content: str
@@ -76,6 +83,7 @@ class KnowledgeCreate(BaseModel):
 
 class KnowledgeResponse(BaseModel):
     """Response model for organization knowledge."""
+
     id: str
     knowledge_type: str
     title: str
@@ -87,6 +95,7 @@ class KnowledgeResponse(BaseModel):
 
 class StandardCreate(BaseModel):
     """Request model for adding coding standard."""
+
     standard_type: str
     standard_name: str
     rules: Dict[str, Any]
@@ -99,6 +108,7 @@ class StandardCreate(BaseModel):
 
 class ConversationCreate(BaseModel):
     """Request model for creating a conversation."""
+
     title: Optional[str] = None
     workspace_path: Optional[str] = None
     initial_context: Optional[Dict[str, Any]] = None
@@ -106,6 +116,7 @@ class ConversationCreate(BaseModel):
 
 class MessageCreate(BaseModel):
     """Request model for adding a message."""
+
     role: str = Field(..., pattern="^(user|assistant|system)$")
     content: str
     metadata: Optional[Dict[str, Any]] = None
@@ -114,6 +125,7 @@ class MessageCreate(BaseModel):
 
 class CodebaseIndexCreate(BaseModel):
     """Request model for creating codebase index."""
+
     workspace_path: str
     workspace_name: Optional[str] = None
     index_config: Optional[Dict[str, Any]] = None
@@ -121,6 +133,7 @@ class CodebaseIndexCreate(BaseModel):
 
 class SearchRequest(BaseModel):
     """Request model for semantic search."""
+
     query: str
     scope: str = "all"
     codebase_id: Optional[UUID] = None
@@ -130,6 +143,7 @@ class SearchRequest(BaseModel):
 
 class SearchResultResponse(BaseModel):
     """Response model for search results."""
+
     id: str
     source: str
     title: str

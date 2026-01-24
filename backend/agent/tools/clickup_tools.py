@@ -51,11 +51,13 @@ async def list_clickup_workspaces(
             lines.append(f"  - Members: {members}")
             lines.append("")
 
-            sources.append({
-                "type": "clickup_workspace",
-                "name": name,
-                "url": f"https://app.clickup.com/{ws_id}",
-            })
+            sources.append(
+                {
+                    "type": "clickup_workspace",
+                    "name": name,
+                    "url": f"https://app.clickup.com/{ws_id}",
+                }
+            )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -103,11 +105,13 @@ async def list_clickup_spaces(
             lines.append(f"  - ID: {space_id}")
             lines.append("")
 
-            sources.append({
-                "type": "clickup_space",
-                "name": name,
-                "url": f"https://app.clickup.com/{workspace_id}/v/s/{space_id}",
-            })
+            sources.append(
+                {
+                    "type": "clickup_space",
+                    "name": name,
+                    "url": f"https://app.clickup.com/{workspace_id}/v/s/{space_id}",
+                }
+            )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -189,10 +193,10 @@ async def create_clickup_task(
     if not approve:
         return ToolResult(
             output=f"**Preview: Create ClickUp Task**\n\n"
-                   f"List ID: {list_id}\n"
-                   f"Name: {name}\n"
-                   f"Description: {description or 'None'}\n\n"
-                   f"Please approve this action.",
+            f"List ID: {list_id}\n"
+            f"Name: {name}\n"
+            f"Description: {description or 'None'}\n\n"
+            f"Please approve this action.",
             sources=[],
         )
 
@@ -213,11 +217,13 @@ async def create_clickup_task(
         if result.success:
             return ToolResult(
                 output=f"Task '{name}' created successfully.",
-                sources=[{
-                    "type": "clickup_task",
-                    "name": name,
-                    "url": result.url or "",
-                }],
+                sources=[
+                    {
+                        "type": "clickup_task",
+                        "name": name,
+                        "url": result.url or "",
+                    }
+                ],
             )
         else:
             return ToolResult(output=f"Failed: {result.error}", sources=[])

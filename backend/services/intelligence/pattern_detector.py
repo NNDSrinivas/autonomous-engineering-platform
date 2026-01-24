@@ -193,17 +193,19 @@ class PatternDetector:
                 total = sum(sequence_counts.values())
                 confidence = count / total
 
-                patterns.append({
-                    "pattern_type": self.WORKFLOW,
-                    "pattern_key": f"sequence:{sequence}",
-                    "pattern_data": {
-                        "sequence": sequence,
-                        "count": count,
-                        "total_sequences": total,
-                    },
-                    "confidence": round(confidence, 2),
-                    "occurrences": count,
-                })
+                patterns.append(
+                    {
+                        "pattern_type": self.WORKFLOW,
+                        "pattern_key": f"sequence:{sequence}",
+                        "pattern_data": {
+                            "sequence": sequence,
+                            "count": count,
+                            "total_sequences": total,
+                        },
+                        "confidence": round(confidence, 2),
+                        "occurrences": count,
+                    }
+                )
 
         return patterns
 
@@ -225,17 +227,19 @@ class PatternDetector:
             peak_hour, peak_count = hour_counts.most_common(1)[0]
 
             if peak_count >= self.MIN_OCCURRENCES:
-                patterns.append({
-                    "pattern_type": self.WORKFLOW,
-                    "pattern_key": f"peak_hour:{peak_hour}",
-                    "pattern_data": {
-                        "peak_hour": peak_hour,
-                        "count": peak_count,
-                        "hourly_distribution": dict(hour_counts),
-                    },
-                    "confidence": round(peak_count / total, 2),
-                    "occurrences": peak_count,
-                })
+                patterns.append(
+                    {
+                        "pattern_type": self.WORKFLOW,
+                        "pattern_key": f"peak_hour:{peak_hour}",
+                        "pattern_data": {
+                            "peak_hour": peak_hour,
+                            "count": peak_count,
+                            "hourly_distribution": dict(hour_counts),
+                        },
+                        "confidence": round(peak_count / total, 2),
+                        "occurrences": peak_count,
+                    }
+                )
 
         return patterns
 
@@ -255,17 +259,19 @@ class PatternDetector:
         for activity_type, count in type_counts.most_common(3):
             if count >= self.MIN_OCCURRENCES:
                 confidence = count / total
-                patterns.append({
-                    "pattern_type": self.WORKFLOW,
-                    "pattern_key": f"frequent_activity:{activity_type}",
-                    "pattern_data": {
-                        "activity_type": activity_type,
-                        "count": count,
-                        "percentage": round(confidence * 100, 1),
-                    },
-                    "confidence": round(confidence, 2),
-                    "occurrences": count,
-                })
+                patterns.append(
+                    {
+                        "pattern_type": self.WORKFLOW,
+                        "pattern_key": f"frequent_activity:{activity_type}",
+                        "pattern_data": {
+                            "activity_type": activity_type,
+                            "count": count,
+                            "percentage": round(confidence * 100, 1),
+                        },
+                        "confidence": round(confidence, 2),
+                        "occurrences": count,
+                    }
+                )
 
         return patterns
 
@@ -354,30 +360,38 @@ class PatternDetector:
         # Analyze function naming
         function_symbols = [s for s in symbols if s.symbol_type == "function"]
         if function_symbols:
-            naming_style = self._analyze_naming_style([s.symbol_name for s in function_symbols])
+            naming_style = self._analyze_naming_style(
+                [s.symbol_name for s in function_symbols]
+            )
             if naming_style:
-                patterns.append({
-                    "pattern_type": self.NAMING_CONVENTION,
-                    "pattern_name": f"function_naming_{naming_style['style']}",
-                    "description": f"Functions use {naming_style['style']} naming convention",
-                    "examples": naming_style["examples"][:5],
-                    "confidence": naming_style["confidence"],
-                    "occurrences": naming_style["count"],
-                })
+                patterns.append(
+                    {
+                        "pattern_type": self.NAMING_CONVENTION,
+                        "pattern_name": f"function_naming_{naming_style['style']}",
+                        "description": f"Functions use {naming_style['style']} naming convention",
+                        "examples": naming_style["examples"][:5],
+                        "confidence": naming_style["confidence"],
+                        "occurrences": naming_style["count"],
+                    }
+                )
 
         # Analyze class naming
         class_symbols = [s for s in symbols if s.symbol_type == "class"]
         if class_symbols:
-            naming_style = self._analyze_naming_style([s.symbol_name for s in class_symbols])
+            naming_style = self._analyze_naming_style(
+                [s.symbol_name for s in class_symbols]
+            )
             if naming_style:
-                patterns.append({
-                    "pattern_type": self.NAMING_CONVENTION,
-                    "pattern_name": f"class_naming_{naming_style['style']}",
-                    "description": f"Classes use {naming_style['style']} naming convention",
-                    "examples": naming_style["examples"][:5],
-                    "confidence": naming_style["confidence"],
-                    "occurrences": naming_style["count"],
-                })
+                patterns.append(
+                    {
+                        "pattern_type": self.NAMING_CONVENTION,
+                        "pattern_name": f"class_naming_{naming_style['style']}",
+                        "description": f"Classes use {naming_style['style']} naming convention",
+                        "examples": naming_style["examples"][:5],
+                        "confidence": naming_style["confidence"],
+                        "occurrences": naming_style["count"],
+                    }
+                )
 
         return patterns
 
@@ -403,7 +417,9 @@ class PatternDetector:
                 style_counts["snake_case"] += 1
             elif name[0].isupper() and "_" not in name:
                 style_counts["PascalCase"] += 1
-            elif name[0].islower() and "_" not in name and any(c.isupper() for c in name):
+            elif (
+                name[0].islower() and "_" not in name and any(c.isupper() for c in name)
+            ):
                 style_counts["camelCase"] += 1
             elif "_" in name:
                 style_counts["snake_case"] += 1
@@ -439,7 +455,9 @@ class PatternDetector:
         if style == "snake_case":
             return "_" in name and name.islower()
         elif style == "camelCase":
-            return name[0].islower() and "_" not in name and any(c.isupper() for c in name)
+            return (
+                name[0].islower() and "_" not in name and any(c.isupper() for c in name)
+            )
         elif style == "PascalCase":
             return name[0].isupper() and "_" not in name
         elif style == "SCREAMING_SNAKE":
@@ -460,31 +478,58 @@ class PatternDetector:
         has_services = any("service" in p.lower() for p in file_paths)
         has_controllers = any("controller" in p.lower() for p in file_paths)
         has_models = any("model" in p.lower() for p in file_paths)
-        has_repositories = any("repo" in p.lower() or "repository" in p.lower() for p in file_paths)
+        has_repositories = any(
+            "repo" in p.lower() or "repository" in p.lower() for p in file_paths
+        )
 
         if has_services and has_controllers and has_models:
-            patterns.append({
-                "pattern_type": "architecture",
-                "pattern_name": "mvc_pattern",
-                "description": "Codebase follows MVC/Service pattern",
-                "examples": [
-                    {"category": "services", "count": sum(1 for p in file_paths if "service" in p.lower())},
-                    {"category": "controllers", "count": sum(1 for p in file_paths if "controller" in p.lower())},
-                    {"category": "models", "count": sum(1 for p in file_paths if "model" in p.lower())},
-                ],
-                "confidence": 0.8,
-                "occurrences": len(file_paths),
-            })
+            patterns.append(
+                {
+                    "pattern_type": "architecture",
+                    "pattern_name": "mvc_pattern",
+                    "description": "Codebase follows MVC/Service pattern",
+                    "examples": [
+                        {
+                            "category": "services",
+                            "count": sum(
+                                1 for p in file_paths if "service" in p.lower()
+                            ),
+                        },
+                        {
+                            "category": "controllers",
+                            "count": sum(
+                                1 for p in file_paths if "controller" in p.lower()
+                            ),
+                        },
+                        {
+                            "category": "models",
+                            "count": sum(1 for p in file_paths if "model" in p.lower()),
+                        },
+                    ],
+                    "confidence": 0.8,
+                    "occurrences": len(file_paths),
+                }
+            )
 
         if has_repositories:
-            patterns.append({
-                "pattern_type": "architecture",
-                "pattern_name": "repository_pattern",
-                "description": "Uses Repository pattern for data access",
-                "examples": [p for p in file_paths if "repo" in p.lower() or "repository" in p.lower()][:5],
-                "confidence": 0.75,
-                "occurrences": sum(1 for p in file_paths if "repo" in p.lower() or "repository" in p.lower()),
-            })
+            patterns.append(
+                {
+                    "pattern_type": "architecture",
+                    "pattern_name": "repository_pattern",
+                    "description": "Uses Repository pattern for data access",
+                    "examples": [
+                        p
+                        for p in file_paths
+                        if "repo" in p.lower() or "repository" in p.lower()
+                    ][:5],
+                    "confidence": 0.75,
+                    "occurrences": sum(
+                        1
+                        for p in file_paths
+                        if "repo" in p.lower() or "repository" in p.lower()
+                    ),
+                }
+            )
 
         return patterns
 

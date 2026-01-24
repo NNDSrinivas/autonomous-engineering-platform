@@ -17,7 +17,10 @@ from datetime import datetime
 
 # Configuration
 BASE_URL = os.getenv("NAVI_BASE_URL", "http://localhost:8000")
-WORKSPACE_ROOT = os.getenv("WORKSPACE_ROOT", "/Users/mounikakapa/dev/autonomous-engineering-platform")
+WORKSPACE_ROOT = os.getenv(
+    "WORKSPACE_ROOT", "/Users/mounikakapa/dev/autonomous-engineering-platform"
+)
+
 
 @dataclass
 class TestResult:
@@ -27,6 +30,7 @@ class TestResult:
     error: Optional[str] = None
     duration_ms: float = 0
     notes: List[str] = None
+
 
 class NaviTester:
     def __init__(self):
@@ -183,7 +187,9 @@ class NaviTester:
         if response.get("actions"):
             print(f"   Actions: {len(response['actions'])} proposed")
             for action in response["actions"][:3]:
-                print(f"      - {action.get('type', 'unknown')}: {action.get('filePath', action.get('command', ''))[:50]}")
+                print(
+                    f"      - {action.get('type', 'unknown')}: {action.get('filePath', action.get('command', ''))[:50]}"
+                )
 
         self.results.append(result)
         return result
@@ -193,14 +199,18 @@ class NaviTester:
 # VALIDATORS
 # ============================================================================
 
+
 def has_content(min_length: int = 50):
     """Validate that response has meaningful content."""
+
     def validator(response: Dict) -> tuple:
         content = response.get("content", "")
         if len(content) >= min_length:
             return True, f"Content length: {len(content)} chars"
         return False, f"Content too short: {len(content)} chars (min: {min_length})"
+
     return validator
+
 
 def no_hardcoded_response():
     """Validate response is not a generic hardcoded fallback."""
@@ -214,26 +224,33 @@ def no_hardcoded_response():
         "Error:",
         "Sorry, I can't",
     ]
+
     def validator(response: Dict) -> tuple:
         content = response.get("content", "").lower()
         for pattern in hardcoded_patterns:
             if pattern.lower() in content:
                 return False, f"Found hardcoded fallback: '{pattern}'"
         return True, "No hardcoded fallback detected"
+
     return validator
+
 
 def contains_keywords(keywords: List[str], min_matches: int = 1):
     """Validate response contains expected keywords."""
+
     def validator(response: Dict) -> tuple:
         content = response.get("content", "").lower()
         matches = [k for k in keywords if k.lower() in content]
         if len(matches) >= min_matches:
             return True, f"Found keywords: {matches}"
         return False, f"Missing keywords. Found {len(matches)}/{min_matches}: {matches}"
+
     return validator
+
 
 def has_actions(action_types: List[str] = None):
     """Validate response includes proposed actions."""
+
     def validator(response: Dict) -> tuple:
         actions = response.get("actions", [])
         if not actions:
@@ -243,39 +260,61 @@ def has_actions(action_types: List[str] = None):
             matches = [t for t in action_types if t in found_types]
             if matches:
                 return True, f"Found action types: {found_types}"
-            return False, f"Missing action types. Expected: {action_types}, Found: {found_types}"
+            return (
+                False,
+                f"Missing action types. Expected: {action_types}, Found: {found_types}",
+            )
         return True, f"Has {len(actions)} actions"
+
     return validator
+
 
 def has_activity_events(min_events: int = 1):
     """Validate response includes activity events."""
+
     def validator(response: Dict) -> tuple:
         events = response.get("activity_events", [])
         if len(events) >= min_events:
             return True, f"Has {len(events)} activity events"
         return False, f"Too few activity events: {len(events)} (min: {min_events})"
+
     return validator
+
 
 def response_is_contextual():
     """Validate response shows understanding of the project context."""
+
     def validator(response: Dict) -> tuple:
         content = response.get("content", "").lower()
         # Check for project-specific terms
         contextual_terms = [
-            "navi", "vscode", "extension", "backend", "frontend",
-            "react", "typescript", "python", "fastapi", "llm",
-            "workspace", "project", "file", "code"
+            "navi",
+            "vscode",
+            "extension",
+            "backend",
+            "frontend",
+            "react",
+            "typescript",
+            "python",
+            "fastapi",
+            "llm",
+            "workspace",
+            "project",
+            "file",
+            "code",
         ]
         matches = [t for t in contextual_terms if t in content]
         if len(matches) >= 2:
             return True, f"Contextual terms found: {matches[:5]}"
         return False, f"Response lacks context. Only found: {matches}"
+
     return validator
 
 
 # ============================================================================
 # TEST CASES
 # ============================================================================
+
 
 async def run_all_tests():
     """Run comprehensive NAVI tests."""
@@ -388,7 +427,9 @@ async def run_all_tests():
             validators=[
                 has_content(100),
                 no_hardcoded_response(),
-                contains_keywords(["npm", "pip", "python", "install", "run", "start"], 2),
+                contains_keywords(
+                    ["npm", "pip", "python", "install", "run", "start"], 2
+                ),
             ],
         )
 
@@ -420,7 +461,9 @@ async def run_all_tests():
             validators=[
                 has_content(150),
                 no_hardcoded_response(),
-                contains_keywords(["split", "module", "class", "extract", "refactor"], 2),
+                contains_keywords(
+                    ["split", "module", "class", "extract", "refactor"], 2
+                ),
             ],
         )
 
@@ -440,24 +483,28 @@ async def run_all_tests():
         # ====================================================================
         # TEST 12: Test with code attachment
         # ====================================================================
-        code_snippet = '''
+        code_snippet = """
 def process_request(data):
     result = data["items"][0]["value"]
     return result * 2
-'''
+"""
         await tester.run_test(
             name="Code Review with Attachment",
             message="Review this code and tell me what could go wrong:",
-            attachments=[{
-                "kind": "code",
-                "path": "example.py",
-                "content": code_snippet,
-                "language": "python"
-            }],
+            attachments=[
+                {
+                    "kind": "code",
+                    "path": "example.py",
+                    "content": code_snippet,
+                    "language": "python",
+                }
+            ],
             validators=[
                 has_content(100),
                 no_hardcoded_response(),
-                contains_keywords(["index", "key", "error", "empty", "none", "check"], 2),
+                contains_keywords(
+                    ["index", "key", "error", "empty", "none", "check"], 2
+                ),
             ],
         )
 
@@ -484,7 +531,9 @@ def process_request(data):
             validators=[
                 has_content(100),
                 no_hardcoded_response(),
-                contains_keywords(["async", "sync", "wait", "concurrent", "parallel"], 2),
+                contains_keywords(
+                    ["async", "sync", "wait", "concurrent", "parallel"], 2
+                ),
             ],
         )
 
@@ -504,9 +553,9 @@ def process_request(data):
         # ====================================================================
         # PRINT SUMMARY
         # ====================================================================
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("TEST SUMMARY")
-        print("="*60)
+        print("=" * 60)
 
         passed = sum(1 for r in tester.results if r.passed)
         failed = len(tester.results) - passed
@@ -523,7 +572,7 @@ def process_request(data):
                     print(f"  - {r.name}")
                     if r.error:
                         print(f"    Error: {r.error}")
-                    for note in (r.notes or []):
+                    for note in r.notes or []:
                         if "FAILED" in note or "Missing" in note or "too short" in note:
                             print(f"    {note}")
 

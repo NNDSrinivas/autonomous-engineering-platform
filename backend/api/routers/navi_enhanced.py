@@ -54,6 +54,7 @@ router = APIRouter(prefix="/api/navi/enhanced", tags=["NAVI Enhanced"])
 # REQUEST/RESPONSE MODELS
 # ============================================================
 
+
 # RAG Models
 class IndexWorkspaceRequest(BaseModel):
     workspace_path: str = Field(..., description="Path to workspace")
@@ -122,8 +123,11 @@ class LogExecutionRequest(BaseModel):
 # RAG ENDPOINTS
 # ============================================================
 
+
 @router.post("/rag/index")
-async def index_workspace_endpoint(request: IndexWorkspaceRequest, background_tasks: BackgroundTasks):
+async def index_workspace_endpoint(
+    request: IndexWorkspaceRequest, background_tasks: BackgroundTasks
+):
     """
     Index a workspace for semantic code search.
 
@@ -234,6 +238,7 @@ async def get_index_status(workspace_path: str):
 # VISION ENDPOINTS
 # ============================================================
 
+
 @router.post("/vision/analyze")
 async def analyze_ui_endpoint(request: AnalyzeUIRequest):
     """
@@ -301,6 +306,7 @@ async def generate_code_from_ui_endpoint(request: GenerateUICodeRequest):
 # ============================================================
 # TEST EXECUTION ENDPOINTS
 # ============================================================
+
 
 @router.post("/tests/run")
 async def run_tests_endpoint(request: RunTestsRequest):
@@ -397,6 +403,7 @@ async def verify_tests_endpoint(request: RunTestsRequest):
 # ============================================================
 # PERSISTENCE ENDPOINTS
 # ============================================================
+
 
 @router.post("/plans/save")
 async def save_plan_endpoint(request: SavePlanRequest):

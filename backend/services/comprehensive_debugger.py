@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 class ErrorCategory(Enum):
     """Categories of errors."""
+
     RUNTIME = "runtime"
     COMPILE = "compile"
     LINT = "lint"
@@ -54,6 +55,7 @@ class ErrorCategory(Enum):
 @dataclass
 class ParsedError:
     """Structured error information."""
+
     language: str
     category: ErrorCategory
     error_type: str
@@ -216,9 +218,15 @@ class ComprehensiveDebugger:
 
         if result["errors"] or result["warnings"]:
             result["success"] = True
-            result["summary"] = cls._generate_summary(result["errors"], result["warnings"])
-            result["auto_fixes"] = cls._generate_auto_fixes(result["errors"], workspace_path)
-            result["suggested_commands"] = cls._generate_suggested_commands(result["errors"])
+            result["summary"] = cls._generate_summary(
+                result["errors"], result["warnings"]
+            )
+            result["auto_fixes"] = cls._generate_auto_fixes(
+                result["errors"], workspace_path
+            )
+            result["suggested_commands"] = cls._generate_suggested_commands(
+                result["errors"]
+            )
 
         return result
 
@@ -264,11 +272,13 @@ class ComprehensiveDebugger:
             # Extract stack trace
             file_pattern = r'File "([^"]+)", line (\d+), in (\w+)'
             for match in re.finditer(file_pattern, output):
-                error.stack_trace.append({
-                    "file": match.group(1),
-                    "line": int(match.group(2)),
-                    "function": match.group(3),
-                })
+                error.stack_trace.append(
+                    {
+                        "file": match.group(1),
+                        "line": int(match.group(2)),
+                        "function": match.group(3),
+                    }
+                )
 
             if error.stack_trace:
                 last_frame = error.stack_trace[-1]
@@ -285,7 +295,9 @@ class ComprehensiveDebugger:
                 error.message = parts[1].strip() if len(parts) > 1 else ""
 
             # Add suggestions based on error type
-            error.suggestions = cls._get_python_suggestions(error.error_type, error.message)
+            error.suggestions = cls._get_python_suggestions(
+                error.error_type, error.message
+            )
 
             errors.append(error)
 
@@ -293,22 +305,24 @@ class ComprehensiveDebugger:
         syntax_match = re.search(
             r'File "([^"]+)", line (\d+)\n.*\n\s*\^\nSyntaxError:\s*(.+)',
             output,
-            re.MULTILINE
+            re.MULTILINE,
         )
         if syntax_match:
-            errors.append(ParsedError(
-                language="python",
-                category=ErrorCategory.SYNTAX,
-                error_type="SyntaxError",
-                message=syntax_match.group(3),
-                file_path=syntax_match.group(1),
-                line=int(syntax_match.group(2)),
-                suggestions=[
-                    "Check for missing colons, parentheses, or brackets",
-                    "Verify indentation is consistent (use 4 spaces)",
-                    "Look for invalid syntax near the indicated position",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="python",
+                    category=ErrorCategory.SYNTAX,
+                    error_type="SyntaxError",
+                    message=syntax_match.group(3),
+                    file_path=syntax_match.group(1),
+                    line=int(syntax_match.group(2)),
+                    suggestions=[
+                        "Check for missing colons, parentheses, or brackets",
+                        "Verify indentation is consistent (use 4 spaces)",
+                        "Look for invalid syntax near the indicated position",
+                    ],
+                )
+            )
 
         return errors
 
@@ -318,40 +332,44 @@ class ComprehensiveDebugger:
         errors = []
 
         # Test failure pattern
-        failure_pattern = r'FAILED\s+([^\s:]+)::(\w+)\s*-\s*(.+)'
+        failure_pattern = r"FAILED\s+([^\s:]+)::(\w+)\s*-\s*(.+)"
         for match in re.finditer(failure_pattern, output):
             file_path = match.group(1)
             test_name = match.group(2)
             reason = match.group(3)
 
-            errors.append(ParsedError(
-                language="python",
-                category=ErrorCategory.TEST,
-                error_type="TestFailure",
-                message=f"{test_name}: {reason}",
-                file_path=file_path,
-                function=test_name,
-                suggestions=[
-                    f"Review test {test_name} for assertion failures",
-                    "Check if test fixtures are properly set up",
-                    "Verify expected values match actual results",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="python",
+                    category=ErrorCategory.TEST,
+                    error_type="TestFailure",
+                    message=f"{test_name}: {reason}",
+                    file_path=file_path,
+                    function=test_name,
+                    suggestions=[
+                        f"Review test {test_name} for assertion failures",
+                        "Check if test fixtures are properly set up",
+                        "Verify expected values match actual results",
+                    ],
+                )
+            )
 
         # AssertionError with details
-        assert_pattern = r'>?\s+assert\s+(.+)\nE\s+AssertionError:\s*(.+)?'
+        assert_pattern = r">?\s+assert\s+(.+)\nE\s+AssertionError:\s*(.+)?"
         for match in re.finditer(assert_pattern, output):
-            errors.append(ParsedError(
-                language="python",
-                category=ErrorCategory.TEST,
-                error_type="AssertionError",
-                message=f"Failed assertion: {match.group(1)}",
-                suggestions=[
-                    "Compare expected and actual values",
-                    "Check if the test data is correct",
-                    "Verify the function under test behaves as expected",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="python",
+                    category=ErrorCategory.TEST,
+                    error_type="AssertionError",
+                    message=f"Failed assertion: {match.group(1)}",
+                    suggestions=[
+                        "Compare expected and actual values",
+                        "Check if the test data is correct",
+                        "Verify the function under test behaves as expected",
+                    ],
+                )
+            )
 
         return errors
 
@@ -361,20 +379,22 @@ class ComprehensiveDebugger:
         errors = []
 
         # mypy format: file.py:line: error: message
-        pattern = r'([^:\s]+):(\d+)(?::(\d+))?: (error|warning|note): (.+)'
+        pattern = r"([^:\s]+):(\d+)(?::(\d+))?: (error|warning|note): (.+)"
         for match in re.finditer(pattern, output):
             severity = "warning" if match.group(4) == "warning" else "error"
-            errors.append(ParsedError(
-                language="python",
-                category=ErrorCategory.TYPE,
-                error_type=f"mypy_{match.group(4)}",
-                message=match.group(5),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)) if match.group(3) else None,
-                severity=severity,
-                suggestions=cls._get_mypy_suggestions(match.group(5)),
-            ))
+            errors.append(
+                ParsedError(
+                    language="python",
+                    category=ErrorCategory.TYPE,
+                    error_type=f"mypy_{match.group(4)}",
+                    message=match.group(5),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)) if match.group(3) else None,
+                    severity=severity,
+                    suggestions=cls._get_mypy_suggestions(match.group(5)),
+                )
+            )
 
         return errors
 
@@ -384,21 +404,23 @@ class ComprehensiveDebugger:
         errors = []
 
         # pylint format: file.py:line:col: CODE: message
-        pattern = r'([^:\s]+):(\d+):(\d+): ([A-Z]\d+): (.+) \(([^)]+)\)'
+        pattern = r"([^:\s]+):(\d+):(\d+): ([A-Z]\d+): (.+) \(([^)]+)\)"
         for match in re.finditer(pattern, output):
             code = match.group(4)
             severity = "error" if code.startswith(("E", "F")) else "warning"
-            errors.append(ParsedError(
-                language="python",
-                category=ErrorCategory.LINT,
-                error_type=match.group(6),
-                message=match.group(5),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                error_code=code,
-                severity=severity,
-            ))
+            errors.append(
+                ParsedError(
+                    language="python",
+                    category=ErrorCategory.LINT,
+                    error_type=match.group(6),
+                    message=match.group(5),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    error_code=code,
+                    severity=severity,
+                )
+            )
 
         return errors
 
@@ -489,7 +511,10 @@ class ComprehensiveDebugger:
             if error_key in error_type:
                 return suggs
 
-        return ["Review the error message for specific details", "Add debugging logs to trace the issue"]
+        return [
+            "Review the error message for specific details",
+            "Add debugging logs to trace the issue",
+        ]
 
     @classmethod
     def _get_mypy_suggestions(cls, message: str) -> List[str]:
@@ -523,7 +548,7 @@ class ComprehensiveDebugger:
         errors = []
 
         # Standard Error format
-        error_match = re.search(r'(\w+Error):\s*(.+?)(?:\n|$)', output)
+        error_match = re.search(r"(\w+Error):\s*(.+?)(?:\n|$)", output)
         if error_match:
             error = ParsedError(
                 language="javascript",
@@ -533,7 +558,7 @@ class ComprehensiveDebugger:
             )
 
             # Extract stack trace
-            stack_pattern = r'at\s+(?:(\S+)\s+)?\(?([^:]+):(\d+):(\d+)\)?'
+            stack_pattern = r"at\s+(?:(\S+)\s+)?\(?([^:]+):(\d+):(\d+)\)?"
             for match in re.finditer(stack_pattern, output):
                 frame = {
                     "file": match.group(2),
@@ -551,7 +576,9 @@ class ComprehensiveDebugger:
                 error.column = first_frame.get("column")
                 error.function = first_frame.get("function")
 
-            error.suggestions = cls._get_javascript_suggestions(error.error_type, error.message)
+            error.suggestions = cls._get_javascript_suggestions(
+                error.error_type, error.message
+            )
             errors.append(error)
 
         return errors
@@ -562,20 +589,24 @@ class ComprehensiveDebugger:
         errors = []
 
         # TSC error format: file.ts(line,col): error TS####: message
-        pattern = r'([^(\s]+)\((\d+),(\d+)\): (error|warning) (TS\d+): (.+)'
+        pattern = r"([^(\s]+)\((\d+),(\d+)\): (error|warning) (TS\d+): (.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="typescript",
-                category=ErrorCategory.COMPILE,
-                error_type=match.group(5),
-                message=match.group(6),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                error_code=match.group(5),
-                severity="error" if match.group(4) == "error" else "warning",
-                suggestions=cls._get_typescript_suggestions(match.group(5), match.group(6)),
-            ))
+            errors.append(
+                ParsedError(
+                    language="typescript",
+                    category=ErrorCategory.COMPILE,
+                    error_type=match.group(5),
+                    message=match.group(6),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    error_code=match.group(5),
+                    severity="error" if match.group(4) == "error" else "warning",
+                    suggestions=cls._get_typescript_suggestions(
+                        match.group(5), match.group(6)
+                    ),
+                )
+            )
 
         return errors
 
@@ -591,8 +622,8 @@ class ComprehensiveDebugger:
 
         # ESLint format: /path/file.js
         #   line:col  error/warning  message  rule-name
-        file_pattern = r'^(/[^\n]+\.(?:js|jsx|ts|tsx))$'
-        error_pattern = r'^\s+(\d+):(\d+)\s+(error|warning)\s+(.+?)\s+(\S+)$'
+        file_pattern = r"^(/[^\n]+\.(?:js|jsx|ts|tsx))$"
+        error_pattern = r"^\s+(\d+):(\d+)\s+(error|warning)\s+(.+?)\s+(\S+)$"
 
         current_file = None
         for line in output.splitlines():
@@ -604,17 +635,23 @@ class ComprehensiveDebugger:
             if current_file:
                 error_match = re.match(error_pattern, line)
                 if error_match:
-                    errors.append(ParsedError(
-                        language="javascript",
-                        category=ErrorCategory.LINT,
-                        error_type=error_match.group(5),
-                        message=error_match.group(4),
-                        file_path=current_file,
-                        line=int(error_match.group(1)),
-                        column=int(error_match.group(2)),
-                        severity="error" if error_match.group(3) == "error" else "warning",
-                        error_code=error_match.group(5),
-                    ))
+                    errors.append(
+                        ParsedError(
+                            language="javascript",
+                            category=ErrorCategory.LINT,
+                            error_type=error_match.group(5),
+                            message=error_match.group(4),
+                            file_path=current_file,
+                            line=int(error_match.group(1)),
+                            column=int(error_match.group(2)),
+                            severity=(
+                                "error"
+                                if error_match.group(3) == "error"
+                                else "warning"
+                            ),
+                            error_code=error_match.group(5),
+                        )
+                    )
 
         return errors
 
@@ -624,26 +661,28 @@ class ComprehensiveDebugger:
         errors = []
 
         # Jest failure pattern
-        failure_pattern = r'●\s+(.+)\n\n\s+(.+)\n'
+        failure_pattern = r"●\s+(.+)\n\n\s+(.+)\n"
         for match in re.finditer(failure_pattern, output):
             test_name = match.group(1)
             error_msg = match.group(2).strip()
 
-            errors.append(ParsedError(
-                language="javascript",
-                category=ErrorCategory.TEST,
-                error_type="TestFailure",
-                message=f"{test_name}: {error_msg}",
-                function=test_name,
-                suggestions=[
-                    "Check the expected vs actual values",
-                    "Verify mock functions are set up correctly",
-                    "Review async/await handling in tests",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="javascript",
+                    category=ErrorCategory.TEST,
+                    error_type="TestFailure",
+                    message=f"{test_name}: {error_msg}",
+                    function=test_name,
+                    suggestions=[
+                        "Check the expected vs actual values",
+                        "Verify mock functions are set up correctly",
+                        "Review async/await handling in tests",
+                    ],
+                )
+            )
 
         # Extract file location from "at" lines
-        at_pattern = r'at\s+(?:Object\.)?\<anonymous\>\s+\(([^:]+):(\d+):(\d+)\)'
+        at_pattern = r"at\s+(?:Object\.)?\<anonymous\>\s+\(([^:]+):(\d+):(\d+)\)"
         for match in re.finditer(at_pattern, output):
             if errors:
                 errors[-1].file_path = match.group(1)
@@ -687,23 +726,43 @@ class ComprehensiveDebugger:
             if error_key in error_type:
                 return suggs
 
-        return ["Check the error message for details", "Add console.log to trace the issue"]
+        return [
+            "Check the error message for details",
+            "Add console.log to trace the issue",
+        ]
 
     @classmethod
     def _get_typescript_suggestions(cls, error_code: str, message: str) -> List[str]:
         """Get TypeScript-specific suggestions."""
         ts_suggestions = {
-            "TS2304": ["Import the missing type/module", "Check spelling of the identifier"],
+            "TS2304": [
+                "Import the missing type/module",
+                "Check spelling of the identifier",
+            ],
             "TS2322": ["Fix type mismatch", "Use type assertion if certain about type"],
-            "TS2339": ["Add the missing property to the type", "Check object structure"],
+            "TS2339": [
+                "Add the missing property to the type",
+                "Check object structure",
+            ],
             "TS2345": ["Fix argument type to match parameter", "Add type assertion"],
-            "TS2551": ["Check for typos in property name", "Add the property to interface"],
-            "TS2307": ["Install missing @types package", "Create type declaration file"],
-            "TS7006": ["Add type annotation to parameter", "Enable noImplicitAny: false"],
+            "TS2551": [
+                "Check for typos in property name",
+                "Add the property to interface",
+            ],
+            "TS2307": [
+                "Install missing @types package",
+                "Create type declaration file",
+            ],
+            "TS7006": [
+                "Add type annotation to parameter",
+                "Enable noImplicitAny: false",
+            ],
             "TS2554": ["Check number of arguments", "Review function signature"],
         }
 
-        return ts_suggestions.get(error_code, ["Review TypeScript documentation for error code"])
+        return ts_suggestions.get(
+            error_code, ["Review TypeScript documentation for error code"]
+        )
 
     # ============================================================
     # GO PARSERS
@@ -716,7 +775,7 @@ class ComprehensiveDebugger:
 
         # Panic
         if "panic:" in output:
-            panic_match = re.search(r'panic:\s*(.+?)(?:\n|$)', output)
+            panic_match = re.search(r"panic:\s*(.+?)(?:\n|$)", output)
             if panic_match:
                 error = ParsedError(
                     language="go",
@@ -726,12 +785,14 @@ class ComprehensiveDebugger:
                 )
 
                 # Extract goroutine stack
-                stack_pattern = r'([/\w.-]+\.go):(\d+)'
+                stack_pattern = r"([/\w.-]+\.go):(\d+)"
                 for match in re.finditer(stack_pattern, output):
-                    error.stack_trace.append({
-                        "file": match.group(1),
-                        "line": int(match.group(2)),
-                    })
+                    error.stack_trace.append(
+                        {
+                            "file": match.group(1),
+                            "line": int(match.group(2)),
+                        }
+                    )
 
                 if error.stack_trace:
                     error.file_path = error.stack_trace[0]["file"]
@@ -754,18 +815,20 @@ class ComprehensiveDebugger:
         errors = []
 
         # Go compiler format: file.go:line:col: error message
-        pattern = r'([^:\s]+\.go):(\d+):(\d+):\s*(.+)'
+        pattern = r"([^:\s]+\.go):(\d+):(\d+):\s*(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="go",
-                category=ErrorCategory.COMPILE,
-                error_type="compile_error",
-                message=match.group(4),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                suggestions=cls._get_go_compiler_suggestions(match.group(4)),
-            ))
+            errors.append(
+                ParsedError(
+                    language="go",
+                    category=ErrorCategory.COMPILE,
+                    error_type="compile_error",
+                    message=match.group(4),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    suggestions=cls._get_go_compiler_suggestions(match.group(4)),
+                )
+            )
 
         return errors
 
@@ -775,18 +838,20 @@ class ComprehensiveDebugger:
         errors = []
 
         # Format: file.go:line:col: message
-        pattern = r'([^:\s]+\.go):(\d+):(\d+):\s*(.+)'
+        pattern = r"([^:\s]+\.go):(\d+):(\d+):\s*(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="go",
-                category=ErrorCategory.LINT,
-                error_type="lint_warning",
-                message=match.group(4),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                severity="warning",
-            ))
+            errors.append(
+                ParsedError(
+                    language="go",
+                    category=ErrorCategory.LINT,
+                    error_type="lint_warning",
+                    message=match.group(4),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    severity="warning",
+                )
+            )
 
         return errors
 
@@ -796,20 +861,22 @@ class ComprehensiveDebugger:
         errors = []
 
         # Test failure: --- FAIL: TestName (duration)
-        fail_pattern = r'--- FAIL: (\w+)\s+\(([\d.]+)s\)'
+        fail_pattern = r"--- FAIL: (\w+)\s+\(([\d.]+)s\)"
         for match in re.finditer(fail_pattern, output):
-            errors.append(ParsedError(
-                language="go",
-                category=ErrorCategory.TEST,
-                error_type="TestFailure",
-                message=f"Test {match.group(1)} failed after {match.group(2)}s",
-                function=match.group(1),
-                suggestions=[
-                    "Check test assertions",
-                    "Verify test setup and teardown",
-                    "Run with -v flag for verbose output",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="go",
+                    category=ErrorCategory.TEST,
+                    error_type="TestFailure",
+                    message=f"Test {match.group(1)} failed after {match.group(2)}s",
+                    function=match.group(1),
+                    suggestions=[
+                        "Check test assertions",
+                        "Verify test setup and teardown",
+                        "Run with -v flag for verbose output",
+                    ],
+                )
+            )
 
         return errors
 
@@ -823,7 +890,7 @@ class ComprehensiveDebugger:
         elif "declared but not used" in message:
             return ["Remove unused variable", "Use _ to ignore the value"]
         elif "imported but not used" in message:
-            return ["Remove unused import", "Use blank identifier: _ \"package\""]
+            return ["Remove unused import", 'Use blank identifier: _ "package"']
         elif "missing return" in message:
             return ["Add return statement", "Ensure all paths return a value"]
         return ["Review Go documentation for the error"]
@@ -841,24 +908,26 @@ class ComprehensiveDebugger:
         if "panicked at" in output:
             panic_match = re.search(
                 r"thread '([^']+)' panicked at ['\"](.+?)['\"],?\s*([^:\s]+):(\d+):(\d+)",
-                output
+                output,
             )
             if panic_match:
-                errors.append(ParsedError(
-                    language="rust",
-                    category=ErrorCategory.RUNTIME,
-                    error_type="panic",
-                    message=panic_match.group(2),
-                    file_path=panic_match.group(3),
-                    line=int(panic_match.group(4)),
-                    column=int(panic_match.group(5)),
-                    suggestions=[
-                        "Use Result<T, E> instead of unwrap()",
-                        "Replace unwrap() with expect() for better errors",
-                        "Use pattern matching for Option/Result",
-                        "Consider the ? operator for error propagation",
-                    ],
-                ))
+                errors.append(
+                    ParsedError(
+                        language="rust",
+                        category=ErrorCategory.RUNTIME,
+                        error_type="panic",
+                        message=panic_match.group(2),
+                        file_path=panic_match.group(3),
+                        line=int(panic_match.group(4)),
+                        column=int(panic_match.group(5)),
+                        suggestions=[
+                            "Use Result<T, E> instead of unwrap()",
+                            "Replace unwrap() with expect() for better errors",
+                            "Use pattern matching for Option/Result",
+                            "Consider the ? operator for error propagation",
+                        ],
+                    )
+                )
 
         return errors
 
@@ -869,8 +938,8 @@ class ComprehensiveDebugger:
 
         # rustc format: error[E####]: message
         #   --> file.rs:line:col
-        error_pattern = r'(error|warning)\[([^\]]+)\]:\s*(.+?)(?:\n|$)'
-        loc_pattern = r'-->\s*([^:\s]+):(\d+):(\d+)'
+        error_pattern = r"(error|warning)\[([^\]]+)\]:\s*(.+?)(?:\n|$)"
+        loc_pattern = r"-->\s*([^:\s]+):(\d+):(\d+)"
 
         error_matches = list(re.finditer(error_pattern, output))
         loc_matches = list(re.finditer(loc_pattern, output))
@@ -908,20 +977,22 @@ class ComprehensiveDebugger:
         errors = []
 
         # Test failure: test path::to::test ... FAILED
-        fail_pattern = r'test\s+(\S+)\s+\.\.\.\s+FAILED'
+        fail_pattern = r"test\s+(\S+)\s+\.\.\.\s+FAILED"
         for match in re.finditer(fail_pattern, output):
-            errors.append(ParsedError(
-                language="rust",
-                category=ErrorCategory.TEST,
-                error_type="TestFailure",
-                message=f"Test {match.group(1)} failed",
-                function=match.group(1),
-                suggestions=[
-                    "Check assert! and assert_eq! statements",
-                    "Run with --nocapture to see println! output",
-                    "Use RUST_BACKTRACE=1 for stack trace",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="rust",
+                    category=ErrorCategory.TEST,
+                    error_type="TestFailure",
+                    message=f"Test {match.group(1)} failed",
+                    function=match.group(1),
+                    suggestions=[
+                        "Check assert! and assert_eq! statements",
+                        "Run with --nocapture to see println! output",
+                        "Use RUST_BACKTRACE=1 for stack trace",
+                    ],
+                )
+            )
 
         return errors
 
@@ -929,14 +1000,22 @@ class ComprehensiveDebugger:
     def _get_rust_compiler_suggestions(cls, error_code: str) -> List[str]:
         """Get Rust compiler error suggestions."""
         rust_suggestions = {
-            "E0382": ["Use .clone() to copy the value", "Use references instead of ownership"],
-            "E0502": ["Reduce the scope of the mutable borrow", "Use interior mutability"],
+            "E0382": [
+                "Use .clone() to copy the value",
+                "Use references instead of ownership",
+            ],
+            "E0502": [
+                "Reduce the scope of the mutable borrow",
+                "Use interior mutability",
+            ],
             "E0277": ["Implement the required trait", "Check trait bounds"],
             "E0308": ["Fix type mismatch", "Use type annotation"],
             "E0433": ["Import the module with use", "Check module path"],
             "E0599": ["Import the trait for the method", "Check method name spelling"],
         }
-        return rust_suggestions.get(error_code, ["Check Rust error codes documentation"])
+        return rust_suggestions.get(
+            error_code, ["Check Rust error codes documentation"]
+        )
 
     # ============================================================
     # JAVA/KOTLIN PARSERS
@@ -949,8 +1028,7 @@ class ComprehensiveDebugger:
 
         # Exception pattern
         exception_match = re.search(
-            r'([\w.]+(?:Exception|Error))(?::\s*(.+?))?(?:\n|\s+at\s)',
-            output
+            r"([\w.]+(?:Exception|Error))(?::\s*(.+?))?(?:\n|\s+at\s)", output
         )
         if exception_match:
             error = ParsedError(
@@ -961,13 +1039,15 @@ class ComprehensiveDebugger:
             )
 
             # Stack trace
-            stack_pattern = r'at\s+([\w.$]+)\(([\w.]+):(\d+)\)'
+            stack_pattern = r"at\s+([\w.$]+)\(([\w.]+):(\d+)\)"
             for match in re.finditer(stack_pattern, output):
-                error.stack_trace.append({
-                    "function": match.group(1),
-                    "file": match.group(2),
-                    "line": int(match.group(3)),
-                })
+                error.stack_trace.append(
+                    {
+                        "function": match.group(1),
+                        "file": match.group(2),
+                        "line": int(match.group(3)),
+                    }
+                )
 
             if error.stack_trace:
                 first = error.stack_trace[0]
@@ -977,8 +1057,8 @@ class ComprehensiveDebugger:
 
             # Caused by
             caused_by = re.findall(
-                r'Caused by:\s*([\w.]+(?:Exception|Error))(?::\s*(.+?))?(?:\n|$)',
-                output
+                r"Caused by:\s*([\w.]+(?:Exception|Error))(?::\s*(.+?))?(?:\n|$)",
+                output,
             )
             error.related_errors = [
                 {"type": c[0], "message": c[1] or ""} for c in caused_by
@@ -995,17 +1075,19 @@ class ComprehensiveDebugger:
         errors = []
 
         # Format: file.java:line: error: message
-        pattern = r'([^:\s]+\.java):(\d+): (error|warning): (.+)'
+        pattern = r"([^:\s]+\.java):(\d+): (error|warning): (.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="java",
-                category=ErrorCategory.COMPILE,
-                error_type="javac_error",
-                message=match.group(4),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                severity="error" if match.group(3) == "error" else "warning",
-            ))
+            errors.append(
+                ParsedError(
+                    language="java",
+                    category=ErrorCategory.COMPILE,
+                    error_type="javac_error",
+                    message=match.group(4),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    severity="error" if match.group(3) == "error" else "warning",
+                )
+            )
 
         return errors
 
@@ -1022,17 +1104,19 @@ class ComprehensiveDebugger:
             errors.extend(java_errors)
 
         # Kotlin compiler: e: file.kt: (line, col): message
-        pattern = r'e:\s*([^:]+\.kt):\s*\((\d+),\s*(\d+)\):\s*(.+)'
+        pattern = r"e:\s*([^:]+\.kt):\s*\((\d+),\s*(\d+)\):\s*(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="kotlin",
-                category=ErrorCategory.COMPILE,
-                error_type="kotlinc_error",
-                message=match.group(4),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-            ))
+            errors.append(
+                ParsedError(
+                    language="kotlin",
+                    category=ErrorCategory.COMPILE,
+                    error_type="kotlinc_error",
+                    message=match.group(4),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                )
+            )
 
         return errors
 
@@ -1042,17 +1126,19 @@ class ComprehensiveDebugger:
         errors = []
 
         # Maven error: [ERROR] /path/file.java:[line,col] error message
-        pattern = r'\[ERROR\]\s*([^:]+):?\[?(\d+)?[,:]?(\d+)?\]?\s*(.+)'
+        pattern = r"\[ERROR\]\s*([^:]+):?\[?(\d+)?[,:]?(\d+)?\]?\s*(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="java",
-                category=ErrorCategory.BUILD,
-                error_type="maven_error",
-                message=match.group(4),
-                file_path=match.group(1) if match.group(1) else None,
-                line=int(match.group(2)) if match.group(2) else None,
-                column=int(match.group(3)) if match.group(3) else None,
-            ))
+            errors.append(
+                ParsedError(
+                    language="java",
+                    category=ErrorCategory.BUILD,
+                    error_type="maven_error",
+                    message=match.group(4),
+                    file_path=match.group(1) if match.group(1) else None,
+                    line=int(match.group(2)) if match.group(2) else None,
+                    column=int(match.group(3)) if match.group(3) else None,
+                )
+            )
 
         return errors
 
@@ -1063,19 +1149,21 @@ class ComprehensiveDebugger:
 
         # Gradle error patterns
         patterns = [
-            r'> Task :(\S+) FAILED',
-            r'FAILURE: (.+)',
-            r'e:\s*(.+\.kt):\s*\((\d+),\s*(\d+)\):\s*(.+)',
+            r"> Task :(\S+) FAILED",
+            r"FAILURE: (.+)",
+            r"e:\s*(.+\.kt):\s*\((\d+),\s*(\d+)\):\s*(.+)",
         ]
 
         for pattern in patterns:
             for match in re.finditer(pattern, output):
-                errors.append(ParsedError(
-                    language="java",
-                    category=ErrorCategory.BUILD,
-                    error_type="gradle_error",
-                    message=match.group(0),
-                ))
+                errors.append(
+                    ParsedError(
+                        language="java",
+                        category=ErrorCategory.BUILD,
+                        error_type="gradle_error",
+                        message=match.group(0),
+                    )
+                )
 
         return errors
 
@@ -1085,16 +1173,18 @@ class ComprehensiveDebugger:
         errors = []
 
         # JUnit failure
-        test_pattern = r'(\w+)\(([^)]+)\)\s+Time elapsed:.+<<<\s*(?:FAILURE|ERROR)'
+        test_pattern = r"(\w+)\(([^)]+)\)\s+Time elapsed:.+<<<\s*(?:FAILURE|ERROR)"
 
         for match in re.finditer(test_pattern, output):
-            errors.append(ParsedError(
-                language="java",
-                category=ErrorCategory.TEST,
-                error_type="TestFailure",
-                message=f"Test {match.group(1)} in {match.group(2)} failed",
-                function=match.group(1),
-            ))
+            errors.append(
+                ParsedError(
+                    language="java",
+                    category=ErrorCategory.TEST,
+                    error_type="TestFailure",
+                    message=f"Test {match.group(1)} in {match.group(2)} failed",
+                    function=match.group(1),
+                )
+            )
 
         return errors
 
@@ -1162,33 +1252,37 @@ class ComprehensiveDebugger:
 
         # Segmentation fault
         if "Segmentation fault" in output or "SIGSEGV" in output:
-            errors.append(ParsedError(
-                language="cpp",
-                category=ErrorCategory.RUNTIME,
-                error_type="SegmentationFault",
-                message="Memory access violation",
-                suggestions=[
-                    "Check for null pointer dereference",
-                    "Verify array bounds",
-                    "Check for use-after-free",
-                    "Run with valgrind for detailed analysis",
-                    "Compile with -fsanitize=address",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="cpp",
+                    category=ErrorCategory.RUNTIME,
+                    error_type="SegmentationFault",
+                    message="Memory access violation",
+                    suggestions=[
+                        "Check for null pointer dereference",
+                        "Verify array bounds",
+                        "Check for use-after-free",
+                        "Run with valgrind for detailed analysis",
+                        "Compile with -fsanitize=address",
+                    ],
+                )
+            )
 
         # Double free
         if "double free" in output.lower():
-            errors.append(ParsedError(
-                language="cpp",
-                category=ErrorCategory.MEMORY,
-                error_type="DoubleFree",
-                message="Memory freed twice",
-                suggestions=[
-                    "Set pointer to nullptr after free",
-                    "Use smart pointers (unique_ptr, shared_ptr)",
-                    "Review ownership semantics",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="cpp",
+                    category=ErrorCategory.MEMORY,
+                    error_type="DoubleFree",
+                    message="Memory freed twice",
+                    suggestions=[
+                        "Set pointer to nullptr after free",
+                        "Use smart pointers (unique_ptr, shared_ptr)",
+                        "Review ownership semantics",
+                    ],
+                )
+            )
 
         return errors
 
@@ -1198,20 +1292,26 @@ class ComprehensiveDebugger:
         errors = []
 
         # Format: file:line:col: error/warning: message
-        pattern = r'([^:\s]+\.[ch](?:pp|xx)?):(\d+):(\d+):\s*(error|warning|note):\s*(.+)'
+        pattern = (
+            r"([^:\s]+\.[ch](?:pp|xx)?):(\d+):(\d+):\s*(error|warning|note):\s*(.+)"
+        )
         for match in re.finditer(pattern, output, re.IGNORECASE):
             severity = match.group(4).lower()
-            errors.append(ParsedError(
-                language="cpp" if match.group(1).endswith(("pp", "xx", "hpp")) else "c",
-                category=ErrorCategory.COMPILE,
-                error_type="compiler_error",
-                message=match.group(5),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                severity="warning" if severity == "warning" else "error",
-                suggestions=cls._get_c_cpp_suggestions(match.group(5)),
-            ))
+            errors.append(
+                ParsedError(
+                    language=(
+                        "cpp" if match.group(1).endswith(("pp", "xx", "hpp")) else "c"
+                    ),
+                    category=ErrorCategory.COMPILE,
+                    error_type="compiler_error",
+                    message=match.group(5),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    severity="warning" if severity == "warning" else "error",
+                    suggestions=cls._get_c_cpp_suggestions(match.group(5)),
+                )
+            )
 
         return errors
 
@@ -1221,35 +1321,39 @@ class ComprehensiveDebugger:
         errors = []
 
         # Memory leak
-        leak_pattern = r'(\d+(?:,\d+)*)\s+bytes\s+in\s+(\d+)\s+blocks\s+are\s+(definitely|indirectly|possibly)\s+lost'
+        leak_pattern = r"(\d+(?:,\d+)*)\s+bytes\s+in\s+(\d+)\s+blocks\s+are\s+(definitely|indirectly|possibly)\s+lost"
         for match in re.finditer(leak_pattern, output):
-            errors.append(ParsedError(
-                language="cpp",
-                category=ErrorCategory.MEMORY,
-                error_type="MemoryLeak",
-                message=f"{match.group(1)} bytes {match.group(3)} lost in {match.group(2)} blocks",
-                severity="warning" if match.group(3) == "possibly" else "error",
-                suggestions=[
-                    "Free allocated memory before losing reference",
-                    "Use smart pointers for automatic memory management",
-                    "Review ownership of dynamically allocated objects",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="cpp",
+                    category=ErrorCategory.MEMORY,
+                    error_type="MemoryLeak",
+                    message=f"{match.group(1)} bytes {match.group(3)} lost in {match.group(2)} blocks",
+                    severity="warning" if match.group(3) == "possibly" else "error",
+                    suggestions=[
+                        "Free allocated memory before losing reference",
+                        "Use smart pointers for automatic memory management",
+                        "Review ownership of dynamically allocated objects",
+                    ],
+                )
+            )
 
         # Invalid read/write
-        invalid_pattern = r'Invalid\s+(read|write)\s+of\s+size\s+(\d+)'
+        invalid_pattern = r"Invalid\s+(read|write)\s+of\s+size\s+(\d+)"
         for match in re.finditer(invalid_pattern, output):
-            errors.append(ParsedError(
-                language="cpp",
-                category=ErrorCategory.MEMORY,
-                error_type=f"Invalid{match.group(1).title()}",
-                message=f"Invalid {match.group(1)} of size {match.group(2)}",
-                suggestions=[
-                    "Check array/buffer bounds",
-                    "Verify pointer validity before use",
-                    "Check for use-after-free",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="cpp",
+                    category=ErrorCategory.MEMORY,
+                    error_type=f"Invalid{match.group(1).title()}",
+                    message=f"Invalid {match.group(1)} of size {match.group(2)}",
+                    suggestions=[
+                        "Check array/buffer bounds",
+                        "Verify pointer validity before use",
+                        "Check for use-after-free",
+                    ],
+                )
+            )
 
         return errors
 
@@ -1259,34 +1363,40 @@ class ComprehensiveDebugger:
         errors = []
 
         # AddressSanitizer
-        asan_pattern = r'ERROR:\s*AddressSanitizer:\s*(\S+)\s+on\s+(?:address|unknown address)'
+        asan_pattern = (
+            r"ERROR:\s*AddressSanitizer:\s*(\S+)\s+on\s+(?:address|unknown address)"
+        )
         for match in re.finditer(asan_pattern, output):
-            errors.append(ParsedError(
-                language="cpp",
-                category=ErrorCategory.MEMORY,
-                error_type=f"ASan_{match.group(1)}",
-                message=f"AddressSanitizer: {match.group(1)}",
-                suggestions=[
-                    "Check memory access patterns",
-                    "Verify buffer sizes",
-                    "Review pointer arithmetic",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="cpp",
+                    category=ErrorCategory.MEMORY,
+                    error_type=f"ASan_{match.group(1)}",
+                    message=f"AddressSanitizer: {match.group(1)}",
+                    suggestions=[
+                        "Check memory access patterns",
+                        "Verify buffer sizes",
+                        "Review pointer arithmetic",
+                    ],
+                )
+            )
 
         # UndefinedBehaviorSanitizer
-        ubsan_pattern = r'runtime error:\s*(.+)'
+        ubsan_pattern = r"runtime error:\s*(.+)"
         for match in re.finditer(ubsan_pattern, output):
-            errors.append(ParsedError(
-                language="cpp",
-                category=ErrorCategory.RUNTIME,
-                error_type="UndefinedBehavior",
-                message=match.group(1),
-                suggestions=[
-                    "Fix the undefined behavior",
-                    "Check for integer overflow",
-                    "Verify type conversions",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="cpp",
+                    category=ErrorCategory.RUNTIME,
+                    error_type="UndefinedBehavior",
+                    message=match.group(1),
+                    suggestions=[
+                        "Fix the undefined behavior",
+                        "Check for integer overflow",
+                        "Verify type conversions",
+                    ],
+                )
+            )
 
         return errors
 
@@ -1319,40 +1429,46 @@ class ComprehensiveDebugger:
 
         # Fatal error
         if "Fatal error:" in output:
-            fatal_match = re.search(r'Fatal error:\s*(.+?)(?:\n|$)', output)
+            fatal_match = re.search(r"Fatal error:\s*(.+?)(?:\n|$)", output)
             if fatal_match:
-                errors.append(ParsedError(
-                    language="swift",
-                    category=ErrorCategory.RUNTIME,
-                    error_type="FatalError",
-                    message=fatal_match.group(1),
-                    suggestions=[
-                        "Use guard statements for early exit",
-                        "Handle optionals safely with if-let or guard-let",
-                        "Avoid force unwrapping (!)",
-                    ],
-                ))
+                errors.append(
+                    ParsedError(
+                        language="swift",
+                        category=ErrorCategory.RUNTIME,
+                        error_type="FatalError",
+                        message=fatal_match.group(1),
+                        suggestions=[
+                            "Use guard statements for early exit",
+                            "Handle optionals safely with if-let or guard-let",
+                            "Avoid force unwrapping (!)",
+                        ],
+                    )
+                )
 
         return errors
 
     @classmethod
-    def _parse_swift_compiler_error(cls, output: str, workspace: str) -> List[ParsedError]:
+    def _parse_swift_compiler_error(
+        cls, output: str, workspace: str
+    ) -> List[ParsedError]:
         """Parse Swift compiler errors."""
         errors = []
 
         # Format: file.swift:line:col: error: message
-        pattern = r'([^:\s]+\.swift):(\d+):(\d+):\s*(error|warning):\s*(.+)'
+        pattern = r"([^:\s]+\.swift):(\d+):(\d+):\s*(error|warning):\s*(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="swift",
-                category=ErrorCategory.COMPILE,
-                error_type="swiftc_error",
-                message=match.group(5),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                severity="error" if match.group(4) == "error" else "warning",
-            ))
+            errors.append(
+                ParsedError(
+                    language="swift",
+                    category=ErrorCategory.COMPILE,
+                    error_type="swiftc_error",
+                    message=match.group(5),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    severity="error" if match.group(4) == "error" else "warning",
+                )
+            )
 
         return errors
 
@@ -1362,19 +1478,23 @@ class ComprehensiveDebugger:
         errors = []
 
         # Format: file.swift:line:col: warning/error: message (rule_name)
-        pattern = r'([^:\s]+\.swift):(\d+):(\d+):\s*(warning|error):\s*(.+?)\s*\((\S+)\)'
+        pattern = (
+            r"([^:\s]+\.swift):(\d+):(\d+):\s*(warning|error):\s*(.+?)\s*\((\S+)\)"
+        )
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="swift",
-                category=ErrorCategory.LINT,
-                error_type=match.group(6),
-                message=match.group(5),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                severity="error" if match.group(4) == "error" else "warning",
-                error_code=match.group(6),
-            ))
+            errors.append(
+                ParsedError(
+                    language="swift",
+                    category=ErrorCategory.LINT,
+                    error_type=match.group(6),
+                    message=match.group(5),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    severity="error" if match.group(4) == "error" else "warning",
+                    error_code=match.group(6),
+                )
+            )
 
         return errors
 
@@ -1388,7 +1508,7 @@ class ComprehensiveDebugger:
         errors = []
 
         # Exception format
-        exception_match = re.search(r'([\w.]+Exception):\s*(.+?)(?:\n|$)', output)
+        exception_match = re.search(r"([\w.]+Exception):\s*(.+?)(?:\n|$)", output)
         if exception_match:
             error = ParsedError(
                 language="csharp",
@@ -1398,7 +1518,7 @@ class ComprehensiveDebugger:
             )
 
             # Stack trace: at Namespace.Class.Method() in file.cs:line N
-            stack_pattern = r'at\s+([\w.<>]+)\([^)]*\)(?:\s+in\s+([^:]+):line\s+(\d+))?'
+            stack_pattern = r"at\s+([\w.<>]+)\([^)]*\)(?:\s+in\s+([^:]+):line\s+(\d+))?"
             for match in re.finditer(stack_pattern, output):
                 frame = {"function": match.group(1)}
                 if match.group(2):
@@ -1417,24 +1537,28 @@ class ComprehensiveDebugger:
         return errors
 
     @classmethod
-    def _parse_dotnet_compiler_error(cls, output: str, workspace: str) -> List[ParsedError]:
+    def _parse_dotnet_compiler_error(
+        cls, output: str, workspace: str
+    ) -> List[ParsedError]:
         """Parse .NET compiler errors (csc, Roslyn)."""
         errors = []
 
         # Format: file.cs(line,col): error CS####: message
-        pattern = r'([^(\s]+\.cs)\((\d+),(\d+)\):\s*(error|warning)\s+(CS\d+):\s*(.+)'
+        pattern = r"([^(\s]+\.cs)\((\d+),(\d+)\):\s*(error|warning)\s+(CS\d+):\s*(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="csharp",
-                category=ErrorCategory.COMPILE,
-                error_type=match.group(5),
-                message=match.group(6),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                error_code=match.group(5),
-                severity="error" if match.group(4) == "error" else "warning",
-            ))
+            errors.append(
+                ParsedError(
+                    language="csharp",
+                    category=ErrorCategory.COMPILE,
+                    error_type=match.group(5),
+                    message=match.group(6),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    error_code=match.group(5),
+                    severity="error" if match.group(4) == "error" else "warning",
+                )
+            )
 
         return errors
 
@@ -1491,7 +1615,9 @@ class ComprehensiveDebugger:
         errors = []
 
         # Exception format
-        exception_match = re.search(r'(\w+(?:Error|Exception)):\s*(.+?)(?:\n|$)', output)
+        exception_match = re.search(
+            r"(\w+(?:Error|Exception)):\s*(.+?)(?:\n|$)", output
+        )
         if exception_match:
             error = ParsedError(
                 language="ruby",
@@ -1501,7 +1627,7 @@ class ComprehensiveDebugger:
             )
 
             # Stack trace: /path/file.rb:line:in `method'
-            stack_pattern = r'([/\w.-]+\.rb):(\d+)(?::in\s+[`\'](\w+)[\'`])?'
+            stack_pattern = r"([/\w.-]+\.rb):(\d+)(?::in\s+[`\'](\w+)[\'`])?"
             for match in re.finditer(stack_pattern, output):
                 frame = {
                     "file": match.group(1),
@@ -1526,19 +1652,21 @@ class ComprehensiveDebugger:
         errors = []
 
         # Format: file.rb:line:col: C/W/E: Cop/Name: message
-        pattern = r'([^:\s]+\.rb):(\d+):(\d+):\s*([CWE]):\s*(?:(\S+):\s*)?(.+)'
+        pattern = r"([^:\s]+\.rb):(\d+):(\d+):\s*([CWE]):\s*(?:(\S+):\s*)?(.+)"
         for match in re.finditer(pattern, output):
             severity_map = {"C": "info", "W": "warning", "E": "error"}
-            errors.append(ParsedError(
-                language="ruby",
-                category=ErrorCategory.LINT,
-                error_type=match.group(5) or "rubocop",
-                message=match.group(6),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                severity=severity_map.get(match.group(4), "warning"),
-            ))
+            errors.append(
+                ParsedError(
+                    language="ruby",
+                    category=ErrorCategory.LINT,
+                    error_type=match.group(5) or "rubocop",
+                    message=match.group(6),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    severity=severity_map.get(match.group(4), "warning"),
+                )
+            )
 
         return errors
 
@@ -1548,19 +1676,22 @@ class ComprehensiveDebugger:
         errors = []
 
         # Failure: spec_name
-        fail_pattern = r'Failure/Error:\s*(.+?)(?:\n\s+(.+))?'
+        fail_pattern = r"Failure/Error:\s*(.+?)(?:\n\s+(.+))?"
         for match in re.finditer(fail_pattern, output, re.MULTILINE):
-            errors.append(ParsedError(
-                language="ruby",
-                category=ErrorCategory.TEST,
-                error_type="TestFailure",
-                message=match.group(1) + (f": {match.group(2)}" if match.group(2) else ""),
-                suggestions=[
-                    "Check expected vs actual values",
-                    "Verify test setup",
-                    "Review mock/stub configuration",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="ruby",
+                    category=ErrorCategory.TEST,
+                    error_type="TestFailure",
+                    message=match.group(1)
+                    + (f": {match.group(2)}" if match.group(2) else ""),
+                    suggestions=[
+                        "Check expected vs actual values",
+                        "Verify test setup",
+                        "Review mock/stub configuration",
+                    ],
+                )
+            )
 
         return errors
 
@@ -1611,32 +1742,36 @@ class ComprehensiveDebugger:
         errors = []
 
         # Fatal error format
-        fatal_pattern = r'(?:Fatal error|PHP Fatal[^:]*|Exception):\s*(.+?)\s+in\s+([^\s]+)\s+on\s+line\s+(\d+)'
+        fatal_pattern = r"(?:Fatal error|PHP Fatal[^:]*|Exception):\s*(.+?)\s+in\s+([^\s]+)\s+on\s+line\s+(\d+)"
         for match in re.finditer(fatal_pattern, output, re.IGNORECASE):
-            errors.append(ParsedError(
-                language="php",
-                category=ErrorCategory.RUNTIME,
-                error_type="FatalError",
-                message=match.group(1),
-                file_path=match.group(2),
-                line=int(match.group(3)),
-                suggestions=[
-                    "Check for undefined functions/classes",
-                    "Verify autoloading configuration",
-                    "Review error message for details",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="php",
+                    category=ErrorCategory.RUNTIME,
+                    error_type="FatalError",
+                    message=match.group(1),
+                    file_path=match.group(2),
+                    line=int(match.group(3)),
+                    suggestions=[
+                        "Check for undefined functions/classes",
+                        "Verify autoloading configuration",
+                        "Review error message for details",
+                    ],
+                )
+            )
 
         # Stack trace: #N /path/file.php(line): function()
-        stack_pattern = r'#(\d+)\s+([^\(]+)\((\d+)\):\s*([\w\\]+(?:->|::)?\w+)'
+        stack_pattern = r"#(\d+)\s+([^\(]+)\((\d+)\):\s*([\w\\]+(?:->|::)?\w+)"
         for match in re.finditer(stack_pattern, output):
             if errors:
-                errors[-1].stack_trace.append({
-                    "index": int(match.group(1)),
-                    "file": match.group(2),
-                    "line": int(match.group(3)),
-                    "function": match.group(4),
-                })
+                errors[-1].stack_trace.append(
+                    {
+                        "index": int(match.group(1)),
+                        "file": match.group(2),
+                        "line": int(match.group(3)),
+                        "function": match.group(4),
+                    }
+                )
 
         return errors
 
@@ -1647,16 +1782,18 @@ class ComprehensiveDebugger:
 
         # Format: Line   file.php
         #         N      Error message
-        pattern = r'(\d+)\s+(.+\.php)\n\s+(.+)'
+        pattern = r"(\d+)\s+(.+\.php)\n\s+(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="php",
-                category=ErrorCategory.TYPE,
-                error_type="phpstan",
-                message=match.group(3),
-                file_path=match.group(2),
-                line=int(match.group(1)),
-            ))
+            errors.append(
+                ParsedError(
+                    language="php",
+                    category=ErrorCategory.TYPE,
+                    error_type="phpstan",
+                    message=match.group(3),
+                    file_path=match.group(2),
+                    line=int(match.group(1)),
+                )
+            )
 
         return errors
 
@@ -1666,18 +1803,20 @@ class ComprehensiveDebugger:
         errors = []
 
         # Test failure
-        fail_pattern = r'FAILURES!\s*Tests:\s*(\d+).*Failures:\s*(\d+)'
+        fail_pattern = r"FAILURES!\s*Tests:\s*(\d+).*Failures:\s*(\d+)"
         if re.search(fail_pattern, output):
             # Individual failures
-            test_pattern = r'(\d+)\)\s+(\w+::test\w+)'
+            test_pattern = r"(\d+)\)\s+(\w+::test\w+)"
             for match in re.finditer(test_pattern, output):
-                errors.append(ParsedError(
-                    language="php",
-                    category=ErrorCategory.TEST,
-                    error_type="TestFailure",
-                    message=f"Test {match.group(2)} failed",
-                    function=match.group(2),
-                ))
+                errors.append(
+                    ParsedError(
+                        language="php",
+                        category=ErrorCategory.TEST,
+                        error_type="TestFailure",
+                        message=f"Test {match.group(2)} failed",
+                        function=match.group(2),
+                    )
+                )
 
         return errors
 
@@ -1691,17 +1830,19 @@ class ComprehensiveDebugger:
         errors = []
 
         # Compiler error: file.scala:line: error: message
-        pattern = r'([^:\s]+\.scala):(\d+):\s*(error|warning):\s*(.+)'
+        pattern = r"([^:\s]+\.scala):(\d+):\s*(error|warning):\s*(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="scala",
-                category=ErrorCategory.COMPILE,
-                error_type="scalac_error",
-                message=match.group(4),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                severity="error" if match.group(3) == "error" else "warning",
-            ))
+            errors.append(
+                ParsedError(
+                    language="scala",
+                    category=ErrorCategory.COMPILE,
+                    error_type="scalac_error",
+                    message=match.group(4),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    severity="error" if match.group(3) == "error" else "warning",
+                )
+            )
 
         return errors
 
@@ -1711,16 +1852,18 @@ class ComprehensiveDebugger:
         errors = []
 
         # Compile error: ** (CompileError) file.ex:line: message
-        pattern = r'\*\*\s*\((\w+)\)\s*([^:]+):(\d+):\s*(.+)'
+        pattern = r"\*\*\s*\((\w+)\)\s*([^:]+):(\d+):\s*(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="elixir",
-                category=ErrorCategory.COMPILE,
-                error_type=match.group(1),
-                message=match.group(4),
-                file_path=match.group(2),
-                line=int(match.group(3)),
-            ))
+            errors.append(
+                ParsedError(
+                    language="elixir",
+                    category=ErrorCategory.COMPILE,
+                    error_type=match.group(1),
+                    message=match.group(4),
+                    file_path=match.group(2),
+                    line=int(match.group(3)),
+                )
+            )
 
         return errors
 
@@ -1730,18 +1873,20 @@ class ComprehensiveDebugger:
         errors = []
 
         # GHC format: file.hs:line:col: error: message
-        pattern = r'([^:\s]+\.hs):(\d+):(\d+):\s*(error|warning):\s*(.+)'
+        pattern = r"([^:\s]+\.hs):(\d+):(\d+):\s*(error|warning):\s*(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="haskell",
-                category=ErrorCategory.COMPILE,
-                error_type="ghc_error",
-                message=match.group(5),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                severity="error" if match.group(4) == "error" else "warning",
-            ))
+            errors.append(
+                ParsedError(
+                    language="haskell",
+                    category=ErrorCategory.COMPILE,
+                    error_type="ghc_error",
+                    message=match.group(5),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    severity="error" if match.group(4) == "error" else "warning",
+                )
+            )
 
         return errors
 
@@ -1751,18 +1896,20 @@ class ComprehensiveDebugger:
         errors = []
 
         # Dart analyzer: file.dart:line:col • message • code
-        pattern = r'([^:\s]+\.dart):(\d+):(\d+)\s*[•·]\s*(.+?)\s*[•·]\s*(\S+)'
+        pattern = r"([^:\s]+\.dart):(\d+):(\d+)\s*[•·]\s*(.+?)\s*[•·]\s*(\S+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="dart",
-                category=ErrorCategory.LINT,
-                error_type=match.group(5),
-                message=match.group(4),
-                file_path=match.group(1),
-                line=int(match.group(2)),
-                column=int(match.group(3)),
-                error_code=match.group(5),
-            ))
+            errors.append(
+                ParsedError(
+                    language="dart",
+                    category=ErrorCategory.LINT,
+                    error_type=match.group(5),
+                    message=match.group(4),
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                    column=int(match.group(3)),
+                    error_code=match.group(5),
+                )
+            )
 
         return errors
 
@@ -1776,20 +1923,22 @@ class ComprehensiveDebugger:
         errors = []
 
         # npm ERR! message
-        pattern = r'npm ERR!\s*(.+)'
+        pattern = r"npm ERR!\s*(.+)"
         messages = re.findall(pattern, output)
         if messages:
-            errors.append(ParsedError(
-                language="javascript",
-                category=ErrorCategory.BUILD,
-                error_type="npm_error",
-                message="\n".join(messages[:5]),
-                suggestions=[
-                    "Run: npm cache clean --force",
-                    "Delete node_modules and run: npm install",
-                    "Check package.json for version conflicts",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="javascript",
+                    category=ErrorCategory.BUILD,
+                    error_type="npm_error",
+                    message="\n".join(messages[:5]),
+                    suggestions=[
+                        "Run: npm cache clean --force",
+                        "Delete node_modules and run: npm install",
+                        "Check package.json for version conflicts",
+                    ],
+                )
+            )
 
         return errors
 
@@ -1799,14 +1948,16 @@ class ComprehensiveDebugger:
         errors = []
 
         # error message
-        pattern = r'error\s+(.+)'
+        pattern = r"error\s+(.+)"
         for match in re.finditer(pattern, output, re.IGNORECASE):
-            errors.append(ParsedError(
-                language="javascript",
-                category=ErrorCategory.BUILD,
-                error_type="yarn_error",
-                message=match.group(1),
-            ))
+            errors.append(
+                ParsedError(
+                    language="javascript",
+                    category=ErrorCategory.BUILD,
+                    error_type="yarn_error",
+                    message=match.group(1),
+                )
+            )
 
         return errors
 
@@ -1816,19 +1967,21 @@ class ComprehensiveDebugger:
         errors = []
 
         # ERROR: message
-        pattern = r'ERROR:\s*(.+)'
+        pattern = r"ERROR:\s*(.+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="python",
-                category=ErrorCategory.BUILD,
-                error_type="pip_error",
-                message=match.group(1),
-                suggestions=[
-                    "Upgrade pip: pip install --upgrade pip",
-                    "Check Python version compatibility",
-                    "Try: pip install --no-cache-dir",
-                ],
-            ))
+            errors.append(
+                ParsedError(
+                    language="python",
+                    category=ErrorCategory.BUILD,
+                    error_type="pip_error",
+                    message=match.group(1),
+                    suggestions=[
+                        "Upgrade pip: pip install --upgrade pip",
+                        "Check Python version compatibility",
+                        "Try: pip install --no-cache-dir",
+                    ],
+                )
+            )
 
         return errors
 
@@ -1838,15 +1991,17 @@ class ComprehensiveDebugger:
         errors = []
 
         # error: message or error[E####]: message
-        pattern = r'error(?:\[([^\]]+)\])?:\s*(.+?)(?:\n|$)'
+        pattern = r"error(?:\[([^\]]+)\])?:\s*(.+?)(?:\n|$)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="rust",
-                category=ErrorCategory.BUILD,
-                error_type=match.group(1) or "cargo_error",
-                message=match.group(2),
-                error_code=match.group(1),
-            ))
+            errors.append(
+                ParsedError(
+                    language="rust",
+                    category=ErrorCategory.BUILD,
+                    error_type=match.group(1) or "cargo_error",
+                    message=match.group(2),
+                    error_code=match.group(1),
+                )
+            )
 
         return errors
 
@@ -1856,16 +2011,20 @@ class ComprehensiveDebugger:
         errors = []
 
         # CMake Error at file:line
-        pattern = r'CMake Error at\s+([^:]+):(\d+)'
+        pattern = r"CMake Error at\s+([^:]+):(\d+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="cmake",
-                category=ErrorCategory.BUILD,
-                error_type="cmake_error",
-                message=output[match.end():match.end()+200].strip().split('\n')[0],
-                file_path=match.group(1),
-                line=int(match.group(2)),
-            ))
+            errors.append(
+                ParsedError(
+                    language="cmake",
+                    category=ErrorCategory.BUILD,
+                    error_type="cmake_error",
+                    message=output[match.end() : match.end() + 200]
+                    .strip()
+                    .split("\n")[0],
+                    file_path=match.group(1),
+                    line=int(match.group(2)),
+                )
+            )
 
         return errors
 
@@ -1875,14 +2034,16 @@ class ComprehensiveDebugger:
         errors = []
 
         # make: *** [target] Error N
-        pattern = r'make:\s*\*\*\*\s*\[([^\]]+)\]\s*Error\s*(\d+)'
+        pattern = r"make:\s*\*\*\*\s*\[([^\]]+)\]\s*Error\s*(\d+)"
         for match in re.finditer(pattern, output):
-            errors.append(ParsedError(
-                language="make",
-                category=ErrorCategory.BUILD,
-                error_type="make_error",
-                message=f"Target '{match.group(1)}' failed with error code {match.group(2)}",
-            ))
+            errors.append(
+                ParsedError(
+                    language="make",
+                    category=ErrorCategory.BUILD,
+                    error_type="make_error",
+                    message=f"Target '{match.group(1)}' failed with error code {match.group(2)}",
+                )
+            )
 
         return errors
 
@@ -1942,7 +2103,9 @@ class ComprehensiveDebugger:
         # Python auto-fixes
         if language == "python":
             if error_type == "ImportError" or error_type == "ModuleNotFoundError":
-                module = re.search(r"No module named ['\"](\w+)['\"]", error.get("message", ""))
+                module = re.search(
+                    r"No module named ['\"](\w+)['\"]", error.get("message", "")
+                )
                 if module:
                     return {
                         "type": "command",
@@ -1953,7 +2116,9 @@ class ComprehensiveDebugger:
         # JavaScript auto-fixes
         if language in ("javascript", "typescript"):
             if "Cannot find module" in error.get("message", ""):
-                module = re.search(r"Cannot find module ['\"]([^'\"]+)['\"]", error.get("message", ""))
+                module = re.search(
+                    r"Cannot find module ['\"]([^'\"]+)['\"]", error.get("message", "")
+                )
                 if module:
                     return {
                         "type": "command",
@@ -1970,38 +2135,48 @@ class ComprehensiveDebugger:
         languages = {e.get("language") for e in errors}
 
         if "python" in languages:
-            commands.extend([
-                "python -m pytest -v",
-                "python -m mypy .",
-                "python -m pylint .",
-            ])
+            commands.extend(
+                [
+                    "python -m pytest -v",
+                    "python -m mypy .",
+                    "python -m pylint .",
+                ]
+            )
 
         if "javascript" in languages or "typescript" in languages:
-            commands.extend([
-                "npm test",
-                "npm run lint",
-                "npx tsc --noEmit",
-            ])
+            commands.extend(
+                [
+                    "npm test",
+                    "npm run lint",
+                    "npx tsc --noEmit",
+                ]
+            )
 
         if "go" in languages:
-            commands.extend([
-                "go test ./...",
-                "go vet ./...",
-                "staticcheck ./...",
-            ])
+            commands.extend(
+                [
+                    "go test ./...",
+                    "go vet ./...",
+                    "staticcheck ./...",
+                ]
+            )
 
         if "rust" in languages:
-            commands.extend([
-                "cargo test",
-                "cargo clippy",
-                "cargo check",
-            ])
+            commands.extend(
+                [
+                    "cargo test",
+                    "cargo clippy",
+                    "cargo check",
+                ]
+            )
 
         if "cpp" in languages or "c" in languages:
-            commands.extend([
-                "make clean && make",
-                "valgrind --leak-check=full ./program",
-            ])
+            commands.extend(
+                [
+                    "make clean && make",
+                    "valgrind --leak-check=full ./program",
+                ]
+            )
 
         return commands
 

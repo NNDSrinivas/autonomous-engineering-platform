@@ -161,7 +161,9 @@ async def list_confluence_pages_in_space(
         base_url = config.get("base_url")
 
         if not access_token:
-            return ToolResult(output="Confluence access token not configured.", sources=[])
+            return ToolResult(
+                output="Confluence access token not configured.", sources=[]
+            )
 
         async with ConfluenceClient(
             access_token=access_token,
@@ -195,7 +197,9 @@ async def list_confluence_pages_in_space(
             lines.append("")
 
             if page_url:
-                sources.append({"type": "confluence_page", "name": title, "url": page_url})
+                sources.append(
+                    {"type": "confluence_page", "name": title, "url": page_url}
+                )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 

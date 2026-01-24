@@ -164,17 +164,21 @@ class OrgMemoryService:
 
             # pgvector returns the embedding directly as a numpy array
             entry_embedding = list(entry.embedding_text)
-            similarity = self.embedding_service.cosine_similarity(query_embedding, entry_embedding)
+            similarity = self.embedding_service.cosine_similarity(
+                query_embedding, entry_embedding
+            )
 
             if similarity >= min_similarity:
-                results.append({
-                    "id": str(entry.id),
-                    "title": entry.title,
-                    "content": entry.content,
-                    "knowledge_type": entry.knowledge_type,
-                    "confidence": entry.confidence,
-                    "similarity": similarity,
-                })
+                results.append(
+                    {
+                        "id": str(entry.id),
+                        "title": entry.title,
+                        "content": entry.content,
+                        "knowledge_type": entry.knowledge_type,
+                        "confidence": entry.confidence,
+                        "similarity": similarity,
+                    }
+                )
 
         # Sort by similarity and return top results
         results.sort(key=lambda x: x["similarity"], reverse=True)
@@ -196,9 +200,7 @@ class OrgMemoryService:
             Updated OrgKnowledge or None if not found
         """
         knowledge = (
-            self.db.query(OrgKnowledge)
-            .filter(OrgKnowledge.id == knowledge_id)
-            .first()
+            self.db.query(OrgKnowledge).filter(OrgKnowledge.id == knowledge_id).first()
         )
 
         if not knowledge:
@@ -224,9 +226,7 @@ class OrgMemoryService:
             True if deleted, False if not found
         """
         result = (
-            self.db.query(OrgKnowledge)
-            .filter(OrgKnowledge.id == knowledge_id)
-            .delete()
+            self.db.query(OrgKnowledge).filter(OrgKnowledge.id == knowledge_id).delete()
         )
         self.db.commit()
         return result > 0
@@ -301,7 +301,9 @@ class OrgMemoryService:
         if enforced_only:
             query = query.filter(OrgStandard.enforced)
 
-        return query.order_by(OrgStandard.standard_type, OrgStandard.standard_name).all()
+        return query.order_by(
+            OrgStandard.standard_type, OrgStandard.standard_name
+        ).all()
 
     def get_standard_by_name(
         self,
@@ -348,16 +350,16 @@ class OrgMemoryService:
             Updated OrgStandard or None if not found
         """
         standard = (
-            self.db.query(OrgStandard)
-            .filter(OrgStandard.id == standard_id)
-            .first()
+            self.db.query(OrgStandard).filter(OrgStandard.id == standard_id).first()
         )
 
         if not standard:
             return None
 
         allowed_fields = {
-            "rules", "good_examples", "bad_examples",
+            "rules",
+            "good_examples",
+            "bad_examples",
             "enforced",
         }
         for key, value in kwargs.items():
@@ -379,9 +381,7 @@ class OrgMemoryService:
             True if deleted, False if not found
         """
         result = (
-            self.db.query(OrgStandard)
-            .filter(OrgStandard.id == standard_id)
-            .delete()
+            self.db.query(OrgStandard).filter(OrgStandard.id == standard_id).delete()
         )
         self.db.commit()
         return result > 0
@@ -590,10 +590,12 @@ class OrgMemoryService:
         for std in standards:
             if std.standard_type not in context["standards"]:
                 context["standards"][std.standard_type] = []
-            context["standards"][std.standard_type].append({
-                "name": std.standard_name,
-                "rules": std.rules,
-            })
+            context["standards"][std.standard_type].append(
+                {
+                    "name": std.standard_name,
+                    "rules": std.rules,
+                }
+            )
 
         # Get knowledge summary by type
         all_knowledge = self.get_knowledge(org_id, limit=100)
@@ -609,7 +611,9 @@ class OrgMemoryService:
 
         # Get project context if specified
         if project:
-            project_ctx = self.get_context(org_id, "project", project, include_inherited=True)
+            project_ctx = self.get_context(
+                org_id, "project", project, include_inherited=True
+            )
             if project_ctx:
                 context["context"]["project"] = project_ctx
 

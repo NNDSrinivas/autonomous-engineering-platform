@@ -121,17 +121,21 @@ class PreferenceLearner:
             avg_neg_length = sum(neg_lengths) / len(neg_lengths)
 
             if avg_pos_length < avg_neg_length * 0.7:
-                analysis["signals"].append({
-                    "type": "verbosity_preference",
-                    "value": "brief",
-                    "confidence": 0.7,
-                })
+                analysis["signals"].append(
+                    {
+                        "type": "verbosity_preference",
+                        "value": "brief",
+                        "confidence": 0.7,
+                    }
+                )
             elif avg_pos_length > avg_neg_length * 1.3:
-                analysis["signals"].append({
-                    "type": "verbosity_preference",
-                    "value": "detailed",
-                    "confidence": 0.7,
-                })
+                analysis["signals"].append(
+                    {
+                        "type": "verbosity_preference",
+                        "value": "detailed",
+                        "confidence": 0.7,
+                    }
+                )
 
         return analysis
 
@@ -141,8 +145,16 @@ class PreferenceLearner:
     ) -> Dict[str, Any]:
         """Analyze feedback to learn content preferences."""
         # Analyze query patterns in positive vs negative feedback
-        positive_queries = [f.query_text for f in feedback if f.feedback_type == "positive" and f.query_text]
-        negative_queries = [f.query_text for f in feedback if f.feedback_type == "negative" and f.query_text]
+        positive_queries = [
+            f.query_text
+            for f in feedback
+            if f.feedback_type == "positive" and f.query_text
+        ]
+        negative_queries = [
+            f.query_text
+            for f in feedback
+            if f.feedback_type == "negative" and f.query_text
+        ]
 
         analysis = {
             "preferred_topics": [],
@@ -157,11 +169,13 @@ class PreferenceLearner:
         for keyword, count in positive_keywords.items():
             neg_count = negative_keywords.get(keyword, 0)
             if count > neg_count * 2 and count >= 3:
-                analysis["preferred_topics"].append({
-                    "topic": keyword,
-                    "positive_count": count,
-                    "negative_count": neg_count,
-                })
+                analysis["preferred_topics"].append(
+                    {
+                        "topic": keyword,
+                        "positive_count": count,
+                        "negative_count": neg_count,
+                    }
+                )
 
         return analysis
 
@@ -171,13 +185,65 @@ class PreferenceLearner:
 
         # Common words to ignore
         stop_words = {
-            "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "being", "have", "has", "had", "do", "does", "did", "will",
-            "would", "could", "should", "may", "might", "must", "can",
-            "to", "of", "in", "for", "on", "with", "at", "by", "from",
-            "this", "that", "these", "those", "it", "its", "they", "them",
-            "their", "what", "which", "who", "how", "when", "where", "why",
-            "i", "me", "my", "you", "your", "we", "our", "and", "or", "but",
+            "the",
+            "a",
+            "an",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "may",
+            "might",
+            "must",
+            "can",
+            "to",
+            "of",
+            "in",
+            "for",
+            "on",
+            "with",
+            "at",
+            "by",
+            "from",
+            "this",
+            "that",
+            "these",
+            "those",
+            "it",
+            "its",
+            "they",
+            "them",
+            "their",
+            "what",
+            "which",
+            "who",
+            "how",
+            "when",
+            "where",
+            "why",
+            "i",
+            "me",
+            "my",
+            "you",
+            "your",
+            "we",
+            "our",
+            "and",
+            "or",
+            "but",
         }
 
         words = []
@@ -186,7 +252,13 @@ class PreferenceLearner:
                 continue
             # Simple tokenization
             text_words = text.lower().split()
-            words.extend([w.strip(".,!?;:") for w in text_words if len(w) > 3 and w.lower() not in stop_words])
+            words.extend(
+                [
+                    w.strip(".,!?;:")
+                    for w in text_words
+                    if len(w) > 3 and w.lower() not in stop_words
+                ]
+            )
 
         return dict(Counter(words).most_common(20))
 
@@ -206,10 +278,12 @@ class PreferenceLearner:
             if correction.feedback_data:
                 correction_type = correction.feedback_data.get("correction_type")
                 if correction_type:
-                    analysis["patterns"].append({
-                        "type": correction_type,
-                        "details": correction.feedback_data.get("details"),
-                    })
+                    analysis["patterns"].append(
+                        {
+                            "type": correction_type,
+                            "details": correction.feedback_data.get("details"),
+                        }
+                    )
 
         return analysis
 
@@ -235,18 +309,25 @@ class PreferenceLearner:
         # Apply response preferences
         response_prefs = learned.get("response_preferences", {})
         for signal in response_prefs.get("signals", []):
-            if signal["type"] == "verbosity_preference" and signal["confidence"] >= self.MIN_CONFIDENCE:
+            if (
+                signal["type"] == "verbosity_preference"
+                and signal["confidence"] >= self.MIN_CONFIDENCE
+            ):
                 inferred["learned_verbosity"] = signal["value"]
                 inferred["verbosity_confidence"] = signal["confidence"]
 
         # Apply content preferences
         content_prefs = learned.get("content_preferences", {})
         if content_prefs.get("preferred_topics"):
-            inferred["preferred_topics"] = [t["topic"] for t in content_prefs["preferred_topics"][:5]]
+            inferred["preferred_topics"] = [
+                t["topic"] for t in content_prefs["preferred_topics"][:5]
+            ]
 
         # Store learning timestamp
         inferred["last_learned"] = datetime.utcnow().isoformat()
-        inferred["feedback_analyzed"] = response_prefs.get("positive_count", 0) + response_prefs.get("negative_count", 0)
+        inferred["feedback_analyzed"] = response_prefs.get(
+            "positive_count", 0
+        ) + response_prefs.get("negative_count", 0)
 
         preferences.inferred_preferences = inferred
         self.db.commit()
@@ -360,7 +441,9 @@ class PreferenceLearner:
     # Preference Decay
     # =========================================================================
 
-    def decay_old_preferences(self, user_id: int, days_inactive: int = 30) -> Dict[str, Any]:
+    def decay_old_preferences(
+        self, user_id: int, days_inactive: int = 30
+    ) -> Dict[str, Any]:
         """
         Decay confidence in old learned preferences.
 
@@ -402,11 +485,13 @@ class PreferenceLearner:
             if key.endswith("_confidence"):
                 original = inferred[key]
                 inferred[key] = round(original * decay_factor, 2)
-                decayed.append({
-                    "preference": key.replace("_confidence", ""),
-                    "original_confidence": original,
-                    "new_confidence": inferred[key],
-                })
+                decayed.append(
+                    {
+                        "preference": key.replace("_confidence", ""),
+                        "original_confidence": original,
+                        "new_confidence": inferred[key],
+                    }
+                )
 
         preferences.inferred_preferences = inferred
         self.db.commit()
@@ -453,11 +538,15 @@ class PreferenceLearner:
         # Add inferred preferences where explicit ones are missing
         inferred = preferences.inferred_preferences or {}
 
-        if not effective["preferred_language"] and inferred.get("preferred_language_learned"):
+        if not effective["preferred_language"] and inferred.get(
+            "preferred_language_learned"
+        ):
             effective["preferred_language"] = inferred.get("learned_language")
             effective["language_is_inferred"] = True
 
-        if not effective["preferred_framework"] and inferred.get("preferred_framework_learned"):
+        if not effective["preferred_framework"] and inferred.get(
+            "preferred_framework_learned"
+        ):
             effective["preferred_framework"] = inferred.get("learned_framework")
             effective["framework_is_inferred"] = True
 

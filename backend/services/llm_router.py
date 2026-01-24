@@ -30,6 +30,7 @@ class LLMRouter:
     def __init__(self):
         """Initialize the LLM router."""
         from backend.ai.llm_router import LLMRouter as MultiProviderRouter
+
         self._router = MultiProviderRouter()
 
     async def run(
@@ -96,6 +97,7 @@ class LLMRouter:
         """
         try:
             import json
+
             analysis_prompt = f"""
             Analyze this instruction to determine the best LLM routing strategy:
 
@@ -147,9 +149,13 @@ class LLMRouter:
     def get_available_models(self) -> List[str]:
         """Get list of available models."""
         return [
-            "gpt-4", "gpt-4-turbo-preview", "gpt-3.5-turbo",
-            "claude-sonnet-4-20241022", "claude-3.5-sonnet",
-            "gemini-1.5-pro", "gemini-1.5-flash"
+            "gpt-4",
+            "gpt-4-turbo-preview",
+            "gpt-3.5-turbo",
+            "claude-sonnet-4-20241022",
+            "claude-3.5-sonnet",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash",
         ]
 
     def set_default_model(self, model: str) -> None:

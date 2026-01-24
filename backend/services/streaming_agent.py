@@ -91,13 +91,12 @@ DO NOT output a summary or suggest manual steps. TAKE ACTION with your tools."""
 PLAN_INTRO_PATTERN = re.compile(
     r"(?:let'?s|I'?ll|I will|here'?s|proceed|steps?|following steps)[^:]*:\s*\n?"
     r"((?:\s*\d+[\.\)]\s*\*{0,2}[^\n]+\n?)+)",
-    re.IGNORECASE | re.MULTILINE
+    re.IGNORECASE | re.MULTILINE,
 )
 
 # Extracts individual steps: number, title, and optional detail after colon
 STEP_PATTERN = re.compile(
-    r"(\d+)[\.\)]\s*\*{0,2}([^:\*\n]+?)\*{0,2}(?:[:\s]+([^\n]*))?$",
-    re.MULTILINE
+    r"(\d+)[\.\)]\s*\*{0,2}([^:\*\n]+?)\*{0,2}(?:[:\s]+([^\n]*))?$", re.MULTILINE
 )
 
 
@@ -119,37 +118,32 @@ def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
         detail = (step_match.group(3) or "").strip()
 
         if title:  # Only add if we have a title
-            steps.append({
-                "index": step_num,
-                "title": title,
-                "detail": detail
-            })
+            steps.append({"index": step_num, "title": title, "detail": detail})
 
     if len(steps) >= 2:  # Only return if we have at least 2 steps
-        return {
-            "plan_id": f"plan-{uuid.uuid4().hex[:8]}",
-            "steps": steps
-        }
+        return {"plan_id": f"plan-{uuid.uuid4().hex[:8]}", "steps": steps}
 
     return None
 
 
 class StreamEventType(Enum):
     """Types of events in the streaming response."""
-    TEXT = "text"           # Narrative text from LLM
-    THINKING = "thinking"   # Extended thinking/reasoning from LLM
-    TOOL_CALL = "tool_call" # LLM wants to call a tool
+
+    TEXT = "text"  # Narrative text from LLM
+    THINKING = "thinking"  # Extended thinking/reasoning from LLM
+    TOOL_CALL = "tool_call"  # LLM wants to call a tool
     TOOL_RESULT = "tool_result"  # Result of tool execution
-    DONE = "done"           # Stream complete
+    DONE = "done"  # Stream complete
     # Execution Plan Events - for visual step-by-step progress UI
-    PLAN_START = "plan_start"       # Detected execution plan with steps
-    STEP_UPDATE = "step_update"     # Step status changed (running/completed/error)
-    PLAN_COMPLETE = "plan_complete" # All steps completed
+    PLAN_START = "plan_start"  # Detected execution plan with steps
+    STEP_UPDATE = "step_update"  # Step status changed (running/completed/error)
+    PLAN_COMPLETE = "plan_complete"  # All steps completed
 
 
 @dataclass
 class StreamEvent:
     """A single event in the streaming response."""
+
     type: StreamEventType
     content: Any
     tool_id: Optional[str] = None
@@ -199,19 +193,19 @@ NAVI_TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The relative path to the file from the workspace root"
+                    "description": "The relative path to the file from the workspace root",
                 },
                 "start_line": {
                     "type": "integer",
-                    "description": "Optional: start line number (1-indexed)"
+                    "description": "Optional: start line number (1-indexed)",
                 },
                 "end_line": {
                     "type": "integer",
-                    "description": "Optional: end line number (1-indexed)"
-                }
+                    "description": "Optional: end line number (1-indexed)",
+                },
             },
-            "required": ["path"]
-        }
+            "required": ["path"],
+        },
     },
     {
         "name": "write_file",
@@ -221,15 +215,15 @@ NAVI_TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The relative path where to write the file"
+                    "description": "The relative path where to write the file",
                 },
                 "content": {
                     "type": "string",
-                    "description": "The complete content to write to the file"
-                }
+                    "description": "The complete content to write to the file",
+                },
             },
-            "required": ["path", "content"]
-        }
+            "required": ["path", "content"],
+        },
     },
     {
         "name": "edit_file",
@@ -239,19 +233,19 @@ NAVI_TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The relative path to the file"
+                    "description": "The relative path to the file",
                 },
                 "old_text": {
                     "type": "string",
-                    "description": "The exact text to find and replace"
+                    "description": "The exact text to find and replace",
                 },
                 "new_text": {
                     "type": "string",
-                    "description": "The text to replace it with"
-                }
+                    "description": "The text to replace it with",
+                },
             },
-            "required": ["path", "old_text", "new_text"]
-        }
+            "required": ["path", "old_text", "new_text"],
+        },
     },
     {
         "name": "run_command",
@@ -259,17 +253,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The command to run"
-                },
+                "command": {"type": "string", "description": "The command to run"},
                 "cwd": {
                     "type": "string",
-                    "description": "Optional: working directory relative to workspace root"
-                }
+                    "description": "Optional: working directory relative to workspace root",
+                },
             },
-            "required": ["command"]
-        }
+            "required": ["command"],
+        },
     },
     {
         "name": "search_files",
@@ -279,16 +270,16 @@ NAVI_TOOLS = [
             "properties": {
                 "pattern": {
                     "type": "string",
-                    "description": "Glob pattern for file names (e.g., '**/*.ts') or text to search for"
+                    "description": "Glob pattern for file names (e.g., '**/*.ts') or text to search for",
                 },
                 "search_type": {
                     "type": "string",
                     "enum": ["filename", "content"],
-                    "description": "Whether to search file names or file contents"
-                }
+                    "description": "Whether to search file names or file contents",
+                },
             },
-            "required": ["pattern", "search_type"]
-        }
+            "required": ["pattern", "search_type"],
+        },
     },
     {
         "name": "list_directory",
@@ -298,11 +289,11 @@ NAVI_TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The directory path to list (relative to workspace root)"
+                    "description": "The directory path to list (relative to workspace root)",
                 }
             },
-            "required": ["path"]
-        }
+            "required": ["path"],
+        },
     },
     {
         "name": "start_server",
@@ -312,23 +303,23 @@ NAVI_TOOLS = [
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The command to start the server (e.g., 'npm run dev', 'python app.py')"
+                    "description": "The command to start the server (e.g., 'npm run dev', 'python app.py')",
                 },
                 "port": {
                     "type": "integer",
-                    "description": "The port the server will listen on (for verification)"
+                    "description": "The port the server will listen on (for verification)",
                 },
                 "health_path": {
                     "type": "string",
-                    "description": "Optional: path to check for health (default: '/')"
+                    "description": "Optional: path to check for health (default: '/')",
                 },
                 "startup_time": {
                     "type": "integer",
-                    "description": "Optional: seconds to wait for server to start (default: 10)"
-                }
+                    "description": "Optional: seconds to wait for server to start (default: 10)",
+                },
             },
-            "required": ["command", "port"]
-        }
+            "required": ["command", "port"],
+        },
     },
     {
         "name": "check_endpoint",
@@ -338,20 +329,20 @@ NAVI_TOOLS = [
             "properties": {
                 "url": {
                     "type": "string",
-                    "description": "The URL to check (e.g., 'http://localhost:3000')"
+                    "description": "The URL to check (e.g., 'http://localhost:3000')",
                 },
                 "method": {
                     "type": "string",
                     "enum": ["GET", "POST", "HEAD"],
-                    "description": "HTTP method (default: GET)"
+                    "description": "HTTP method (default: GET)",
                 },
                 "expected_status": {
                     "type": "integer",
-                    "description": "Expected HTTP status code (default: 200)"
-                }
+                    "description": "Expected HTTP status code (default: 200)",
+                },
             },
-            "required": ["url"]
-        }
+            "required": ["url"],
+        },
     },
     {
         "name": "stop_server",
@@ -361,12 +352,12 @@ NAVI_TOOLS = [
             "properties": {
                 "port": {
                     "type": "integer",
-                    "description": "The port the server is running on"
+                    "description": "The port the server is running on",
                 }
             },
-            "required": ["port"]
-        }
-    }
+            "required": ["port"],
+        },
+    },
 ]
 
 
@@ -377,8 +368,8 @@ NAVI_FUNCTIONS_OPENAI = [
         "function": {
             "name": tool["name"],
             "description": tool["description"],
-            "parameters": tool["input_schema"]
-        }
+            "parameters": tool["input_schema"],
+        },
     }
     for tool in NAVI_TOOLS
 ]
@@ -789,7 +780,9 @@ class StreamingToolExecutor:
         context += "\nTry a COMPLETELY DIFFERENT approach.\n"
         return context
 
-    async def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(
+        self, tool_name: str, arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Execute a tool and return the result."""
         import os
         import subprocess
@@ -799,7 +792,10 @@ class StreamingToolExecutor:
             if tool_name == "read_file":
                 path = os.path.join(self.workspace_path, arguments["path"])
                 if not os.path.exists(path):
-                    return {"success": False, "error": f"File not found: {arguments['path']}"}
+                    return {
+                        "success": False,
+                        "error": f"File not found: {arguments['path']}",
+                    }
 
                 with open(path, "r") as f:
                     lines = f.readlines()
@@ -815,7 +811,7 @@ class StreamingToolExecutor:
                     "success": True,
                     "content": content,
                     "total_lines": len(lines),
-                    "path": arguments["path"]
+                    "path": arguments["path"],
                 }
 
             elif tool_name == "write_file":
@@ -835,13 +831,16 @@ class StreamingToolExecutor:
                 return {
                     "success": True,
                     "path": arguments["path"],
-                    "bytes_written": len(arguments["content"])
+                    "bytes_written": len(arguments["content"]),
                 }
 
             elif tool_name == "edit_file":
                 path = os.path.join(self.workspace_path, arguments["path"])
                 if not os.path.exists(path):
-                    return {"success": False, "error": f"File not found: {arguments['path']}"}
+                    return {
+                        "success": False,
+                        "error": f"File not found: {arguments['path']}",
+                    }
 
                 with open(path, "r") as f:
                     content = f.read()
@@ -850,10 +849,12 @@ class StreamingToolExecutor:
                     return {
                         "success": False,
                         "error": "Could not find the text to replace",
-                        "path": arguments["path"]
+                        "path": arguments["path"],
                     }
 
-                new_content = content.replace(arguments["old_text"], arguments["new_text"], 1)
+                new_content = content.replace(
+                    arguments["old_text"], arguments["new_text"], 1
+                )
 
                 with open(path, "w") as f:
                     f.write(new_content)
@@ -864,7 +865,7 @@ class StreamingToolExecutor:
                 return {
                     "success": True,
                     "path": arguments["path"],
-                    "changes_made": True
+                    "changes_made": True,
                 }
 
             elif tool_name == "run_command":
@@ -876,15 +877,30 @@ class StreamingToolExecutor:
 
                 # Extended timeout for deployment commands (30 minutes)
                 deployment_indicators = [
-                    "vercel", "railway", "fly deploy", "fly launch",
-                    "netlify deploy", "render deploy", "heroku",
-                    "gcloud run deploy", "gcloud app deploy",
-                    "aws deploy", "sam deploy", "cdk deploy",
-                    "az webapp", "docker push", "docker build",
-                    "wrangler publish", "wrangler deploy"
+                    "vercel",
+                    "railway",
+                    "fly deploy",
+                    "fly launch",
+                    "netlify deploy",
+                    "render deploy",
+                    "heroku",
+                    "gcloud run deploy",
+                    "gcloud app deploy",
+                    "aws deploy",
+                    "sam deploy",
+                    "cdk deploy",
+                    "az webapp",
+                    "docker push",
+                    "docker build",
+                    "wrangler publish",
+                    "wrangler deploy",
                 ]
-                is_deployment = any(ind in command.lower() for ind in deployment_indicators)
-                timeout = 1800 if is_deployment else 120  # 30 min for deployments, 2 min default
+                is_deployment = any(
+                    ind in command.lower() for ind in deployment_indicators
+                )
+                timeout = (
+                    1800 if is_deployment else 120
+                )  # 30 min for deployments, 2 min default
 
                 result = subprocess.run(
                     command,
@@ -892,7 +908,7 @@ class StreamingToolExecutor:
                     cwd=cwd,
                     capture_output=True,
                     text=True,
-                    timeout=timeout
+                    timeout=timeout,
                 )
 
                 # Track command run
@@ -900,19 +916,25 @@ class StreamingToolExecutor:
 
                 # Track failed commands for context injection
                 if result.returncode != 0:
-                    error_msg = result.stderr[:200] if result.stderr else result.stdout[:200] if result.stdout else "Command failed"
-                    self.failed_commands.append({
-                        "command": arguments["command"],
-                        "error": error_msg,
-                        "exit_code": result.returncode
-                    })
+                    error_msg = (
+                        result.stderr[:200]
+                        if result.stderr
+                        else result.stdout[:200] if result.stdout else "Command failed"
+                    )
+                    self.failed_commands.append(
+                        {
+                            "command": arguments["command"],
+                            "error": error_msg,
+                            "exit_code": result.returncode,
+                        }
+                    )
 
                 return {
                     "success": result.returncode == 0,
                     "exit_code": result.returncode,
                     "stdout": result.stdout[:2000] if result.stdout else "",
                     "stderr": result.stderr[:2000] if result.stderr else "",
-                    "command": arguments["command"]
+                    "command": arguments["command"],
                 }
 
             elif tool_name == "search_files":
@@ -922,10 +944,11 @@ class StreamingToolExecutor:
 
                 if search_type == "filename":
                     matches = glob_module.glob(
-                        os.path.join(self.workspace_path, pattern),
-                        recursive=True
+                        os.path.join(self.workspace_path, pattern), recursive=True
                     )
-                    results = [os.path.relpath(m, self.workspace_path) for m in matches[:20]]
+                    results = [
+                        os.path.relpath(m, self.workspace_path) for m in matches[:20]
+                    ]
                 else:
                     # Content search using grep
                     try:
@@ -934,36 +957,37 @@ class StreamingToolExecutor:
                             cwd=self.workspace_path,
                             capture_output=True,
                             text=True,
-                            timeout=30
+                            timeout=30,
                         )
                         if result.stdout:
                             results = result.stdout.strip().split("\n")[:20]
                     except Exception:
                         pass
 
-                return {
-                    "success": True,
-                    "matches": results,
-                    "count": len(results)
-                }
+                return {"success": True, "matches": results, "count": len(results)}
 
             elif tool_name == "list_directory":
                 path = os.path.join(self.workspace_path, arguments.get("path", ""))
                 if not os.path.exists(path):
-                    return {"success": False, "error": f"Directory not found: {arguments.get('path', '.')}"}
+                    return {
+                        "success": False,
+                        "error": f"Directory not found: {arguments.get('path', '.')}",
+                    }
 
                 entries = []
                 for entry in os.listdir(path)[:50]:
                     full_path = os.path.join(path, entry)
-                    entries.append({
-                        "name": entry,
-                        "type": "directory" if os.path.isdir(full_path) else "file"
-                    })
+                    entries.append(
+                        {
+                            "name": entry,
+                            "type": "directory" if os.path.isdir(full_path) else "file",
+                        }
+                    )
 
                 return {
                     "success": True,
                     "entries": entries,
-                    "path": arguments.get("path", ".")
+                    "path": arguments.get("path", "."),
                 }
 
             elif tool_name == "start_server":
@@ -982,14 +1006,16 @@ class StreamingToolExecutor:
                         f"lsof -ti :{port} | xargs kill -9 2>/dev/null || true",
                         shell=True,
                         capture_output=True,
-                        timeout=10
+                        timeout=10,
                     )
                 except Exception:
                     pass
 
                 # Also remove any lock files for Next.js
                 try:
-                    lock_path = os.path.join(self.workspace_path, ".next", "dev", "lock")
+                    lock_path = os.path.join(
+                        self.workspace_path, ".next", "dev", "lock"
+                    )
                     if os.path.exists(lock_path):
                         os.remove(lock_path)
                 except Exception:
@@ -998,7 +1024,9 @@ class StreamingToolExecutor:
                 # Start the server in background using nohup
                 # Redirect output to a log file so we can check it
                 log_file = os.path.join(self.workspace_path, ".navi-server.log")
-                bg_command = f"cd {self.workspace_path} && nohup {command} > {log_file} 2>&1 &"
+                bg_command = (
+                    f"cd {self.workspace_path} && nohup {command} > {log_file} 2>&1 &"
+                )
 
                 try:
                     subprocess.run(bg_command, shell=True, timeout=5)
@@ -1013,7 +1041,7 @@ class StreamingToolExecutor:
                 for i in range(startup_time * 2):  # Check every 0.5 seconds
                     time.sleep(0.5)
                     try:
-                        req = urllib.request.Request(url, method='HEAD')
+                        req = urllib.request.Request(url, method="HEAD")
                         with urllib.request.urlopen(req, timeout=2) as response:
                             if response.status < 500:
                                 server_started = True
@@ -1032,7 +1060,7 @@ class StreamingToolExecutor:
                 # Get any log output
                 log_content = ""
                 try:
-                    with open(log_file, 'r') as f:
+                    with open(log_file, "r") as f:
                         log_content = f.read()[-1000:]  # Last 1000 chars
                 except Exception:
                     pass
@@ -1043,7 +1071,7 @@ class StreamingToolExecutor:
                         "message": f"Server started successfully on port {port}",
                         "url": url,
                         "verified": True,
-                        "log_preview": log_content[:500] if log_content else None
+                        "log_preview": log_content[:500] if log_content else None,
                     }
                 else:
                     return {
@@ -1051,8 +1079,10 @@ class StreamingToolExecutor:
                         "error": f"Server did not respond after {startup_time} seconds",
                         "last_error": last_error,
                         "url": url,
-                        "log_preview": log_content if log_content else "No log output captured",
-                        "suggestion": "Check the log output for errors. Common issues: port already in use, missing dependencies, build errors."
+                        "log_preview": (
+                            log_content if log_content else "No log output captured"
+                        ),
+                        "suggestion": "Check the log output for errors. Common issues: port already in use, missing dependencies, build errors.",
                     }
 
             elif tool_name == "check_endpoint":
@@ -1066,33 +1096,31 @@ class StreamingToolExecutor:
                 try:
                     req = urllib.request.Request(url, method=method)
                     with urllib.request.urlopen(req, timeout=10) as response:
-                        body_preview = response.read(500).decode('utf-8', errors='ignore')
+                        body_preview = response.read(500).decode(
+                            "utf-8", errors="ignore"
+                        )
                         return {
                             "success": response.status == expected_status,
                             "status": response.status,
                             "responding": True,
                             "body_preview": body_preview,
-                            "headers": dict(response.headers)
+                            "headers": dict(response.headers),
                         }
                 except urllib.error.HTTPError as e:
                     return {
                         "success": e.code == expected_status,
                         "status": e.code,
                         "responding": True,
-                        "error": f"HTTP {e.code}: {e.reason}"
+                        "error": f"HTTP {e.code}: {e.reason}",
                     }
                 except urllib.error.URLError as e:
                     return {
                         "success": False,
                         "responding": False,
-                        "error": f"Connection failed: {e.reason}"
+                        "error": f"Connection failed: {e.reason}",
                     }
                 except Exception as e:
-                    return {
-                        "success": False,
-                        "responding": False,
-                        "error": str(e)
-                    }
+                    return {"success": False, "responding": False, "error": str(e)}
 
             elif tool_name == "stop_server":
                 port = arguments["port"]
@@ -1104,7 +1132,7 @@ class StreamingToolExecutor:
                         shell=True,
                         capture_output=True,
                         text=True,
-                        timeout=10
+                        timeout=10,
                     )
 
                     # Verify the port is free
@@ -1113,21 +1141,22 @@ class StreamingToolExecutor:
                         shell=True,
                         capture_output=True,
                         text=True,
-                        timeout=5
+                        timeout=5,
                     )
 
                     port_is_free = not check.stdout.strip()
 
                     return {
                         "success": port_is_free,
-                        "message": f"Port {port} is now free" if port_is_free else f"Processes still running on port {port}",
-                        "port": port
+                        "message": (
+                            f"Port {port} is now free"
+                            if port_is_free
+                            else f"Processes still running on port {port}"
+                        ),
+                        "port": port,
                     }
                 except Exception as e:
-                    return {
-                        "success": False,
-                        "error": str(e)
-                    }
+                    return {"success": False, "error": str(e)}
 
             else:
                 return {"success": False, "error": f"Unknown tool: {tool_name}"}
@@ -1168,7 +1197,9 @@ async def stream_with_tools_anthropic(
             content = hist_msg.get("content", "")
             if role in ["user", "assistant"] and content:
                 messages.append({"role": role, "content": content})
-        logger.info(f"[Streaming Agent] Added {len(conversation_history)} messages from conversation history")
+        logger.info(
+            f"[Streaming Agent] Added {len(conversation_history)} messages from conversation history"
+        )
 
     # Build initial user message with rich context from project analysis
     user_content = message
@@ -1179,7 +1210,9 @@ async def stream_with_tools_anthropic(
         if context.get("project_type"):
             framework = context.get("framework", "")
             if framework:
-                context_parts.append(f"=== PROJECT: {framework} ({context['project_type']}) ===")
+                context_parts.append(
+                    f"=== PROJECT: {framework} ({context['project_type']}) ==="
+                )
             else:
                 context_parts.append(f"=== PROJECT TYPE: {context['project_type']} ===")
 
@@ -1189,16 +1222,22 @@ async def stream_with_tools_anthropic(
         # Include analyzed files list
         if context.get("files_analyzed"):
             files_list = context["files_analyzed"][:20]  # Max 20 files
-            context_parts.append(f"\n=== FILES IN PROJECT ({len(files_list)} analyzed) ===")
+            context_parts.append(
+                f"\n=== FILES IN PROJECT ({len(files_list)} analyzed) ==="
+            )
             context_parts.append("\n".join(f"- {f}" for f in files_list))
 
         # CRITICAL: Include actual file contents for detailed analysis
         if context.get("source_files_preview"):
-            context_parts.append("\n=== SOURCE FILE CONTENTS (for detailed analysis) ===")
+            context_parts.append(
+                "\n=== SOURCE FILE CONTENTS (for detailed analysis) ==="
+            )
             context_parts.append(context["source_files_preview"])
 
         if context_parts:
-            user_content = "\n".join(context_parts) + "\n\n=== USER REQUEST ===\n" + message
+            user_content = (
+                "\n".join(context_parts) + "\n\n=== USER REQUEST ===\n" + message
+            )
 
     messages.append({"role": "user", "content": user_content})
 
@@ -1216,7 +1255,9 @@ async def stream_with_tools_anthropic(
         while True:  # Loop for tool use continuation
             # Enable extended thinking for supported models (Claude 3.5 Sonnet, Claude 3 Opus)
             # Extended thinking requires higher max_tokens (budget_tokens + response tokens)
-            use_extended_thinking = "claude-3" in model.lower() and ("sonnet" in model.lower() or "opus" in model.lower())
+            use_extended_thinking = "claude-3" in model.lower() and (
+                "sonnet" in model.lower() or "opus" in model.lower()
+            )
 
             payload = {
                 "model": model,
@@ -1229,10 +1270,7 @@ async def stream_with_tools_anthropic(
 
             # Add extended thinking configuration if supported
             if use_extended_thinking:
-                payload["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 10000
-                }
+                payload["thinking"] = {"type": "enabled", "budget_tokens": 10000}
 
             headers = {
                 "x-api-key": api_key,
@@ -1301,14 +1339,18 @@ async def stream_with_tools_anthropic(
                                     yield StreamEvent(StreamEventType.TEXT, text_buffer)
                                     text_buffer = ""
                                 if thinking_buffer:
-                                    yield StreamEvent(StreamEventType.THINKING, thinking_buffer)
+                                    yield StreamEvent(
+                                        StreamEventType.THINKING, thinking_buffer
+                                    )
                                     thinking_buffer = ""
 
                             elif block_type == "text":
                                 # Starting a text block - flush thinking if pending
                                 in_thinking_block = False
                                 if thinking_buffer:
-                                    yield StreamEvent(StreamEventType.THINKING, thinking_buffer)
+                                    yield StreamEvent(
+                                        StreamEventType.THINKING, thinking_buffer
+                                    )
                                     thinking_buffer = ""
 
                         elif event_type == "content_block_delta":
@@ -1321,8 +1363,14 @@ async def stream_with_tools_anthropic(
                                 if thinking_text:
                                     thinking_buffer += thinking_text
                                     # Yield thinking in chunks for smoother streaming
-                                    if len(thinking_buffer) >= 100 or thinking_text.endswith((".", "!", "?", "\n")):
-                                        yield StreamEvent(StreamEventType.THINKING, thinking_buffer)
+                                    if len(
+                                        thinking_buffer
+                                    ) >= 100 or thinking_text.endswith(
+                                        (".", "!", "?", "\n")
+                                    ):
+                                        yield StreamEvent(
+                                            StreamEventType.THINKING, thinking_buffer
+                                        )
                                         thinking_buffer = ""
 
                             elif delta_type == "text_delta":
@@ -1331,22 +1379,33 @@ async def stream_with_tools_anthropic(
                                     text_buffer += text
                                     accumulated_text += text  # Track for plan detection
                                     # Yield text in chunks for smoother streaming
-                                    if len(text_buffer) >= 20 or text.endswith((".", "!", "?", "\n")):
-                                        yield StreamEvent(StreamEventType.TEXT, text_buffer)
+                                    if len(text_buffer) >= 20 or text.endswith(
+                                        (".", "!", "?", "\n")
+                                    ):
+                                        yield StreamEvent(
+                                            StreamEventType.TEXT, text_buffer
+                                        )
                                         text_buffer = ""
 
                                         # Check for execution plan in accumulated text (only once)
-                                        if not plan_emitted and len(accumulated_text) > 50:
-                                            detected_plan = parse_execution_plan(accumulated_text)
+                                        if (
+                                            not plan_emitted
+                                            and len(accumulated_text) > 50
+                                        ):
+                                            detected_plan = parse_execution_plan(
+                                                accumulated_text
+                                            )
                                             if detected_plan:
                                                 current_plan = detected_plan
                                                 plan_emitted = True
                                                 current_step_index = 0
                                                 yield StreamEvent(
                                                     StreamEventType.PLAN_START,
-                                                    detected_plan
+                                                    detected_plan,
                                                 )
-                                                logger.info(f"[StreamingAgent] Detected execution plan with {len(detected_plan['steps'])} steps")
+                                                logger.info(
+                                                    f"[StreamingAgent] Detected execution plan with {len(detected_plan['steps'])} steps"
+                                                )
 
                             elif delta_type == "input_json_delta":
                                 # Building tool input
@@ -1355,14 +1414,20 @@ async def stream_with_tools_anthropic(
                         elif event_type == "content_block_stop":
                             # Flush thinking buffer when thinking block ends
                             if in_thinking_block and thinking_buffer:
-                                yield StreamEvent(StreamEventType.THINKING, thinking_buffer)
+                                yield StreamEvent(
+                                    StreamEventType.THINKING, thinking_buffer
+                                )
                                 thinking_buffer = ""
                             in_thinking_block = False
 
                             if in_tool_input and current_tool_name:
                                 # Tool call complete - execute it
                                 try:
-                                    args = json.loads(current_tool_input) if current_tool_input else {}
+                                    args = (
+                                        json.loads(current_tool_input)
+                                        if current_tool_input
+                                        else {}
+                                    )
                                 except json.JSONDecodeError:
                                     args = {}
 
@@ -1371,18 +1436,20 @@ async def stream_with_tools_anthropic(
                                     StreamEventType.TOOL_CALL,
                                     args,
                                     tool_id=current_tool_id,
-                                    tool_name=current_tool_name
+                                    tool_name=current_tool_name,
                                 )
 
                                 # Emit step_update for execution plan (running)
-                                if current_plan and current_step_index < len(current_plan.get("steps", [])):
+                                if current_plan and current_step_index < len(
+                                    current_plan.get("steps", [])
+                                ):
                                     yield StreamEvent(
                                         StreamEventType.STEP_UPDATE,
                                         {
                                             "plan_id": current_plan["plan_id"],
                                             "step_index": current_step_index,
-                                            "status": "running"
-                                        }
+                                            "status": "running",
+                                        },
                                     )
 
                                 # Execute the tool
@@ -1392,16 +1459,21 @@ async def stream_with_tools_anthropic(
                                 yield StreamEvent(
                                     StreamEventType.TOOL_RESULT,
                                     result,
-                                    tool_id=current_tool_id
+                                    tool_id=current_tool_id,
                                 )
 
                                 # Emit step_update for execution plan (completed)
-                                if current_plan and current_step_index < len(current_plan.get("steps", [])):
+                                if current_plan and current_step_index < len(
+                                    current_plan.get("steps", [])
+                                ):
                                     # Determine if step succeeded or failed
                                     step_status = "completed"
                                     if isinstance(result, dict) and result.get("error"):
                                         step_status = "error"
-                                    elif isinstance(result, str) and "error" in result.lower():
+                                    elif (
+                                        isinstance(result, str)
+                                        and "error" in result.lower()
+                                    ):
                                         step_status = "error"
 
                                     yield StreamEvent(
@@ -1409,24 +1481,28 @@ async def stream_with_tools_anthropic(
                                         {
                                             "plan_id": current_plan["plan_id"],
                                             "step_index": current_step_index,
-                                            "status": step_status
-                                        }
+                                            "status": step_status,
+                                        },
                                     )
                                     current_step_index += 1
 
                                     # Check if plan is complete
-                                    if current_step_index >= len(current_plan.get("steps", [])):
+                                    if current_step_index >= len(
+                                        current_plan.get("steps", [])
+                                    ):
                                         yield StreamEvent(
                                             StreamEventType.PLAN_COMPLETE,
-                                            {"plan_id": current_plan["plan_id"]}
+                                            {"plan_id": current_plan["plan_id"]},
                                         )
 
-                                tool_calls.append({
-                                    "id": current_tool_id,
-                                    "name": current_tool_name,
-                                    "input": args,
-                                    "result": result
-                                })
+                                tool_calls.append(
+                                    {
+                                        "id": current_tool_id,
+                                        "name": current_tool_name,
+                                        "input": args,
+                                        "result": result,
+                                    }
+                                )
 
                                 in_tool_input = False
                                 current_tool_id = None
@@ -1454,30 +1530,31 @@ async def stream_with_tools_anthropic(
                     # Add assistant message with tool calls
                     assistant_content = []
                     for tc in tool_calls:
-                        assistant_content.append({
-                            "type": "tool_use",
-                            "id": tc["id"],
-                            "name": tc["name"],
-                            "input": tc["input"]
-                        })
+                        assistant_content.append(
+                            {
+                                "type": "tool_use",
+                                "id": tc["id"],
+                                "name": tc["name"],
+                                "input": tc["input"],
+                            }
+                        )
                     messages.append({"role": "assistant", "content": assistant_content})
 
                     # Add tool results with failed commands context
                     tool_results = []
                     for tc in tool_calls:
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": tc["id"],
-                            "content": json.dumps(tc["result"])
-                        })
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tc["id"],
+                                "content": json.dumps(tc["result"]),
+                            }
+                        )
 
                     # Inject failed commands context if any
                     failed_context = executor.get_failed_commands_context()
                     if failed_context:
-                        tool_results.append({
-                            "type": "text",
-                            "text": failed_context
-                        })
+                        tool_results.append({"type": "text", "text": failed_context})
 
                     messages.append({"role": "user", "content": tool_results})
 
@@ -1487,12 +1564,18 @@ async def stream_with_tools_anthropic(
                     continue
                 else:
                     # No more tool calls - check if LLM is giving up prematurely
-                    if is_giving_up(accumulated_text, max_give_up_retries, give_up_retry_count):
+                    if is_giving_up(
+                        accumulated_text, max_give_up_retries, give_up_retry_count
+                    ):
                         give_up_retry_count += 1
-                        logger.info(f"[StreamingAgent] Give-up detected, forcing retry {give_up_retry_count}/{max_give_up_retries}")
+                        logger.info(
+                            f"[StreamingAgent] Give-up detected, forcing retry {give_up_retry_count}/{max_give_up_retries}"
+                        )
 
                         # Add assistant's response to messages
-                        messages.append({"role": "assistant", "content": accumulated_text})
+                        messages.append(
+                            {"role": "assistant", "content": accumulated_text}
+                        )
 
                         # Add force-continue message with failed commands context
                         retry_message = FORCE_CONTINUE_MESSAGE
@@ -1509,10 +1592,13 @@ async def stream_with_tools_anthropic(
 
                     # Truly done - emit summary
                     summary = executor.get_summary()
-                    yield StreamEvent(StreamEventType.DONE, {
-                        "status": "complete",
-                        "summary": summary,
-                    })
+                    yield StreamEvent(
+                        StreamEventType.DONE,
+                        {
+                            "status": "complete",
+                            "summary": summary,
+                        },
+                    )
                     return
 
 
@@ -1544,7 +1630,9 @@ async def stream_with_tools_openai(
             content = hist_msg.get("content", "")
             if role in ["user", "assistant"] and content:
                 messages.append({"role": role, "content": content})
-        logger.info(f"[Streaming Agent OpenAI] Added {len(conversation_history)} messages from conversation history")
+        logger.info(
+            f"[Streaming Agent OpenAI] Added {len(conversation_history)} messages from conversation history"
+        )
 
     # Build initial user message with rich context from project analysis
     user_content = message
@@ -1555,7 +1643,9 @@ async def stream_with_tools_openai(
         if context.get("project_type"):
             framework = context.get("framework", "")
             if framework:
-                context_parts.append(f"=== PROJECT: {framework} ({context['project_type']}) ===")
+                context_parts.append(
+                    f"=== PROJECT: {framework} ({context['project_type']}) ==="
+                )
             else:
                 context_parts.append(f"=== PROJECT TYPE: {context['project_type']} ===")
 
@@ -1565,16 +1655,22 @@ async def stream_with_tools_openai(
         # Include analyzed files list
         if context.get("files_analyzed"):
             files_list = context["files_analyzed"][:20]  # Max 20 files
-            context_parts.append(f"\n=== FILES IN PROJECT ({len(files_list)} analyzed) ===")
+            context_parts.append(
+                f"\n=== FILES IN PROJECT ({len(files_list)} analyzed) ==="
+            )
             context_parts.append("\n".join(f"- {f}" for f in files_list))
 
         # CRITICAL: Include actual file contents for detailed analysis
         if context.get("source_files_preview"):
-            context_parts.append("\n=== SOURCE FILE CONTENTS (for detailed analysis) ===")
+            context_parts.append(
+                "\n=== SOURCE FILE CONTENTS (for detailed analysis) ==="
+            )
             context_parts.append(context["source_files_preview"])
 
         if context_parts:
-            user_content = "\n".join(context_parts) + "\n\n=== USER REQUEST ===\n" + message
+            user_content = (
+                "\n".join(context_parts) + "\n\n=== USER REQUEST ===\n" + message
+            )
 
     messages.append({"role": "user", "content": user_content})
 
@@ -1634,7 +1730,9 @@ async def stream_with_tools_openai(
                             # 2. Capturing text as thinking causes duplicate display
                             # The frontend shows a "Thinking..." animation during streaming anyway
 
-                            if len(text_buffer) >= 20 or text.endswith((".", "!", "?", "\n")):
+                            if len(text_buffer) >= 20 or text.endswith(
+                                (".", "!", "?", "\n")
+                            ):
                                 yield StreamEvent(StreamEventType.TEXT, text_buffer)
                                 text_buffer = ""
 
@@ -1649,14 +1747,16 @@ async def stream_with_tools_openai(
                                     tool_calls[idx] = {
                                         "id": tc.get("id", ""),
                                         "name": tc.get("function", {}).get("name", ""),
-                                        "arguments": ""
+                                        "arguments": "",
                                     }
                                 if tc.get("id"):
                                     tool_calls[idx]["id"] = tc["id"]
                                 if tc.get("function", {}).get("name"):
                                     tool_calls[idx]["name"] = tc["function"]["name"]
                                 if tc.get("function", {}).get("arguments"):
-                                    tool_calls[idx]["arguments"] += tc["function"]["arguments"]
+                                    tool_calls[idx]["arguments"] += tc["function"][
+                                        "arguments"
+                                    ]
 
                     except json.JSONDecodeError:
                         continue
@@ -1671,25 +1771,28 @@ async def stream_with_tools_openai(
                     assistant_tool_calls = []
                     for idx in sorted(tool_calls.keys()):
                         tc = tool_calls[idx]
-                        assistant_tool_calls.append({
-                            "id": tc["id"],
-                            "type": "function",
-                            "function": {
-                                "name": tc["name"],
-                                "arguments": tc["arguments"]
+                        assistant_tool_calls.append(
+                            {
+                                "id": tc["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": tc["name"],
+                                    "arguments": tc["arguments"],
+                                },
                             }
-                        })
+                        )
 
-                    messages.append({
-                        "role": "assistant",
-                        "tool_calls": assistant_tool_calls
-                    })
+                    messages.append(
+                        {"role": "assistant", "tool_calls": assistant_tool_calls}
+                    )
 
                     # Execute tools and add results
                     for idx in sorted(tool_calls.keys()):
                         tc = tool_calls[idx]
                         try:
-                            args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+                            args = (
+                                json.loads(tc["arguments"]) if tc["arguments"] else {}
+                            )
                         except json.JSONDecodeError:
                             args = {}
 
@@ -1698,7 +1801,7 @@ async def stream_with_tools_openai(
                             StreamEventType.TOOL_CALL,
                             args,
                             tool_id=tc["id"],
-                            tool_name=tc["name"]
+                            tool_name=tc["name"],
                         )
 
                         # Execute
@@ -1706,17 +1809,17 @@ async def stream_with_tools_openai(
 
                         # Yield result
                         yield StreamEvent(
-                            StreamEventType.TOOL_RESULT,
-                            result,
-                            tool_id=tc["id"]
+                            StreamEventType.TOOL_RESULT, result, tool_id=tc["id"]
                         )
 
                         # Add to messages
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc["id"],
-                            "content": json.dumps(result)
-                        })
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc["id"],
+                                "content": json.dumps(result),
+                            }
+                        )
 
                     # Reset and continue
                     tool_calls = {}
@@ -1724,8 +1827,11 @@ async def stream_with_tools_openai(
                 else:
                     # No more tool calls, we're done - emit summary
                     summary = executor.get_summary()
-                    yield StreamEvent(StreamEventType.DONE, {
-                        "status": "complete",
-                        "summary": summary,
-                    })
+                    yield StreamEvent(
+                        StreamEventType.DONE,
+                        {
+                            "status": "complete",
+                            "summary": summary,
+                        },
+                    )
                     return

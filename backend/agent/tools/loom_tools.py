@@ -113,11 +113,13 @@ async def get_loom_transcript(
 
         return ToolResult(
             output="\n".join(lines),
-            sources=[{
-                "type": "loom_video",
-                "name": f"Video {video_id}",
-                "url": f"https://www.loom.com/share/{video_id}",
-            }],
+            sources=[
+                {
+                    "type": "loom_video",
+                    "name": f"Video {video_id}",
+                    "url": f"https://www.loom.com/share/{video_id}",
+                }
+            ],
         )
 
     except Exception as e:

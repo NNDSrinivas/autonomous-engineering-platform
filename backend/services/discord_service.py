@@ -246,9 +246,7 @@ class DiscordService(ConnectorServiceBase):
                     )
 
                 else:
-                    return WriteResult(
-                        success=False, error=f"Unknown action: {action}"
-                    )
+                    return WriteResult(success=False, error=f"Unknown action: {action}")
 
         except Exception as e:
             logger.error("discord_service.write_item.error", error=str(e))
@@ -340,14 +338,16 @@ class DiscordService(ConnectorServiceBase):
                     if channel_type and ch_type != channel_type:
                         continue
 
-                    result.append({
-                        "id": channel.get("id"),
-                        "name": channel.get("name"),
-                        "type": ch_type,
-                        "topic": channel.get("topic"),
-                        "position": channel.get("position"),
-                        "parent_id": channel.get("parent_id"),
-                    })
+                    result.append(
+                        {
+                            "id": channel.get("id"),
+                            "name": channel.get("name"),
+                            "type": ch_type,
+                            "topic": channel.get("topic"),
+                            "position": channel.get("position"),
+                            "parent_id": channel.get("parent_id"),
+                        }
+                    )
 
                 return result[:max_results]
 

@@ -31,15 +31,16 @@ logger = logging.getLogger(__name__)
 # ENUMS & DATA CLASSES
 # ============================================================
 
+
 class PlanStatus(Enum):
-    DRAFT = "draft"              # Plan being created
-    QUESTIONS = "questions"      # Waiting for clarifying answers
-    READY = "ready"              # Plan ready for approval
-    APPROVED = "approved"        # User approved, ready to execute
+    DRAFT = "draft"  # Plan being created
+    QUESTIONS = "questions"  # Waiting for clarifying answers
+    READY = "ready"  # Plan ready for approval
+    APPROVED = "approved"  # User approved, ready to execute
     IN_PROGRESS = "in_progress"  # Executing
-    COMPLETED = "completed"      # All tasks done
-    FAILED = "failed"            # Execution failed
-    CANCELLED = "cancelled"      # User cancelled
+    COMPLETED = "completed"  # All tasks done
+    FAILED = "failed"  # Execution failed
+    CANCELLED = "cancelled"  # User cancelled
 
 
 class TaskStatus(Enum):
@@ -51,22 +52,23 @@ class TaskStatus(Enum):
 
 
 class QuestionCategory(Enum):
-    ARCHITECTURE = "architecture"     # System design decisions
-    REQUIREMENTS = "requirements"     # Feature requirements
-    TECHNOLOGY = "technology"         # Tech stack choices
-    SCOPE = "scope"                   # What's in/out of scope
-    INTEGRATION = "integration"       # External integrations
-    SECURITY = "security"             # Auth, encryption, etc.
-    PERFORMANCE = "performance"       # Scale, caching, etc.
-    TESTING = "testing"               # Test strategy
-    DEPLOYMENT = "deployment"         # Deploy target
-    REFACTORING = "refactoring"       # Code quality improvements
-    COMMIT = "commit"                 # Git commit preferences
+    ARCHITECTURE = "architecture"  # System design decisions
+    REQUIREMENTS = "requirements"  # Feature requirements
+    TECHNOLOGY = "technology"  # Tech stack choices
+    SCOPE = "scope"  # What's in/out of scope
+    INTEGRATION = "integration"  # External integrations
+    SECURITY = "security"  # Auth, encryption, etc.
+    PERFORMANCE = "performance"  # Scale, caching, etc.
+    TESTING = "testing"  # Test strategy
+    DEPLOYMENT = "deployment"  # Deploy target
+    REFACTORING = "refactoring"  # Code quality improvements
+    COMMIT = "commit"  # Git commit preferences
 
 
 @dataclass
 class ClarifyingQuestion:
     """A senior-engineer-level clarifying question"""
+
     id: str
     category: QuestionCategory
     question: str
@@ -92,6 +94,7 @@ class ClarifyingQuestion:
 @dataclass
 class PlanTask:
     """A single task in the execution plan"""
+
     id: str
     title: str
     description: str
@@ -121,6 +124,7 @@ class PlanTask:
 @dataclass
 class ImageAttachment:
     """UI screenshot or design image"""
+
     id: str
     filename: str
     mime_type: str
@@ -132,6 +136,7 @@ class ImageAttachment:
 @dataclass
 class ExecutionPlan:
     """A complete structured plan for implementation"""
+
     id: str
     title: str
     summary: str
@@ -170,7 +175,10 @@ class ExecutionPlan:
             "summary": self.summary,
             "status": self.status.value,
             "original_request": self.original_request,
-            "images": [{"id": img.id, "filename": img.filename, "description": img.description} for img in self.images],
+            "images": [
+                {"id": img.id, "filename": img.filename, "description": img.description}
+                for img in self.images
+            ],
             "questions": [q.to_dict() for q in self.questions],
             "tasks": [t.to_dict() for t in self.tasks],
             "workspace_path": self.workspace_path,
@@ -184,7 +192,9 @@ class ExecutionPlan:
             "estimated_lines": self.estimated_lines,
             "risk_level": self.risk_level,
             "unanswered_questions": len([q for q in self.questions if not q.answered]),
-            "completed_tasks": len([t for t in self.tasks if t.status == TaskStatus.COMPLETED]),
+            "completed_tasks": len(
+                [t for t in self.tasks if t.status == TaskStatus.COMPLETED]
+            ),
             "total_tasks": len(self.tasks),
         }
 
@@ -219,6 +229,7 @@ def list_plans(workspace_path: Optional[str] = None) -> List[ExecutionPlan]:
 # SENIOR ENGINEER CLARIFYING QUESTIONS
 # ============================================================
 
+
 class ClarifyingQuestionGenerator:
     """
     Generates senior-engineer-level clarifying questions based on
@@ -232,19 +243,34 @@ class ClarifyingQuestionGenerator:
                 "trigger": ["api", "endpoint", "backend", "server"],
                 "question": "What's your preferred API architecture?",
                 "why": "This affects code organization, middleware patterns, and how clients interact with your service.",
-                "options": ["REST with resource-based URLs", "GraphQL for flexible queries", "gRPC for high performance", "Mix of REST + WebSockets for real-time"],
+                "options": [
+                    "REST with resource-based URLs",
+                    "GraphQL for flexible queries",
+                    "gRPC for high performance",
+                    "Mix of REST + WebSockets for real-time",
+                ],
             },
             {
                 "trigger": ["database", "data", "store", "persist"],
                 "question": "What database strategy works best for your use case?",
                 "why": "Database choice impacts query patterns, scaling strategy, and data modeling approach.",
-                "options": ["PostgreSQL (relational, ACID)", "MongoDB (document, flexible schema)", "Redis (caching + sessions)", "Keep existing database"],
+                "options": [
+                    "PostgreSQL (relational, ACID)",
+                    "MongoDB (document, flexible schema)",
+                    "Redis (caching + sessions)",
+                    "Keep existing database",
+                ],
             },
             {
                 "trigger": ["auth", "login", "user", "account"],
                 "question": "How should users authenticate?",
                 "why": "Auth strategy affects security, user experience, and integration complexity.",
-                "options": ["JWT tokens (stateless)", "Session-based (server state)", "OAuth2 with social login", "Magic link / passwordless"],
+                "options": [
+                    "JWT tokens (stateless)",
+                    "Session-based (server state)",
+                    "OAuth2 with social login",
+                    "Magic link / passwordless",
+                ],
             },
         ],
         QuestionCategory.SCOPE: [
@@ -252,13 +278,23 @@ class ClarifyingQuestionGenerator:
                 "trigger": ["feature", "build", "create", "implement", "add"],
                 "question": "What's the MVP scope for this feature?",
                 "why": "Starting with a focused MVP lets us ship faster and iterate based on real feedback.",
-                "options": ["Core functionality only (ship fast)", "Include edge cases (more robust)", "Full feature with tests (production-ready)", "Prototype to validate approach"],
+                "options": [
+                    "Core functionality only (ship fast)",
+                    "Include edge cases (more robust)",
+                    "Full feature with tests (production-ready)",
+                    "Prototype to validate approach",
+                ],
             },
             {
                 "trigger": ["refactor", "improve", "optimize", "clean"],
                 "question": "How extensive should the refactoring be?",
                 "why": "Scoping prevents scope creep and helps maintain a working codebase throughout.",
-                "options": ["Minimal changes (fix the immediate issue)", "Moderate (improve touched files)", "Comprehensive (full module refactor)", "Just add tests first"],
+                "options": [
+                    "Minimal changes (fix the immediate issue)",
+                    "Moderate (improve touched files)",
+                    "Comprehensive (full module refactor)",
+                    "Just add tests first",
+                ],
             },
         ],
         QuestionCategory.TECHNOLOGY: [
@@ -266,13 +302,23 @@ class ClarifyingQuestionGenerator:
                 "trigger": ["ui", "frontend", "component", "page", "screen"],
                 "question": "What UI framework conventions should I follow?",
                 "why": "Consistent patterns make the codebase maintainable and code review easier.",
-                "options": ["Follow existing project patterns", "Use functional components with hooks", "Add TypeScript if not present", "Include Storybook stories"],
+                "options": [
+                    "Follow existing project patterns",
+                    "Use functional components with hooks",
+                    "Add TypeScript if not present",
+                    "Include Storybook stories",
+                ],
             },
             {
                 "trigger": ["test", "testing", "spec"],
                 "question": "What testing approach do you prefer?",
                 "why": "Testing strategy affects confidence in deployments and refactoring safety.",
-                "options": ["Unit tests for business logic", "Integration tests for API", "E2E tests for critical paths", "All of the above"],
+                "options": [
+                    "Unit tests for business logic",
+                    "Integration tests for API",
+                    "E2E tests for critical paths",
+                    "All of the above",
+                ],
             },
         ],
         QuestionCategory.INTEGRATION: [
@@ -280,7 +326,12 @@ class ClarifyingQuestionGenerator:
                 "trigger": ["api", "external", "third-party", "service", "webhook"],
                 "question": "How should we handle external API failures?",
                 "why": "Resilient integrations prevent cascading failures when third-party services have issues.",
-                "options": ["Retry with exponential backoff", "Circuit breaker pattern", "Fallback to cached data", "Fail fast with clear error"],
+                "options": [
+                    "Retry with exponential backoff",
+                    "Circuit breaker pattern",
+                    "Fallback to cached data",
+                    "Fail fast with clear error",
+                ],
             },
         ],
         QuestionCategory.PERFORMANCE: [
@@ -288,7 +339,12 @@ class ClarifyingQuestionGenerator:
                 "trigger": ["list", "table", "fetch", "load", "query"],
                 "question": "What's the expected data volume?",
                 "why": "Scale expectations inform pagination, caching, and query optimization strategies.",
-                "options": ["Small (< 1K records)", "Medium (1K - 100K records)", "Large (100K+ records, needs pagination)", "Unknown (let's add pagination just in case)"],
+                "options": [
+                    "Small (< 1K records)",
+                    "Medium (1K - 100K records)",
+                    "Large (100K+ records, needs pagination)",
+                    "Unknown (let's add pagination just in case)",
+                ],
             },
         ],
         QuestionCategory.SECURITY: [
@@ -296,7 +352,12 @@ class ClarifyingQuestionGenerator:
                 "trigger": ["admin", "role", "permission", "access"],
                 "question": "What authorization model do you need?",
                 "why": "Access control complexity varies significantly based on your permission requirements.",
-                "options": ["Simple roles (admin/user)", "Role-based (RBAC)", "Attribute-based (ABAC)", "Resource-level permissions"],
+                "options": [
+                    "Simple roles (admin/user)",
+                    "Role-based (RBAC)",
+                    "Attribute-based (ABAC)",
+                    "Resource-level permissions",
+                ],
             },
         ],
         QuestionCategory.REFACTORING: [
@@ -304,27 +365,55 @@ class ClarifyingQuestionGenerator:
                 "trigger": ["build", "create", "implement", "add", "feature", "new"],
                 "question": "Should I also review and improve existing related code?",
                 "why": "While implementing new features, I can identify and fix code quality issues in touched areas.",
-                "options": ["Yes, suggest improvements inline", "Yes, but as a separate task", "No, just implement the feature", "Let me decide after seeing the plan"],
+                "options": [
+                    "Yes, suggest improvements inline",
+                    "Yes, but as a separate task",
+                    "No, just implement the feature",
+                    "Let me decide after seeing the plan",
+                ],
             },
             {
                 "trigger": ["refactor", "clean", "optimize", "improve", "fix"],
                 "question": "What level of code quality improvements should I apply?",
                 "why": "Code quality improvements range from simple cleanups to major restructuring.",
-                "options": ["Lint fixes and formatting only", "Add types and better error handling", "Extract reusable functions and improve patterns", "Full refactor with tests"],
+                "options": [
+                    "Lint fixes and formatting only",
+                    "Add types and better error handling",
+                    "Extract reusable functions and improve patterns",
+                    "Full refactor with tests",
+                ],
             },
         ],
         QuestionCategory.COMMIT: [
             {
-                "trigger": ["feature", "build", "create", "implement", "add", "fix", "update"],
+                "trigger": [
+                    "feature",
+                    "build",
+                    "create",
+                    "implement",
+                    "add",
+                    "fix",
+                    "update",
+                ],
                 "question": "How would you like me to handle git commits?",
                 "why": "Automatic commits help maintain a clean git history and make it easy to track changes.",
-                "options": ["Auto-commit after each task with descriptive messages", "Single commit at the end with summary", "Don't commit, I'll handle it manually", "Suggest commit points but let me confirm"],
+                "options": [
+                    "Auto-commit after each task with descriptive messages",
+                    "Single commit at the end with summary",
+                    "Don't commit, I'll handle it manually",
+                    "Suggest commit points but let me confirm",
+                ],
             },
             {
                 "trigger": ["commit", "git", "push"],
                 "question": "What commit message style do you prefer?",
                 "why": "Consistent commit messages improve project history readability.",
-                "options": ["Conventional commits (feat:, fix:, etc.)", "Brief and descriptive", "Detailed with context", "Follow existing project style"],
+                "options": [
+                    "Conventional commits (feat:, fix:, etc.)",
+                    "Brief and descriptive",
+                    "Detailed with context",
+                    "Follow existing project style",
+                ],
             },
         ],
     }
@@ -350,14 +439,20 @@ class ClarifyingQuestionGenerator:
                 if any(trigger in request_lower for trigger in template["trigger"]):
                     # Don't ask duplicate questions
                     if template["question"] not in existing:
-                        questions.append(ClarifyingQuestion(
-                            id=str(uuid.uuid4())[:8],
-                            category=category,
-                            question=template["question"],
-                            why_asking=template["why"],
-                            options=template["options"],
-                            default=template["options"][0] if template["options"] else None,
-                        ))
+                        questions.append(
+                            ClarifyingQuestion(
+                                id=str(uuid.uuid4())[:8],
+                                category=category,
+                                question=template["question"],
+                                why_asking=template["why"],
+                                options=template["options"],
+                                default=(
+                                    template["options"][0]
+                                    if template["options"]
+                                    else None
+                                ),
+                            )
+                        )
 
         # Limit to most relevant 3-5 questions
         return questions[:5]
@@ -368,46 +463,52 @@ class ClarifyingQuestionGenerator:
         questions = []
 
         # Always ask about component structure for UI work
-        questions.append(ClarifyingQuestion(
-            id=str(uuid.uuid4())[:8],
-            category=QuestionCategory.ARCHITECTURE,
-            question="How should this UI be structured?",
-            why_asking="Component organization affects reusability and maintainability.",
-            options=[
-                "Single page component",
-                "Split into reusable components",
-                "Create a full component library",
-                "Match existing component patterns",
-            ],
-        ))
+        questions.append(
+            ClarifyingQuestion(
+                id=str(uuid.uuid4())[:8],
+                category=QuestionCategory.ARCHITECTURE,
+                question="How should this UI be structured?",
+                why_asking="Component organization affects reusability and maintainability.",
+                options=[
+                    "Single page component",
+                    "Split into reusable components",
+                    "Create a full component library",
+                    "Match existing component patterns",
+                ],
+            )
+        )
 
         # State management question
-        questions.append(ClarifyingQuestion(
-            id=str(uuid.uuid4())[:8],
-            category=QuestionCategory.TECHNOLOGY,
-            question="How should we handle state for this UI?",
-            why_asking="State management approach depends on complexity and data flow needs.",
-            options=[
-                "Local component state (useState)",
-                "Context for shared state",
-                "Global store (Redux/Zustand)",
-                "Server state (React Query/SWR)",
-            ],
-        ))
+        questions.append(
+            ClarifyingQuestion(
+                id=str(uuid.uuid4())[:8],
+                category=QuestionCategory.TECHNOLOGY,
+                question="How should we handle state for this UI?",
+                why_asking="State management approach depends on complexity and data flow needs.",
+                options=[
+                    "Local component state (useState)",
+                    "Context for shared state",
+                    "Global store (Redux/Zustand)",
+                    "Server state (React Query/SWR)",
+                ],
+            )
+        )
 
         # Responsiveness
-        questions.append(ClarifyingQuestion(
-            id=str(uuid.uuid4())[:8],
-            category=QuestionCategory.REQUIREMENTS,
-            question="What responsive behavior is needed?",
-            why_asking="Mobile-first approach requires different layout strategies.",
-            options=[
-                "Desktop only",
-                "Responsive (desktop + mobile)",
-                "Mobile-first design",
-                "Match existing breakpoints",
-            ],
-        ))
+        questions.append(
+            ClarifyingQuestion(
+                id=str(uuid.uuid4())[:8],
+                category=QuestionCategory.REQUIREMENTS,
+                question="What responsive behavior is needed?",
+                why_asking="Mobile-first approach requires different layout strategies.",
+                options=[
+                    "Desktop only",
+                    "Responsive (desktop + mobile)",
+                    "Mobile-first design",
+                    "Match existing breakpoints",
+                ],
+            )
+        )
 
         return questions
 
@@ -415,6 +516,7 @@ class ClarifyingQuestionGenerator:
 # ============================================================
 # VISION / IMAGE ANALYSIS
 # ============================================================
+
 
 class VisionAnalyzer:
     """
@@ -433,7 +535,11 @@ class VisionAnalyzer:
         """Extract image data from an attachment"""
         try:
             # Handle different attachment formats
-            data = attachment.get("data") or attachment.get("content") or attachment.get("base64")
+            data = (
+                attachment.get("data")
+                or attachment.get("content")
+                or attachment.get("base64")
+            )
             if not data:
                 return None
 
@@ -443,8 +549,12 @@ class VisionAnalyzer:
 
             return ImageAttachment(
                 id=str(uuid.uuid4())[:8],
-                filename=attachment.get("filename", attachment.get("name", "image.png")),
-                mime_type=attachment.get("mime_type", attachment.get("type", "image/png")),
+                filename=attachment.get(
+                    "filename", attachment.get("name", "image.png")
+                ),
+                mime_type=attachment.get(
+                    "mime_type", attachment.get("type", "image/png")
+                ),
                 base64_data=data,
                 description=attachment.get("description"),
             )
@@ -526,6 +636,7 @@ UI Screenshot Analysis:
 # PLAN GENERATOR
 # ============================================================
 
+
 class PlanGenerator:
     """
     Generates structured execution plans from user requests.
@@ -588,7 +699,9 @@ class PlanGenerator:
 
         # Add UI-specific questions if images present
         if images:
-            questions.extend(ClarifyingQuestionGenerator.generate_ui_questions(image_context))
+            questions.extend(
+                ClarifyingQuestionGenerator.generate_ui_questions(image_context)
+            )
 
         plan.questions = questions[:5]  # Limit to 5 questions max
 
@@ -630,10 +743,16 @@ class PlanGenerator:
                     project_info.framework or "",
                     project_info.package_manager or "",
                 ]
-                plan.detected_technologies = [t for t in plan.detected_technologies if t]
+                plan.detected_technologies = [
+                    t for t in plan.detected_technologies if t
+                ]
 
                 # Get relevant files
-                plan.relevant_files = list(project_info.dependencies.keys())[:20] if project_info.dependencies else []
+                plan.relevant_files = (
+                    list(project_info.dependencies.keys())[:20]
+                    if project_info.dependencies
+                    else []
+                )
         except Exception as e:
             logger.error(f"Workspace analysis failed: {e}")
 
@@ -661,7 +780,9 @@ class PlanGenerator:
         summary_parts = [f"**Request**: {request[:200]}"]
 
         if images:
-            summary_parts.append(f"**UI References**: {len(images)} screenshot(s) provided")
+            summary_parts.append(
+                f"**UI References**: {len(images)} screenshot(s) provided"
+            )
 
         if project_type:
             summary_parts.append(f"**Project Type**: {project_type}")
@@ -702,7 +823,9 @@ class PlanGenerator:
         return plan
 
     @classmethod
-    async def _generate_tasks(cls, plan: ExecutionPlan, llm_client: Any = None) -> ExecutionPlan:
+    async def _generate_tasks(
+        cls, plan: ExecutionPlan, llm_client: Any = None
+    ) -> ExecutionPlan:
         """
         Generate the detailed task breakdown for execution.
         This is where the magic happens - turning requirements into actionable tasks.
@@ -724,84 +847,103 @@ class PlanGenerator:
         # For now, use heuristic breakdown
 
         # Task 1: Setup/scaffolding (if needed)
-        if "create" in plan.original_request.lower() or "new" in plan.original_request.lower():
-            tasks.append(PlanTask(
-                id=f"task-{len(tasks)+1}",
-                title="Set up project structure",
-                description="Create necessary directories and configuration files",
-                task_type="setup",
-                files=[],
-            ))
+        if (
+            "create" in plan.original_request.lower()
+            or "new" in plan.original_request.lower()
+        ):
+            tasks.append(
+                PlanTask(
+                    id=f"task-{len(tasks)+1}",
+                    title="Set up project structure",
+                    description="Create necessary directories and configuration files",
+                    task_type="setup",
+                    files=[],
+                )
+            )
 
         # Task 2: Core implementation
-        tasks.append(PlanTask(
-            id=f"task-{len(tasks)+1}",
-            title="Implement core functionality",
-            description="Create the main implementation files",
-            task_type="implementation",
-            files=[],
-            dependencies=[t.id for t in tasks[-1:]] if tasks else [],
-        ))
+        tasks.append(
+            PlanTask(
+                id=f"task-{len(tasks)+1}",
+                title="Implement core functionality",
+                description="Create the main implementation files",
+                task_type="implementation",
+                files=[],
+                dependencies=[t.id for t in tasks[-1:]] if tasks else [],
+            )
+        )
 
         # Task 3: UI components (if UI work)
         if plan.images:
-            tasks.append(PlanTask(
-                id=f"task-{len(tasks)+1}",
-                title="Create UI components",
-                description="Implement the UI based on provided screenshots",
-                task_type="ui",
-                files=[],
-                dependencies=[tasks[-1].id] if tasks else [],
-            ))
+            tasks.append(
+                PlanTask(
+                    id=f"task-{len(tasks)+1}",
+                    title="Create UI components",
+                    description="Implement the UI based on provided screenshots",
+                    task_type="ui",
+                    files=[],
+                    dependencies=[tasks[-1].id] if tasks else [],
+                )
+            )
 
         # Task 4: Integration/wiring
-        tasks.append(PlanTask(
-            id=f"task-{len(tasks)+1}",
-            title="Wire up integration",
-            description="Connect components and ensure proper data flow",
-            task_type="integration",
-            dependencies=[t.id for t in tasks],
-        ))
+        tasks.append(
+            PlanTask(
+                id=f"task-{len(tasks)+1}",
+                title="Wire up integration",
+                description="Connect components and ensure proper data flow",
+                task_type="integration",
+                dependencies=[t.id for t in tasks],
+            )
+        )
 
         # Task 5: Tests
-        tasks.append(PlanTask(
-            id=f"task-{len(tasks)+1}",
-            title="Add tests",
-            description="Write unit and integration tests",
-            task_type="testing",
-            dependencies=[tasks[-1].id],
-        ))
+        tasks.append(
+            PlanTask(
+                id=f"task-{len(tasks)+1}",
+                title="Add tests",
+                description="Write unit and integration tests",
+                task_type="testing",
+                dependencies=[tasks[-1].id],
+            )
+        )
 
         # Task 6: Documentation
-        tasks.append(PlanTask(
-            id=f"task-{len(tasks)+1}",
-            title="Update documentation",
-            description="Add/update relevant documentation",
-            task_type="documentation",
-            dependencies=[tasks[-2].id],
-        ))
+        tasks.append(
+            PlanTask(
+                id=f"task-{len(tasks)+1}",
+                title="Update documentation",
+                description="Add/update relevant documentation",
+                task_type="documentation",
+                dependencies=[tasks[-2].id],
+            )
+        )
 
         # Task 7: Code Review & Refactoring (conditional based on user answer)
         should_refactor = cls._should_add_refactoring_task(plan.questions)
         if should_refactor:
-            tasks.append(PlanTask(
-                id=f"task-{len(tasks)+1}",
-                title="Review and improve code quality",
-                description="Run code validation, suggest improvements, and apply refactoring",
-                task_type="refactoring",
-                dependencies=[tasks[-1].id],
-            ))
+            tasks.append(
+                PlanTask(
+                    id=f"task-{len(tasks)+1}",
+                    title="Review and improve code quality",
+                    description="Run code validation, suggest improvements, and apply refactoring",
+                    task_type="refactoring",
+                    dependencies=[tasks[-1].id],
+                )
+            )
 
         # Task 8: Git Commit (conditional based on user answer)
         commit_strategy = cls._get_commit_strategy(plan.questions)
         if commit_strategy and commit_strategy != "manual":
-            tasks.append(PlanTask(
-                id=f"task-{len(tasks)+1}",
-                title="Commit changes to git",
-                description=f"Stage and commit all changes ({commit_strategy})",
-                task_type="commit",
-                dependencies=[tasks[-1].id],
-            ))
+            tasks.append(
+                PlanTask(
+                    id=f"task-{len(tasks)+1}",
+                    title="Commit changes to git",
+                    description=f"Stage and commit all changes ({commit_strategy})",
+                    task_type="commit",
+                    dependencies=[tasks[-1].id],
+                )
+            )
 
         plan.tasks = tasks
         plan.estimated_files = len(tasks) * 2  # Rough estimate
@@ -846,7 +988,9 @@ class PlanGenerator:
             raise ValueError(f"Plan {plan_id} not found")
 
         if plan.status != PlanStatus.READY:
-            raise ValueError(f"Plan is not ready for approval (status: {plan.status.value})")
+            raise ValueError(
+                f"Plan is not ready for approval (status: {plan.status.value})"
+            )
 
         plan.status = PlanStatus.APPROVED
         store_plan(plan)
@@ -856,6 +1000,7 @@ class PlanGenerator:
 # ============================================================
 # PLAN EXECUTOR
 # ============================================================
+
 
 class PlanExecutor:
     """
@@ -908,12 +1053,14 @@ class PlanExecutor:
                 store_plan(plan)
 
                 if on_progress:
-                    await on_progress({
-                        "type": "task_start",
-                        "task_id": task.id,
-                        "task_title": task.title,
-                        "progress": i / len(plan.tasks),
-                    })
+                    await on_progress(
+                        {
+                            "type": "task_start",
+                            "task_id": task.id,
+                            "task_title": task.title,
+                            "progress": i / len(plan.tasks),
+                        }
+                    )
 
                 try:
                     result = await cls._execute_task(task, plan, llm_client)
@@ -921,22 +1068,26 @@ class PlanExecutor:
                     task.result = result
 
                     if on_progress:
-                        await on_progress({
-                            "type": "task_complete",
-                            "task_id": task.id,
-                            "result": result,
-                        })
+                        await on_progress(
+                            {
+                                "type": "task_complete",
+                                "task_id": task.id,
+                                "result": result,
+                            }
+                        )
 
                 except Exception as e:
                     task.status = TaskStatus.FAILED
                     task.error = str(e)
 
                     if on_progress:
-                        await on_progress({
-                            "type": "task_failed",
-                            "task_id": task.id,
-                            "error": str(e),
-                        })
+                        await on_progress(
+                            {
+                                "type": "task_failed",
+                                "task_id": task.id,
+                                "error": str(e),
+                            }
+                        )
 
                     # Continue to next task on failure (resilient execution)
 
@@ -1028,7 +1179,7 @@ class PlanExecutor:
                     continue
 
                 try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                         content = f.read()
 
                     validation_result = validator.validate(content, file_path)
@@ -1036,22 +1187,26 @@ class PlanExecutor:
 
                     if validation_result.issues:
                         for issue in validation_result.issues:
-                            result["issues_found"].append({
-                                "file": file_path,
-                                "level": issue.level.value,
-                                "message": issue.message,
-                                "line": issue.line,
-                                "rule": issue.rule,
-                                "fix_suggestion": issue.fix_suggestion,
-                            })
+                            result["issues_found"].append(
+                                {
+                                    "file": file_path,
+                                    "level": issue.level.value,
+                                    "message": issue.message,
+                                    "line": issue.line,
+                                    "rule": issue.rule,
+                                    "fix_suggestion": issue.fix_suggestion,
+                                }
+                            )
 
                             # Add to suggestions if it has a fix
                             if issue.fix_suggestion:
-                                result["suggestions"].append({
-                                    "file": file_path,
-                                    "issue": issue.message,
-                                    "suggestion": issue.fix_suggestion,
-                                })
+                                result["suggestions"].append(
+                                    {
+                                        "file": file_path,
+                                        "issue": issue.message,
+                                        "suggestion": issue.fix_suggestion,
+                                    }
+                                )
 
                 except Exception as e:
                     logger.warning(f"Failed to analyze {file_path}: {e}")
@@ -1060,8 +1215,12 @@ class PlanExecutor:
             result["summary"] = {
                 "files_analyzed": len(result["files_analyzed"]),
                 "total_issues": len(result["issues_found"]),
-                "errors": len([i for i in result["issues_found"] if i["level"] == "error"]),
-                "warnings": len([i for i in result["issues_found"] if i["level"] == "warning"]),
+                "errors": len(
+                    [i for i in result["issues_found"] if i["level"] == "error"]
+                ),
+                "warnings": len(
+                    [i for i in result["issues_found"] if i["level"] == "warning"]
+                ),
                 "suggestions_count": len(result["suggestions"]),
             }
 
@@ -1131,7 +1290,7 @@ class PlanExecutor:
             # Commit
             commit_result = git.execute_safe_command(
                 ["git", "commit", "-m", commit_message],
-                description=f"Commit: {plan.title}"
+                description=f"Commit: {plan.title}",
             )
 
             if commit_result.get("success"):
@@ -1203,6 +1362,7 @@ class PlanExecutor:
 # ============================================================
 # PUBLIC API FUNCTIONS
 # ============================================================
+
 
 async def create_plan(
     request: str,

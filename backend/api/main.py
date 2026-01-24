@@ -105,7 +105,9 @@ from backend.extensions.api import (
 )  # Phase 7.2: Extension Execution API
 from .routers.rate_limit_admin import router as rate_limit_admin_router
 from .routers.github_webhook import router as github_webhook_router
-from .routers.advanced_operations import router as advanced_operations_router  # MCP Tools
+from .routers.advanced_operations import (
+    router as advanced_operations_router,
+)  # MCP Tools
 from .review_stream import router as review_stream_router  # SSE streaming for reviews
 from .real_review_stream import (
     router as real_review_stream_router,
@@ -370,7 +372,7 @@ def _load_all_optional_routers(app: FastAPI) -> None:
         _load_optional_router_group(app, group)
 
 
-if hasattr(settings, 'defer_optional_routers') and settings.defer_optional_routers:
+if hasattr(settings, "defer_optional_routers") and settings.defer_optional_routers:
 
     @app.middleware("http")
     async def deferred_optional_router_loader(request: Request, call_next):

@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 class DocumentType(Enum):
     """Types of documents that can be indexed."""
+
     CODING_STANDARD = "coding_standard"
     ARCHITECTURE_DOC = "architecture_doc"
     CODE_REVIEW = "code_review"
@@ -47,6 +48,7 @@ class DocumentType(Enum):
 @dataclass
 class Document:
     """A document to be indexed in the RAG system."""
+
     id: str
     content: str
     doc_type: DocumentType
@@ -74,6 +76,7 @@ class Document:
 @dataclass
 class RetrievalResult:
     """A result from RAG retrieval."""
+
     document: Document
     score: float  # Similarity score (0-1)
     snippet: str  # Relevant snippet from the document
@@ -129,7 +132,7 @@ class EmbeddingProvider:
             embedding[idx2] -= weight * 0.5
 
         # Normalize
-        magnitude = sum(x*x for x in embedding) ** 0.5
+        magnitude = sum(x * x for x in embedding) ** 0.5
         if magnitude > 0:
             embedding = [x / magnitude for x in embedding]
 
@@ -139,10 +142,10 @@ class EmbeddingProvider:
         """Use OpenAI embeddings API."""
         try:
             import openai
+
             client = openai.AsyncOpenAI()
             response = await client.embeddings.create(
-                model="text-embedding-3-small",
-                input=text
+                model="text-embedding-3-small", input=text
             )
             return response.data[0].embedding
         except Exception as e:
@@ -192,10 +195,10 @@ class InMemoryVectorStore(VectorStore):
     """
 
     def __init__(self, storage_path: str = None):
-        self.storage_path = Path(storage_path or os.getenv(
-            "NAVI_RAG_PATH",
-            os.path.expanduser("~/.navi/rag")
-        ))
+        self.storage_path = Path(
+            storage_path
+            or os.getenv("NAVI_RAG_PATH", os.path.expanduser("~/.navi/rag"))
+        )
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
         self.documents: Dict[str, Document] = {}
@@ -218,7 +221,9 @@ class InMemoryVectorStore(VectorStore):
         """Persist documents to disk."""
         index_file = self.storage_path / "index.json"
         data = {
-            "documents": [self._document_to_dict(doc) for doc in self.documents.values()]
+            "documents": [
+                self._document_to_dict(doc) for doc in self.documents.values()
+            ]
         }
         index_file.write_text(json.dumps(data, indent=2, default=str))
 
@@ -290,7 +295,10 @@ class InMemoryVectorStore(VectorStore):
                     continue
                 if filters.get("framework") and doc.framework != filters["framework"]:
                     continue
-                if filters.get("doc_type") and doc.doc_type.value != filters["doc_type"]:
+                if (
+                    filters.get("doc_type")
+                    and doc.doc_type.value != filters["doc_type"]
+                ):
                     continue
                 if filters.get("tags"):
                     if not any(tag in doc.tags for tag in filters["tags"]):
@@ -335,6 +343,7 @@ class InMemoryVectorStore(VectorStore):
 # ============================================================
 # RAG MANAGER - Main interface
 # ============================================================
+
 
 class RAGManager:
     """
@@ -412,8 +421,10 @@ class RAGManager:
             metadata={
                 "language": language,
                 "source_url": source,
-                "tags": ["coding-standard", language] if language else ["coding-standard"],
-            }
+                "tags": (
+                    ["coding-standard", language] if language else ["coding-standard"]
+                ),
+            },
         )
 
     async def ingest_code_review(
@@ -434,7 +445,7 @@ class RAGManager:
                 "language": language,
                 "author": reviewer,
                 "tags": ["code-review", language] if language else ["code-review"],
-            }
+            },
         )
 
     async def ingest_approved_code(
@@ -450,7 +461,9 @@ class RAGManager:
         Ingest code that was approved by the user.
         This helps NAVI learn from patterns the organization likes.
         """
-        content = f"Description: {description}\n\nCode:\n```{language or ''}\n{code}\n```"
+        content = (
+            f"Description: {description}\n\nCode:\n```{language or ''}\n{code}\n```"
+        )
 
         return await self.ingest_document(
             content=content,
@@ -460,8 +473,12 @@ class RAGManager:
             metadata={
                 "language": language,
                 "framework": framework,
-                "tags": ["approved-code", language, framework] if language else ["approved-code"],
-            }
+                "tags": (
+                    ["approved-code", language, framework]
+                    if language
+                    else ["approved-code"]
+                ),
+            },
         )
 
     async def retrieve(
@@ -492,11 +509,13 @@ class RAGManager:
         for doc, score in results:
             # Extract relevant snippet
             snippet = self._extract_snippet(doc.content, query)
-            retrieval_results.append(RetrievalResult(
-                document=doc,
-                score=score,
-                snippet=snippet,
-            ))
+            retrieval_results.append(
+                RetrievalResult(
+                    document=doc,
+                    score=score,
+                    snippet=snippet,
+                )
+            )
 
         return retrieval_results
 
@@ -581,6 +600,7 @@ class RAGManager:
 # DOCUMENT PARSERS
 # ============================================================
 
+
 class DocumentParser:
     """Parses various document formats for ingestion."""
 
@@ -594,24 +614,25 @@ class DocumentParser:
             if line.startswith("#"):
                 # Save current section
                 if current_section["content"]:
-                    sections.append({
-                        "title": current_section["title"],
-                        "content": "\n".join(current_section["content"])
-                    })
+                    sections.append(
+                        {
+                            "title": current_section["title"],
+                            "content": "\n".join(current_section["content"]),
+                        }
+                    )
                 # Start new section
-                current_section = {
-                    "title": line.lstrip("#").strip(),
-                    "content": []
-                }
+                current_section = {"title": line.lstrip("#").strip(), "content": []}
             else:
                 current_section["content"].append(line)
 
         # Don't forget last section
         if current_section["content"]:
-            sections.append({
-                "title": current_section["title"],
-                "content": "\n".join(current_section["content"])
-            })
+            sections.append(
+                {
+                    "title": current_section["title"],
+                    "content": "\n".join(current_section["content"]),
+                }
+            )
 
         return sections
 
@@ -630,10 +651,12 @@ class DocumentParser:
             matches = re.findall(pattern, review_text, re.IGNORECASE)
             for match in matches:
                 if isinstance(match, tuple):
-                    feedback.append({
-                        "pattern": match[0],
-                        "suggestion": match[1] if len(match) > 1 else None
-                    })
+                    feedback.append(
+                        {
+                            "pattern": match[0],
+                            "suggestion": match[1] if len(match) > 1 else None,
+                        }
+                    )
                 else:
                     feedback.append({"pattern": match})
 

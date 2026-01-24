@@ -22,6 +22,7 @@ from typing import Any, Dict, Optional
 
 class StreamEventType(Enum):
     """Types of streaming events"""
+
     THINKING_START = "thinking_start"
     THINKING_DELTA = "thinking_delta"
     THINKING_COMPLETE = "thinking_complete"
@@ -45,6 +46,7 @@ class StreamEventType(Enum):
 @dataclass
 class StreamEvent:
     """A single streaming event with ordering metadata"""
+
     type: StreamEventType
     data: Dict[str, Any]
     sequence: int = field(default_factory=lambda: int(time.time() * 1000))
@@ -77,7 +79,9 @@ class EventEmitter:
         self._sequence += 1
         return self._sequence
 
-    def _make_event(self, event_type: StreamEventType, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _make_event(
+        self, event_type: StreamEventType, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Create an event dictionary ready for SSE transmission"""
         return StreamEvent(
             type=event_type,
@@ -133,11 +137,7 @@ class EventEmitter:
         }
 
     def intent_detected(
-        self,
-        family: str,
-        kind: str,
-        confidence: float,
-        description: str = ""
+        self, family: str, kind: str, confidence: float, description: str = ""
     ) -> Dict[str, Any]:
         """Emit when intent has been classified"""
         confidence_pct = int(confidence * 100)
@@ -153,7 +153,7 @@ class EventEmitter:
                 "detail": f"Detected: {kind} ({confidence_pct}%)",
                 "status": "done",
                 "sequence": self._next_sequence(),
-            }
+            },
         }
 
     # === File Operation Events ===
@@ -197,7 +197,9 @@ class EventEmitter:
             }
         }
 
-    def file_edit(self, file_path: str, description: str = "Modified") -> Dict[str, Any]:
+    def file_edit(
+        self, file_path: str, description: str = "Modified"
+    ) -> Dict[str, Any]:
         """Emit when a file has been edited"""
         return {
             "activity": {
@@ -213,10 +215,7 @@ class EventEmitter:
     # === Tool Events ===
 
     def tool_start(
-        self,
-        tool_name: str,
-        tool_id: Optional[str] = None,
-        description: str = ""
+        self, tool_name: str, tool_id: Optional[str] = None, description: str = ""
     ) -> Dict[str, Any]:
         """Emit when a tool starts execution"""
         tid = tool_id or str(uuid.uuid4())[:8]
@@ -232,10 +231,7 @@ class EventEmitter:
         }
 
     def tool_complete(
-        self,
-        tool_id: str,
-        result: Dict[str, Any],
-        success: bool = True
+        self, tool_id: str, result: Dict[str, Any], success: bool = True
     ) -> Dict[str, Any]:
         """Emit when a tool completes"""
         return {
@@ -252,7 +248,9 @@ class EventEmitter:
 
     # === Context Events ===
 
-    def context_start(self, description: str = "Gathering workspace information") -> Dict[str, Any]:
+    def context_start(
+        self, description: str = "Gathering workspace information"
+    ) -> Dict[str, Any]:
         """Emit when starting to build context"""
         return {
             "activity": {
@@ -276,7 +274,9 @@ class EventEmitter:
             }
         }
 
-    def project_detected(self, project_type: str, framework: str = "") -> Dict[str, Any]:
+    def project_detected(
+        self, project_type: str, framework: str = ""
+    ) -> Dict[str, Any]:
         """Emit project detection result"""
         detail = framework or project_type
         return {
@@ -295,7 +295,11 @@ class EventEmitter:
             "activity": {
                 "kind": "rag",
                 "label": "Searching code index",
-                "detail": f"Found {results_count} relevant symbols" if results_count else "Searching...",
+                "detail": (
+                    f"Found {results_count} relevant symbols"
+                    if results_count
+                    else "Searching..."
+                ),
                 "status": "done" if results_count else "running",
                 "sequence": self._next_sequence(),
             }
@@ -318,7 +322,9 @@ class EventEmitter:
 
     # === Response Events ===
 
-    def response_start(self, description: str = "Generating response") -> Dict[str, Any]:
+    def response_start(
+        self, description: str = "Generating response"
+    ) -> Dict[str, Any]:
         """Emit when starting to generate response"""
         return {
             "activity": {
@@ -362,7 +368,7 @@ class EventEmitter:
                 "detail": message,
                 "status": "error",
                 "sequence": self._next_sequence(),
-            }
+            },
         }
 
     # === Result Event ===

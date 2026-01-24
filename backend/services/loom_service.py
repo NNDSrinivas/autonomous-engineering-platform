@@ -118,7 +118,9 @@ class LoomService(ConnectorServiceBase):
         data: Dict[str, Any],
     ) -> WriteResult:
         """Loom API is mostly read-only."""
-        return WriteResult(success=False, error="Write operations not supported for Loom")
+        return WriteResult(
+            success=False, error="Write operations not supported for Loom"
+        )
 
     @classmethod
     async def list_videos(
@@ -182,7 +184,9 @@ class LoomService(ConnectorServiceBase):
                 # Extract text from transcript segments
                 segments = transcript_data.get("transcript", [])
                 if isinstance(segments, list):
-                    text_parts = [seg.get("text", "") for seg in segments if seg.get("text")]
+                    text_parts = [
+                        seg.get("text", "") for seg in segments if seg.get("text")
+                    ]
                     return " ".join(text_parts)
                 elif isinstance(segments, str):
                     return segments
@@ -208,9 +212,10 @@ class LoomService(ConnectorServiceBase):
 
             query_lower = query.lower()
             filtered = [
-                v for v in videos
-                if query_lower in (v.get("name", "").lower()) or
-                   query_lower in (v.get("description", "") or "").lower()
+                v
+                for v in videos
+                if query_lower in (v.get("name", "").lower())
+                or query_lower in (v.get("description", "") or "").lower()
             ]
 
             return filtered[:max_results]

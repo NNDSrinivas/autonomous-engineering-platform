@@ -40,8 +40,10 @@ router = APIRouter(prefix="/api/navi/plan", tags=["NAVI Planner"])
 # REQUEST/RESPONSE MODELS
 # ============================================================
 
+
 class ImageAttachment(BaseModel):
     """UI screenshot or design image"""
+
     filename: str = Field(..., description="Image filename")
     mime_type: str = Field(default="image/png", description="Image MIME type")
     data: str = Field(..., description="Base64-encoded image data")
@@ -50,19 +52,24 @@ class ImageAttachment(BaseModel):
 
 class CreatePlanRequest(BaseModel):
     """Request to create a new execution plan"""
+
     message: str = Field(..., description="User's natural language request")
     workspace_path: str = Field(..., description="Path to the workspace/project")
-    images: List[ImageAttachment] = Field(default_factory=list, description="UI screenshots")
+    images: List[ImageAttachment] = Field(
+        default_factory=list, description="UI screenshots"
+    )
     context: Optional[Dict[str, Any]] = Field(None, description="Additional context")
 
 
 class AnswerQuestionsRequest(BaseModel):
     """Request to answer clarifying questions"""
+
     answers: Dict[str, str] = Field(..., description="Question ID -> Answer mapping")
 
 
 class PlanResponse(BaseModel):
     """Response containing plan details"""
+
     id: str
     title: str
     summary: str
@@ -80,6 +87,7 @@ class PlanResponse(BaseModel):
 # ============================================================
 # ENDPOINTS
 # ============================================================
+
 
 @router.post("/create", response_model=PlanResponse)
 async def create_execution_plan(request: CreatePlanRequest):
@@ -202,7 +210,7 @@ async def execute_plan_endpoint(plan_id: str):
     if plan["status"] not in ["approved", "in_progress"]:
         raise HTTPException(
             status_code=400,
-            detail=f"Plan cannot be executed (status: {plan['status']})"
+            detail=f"Plan cannot be executed (status: {plan['status']})",
         )
 
     async def event_stream():
@@ -288,8 +296,7 @@ async def cancel_plan(plan_id: str):
 
     if plan.status in [PlanStatus.COMPLETED, PlanStatus.CANCELLED]:
         raise HTTPException(
-            status_code=400,
-            detail=f"Cannot cancel plan (status: {plan.status.value})"
+            status_code=400, detail=f"Cannot cancel plan (status: {plan.status.value})"
         )
 
     plan.status = PlanStatus.CANCELLED
@@ -301,6 +308,7 @@ async def cancel_plan(plan_id: str):
 # ============================================================
 # WEBSOCKET FOR REAL-TIME UPDATES
 # ============================================================
+
 
 @router.websocket("/{plan_id}/ws")
 async def plan_websocket(websocket: WebSocket, plan_id: str):
@@ -323,6 +331,7 @@ async def plan_websocket(websocket: WebSocket, plan_id: str):
 
         # If plan is approved, start execution
         if plan["status"] == "approved":
+
             async def on_progress(event: Dict[str, Any]):
                 await websocket.send_json(event)
 

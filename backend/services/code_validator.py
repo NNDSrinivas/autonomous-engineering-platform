@@ -32,9 +32,9 @@ logger = logging.getLogger(__name__)
 
 
 class ValidationLevel(Enum):
-    ERROR = "error"      # Code won't run
+    ERROR = "error"  # Code won't run
     WARNING = "warning"  # Code runs but has issues
-    INFO = "info"        # Suggestions
+    INFO = "info"  # Suggestions
 
 
 @dataclass
@@ -113,28 +113,43 @@ class CodeValidator:
     # Security patterns to detect
     SECURITY_PATTERNS = {
         "python": [
-            (r'eval\s*\(', "Use of eval() is dangerous - potential code injection"),
-            (r'exec\s*\(', "Use of exec() is dangerous - potential code injection"),
-            (r'os\.system\s*\(', "Use of os.system() - prefer subprocess with shell=False"),
-            (r'subprocess.*shell\s*=\s*True', "subprocess with shell=True is vulnerable to injection"),
+            (r"eval\s*\(", "Use of eval() is dangerous - potential code injection"),
+            (r"exec\s*\(", "Use of exec() is dangerous - potential code injection"),
+            (
+                r"os\.system\s*\(",
+                "Use of os.system() - prefer subprocess with shell=False",
+            ),
+            (
+                r"subprocess.*shell\s*=\s*True",
+                "subprocess with shell=True is vulnerable to injection",
+            ),
             (r'password\s*=\s*["\'][^"\']+["\']', "Hardcoded password detected"),
             (r'api_key\s*=\s*["\'][^"\']+["\']', "Hardcoded API key detected"),
             (r'secret\s*=\s*["\'][^"\']+["\']', "Hardcoded secret detected"),
-            (r'pickle\.loads?\s*\(', "pickle is insecure - can execute arbitrary code"),
-            (r'yaml\.load\s*\([^)]*\)', "yaml.load without Loader is unsafe - use safe_load"),
+            (r"pickle\.loads?\s*\(", "pickle is insecure - can execute arbitrary code"),
+            (
+                r"yaml\.load\s*\([^)]*\)",
+                "yaml.load without Loader is unsafe - use safe_load",
+            ),
         ],
         "javascript": [
-            (r'eval\s*\(', "Use of eval() is dangerous"),
-            (r'innerHTML\s*=', "innerHTML can lead to XSS - use textContent or sanitize"),
-            (r'document\.write\s*\(', "document.write can be exploited"),
+            (r"eval\s*\(", "Use of eval() is dangerous"),
+            (
+                r"innerHTML\s*=",
+                "innerHTML can lead to XSS - use textContent or sanitize",
+            ),
+            (r"document\.write\s*\(", "document.write can be exploited"),
             (r'password\s*[=:]\s*["\'][^"\']+["\']', "Hardcoded password detected"),
             (r'api_key\s*[=:]\s*["\'][^"\']+["\']', "Hardcoded API key detected"),
         ],
         "sql": [
-            (r'SELECT\s+\*\s+FROM', "SELECT * is inefficient - specify columns"),
-            (r"'\s*\+\s*\w+\s*\+\s*'", "String concatenation in SQL - use parameterized queries"),
-            (r'DROP\s+TABLE', "DROP TABLE detected - ensure this is intentional"),
-            (r'DELETE\s+FROM\s+\w+\s*$', "DELETE without WHERE - will delete all rows"),
+            (r"SELECT\s+\*\s+FROM", "SELECT * is inefficient - specify columns"),
+            (
+                r"'\s*\+\s*\w+\s*\+\s*'",
+                "String concatenation in SQL - use parameterized queries",
+            ),
+            (r"DROP\s+TABLE", "DROP TABLE detected - ensure this is intentional"),
+            (r"DELETE\s+FROM\s+\w+\s*$", "DELETE without WHERE - will delete all rows"),
         ],
     }
 
@@ -158,11 +173,7 @@ class CodeValidator:
     def _command_exists(self, cmd: str) -> bool:
         """Check if a command exists."""
         try:
-            subprocess.run(
-                ["which", cmd],
-                capture_output=True,
-                timeout=5
-            )
+            subprocess.run(["which", cmd], capture_output=True, timeout=5)
             return True
         except Exception:
             return False
@@ -173,7 +184,9 @@ class CodeValidator:
         ext = path.suffix.lower()
 
         # Special case for Dockerfile
-        if path.name.lower() == "dockerfile" or path.name.lower().startswith("dockerfile."):
+        if path.name.lower() == "dockerfile" or path.name.lower().startswith(
+            "dockerfile."
+        ):
             return "dockerfile"
 
         if ext in self.LANGUAGE_MAP:
@@ -200,10 +213,12 @@ class CodeValidator:
         )
 
         if language == "unknown":
-            result.issues.append(ValidationIssue(
-                level=ValidationLevel.INFO,
-                message=f"Unknown language for {filepath} - skipping validation"
-            ))
+            result.issues.append(
+                ValidationIssue(
+                    level=ValidationLevel.INFO,
+                    message=f"Unknown language for {filepath} - skipping validation",
+                )
+            )
             return result
 
         # Run language-specific validation
@@ -235,7 +250,7 @@ class CodeValidator:
 
     def _validate_python(self, filepath: str, content: str, result: ValidationResult):
         """Validate Python code."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(content)
             temp_path = f.name
 
@@ -245,20 +260,22 @@ class CodeValidator:
                 ["python3", "-m", "py_compile", temp_path],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
             if proc.returncode != 0:
                 result.syntax_valid = False
                 # Parse error message
                 error_msg = proc.stderr or proc.stdout
-                match = re.search(r'line (\d+)', error_msg)
+                match = re.search(r"line (\d+)", error_msg)
                 line_num = int(match.group(1)) if match else None
-                result.issues.append(ValidationIssue(
-                    level=ValidationLevel.ERROR,
-                    message=f"Syntax error: {error_msg[:200]}",
-                    line=line_num,
-                    rule="syntax"
-                ))
+                result.issues.append(
+                    ValidationIssue(
+                        level=ValidationLevel.ERROR,
+                        message=f"Syntax error: {error_msg[:200]}",
+                        line=line_num,
+                        rule="syntax",
+                    )
+                )
 
             # 2. Linting with ruff (fast) or pylint
             if self.tools.get("ruff"):
@@ -283,19 +300,21 @@ class CodeValidator:
                 ["ruff", "check", "--output-format=json", filepath],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
             if proc.stdout:
                 issues = json.loads(proc.stdout)
                 for issue in issues[:10]:  # Limit to 10 issues
-                    result.issues.append(ValidationIssue(
-                        level=ValidationLevel.WARNING,
-                        message=issue.get("message", "Unknown issue"),
-                        line=issue.get("location", {}).get("row"),
-                        column=issue.get("location", {}).get("column"),
-                        rule=issue.get("code"),
-                        fix_suggestion=issue.get("fix", {}).get("message")
-                    ))
+                    result.issues.append(
+                        ValidationIssue(
+                            level=ValidationLevel.WARNING,
+                            message=issue.get("message", "Unknown issue"),
+                            line=issue.get("location", {}).get("row"),
+                            column=issue.get("location", {}).get("column"),
+                            rule=issue.get("code"),
+                            fix_suggestion=issue.get("fix", {}).get("message"),
+                        )
+                    )
                 if issues:
                     result.lint_passed = False
         except Exception as e:
@@ -308,19 +327,25 @@ class CodeValidator:
                 ["pylint", "--output-format=json", "--max-line-length=120", filepath],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
             if proc.stdout:
                 issues = json.loads(proc.stdout)
                 for issue in issues[:10]:
-                    level = ValidationLevel.ERROR if issue.get("type") == "error" else ValidationLevel.WARNING
-                    result.issues.append(ValidationIssue(
-                        level=level,
-                        message=issue.get("message", "Unknown"),
-                        line=issue.get("line"),
-                        column=issue.get("column"),
-                        rule=issue.get("message-id")
-                    ))
+                    level = (
+                        ValidationLevel.ERROR
+                        if issue.get("type") == "error"
+                        else ValidationLevel.WARNING
+                    )
+                    result.issues.append(
+                        ValidationIssue(
+                            level=level,
+                            message=issue.get("message", "Unknown"),
+                            line=issue.get("line"),
+                            column=issue.get("column"),
+                            rule=issue.get("message-id"),
+                        )
+                    )
                 if any(i.get("type") == "error" for i in issues):
                     result.lint_passed = False
         except Exception as e:
@@ -333,18 +358,20 @@ class CodeValidator:
                 ["mypy", "--ignore-missing-imports", "--no-error-summary", filepath],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
             if proc.returncode != 0 and proc.stdout:
-                for line in proc.stdout.strip().split('\n')[:5]:
-                    match = re.match(r'.*:(\d+): (error|warning): (.+)', line)
+                for line in proc.stdout.strip().split("\n")[:5]:
+                    match = re.match(r".*:(\d+): (error|warning): (.+)", line)
                     if match:
-                        result.issues.append(ValidationIssue(
-                            level=ValidationLevel.WARNING,
-                            message=match.group(3),
-                            line=int(match.group(1)),
-                            rule="mypy"
-                        ))
+                        result.issues.append(
+                            ValidationIssue(
+                                level=ValidationLevel.WARNING,
+                                message=match.group(3),
+                                line=int(match.group(1)),
+                                rule="mypy",
+                            )
+                        )
                 result.type_check_passed = False
         except Exception as e:
             logger.warning(f"Mypy failed: {e}")
@@ -352,22 +379,26 @@ class CodeValidator:
     def _check_python_imports(self, content: str, result: ValidationResult):
         """Check Python imports for common issues."""
         # Find all imports
-        imports = re.findall(r'^(?:from\s+(\S+)|import\s+(\S+))', content, re.MULTILINE)
+        imports = re.findall(r"^(?:from\s+(\S+)|import\s+(\S+))", content, re.MULTILINE)
 
         # Check for relative imports in what looks like a standalone file
         for match in imports:
             module = match[0] or match[1]
-            if module.startswith('.'):
-                result.issues.append(ValidationIssue(
-                    level=ValidationLevel.INFO,
-                    message=f"Relative import '{module}' - ensure package structure exists",
-                    rule="import-check"
-                ))
+            if module.startswith("."):
+                result.issues.append(
+                    ValidationIssue(
+                        level=ValidationLevel.INFO,
+                        message=f"Relative import '{module}' - ensure package structure exists",
+                        rule="import-check",
+                    )
+                )
 
-    def _validate_javascript(self, filepath: str, content: str, result: ValidationResult):
+    def _validate_javascript(
+        self, filepath: str, content: str, result: ValidationResult
+    ):
         """Validate JavaScript code."""
         # Basic syntax check using Node
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=False) as f:
             f.write(content)
             temp_path = f.name
 
@@ -376,15 +407,17 @@ class CodeValidator:
                 ["node", "--check", temp_path],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
             if proc.returncode != 0:
                 result.syntax_valid = False
-                result.issues.append(ValidationIssue(
-                    level=ValidationLevel.ERROR,
-                    message=f"Syntax error: {proc.stderr[:200]}",
-                    rule="syntax"
-                ))
+                result.issues.append(
+                    ValidationIssue(
+                        level=ValidationLevel.ERROR,
+                        message=f"Syntax error: {proc.stderr[:200]}",
+                        rule="syntax",
+                    )
+                )
         except FileNotFoundError:
             # Node not installed, skip syntax check
             pass
@@ -393,17 +426,21 @@ class CodeValidator:
         finally:
             os.unlink(temp_path)
 
-    def _validate_typescript(self, filepath: str, content: str, result: ValidationResult):
+    def _validate_typescript(
+        self, filepath: str, content: str, result: ValidationResult
+    ):
         """Validate TypeScript code."""
         # TypeScript validation needs tsc
         if not self.tools.get("tsc"):
-            result.issues.append(ValidationIssue(
-                level=ValidationLevel.INFO,
-                message="TypeScript compiler not available - skipping type check"
-            ))
+            result.issues.append(
+                ValidationIssue(
+                    level=ValidationLevel.INFO,
+                    message="TypeScript compiler not available - skipping type check",
+                )
+            )
             return
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.ts', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ts", delete=False) as f:
             f.write(content)
             temp_path = f.name
 
@@ -412,15 +449,17 @@ class CodeValidator:
                 ["tsc", "--noEmit", "--esModuleInterop", "--skipLibCheck", temp_path],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
             if proc.returncode != 0:
-                for line in proc.stderr.strip().split('\n')[:5]:
-                    result.issues.append(ValidationIssue(
-                        level=ValidationLevel.ERROR,
-                        message=line[:200],
-                        rule="typescript"
-                    ))
+                for line in proc.stderr.strip().split("\n")[:5]:
+                    result.issues.append(
+                        ValidationIssue(
+                            level=ValidationLevel.ERROR,
+                            message=line[:200],
+                            rule="typescript",
+                        )
+                    )
                 result.type_check_passed = False
         except Exception as e:
             logger.warning(f"TS validation failed: {e}")
@@ -449,15 +488,17 @@ class CodeValidator:
                     capture_output=True,
                     text=True,
                     cwd=tmpdir,
-                    timeout=30
+                    timeout=30,
                 )
                 if proc.returncode != 0:
                     result.syntax_valid = False
-                    result.issues.append(ValidationIssue(
-                        level=ValidationLevel.ERROR,
-                        message=proc.stderr[:200],
-                        rule="go-build"
-                    ))
+                    result.issues.append(
+                        ValidationIssue(
+                            level=ValidationLevel.ERROR,
+                            message=proc.stderr[:200],
+                            rule="go-build",
+                        )
+                    )
 
                 # Run go vet
                 proc = subprocess.run(
@@ -465,14 +506,16 @@ class CodeValidator:
                     capture_output=True,
                     text=True,
                     cwd=tmpdir,
-                    timeout=30
+                    timeout=30,
                 )
                 if proc.returncode != 0:
-                    result.issues.append(ValidationIssue(
-                        level=ValidationLevel.WARNING,
-                        message=proc.stderr[:200],
-                        rule="go-vet"
-                    ))
+                    result.issues.append(
+                        ValidationIssue(
+                            level=ValidationLevel.WARNING,
+                            message=proc.stderr[:200],
+                            rule="go-vet",
+                        )
+                    )
             except Exception as e:
                 logger.warning(f"Go validation failed: {e}")
 
@@ -480,14 +523,17 @@ class CodeValidator:
         """Validate YAML syntax."""
         try:
             import yaml
+
             yaml.safe_load(content)
         except yaml.YAMLError as e:
             result.syntax_valid = False
-            result.issues.append(ValidationIssue(
-                level=ValidationLevel.ERROR,
-                message=f"YAML syntax error: {str(e)[:200]}",
-                rule="yaml-syntax"
-            ))
+            result.issues.append(
+                ValidationIssue(
+                    level=ValidationLevel.ERROR,
+                    message=f"YAML syntax error: {str(e)[:200]}",
+                    rule="yaml-syntax",
+                )
+            )
         except ImportError:
             # PyYAML not installed
             pass
@@ -498,60 +544,72 @@ class CodeValidator:
             json.loads(content)
         except json.JSONDecodeError as e:
             result.syntax_valid = False
-            result.issues.append(ValidationIssue(
-                level=ValidationLevel.ERROR,
-                message=f"JSON syntax error at line {e.lineno}: {e.msg}",
-                line=e.lineno,
-                rule="json-syntax"
-            ))
+            result.issues.append(
+                ValidationIssue(
+                    level=ValidationLevel.ERROR,
+                    message=f"JSON syntax error at line {e.lineno}: {e.msg}",
+                    line=e.lineno,
+                    rule="json-syntax",
+                )
+            )
 
-    def _validate_dockerfile(self, filepath: str, content: str, result: ValidationResult):
+    def _validate_dockerfile(
+        self, filepath: str, content: str, result: ValidationResult
+    ):
         """Validate Dockerfile."""
         # Check for common Dockerfile issues
-        lines = content.split('\n')
+        lines = content.split("\n")
         has_from = False
 
         for i, line in enumerate(lines, 1):
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
 
-            if line.startswith('FROM'):
+            if line.startswith("FROM"):
                 has_from = True
                 # Check for latest tag
-                if ':latest' in line or (line.count(':') == 0 and ' ' in line):
-                    result.issues.append(ValidationIssue(
-                        level=ValidationLevel.WARNING,
-                        message="Avoid using 'latest' tag - pin to specific version",
-                        line=i,
-                        rule="dockerfile-latest"
-                    ))
+                if ":latest" in line or (line.count(":") == 0 and " " in line):
+                    result.issues.append(
+                        ValidationIssue(
+                            level=ValidationLevel.WARNING,
+                            message="Avoid using 'latest' tag - pin to specific version",
+                            line=i,
+                            rule="dockerfile-latest",
+                        )
+                    )
 
             # Check for ADD vs COPY
-            if line.startswith('ADD ') and 'http' not in line and '.tar' not in line:
-                result.issues.append(ValidationIssue(
-                    level=ValidationLevel.WARNING,
-                    message="Use COPY instead of ADD for simple file copying",
-                    line=i,
-                    rule="dockerfile-add"
-                ))
+            if line.startswith("ADD ") and "http" not in line and ".tar" not in line:
+                result.issues.append(
+                    ValidationIssue(
+                        level=ValidationLevel.WARNING,
+                        message="Use COPY instead of ADD for simple file copying",
+                        line=i,
+                        rule="dockerfile-add",
+                    )
+                )
 
             # Check for apt-get without cleanup
-            if 'apt-get install' in line and 'rm -rf /var/lib/apt' not in content:
-                result.issues.append(ValidationIssue(
-                    level=ValidationLevel.WARNING,
-                    message="Consider cleaning apt cache to reduce image size",
-                    line=i,
-                    rule="dockerfile-apt-cleanup"
-                ))
+            if "apt-get install" in line and "rm -rf /var/lib/apt" not in content:
+                result.issues.append(
+                    ValidationIssue(
+                        level=ValidationLevel.WARNING,
+                        message="Consider cleaning apt cache to reduce image size",
+                        line=i,
+                        rule="dockerfile-apt-cleanup",
+                    )
+                )
 
         if not has_from:
             result.syntax_valid = False
-            result.issues.append(ValidationIssue(
-                level=ValidationLevel.ERROR,
-                message="Dockerfile must start with FROM instruction",
-                rule="dockerfile-from"
-            ))
+            result.issues.append(
+                ValidationIssue(
+                    level=ValidationLevel.ERROR,
+                    message="Dockerfile must start with FROM instruction",
+                    rule="dockerfile-from",
+                )
+            )
 
     def _validate_sql(self, filepath: str, content: str, result: ValidationResult):
         """Validate SQL (basic checks)."""
@@ -560,25 +618,24 @@ class CodeValidator:
 
     def _validate_bash(self, filepath: str, content: str, result: ValidationResult):
         """Validate bash script."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
             f.write(content)
             temp_path = f.name
 
         try:
             # Check syntax with bash -n
             proc = subprocess.run(
-                ["bash", "-n", temp_path],
-                capture_output=True,
-                text=True,
-                timeout=10
+                ["bash", "-n", temp_path], capture_output=True, text=True, timeout=10
             )
             if proc.returncode != 0:
                 result.syntax_valid = False
-                result.issues.append(ValidationIssue(
-                    level=ValidationLevel.ERROR,
-                    message=f"Bash syntax error: {proc.stderr[:200]}",
-                    rule="bash-syntax"
-                ))
+                result.issues.append(
+                    ValidationIssue(
+                        level=ValidationLevel.ERROR,
+                        message=f"Bash syntax error: {proc.stderr[:200]}",
+                        rule="bash-syntax",
+                    )
+                )
         except Exception as e:
             logger.warning(f"Bash validation failed: {e}")
         finally:
@@ -588,11 +645,13 @@ class CodeValidator:
         """Basic validation for unknown/unsupported languages."""
         # Just check it's not empty
         if not content.strip():
-            result.issues.append(ValidationIssue(
-                level=ValidationLevel.WARNING,
-                message="File is empty",
-                rule="empty-file"
-            ))
+            result.issues.append(
+                ValidationIssue(
+                    level=ValidationLevel.WARNING,
+                    message="File is empty",
+                    rule="empty-file",
+                )
+            )
 
     # ============================================================
     # SECURITY SCANNING
@@ -606,13 +665,15 @@ class CodeValidator:
             matches = re.finditer(pattern, content, re.IGNORECASE)
             for match in matches:
                 # Find line number
-                line_num = content[:match.start()].count('\n') + 1
-                result.issues.append(ValidationIssue(
-                    level=ValidationLevel.WARNING,
-                    message=f"Security: {message}",
-                    line=line_num,
-                    rule="security"
-                ))
+                line_num = content[: match.start()].count("\n") + 1
+                result.issues.append(
+                    ValidationIssue(
+                        level=ValidationLevel.WARNING,
+                        message=f"Security: {message}",
+                        line=line_num,
+                        rule="security",
+                    )
+                )
                 result.security_passed = False
 
 
@@ -623,6 +684,7 @@ class CodeValidator:
 # Global validator instance
 _validator = None
 
+
 def get_validator() -> CodeValidator:
     """Get or create the global validator instance."""
     global _validator
@@ -631,7 +693,9 @@ def get_validator() -> CodeValidator:
     return _validator
 
 
-def validate_navi_output(files: Dict[str, str]) -> Tuple[bool, Dict[str, ValidationResult]]:
+def validate_navi_output(
+    files: Dict[str, str],
+) -> Tuple[bool, Dict[str, ValidationResult]]:
     """
     Validate NAVI's generated files before presenting to user.
 
@@ -654,7 +718,9 @@ def format_validation_summary(results: Dict[str, ValidationResult]) -> str:
         if result.is_valid:
             lines.append(f"✅ {filepath}: Valid")
         else:
-            lines.append(f"❌ {filepath}: {result.error_count} errors, {result.warning_count} warnings")
+            lines.append(
+                f"❌ {filepath}: {result.error_count} errors, {result.warning_count} warnings"
+            )
             for issue in result.issues[:3]:
                 loc = f"L{issue.line}" if issue.line else ""
                 lines.append(f"   - [{issue.level.value}] {loc} {issue.message}")

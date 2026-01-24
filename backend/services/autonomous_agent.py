@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class TaskStatus(Enum):
     """Status of an autonomous task."""
+
     PLANNING = "planning"
     EXECUTING = "executing"
     VERIFYING = "verifying"
@@ -37,6 +38,7 @@ class TaskStatus(Enum):
 
 class VerificationType(Enum):
     """Types of verification to run after changes."""
+
     TYPESCRIPT = "typescript"
     TESTS = "tests"
     BUILD = "build"
@@ -47,6 +49,7 @@ class VerificationType(Enum):
 @dataclass
 class VerificationResult:
     """Result of a verification step."""
+
     type: VerificationType
     success: bool
     output: str
@@ -57,21 +60,25 @@ class VerificationResult:
 @dataclass
 class ErrorSignature:
     """Signature of an error for loop detection."""
+
     error_type: str  # e.g., "typescript", "build"
-    file_path: str   # The file causing the error
+    file_path: str  # The file causing the error
     error_pattern: str  # Normalized error message pattern
     iteration: int
 
-    def matches(self, other: 'ErrorSignature') -> bool:
+    def matches(self, other: "ErrorSignature") -> bool:
         """Check if this error signature matches another (same file and pattern)."""
-        return (self.error_type == other.error_type and
-                self.file_path == other.file_path and
-                self.error_pattern == other.error_pattern)
+        return (
+            self.error_type == other.error_type
+            and self.file_path == other.file_path
+            and self.error_pattern == other.error_pattern
+        )
 
 
 @dataclass
 class FailedApproach:
     """Record of a failed approach for the LLM to avoid repeating."""
+
     iteration: int
     description: str
     files_touched: List[str]
@@ -81,6 +88,7 @@ class FailedApproach:
 @dataclass
 class TaskContext:
     """Context maintained across turns for a task."""
+
     task_id: str
     original_request: str
     workspace_path: str
@@ -96,10 +104,18 @@ class TaskContext:
     conversation_history: List[Dict[str, str]] = field(default_factory=list)
     project_type: Optional[str] = None
     framework: Optional[str] = None
-    tool_calls_per_iteration: Dict[int, List[str]] = field(default_factory=dict)  # Track tool calls per iteration
-    files_per_iteration: Dict[int, List[str]] = field(default_factory=dict)  # Track files created per iteration
-    error_signatures: List[ErrorSignature] = field(default_factory=list)  # Track specific error patterns
-    failed_approaches: List[FailedApproach] = field(default_factory=list)  # Track what approaches failed
+    tool_calls_per_iteration: Dict[int, List[str]] = field(
+        default_factory=dict
+    )  # Track tool calls per iteration
+    files_per_iteration: Dict[int, List[str]] = field(
+        default_factory=dict
+    )  # Track files created per iteration
+    error_signatures: List[ErrorSignature] = field(
+        default_factory=list
+    )  # Track specific error patterns
+    failed_approaches: List[FailedApproach] = field(
+        default_factory=list
+    )  # Track what approaches failed
     consecutive_same_error_count: int = 0  # Count of consecutive identical errors
 
 
@@ -181,9 +197,11 @@ class ProjectAnalyzer:
                 logger.warning(f"Failed to parse package.json: {e}")
 
         # Check for Python project
-        if os.path.exists(os.path.join(workspace_path, "pyproject.toml")) or \
-           os.path.exists(os.path.join(workspace_path, "setup.py")) or \
-           os.path.exists(os.path.join(workspace_path, "requirements.txt")):
+        if (
+            os.path.exists(os.path.join(workspace_path, "pyproject.toml"))
+            or os.path.exists(os.path.join(workspace_path, "setup.py"))
+            or os.path.exists(os.path.join(workspace_path, "requirements.txt"))
+        ):
 
             framework = "python"
             if os.path.exists(os.path.join(workspace_path, "manage.py")):
@@ -191,13 +209,22 @@ class ProjectAnalyzer:
             elif os.path.exists(os.path.join(workspace_path, "app.py")):
                 framework = "flask"
 
-            commands["typecheck"] = "python -m mypy . --ignore-missing-imports" if \
-                os.path.exists(os.path.join(workspace_path, "mypy.ini")) else None
-            commands["test"] = "python -m pytest" if \
-                os.path.exists(os.path.join(workspace_path, "pytest.ini")) or \
-                os.path.exists(os.path.join(workspace_path, "tests")) else None
-            commands["lint"] = "python -m ruff check ." if \
-                os.path.exists(os.path.join(workspace_path, "ruff.toml")) else None
+            commands["typecheck"] = (
+                "python -m mypy . --ignore-missing-imports"
+                if os.path.exists(os.path.join(workspace_path, "mypy.ini"))
+                else None
+            )
+            commands["test"] = (
+                "python -m pytest"
+                if os.path.exists(os.path.join(workspace_path, "pytest.ini"))
+                or os.path.exists(os.path.join(workspace_path, "tests"))
+                else None
+            )
+            commands["lint"] = (
+                "python -m ruff check ."
+                if os.path.exists(os.path.join(workspace_path, "ruff.toml"))
+                else None
+            )
 
             return "python", framework, commands
 
@@ -205,8 +232,11 @@ class ProjectAnalyzer:
         if os.path.exists(os.path.join(workspace_path, "go.mod")):
             commands["build"] = "go build ./..."
             commands["test"] = "go test ./..."
-            commands["lint"] = "golangci-lint run" if \
-                os.path.exists(os.path.join(workspace_path, ".golangci.yml")) else None
+            commands["lint"] = (
+                "golangci-lint run"
+                if os.path.exists(os.path.join(workspace_path, ".golangci.yml"))
+                else None
+            )
             return "go", "go", commands
 
         # Check for Rust project
@@ -226,9 +256,7 @@ class VerificationRunner:
         self.workspace_path = workspace_path
 
     async def run_command(
-        self,
-        command: str,
-        timeout: int = 120
+        self, command: str, timeout: int = 120
     ) -> Tuple[bool, str, int]:
         """Run a command and return (success, output, exit_code)."""
         try:
@@ -241,8 +269,7 @@ class VerificationRunner:
 
             try:
                 stdout, _ = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=timeout
+                    process.communicate(), timeout=timeout
                 )
                 output = stdout.decode("utf-8", errors="replace")
                 return process.returncode == 0, output, process.returncode
@@ -254,9 +281,7 @@ class VerificationRunner:
             return False, str(e), -1
 
     async def run_verification(
-        self,
-        verification_type: VerificationType,
-        command: str
+        self, verification_type: VerificationType, command: str
     ) -> VerificationResult:
         """Run a verification command and parse the results."""
         success, output, exit_code = await self.run_command(command)
@@ -276,14 +301,12 @@ class VerificationRunner:
             type=verification_type,
             success=success,
             output=output[:5000],  # Limit output size
-            errors=errors[:20],    # Limit error count
-            warnings=warnings[:20]
+            errors=errors[:20],  # Limit error count
+            warnings=warnings[:20],
         )
 
     async def verify_changes(
-        self,
-        commands: Dict[str, Optional[str]],
-        run_tests: bool = True
+        self, commands: Dict[str, Optional[str]], run_tests: bool = True
     ) -> List[VerificationResult]:
         """Run all applicable verification commands."""
         results = []
@@ -291,8 +314,7 @@ class VerificationRunner:
         # Always run typecheck if available
         if commands.get("typecheck"):
             result = await self.run_verification(
-                VerificationType.TYPESCRIPT,
-                commands["typecheck"]
+                VerificationType.TYPESCRIPT, commands["typecheck"]
             )
             results.append(result)
             # If typecheck fails, don't continue
@@ -302,24 +324,21 @@ class VerificationRunner:
         # Run lint if available
         if commands.get("lint"):
             result = await self.run_verification(
-                VerificationType.LINT,
-                commands["lint"]
+                VerificationType.LINT, commands["lint"]
             )
             results.append(result)
 
         # Run tests if requested and available
         if run_tests and commands.get("test"):
             result = await self.run_verification(
-                VerificationType.TESTS,
-                commands["test"]
+                VerificationType.TESTS, commands["test"]
             )
             results.append(result)
 
         # Run build if available
         if commands.get("build"):
             result = await self.run_verification(
-                VerificationType.BUILD,
-                commands["build"]
+                VerificationType.BUILD, commands["build"]
             )
             results.append(result)
 
@@ -746,22 +765,24 @@ class AutonomousAgent:
         self.verifier = VerificationRunner(workspace_path)
 
         # Detect project and get verification commands
-        self.project_type, self.framework, self.verification_commands = \
+        self.project_type, self.framework, self.verification_commands = (
             ProjectAnalyzer.detect_project_type(workspace_path)
+        )
 
         logger.info(f"[AutonomousAgent] Project: {self.project_type}/{self.framework}")
-        logger.info(f"[AutonomousAgent] Verification commands: {self.verification_commands}")
+        logger.info(
+            f"[AutonomousAgent] Verification commands: {self.verification_commands}"
+        )
 
     def _extract_error_signatures(
-        self,
-        results: List[VerificationResult],
-        iteration: int
+        self, results: List[VerificationResult], iteration: int
     ) -> List[ErrorSignature]:
         """
         Extract error signatures from verification results for loop detection.
         Normalizes error messages to detect when the same fundamental error occurs.
         """
         import re
+
         signatures = []
 
         for result in results:
@@ -774,9 +795,9 @@ class AutonomousAgent:
                 # ESLint: /path/to/file.js:10:5
                 # Webpack: ERROR in ./src/file.tsx
                 file_match = re.search(
-                    r'(?:ERROR in |error in |at |)(?:\.\/)?([^\s:()]+\.[tj]sx?)',
+                    r"(?:ERROR in |error in |at |)(?:\.\/)?([^\s:()]+\.[tj]sx?)",
                     error_line,
-                    re.IGNORECASE
+                    re.IGNORECASE,
                 )
                 file_path = file_match.group(1) if file_match else "unknown"
 
@@ -784,36 +805,45 @@ class AutonomousAgent:
                 # Keep the core error type/message
                 error_pattern = error_line.lower()
                 # Remove line/column numbers
-                error_pattern = re.sub(r'\(\d+,\d+\)', '', error_pattern)
-                error_pattern = re.sub(r':\d+:\d+', '', error_pattern)
-                error_pattern = re.sub(r'line \d+', '', error_pattern)
+                error_pattern = re.sub(r"\(\d+,\d+\)", "", error_pattern)
+                error_pattern = re.sub(r":\d+:\d+", "", error_pattern)
+                error_pattern = re.sub(r"line \d+", "", error_pattern)
                 # Extract key error indicators
-                if 'cannot find module' in error_pattern:
-                    error_pattern = 'cannot_find_module'
-                elif 'syntax error' in error_pattern or 'unexpected token' in error_pattern:
-                    error_pattern = 'syntax_error'
-                elif 'type' in error_pattern and 'error' in error_pattern:
-                    error_pattern = 'type_error'
-                elif 'jsx' in error_pattern:
-                    error_pattern = 'jsx_error'
-                elif 'import' in error_pattern:
-                    error_pattern = 'import_error'
-                elif 'unterminated' in error_pattern or 'string literal' in error_pattern:
-                    error_pattern = 'unterminated_string'
+                if "cannot find module" in error_pattern:
+                    error_pattern = "cannot_find_module"
+                elif (
+                    "syntax error" in error_pattern
+                    or "unexpected token" in error_pattern
+                ):
+                    error_pattern = "syntax_error"
+                elif "type" in error_pattern and "error" in error_pattern:
+                    error_pattern = "type_error"
+                elif "jsx" in error_pattern:
+                    error_pattern = "jsx_error"
+                elif "import" in error_pattern:
+                    error_pattern = "import_error"
+                elif (
+                    "unterminated" in error_pattern or "string literal" in error_pattern
+                ):
+                    error_pattern = "unterminated_string"
                 else:
                     # Keep first 50 chars as pattern
                     error_pattern = error_pattern[:50].strip()
 
-                signatures.append(ErrorSignature(
-                    error_type=result.type.value,
-                    file_path=file_path,
-                    error_pattern=error_pattern,
-                    iteration=iteration
-                ))
+                signatures.append(
+                    ErrorSignature(
+                        error_type=result.type.value,
+                        file_path=file_path,
+                        error_pattern=error_pattern,
+                        iteration=iteration,
+                    )
+                )
 
         return signatures
 
-    def _detect_iteration_loop(self, context: TaskContext) -> Tuple[bool, str, List[str]]:
+    def _detect_iteration_loop(
+        self, context: TaskContext
+    ) -> Tuple[bool, str, List[str]]:
         """
         Detect if the agent is stuck in an iteration loop trying the same fix.
 
@@ -844,8 +874,12 @@ class AutonomousAgent:
             return False, "", []
 
         # Check if this is the same error as last iteration
-        last_iteration_errors = [s for s in context.error_signatures if s.iteration == context.iteration - 1]
-        current_iteration_errors = [s for s in context.error_signatures if s.iteration == context.iteration]
+        last_iteration_errors = [
+            s for s in context.error_signatures if s.iteration == context.iteration - 1
+        ]
+        current_iteration_errors = [
+            s for s in context.error_signatures if s.iteration == context.iteration
+        ]
 
         same_as_last = False
         for curr in current_iteration_errors:
@@ -874,7 +908,7 @@ class AutonomousAgent:
                 "Check if there's an existing working example in the codebase to copy from",
                 "Consider if the file needs to be completely rewritten rather than patched",
                 "Look for a completely different approach to achieve the same goal",
-                "Check if dependencies are missing or incorrectly installed"
+                "Check if dependencies are missing or incorrectly installed",
             ]
         elif context.consecutive_same_error_count >= 2:
             severity = "warning"
@@ -883,50 +917,59 @@ class AutonomousAgent:
                 f"Re-read {', '.join(problem_files)} to see the actual current content",
                 "The error might be in a different location than you think",
                 "Check the import paths and file structure carefully",
-                "Consider if you're fixing the symptom rather than the root cause"
+                "Consider if you're fixing the symptom rather than the root cause",
             ]
 
         # Add specific suggestions based on error patterns
         for pattern_key in recurring.keys():
-            if 'syntax_error' in pattern_key or 'jsx_error' in pattern_key:
-                suggestions.append("For JSX/syntax errors: check for unescaped characters, missing closing tags, or incorrect attribute syntax")
-            elif 'cannot_find_module' in pattern_key:
-                suggestions.append("For module errors: verify the exact path, check if file exists, ensure correct relative path")
-            elif 'type_error' in pattern_key:
-                suggestions.append("For type errors: check the actual type definitions, don't assume types")
+            if "syntax_error" in pattern_key or "jsx_error" in pattern_key:
+                suggestions.append(
+                    "For JSX/syntax errors: check for unescaped characters, missing closing tags, or incorrect attribute syntax"
+                )
+            elif "cannot_find_module" in pattern_key:
+                suggestions.append(
+                    "For module errors: verify the exact path, check if file exists, ensure correct relative path"
+                )
+            elif "type_error" in pattern_key:
+                suggestions.append(
+                    "For type errors: check the actual type definitions, don't assume types"
+                )
 
         return True, severity, suggestions
 
     def _record_failed_approach(self, context: TaskContext, error_summary: str) -> None:
         """Record a failed approach so the LLM knows not to repeat it."""
         # Get files touched in this iteration
-        files_touched = list(set(
-            context.files_modified[-5:] +
-            context.files_created[-5:]
-        ))
+        files_touched = list(
+            set(context.files_modified[-5:] + context.files_created[-5:])
+        )
 
         # Build description of what was attempted
         tool_calls = context.tool_calls_per_iteration.get(context.iteration, [])
         description_parts = []
 
         for tc in tool_calls[-5:]:  # Last 5 tool calls
-            if ':' in tc:
-                tool, target = tc.split(':', 1)
-                if tool == 'write_file':
+            if ":" in tc:
+                tool, target = tc.split(":", 1)
+                if tool == "write_file":
                     description_parts.append(f"Created/wrote {target}")
-                elif tool == 'edit_file':
+                elif tool == "edit_file":
                     description_parts.append(f"Edited {target}")
-                elif tool == 'run_command':
+                elif tool == "run_command":
                     description_parts.append(f"Ran command: {target[:50]}")
 
-        description = "; ".join(description_parts) if description_parts else "Unknown approach"
+        description = (
+            "; ".join(description_parts) if description_parts else "Unknown approach"
+        )
 
-        context.failed_approaches.append(FailedApproach(
-            iteration=context.iteration,
-            description=description,
-            files_touched=files_touched,
-            error_summary=error_summary[:200]
-        ))
+        context.failed_approaches.append(
+            FailedApproach(
+                iteration=context.iteration,
+                description=description,
+                files_touched=files_touched,
+                error_summary=error_summary[:200],
+            )
+        )
 
     def _build_system_prompt(self, context: TaskContext) -> str:
         """Build system prompt with current context."""
@@ -944,11 +987,23 @@ class AutonomousAgent:
             # Node.js ecosystem
             ("Node.js", "node --version 2>/dev/null || echo 'not found'"),
             ("npm", "npm --version 2>/dev/null || echo 'not found'"),
-            ("nvm", "bash -c 'source ~/.nvm/nvm.sh 2>/dev/null && nvm --version' 2>/dev/null || echo 'not found'"),
-            ("Available Node versions", "ls ~/.nvm/versions/node/ 2>/dev/null | tr '\\n' ' ' || echo 'none'"),
+            (
+                "nvm",
+                "bash -c 'source ~/.nvm/nvm.sh 2>/dev/null && nvm --version' 2>/dev/null || echo 'not found'",
+            ),
+            (
+                "Available Node versions",
+                "ls ~/.nvm/versions/node/ 2>/dev/null | tr '\\n' ' ' || echo 'none'",
+            ),
             # Python ecosystem
-            ("Python", "python3 --version 2>/dev/null || python --version 2>/dev/null || echo 'not found'"),
-            ("pip", "pip3 --version 2>/dev/null || pip --version 2>/dev/null || echo 'not found'"),
+            (
+                "Python",
+                "python3 --version 2>/dev/null || python --version 2>/dev/null || echo 'not found'",
+            ),
+            (
+                "pip",
+                "pip3 --version 2>/dev/null || pip --version 2>/dev/null || echo 'not found'",
+            ),
             # Docker
             ("Docker", "docker --version 2>/dev/null || echo 'not found'"),
             ("Docker running", "docker ps >/dev/null 2>&1 && echo 'yes' || echo 'no'"),
@@ -969,7 +1024,7 @@ class AutonomousAgent:
                     capture_output=True,
                     text=True,
                     timeout=10,
-                    cwd=self.workspace_path
+                    cwd=self.workspace_path,
                 )
                 value = result.stdout.strip() or result.stderr.strip() or "unknown"
                 diagnostics.append(f"{name}: {value}")
@@ -979,10 +1034,7 @@ class AutonomousAgent:
         return "\n".join(diagnostics)
 
     async def _generate_plan(
-        self,
-        request: str,
-        env_info: str,
-        context: TaskContext
+        self, request: str, env_info: str, context: TaskContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Generate a high-level plan for complex tasks before execution.
@@ -991,13 +1043,25 @@ class AutonomousAgent:
         # Determine if this is a complex task that needs planning
         # Simple tasks: single file edits, quick questions, simple commands
         # Complex tasks: multi-file changes, new feature implementation, debugging
-        is_complex = (
-            len(request) > 200 or
-            any(kw in request.lower() for kw in [
-                'implement', 'create', 'build', 'develop', 'fix all', 'refactor',
-                'add feature', 'new feature', 'multiple files', 'complete',
-                'full', 'entire', 'whole', 'application', 'project'
-            ])
+        is_complex = len(request) > 200 or any(
+            kw in request.lower()
+            for kw in [
+                "implement",
+                "create",
+                "build",
+                "develop",
+                "fix all",
+                "refactor",
+                "add feature",
+                "new feature",
+                "multiple files",
+                "complete",
+                "full",
+                "entire",
+                "whole",
+                "application",
+                "project",
+            ]
         )
 
         if not is_complex:
@@ -1005,31 +1069,39 @@ class AutonomousAgent:
             request_lower = request.lower()
 
             # Generate a task-specific label based on request content
-            if 'fix' in request_lower or 'error' in request_lower or 'bug' in request_lower:
+            if (
+                "fix" in request_lower
+                or "error" in request_lower
+                or "bug" in request_lower
+            ):
                 label = "Fix the issue"
                 desc = "Analyzing and fixing the reported problem"
-            elif 'add' in request_lower:
+            elif "add" in request_lower:
                 label = "Add requested feature"
                 desc = "Implementing the requested addition"
-            elif 'create' in request_lower:
+            elif "create" in request_lower:
                 label = "Create component"
                 desc = "Creating the requested file or component"
-            elif 'update' in request_lower or 'change' in request_lower:
+            elif "update" in request_lower or "change" in request_lower:
                 label = "Apply changes"
                 desc = "Updating the code as requested"
-            elif 'delete' in request_lower or 'remove' in request_lower:
+            elif "delete" in request_lower or "remove" in request_lower:
                 label = "Remove items"
                 desc = "Removing the specified code or files"
-            elif 'refactor' in request_lower:
+            elif "refactor" in request_lower:
                 label = "Refactor code"
                 desc = "Restructuring code for better quality"
-            elif 'test' in request_lower:
+            elif "test" in request_lower:
                 label = "Run tests"
                 desc = "Executing and verifying tests"
-            elif 'read' in request_lower or 'show' in request_lower or 'what' in request_lower:
+            elif (
+                "read" in request_lower
+                or "show" in request_lower
+                or "what" in request_lower
+            ):
                 label = "Analyze code"
                 desc = "Reading and understanding the code"
-            elif 'explain' in request_lower:
+            elif "explain" in request_lower:
                 label = "Explain code"
                 desc = "Providing explanation of the code"
             else:
@@ -1046,7 +1118,7 @@ class AutonomousAgent:
                     {"id": 1, "label": label, "description": desc, "status": "pending"}
                 ],
                 "estimated_files": [],
-                "is_complex": False
+                "is_complex": False,
             }
             return
 
@@ -1085,25 +1157,28 @@ Return ONLY the JSON, no markdown or explanations."""
             # Use a fast model for planning
             if self.provider == "anthropic":
                 import anthropic
+
                 client = anthropic.AsyncAnthropic(api_key=self.api_key)
                 response = await client.messages.create(
                     model="claude-3-5-haiku-latest",
                     max_tokens=500,
-                    messages=[{"role": "user", "content": plan_prompt}]
+                    messages=[{"role": "user", "content": plan_prompt}],
                 )
                 plan_text = response.content[0].text
             else:
                 import openai
+
                 client = openai.AsyncOpenAI(api_key=self.api_key)
                 response = await client.chat.completions.create(
                     model="gpt-4o-mini",
                     max_tokens=500,
-                    messages=[{"role": "user", "content": plan_prompt}]
+                    messages=[{"role": "user", "content": plan_prompt}],
                 )
                 plan_text = response.choices[0].message.content
 
             # Parse the plan
             import json
+
             # Extract JSON from response (handle potential markdown wrapping)
             plan_text = plan_text.strip()
             if plan_text.startswith("```"):
@@ -1119,18 +1194,20 @@ Return ONLY the JSON, no markdown or explanations."""
             # Ensure steps have proper structure
             formatted_steps = []
             for i, step in enumerate(steps[:5]):  # Max 5 steps
-                formatted_steps.append({
-                    "id": step.get("id", i + 1),
-                    "label": str(step.get("label", f"Step {i + 1}"))[:30],
-                    "description": str(step.get("description", "")),
-                    "status": "pending"
-                })
+                formatted_steps.append(
+                    {
+                        "id": step.get("id", i + 1),
+                        "label": str(step.get("label", f"Step {i + 1}"))[:30],
+                        "description": str(step.get("description", "")),
+                        "status": "pending",
+                    }
+                )
 
             yield {
                 "type": "plan",
                 "steps": formatted_steps,
                 "estimated_files": estimated_files[:10],  # Max 10 files
-                "is_complex": True
+                "is_complex": True,
             }
 
         except Exception as e:
@@ -1138,64 +1215,132 @@ Return ONLY the JSON, no markdown or explanations."""
             # Fall back to a task-specific default plan based on keywords
             request_lower = request.lower()
 
-            if 'fix' in request_lower or 'error' in request_lower or 'bug' in request_lower:
+            if (
+                "fix" in request_lower
+                or "error" in request_lower
+                or "bug" in request_lower
+            ):
                 fallback_steps = [
-                    {"id": 1, "label": "Identify issues", "description": "Find the root cause of errors", "status": "pending"},
-                    {"id": 2, "label": "Apply fixes", "description": "Make corrections to resolve issues", "status": "pending"},
-                    {"id": 3, "label": "Test changes", "description": "Verify fixes work correctly", "status": "pending"}
+                    {
+                        "id": 1,
+                        "label": "Identify issues",
+                        "description": "Find the root cause of errors",
+                        "status": "pending",
+                    },
+                    {
+                        "id": 2,
+                        "label": "Apply fixes",
+                        "description": "Make corrections to resolve issues",
+                        "status": "pending",
+                    },
+                    {
+                        "id": 3,
+                        "label": "Test changes",
+                        "description": "Verify fixes work correctly",
+                        "status": "pending",
+                    },
                 ]
-            elif 'create' in request_lower or 'add' in request_lower or 'new' in request_lower:
+            elif (
+                "create" in request_lower
+                or "add" in request_lower
+                or "new" in request_lower
+            ):
                 fallback_steps = [
-                    {"id": 1, "label": "Check dependencies", "description": "Review existing files and imports", "status": "pending"},
-                    {"id": 2, "label": "Create new files", "description": "Generate required components", "status": "pending"},
-                    {"id": 3, "label": "Update imports", "description": "Connect new files to project", "status": "pending"}
+                    {
+                        "id": 1,
+                        "label": "Check dependencies",
+                        "description": "Review existing files and imports",
+                        "status": "pending",
+                    },
+                    {
+                        "id": 2,
+                        "label": "Create new files",
+                        "description": "Generate required components",
+                        "status": "pending",
+                    },
+                    {
+                        "id": 3,
+                        "label": "Update imports",
+                        "description": "Connect new files to project",
+                        "status": "pending",
+                    },
                 ]
-            elif 'implement' in request_lower or 'build' in request_lower:
+            elif "implement" in request_lower or "build" in request_lower:
                 fallback_steps = [
-                    {"id": 1, "label": "Review requirements", "description": "Understand what needs to be built", "status": "pending"},
-                    {"id": 2, "label": "Build components", "description": "Create the implementation", "status": "pending"},
-                    {"id": 3, "label": "Integrate & test", "description": "Connect and verify functionality", "status": "pending"}
+                    {
+                        "id": 1,
+                        "label": "Review requirements",
+                        "description": "Understand what needs to be built",
+                        "status": "pending",
+                    },
+                    {
+                        "id": 2,
+                        "label": "Build components",
+                        "description": "Create the implementation",
+                        "status": "pending",
+                    },
+                    {
+                        "id": 3,
+                        "label": "Integrate & test",
+                        "description": "Connect and verify functionality",
+                        "status": "pending",
+                    },
                 ]
             else:
                 fallback_steps = [
-                    {"id": 1, "label": "Analyze request", "description": "Understand the task requirements", "status": "pending"},
-                    {"id": 2, "label": "Execute changes", "description": "Perform the necessary actions", "status": "pending"},
-                    {"id": 3, "label": "Verify results", "description": "Ensure task completed successfully", "status": "pending"}
+                    {
+                        "id": 1,
+                        "label": "Analyze request",
+                        "description": "Understand the task requirements",
+                        "status": "pending",
+                    },
+                    {
+                        "id": 2,
+                        "label": "Execute changes",
+                        "description": "Perform the necessary actions",
+                        "status": "pending",
+                    },
+                    {
+                        "id": 3,
+                        "label": "Verify results",
+                        "description": "Ensure task completed successfully",
+                        "status": "pending",
+                    },
                 ]
 
             yield {
                 "type": "plan",
                 "steps": fallback_steps,
                 "estimated_files": [],
-                "is_complex": True
+                "is_complex": True,
             }
 
     async def _execute_tool(
-        self,
-        tool_name: str,
-        arguments: Dict[str, Any],
-        context: TaskContext
+        self, tool_name: str, arguments: Dict[str, Any], context: TaskContext
     ) -> Dict[str, Any]:
         """Execute a tool and track the action in context."""
         try:
             if tool_name == "read_file":
                 path = os.path.join(self.workspace_path, arguments["path"])
                 if not os.path.exists(path):
-                    return {"success": False, "error": f"File not found: {arguments['path']}"}
+                    return {
+                        "success": False,
+                        "error": f"File not found: {arguments['path']}",
+                    }
 
                 with open(path, "r") as f:
                     lines = f.readlines()
 
                 start = arguments.get("start_line", 1) - 1
                 end = arguments.get("end_line", len(lines))
-                content = "".join(lines[max(0, start):end])
+                content = "".join(lines[max(0, start) : end])
 
                 context.files_read.append(arguments["path"])
                 return {
                     "success": True,
                     "content": content,
                     "total_lines": len(lines),
-                    "path": arguments["path"]
+                    "path": arguments["path"],
                 }
 
             elif tool_name == "write_file":
@@ -1206,7 +1351,9 @@ Return ONLY the JSON, no markdown or explanations."""
                     return {"success": False, "error": "No file path provided"}
 
                 if not content:
-                    logger.warning(f"write_file called with empty content for {file_path}")
+                    logger.warning(
+                        f"write_file called with empty content for {file_path}"
+                    )
 
                 path = os.path.join(self.workspace_path, file_path)
 
@@ -1222,12 +1369,18 @@ Return ONLY the JSON, no markdown or explanations."""
                         f.write(content)
                 except Exception as write_error:
                     logger.error(f"Failed to write file {file_path}: {write_error}")
-                    return {"success": False, "error": f"Failed to write file: {write_error}"}
+                    return {
+                        "success": False,
+                        "error": f"Failed to write file: {write_error}",
+                    }
 
                 # Verify the file was actually created/written
                 if not os.path.exists(path):
                     logger.error(f"File {file_path} was not created despite no errors")
-                    return {"success": False, "error": f"File {file_path} was not created"}
+                    return {
+                        "success": False,
+                        "error": f"File {file_path} was not created",
+                    }
 
                 # Track the file
                 if is_new:
@@ -1243,13 +1396,16 @@ Return ONLY the JSON, no markdown or explanations."""
                     "success": True,
                     "path": file_path,
                     "action": "created" if is_new else "modified",
-                    "size": len(content)
+                    "size": len(content),
                 }
 
             elif tool_name == "edit_file":
                 path = os.path.join(self.workspace_path, arguments["path"])
                 if not os.path.exists(path):
-                    return {"success": False, "error": f"File not found: {arguments['path']}"}
+                    return {
+                        "success": False,
+                        "error": f"File not found: {arguments['path']}",
+                    }
 
                 with open(path, "r") as f:
                     content = f.read()
@@ -1258,10 +1414,12 @@ Return ONLY the JSON, no markdown or explanations."""
                     return {
                         "success": False,
                         "error": "Could not find the text to replace. The file may have changed.",
-                        "hint": "Try reading the file again to see current content."
+                        "hint": "Try reading the file again to see current content.",
                     }
 
-                new_content = content.replace(arguments["old_text"], arguments["new_text"], 1)
+                new_content = content.replace(
+                    arguments["old_text"], arguments["new_text"], 1
+                )
                 with open(path, "w") as f:
                     f.write(new_content)
 
@@ -1283,34 +1441,38 @@ Return ONLY the JSON, no markdown or explanations."""
                     cwd=cwd,
                     capture_output=True,
                     text=True,
-                    timeout=120
+                    timeout=120,
                 )
 
-                context.commands_run.append({
-                    "command": arguments["command"],
-                    "exit_code": result.returncode,
-                    "success": result.returncode == 0
-                })
+                context.commands_run.append(
+                    {
+                        "command": arguments["command"],
+                        "exit_code": result.returncode,
+                        "success": result.returncode == 0,
+                    }
+                )
 
                 return {
                     "success": result.returncode == 0,
                     "exit_code": result.returncode,
                     "stdout": result.stdout[:3000] if result.stdout else "",
-                    "stderr": result.stderr[:3000] if result.stderr else ""
+                    "stderr": result.stderr[:3000] if result.stderr else "",
                 }
 
             elif tool_name == "search_files":
                 import glob as glob_module
+
                 pattern = arguments["pattern"]
                 search_type = arguments["search_type"]
                 results = []
 
                 if search_type == "filename":
                     matches = glob_module.glob(
-                        os.path.join(self.workspace_path, pattern),
-                        recursive=True
+                        os.path.join(self.workspace_path, pattern), recursive=True
                     )
-                    results = [os.path.relpath(m, self.workspace_path) for m in matches[:30]]
+                    results = [
+                        os.path.relpath(m, self.workspace_path) for m in matches[:30]
+                    ]
                 else:
                     try:
                         result = subprocess.run(
@@ -1318,7 +1480,7 @@ Return ONLY the JSON, no markdown or explanations."""
                             cwd=self.workspace_path,
                             capture_output=True,
                             text=True,
-                            timeout=30
+                            timeout=30,
                         )
                         if result.stdout:
                             results = result.stdout.strip().split("\n")[:30]
@@ -1335,10 +1497,12 @@ Return ONLY the JSON, no markdown or explanations."""
                 entries = []
                 for entry in sorted(os.listdir(path))[:50]:
                     full_path = os.path.join(path, entry)
-                    entries.append({
-                        "name": entry,
-                        "type": "directory" if os.path.isdir(full_path) else "file"
-                    })
+                    entries.append(
+                        {
+                            "name": entry,
+                            "type": "directory" if os.path.isdir(full_path) else "file",
+                        }
+                    )
 
                 return {"success": True, "entries": entries}
 
@@ -1355,7 +1519,7 @@ Return ONLY the JSON, no markdown or explanations."""
 
         # If we modified files, suggest testing
         if context.files_modified:
-            if any('test' in f.lower() for f in context.files_modified):
+            if any("test" in f.lower() for f in context.files_modified):
                 steps.append("Run tests to verify the changes")
             else:
                 steps.append("Run tests to verify the changes work correctly")
@@ -1366,8 +1530,15 @@ Return ONLY the JSON, no markdown or explanations."""
 
         # If we ran commands that built something
         if context.commands_run:
-            has_build = any('build' in cmd.get('command', '').lower() for cmd in context.commands_run)
-            has_start = any('start' in cmd.get('command', '').lower() or 'dev' in cmd.get('command', '').lower() for cmd in context.commands_run)
+            has_build = any(
+                "build" in cmd.get("command", "").lower()
+                for cmd in context.commands_run
+            )
+            has_start = any(
+                "start" in cmd.get("command", "").lower()
+                or "dev" in cmd.get("command", "").lower()
+                for cmd in context.commands_run
+            )
 
             if has_build and not has_start:
                 steps.append("Start the development server to see the changes")
@@ -1391,9 +1562,7 @@ Return ONLY the JSON, no markdown or explanations."""
         return steps[:3]
 
     async def _call_llm_with_tools(
-        self,
-        messages: List[Dict[str, Any]],
-        context: TaskContext
+        self, messages: List[Dict[str, Any]], context: TaskContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Call LLM with tools and stream the response."""
 
@@ -1407,10 +1576,7 @@ Return ONLY the JSON, no markdown or explanations."""
                 yield event
 
     async def _call_anthropic(
-        self,
-        messages: List[Dict[str, Any]],
-        system_prompt: str,
-        context: TaskContext
+        self, messages: List[Dict[str, Any]], system_prompt: str, context: TaskContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Call Anthropic Claude with tools."""
         import aiohttp
@@ -1437,7 +1603,9 @@ Return ONLY the JSON, no markdown or explanations."""
                     "https://api.anthropic.com/v1/messages",
                     headers=headers,
                     json=payload,
-                    timeout=aiohttp.ClientTimeout(total=600),  # 10 minutes for complex operations
+                    timeout=aiohttp.ClientTimeout(
+                        total=600
+                    ),  # 10 minutes for complex operations
                 ) as response:
                     if response.status != 200:
                         error = await response.text()
@@ -1468,7 +1636,7 @@ Return ONLY the JSON, no markdown or explanations."""
                                     current_tool = {
                                         "id": block.get("id"),
                                         "name": block.get("name"),
-                                        "input": ""
+                                        "input": "",
                                     }
                                     if text_buffer:
                                         yield {"type": "text", "text": text_buffer}
@@ -1479,16 +1647,27 @@ Return ONLY the JSON, no markdown or explanations."""
                                 if delta.get("type") == "text_delta":
                                     text = delta.get("text", "")
                                     text_buffer += text
-                                    if len(text_buffer) >= 30 or text.endswith((".", "!", "?", "\n")):
+                                    if len(text_buffer) >= 30 or text.endswith(
+                                        (".", "!", "?", "\n")
+                                    ):
                                         yield {"type": "text", "text": text_buffer}
                                         text_buffer = ""
-                                elif delta.get("type") == "input_json_delta" and current_tool:
-                                    current_tool["input"] += delta.get("partial_json", "")
+                                elif (
+                                    delta.get("type") == "input_json_delta"
+                                    and current_tool
+                                ):
+                                    current_tool["input"] += delta.get(
+                                        "partial_json", ""
+                                    )
 
                             elif event_type == "content_block_stop":
                                 if current_tool:
                                     try:
-                                        args = json.loads(current_tool["input"]) if current_tool["input"] else {}
+                                        args = (
+                                            json.loads(current_tool["input"])
+                                            if current_tool["input"]
+                                            else {}
+                                        )
                                     except json.JSONDecodeError:
                                         args = {}
 
@@ -1497,31 +1676,42 @@ Return ONLY the JSON, no markdown or explanations."""
                                         "tool_call": {
                                             "id": current_tool["id"],
                                             "name": current_tool["name"],
-                                            "arguments": args
-                                        }
+                                            "arguments": args,
+                                        },
                                     }
 
                                     # Execute the tool
-                                    result = await self._execute_tool(current_tool["name"], args, context)
+                                    result = await self._execute_tool(
+                                        current_tool["name"], args, context
+                                    )
                                     yield {
                                         "type": "tool_result",
                                         "tool_result": {
                                             "id": current_tool["id"],
-                                            "result": result
-                                        }
+                                            "result": result,
+                                        },
                                     }
 
-                                    tool_calls.append({
-                                        "id": current_tool["id"],
-                                        "name": current_tool["name"],
-                                        "input": args,
-                                        "result": result
-                                    })
+                                    tool_calls.append(
+                                        {
+                                            "id": current_tool["id"],
+                                            "name": current_tool["name"],
+                                            "input": args,
+                                            "result": result,
+                                        }
+                                    )
 
                                     # Track tool calls per iteration for loop detection
-                                    if context.iteration not in context.tool_calls_per_iteration:
-                                        context.tool_calls_per_iteration[context.iteration] = []
-                                    context.tool_calls_per_iteration[context.iteration].append(
+                                    if (
+                                        context.iteration
+                                        not in context.tool_calls_per_iteration
+                                    ):
+                                        context.tool_calls_per_iteration[
+                                            context.iteration
+                                        ] = []
+                                    context.tool_calls_per_iteration[
+                                        context.iteration
+                                    ].append(
                                         f"{current_tool['name']}:{args.get('path', args.get('command', ''))}"
                                     )
                                     current_tool = None
@@ -1539,21 +1729,27 @@ Return ONLY the JSON, no markdown or explanations."""
                     if stop_reason == "tool_use" and tool_calls:
                         assistant_content = []
                         for tc in tool_calls:
-                            assistant_content.append({
-                                "type": "tool_use",
-                                "id": tc["id"],
-                                "name": tc["name"],
-                                "input": tc["input"]
-                            })
-                        messages.append({"role": "assistant", "content": assistant_content})
+                            assistant_content.append(
+                                {
+                                    "type": "tool_use",
+                                    "id": tc["id"],
+                                    "name": tc["name"],
+                                    "input": tc["input"],
+                                }
+                            )
+                        messages.append(
+                            {"role": "assistant", "content": assistant_content}
+                        )
 
                         tool_results = []
                         for tc in tool_calls:
-                            tool_results.append({
-                                "type": "tool_result",
-                                "tool_use_id": tc["id"],
-                                "content": json.dumps(tc["result"])
-                            })
+                            tool_results.append(
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": tc["id"],
+                                    "content": json.dumps(tc["result"]),
+                                }
+                            )
                         messages.append({"role": "user", "content": tool_results})
 
                         tool_calls = []
@@ -1562,10 +1758,7 @@ Return ONLY the JSON, no markdown or explanations."""
                         return
 
     async def _call_openai(
-        self,
-        messages: List[Dict[str, Any]],
-        system_prompt: str,
-        context: TaskContext
+        self, messages: List[Dict[str, Any]], system_prompt: str, context: TaskContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Call OpenAI with function calling."""
         import aiohttp
@@ -1590,16 +1783,22 @@ Return ONLY the JSON, no markdown or explanations."""
                 base_url = "https://api.openai.com/v1"
                 if self.provider == "openrouter":
                     base_url = "https://openrouter.ai/api/v1"
-                    headers["Authorization"] = f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
+                    headers["Authorization"] = (
+                        f"Bearer {os.environ.get('OPENROUTER_API_KEY', self.api_key)}"
+                    )
                 elif self.provider == "groq":
                     base_url = "https://api.groq.com/openai/v1"
-                    headers["Authorization"] = f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
+                    headers["Authorization"] = (
+                        f"Bearer {os.environ.get('GROQ_API_KEY', self.api_key)}"
+                    )
 
                 async with session.post(
                     f"{base_url}/chat/completions",
                     headers=headers,
                     json=payload,
-                    timeout=aiohttp.ClientTimeout(total=600),  # 10 minutes for complex operations
+                    timeout=aiohttp.ClientTimeout(
+                        total=600
+                    ),  # 10 minutes for complex operations
                 ) as response:
                     if response.status != 200:
                         error = await response.text()
@@ -1628,7 +1827,9 @@ Return ONLY the JSON, no markdown or explanations."""
                             if delta.get("content"):
                                 text = delta["content"]
                                 text_buffer += text
-                                if len(text_buffer) >= 30 or text.endswith((".", "!", "?", "\n")):
+                                if len(text_buffer) >= 30 or text.endswith(
+                                    (".", "!", "?", "\n")
+                                ):
                                     yield {"type": "text", "text": text_buffer}
                                     text_buffer = ""
 
@@ -1636,13 +1837,19 @@ Return ONLY the JSON, no markdown or explanations."""
                                 for tc in delta["tool_calls"]:
                                     idx = tc.get("index", 0)
                                     if idx not in tool_calls:
-                                        tool_calls[idx] = {"id": "", "name": "", "arguments": ""}
+                                        tool_calls[idx] = {
+                                            "id": "",
+                                            "name": "",
+                                            "arguments": "",
+                                        }
                                     if tc.get("id"):
                                         tool_calls[idx]["id"] = tc["id"]
                                     if tc.get("function", {}).get("name"):
                                         tool_calls[idx]["name"] = tc["function"]["name"]
                                     if tc.get("function", {}).get("arguments"):
-                                        tool_calls[idx]["arguments"] += tc["function"]["arguments"]
+                                        tool_calls[idx]["arguments"] += tc["function"][
+                                            "arguments"
+                                        ]
 
                         except json.JSONDecodeError:
                             continue
@@ -1654,24 +1861,29 @@ Return ONLY the JSON, no markdown or explanations."""
                         assistant_tool_calls = []
                         for idx in sorted(tool_calls.keys()):
                             tc = tool_calls[idx]
-                            assistant_tool_calls.append({
-                                "id": tc["id"],
-                                "type": "function",
-                                "function": {
-                                    "name": tc["name"],
-                                    "arguments": tc["arguments"]
+                            assistant_tool_calls.append(
+                                {
+                                    "id": tc["id"],
+                                    "type": "function",
+                                    "function": {
+                                        "name": tc["name"],
+                                        "arguments": tc["arguments"],
+                                    },
                                 }
-                            })
+                            )
 
-                        full_messages.append({
-                            "role": "assistant",
-                            "tool_calls": assistant_tool_calls
-                        })
+                        full_messages.append(
+                            {"role": "assistant", "tool_calls": assistant_tool_calls}
+                        )
 
                         for idx in sorted(tool_calls.keys()):
                             tc = tool_calls[idx]
                             try:
-                                args = json.loads(tc["arguments"]) if tc["arguments"] else {}
+                                args = (
+                                    json.loads(tc["arguments"])
+                                    if tc["arguments"]
+                                    else {}
+                                )
                             except json.JSONDecodeError:
                                 args = {}
 
@@ -1680,25 +1892,24 @@ Return ONLY the JSON, no markdown or explanations."""
                                 "tool_call": {
                                     "id": tc["id"],
                                     "name": tc["name"],
-                                    "arguments": args
-                                }
+                                    "arguments": args,
+                                },
                             }
 
                             result = await self._execute_tool(tc["name"], args, context)
 
                             yield {
                                 "type": "tool_result",
-                                "tool_result": {
-                                    "id": tc["id"],
-                                    "result": result
-                                }
+                                "tool_result": {"id": tc["id"], "result": result},
                             }
 
-                            full_messages.append({
-                                "role": "tool",
-                                "tool_call_id": tc["id"],
-                                "content": json.dumps(result)
-                            })
+                            full_messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc["id"],
+                                    "content": json.dumps(result),
+                                }
+                            )
 
                         tool_calls = {}
                         continue
@@ -1706,9 +1917,7 @@ Return ONLY the JSON, no markdown or explanations."""
                         return
 
     async def execute_task(
-        self,
-        request: str,
-        run_verification: bool = True
+        self, request: str, run_verification: bool = True
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Execute a task autonomously with verification and self-healing.
@@ -1767,11 +1976,11 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 yield {
                     "type": "text",
                     "text": f"\n🛑 **Stopping: Same error occurred {context.consecutive_same_error_count} times in a row.**\n"
-                           f"The agent appears to be stuck and cannot resolve this issue automatically.\n"
-                           f"Please review the errors above and consider:\n"
-                           f"1. Fixing the issue manually\n"
-                           f"2. Providing more specific instructions\n"
-                           f"3. Checking if there are missing dependencies or configuration\n"
+                    f"The agent appears to be stuck and cannot resolve this issue automatically.\n"
+                    f"Please review the errors above and consider:\n"
+                    f"1. Fixing the issue manually\n"
+                    f"2. Providing more specific instructions\n"
+                    f"3. Checking if there are missing dependencies or configuration\n",
                 }
                 yield {
                     "type": "complete",
@@ -1784,8 +1993,10 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                         "verification_passed": False,
                         "stopped_reason": "iteration_loop_detected",
                         "loop_count": context.consecutive_same_error_count,
-                        "remaining_errors": [e["message"][:200] for e in context.error_history[-3:]]
-                    }
+                        "remaining_errors": [
+                            e["message"][:200] for e in context.error_history[-3:]
+                        ],
+                    },
                 }
                 return
 
@@ -1807,7 +2018,7 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                     "iteration": context.iteration,
                     "max": context.max_iterations,
                     "reason": reason,
-                    "loop_count": context.consecutive_same_error_count
+                    "loop_count": context.consecutive_same_error_count,
                 }
 
             # Call LLM with tools
@@ -1816,9 +2027,13 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
 
                 # Track assistant text for conversation history
                 if event.get("type") == "text":
-                    if not context.conversation_history or \
-                       context.conversation_history[-1]["role"] != "assistant":
-                        context.conversation_history.append({"role": "assistant", "content": ""})
+                    if (
+                        not context.conversation_history
+                        or context.conversation_history[-1]["role"] != "assistant"
+                    ):
+                        context.conversation_history.append(
+                            {"role": "assistant", "content": ""}
+                        )
                     context.conversation_history[-1]["content"] += event["text"]
 
             # Check if any files were modified
@@ -1827,7 +2042,11 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 yield {"type": "status", "status": "completed"}
 
                 # For info-only tasks, suggest follow-up questions
-                next_steps = ["Ask me to implement changes if needed", "Explore related files", "Ask follow-up questions"]
+                next_steps = [
+                    "Ask me to implement changes if needed",
+                    "Explore related files",
+                    "Ask follow-up questions",
+                ]
                 yield {"type": "next_steps", "next_steps": next_steps}
 
                 yield {
@@ -1839,8 +2058,8 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                         "files_created": context.files_created,
                         "iterations": context.iteration,
                         "verification_run": False,
-                        "next_steps": next_steps
-                    }
+                        "next_steps": next_steps,
+                    },
                 }
                 return
 
@@ -1853,39 +2072,56 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 if plan_steps:
                     # Mark all previous steps as completed
                     for i, step in enumerate(plan_steps[:-1], 1):
-                        yield {"type": "step_update", "step_id": i, "status": "completed"}
+                        yield {
+                            "type": "step_update",
+                            "step_id": i,
+                            "status": "completed",
+                        }
                     # Mark last step (usually verification) as in progress
-                    yield {"type": "step_update", "step_id": len(plan_steps), "status": "in_progress"}
+                    yield {
+                        "type": "step_update",
+                        "step_id": len(plan_steps),
+                        "status": "in_progress",
+                    }
 
                 yield {"type": "text", "text": "\n\n**Running verification...**\n"}
 
                 results = await self.verifier.verify_changes(
-                    self.verification_commands,
-                    run_tests=True
+                    self.verification_commands, run_tests=True
                 )
                 context.verification_results = results
 
-                yield {"type": "verification", "results": [
-                    {
-                        "type": r.type.value,
-                        "success": r.success,
-                        "errors": r.errors[:5],
-                        "warnings": r.warnings[:5]
-                    }
-                    for r in results
-                ]}
+                yield {
+                    "type": "verification",
+                    "results": [
+                        {
+                            "type": r.type.value,
+                            "success": r.success,
+                            "errors": r.errors[:5],
+                            "warnings": r.warnings[:5],
+                        }
+                        for r in results
+                    ],
+                }
 
                 # Check if all passed
                 all_passed = all(r.success for r in results)
 
                 if all_passed:
-                    yield {"type": "text", "text": "\n✅ **All verifications passed!**\n"}
+                    yield {
+                        "type": "text",
+                        "text": "\n✅ **All verifications passed!**\n",
+                    }
                     yield {"type": "status", "status": "completed"}
 
                     # Mark all plan steps as completed
                     if plan_steps:
                         for step in plan_steps:
-                            yield {"type": "step_update", "step_id": step.get("id", 1), "status": "completed"}
+                            yield {
+                                "type": "step_update",
+                                "step_id": step.get("id", 1),
+                                "status": "completed",
+                            }
 
                     # Generate helpful next steps based on what was done
                     next_steps = self._generate_next_steps(context)
@@ -1901,8 +2137,8 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                             "files_created": len(context.files_created),
                             "iterations": context.iteration,
                             "verification_passed": True,
-                            "next_steps": next_steps
-                        }
+                            "next_steps": next_steps,
+                        },
                     }
                     return
 
@@ -1914,62 +2150,98 @@ Use the tools and versions listed above. Don't guess - use what's actually avail
                 error_details = []
                 for r in results:
                     if not r.success:
-                        context.error_history.append({
-                            "type": r.type.value,
-                            "message": "\n".join(r.errors[:10]),
-                            "iteration": context.iteration
-                        })
-                        error_details.append(f"**{r.type.value}** failed:\n```\n{r.output[:1500]}\n```")
+                        context.error_history.append(
+                            {
+                                "type": r.type.value,
+                                "message": "\n".join(r.errors[:10]),
+                                "iteration": context.iteration,
+                            }
+                        )
+                        error_details.append(
+                            f"**{r.type.value}** failed:\n```\n{r.output[:1500]}\n```"
+                        )
 
                 error_message = "\n\n".join(error_details)
 
                 # Extract error signatures for loop detection
-                new_signatures = self._extract_error_signatures(results, context.iteration)
+                new_signatures = self._extract_error_signatures(
+                    results, context.iteration
+                )
                 context.error_signatures.extend(new_signatures)
 
                 # Detect iteration loops
-                is_looping, loop_severity, loop_suggestions = self._detect_iteration_loop(context)
+                is_looping, loop_severity, loop_suggestions = (
+                    self._detect_iteration_loop(context)
+                )
 
                 # Record this as a failed approach
-                error_summary = "; ".join(r.errors[0] if r.errors else "Unknown error" for r in results if not r.success)
+                error_summary = "; ".join(
+                    r.errors[0] if r.errors else "Unknown error"
+                    for r in results
+                    if not r.success
+                )
                 self._record_failed_approach(context, error_summary)
 
                 # Emit appropriate message based on loop detection
                 if is_looping and loop_severity == "critical":
                     yield {
                         "type": "text",
-                        "text": f"\n🔄 **Loop detected - same error {context.consecutive_same_error_count} times.** Forcing different strategy...\n"
+                        "text": f"\n🔄 **Loop detected - same error {context.consecutive_same_error_count} times.** Forcing different strategy...\n",
                     }
-                    yield {"type": "loop_detected", "severity": loop_severity, "count": context.consecutive_same_error_count}
+                    yield {
+                        "type": "loop_detected",
+                        "severity": loop_severity,
+                        "count": context.consecutive_same_error_count,
+                    }
                 else:
                     yield {
                         "type": "text",
-                        "text": f"\n❌ **Verification failed.** Analyzing errors and fixing...\n\n{error_message}\n"
+                        "text": f"\n❌ **Verification failed.** Analyzing errors and fixing...\n\n{error_message}\n",
                     }
 
                 # Add error context to messages for retry
-                messages.append({
-                    "role": "assistant",
-                    "content": context.conversation_history[-1]["content"] if context.conversation_history else ""
-                })
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": (
+                            context.conversation_history[-1]["content"]
+                            if context.conversation_history
+                            else ""
+                        ),
+                    }
+                )
 
                 # Build context of what was already tried to prevent repeating the same approach
                 actions_taken = []
                 if context.files_created:
-                    actions_taken.append(f"Files already created: {', '.join(context.files_created)}")
+                    actions_taken.append(
+                        f"Files already created: {', '.join(context.files_created)}"
+                    )
                 if context.files_modified:
-                    actions_taken.append(f"Files already modified: {', '.join(context.files_modified)}")
+                    actions_taken.append(
+                        f"Files already modified: {', '.join(context.files_modified)}"
+                    )
                 if context.files_read:
-                    actions_taken.append(f"Files already read: {', '.join(context.files_read[-10:])}")  # Last 10
+                    actions_taken.append(
+                        f"Files already read: {', '.join(context.files_read[-10:])}"
+                    )  # Last 10
 
-                actions_context = "\n".join(actions_taken) if actions_taken else "No files created or modified yet."
+                actions_context = (
+                    "\n".join(actions_taken)
+                    if actions_taken
+                    else "No files created or modified yet."
+                )
 
                 # Build failed approaches summary with detailed guidance
                 failed_approaches_text = ""
                 if context.failed_approaches:
                     approach_list = []
-                    for fa in context.failed_approaches[-5:]:  # Last 5 failed approaches
-                        approach_list.append(f"  ❌ Iteration {fa.iteration}: {fa.description}")
+                    for fa in context.failed_approaches[
+                        -5:
+                    ]:  # Last 5 failed approaches
+                        approach_list.append(
+                            f"  ❌ Iteration {fa.iteration}: {fa.description}"
+                        )
                         approach_list.append(f"     Error: {fa.error_summary[:150]}")
                     failed_approaches_text = f"""
 **FAILED APPROACHES (DO NOT REPEAT THESE):**
@@ -2021,9 +2293,10 @@ Please analyze these errors carefully:
 2. Make sure any files you create are in the correct location
 3. Verify the content is syntactically correct before saving"""
 
-                messages.append({
-                    "role": "user",
-                    "content": f"""Verification failed. Here are the errors:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"""Verification failed. Here are the errors:
 
 {error_message}
 
@@ -2032,8 +2305,9 @@ Please analyze these errors carefully:
 {failed_approaches_text}
 {approach_hint}
 
-After fixing, I'll run verification again."""
-                })
+After fixing, I'll run verification again.""",
+                    }
+                )
 
             else:
                 # No verification or no commands available
@@ -2053,8 +2327,8 @@ After fixing, I'll run verification again."""
                         "files_created": context.files_created,
                         "iterations": context.iteration,
                         "verification_run": False,
-                        "next_steps": next_steps
-                    }
+                        "next_steps": next_steps,
+                    },
                 }
                 return
 
@@ -2062,7 +2336,7 @@ After fixing, I'll run verification again."""
         yield {"type": "status", "status": "failed"}
         yield {
             "type": "text",
-            "text": f"\n⚠️ **Max iterations ({context.max_iterations}) reached.** Some issues may remain.\n"
+            "text": f"\n⚠️ **Max iterations ({context.max_iterations}) reached.** Some issues may remain.\n",
         }
         yield {
             "type": "complete",
@@ -2073,6 +2347,8 @@ After fixing, I'll run verification again."""
                 "files_created": context.files_created,
                 "iterations": context.iteration,
                 "verification_passed": False,
-                "remaining_errors": [e["message"][:200] for e in context.error_history[-3:]]
-            }
+                "remaining_errors": [
+                    e["message"][:200] for e in context.error_history[-3:]
+                ],
+            },
         }

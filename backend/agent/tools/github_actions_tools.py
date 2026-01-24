@@ -151,7 +151,9 @@ async def list_github_actions_runs(
             lines.append("")
 
             if url:
-                sources.append({"type": "github_run", "name": f"{name} #{run_number}", "url": url})
+                sources.append(
+                    {"type": "github_run", "name": f"{name} #{run_number}", "url": url}
+                )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -225,7 +227,9 @@ async def get_github_actions_run_status(
 
         sources = []
         if url:
-            sources.append({"type": "github_run", "name": f"{name} #{run_number}", "url": url})
+            sources.append(
+                {"type": "github_run", "name": f"{name} #{run_number}", "url": url}
+            )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -271,7 +275,9 @@ async def trigger_github_actions_workflow(
             url = f"https://github.com/{owner}/{repo}/actions"
             return ToolResult(
                 output=f"Workflow triggered successfully on branch `{ref}`.\n\n[View Actions]({url})",
-                sources=[{"type": "github_actions", "name": f"{owner}/{repo}", "url": url}],
+                sources=[
+                    {"type": "github_actions", "name": f"{owner}/{repo}", "url": url}
+                ],
             )
         else:
             return ToolResult(output="Failed to trigger workflow.", sources=[])

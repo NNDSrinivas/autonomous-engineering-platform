@@ -81,7 +81,11 @@ class SlackService(ConnectorServiceBase):
                             item_type="channel",
                             external_id=channel.get("id", ""),
                             title=channel.get("name", ""),
-                            status="active" if not channel.get("is_archived") else "archived",
+                            status=(
+                                "active"
+                                if not channel.get("is_archived")
+                                else "archived"
+                            ),
                             data={
                                 "name": channel.get("name"),
                                 "topic": channel.get("topic", {}).get("value"),
@@ -451,7 +455,11 @@ def search_messages_for_user(
                     "text": text,
                     "user": user,
                     "ts": ts,
-                    "permalink": f"https://slack.com/archives/{ch_id}/p{ts.replace('.', '')}" if ts else None,
+                    "permalink": (
+                        f"https://slack.com/archives/{ch_id}/p{ts.replace('.', '')}"
+                        if ts
+                        else None
+                    ),
                 }
             )
 

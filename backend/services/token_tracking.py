@@ -35,37 +35,30 @@ MODEL_PRICING = {
     "claude-3-opus-20240229": {"input": 15.00, "output": 75.00},
     "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
     "claude-3-5-haiku-20241022": {"input": 1.00, "output": 5.00},
-
     # OpenAI models
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},
     "gpt-4-turbo": {"input": 10.00, "output": 30.00},
     "gpt-4": {"input": 30.00, "output": 60.00},
     "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
-
     # Google models
     "gemini-1.5-pro": {"input": 1.25, "output": 5.00},
     "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
-
     # Groq models (very cheap)
     "llama-3.3-70b-versatile": {"input": 0.59, "output": 0.79},
     "llama-3.1-8b-instant": {"input": 0.05, "output": 0.08},
     "mixtral-8x7b-32768": {"input": 0.24, "output": 0.24},
-
     # Mistral models
     "mistral-large-latest": {"input": 2.00, "output": 6.00},
     "mistral-medium": {"input": 2.70, "output": 8.10},
     "mistral-small": {"input": 0.20, "output": 0.60},
-
     # OpenRouter (varies by model)
     "anthropic/claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
-
     # Ollama (local, free)
     "llama3": {"input": 0.00, "output": 0.00},
     "codellama": {"input": 0.00, "output": 0.00},
     "mistral": {"input": 0.00, "output": 0.00},
-
     # Default fallback
     "default": {"input": 3.00, "output": 15.00},
 }
@@ -74,6 +67,7 @@ MODEL_PRICING = {
 @dataclass
 class TokenUsage:
     """Token usage for a single request."""
+
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
@@ -90,6 +84,7 @@ class TokenUsage:
 @dataclass
 class UsageRecord:
     """A single usage record for tracking and billing."""
+
     id: str
     timestamp: datetime
     model: str
@@ -136,6 +131,7 @@ class UsageRecord:
 @dataclass
 class UsageSummary:
     """Aggregated usage summary for a time period."""
+
     period_start: datetime
     period_end: datetime
 
@@ -176,7 +172,9 @@ class CostCalculator:
         }
 
     @staticmethod
-    def estimate_cost(model: str, input_tokens: int, estimated_output: int = 1000) -> float:
+    def estimate_cost(
+        model: str, input_tokens: int, estimated_output: int = 1000
+    ) -> float:
         """Estimate cost before making a request."""
         pricing = MODEL_PRICING.get(model, MODEL_PRICING["default"])
         input_cost = (input_tokens / 1_000_000) * pricing["input"]
@@ -195,10 +193,10 @@ class TokenTracker:
     """
 
     def __init__(self, storage_path: str = None):
-        self.storage_path = Path(storage_path or os.getenv(
-            "NAVI_USAGE_PATH",
-            os.path.expanduser("~/.navi/usage")
-        ))
+        self.storage_path = Path(
+            storage_path
+            or os.getenv("NAVI_USAGE_PATH", os.path.expanduser("~/.navi/usage"))
+        )
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
         # In-memory records (recent)
@@ -296,7 +294,7 @@ class TokenTracker:
 
         # Trim old records from memory
         if len(self.records) > self.max_memory_records:
-            self.records = self.records[-self.max_memory_records:]
+            self.records = self.records[-self.max_memory_records :]
 
         # Save to disk
         self._save_records()
@@ -366,7 +364,9 @@ class TokenTracker:
         summary.by_user = dict(by_user)
 
         if summary.total_requests > 0:
-            summary.avg_tokens_per_request = summary.total_tokens / summary.total_requests
+            summary.avg_tokens_per_request = (
+                summary.total_tokens / summary.total_requests
+            )
             summary.avg_cost_per_request = summary.total_cost / summary.total_requests
             summary.avg_latency_ms = total_latency / summary.total_requests
 
@@ -450,12 +450,14 @@ class TokenTracker:
 # RESPONSE WRAPPER WITH USAGE
 # ============================================================
 
+
 @dataclass
 class NaviResponseWithUsage:
     """
     Wraps a NAVI response with token usage and cost information.
     This is what gets sent back to the client for SaaS billing visibility.
     """
+
     # The actual response content
     response: Any
 
@@ -476,7 +478,9 @@ class NaviResponseWithUsage:
 
     def to_dict(self) -> Dict:
         return {
-            "response": self.response if isinstance(self.response, dict) else str(self.response),
+            "response": (
+                self.response if isinstance(self.response, dict) else str(self.response)
+            ),
             "usage": {
                 "input_tokens": self.usage.input_tokens,
                 "output_tokens": self.usage.output_tokens,

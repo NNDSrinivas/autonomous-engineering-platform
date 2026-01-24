@@ -39,7 +39,9 @@ def verify_sentry_signature(
         return
 
     if not signature:
-        raise HTTPException(status_code=401, detail="Missing sentry-hook-signature header")
+        raise HTTPException(
+            status_code=401, detail="Missing sentry-hook-signature header"
+        )
 
     expected = hmac.new(
         secret.encode("utf-8"),
@@ -322,7 +324,11 @@ async def _handle_metric_alert(
     triggered_by = data.get("triggered_by") or "unknown"
 
     # Status
-    status = "critical" if action == "critical" else ("warning" if action == "warning" else action)
+    status = (
+        "critical"
+        if action == "critical"
+        else ("warning" if action == "warning" else action)
+    )
 
     # Web URL
     web_url = data.get("web_url") or ""

@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # DATA CLASSES
 # ============================================================
 
+
 class TestStatus(Enum):
     PASSED = "passed"
     FAILED = "failed"
@@ -53,6 +54,7 @@ class TestFramework(Enum):
 @dataclass
 class TestCase:
     """A single test case result"""
+
     name: str
     status: TestStatus
     duration_ms: float = 0.0
@@ -66,6 +68,7 @@ class TestCase:
 @dataclass
 class TestSuiteResult:
     """Results from running a test suite"""
+
     framework: TestFramework
     total: int = 0
     passed: int = 0
@@ -122,6 +125,7 @@ class TestSuiteResult:
 @dataclass
 class TestDiscovery:
     """Results of test discovery"""
+
     framework: TestFramework
     test_files: List[str] = field(default_factory=list)
     test_count: int = 0
@@ -132,14 +136,24 @@ class TestDiscovery:
 # FRAMEWORK DETECTION
 # ============================================================
 
+
 class FrameworkDetector:
     """Detect which test framework a project uses"""
 
     # Config files that indicate test frameworks
     FRAMEWORK_INDICATORS = {
-        TestFramework.PYTEST: ["pytest.ini", "pyproject.toml", "setup.cfg", "conftest.py"],
+        TestFramework.PYTEST: [
+            "pytest.ini",
+            "pyproject.toml",
+            "setup.cfg",
+            "conftest.py",
+        ],
         TestFramework.JEST: ["jest.config.js", "jest.config.ts", "jest.config.json"],
-        TestFramework.VITEST: ["vitest.config.js", "vitest.config.ts", "vite.config.ts"],
+        TestFramework.VITEST: [
+            "vitest.config.js",
+            "vitest.config.ts",
+            "vite.config.ts",
+        ],
         TestFramework.MOCHA: [".mocharc.js", ".mocharc.json", ".mocharc.yml"],
         TestFramework.JUNIT: ["pom.xml", "build.gradle", "build.gradle.kts"],
         TestFramework.GO_TEST: ["go.mod"],
@@ -191,11 +205,19 @@ class FrameworkDetector:
 
         # Check for Python test files
         for root, dirs, files in os.walk(workspace_path):
-            dirs[:] = [d for d in dirs if d not in ["node_modules", ".git", "__pycache__", "venv"]]
+            dirs[:] = [
+                d
+                for d in dirs
+                if d not in ["node_modules", ".git", "__pycache__", "venv"]
+            ]
             for f in files:
                 if f.startswith("test_") and f.endswith(".py"):
                     return TestFramework.PYTEST
-                if f.endswith(".test.ts") or f.endswith(".test.js") or f.endswith(".spec.ts"):
+                if (
+                    f.endswith(".test.ts")
+                    or f.endswith(".test.js")
+                    or f.endswith(".spec.ts")
+                ):
                     return TestFramework.JEST  # Default for TS/JS
             break  # Only check top-level
 
@@ -211,10 +233,22 @@ class FrameworkDetector:
 
         for root, dirs, files in os.walk(workspace_path):
             # Skip common non-test directories
-            dirs[:] = [d for d in dirs if d not in [
-                "node_modules", ".git", "__pycache__", "venv", ".venv",
-                "dist", "build", "coverage", ".next"
-            ]]
+            dirs[:] = [
+                d
+                for d in dirs
+                if d
+                not in [
+                    "node_modules",
+                    ".git",
+                    "__pycache__",
+                    "venv",
+                    ".venv",
+                    "dist",
+                    "build",
+                    "coverage",
+                    ".next",
+                ]
+            ]
 
             for f in files:
                 for pattern in patterns:
@@ -238,7 +272,13 @@ class FrameworkDetector:
         """Get file patterns for test files"""
         patterns = {
             TestFramework.PYTEST: ["test_*", "*_test.py"],
-            TestFramework.JEST: ["*.test.js", "*.test.ts", "*.test.tsx", "*.spec.js", "*.spec.ts"],
+            TestFramework.JEST: [
+                "*.test.js",
+                "*.test.ts",
+                "*.test.tsx",
+                "*.spec.js",
+                "*.spec.ts",
+            ],
             TestFramework.VITEST: ["*.test.js", "*.test.ts", "*.spec.js", "*.spec.ts"],
             TestFramework.MOCHA: ["*.test.js", "*.spec.js"],
             TestFramework.JUNIT: ["*Test.java", "*Tests.java"],
@@ -254,6 +294,7 @@ class FrameworkDetector:
 # ============================================================
 # TEST RUNNERS
 # ============================================================
+
 
 class TestRunner:
     """Execute tests and parse results"""
@@ -422,7 +463,9 @@ class TestRunner:
         }
 
     @classmethod
-    def _add_filter_to_command(cls, command: str, framework: TestFramework, filter_str: str) -> str:
+    def _add_filter_to_command(
+        cls, command: str, framework: TestFramework, filter_str: str
+    ) -> str:
         """Add a test filter to the command"""
         if framework == TestFramework.PYTEST:
             return f"{command} -k '{filter_str}'"
@@ -433,7 +476,9 @@ class TestRunner:
         return command
 
     @classmethod
-    def _parse_output(cls, result: Dict[str, Any], framework: TestFramework) -> TestSuiteResult:
+    def _parse_output(
+        cls, result: Dict[str, Any], framework: TestFramework
+    ) -> TestSuiteResult:
         """Parse test output into structured results"""
         output = result["output"]
         exit_code = result["exit_code"]
@@ -460,22 +505,26 @@ class TestRunner:
         # Parse summary line: "3 passed, 1 failed, 1 skipped in 1.23s"
         # Each component can appear in any order, so match them individually
 
-        passed_match = re.search(r'(\d+)\s+passed', output)
-        failed_match = re.search(r'(\d+)\s+failed', output)
-        skipped_match = re.search(r'(\d+)\s+skipped', output)
-        error_match = re.search(r'(\d+)\s+error', output)
-        duration_match = re.search(r'in\s+([\d.]+)s', output)
+        passed_match = re.search(r"(\d+)\s+passed", output)
+        failed_match = re.search(r"(\d+)\s+failed", output)
+        skipped_match = re.search(r"(\d+)\s+skipped", output)
+        error_match = re.search(r"(\d+)\s+error", output)
+        duration_match = re.search(r"in\s+([\d.]+)s", output)
 
         suite.passed = int(passed_match.group(1)) if passed_match else 0
         suite.failed = int(failed_match.group(1)) if failed_match else 0
         suite.skipped = int(skipped_match.group(1)) if skipped_match else 0
         suite.errors = int(error_match.group(1)) if error_match else 0
-        suite.duration_ms = float(duration_match.group(1)) * 1000 if duration_match else 0.0
+        suite.duration_ms = (
+            float(duration_match.group(1)) * 1000 if duration_match else 0.0
+        )
         suite.total = suite.passed + suite.failed + suite.skipped + suite.errors
 
         # Parse individual test results
         # Format: "test_file.py::test_name PASSED" or "FAILED"
-        for match in re.finditer(r'([\w/]+\.py)::(\w+)\s+(PASSED|FAILED|SKIPPED|ERROR)', output):
+        for match in re.finditer(
+            r"([\w/]+\.py)::(\w+)\s+(PASSED|FAILED|SKIPPED|ERROR)", output
+        ):
             file_path, test_name, status = match.groups()
             status_map = {
                 "PASSED": TestStatus.PASSED,
@@ -493,7 +542,7 @@ class TestRunner:
             # Try to extract error message for failed tests
             if status == "FAILED":
                 error_match = re.search(
-                    rf'{re.escape(test_name)}.*?(?:AssertionError|Error|Exception):\s*(.+?)(?:\n|$)',
+                    rf"{re.escape(test_name)}.*?(?:AssertionError|Error|Exception):\s*(.+?)(?:\n|$)",
                     output,
                     re.DOTALL,
                 )
@@ -503,7 +552,7 @@ class TestRunner:
             suite.test_cases.append(test_case)
 
         # Parse coverage if present
-        cov_match = re.search(r'TOTAL\s+\d+\s+\d+\s+(\d+)%', output)
+        cov_match = re.search(r"TOTAL\s+\d+\s+\d+\s+(\d+)%", output)
         if cov_match:
             suite.coverage_percent = float(cov_match.group(1))
 
@@ -534,13 +583,17 @@ class TestRunner:
 
                         test_case = TestCase(
                             name=assertion.get("title", "unknown"),
-                            status=status_map.get(assertion.get("status"), TestStatus.PENDING),
+                            status=status_map.get(
+                                assertion.get("status"), TestStatus.PENDING
+                            ),
                             file_path=test_result.get("name"),
                             duration_ms=assertion.get("duration", 0),
                         )
 
                         if assertion.get("failureMessages"):
-                            test_case.error_message = "\n".join(assertion["failureMessages"])[:500]
+                            test_case.error_message = "\n".join(
+                                assertion["failureMessages"]
+                            )[:500]
 
                         suite.test_cases.append(test_case)
 
@@ -574,19 +627,23 @@ class TestRunner:
                     data = json.loads(line)
                     if data.get("Action") == "pass":
                         if data.get("Test"):
-                            suite.test_cases.append(TestCase(
-                                name=data["Test"],
-                                status=TestStatus.PASSED,
-                                duration_ms=data.get("Elapsed", 0) * 1000,
-                            ))
+                            suite.test_cases.append(
+                                TestCase(
+                                    name=data["Test"],
+                                    status=TestStatus.PASSED,
+                                    duration_ms=data.get("Elapsed", 0) * 1000,
+                                )
+                            )
                             suite.passed += 1
                     elif data.get("Action") == "fail":
                         if data.get("Test"):
-                            suite.test_cases.append(TestCase(
-                                name=data["Test"],
-                                status=TestStatus.FAILED,
-                                duration_ms=data.get("Elapsed", 0) * 1000,
-                            ))
+                            suite.test_cases.append(
+                                TestCase(
+                                    name=data["Test"],
+                                    status=TestStatus.FAILED,
+                                    duration_ms=data.get("Elapsed", 0) * 1000,
+                                )
+                            )
                             suite.failed += 1
                 except json.JSONDecodeError:
                     continue
@@ -594,7 +651,7 @@ class TestRunner:
         suite.total = suite.passed + suite.failed + suite.skipped
 
         # Parse coverage
-        cov_match = re.search(r'coverage:\s+([\d.]+)%', output)
+        cov_match = re.search(r"coverage:\s+([\d.]+)%", output)
         if cov_match:
             suite.coverage_percent = float(cov_match.group(1))
 
@@ -604,8 +661,10 @@ class TestRunner:
     def _parse_generic(cls, suite: TestSuiteResult, output: str) -> TestSuiteResult:
         """Generic parsing for unknown frameworks"""
         # Count common patterns
-        suite.passed = len(re.findall(r'(?:PASS|✓|passed|ok)', output, re.IGNORECASE))
-        suite.failed = len(re.findall(r'(?:FAIL|✗|failed|error)', output, re.IGNORECASE))
+        suite.passed = len(re.findall(r"(?:PASS|✓|passed|ok)", output, re.IGNORECASE))
+        suite.failed = len(
+            re.findall(r"(?:FAIL|✗|failed|error)", output, re.IGNORECASE)
+        )
         suite.total = suite.passed + suite.failed
 
         return suite
@@ -615,11 +674,14 @@ class TestRunner:
 # FAILURE ANALYZER
 # ============================================================
 
+
 class FailureAnalyzer:
     """Analyze test failures and suggest fixes"""
 
     @classmethod
-    def analyze_failure(cls, test_case: TestCase, workspace_path: str) -> Dict[str, Any]:
+    def analyze_failure(
+        cls, test_case: TestCase, workspace_path: str
+    ) -> Dict[str, Any]:
         """Analyze a test failure and suggest fixes"""
         analysis = {
             "test_name": test_case.name,
@@ -636,7 +698,9 @@ class FailureAnalyzer:
         # Categorize error type
         if "AssertionError" in error or "assert" in error.lower():
             analysis["error_type"] = "assertion"
-            analysis["root_cause"] = "Test assertion failed - expected value doesn't match actual"
+            analysis["root_cause"] = (
+                "Test assertion failed - expected value doesn't match actual"
+            )
             analysis["suggested_fixes"] = [
                 "Check if the expected value in the test is correct",
                 "Verify the function under test is returning the right value",
@@ -689,7 +753,7 @@ class FailureAnalyzer:
             ]
 
         # Extract file references from stack trace
-        file_pattern = r'[\w/]+\.(py|js|ts|go|rs|java|rb)(?::\d+)?'
+        file_pattern = r"[\w/]+\.(py|js|ts|go|rs|java|rb)(?::\d+)?"
         related_files = list(set(re.findall(file_pattern, stack + error)))
         analysis["related_files"] = related_files[:5]
 
@@ -703,10 +767,12 @@ class FailureAnalyzer:
         for test_case in suite.test_cases:
             if test_case.status == TestStatus.FAILED:
                 analysis = cls.analyze_failure(test_case, "")
-                suggestions.append({
-                    "test": test_case.name,
-                    "analysis": analysis,
-                })
+                suggestions.append(
+                    {
+                        "test": test_case.name,
+                        "analysis": analysis,
+                    }
+                )
 
         return suggestions
 
@@ -714,6 +780,7 @@ class FailureAnalyzer:
 # ============================================================
 # PUBLIC API
 # ============================================================
+
 
 async def run_tests(
     workspace_path: str,
@@ -783,7 +850,9 @@ async def verify_tests_pass(workspace_path: str) -> Tuple[bool, Dict[str, Any]]:
 
     if not success and result.get("failed", 0) > 0:
         # Add diagnostic info
-        result["diagnosis"] = "Tests failed - review the failed tests and fix suggestions"
+        result["diagnosis"] = (
+            "Tests failed - review the failed tests and fix suggestions"
+        )
         result["next_steps"] = [
             "Review the error messages for failed tests",
             "Check the suggested fixes",

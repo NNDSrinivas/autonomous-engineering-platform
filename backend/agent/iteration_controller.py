@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 class IterationMode(Enum):
     """Iteration mode for agent execution."""
+
     ONE_SHOT = "one_shot"  # Single execution (default)
     UNTIL_TESTS_PASS = "until_tests_pass"  # Iterate until all tests pass
     UNTIL_NO_ERRORS = "until_no_errors"  # Iterate until no lint/type errors
@@ -32,6 +33,7 @@ class IterationMode(Enum):
 @dataclass
 class IterationConfig:
     """Configuration for iterative execution."""
+
     mode: IterationMode = IterationMode.ONE_SHOT
     max_iterations: int = 5
     stop_on_same_error: bool = True  # Stop if same error appears twice
@@ -59,6 +61,7 @@ class IterationConfig:
 @dataclass
 class IterationResult:
     """Result from a single iteration."""
+
     iteration_number: int
     success: bool
     plan_executed: bool
@@ -71,9 +74,12 @@ class IterationResult:
 @dataclass
 class IterationState:
     """State tracked across iterations."""
+
     iteration_count: int = 0
     errors_seen: List[str] = field(default_factory=list)  # Error hashes
-    test_counts: List[Dict[str, int]] = field(default_factory=list)  # Test results per iteration
+    test_counts: List[Dict[str, int]] = field(
+        default_factory=list
+    )  # Test results per iteration
     results: List[IterationResult] = field(default_factory=list)
     success: bool = False
     stopped_reason: Optional[str] = None
@@ -88,7 +94,10 @@ class IterationState:
         # Max iterations reached
         if self.iteration_count >= config.max_iterations:
             self.stopped_reason = "max_iterations_reached"
-            logger.info("[ITERATION] Stopping: max iterations (%d) reached", config.max_iterations)
+            logger.info(
+                "[ITERATION] Stopping: max iterations (%d) reached",
+                config.max_iterations,
+            )
             return False
 
         # Same error twice in a row
@@ -122,11 +131,13 @@ class IterationState:
             self.errors_seen.append(result.error_hash)
 
         if result.test_results:
-            self.test_counts.append({
-                "total": result.test_results.get("total", 0),
-                "passed": result.test_results.get("passed", 0),
-                "failed": result.test_results.get("failed", 0),
-            })
+            self.test_counts.append(
+                {
+                    "total": result.test_results.get("total", 0),
+                    "passed": result.test_results.get("passed", 0),
+                    "failed": result.test_results.get("failed", 0),
+                }
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert state to dictionary for serialization."""
@@ -141,8 +152,12 @@ class IterationState:
                     "iteration": r.iteration_number,
                     "success": r.success,
                     "duration_ms": r.duration_ms,
-                    "test_passed": r.test_results.get("passed", 0) if r.test_results else 0,
-                    "test_failed": r.test_results.get("failed", 0) if r.test_results else 0,
+                    "test_passed": (
+                        r.test_results.get("passed", 0) if r.test_results else 0
+                    ),
+                    "test_failed": (
+                        r.test_results.get("failed", 0) if r.test_results else 0
+                    ),
                 }
                 for r in self.results
             ],
@@ -166,7 +181,9 @@ class IterationController:
         self.state = IterationState()
 
     @classmethod
-    def create(cls, iteration_mode: str = "one_shot", **kwargs) -> "IterationController":
+    def create(
+        cls, iteration_mode: str = "one_shot", **kwargs
+    ) -> "IterationController":
         """Create controller from mode string and options."""
         config_dict = {"mode": iteration_mode, **kwargs}
         config = IterationConfig.from_dict(config_dict)
@@ -192,10 +209,12 @@ class IterationController:
             failed_tests = test_results.get("failed_tests", [])
             if failed_tests:
                 # Hash based on test names and error messages
-                error_str = "|".join([
-                    f"{t.get('name', '')}:{t.get('error_message', '')[:100]}"
-                    for t in failed_tests
-                ])
+                error_str = "|".join(
+                    [
+                        f"{t.get('name', '')}:{t.get('error_message', '')[:100]}"
+                        for t in failed_tests
+                    ]
+                )
                 error_hash = hashlib.md5(error_str.encode()).hexdigest()[:8]
 
         result = IterationResult(

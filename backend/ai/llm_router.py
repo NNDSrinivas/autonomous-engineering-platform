@@ -68,6 +68,7 @@ class ToolCall:
     This enables native tool-use support for agentic workflows,
     matching the patterns used by Claude Code, Cline, and Copilot.
     """
+
     id: str
     name: str
     arguments: Dict[str, Any]
@@ -115,7 +116,9 @@ class LLMResponse:
     @property
     def wants_to_continue(self) -> bool:
         """Check if the LLM wants to continue (made tool calls and expects results)."""
-        return self.stop_reason == "tool_use" or (self.has_tool_calls and self.stop_reason != "end_turn")
+        return self.stop_reason == "tool_use" or (
+            self.has_tool_calls and self.stop_reason != "end_turn"
+        )
 
 
 # ======================================================================
@@ -213,7 +216,9 @@ class LLMRouter:
         # NEW: Tool-use parameters for agentic workflows
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: str = "auto",  # "auto", "none", "required", or specific tool name
-        messages: Optional[List[Dict[str, Any]]] = None,  # For multi-turn with tool results
+        messages: Optional[
+            List[Dict[str, Any]]
+        ] = None,  # For multi-turn with tool results
     ) -> LLMResponse:
         """
         Execute an LLM call using the selected provider & model.
@@ -250,7 +255,11 @@ class LLMRouter:
         )
 
         # Check cache first (skip for vision requests)
-        cache_enabled = os.getenv("LLM_CACHE_ENABLED", "true").lower() in {"1", "true", "yes"}
+        cache_enabled = os.getenv("LLM_CACHE_ENABLED", "true").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
         if cache_enabled and not images:
             cache = get_cache()
             cached_result = await cache.get(
@@ -402,7 +411,9 @@ class LLMRouter:
 
         # Extract tool calls if present (for agentic workflows)
         tool_calls = self._extract_tool_calls(provider_info.provider_id, response_json)
-        stop_reason = self._extract_stop_reason(provider_info.provider_id, response_json)
+        stop_reason = self._extract_stop_reason(
+            provider_info.provider_id, response_json
+        )
 
         # Cache the response (skip for vision requests and tool responses)
         if cache_enabled and not images and not tools and text:
@@ -559,7 +570,9 @@ class LLMRouter:
 
                 # Success! Return the response
                 text = self._extract_text(fallback_provider, response_json)
-                tokens_used = self._extract_token_count(fallback_provider, response_json)
+                tokens_used = self._extract_token_count(
+                    fallback_provider, response_json
+                )
 
                 logger.info(
                     "[LLM] Failover successful to %s:%s",
@@ -578,9 +591,7 @@ class LLMRouter:
                 )
 
             except Exception as e:
-                logger.warning(
-                    "[LLM] Failover to %s failed: %s", fallback_provider, e
-                )
+                logger.warning("[LLM] Failover to %s failed: %s", fallback_provider, e)
                 continue
 
         # All fallbacks failed
@@ -663,7 +674,9 @@ class LLMRouter:
                     provider_id=default_provider,
                     model_id=default_model,
                 )
-                logger.info(f"[LLM] Using DEFAULT_LLM_PROVIDER: {default_provider}:{default_model}")
+                logger.info(
+                    f"[LLM] Using DEFAULT_LLM_PROVIDER: {default_provider}:{default_model}"
+                )
                 return provider_info, model_info
 
         # Fallback to SMART AUTO
@@ -672,7 +685,9 @@ class LLMRouter:
     def _get_default_model_for_provider(self, provider: str) -> str:
         """Get the default model for a given provider."""
         defaults = {
-            "anthropic": os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+            "anthropic": os.environ.get(
+                "ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"
+            ),
             "openai": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
             "google": os.environ.get("GOOGLE_MODEL", "gemini-1.5-flash"),
         }
@@ -717,7 +732,8 @@ class LLMRouter:
 
             # Use max_completion_tokens for newer OpenAI models (GPT-4o, GPT-5.x)
             if provider == "openai" and any(
-                x in model for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]
+                x in model
+                for x in ["gpt-4o", "gpt-5", "gpt-4.2", "gpt-4.1", "o1", "o3", "o4"]
             ):
                 payload["max_completion_tokens"] = max_tokens
             else:
@@ -732,7 +748,10 @@ class LLMRouter:
                     payload["tool_choice"] = "none"
                 elif tool_choice != "auto":
                     # Specific tool name
-                    payload["tool_choice"] = {"type": "function", "function": {"name": tool_choice}}
+                    payload["tool_choice"] = {
+                        "type": "function",
+                        "function": {"name": tool_choice},
+                    }
 
             return payload
 
@@ -787,7 +806,9 @@ class LLMRouter:
 
             # Add tools if provided (convert to Gemini format)
             if tools:
-                payload["tools"] = [{"functionDeclarations": self._convert_tools_to_gemini(tools)}]
+                payload["tools"] = [
+                    {"functionDeclarations": self._convert_tools_to_gemini(tools)}
+                ]
 
             return payload
 
@@ -816,29 +837,41 @@ class LLMRouter:
 
         raise ValueError(f"Unsupported provider '{provider}'")
 
-    def _convert_tools_to_openai(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _convert_tools_to_openai(
+        self, tools: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """Convert Anthropic-format tools to OpenAI function calling format."""
         openai_tools = []
         for tool in tools:
-            openai_tools.append({
-                "type": "function",
-                "function": {
-                    "name": tool.get("name", ""),
-                    "description": tool.get("description", ""),
-                    "parameters": tool.get("input_schema", {"type": "object", "properties": {}}),
+            openai_tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.get("name", ""),
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get(
+                            "input_schema", {"type": "object", "properties": {}}
+                        ),
+                    },
                 }
-            })
+            )
         return openai_tools
 
-    def _convert_tools_to_gemini(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _convert_tools_to_gemini(
+        self, tools: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """Convert Anthropic-format tools to Gemini function declarations format."""
         gemini_tools = []
         for tool in tools:
-            gemini_tools.append({
-                "name": tool.get("name", ""),
-                "description": tool.get("description", ""),
-                "parameters": tool.get("input_schema", {"type": "object", "properties": {}}),
-            })
+            gemini_tools.append(
+                {
+                    "name": tool.get("name", ""),
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get(
+                        "input_schema", {"type": "object", "properties": {}}
+                    ),
+                }
+            )
         return gemini_tools
 
     def _build_openai_messages(
@@ -1218,15 +1251,21 @@ class LLMRouter:
                     func = tc.get("function", {})
                     args_str = func.get("arguments", "{}")
                     try:
-                        args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                        args = (
+                            json.loads(args_str)
+                            if isinstance(args_str, str)
+                            else args_str
+                        )
                     except json.JSONDecodeError:
                         args = {"raw": args_str}
 
-                    tool_calls.append(ToolCall(
-                        id=tc.get("id", f"call_{len(tool_calls)}"),
-                        name=func.get("name", ""),
-                        arguments=args,
-                    ))
+                    tool_calls.append(
+                        ToolCall(
+                            id=tc.get("id", f"call_{len(tool_calls)}"),
+                            name=func.get("name", ""),
+                            arguments=args,
+                        )
+                    )
 
                 return tool_calls if tool_calls else None
 
@@ -1239,11 +1278,13 @@ class LLMRouter:
                 tool_calls = []
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "tool_use":
-                        tool_calls.append(ToolCall(
-                            id=block.get("id", f"toolu_{len(tool_calls)}"),
-                            name=block.get("name", ""),
-                            arguments=block.get("input", {}),
-                        ))
+                        tool_calls.append(
+                            ToolCall(
+                                id=block.get("id", f"toolu_{len(tool_calls)}"),
+                                name=block.get("name", ""),
+                                arguments=block.get("input", {}),
+                            )
+                        )
 
                 return tool_calls if tool_calls else None
 
@@ -1260,11 +1301,13 @@ class LLMRouter:
                 for i, part in enumerate(parts):
                     if isinstance(part, dict) and "functionCall" in part:
                         func_call = part["functionCall"]
-                        tool_calls.append(ToolCall(
-                            id=f"gemini_call_{i}",
-                            name=func_call.get("name", ""),
-                            arguments=func_call.get("args", {}),
-                        ))
+                        tool_calls.append(
+                            ToolCall(
+                                id=f"gemini_call_{i}",
+                                name=func_call.get("name", ""),
+                                arguments=func_call.get("args", {}),
+                            )
+                        )
 
                 return tool_calls if tool_calls else None
 
@@ -1272,7 +1315,9 @@ class LLMRouter:
             return None
 
         except Exception as e:
-            logger.warning(f"[LLM] Failed to extract tool calls from {provider} response: {e}")
+            logger.warning(
+                f"[LLM] Failed to extract tool calls from {provider} response: {e}"
+            )
             return None
 
     def _extract_stop_reason(
@@ -1333,7 +1378,9 @@ class LLMRouter:
             return None
 
         except Exception as e:
-            logger.warning(f"[LLM] Failed to extract stop reason from {provider} response: {e}")
+            logger.warning(
+                f"[LLM] Failed to extract stop reason from {provider} response: {e}"
+            )
             return None
 
 

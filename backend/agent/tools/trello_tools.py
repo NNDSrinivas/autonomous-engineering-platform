@@ -147,10 +147,10 @@ async def create_trello_card(
     if not approve:
         return ToolResult(
             output=f"**Preview: Create Trello Card**\n\n"
-                   f"List ID: {list_id}\n"
-                   f"Name: {name}\n"
-                   f"Description: {desc or 'None'}\n\n"
-                   f"Please approve this action to create the card.",
+            f"List ID: {list_id}\n"
+            f"Name: {name}\n"
+            f"Description: {desc or 'None'}\n\n"
+            f"Please approve this action to create the card.",
             sources=[],
         )
 
@@ -174,11 +174,13 @@ async def create_trello_card(
         if result.success:
             return ToolResult(
                 output=f"Card '{name}' created successfully.",
-                sources=[{
-                    "type": "trello_card",
-                    "name": name,
-                    "url": result.url or "",
-                }],
+                sources=[
+                    {
+                        "type": "trello_card",
+                        "name": name,
+                        "url": result.url or "",
+                    }
+                ],
             )
         else:
             return ToolResult(output=f"Failed: {result.error}", sources=[])

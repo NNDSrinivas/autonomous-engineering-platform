@@ -40,6 +40,7 @@ class PlanGenerator:
         if not self.llm_router:
             try:
                 from backend.ai.llm_router import LLMRouter
+
                 self.llm_router = LLMRouter()
             except ImportError:
                 logger.warning("LLM router not available for plan generator")
@@ -68,9 +69,7 @@ class PlanGenerator:
 
         # Step 2: Identify what needs to be done
         task_breakdown = await self._break_down_task(
-            user_request,
-            codebase_analysis,
-            context or {}
+            user_request, codebase_analysis, context or {}
         )
 
         # Step 3: Generate implementation steps
@@ -93,9 +92,7 @@ class PlanGenerator:
         )
 
         logger.info(
-            "[PLAN_GEN] Plan generated: %s with %d steps",
-            plan.title,
-            len(plan.steps)
+            "[PLAN_GEN] Plan generated: %s with %d steps", plan.title, len(plan.steps)
         )
 
         return plan
@@ -149,9 +146,13 @@ class PlanGenerator:
         if (workspace / "package.json").exists():
             try:
                 import json
+
                 with open(workspace / "package.json") as f:
                     pkg = json.load(f)
-                    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+                    deps = {
+                        **pkg.get("dependencies", {}),
+                        **pkg.get("devDependencies", {}),
+                    }
 
                     if "react" in deps:
                         analysis["frameworks"].append("react")
@@ -186,7 +187,10 @@ class PlanGenerator:
 
         # Determine project type
         if "react" in analysis["frameworks"] or "vue" in analysis["frameworks"]:
-            if "fastapi" in analysis["frameworks"] or "express" in analysis["frameworks"]:
+            if (
+                "fastapi" in analysis["frameworks"]
+                or "express" in analysis["frameworks"]
+            ):
                 analysis["project_type"] = "fullstack"
             else:
                 analysis["project_type"] = "frontend"
@@ -197,7 +201,9 @@ class PlanGenerator:
 
         return analysis
 
-    def _get_directory_structure(self, workspace: Path, max_depth: int = 3) -> Dict[str, Any]:
+    def _get_directory_structure(
+        self, workspace: Path, max_depth: int = 3
+    ) -> Dict[str, Any]:
         """Get directory structure up to max_depth."""
         structure = {"directories": [], "files": []}
 
@@ -205,7 +211,14 @@ class PlanGenerator:
             for item in workspace.iterdir():
                 if item.name.startswith("."):
                     continue
-                if item.name in ("node_modules", "__pycache__", "venv", ".venv", "dist", "build"):
+                if item.name in (
+                    "node_modules",
+                    "__pycache__",
+                    "venv",
+                    ".venv",
+                    "dist",
+                    "build",
+                ):
                     continue
 
                 if item.is_dir():
@@ -221,7 +234,7 @@ class PlanGenerator:
         self,
         user_request: str,
         codebase_analysis: Dict[str, Any],
-        context: Dict[str, Any]
+        context: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Break down the user's request into a structured task description.
@@ -278,7 +291,7 @@ Respond in JSON format:
                 import re
 
                 # Extract JSON from response
-                json_match = re.search(r'\{[\s\S]*\}', response)
+                json_match = re.search(r"\{[\s\S]*\}", response)
                 if json_match:
                     return json.loads(json_match.group())
         except Exception as e:
@@ -288,9 +301,7 @@ Respond in JSON format:
         return self._basic_task_breakdown(user_request, codebase_analysis)
 
     def _basic_task_breakdown(
-        self,
-        user_request: str,
-        codebase_analysis: Dict[str, Any]
+        self, user_request: str, codebase_analysis: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Create a basic task breakdown without LLM."""
         # Detect common patterns in request
@@ -302,48 +313,136 @@ Respond in JSON format:
 
         # Detect what kind of feature this is
         if any(word in request_lower for word in ["api", "endpoint", "route"]):
-            tasks.extend([
-                {"task": "Create API endpoint", "type": "create", "files": [], "risk": "medium"},
-                {"task": "Add request/response models", "type": "create", "files": [], "risk": "low"},
-                {"task": "Implement business logic", "type": "create", "files": [], "risk": "medium"},
-                {"task": "Add tests", "type": "create", "files": [], "risk": "low"},
-            ])
+            tasks.extend(
+                [
+                    {
+                        "task": "Create API endpoint",
+                        "type": "create",
+                        "files": [],
+                        "risk": "medium",
+                    },
+                    {
+                        "task": "Add request/response models",
+                        "type": "create",
+                        "files": [],
+                        "risk": "low",
+                    },
+                    {
+                        "task": "Implement business logic",
+                        "type": "create",
+                        "files": [],
+                        "risk": "medium",
+                    },
+                    {"task": "Add tests", "type": "create", "files": [], "risk": "low"},
+                ]
+            )
             architecture = "REST API endpoint with service layer"
 
         elif any(word in request_lower for word in ["component", "ui", "page", "form"]):
-            tasks.extend([
-                {"task": "Create UI component", "type": "create", "files": [], "risk": "low"},
-                {"task": "Add styling", "type": "create", "files": [], "risk": "low"},
-                {"task": "Connect to state/API", "type": "modify", "files": [], "risk": "medium"},
-                {"task": "Add tests", "type": "create", "files": [], "risk": "low"},
-            ])
+            tasks.extend(
+                [
+                    {
+                        "task": "Create UI component",
+                        "type": "create",
+                        "files": [],
+                        "risk": "low",
+                    },
+                    {
+                        "task": "Add styling",
+                        "type": "create",
+                        "files": [],
+                        "risk": "low",
+                    },
+                    {
+                        "task": "Connect to state/API",
+                        "type": "modify",
+                        "files": [],
+                        "risk": "medium",
+                    },
+                    {"task": "Add tests", "type": "create", "files": [], "risk": "low"},
+                ]
+            )
             architecture = "React/Vue component with state management"
 
-        elif any(word in request_lower for word in ["database", "model", "table", "migration"]):
-            tasks.extend([
-                {"task": "Create database model", "type": "create", "files": [], "risk": "medium"},
-                {"task": "Create migration", "type": "create", "files": [], "risk": "high"},
-                {"task": "Add repository/service layer", "type": "create", "files": [], "risk": "medium"},
-                {"task": "Add tests", "type": "create", "files": [], "risk": "low"},
-            ])
+        elif any(
+            word in request_lower
+            for word in ["database", "model", "table", "migration"]
+        ):
+            tasks.extend(
+                [
+                    {
+                        "task": "Create database model",
+                        "type": "create",
+                        "files": [],
+                        "risk": "medium",
+                    },
+                    {
+                        "task": "Create migration",
+                        "type": "create",
+                        "files": [],
+                        "risk": "high",
+                    },
+                    {
+                        "task": "Add repository/service layer",
+                        "type": "create",
+                        "files": [],
+                        "risk": "medium",
+                    },
+                    {"task": "Add tests", "type": "create", "files": [], "risk": "low"},
+                ]
+            )
             architecture = "Database model with migration and service layer"
 
         elif any(word in request_lower for word in ["test", "testing"]):
-            tasks.extend([
-                {"task": "Create test file", "type": "create", "files": [], "risk": "low"},
-                {"task": "Add unit tests", "type": "create", "files": [], "risk": "low"},
-                {"task": "Add integration tests", "type": "create", "files": [], "risk": "medium"},
-            ])
+            tasks.extend(
+                [
+                    {
+                        "task": "Create test file",
+                        "type": "create",
+                        "files": [],
+                        "risk": "low",
+                    },
+                    {
+                        "task": "Add unit tests",
+                        "type": "create",
+                        "files": [],
+                        "risk": "low",
+                    },
+                    {
+                        "task": "Add integration tests",
+                        "type": "create",
+                        "files": [],
+                        "risk": "medium",
+                    },
+                ]
+            )
             architecture = "Test suite with unit and integration tests"
 
         else:
             # Generic feature
-            tasks.extend([
-                {"task": "Analyze existing code", "type": "analyze", "files": [], "risk": "low"},
-                {"task": "Create new files/components", "type": "create", "files": [], "risk": "medium"},
-                {"task": "Integrate with existing code", "type": "modify", "files": [], "risk": "medium"},
-                {"task": "Add tests", "type": "create", "files": [], "risk": "low"},
-            ])
+            tasks.extend(
+                [
+                    {
+                        "task": "Analyze existing code",
+                        "type": "analyze",
+                        "files": [],
+                        "risk": "low",
+                    },
+                    {
+                        "task": "Create new files/components",
+                        "type": "create",
+                        "files": [],
+                        "risk": "medium",
+                    },
+                    {
+                        "task": "Integrate with existing code",
+                        "type": "modify",
+                        "files": [],
+                        "risk": "medium",
+                    },
+                    {"task": "Add tests", "type": "create", "files": [], "risk": "low"},
+                ]
+            )
 
         return {
             "description": description,
@@ -353,33 +452,35 @@ Respond in JSON format:
         }
 
     def _generate_steps(
-        self,
-        task_breakdown: Dict[str, Any],
-        codebase_analysis: Dict[str, Any]
+        self, task_breakdown: Dict[str, Any], codebase_analysis: Dict[str, Any]
     ) -> List[PlanStep]:
         """Generate concrete implementation steps from task breakdown."""
         steps = []
         step_num = 0
 
         # Always start with analysis
-        steps.append(PlanStep(
-            id=f"step_{step_num}",
-            description="Analyze codebase structure and patterns",
-            step_type=PlanStepType.ANALYZE,
-            tool="repo.inspect",
-            arguments={"max_depth": 3, "max_files": 100},
-            estimated_risk="low",
-        ))
+        steps.append(
+            PlanStep(
+                id=f"step_{step_num}",
+                description="Analyze codebase structure and patterns",
+                step_type=PlanStepType.ANALYZE,
+                tool="repo.inspect",
+                arguments={"max_depth": 3, "max_files": 100},
+                estimated_risk="low",
+            )
+        )
         step_num += 1
 
-        steps.append(PlanStep(
-            id=f"step_{step_num}",
-            description="Read relevant existing files",
-            step_type=PlanStepType.ANALYZE,
-            tool="code.read_files",
-            arguments={"paths": codebase_analysis.get("key_files", [])[:5]},
-            estimated_risk="low",
-        ))
+        steps.append(
+            PlanStep(
+                id=f"step_{step_num}",
+                description="Read relevant existing files",
+                step_type=PlanStepType.ANALYZE,
+                tool="code.read_files",
+                arguments={"paths": codebase_analysis.get("key_files", [])[:5]},
+                estimated_risk="low",
+            )
+        )
         step_num += 1
 
         # Convert tasks to steps
@@ -390,73 +491,83 @@ Respond in JSON format:
             task_files = task.get("files", [])
 
             if task_type == "analyze":
-                steps.append(PlanStep(
-                    id=f"step_{step_num}",
-                    description=task_desc,
-                    step_type=PlanStepType.ANALYZE,
-                    tool="code.search",
-                    arguments={"query": task_desc},
-                    estimated_risk=task_risk,
-                ))
+                steps.append(
+                    PlanStep(
+                        id=f"step_{step_num}",
+                        description=task_desc,
+                        step_type=PlanStepType.ANALYZE,
+                        tool="code.search",
+                        arguments={"query": task_desc},
+                        estimated_risk=task_risk,
+                    )
+                )
 
             elif task_type == "create":
-                steps.append(PlanStep(
-                    id=f"step_{step_num}",
-                    description=task_desc,
-                    step_type=PlanStepType.CREATE_FILE,
-                    tool="code.create_file",
-                    arguments={"files": task_files, "task": task_desc},
-                    estimated_risk=task_risk,
-                ))
+                steps.append(
+                    PlanStep(
+                        id=f"step_{step_num}",
+                        description=task_desc,
+                        step_type=PlanStepType.CREATE_FILE,
+                        tool="code.create_file",
+                        arguments={"files": task_files, "task": task_desc},
+                        estimated_risk=task_risk,
+                    )
+                )
 
             elif task_type == "modify":
-                steps.append(PlanStep(
-                    id=f"step_{step_num}",
-                    description=task_desc,
-                    step_type=PlanStepType.MODIFY_FILE,
-                    tool="code.apply_patch",
-                    arguments={"files": task_files, "task": task_desc},
-                    estimated_risk=task_risk,
-                ))
+                steps.append(
+                    PlanStep(
+                        id=f"step_{step_num}",
+                        description=task_desc,
+                        step_type=PlanStepType.MODIFY_FILE,
+                        tool="code.apply_patch",
+                        arguments={"files": task_files, "task": task_desc},
+                        estimated_risk=task_risk,
+                    )
+                )
 
             elif task_type == "test":
-                steps.append(PlanStep(
-                    id=f"step_{step_num}",
-                    description=task_desc,
-                    step_type=PlanStepType.RUN_TESTS,
-                    tool="test.run",
-                    arguments={"scope": "related"},
-                    estimated_risk=task_risk,
-                ))
+                steps.append(
+                    PlanStep(
+                        id=f"step_{step_num}",
+                        description=task_desc,
+                        step_type=PlanStepType.RUN_TESTS,
+                        tool="test.run",
+                        arguments={"scope": "related"},
+                        estimated_risk=task_risk,
+                    )
+                )
 
             elif task_type == "deploy":
-                steps.append(PlanStep(
-                    id=f"step_{step_num}",
-                    description=task_desc,
-                    step_type=PlanStepType.DEPLOY,
-                    tool="deploy.run",
-                    arguments={"environment": "staging"},
-                    estimated_risk="high",
-                ))
+                steps.append(
+                    PlanStep(
+                        id=f"step_{step_num}",
+                        description=task_desc,
+                        step_type=PlanStepType.DEPLOY,
+                        tool="deploy.run",
+                        arguments={"environment": "staging"},
+                        estimated_risk="high",
+                    )
+                )
 
             step_num += 1
 
         # Always end with test verification
-        steps.append(PlanStep(
-            id=f"step_{step_num}",
-            description="Run tests to verify implementation",
-            step_type=PlanStepType.RUN_TESTS,
-            tool="test.run",
-            arguments={"scope": "all", "with_coverage": True},
-            estimated_risk="low",
-        ))
+        steps.append(
+            PlanStep(
+                id=f"step_{step_num}",
+                description="Run tests to verify implementation",
+                step_type=PlanStepType.RUN_TESTS,
+                tool="test.run",
+                arguments={"scope": "all", "with_coverage": True},
+                estimated_risk="low",
+            )
+        )
 
         return steps
 
     def _identify_affected_files(
-        self,
-        steps: List[PlanStep],
-        codebase_analysis: Dict[str, Any]
+        self, steps: List[PlanStep], codebase_analysis: Dict[str, Any]
     ) -> List[str]:
         """Identify files that will be affected by the plan."""
         affected = set()

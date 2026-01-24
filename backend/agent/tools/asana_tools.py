@@ -81,7 +81,9 @@ async def list_my_asana_tasks(
                 if item.data.get("due_on"):
                     output += f"  Due: {item.data['due_on']}\n"
                 if item.data.get("projects"):
-                    project_names = [p.get("name", "") for p in item.data["projects"][:2]]
+                    project_names = [
+                        p.get("name", "") for p in item.data["projects"][:2]
+                    ]
                     if project_names:
                         output += f"  Projects: {', '.join(project_names)}\n"
                 if item.url:
@@ -182,9 +184,7 @@ async def search_asana_tasks(
 
     except Exception as exc:
         asana_logger.error("asana_tools.search_tasks.error", error=str(exc))
-        return ToolResult(
-            output=f"Error searching Asana tasks: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error searching Asana tasks: {str(exc)}", sources=[])
 
 
 async def list_asana_projects(
@@ -333,12 +333,14 @@ async def create_asana_task(
         if result.success:
             sources = []
             if result.url:
-                sources.append({
-                    "name": name[:50],
-                    "type": "asana",
-                    "connector": "asana",
-                    "url": result.url,
-                })
+                sources.append(
+                    {
+                        "name": name[:50],
+                        "type": "asana",
+                        "connector": "asana",
+                        "url": result.url,
+                    }
+                )
 
             output = "Successfully created Asana task:\n\n"
             output += f"• **{name}**\n"
@@ -359,9 +361,7 @@ async def create_asana_task(
 
     except Exception as exc:
         asana_logger.error("asana_tools.create_task.error", error=str(exc))
-        return ToolResult(
-            output=f"Error creating Asana task: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error creating Asana task: {str(exc)}", sources=[])
 
 
 async def complete_asana_task(
@@ -432,9 +432,7 @@ async def complete_asana_task(
 
     except Exception as exc:
         asana_logger.error("asana_tools.complete_task.error", error=str(exc))
-        return ToolResult(
-            output=f"Error completing Asana task: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error completing Asana task: {str(exc)}", sources=[])
 
 
 # Tool function registry for NAVI

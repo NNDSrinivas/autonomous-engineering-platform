@@ -170,57 +170,115 @@ async def detect_project_type(
                         pkg = json.load(f)
                         deps = {
                             **pkg.get("dependencies", {}),
-                            **pkg.get("devDependencies", {})
+                            **pkg.get("devDependencies", {}),
                         }
 
                         # Detect framework
                         if "next" in deps:
                             detected["framework"] = "Next.js"
                             detected["type"] = "fullstack"
-                            detected["recommended_platforms"] = ["vercel", "netlify", "railway", "fly"]
+                            detected["recommended_platforms"] = [
+                                "vercel",
+                                "netlify",
+                                "railway",
+                                "fly",
+                            ]
                         elif "nuxt" in deps:
                             detected["framework"] = "Nuxt.js"
                             detected["type"] = "fullstack"
-                            detected["recommended_platforms"] = ["vercel", "netlify", "railway"]
+                            detected["recommended_platforms"] = [
+                                "vercel",
+                                "netlify",
+                                "railway",
+                            ]
                         elif "gatsby" in deps:
                             detected["framework"] = "Gatsby"
                             detected["type"] = "static"
-                            detected["recommended_platforms"] = ["netlify", "vercel", "cloudflare"]
+                            detected["recommended_platforms"] = [
+                                "netlify",
+                                "vercel",
+                                "cloudflare",
+                            ]
                         elif "express" in deps or "fastify" in deps or "koa" in deps:
-                            detected["framework"] = "Express" if "express" in deps else "Fastify" if "fastify" in deps else "Koa"
+                            detected["framework"] = (
+                                "Express"
+                                if "express" in deps
+                                else "Fastify" if "fastify" in deps else "Koa"
+                            )
                             detected["type"] = "backend"
-                            detected["recommended_platforms"] = ["railway", "render", "fly", "heroku"]
+                            detected["recommended_platforms"] = [
+                                "railway",
+                                "render",
+                                "fly",
+                                "heroku",
+                            ]
                         elif "react" in deps and "next" not in deps:
                             detected["framework"] = "React"
                             detected["type"] = "frontend"
-                            detected["recommended_platforms"] = ["vercel", "netlify", "cloudflare"]
+                            detected["recommended_platforms"] = [
+                                "vercel",
+                                "netlify",
+                                "cloudflare",
+                            ]
                         elif "vue" in deps:
                             detected["framework"] = "Vue.js"
                             detected["type"] = "frontend"
-                            detected["recommended_platforms"] = ["vercel", "netlify", "cloudflare"]
+                            detected["recommended_platforms"] = [
+                                "vercel",
+                                "netlify",
+                                "cloudflare",
+                            ]
                         elif "svelte" in deps:
                             detected["framework"] = "Svelte"
                             detected["type"] = "frontend"
-                            detected["recommended_platforms"] = ["vercel", "netlify", "cloudflare"]
+                            detected["recommended_platforms"] = [
+                                "vercel",
+                                "netlify",
+                                "cloudflare",
+                            ]
                         elif "angular" in deps or "@angular/core" in deps:
                             detected["framework"] = "Angular"
                             detected["type"] = "frontend"
-                            detected["recommended_platforms"] = ["vercel", "netlify", "cloudflare"]
+                            detected["recommended_platforms"] = [
+                                "vercel",
+                                "netlify",
+                                "cloudflare",
+                            ]
                         else:
                             detected["type"] = "node"
-                            detected["recommended_platforms"] = ["railway", "render", "fly", "heroku"]
+                            detected["recommended_platforms"] = [
+                                "railway",
+                                "render",
+                                "fly",
+                                "heroku",
+                            ]
 
                         detected["language"] = "javascript"
 
                         # Check for database dependencies
-                        db_deps = ["prisma", "typeorm", "sequelize", "mongoose", "pg", "mysql2", "mongodb"]
+                        db_deps = [
+                            "prisma",
+                            "typeorm",
+                            "sequelize",
+                            "mongoose",
+                            "pg",
+                            "mysql2",
+                            "mongodb",
+                        ]
                         if any(db in deps for db in db_deps):
                             detected["has_database"] = True
                             # Prioritize platforms with DB support
-                            detected["recommended_platforms"] = ["railway", "render", "fly", "heroku"]
+                            detected["recommended_platforms"] = [
+                                "railway",
+                                "render",
+                                "fly",
+                                "heroku",
+                            ]
 
                 except (json.JSONDecodeError, IOError) as e:
-                    logger.warning("detect_project_type.package_json_error", error=str(e))
+                    logger.warning(
+                        "detect_project_type.package_json_error", error=str(e)
+                    )
 
             # Parse requirements.txt/pyproject.toml for Python projects
             elif filename in ("requirements.txt", "pyproject.toml"):
@@ -233,7 +291,9 @@ async def detect_project_type(
                     else:
                         content = ""
 
-                    if "django" in content or os.path.exists(os.path.join(workspace_path, "manage.py")):
+                    if "django" in content or os.path.exists(
+                        os.path.join(workspace_path, "manage.py")
+                    ):
                         detected["framework"] = "Django"
                         detected["type"] = "backend"
                     elif "fastapi" in content:
@@ -248,14 +308,24 @@ async def detect_project_type(
                     else:
                         detected["type"] = "python"
 
-                    detected["recommended_platforms"] = ["railway", "render", "fly", "heroku"]
+                    detected["recommended_platforms"] = [
+                        "railway",
+                        "render",
+                        "fly",
+                        "heroku",
+                    ]
 
                     # Check for database
-                    if any(db in content for db in ["psycopg", "sqlalchemy", "django", "pymongo"]):
+                    if any(
+                        db in content
+                        for db in ["psycopg", "sqlalchemy", "django", "pymongo"]
+                    ):
                         detected["has_database"] = True
 
                 except IOError as e:
-                    logger.warning("detect_project_type.requirements_error", error=str(e))
+                    logger.warning(
+                        "detect_project_type.requirements_error", error=str(e)
+                    )
 
             # Go project
             elif filename == "go.mod":
@@ -272,7 +342,13 @@ async def detect_project_type(
     # If only Dockerfile, it's a containerized app
     if detected["has_dockerfile"] and detected["type"] == "unknown":
         detected["type"] = "container"
-        detected["recommended_platforms"] = ["fly", "railway", "render", "aws", "gcloud"]
+        detected["recommended_platforms"] = [
+            "fly",
+            "railway",
+            "render",
+            "aws",
+            "gcloud",
+        ]
 
     # Check for static site (just HTML)
     if detected["type"] == "unknown":
@@ -293,7 +369,9 @@ async def detect_project_type(
     if detected["has_dockerfile"]:
         lines.append("**Docker**: Dockerfile found")
 
-    lines.append(f"\n**Detected Files**: {', '.join(detected['detected_files']) or 'None'}")
+    lines.append(
+        f"\n**Detected Files**: {', '.join(detected['detected_files']) or 'None'}"
+    )
 
     if detected["recommended_platforms"]:
         lines.append("\n**Recommended Platforms**:")
@@ -410,7 +488,9 @@ async def get_deployment_info(
     config = PLATFORM_CLIS[platform]
 
     lines = [f"## Deploying to {platform.title()}\n"]
-    lines.append(f"**Description**: {config.get('description', 'Cloud deployment platform')}\n")
+    lines.append(
+        f"**Description**: {config.get('description', 'Cloud deployment platform')}\n"
+    )
 
     lines.append("### Prerequisites")
     lines.append(f"1. Install CLI: `{config['install']}`")
@@ -424,7 +504,7 @@ async def get_deployment_info(
         lines.append(f"```bash\n{config['env_set']}\n```\n")
 
     lines.append("### Check Status")
-    status_cmd = config.get('status', f"{config['cli']} status")
+    status_cmd = config.get("status", f"{config['cli']} status")
     lines.append(f"```bash\n{status_cmd}\n```")
 
     return ToolResult(output="\n".join(lines), sources=[])

@@ -282,6 +282,7 @@ ALL_TESTS = (
 # TEST RUNNER
 # ============================================================
 
+
 async def send_navi_request(prompt: str, workspace: str) -> Dict:
     """Send request to NAVI and collect response."""
     payload = {
@@ -341,10 +342,7 @@ def validate_file(filepath: Path, commands: List[str]) -> Tuple[bool, str]:
         cmd = cmd_template.replace("{file}", str(filepath))
         try:
             result = subprocess.run(
-                cmd.split(),
-                capture_output=True,
-                text=True,
-                timeout=10
+                cmd.split(), capture_output=True, text=True, timeout=10
             )
             if result.returncode != 0:
                 return False, result.stderr[:200]
@@ -356,6 +354,7 @@ def validate_file(filepath: Path, commands: List[str]) -> Tuple[bool, str]:
 def check_patterns(content: str, patterns: List[str]) -> Tuple[bool, List[str]]:
     """Check if required patterns exist in content."""
     import re
+
     missing = []
     for pattern in patterns:
         if not re.search(pattern, content, re.IGNORECASE):
@@ -395,7 +394,10 @@ async def run_test(test: TestCase, test_dir: Path) -> Dict:
         matched_files = 0
         for expected in expected_set:
             for found in found_files:
-                if expected.lower() in found.lower() or found.lower() in expected.lower():
+                if (
+                    expected.lower() in found.lower()
+                    or found.lower() in expected.lower()
+                ):
                     matched_files += 1
                     break
 
@@ -457,7 +459,9 @@ async def run_domain_tests(domain: Domain, tests: List[TestCase]) -> List[Dict]:
             print(f"  {status} {test.name}")
             print(f"     Files: {result['files_generated']}/{result['files_expected']}")
             print(f"     Syntax: {result['syntax_valid']}/{result['files_generated']}")
-            print(f"     Patterns: {result['patterns_found']}/{result['patterns_expected']}")
+            print(
+                f"     Patterns: {result['patterns_found']}/{result['patterns_expected']}"
+            )
             if result["errors"]:
                 print(f"     Errors: {result['errors'][:2]}")
         finally:
@@ -519,9 +523,13 @@ async def run_all_tests():
     for domain_name, stats in domain_summary.items():
         pct = (stats["passed"] / stats["total"] * 100) if stats["total"] > 0 else 0
         status = "✅" if pct >= 75 else "⚠️" if pct >= 50 else "❌"
-        print(f"  {status} {domain_name}: {stats['passed']}/{stats['total']} ({pct:.0f}%)")
+        print(
+            f"  {status} {domain_name}: {stats['passed']}/{stats['total']} ({pct:.0f}%)"
+        )
 
-    print(f"\nOverall: {total_passed}/{total_tests} tests passed ({total_passed/total_tests*100:.1f}%)")
+    print(
+        f"\nOverall: {total_passed}/{total_tests} tests passed ({total_passed/total_tests*100:.1f}%)"
+    )
 
     # Detailed failures
     failures = [r for r in all_results if not r["passed"]]

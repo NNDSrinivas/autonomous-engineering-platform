@@ -46,11 +46,14 @@ logger = logging.getLogger(__name__)
 # Project Analyzer - Detect project type and verification commands
 # ======================================================================
 
+
 class ProjectAnalyzer:
     """Analyzes project to determine verification commands."""
 
     @staticmethod
-    def detect_project_type(workspace_path: str) -> Tuple[str, str, Dict[str, Optional[str]]]:
+    def detect_project_type(
+        workspace_path: str,
+    ) -> Tuple[str, str, Dict[str, Optional[str]]]:
         """
         Detect project type and return (project_type, framework, verification_commands).
         """
@@ -104,7 +107,9 @@ class ProjectAnalyzer:
                     commands["typecheck"] = "npx tsc --noEmit"
 
                 if "test" in scripts:
-                    commands["test"] = f"{run_cmd} test -- --passWithNoTests --watchAll=false"
+                    commands["test"] = (
+                        f"{run_cmd} test -- --passWithNoTests --watchAll=false"
+                    )
                 elif "jest" in deps:
                     commands["test"] = "npx jest --passWithNoTests"
                 elif "vitest" in deps:
@@ -124,9 +129,11 @@ class ProjectAnalyzer:
                 logger.warning(f"Failed to parse package.json: {e}")
 
         # Check for Python project
-        if os.path.exists(os.path.join(workspace_path, "pyproject.toml")) or \
-           os.path.exists(os.path.join(workspace_path, "setup.py")) or \
-           os.path.exists(os.path.join(workspace_path, "requirements.txt")):
+        if (
+            os.path.exists(os.path.join(workspace_path, "pyproject.toml"))
+            or os.path.exists(os.path.join(workspace_path, "setup.py"))
+            or os.path.exists(os.path.join(workspace_path, "requirements.txt"))
+        ):
 
             framework = "python"
             if os.path.exists(os.path.join(workspace_path, "manage.py")):
@@ -134,13 +141,22 @@ class ProjectAnalyzer:
             elif os.path.exists(os.path.join(workspace_path, "app.py")):
                 framework = "flask"
 
-            commands["typecheck"] = "python -m mypy . --ignore-missing-imports" if \
-                os.path.exists(os.path.join(workspace_path, "mypy.ini")) else None
-            commands["test"] = "python -m pytest -x" if \
-                os.path.exists(os.path.join(workspace_path, "pytest.ini")) or \
-                os.path.exists(os.path.join(workspace_path, "tests")) else None
-            commands["lint"] = "python -m ruff check ." if \
-                os.path.exists(os.path.join(workspace_path, "ruff.toml")) else None
+            commands["typecheck"] = (
+                "python -m mypy . --ignore-missing-imports"
+                if os.path.exists(os.path.join(workspace_path, "mypy.ini"))
+                else None
+            )
+            commands["test"] = (
+                "python -m pytest -x"
+                if os.path.exists(os.path.join(workspace_path, "pytest.ini"))
+                or os.path.exists(os.path.join(workspace_path, "tests"))
+                else None
+            )
+            commands["lint"] = (
+                "python -m ruff check ."
+                if os.path.exists(os.path.join(workspace_path, "ruff.toml"))
+                else None
+            )
 
             return "python", framework, commands
 
@@ -148,8 +164,11 @@ class ProjectAnalyzer:
         if os.path.exists(os.path.join(workspace_path, "go.mod")):
             commands["build"] = "go build ./..."
             commands["test"] = "go test ./..."
-            commands["lint"] = "golangci-lint run" if \
-                os.path.exists(os.path.join(workspace_path, ".golangci.yml")) else None
+            commands["lint"] = (
+                "golangci-lint run"
+                if os.path.exists(os.path.join(workspace_path, ".golangci.yml"))
+                else None
+            )
             return "go", "go", commands
 
         # Check for Rust project
@@ -166,9 +185,11 @@ class ProjectAnalyzer:
 # Verification Runner - Execute verification commands
 # ======================================================================
 
+
 @dataclass
 class VerificationResult:
     """Result of a verification step."""
+
     verification_type: str
     success: bool
     output: str
@@ -183,9 +204,7 @@ class VerificationRunner:
         self.workspace_path = workspace_path
 
     async def run_command(
-        self,
-        command: str,
-        timeout: int = 120
+        self, command: str, timeout: int = 120
     ) -> Tuple[bool, str, int]:
         """Run a command and return (success, output, exit_code)."""
         try:
@@ -198,8 +217,7 @@ class VerificationRunner:
 
             try:
                 stdout, _ = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=timeout
+                    process.communicate(), timeout=timeout
                 )
                 output = stdout.decode("utf-8", errors="replace")
                 return process.returncode == 0, output, process.returncode or 0
@@ -211,9 +229,7 @@ class VerificationRunner:
             return False, str(e), -1
 
     async def run_verification(
-        self,
-        verification_type: str,
-        command: str
+        self, verification_type: str, command: str
     ) -> VerificationResult:
         """Run a verification command and parse the results."""
         success, output, _ = await self.run_command(command)
@@ -233,14 +249,14 @@ class VerificationRunner:
             verification_type=verification_type,
             success=success,
             output=output[:5000],  # Limit output size
-            errors=errors[:20],    # Limit error count
-            warnings=warnings[:20]
+            errors=errors[:20],  # Limit error count
+            warnings=warnings[:20],
         )
 
     async def verify_changes(
         self,
         commands: Dict[str, Optional[str]],
-        run_tests: bool = False  # Only run tests on explicit request
+        run_tests: bool = False,  # Only run tests on explicit request
     ) -> List[VerificationResult]:
         """Run all applicable verification commands."""
         results = []
@@ -284,19 +300,19 @@ NAVI_TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The relative path to the file from the workspace root"
+                    "description": "The relative path to the file from the workspace root",
                 },
                 "start_line": {
                     "type": "integer",
-                    "description": "Optional: start line number (1-indexed)"
+                    "description": "Optional: start line number (1-indexed)",
                 },
                 "end_line": {
                     "type": "integer",
-                    "description": "Optional: end line number (1-indexed)"
-                }
+                    "description": "Optional: end line number (1-indexed)",
+                },
             },
-            "required": ["path"]
-        }
+            "required": ["path"],
+        },
     },
     {
         "name": "write_file",
@@ -306,15 +322,15 @@ NAVI_TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The relative path where to write the file"
+                    "description": "The relative path where to write the file",
                 },
                 "content": {
                     "type": "string",
-                    "description": "The complete content to write to the file"
-                }
+                    "description": "The complete content to write to the file",
+                },
             },
-            "required": ["path", "content"]
-        }
+            "required": ["path", "content"],
+        },
     },
     {
         "name": "edit_file",
@@ -324,19 +340,19 @@ NAVI_TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The relative path to the file"
+                    "description": "The relative path to the file",
                 },
                 "old_text": {
                     "type": "string",
-                    "description": "The exact text to find and replace (must match exactly)"
+                    "description": "The exact text to find and replace (must match exactly)",
                 },
                 "new_text": {
                     "type": "string",
-                    "description": "The text to replace it with"
-                }
+                    "description": "The text to replace it with",
+                },
             },
-            "required": ["path", "old_text", "new_text"]
-        }
+            "required": ["path", "old_text", "new_text"],
+        },
     },
     {
         "name": "run_command",
@@ -346,15 +362,15 @@ NAVI_TOOLS = [
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The command to run (e.g., 'npm install', 'python test.py', 'git status')"
+                    "description": "The command to run (e.g., 'npm install', 'python test.py', 'git status')",
                 },
                 "cwd": {
                     "type": "string",
-                    "description": "Optional: working directory relative to workspace root"
-                }
+                    "description": "Optional: working directory relative to workspace root",
+                },
             },
-            "required": ["command"]
-        }
+            "required": ["command"],
+        },
     },
     {
         "name": "search_files",
@@ -364,16 +380,16 @@ NAVI_TOOLS = [
             "properties": {
                 "pattern": {
                     "type": "string",
-                    "description": "Glob pattern for file names (e.g., '**/*.ts') or text to search for"
+                    "description": "Glob pattern for file names (e.g., '**/*.ts') or text to search for",
                 },
                 "search_type": {
                     "type": "string",
                     "enum": ["filename", "content"],
-                    "description": "Whether to search file names or file contents"
-                }
+                    "description": "Whether to search file names or file contents",
+                },
             },
-            "required": ["pattern", "search_type"]
-        }
+            "required": ["pattern", "search_type"],
+        },
     },
     {
         "name": "list_directory",
@@ -383,11 +399,11 @@ NAVI_TOOLS = [
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "The directory path to list (relative to workspace root, use '.' for root)"
+                    "description": "The directory path to list (relative to workspace root, use '.' for root)",
                 }
             },
-            "required": ["path"]
-        }
+            "required": ["path"],
+        },
     },
     # === PROCESS MANAGEMENT TOOLS ===
     # These enable handling ANY long-running process (servers, watchers, etc.)
@@ -397,17 +413,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The command to run"
-                },
+                "command": {"type": "string", "description": "The command to run"},
                 "env": {
                     "type": "object",
-                    "description": "Optional environment variables (e.g., {'PORT': '3001'})"
-                }
+                    "description": "Optional environment variables (e.g., {'PORT': '3001'})",
+                },
             },
-            "required": ["command"]
-        }
+            "required": ["command"],
+        },
     },
     {
         "name": "check_process",
@@ -417,11 +430,11 @@ NAVI_TOOLS = [
             "properties": {
                 "process_id": {
                     "type": "string",
-                    "description": "The process ID returned by run_background"
+                    "description": "The process ID returned by run_background",
                 }
             },
-            "required": ["process_id"]
-        }
+            "required": ["process_id"],
+        },
     },
     {
         "name": "get_process_output",
@@ -429,17 +442,14 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "process_id": {
-                    "type": "string",
-                    "description": "The process ID"
-                },
+                "process_id": {"type": "string", "description": "The process ID"},
                 "lines": {
                     "type": "integer",
-                    "description": "Number of recent lines (default: 50)"
-                }
+                    "description": "Number of recent lines (default: 50)",
+                },
             },
-            "required": ["process_id"]
-        }
+            "required": ["process_id"],
+        },
     },
     {
         "name": "kill_process",
@@ -449,15 +459,15 @@ NAVI_TOOLS = [
             "properties": {
                 "process_id": {
                     "type": "string",
-                    "description": "The process ID to kill"
+                    "description": "The process ID to kill",
                 },
                 "force": {
                     "type": "boolean",
-                    "description": "Force kill with SIGKILL (default: false, uses SIGTERM)"
-                }
+                    "description": "Force kill with SIGKILL (default: false, uses SIGTERM)",
+                },
             },
-            "required": ["process_id"]
-        }
+            "required": ["process_id"],
+        },
     },
     {
         "name": "verify_condition",
@@ -468,46 +478,142 @@ NAVI_TOOLS = [
                 "condition_type": {
                     "type": "string",
                     "enum": [
-                        "http", "port", "tcp", "websocket", "ssl", "dns", "ssh", "ftp", "smtp", "ldap",
-                        "file_exists", "file_contains", "process_running", "command_succeeds",
-                        "disk_space", "memory_available", "cpu_usage", "env_var",
-                        "database", "elasticsearch",
-                        "docker", "docker_compose", "kubernetes",
-                        "queue", "graphql", "grpc", "sse", "api_response", "json_schema", "url_accessible",
-                        "s3", "npm_registry", "docker_registry", "git_remote",
-                        "systemd_service", "launchd_service", "cron_job", "network_interface",
-                        "health_aggregate"
+                        "http",
+                        "port",
+                        "tcp",
+                        "websocket",
+                        "ssl",
+                        "dns",
+                        "ssh",
+                        "ftp",
+                        "smtp",
+                        "ldap",
+                        "file_exists",
+                        "file_contains",
+                        "process_running",
+                        "command_succeeds",
+                        "disk_space",
+                        "memory_available",
+                        "cpu_usage",
+                        "env_var",
+                        "database",
+                        "elasticsearch",
+                        "docker",
+                        "docker_compose",
+                        "kubernetes",
+                        "queue",
+                        "graphql",
+                        "grpc",
+                        "sse",
+                        "api_response",
+                        "json_schema",
+                        "url_accessible",
+                        "s3",
+                        "npm_registry",
+                        "docker_registry",
+                        "git_remote",
+                        "systemd_service",
+                        "launchd_service",
+                        "cron_job",
+                        "network_interface",
+                        "health_aggregate",
                     ],
-                    "description": "Type of condition to check"
+                    "description": "Type of condition to check",
                 },
-                "url": {"type": "string", "description": "For http/websocket/graphql/sse: URL to check"},
-                "port": {"type": "integer", "description": "For port/tcp/ssl/grpc: port number"},
-                "host": {"type": "string", "description": "Hostname (default: localhost)"},
-                "path": {"type": "string", "description": "For file_exists/file_contains/disk_space: path"},
-                "pattern": {"type": "string", "description": "For file_contains/tcp/cron_job: regex pattern"},
-                "name": {"type": "string", "description": "For process_running/env_var/kubernetes: name"},
-                "command": {"type": "string", "description": "For command_succeeds: command to run"},
-                "db_type": {"type": "string", "description": "For database: postgres, mysql, mongodb, redis"},
-                "database": {"type": "string", "description": "For database: database name"},
+                "url": {
+                    "type": "string",
+                    "description": "For http/websocket/graphql/sse: URL to check",
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "For port/tcp/ssl/grpc: port number",
+                },
+                "host": {
+                    "type": "string",
+                    "description": "Hostname (default: localhost)",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "For file_exists/file_contains/disk_space: path",
+                },
+                "pattern": {
+                    "type": "string",
+                    "description": "For file_contains/tcp/cron_job: regex pattern",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "For process_running/env_var/kubernetes: name",
+                },
+                "command": {
+                    "type": "string",
+                    "description": "For command_succeeds: command to run",
+                },
+                "db_type": {
+                    "type": "string",
+                    "description": "For database: postgres, mysql, mongodb, redis",
+                },
+                "database": {
+                    "type": "string",
+                    "description": "For database: database name",
+                },
                 "user": {"type": "string", "description": "For database/ssh: username"},
                 "password": {"type": "string", "description": "For database: password"},
-                "container": {"type": "string", "description": "For docker: container name/id"},
-                "service": {"type": "string", "description": "For docker_compose/systemd/launchd: service name"},
-                "queue_type": {"type": "string", "description": "For queue: rabbitmq, kafka, redis, nats"},
-                "hostname": {"type": "string", "description": "For dns: hostname to resolve"},
+                "container": {
+                    "type": "string",
+                    "description": "For docker: container name/id",
+                },
+                "service": {
+                    "type": "string",
+                    "description": "For docker_compose/systemd/launchd: service name",
+                },
+                "queue_type": {
+                    "type": "string",
+                    "description": "For queue: rabbitmq, kafka, redis, nats",
+                },
+                "hostname": {
+                    "type": "string",
+                    "description": "For dns: hostname to resolve",
+                },
                 "bucket": {"type": "string", "description": "For s3: bucket name"},
-                "registry": {"type": "string", "description": "For npm/docker_registry: registry URL"},
-                "resource_type": {"type": "string", "description": "For kubernetes: pod, deployment, service"},
-                "namespace": {"type": "string", "description": "For kubernetes: namespace"},
-                "min_free_gb": {"type": "number", "description": "For disk_space/memory: minimum free GB"},
-                "max_used_percent": {"type": "number", "description": "For disk_space/memory/cpu: max used %"},
-                "interface": {"type": "string", "description": "For network_interface: interface name"},
-                "expected_status": {"type": "integer", "description": "For http/api_response: expected HTTP status"},
-                "response_contains": {"type": "string", "description": "For api_response: expected text in response"},
-                "checks": {"type": "array", "description": "For health_aggregate: list of checks to run"}
+                "registry": {
+                    "type": "string",
+                    "description": "For npm/docker_registry: registry URL",
+                },
+                "resource_type": {
+                    "type": "string",
+                    "description": "For kubernetes: pod, deployment, service",
+                },
+                "namespace": {
+                    "type": "string",
+                    "description": "For kubernetes: namespace",
+                },
+                "min_free_gb": {
+                    "type": "number",
+                    "description": "For disk_space/memory: minimum free GB",
+                },
+                "max_used_percent": {
+                    "type": "number",
+                    "description": "For disk_space/memory/cpu: max used %",
+                },
+                "interface": {
+                    "type": "string",
+                    "description": "For network_interface: interface name",
+                },
+                "expected_status": {
+                    "type": "integer",
+                    "description": "For http/api_response: expected HTTP status",
+                },
+                "response_contains": {
+                    "type": "string",
+                    "description": "For api_response: expected text in response",
+                },
+                "checks": {
+                    "type": "array",
+                    "description": "For health_aggregate: list of checks to run",
+                },
             },
-            "required": ["condition_type"]
-        }
+            "required": ["condition_type"],
+        },
     },
     {
         "name": "wait_for_condition",
@@ -518,25 +624,64 @@ NAVI_TOOLS = [
                 "condition_type": {
                     "type": "string",
                     "enum": [
-                        "http", "port", "tcp", "websocket", "file_exists", "file_contains",
-                        "process_running", "command_succeeds", "database", "docker",
-                        "docker_compose", "kubernetes", "elasticsearch", "queue"
+                        "http",
+                        "port",
+                        "tcp",
+                        "websocket",
+                        "file_exists",
+                        "file_contains",
+                        "process_running",
+                        "command_succeeds",
+                        "database",
+                        "docker",
+                        "docker_compose",
+                        "kubernetes",
+                        "elasticsearch",
+                        "queue",
                     ],
-                    "description": "Type of condition to wait for"
+                    "description": "Type of condition to wait for",
                 },
-                "timeout": {"type": "integer", "description": "Max seconds to wait (default: 30)"},
-                "interval": {"type": "number", "description": "Seconds between checks (default: 1.0)"},
-                "backoff": {"type": "string", "enum": ["none", "linear", "exponential"], "description": "Retry backoff strategy (default: linear)"},
+                "timeout": {
+                    "type": "integer",
+                    "description": "Max seconds to wait (default: 30)",
+                },
+                "interval": {
+                    "type": "number",
+                    "description": "Seconds between checks (default: 1.0)",
+                },
+                "backoff": {
+                    "type": "string",
+                    "enum": ["none", "linear", "exponential"],
+                    "description": "Retry backoff strategy (default: linear)",
+                },
                 "url": {"type": "string", "description": "For http: URL to wait for"},
-                "port": {"type": "integer", "description": "For port: port to wait for"},
-                "host": {"type": "string", "description": "Hostname (default: localhost)"},
-                "path": {"type": "string", "description": "For file_exists: path to wait for"},
-                "name": {"type": "string", "description": "For process_running/kubernetes: name"},
-                "container": {"type": "string", "description": "For docker: container name"},
-                "service": {"type": "string", "description": "For docker_compose: service name"}
+                "port": {
+                    "type": "integer",
+                    "description": "For port: port to wait for",
+                },
+                "host": {
+                    "type": "string",
+                    "description": "Hostname (default: localhost)",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "For file_exists: path to wait for",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "For process_running/kubernetes: name",
+                },
+                "container": {
+                    "type": "string",
+                    "description": "For docker: container name",
+                },
+                "service": {
+                    "type": "string",
+                    "description": "For docker_compose: service name",
+                },
             },
-            "required": ["condition_type"]
-        }
+            "required": ["condition_type"],
+        },
     },
     # === ADVANCED PROCESS MANAGEMENT ===
     {
@@ -551,16 +696,25 @@ NAVI_TOOLS = [
                     "items": {
                         "type": "object",
                         "properties": {
-                            "expect": {"type": "string", "description": "Pattern to wait for in output"},
-                            "send": {"type": "string", "description": "Response to send"}
-                        }
+                            "expect": {
+                                "type": "string",
+                                "description": "Pattern to wait for in output",
+                            },
+                            "send": {
+                                "type": "string",
+                                "description": "Response to send",
+                            },
+                        },
                     },
-                    "description": "Expect/send pairs for automation"
+                    "description": "Expect/send pairs for automation",
                 },
-                "timeout": {"type": "integer", "description": "Max seconds (default: 60)"}
+                "timeout": {
+                    "type": "integer",
+                    "description": "Max seconds (default: 60)",
+                },
             },
-            "required": ["command", "inputs"]
-        }
+            "required": ["command", "inputs"],
+        },
     },
     {
         "name": "run_parallel",
@@ -574,17 +728,26 @@ NAVI_TOOLS = [
                         "type": "object",
                         "properties": {
                             "command": {"type": "string"},
-                            "name": {"type": "string", "description": "Label for this command"}
+                            "name": {
+                                "type": "string",
+                                "description": "Label for this command",
+                            },
                         },
-                        "required": ["command"]
+                        "required": ["command"],
                     },
-                    "description": "Commands to run in parallel"
+                    "description": "Commands to run in parallel",
                 },
-                "timeout": {"type": "integer", "description": "Max seconds for all (default: 300)"},
-                "fail_fast": {"type": "boolean", "description": "Stop all on first failure (default: false)"}
+                "timeout": {
+                    "type": "integer",
+                    "description": "Max seconds for all (default: 300)",
+                },
+                "fail_fast": {
+                    "type": "boolean",
+                    "description": "Stop all on first failure (default: false)",
+                },
             },
-            "required": ["commands"]
-        }
+            "required": ["commands"],
+        },
     },
     {
         "name": "wait_for_log_pattern",
@@ -592,12 +755,21 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "process_id": {"type": "string", "description": "Process ID to monitor"},
-                "pattern": {"type": "string", "description": "Regex pattern to match in output"},
-                "timeout": {"type": "integer", "description": "Max seconds to wait (default: 60)"}
+                "process_id": {
+                    "type": "string",
+                    "description": "Process ID to monitor",
+                },
+                "pattern": {
+                    "type": "string",
+                    "description": "Regex pattern to match in output",
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Max seconds to wait (default: 60)",
+                },
             },
-            "required": ["process_id", "pattern"]
-        }
+            "required": ["process_id", "pattern"],
+        },
     },
     {
         "name": "cleanup_session",
@@ -605,15 +777,22 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "Only clean processes with these tags"},
-                "force": {"type": "boolean", "description": "Force kill with SIGKILL (default: false)"}
-            }
-        }
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Only clean processes with these tags",
+                },
+                "force": {
+                    "type": "boolean",
+                    "description": "Force kill with SIGKILL (default: false)",
+                },
+            },
+        },
     },
     {
         "name": "list_processes",
         "description": "List all managed background processes with their status.",
-        "input_schema": {"type": "object", "properties": {}}
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "start_service_chain",
@@ -627,17 +806,30 @@ NAVI_TOOLS = [
                         "type": "object",
                         "properties": {
                             "name": {"type": "string", "description": "Service name"},
-                            "command": {"type": "string", "description": "Start command"},
-                            "depends_on": {"type": "array", "items": {"type": "string"}, "description": "Services this depends on"},
-                            "health_check": {"type": "object", "description": "Health check config (type, url, port, etc)"},
-                            "startup_timeout": {"type": "integer", "description": "Seconds to wait for health (default: 30)"}
+                            "command": {
+                                "type": "string",
+                                "description": "Start command",
+                            },
+                            "depends_on": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Services this depends on",
+                            },
+                            "health_check": {
+                                "type": "object",
+                                "description": "Health check config (type, url, port, etc)",
+                            },
+                            "startup_timeout": {
+                                "type": "integer",
+                                "description": "Seconds to wait for health (default: 30)",
+                            },
                         },
-                        "required": ["name", "command"]
-                    }
+                        "required": ["name", "command"],
+                    },
                 }
             },
-            "required": ["services"]
-        }
+            "required": ["services"],
+        },
     },
     {
         "name": "check_resources",
@@ -645,10 +837,13 @@ NAVI_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "process_id": {"type": "string", "description": "Check specific managed process"},
-                "pid": {"type": "integer", "description": "Check specific PID"}
-            }
-        }
+                "process_id": {
+                    "type": "string",
+                    "description": "Check specific managed process",
+                },
+                "pid": {"type": "integer", "description": "Check specific PID"},
+            },
+        },
     },
     {
         "name": "run_with_environment",
@@ -657,12 +852,22 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "command": {"type": "string", "description": "Command to run"},
-                "env_type": {"type": "string", "enum": ["node", "python", "ruby", "java"], "description": "Environment type"},
-                "version": {"type": "string", "description": "Version (e.g., '18', '3.11')"},
-                "timeout": {"type": "integer", "description": "Max seconds (default: 120)"}
+                "env_type": {
+                    "type": "string",
+                    "enum": ["node", "python", "ruby", "java"],
+                    "description": "Environment type",
+                },
+                "version": {
+                    "type": "string",
+                    "description": "Version (e.g., '18', '3.11')",
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Max seconds (default: 120)",
+                },
             },
-            "required": ["command", "env_type"]
-        }
+            "required": ["command", "env_type"],
+        },
     },
     {
         "name": "run_oauth_flow",
@@ -671,11 +876,14 @@ NAVI_TOOLS = [
             "type": "object",
             "properties": {
                 "command": {"type": "string", "description": "CLI auth command"},
-                "timeout": {"type": "integer", "description": "Max seconds for auth (default: 300)"}
+                "timeout": {
+                    "type": "integer",
+                    "description": "Max seconds for auth (default: 300)",
+                },
             },
-            "required": ["command"]
-        }
-    }
+            "required": ["command"],
+        },
+    },
 ]
 
 
@@ -683,22 +891,25 @@ NAVI_TOOLS = [
 # Event Types
 # ======================================================================
 
+
 class AgentEventType(Enum):
     """Types of events emitted by the agent."""
-    THINKING = "thinking"           # Agent iteration started
-    TEXT = "text"                   # Text chunk from LLM
-    TOOL_CALL = "tool_call"         # Tool being called
-    TOOL_RESULT = "tool_result"     # Tool execution result
-    ERROR = "error"                 # Error occurred
-    DONE = "done"                   # Execution complete
-    VERIFICATION = "verification"   # Verification started/completed
-    FIXING = "fixing"               # Agent is fixing verification errors
-    PHASE_CHANGE = "phase_change"   # Agent phase changed
+
+    THINKING = "thinking"  # Agent iteration started
+    TEXT = "text"  # Text chunk from LLM
+    TOOL_CALL = "tool_call"  # Tool being called
+    TOOL_RESULT = "tool_result"  # Tool execution result
+    ERROR = "error"  # Error occurred
+    DONE = "done"  # Execution complete
+    VERIFICATION = "verification"  # Verification started/completed
+    FIXING = "fixing"  # Agent is fixing verification errors
+    PHASE_CHANGE = "phase_change"  # Agent phase changed
 
 
 @dataclass
 class AgentEvent:
     """Event emitted during agent execution."""
+
     type: AgentEventType
     data: Any
     sequence: int = 0
@@ -715,8 +926,10 @@ class AgentEvent:
 # Agent Context
 # ======================================================================
 
+
 class AgentPhase(Enum):
     """Current phase of the agent."""
+
     PLANNING = "planning"
     EXECUTING = "executing"
     VERIFYING = "verifying"
@@ -727,6 +940,7 @@ class AgentPhase(Enum):
 @dataclass
 class AgentContext:
     """Maintains context across the agentic loop."""
+
     task_id: str
     user_id: str
     workspace_path: str
@@ -743,7 +957,9 @@ class AgentContext:
     verification_results: List[VerificationResult] = field(default_factory=list)
     error_history: List[Dict[str, Any]] = field(default_factory=list)
     verification_attempts: int = 0
-    max_verification_attempts: int = 3  # How many times to try fixing verification errors
+    max_verification_attempts: int = (
+        3  # How many times to try fixing verification errors
+    )
     # Project info
     project_type: str = "unknown"
     framework: str = "unknown"
@@ -753,6 +969,7 @@ class AgentContext:
 # ======================================================================
 # Tool Executor
 # ======================================================================
+
 
 class ToolExecutor:
     """Executes tools in the workspace."""
@@ -819,8 +1036,8 @@ class ToolExecutor:
     def _resolve_path(self, relative_path: str) -> Path:
         """Resolve a relative path to absolute, ensuring it's within workspace."""
         # Handle absolute paths by making them relative
-        if relative_path.startswith('/'):
-            relative_path = relative_path.lstrip('/')
+        if relative_path.startswith("/"):
+            relative_path = relative_path.lstrip("/")
 
         full_path = (self.workspace_path / relative_path).resolve()
 
@@ -843,8 +1060,8 @@ class ToolExecutor:
             return {"error": f"Not a file: {args['path']}", "success": False}
 
         try:
-            content = path.read_text(encoding='utf-8')
-            lines = content.split('\n')
+            content = path.read_text(encoding="utf-8")
+            lines = content.split("\n")
 
             # Handle line ranges
             start_line = args.get("start_line", 1)
@@ -857,9 +1074,8 @@ class ToolExecutor:
             selected_lines = lines[start_idx:end_idx]
 
             # Add line numbers
-            numbered_content = '\n'.join(
-                f"{i + start_line}: {line}"
-                for i, line in enumerate(selected_lines)
+            numbered_content = "\n".join(
+                f"{i + start_line}: {line}" for i, line in enumerate(selected_lines)
             )
 
             return {
@@ -882,7 +1098,7 @@ class ToolExecutor:
             path.parent.mkdir(parents=True, exist_ok=True)
 
             # Write the file
-            path.write_text(content, encoding='utf-8')
+            path.write_text(content, encoding="utf-8")
 
             return {
                 "message": f"Successfully wrote {len(content)} characters to {args['path']}",
@@ -903,7 +1119,7 @@ class ToolExecutor:
             return {"error": f"File not found: {args['path']}", "success": False}
 
         try:
-            content = path.read_text(encoding='utf-8')
+            content = path.read_text(encoding="utf-8")
 
             if old_text not in content:
                 return {
@@ -921,7 +1137,7 @@ class ToolExecutor:
 
             # Replace
             new_content = content.replace(old_text, new_text)
-            path.write_text(new_content, encoding='utf-8')
+            path.write_text(new_content, encoding="utf-8")
 
             return {
                 "message": f"Successfully edited {args['path']}",
@@ -940,12 +1156,19 @@ class ToolExecutor:
 
         # Security: Block dangerous commands
         dangerous_patterns = [
-            "rm -rf /", "rm -rf ~", ":(){ :|:& };:",  # Fork bomb
-            "mkfs", "dd if=", "> /dev/sd",
+            "rm -rf /",
+            "rm -rf ~",
+            ":(){ :|:& };:",  # Fork bomb
+            "mkfs",
+            "dd if=",
+            "> /dev/sd",
         ]
         for pattern in dangerous_patterns:
             if pattern in command:
-                return {"error": f"Blocked dangerous command pattern: {pattern}", "success": False}
+                return {
+                    "error": f"Blocked dangerous command pattern: {pattern}",
+                    "success": False,
+                }
 
         try:
             process = await asyncio.create_subprocess_shell(
@@ -958,22 +1181,30 @@ class ToolExecutor:
             # Timeout after 120 seconds
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=120.0
+                    process.communicate(), timeout=120.0
                 )
             except asyncio.TimeoutError:
                 process.kill()
-                return {"error": "Command timed out after 120 seconds", "success": False}
+                return {
+                    "error": "Command timed out after 120 seconds",
+                    "success": False,
+                }
 
-            stdout_text = stdout.decode('utf-8', errors='replace')
-            stderr_text = stderr.decode('utf-8', errors='replace')
+            stdout_text = stdout.decode("utf-8", errors="replace")
+            stderr_text = stderr.decode("utf-8", errors="replace")
 
             # Truncate long output
             max_output = 10000
             if len(stdout_text) > max_output:
-                stdout_text = stdout_text[:max_output] + f"\n... (truncated, {len(stdout_text)} total chars)"
+                stdout_text = (
+                    stdout_text[:max_output]
+                    + f"\n... (truncated, {len(stdout_text)} total chars)"
+                )
             if len(stderr_text) > max_output:
-                stderr_text = stderr_text[:max_output] + f"\n... (truncated, {len(stderr_text)} total chars)"
+                stderr_text = (
+                    stderr_text[:max_output]
+                    + f"\n... (truncated, {len(stderr_text)} total chars)"
+                )
 
             return {
                 "command": command,
@@ -995,7 +1226,9 @@ class ToolExecutor:
                 # Glob search
                 matches = list(self.workspace_path.glob(pattern))
                 # Convert to relative paths
-                results = [str(m.relative_to(self.workspace_path)) for m in matches[:100]]
+                results = [
+                    str(m.relative_to(self.workspace_path)) for m in matches[:100]
+                ]
                 return {
                     "matches": results,
                     "count": len(matches),
@@ -1005,13 +1238,20 @@ class ToolExecutor:
             else:
                 # Content search using grep
                 process = await asyncio.create_subprocess_exec(
-                    "grep", "-r", "-l", "--include=*", pattern, ".",
+                    "grep",
+                    "-r",
+                    "-l",
+                    "--include=*",
+                    pattern,
+                    ".",
                     cwd=str(self.workspace_path),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
                 stdout, _ = await asyncio.wait_for(process.communicate(), timeout=30.0)
-                files = [f.strip() for f in stdout.decode().strip().split('\n') if f.strip()]
+                files = [
+                    f.strip() for f in stdout.decode().strip().split("\n") if f.strip()
+                ]
                 return {
                     "matches": files[:100],
                     "count": len(files),
@@ -1026,16 +1266,27 @@ class ToolExecutor:
         dir_path = self._resolve_path(args.get("path", "."))
 
         if not dir_path.exists():
-            return {"error": f"Directory not found: {args.get('path', '.')}", "success": False}
+            return {
+                "error": f"Directory not found: {args.get('path', '.')}",
+                "success": False,
+            }
 
         if not dir_path.is_dir():
-            return {"error": f"Not a directory: {args.get('path', '.')}", "success": False}
+            return {
+                "error": f"Not a directory: {args.get('path', '.')}",
+                "success": False,
+            }
 
         try:
             items = []
             for item in sorted(dir_path.iterdir()):
                 # Skip hidden files and common ignore patterns
-                if item.name.startswith('.') or item.name in ('node_modules', '__pycache__', 'venv', '.git'):
+                if item.name.startswith(".") or item.name in (
+                    "node_modules",
+                    "__pycache__",
+                    "venv",
+                    ".git",
+                ):
                     continue
 
                 rel_path = str(item.relative_to(self.workspace_path))
@@ -1068,9 +1319,7 @@ class ToolExecutor:
         pm = ProcessManager()
 
         result = await pm.start_background(
-            command=command,
-            working_dir=str(self.workspace_path),
-            env=env
+            command=command, working_dir=str(self.workspace_path), env=env
         )
 
         return result
@@ -1124,7 +1373,9 @@ class ToolExecutor:
         condition_type = args["condition_type"]
 
         # Build kwargs from args
-        kwargs = {k: v for k, v in args.items() if k != "condition_type" and v is not None}
+        kwargs = {
+            k: v for k, v in args.items() if k != "condition_type" and v is not None
+        }
 
         # For file operations, resolve paths relative to workspace
         if "path" in kwargs and not kwargs["path"].startswith("/"):
@@ -1152,13 +1403,19 @@ class ToolExecutor:
         interval = args.get("interval", 1.0)
 
         # Build kwargs from args
-        kwargs = {k: v for k, v in args.items() if k not in ["condition_type", "timeout", "interval"] and v is not None}
+        kwargs = {
+            k: v
+            for k, v in args.items()
+            if k not in ["condition_type", "timeout", "interval"] and v is not None
+        }
 
         # For file operations, resolve paths relative to workspace
         if "path" in kwargs and not kwargs["path"].startswith("/"):
             kwargs["path"] = str(self.workspace_path / kwargs["path"])
 
-        return await wait_for_condition(condition_type, timeout=timeout, interval=interval, **kwargs)
+        return await wait_for_condition(
+            condition_type, timeout=timeout, interval=interval, **kwargs
+        )
 
     async def _run_interactive(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Run interactive command with expect/send automation."""
@@ -1169,7 +1426,7 @@ class ToolExecutor:
             command=args["command"],
             working_dir=str(self.workspace_path),
             inputs=args["inputs"],
-            timeout=args.get("timeout", 60)
+            timeout=args.get("timeout", 60),
         )
 
     async def _run_parallel(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1181,7 +1438,7 @@ class ToolExecutor:
             commands=args["commands"],
             working_dir=str(self.workspace_path),
             timeout=args.get("timeout", 300),
-            fail_fast=args.get("fail_fast", False)
+            fail_fast=args.get("fail_fast", False),
         )
 
     async def _wait_for_log_pattern(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1192,7 +1449,7 @@ class ToolExecutor:
         return await pm.wait_for_log_pattern(
             process_id=args["process_id"],
             pattern=args["pattern"],
-            timeout=args.get("timeout", 60)
+            timeout=args.get("timeout", 60),
         )
 
     async def _cleanup_session(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1201,8 +1458,7 @@ class ToolExecutor:
 
         pm = ProcessManager()
         return await pm.cleanup_session(
-            tags=args.get("tags"),
-            force=args.get("force", False)
+            tags=args.get("tags"), force=args.get("force", False)
         )
 
     async def _list_processes(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1217,8 +1473,7 @@ class ToolExecutor:
         from backend.services.process_manager import start_service_chain
 
         return await start_service_chain(
-            services=args["services"],
-            working_dir=str(self.workspace_path)
+            services=args["services"], working_dir=str(self.workspace_path)
         )
 
     async def _check_resources(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1226,8 +1481,7 @@ class ToolExecutor:
         from backend.services.process_manager import check_resources
 
         return await check_resources(
-            process_id=args.get("process_id"),
-            pid=args.get("pid")
+            process_id=args.get("process_id"), pid=args.get("pid")
         )
 
     async def _run_with_environment(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1239,7 +1493,7 @@ class ToolExecutor:
             working_dir=str(self.workspace_path),
             env_type=args["env_type"],
             version=args.get("version"),
-            timeout=args.get("timeout", 120)
+            timeout=args.get("timeout", 120),
         )
 
     async def _run_oauth_flow(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1249,13 +1503,14 @@ class ToolExecutor:
         return await run_oauth_flow(
             command=args["command"],
             working_dir=str(self.workspace_path),
-            timeout=args.get("timeout", 300)
+            timeout=args.get("timeout", 300),
         )
 
 
 # ======================================================================
 # Unified Agent
 # ======================================================================
+
 
 class UnifiedAgent:
     """
@@ -1324,7 +1579,9 @@ class UnifiedAgent:
             verification, fixing, done, error
         """
         # Detect project type and verification commands
-        project_type, framework, verification_commands = ProjectAnalyzer.detect_project_type(workspace_path)
+        project_type, framework, verification_commands = (
+            ProjectAnalyzer.detect_project_type(workspace_path)
+        )
 
         ctx = AgentContext(
             task_id=str(uuid.uuid4()),
@@ -1336,7 +1593,9 @@ class UnifiedAgent:
             verification_commands=verification_commands,
         )
 
-        logger.info(f"[Agent] Project: {project_type}/{framework}, Verification: {verification_commands}")
+        logger.info(
+            f"[Agent] Project: {project_type}/{framework}, Verification: {verification_commands}"
+        )
 
         # Build system prompt with project awareness
         if project_context is None:
@@ -1349,10 +1608,9 @@ class UnifiedAgent:
         # Build initial messages
         if conversation_history:
             for msg in conversation_history[-10:]:  # Keep last 10 messages
-                ctx.messages.append({
-                    "role": msg.get("role", "user"),
-                    "content": msg.get("content", "")
-                })
+                ctx.messages.append(
+                    {"role": msg.get("role", "user"), "content": msg.get("content", "")}
+                )
 
         # Add user message
         ctx.messages.append({"role": "user", "content": message})
@@ -1370,11 +1628,15 @@ class UnifiedAgent:
             ctx.phase = AgentPhase.EXECUTING
             files_modified_this_iteration = []
 
-            yield AgentEvent(AgentEventType.THINKING, {
-                "iteration": ctx.iteration,
-                "phase": ctx.phase.value,
-                "message": f"Thinking... (iteration {ctx.iteration}/{ctx.max_iterations})"
-            }, sequence)
+            yield AgentEvent(
+                AgentEventType.THINKING,
+                {
+                    "iteration": ctx.iteration,
+                    "phase": ctx.phase.value,
+                    "message": f"Thinking... (iteration {ctx.iteration}/{ctx.max_iterations})",
+                },
+                sequence,
+            )
             sequence += 1
 
             try:
@@ -1409,37 +1671,53 @@ class UnifiedAgent:
 
                     # Execute each tool
                     for tool_call in response.tool_calls:
-                        yield AgentEvent(AgentEventType.TOOL_CALL, {
-                            "id": tool_call.id,
-                            "name": tool_call.name,
-                            "arguments": tool_call.arguments,
-                        }, sequence)
+                        yield AgentEvent(
+                            AgentEventType.TOOL_CALL,
+                            {
+                                "id": tool_call.id,
+                                "name": tool_call.name,
+                                "arguments": tool_call.arguments,
+                            },
+                            sequence,
+                        )
                         sequence += 1
 
                         # Execute the tool
                         result = await executor.execute(tool_call)
 
-                        yield AgentEvent(AgentEventType.TOOL_RESULT, {
-                            "id": tool_call.id,
-                            "name": tool_call.name,
-                            "result": result,
-                        }, sequence)
+                        yield AgentEvent(
+                            AgentEventType.TOOL_RESULT,
+                            {
+                                "id": tool_call.id,
+                                "name": tool_call.name,
+                                "result": result,
+                            },
+                            sequence,
+                        )
                         sequence += 1
 
                         # Track what was done
                         self._track_tool_usage(tool_call, result, ctx)
 
                         # Track files modified this iteration for verification
-                        if tool_call.name in ("write_file", "edit_file") and result.get("success"):
-                            files_modified_this_iteration.append(tool_call.arguments.get("path", ""))
+                        if tool_call.name in ("write_file", "edit_file") and result.get(
+                            "success"
+                        ):
+                            files_modified_this_iteration.append(
+                                tool_call.arguments.get("path", "")
+                            )
 
-                        tool_results.append({
-                            "tool_use_id": tool_call.id,
-                            "result": result,
-                        })
+                        tool_results.append(
+                            {
+                                "tool_use_id": tool_call.id,
+                                "result": result,
+                            }
+                        )
 
                     # Add tool results to messages
-                    ctx.messages.append(self._format_tool_results(response.tool_calls, tool_results))
+                    ctx.messages.append(
+                        self._format_tool_results(response.tool_calls, tool_results)
+                    )
 
                     # Continue loop - LLM will process results
                     continue
@@ -1452,44 +1730,58 @@ class UnifiedAgent:
                 # ============================================================
                 # VERIFICATION PHASE - The key to end-to-end reliability
                 # ============================================================
-                if run_verification and (ctx.files_modified or ctx.files_created) and verifier:
+                if (
+                    run_verification
+                    and (ctx.files_modified or ctx.files_created)
+                    and verifier
+                ):
                     ctx.phase = AgentPhase.VERIFYING
 
-                    yield AgentEvent(AgentEventType.PHASE_CHANGE, {
-                        "phase": "verifying",
-                        "message": "Running verification..."
-                    }, sequence)
+                    yield AgentEvent(
+                        AgentEventType.PHASE_CHANGE,
+                        {"phase": "verifying", "message": "Running verification..."},
+                        sequence,
+                    )
                     sequence += 1
 
-                    yield AgentEvent(AgentEventType.VERIFICATION, {
-                        "status": "running",
-                        "commands": {k: v for k, v in ctx.verification_commands.items() if v},
-                    }, sequence)
+                    yield AgentEvent(
+                        AgentEventType.VERIFICATION,
+                        {
+                            "status": "running",
+                            "commands": {
+                                k: v for k, v in ctx.verification_commands.items() if v
+                            },
+                        },
+                        sequence,
+                    )
                     sequence += 1
 
                     # Run verification
                     verification_results = await verifier.verify_changes(
-                        ctx.verification_commands,
-                        run_tests=run_tests
+                        ctx.verification_commands, run_tests=run_tests
                     )
                     ctx.verification_results = verification_results
 
                     # Check if all passed
                     all_passed = all(r.success for r in verification_results)
 
-                    yield AgentEvent(AgentEventType.VERIFICATION, {
-                        "status": "complete",
-                        "success": all_passed,
-                        "results": [
-                            {
-                                "type": r.verification_type,
-                                "success": r.success,
-                                "errors": r.errors[:5],
-                                "output": r.output[:1000] if not r.success else ""
-                            }
-                            for r in verification_results
-                        ]
-                    }, sequence)
+                    yield AgentEvent(
+                        AgentEventType.VERIFICATION,
+                        {
+                            "status": "complete",
+                            "success": all_passed,
+                            "results": [
+                                {
+                                    "type": r.verification_type,
+                                    "success": r.success,
+                                    "errors": r.errors[:5],
+                                    "output": r.output[:1000] if not r.success else "",
+                                }
+                                for r in verification_results
+                            ],
+                        },
+                        sequence,
+                    )
                     sequence += 1
 
                     if not all_passed:
@@ -1499,22 +1791,28 @@ class UnifiedAgent:
                         if ctx.verification_attempts < ctx.max_verification_attempts:
                             ctx.phase = AgentPhase.FIXING
 
-                            yield AgentEvent(AgentEventType.FIXING, {
-                                "attempt": ctx.verification_attempts,
-                                "max_attempts": ctx.max_verification_attempts,
-                                "message": "Verification failed. Analyzing errors and fixing..."
-                            }, sequence)
+                            yield AgentEvent(
+                                AgentEventType.FIXING,
+                                {
+                                    "attempt": ctx.verification_attempts,
+                                    "max_attempts": ctx.max_verification_attempts,
+                                    "message": "Verification failed. Analyzing errors and fixing...",
+                                },
+                                sequence,
+                            )
                             sequence += 1
 
                             # Build error context for LLM
                             error_details = []
                             for r in verification_results:
                                 if not r.success:
-                                    ctx.error_history.append({
-                                        "type": r.verification_type,
-                                        "errors": r.errors[:5],
-                                        "iteration": ctx.iteration,
-                                    })
+                                    ctx.error_history.append(
+                                        {
+                                            "type": r.verification_type,
+                                            "errors": r.errors[:5],
+                                            "iteration": ctx.iteration,
+                                        }
+                                    )
                                     error_details.append(
                                         f"**{r.verification_type}** failed:\n```\n{r.output[:2000]}\n```"
                                     )
@@ -1522,81 +1820,111 @@ class UnifiedAgent:
                             error_message = "\n\n".join(error_details)
 
                             # Add error context to messages for LLM to fix
-                            ctx.messages.append({
-                                "role": "user",
-                                "content": f"""Verification failed. Here are the errors:
+                            ctx.messages.append(
+                                {
+                                    "role": "user",
+                                    "content": f"""Verification failed. Here are the errors:
 
 {error_message}
 
 Please analyze these errors and fix them. This is verification attempt {ctx.verification_attempts} of {ctx.max_verification_attempts}.
 
-Fix the issues in the code. After you fix them, I'll run verification again."""
-                            })
+Fix the issues in the code. After you fix them, I'll run verification again.""",
+                                }
+                            )
 
                             # Continue loop - LLM will try to fix
                             continue
                         else:
                             # Max verification attempts reached
-                            yield AgentEvent(AgentEventType.TEXT,
+                            yield AgentEvent(
+                                AgentEventType.TEXT,
                                 f"\n\n⚠️ **Max verification attempts ({ctx.max_verification_attempts}) reached.** Some issues may remain.\n",
-                                sequence)
+                                sequence,
+                            )
                             sequence += 1
                     else:
                         # All verification passed!
-                        yield AgentEvent(AgentEventType.TEXT,
+                        yield AgentEvent(
+                            AgentEventType.TEXT,
                             "\n\n✅ **All verifications passed!**\n",
-                            sequence)
+                            sequence,
+                        )
                         sequence += 1
 
                 # Done!
                 ctx.phase = AgentPhase.COMPLETE
 
-                yield AgentEvent(AgentEventType.DONE, {
-                    "task_id": ctx.task_id,
-                    "iterations": ctx.iteration,
-                    "files_read": ctx.files_read,
-                    "files_modified": ctx.files_modified,
-                    "files_created": ctx.files_created,
-                    "commands_run": ctx.commands_run,
-                    "total_tokens": ctx.total_tokens,
-                    "verification_passed": all(r.success for r in ctx.verification_results) if ctx.verification_results else None,
-                    "verification_attempts": ctx.verification_attempts,
-                }, sequence)
+                yield AgentEvent(
+                    AgentEventType.DONE,
+                    {
+                        "task_id": ctx.task_id,
+                        "iterations": ctx.iteration,
+                        "files_read": ctx.files_read,
+                        "files_modified": ctx.files_modified,
+                        "files_created": ctx.files_created,
+                        "commands_run": ctx.commands_run,
+                        "total_tokens": ctx.total_tokens,
+                        "verification_passed": (
+                            all(r.success for r in ctx.verification_results)
+                            if ctx.verification_results
+                            else None
+                        ),
+                        "verification_attempts": ctx.verification_attempts,
+                    },
+                    sequence,
+                )
                 return
 
             except Exception as e:
                 logger.error(f"[Agent] Error in iteration {ctx.iteration}: {e}")
-                yield AgentEvent(AgentEventType.ERROR, {
-                    "error": str(e),
-                    "iteration": ctx.iteration,
-                }, sequence)
+                yield AgentEvent(
+                    AgentEventType.ERROR,
+                    {
+                        "error": str(e),
+                        "iteration": ctx.iteration,
+                    },
+                    sequence,
+                )
                 sequence += 1
 
                 # Try to recover by continuing
                 if ctx.iteration < ctx.max_iterations:
-                    ctx.error_history.append({
-                        "type": "execution_error",
-                        "errors": [str(e)],
-                        "iteration": ctx.iteration,
-                    })
-                    ctx.messages.append({
-                        "role": "user",
-                        "content": f"An error occurred: {e}. Please try a different approach."
-                    })
+                    ctx.error_history.append(
+                        {
+                            "type": "execution_error",
+                            "errors": [str(e)],
+                            "iteration": ctx.iteration,
+                        }
+                    )
+                    ctx.messages.append(
+                        {
+                            "role": "user",
+                            "content": f"An error occurred: {e}. Please try a different approach.",
+                        }
+                    )
                     continue
                 return
 
         # Max iterations reached
-        yield AgentEvent(AgentEventType.DONE, {
-            "task_id": ctx.task_id,
-            "iterations": ctx.iteration,
-            "max_iterations_reached": True,
-            "files_read": ctx.files_read,
-            "files_modified": ctx.files_modified,
-            "files_created": ctx.files_created,
-            "commands_run": ctx.commands_run,
-            "verification_passed": all(r.success for r in ctx.verification_results) if ctx.verification_results else None,
-        }, sequence)
+        yield AgentEvent(
+            AgentEventType.DONE,
+            {
+                "task_id": ctx.task_id,
+                "iterations": ctx.iteration,
+                "max_iterations_reached": True,
+                "files_read": ctx.files_read,
+                "files_modified": ctx.files_modified,
+                "files_created": ctx.files_created,
+                "commands_run": ctx.commands_run,
+                "verification_passed": (
+                    all(r.success for r in ctx.verification_results)
+                    if ctx.verification_results
+                    else None
+                ),
+            },
+            sequence,
+        )
 
     def _track_tool_usage(self, tool_call: ToolCall, result: Dict, ctx: AgentContext):
         """Track what tools were used for summary."""
@@ -1611,7 +1939,10 @@ Fix the issues in the code. After you fix them, I'll run verification again."""
             path = args.get("path", "")
             if path and result.get("success"):
                 # Check if it was a creation or modification
-                if "created" in result.get("message", "").lower() or path not in ctx.files_read:
+                if (
+                    "created" in result.get("message", "").lower()
+                    or path not in ctx.files_read
+                ):
                     if path not in ctx.files_created:
                         ctx.files_created.append(path)
                 else:
@@ -1633,12 +1964,14 @@ Fix the issues in the code. After you fix them, I'll run verification again."""
             if response.text:
                 content.append({"type": "text", "text": response.text})
             for tc in response.tool_calls:
-                content.append({
-                    "type": "tool_use",
-                    "id": tc.id,
-                    "name": tc.name,
-                    "input": tc.arguments,
-                })
+                content.append(
+                    {
+                        "type": "tool_use",
+                        "id": tc.id,
+                        "name": tc.name,
+                        "input": tc.arguments,
+                    }
+                )
             return {"role": "assistant", "content": content}
         else:
             # OpenAI format
@@ -1654,22 +1987,26 @@ Fix the issues in the code. After you fix them, I'll run verification again."""
                         "function": {
                             "name": tc.name,
                             "arguments": json.dumps(tc.arguments),
-                        }
+                        },
                     }
                     for tc in response.tool_calls
                 ]
             return msg
 
-    def _format_tool_results(self, tool_calls: List[ToolCall], results: List[Dict]) -> Dict[str, Any]:
+    def _format_tool_results(
+        self, tool_calls: List[ToolCall], results: List[Dict]
+    ) -> Dict[str, Any]:
         """Format tool results for next LLM call."""
         if self.provider == "anthropic":
             content = []
             for tc, res in zip(tool_calls, results):
-                content.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc.id,
-                    "content": json.dumps(res.get("result", {})),
-                })
+                content.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tc.id,
+                        "content": json.dumps(res.get("result", {})),
+                    }
+                )
             return {"role": "user", "content": content}
         else:
             # OpenAI format - return list of tool messages
@@ -1825,6 +2162,7 @@ Brief, action-oriented:
 # ======================================================================
 # Convenience Function
 # ======================================================================
+
 
 async def run_agent(
     message: str,

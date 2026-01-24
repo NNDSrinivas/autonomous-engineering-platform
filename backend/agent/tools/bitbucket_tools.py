@@ -86,11 +86,13 @@ async def list_my_bitbucket_prs(
             lines.append("")
 
             if url:
-                sources.append({
-                    "type": "bitbucket_pr",
-                    "name": f"PR #{pr_id}: {title}",
-                    "url": url,
-                })
+                sources.append(
+                    {
+                        "type": "bitbucket_pr",
+                        "name": f"PR #{pr_id}: {title}",
+                        "url": url,
+                    }
+                )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -170,11 +172,13 @@ async def list_bitbucket_repos(
             lines.append("")
 
             if url:
-                sources.append({
-                    "type": "bitbucket_repo",
-                    "name": full_name,
-                    "url": url,
-                })
+                sources.append(
+                    {
+                        "type": "bitbucket_repo",
+                        "name": full_name,
+                        "url": url,
+                    }
+                )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -267,7 +271,11 @@ async def get_bitbucket_pipeline_status(
             creator = pipeline.get("creator", "unknown")
             duration = pipeline.get("duration_in_seconds")
 
-            status_emoji = "⏳" if state == "IN_PROGRESS" else ("✅" if result == "SUCCESSFUL" else "❌" if result else "⚪")
+            status_emoji = (
+                "⏳"
+                if state == "IN_PROGRESS"
+                else ("✅" if result == "SUCCESSFUL" else "❌" if result else "⚪")
+            )
 
             lines.append(f"- {status_emoji} **Build #{build_num}**")
             lines.append(f"  - State: {state}" + (f" ({result})" if result else ""))
@@ -280,11 +288,13 @@ async def get_bitbucket_pipeline_status(
             lines.append("")
 
         repo_url = f"https://bitbucket.org/{workspace}/{repo_slug}/pipelines"
-        sources.append({
-            "type": "bitbucket_pipelines",
-            "name": f"Pipelines - {workspace}/{repo_slug}",
-            "url": repo_url,
-        })
+        sources.append(
+            {
+                "type": "bitbucket_pipelines",
+                "name": f"Pipelines - {workspace}/{repo_slug}",
+                "url": repo_url,
+            }
+        )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -333,9 +343,9 @@ async def add_bitbucket_pr_comment(
         # Return preview for approval
         return ToolResult(
             output=f"**Preview: Add comment to PR #{pr_id}**\n\n"
-                   f"Repository: {workspace}/{repo_slug}\n"
-                   f"Comment:\n```\n{content}\n```\n\n"
-                   f"Please approve this action to add the comment.",
+            f"Repository: {workspace}/{repo_slug}\n"
+            f"Comment:\n```\n{content}\n```\n\n"
+            f"Please approve this action to add the comment.",
             sources=[],
         )
 
@@ -364,11 +374,14 @@ async def add_bitbucket_pr_comment(
         if result.success:
             return ToolResult(
                 output=f"Comment added successfully to PR #{pr_id}.",
-                sources=[{
-                    "type": "bitbucket_comment",
-                    "name": f"Comment on PR #{pr_id}",
-                    "url": result.url or f"https://bitbucket.org/{workspace}/{repo_slug}/pull-requests/{pr_id}",
-                }],
+                sources=[
+                    {
+                        "type": "bitbucket_comment",
+                        "name": f"Comment on PR #{pr_id}",
+                        "url": result.url
+                        or f"https://bitbucket.org/{workspace}/{repo_slug}/pull-requests/{pr_id}",
+                    }
+                ],
             )
         else:
             return ToolResult(

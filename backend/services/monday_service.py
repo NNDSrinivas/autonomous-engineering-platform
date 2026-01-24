@@ -426,14 +426,16 @@ class MondayService(ConnectorServiceBase):
                         if cv.get("type") == "people":
                             value = cv.get("value")
                             if value and str(user_id) in str(value):
-                                my_items.append({
-                                    "id": item.get("id", ""),
-                                    "name": item.get("name", "Untitled"),
-                                    "board_name": board.get("name", ""),
-                                    "board_id": board_id,
-                                    "group": item.get("group", {}).get("title", ""),
-                                    "url": f"https://monday.com/boards/{board_id}/pulses/{item.get('id', '')}",
-                                })
+                                my_items.append(
+                                    {
+                                        "id": item.get("id", ""),
+                                        "name": item.get("name", "Untitled"),
+                                        "board_name": board.get("name", ""),
+                                        "board_id": board_id,
+                                        "group": item.get("group", {}).get("title", ""),
+                                        "url": f"https://monday.com/boards/{board_id}/pulses/{item.get('id', '')}",
+                                    }
+                                )
                                 break
 
                     if len(my_items) >= max_results:

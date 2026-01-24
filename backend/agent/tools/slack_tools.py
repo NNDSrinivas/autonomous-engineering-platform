@@ -260,9 +260,7 @@ async def send_slack_message(
 
     except Exception as exc:
         slack_logger.error("slack_tools.send_message.error", error=str(exc))
-        return ToolResult(
-            output=f"Error sending Slack message: {str(exc)}", sources=[]
-        )
+        return ToolResult(output=f"Error sending Slack message: {str(exc)}", sources=[])
 
 
 # Tool function registry for NAVI

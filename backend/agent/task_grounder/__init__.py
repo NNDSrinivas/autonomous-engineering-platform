@@ -55,9 +55,7 @@ async def ground_task(intent: Any, context: Dict[str, Any]) -> GroundingResult:
     # This enables code generation, explanations, run commands, etc.
     # The planner will use the LLM to determine the appropriate actions
     else:
-        logger.info(
-            f"Passing through intent to planner: {family_str}/{kind_str}"
-        )
+        logger.info(f"Passing through intent to planner: {family_str}/{kind_str}")
         # Return a "ready" result with a generic task structure
         # Using FIX_PROBLEMS as a placeholder intent since GroundedTask requires a Literal
         return GroundingResult(
@@ -68,7 +66,8 @@ async def ground_task(intent: Any, context: Dict[str, Any]) -> GroundingResult:
                 target="general",
                 inputs={
                     "message": context.get("message", ""),
-                    "workspace_root": context.get("workspace_root") or context.get("diagnostics", {}).get("workspace_root"),
+                    "workspace_root": context.get("workspace_root")
+                    or context.get("diagnostics", {}).get("workspace_root"),
                     "files": context.get("files", []),
                     "original_intent": f"{family_str}/{kind_str}",
                 },
@@ -78,7 +77,7 @@ async def ground_task(intent: Any, context: Dict[str, Any]) -> GroundingResult:
                     "passthrough": True,
                     "original_family": family_str,
                     "original_kind": kind_str,
-                }
+                },
             ),
         )
 

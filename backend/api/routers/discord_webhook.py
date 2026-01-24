@@ -140,16 +140,14 @@ async def _handle_application_command(
 
     # Extract options
     options = data.get("options") or []
-    options_text = ", ".join(
-        f"{opt.get('name')}={opt.get('value')}"
-        for opt in options
-    )
+    options_text = ", ".join(f"{opt.get('name')}={opt.get('value')}" for opt in options)
 
     node = MemoryNode(
         org_id=org_id,
         node_type="discord_command",
         title=f"Discord Command: /{command_name}",
-        text=f"User {user_name} ran /{command_name}" + (f" with {options_text}" if options_text else ""),
+        text=f"User {user_name} ran /{command_name}"
+        + (f" with {options_text}" if options_text else ""),
         meta_json={
             "command": command_name,
             "user": user_name,
@@ -206,7 +204,8 @@ async def _handle_message_component(
         org_id=org_id,
         node_type="discord_interaction",
         title=f"Discord {type_name}: {custom_id}",
-        text=f"User {user_name} interacted with {type_name}" + (f": {values}" if values else ""),
+        text=f"User {user_name} interacted with {type_name}"
+        + (f": {values}" if values else ""),
         meta_json={
             "custom_id": custom_id,
             "component_type": type_name,

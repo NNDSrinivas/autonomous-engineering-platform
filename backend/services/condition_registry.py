@@ -35,9 +35,11 @@ logger = logging.getLogger(__name__)
 # Base Condition Interface
 # =============================================================================
 
+
 @dataclass
 class ConditionResult:
     """Result of a condition check."""
+
     success: bool
     condition_type: str
     message: str = ""
@@ -50,7 +52,7 @@ class ConditionResult:
             "success": self.success,
             "condition": self.condition_type,
             "message": self.message,
-            **self.details
+            **self.details,
         }
         if self.error:
             result["error"] = self.error
@@ -96,6 +98,7 @@ class BaseCondition(ABC):
 # Condition Registry (Singleton)
 # =============================================================================
 
+
 class ConditionRegistry:
     """
     Central registry for all condition types.
@@ -108,7 +111,7 @@ class ConditionRegistry:
     - Condition composition
     """
 
-    _instance: Optional['ConditionRegistry'] = None
+    _instance: Optional["ConditionRegistry"] = None
 
     def __new__(cls):
         if cls._instance is None:
@@ -184,9 +187,7 @@ class ConditionRegistry:
         validation_error = condition.validate_params(kwargs)
         if validation_error:
             return ConditionResult(
-                success=False,
-                condition_type=condition_type,
-                error=validation_error
+                success=False, condition_type=condition_type, error=validation_error
             )
 
         try:
@@ -198,14 +199,10 @@ class ConditionRegistry:
                 success=False,
                 condition_type=condition_type,
                 error=str(e),
-                elapsed_ms=(time.time() - start_time) * 1000
+                elapsed_ms=(time.time() - start_time) * 1000,
             )
 
-    def register_custom_pattern(
-        self,
-        name: str,
-        pattern_def: Dict[str, Any]
-    ):
+    def register_custom_pattern(self, name: str, pattern_def: Dict[str, Any]):
         """
         Register a custom pattern from configuration.
 
@@ -233,8 +230,9 @@ class ConditionRegistry:
 
         try:
             with open(path) as f:
-                if path.suffix in ('.yaml', '.yml'):
+                if path.suffix in (".yaml", ".yml"):
                     import yaml
+
                     patterns = yaml.safe_load(f)
                 else:
                     patterns = json.load(f)
@@ -258,9 +256,11 @@ class ConditionRegistry:
             # Find all BaseCondition subclasses
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
-                if (isinstance(attr, type) and
-                    issubclass(attr, BaseCondition) and
-                    attr is not BaseCondition):
+                if (
+                    isinstance(attr, type)
+                    and issubclass(attr, BaseCondition)
+                    and attr is not BaseCondition
+                ):
                     self.register(attr())
 
             logger.info(f"Loaded plugin: {module_path}")
@@ -268,9 +268,7 @@ class ConditionRegistry:
             logger.error(f"Failed to load plugin {module_path}: {e}")
 
     async def _execute_custom_pattern(
-        self,
-        name: str,
-        kwargs: Dict[str, Any]
+        self, name: str, kwargs: Dict[str, Any]
     ) -> ConditionResult:
         """Execute a custom pattern definition."""
         pattern = self._custom_patterns[name]
@@ -288,14 +286,11 @@ class ConditionRegistry:
             return ConditionResult(
                 success=False,
                 condition_type=name,
-                error=f"Unknown pattern type: {pattern_type}"
+                error=f"Unknown pattern type: {pattern_type}",
             )
 
     async def _execute_composite_pattern(
-        self,
-        name: str,
-        pattern: Dict[str, Any],
-        kwargs: Dict[str, Any]
+        self, name: str, pattern: Dict[str, Any], kwargs: Dict[str, Any]
     ) -> ConditionResult:
         """Execute a composite pattern (multiple conditions)."""
         steps = pattern.get("steps", [])
@@ -318,7 +313,7 @@ class ConditionRegistry:
                     success=False,
                     condition_type=name,
                     message=f"Step failed: {condition_type}",
-                    details={"step_results": results}
+                    details={"step_results": results},
                 )
 
         if require_all:
@@ -330,14 +325,11 @@ class ConditionRegistry:
             success=success,
             condition_type=name,
             message=f"{sum(1 for r in results if r.get('success'))}/{len(results)} steps passed",
-            details={"step_results": results}
+            details={"step_results": results},
         )
 
     async def _execute_http_pattern(
-        self,
-        name: str,
-        pattern: Dict[str, Any],
-        kwargs: Dict[str, Any]
+        self, name: str, pattern: Dict[str, Any], kwargs: Dict[str, Any]
     ) -> ConditionResult:
         """Execute an HTTP-based pattern."""
         url = pattern.get("url", kwargs.get("url"))
@@ -355,7 +347,7 @@ class ConditionRegistry:
 
             with urllib.request.urlopen(req, timeout=10) as response:
                 status = response.status
-                body = response.read().decode('utf-8', errors='replace')
+                body = response.read().decode("utf-8", errors="replace")
 
                 success = status == expected_status
 
@@ -377,20 +369,13 @@ class ConditionRegistry:
                 return ConditionResult(
                     success=success,
                     condition_type=name,
-                    details={"status": status, "url": url}
+                    details={"status": status, "url": url},
                 )
         except Exception as e:
-            return ConditionResult(
-                success=False,
-                condition_type=name,
-                error=str(e)
-            )
+            return ConditionResult(success=False, condition_type=name, error=str(e))
 
     async def _execute_command_pattern(
-        self,
-        name: str,
-        pattern: Dict[str, Any],
-        kwargs: Dict[str, Any]
+        self, name: str, pattern: Dict[str, Any], kwargs: Dict[str, Any]
     ) -> ConditionResult:
         """Execute a command-based pattern."""
         command = pattern.get("command")
@@ -405,14 +390,10 @@ class ConditionRegistry:
 
         try:
             result = subprocess.run(
-                command,
-                shell=True,
-                cwd=working_dir,
-                capture_output=True,
-                timeout=30
+                command, shell=True, cwd=working_dir, capture_output=True, timeout=30
             )
 
-            output = result.stdout.decode('utf-8', errors='replace')
+            output = result.stdout.decode("utf-8", errors="replace")
             success = result.returncode == expected_exit_code
 
             if success and expected_output:
@@ -426,23 +407,13 @@ class ConditionRegistry:
             return ConditionResult(
                 success=success,
                 condition_type=name,
-                details={
-                    "exit_code": result.returncode,
-                    "output": output[:500]
-                }
+                details={"exit_code": result.returncode, "output": output[:500]},
             )
         except Exception as e:
-            return ConditionResult(
-                success=False,
-                condition_type=name,
-                error=str(e)
-            )
+            return ConditionResult(success=False, condition_type=name, error=str(e))
 
     async def _execute_script_pattern(
-        self,
-        name: str,
-        pattern: Dict[str, Any],
-        kwargs: Dict[str, Any]
+        self, name: str, pattern: Dict[str, Any], kwargs: Dict[str, Any]
     ) -> ConditionResult:
         """Execute a Python script pattern."""
         script = pattern.get("script")
@@ -468,19 +439,13 @@ class ConditionRegistry:
             return ConditionResult(
                 success=result.get("success", False),
                 condition_type=name,
-                details=result
+                details=result,
             )
         except Exception as e:
-            return ConditionResult(
-                success=False,
-                condition_type=name,
-                error=str(e)
-            )
+            return ConditionResult(success=False, condition_type=name, error=str(e))
 
     async def _try_dynamic_execution(
-        self,
-        condition_type: str,
-        kwargs: Dict[str, Any]
+        self, condition_type: str, kwargs: Dict[str, Any]
     ) -> ConditionResult:
         """
         Try to execute an unknown condition dynamically.
@@ -632,10 +597,13 @@ class ConditionRegistry:
                     "type": "composite",
                     "steps": [
                         {"condition": "port", "params": {"port": 8080}},
-                        {"condition": "http", "params": {"url": "http://localhost:8080/health"}}
-                    ]
-                }
-            }
+                        {
+                            "condition": "http",
+                            "params": {"url": "http://localhost:8080/health"},
+                        },
+                    ],
+                },
+            },
         )
 
     def _register_builtins(self):
@@ -650,6 +618,7 @@ class ConditionRegistry:
 # =============================================================================
 # Condition Composer
 # =============================================================================
+
 
 class ConditionComposer:
     """
@@ -682,9 +651,7 @@ class ConditionComposer:
         self.registry = ConditionRegistry()
 
     async def all_of(
-        self,
-        conditions: List[tuple],
-        fail_fast: bool = True
+        self, conditions: List[tuple], fail_fast: bool = True
     ) -> ConditionResult:
         """All conditions must pass."""
         results = []
@@ -703,20 +670,17 @@ class ConditionComposer:
                     success=False,
                     condition_type="all_of",
                     message=f"Failed at: {condition_type}",
-                    details={"results": results}
+                    details={"results": results},
                 )
 
         return ConditionResult(
             success=True,
             condition_type="all_of",
             message=f"All {len(results)} conditions passed",
-            details={"results": results}
+            details={"results": results},
         )
 
-    async def any_of(
-        self,
-        conditions: List[tuple]
-    ) -> ConditionResult:
+    async def any_of(self, conditions: List[tuple]) -> ConditionResult:
         """Any condition must pass."""
         results = []
 
@@ -734,20 +698,17 @@ class ConditionComposer:
                     success=True,
                     condition_type="any_of",
                     message=f"Passed: {condition_type}",
-                    details={"results": results}
+                    details={"results": results},
                 )
 
         return ConditionResult(
             success=False,
             condition_type="any_of",
             message="No conditions passed",
-            details={"results": results}
+            details={"results": results},
         )
 
-    async def sequence(
-        self,
-        conditions: List[tuple]
-    ) -> ConditionResult:
+    async def sequence(self, conditions: List[tuple]) -> ConditionResult:
         """Execute conditions in sequence, each depending on previous."""
         results = {}
 
@@ -766,14 +727,14 @@ class ConditionComposer:
                     success=False,
                     condition_type="sequence",
                     message=f"Failed at step: {name}",
-                    details={"results": results, "failed_step": name}
+                    details={"results": results, "failed_step": name},
                 )
 
         return ConditionResult(
             success=True,
             condition_type="sequence",
             message=f"All {len(results)} steps completed",
-            details={"results": results}
+            details={"results": results},
         )
 
     async def with_retry(
@@ -782,7 +743,7 @@ class ConditionComposer:
         params: Dict[str, Any],
         max_retries: int = 3,
         delay: float = 1.0,
-        backoff: float = 2.0
+        backoff: float = 2.0,
     ) -> ConditionResult:
         """Execute condition with retries."""
         last_result = None
@@ -809,7 +770,7 @@ class ConditionComposer:
         condition_type: str,
         params: Dict[str, Any],
         timeout: float = 30.0,
-        poll_interval: float = 1.0
+        poll_interval: float = 1.0,
     ) -> ConditionResult:
         """Wait for condition to become true within timeout."""
         start_time = time.time()
@@ -835,8 +796,8 @@ class ConditionComposer:
             details={
                 "attempts": attempts,
                 "elapsed_seconds": time.time() - start_time,
-                "last_result": last_result.to_dict() if last_result else None
-            }
+                "last_result": last_result.to_dict() if last_result else None,
+            },
         )
 
 
@@ -871,18 +832,12 @@ async def verify_condition(condition_type: str, **kwargs) -> Dict[str, Any]:
 
 
 async def wait_for_condition(
-    condition_type: str,
-    timeout: int = 30,
-    interval: float = 1.0,
-    **kwargs
+    condition_type: str, timeout: int = 30, interval: float = 1.0, **kwargs
 ) -> Dict[str, Any]:
     """Wait for a condition to become true."""
     composer = ConditionComposer()
     result = await composer.with_timeout(
-        condition_type,
-        kwargs,
-        timeout=float(timeout),
-        poll_interval=interval
+        condition_type, kwargs, timeout=float(timeout), poll_interval=interval
     )
     return result.to_dict()
 

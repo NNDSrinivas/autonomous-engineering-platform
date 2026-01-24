@@ -94,9 +94,7 @@ class ResponsePersonalizer:
     def _get_org_standards(self, org_id: int) -> List[Dict[str, Any]]:
         """Get enforced organization standards."""
         standards = (
-            self.db.query(OrgStandard)
-            .filter(OrgStandard.org_id == org_id)
-            .all()
+            self.db.query(OrgStandard).filter(OrgStandard.org_id == org_id).all()
         )
 
         return [
@@ -133,10 +131,12 @@ class ResponsePersonalizer:
             elif standard["type"] == "formatting":
                 guidelines["formatting"].update(standard["rules"])
             elif standard["type"] == "pattern":
-                guidelines["patterns"].append({
-                    "name": standard["name"],
-                    "rules": standard["rules"],
-                })
+                guidelines["patterns"].append(
+                    {
+                        "name": standard["name"],
+                        "rules": standard["rules"],
+                    }
+                )
 
         return guidelines
 
@@ -256,7 +256,9 @@ class ResponsePersonalizer:
 
         # Combine base prompt with additions
         if additions:
-            personalization_section = "\n\n## User Personalization\n" + "\n".join(additions)
+            personalization_section = "\n\n## User Personalization\n" + "\n".join(
+                additions
+            )
             return base_prompt + personalization_section
 
         return base_prompt
@@ -301,13 +303,16 @@ class ResponsePersonalizer:
                 continue
 
             # Remove verbose phrases
-            if any(phrase in line.lower() for phrase in [
-                "in other words",
-                "to elaborate",
-                "let me explain",
-                "as you can see",
-                "it's worth noting",
-            ]):
+            if any(
+                phrase in line.lower()
+                for phrase in [
+                    "in other words",
+                    "to elaborate",
+                    "let me explain",
+                    "as you can see",
+                    "it's worth noting",
+                ]
+            ):
                 continue
 
             filtered_lines.append(line)
@@ -351,7 +356,11 @@ class ResponsePersonalizer:
         # Apply formatting rules
         formatting = style.get("formatting", {})
 
-        if formatting.get("trailing_comma") and language in ["python", "javascript", "typescript"]:
+        if formatting.get("trailing_comma") and language in [
+            "python",
+            "javascript",
+            "typescript",
+        ]:
             # Add trailing commas (simplified implementation)
             pass
 
@@ -392,19 +401,23 @@ class ResponsePersonalizer:
             if pattern.pattern_type == "workflow":
                 # Suggest based on workflow patterns
                 if "test" in pattern.pattern_key and query_type == "implement":
-                    suggestions.append({
-                        "type": "workflow",
-                        "content": "Based on your workflow, you typically write tests after implementing. Would you like me to generate tests?",
-                        "confidence": pattern.confidence,
-                    })
+                    suggestions.append(
+                        {
+                            "type": "workflow",
+                            "content": "Based on your workflow, you typically write tests after implementing. Would you like me to generate tests?",
+                            "confidence": pattern.confidence,
+                        }
+                    )
 
             elif pattern.pattern_type == "coding_style":
                 # Suggest based on coding patterns
-                suggestions.append({
-                    "type": "style",
-                    "content": f"I'll follow your {pattern.pattern_key} pattern.",
-                    "confidence": pattern.confidence,
-                })
+                suggestions.append(
+                    {
+                        "type": "style",
+                        "content": f"I'll follow your {pattern.pattern_key} pattern.",
+                        "confidence": pattern.confidence,
+                    }
+                )
 
         return suggestions[:3]  # Limit suggestions
 

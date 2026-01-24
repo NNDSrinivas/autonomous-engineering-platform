@@ -25,9 +25,11 @@ logger = logging.getLogger(__name__)
 # DEEP CODEBASE ANALYSIS
 # ============================================================
 
+
 @dataclass
 class FunctionInfo:
     """Information about a function/method"""
+
     name: str
     file_path: str
     line_number: int
@@ -41,6 +43,7 @@ class FunctionInfo:
 @dataclass
 class ClassInfo:
     """Information about a class"""
+
     name: str
     file_path: str
     line_number: int
@@ -52,6 +55,7 @@ class ClassInfo:
 @dataclass
 class FileAnalysis:
     """Deep analysis of a single file"""
+
     path: str
     language: str
     lines_of_code: int
@@ -66,13 +70,18 @@ class FileAnalysis:
 @dataclass
 class CodebaseAnalysis:
     """Complete codebase analysis"""
+
     workspace_path: str
     total_files: int = 0
     total_lines: int = 0
     languages: Dict[str, int] = field(default_factory=dict)  # language -> file count
     files: Dict[str, FileAnalysis] = field(default_factory=dict)
-    dependency_graph: Dict[str, List[str]] = field(default_factory=dict)  # file -> imports
-    symbol_table: Dict[str, List[str]] = field(default_factory=dict)  # symbol -> [file_paths]
+    dependency_graph: Dict[str, List[str]] = field(
+        default_factory=dict
+    )  # file -> imports
+    symbol_table: Dict[str, List[str]] = field(
+        default_factory=dict
+    )  # symbol -> [file_paths]
     errors: List[Dict[str, Any]] = field(default_factory=list)
 
 
@@ -83,19 +92,52 @@ class DeepCodeAnalyzer:
     """
 
     SKIP_DIRS = {
-        "node_modules", ".git", "__pycache__", ".pytest_cache", ".mypy_cache",
-        "venv", ".venv", "env", ".env", "dist", "build", "target", "out",
-        ".next", ".nuxt", ".cache", "coverage", ".tox", "vendor",
-        ".idea", ".vscode", "*.egg-info",
+        "node_modules",
+        ".git",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        "venv",
+        ".venv",
+        "env",
+        ".env",
+        "dist",
+        "build",
+        "target",
+        "out",
+        ".next",
+        ".nuxt",
+        ".cache",
+        "coverage",
+        ".tox",
+        "vendor",
+        ".idea",
+        ".vscode",
+        "*.egg-info",
     }
 
     LANGUAGE_EXTENSIONS = {
-        ".py": "python", ".js": "javascript", ".jsx": "javascript",
-        ".ts": "typescript", ".tsx": "typescript", ".java": "java",
-        ".go": "go", ".rs": "rust", ".rb": "ruby", ".php": "php",
-        ".cs": "csharp", ".cpp": "cpp", ".c": "c", ".swift": "swift",
-        ".kt": "kotlin", ".scala": "scala", ".sql": "sql",
-        ".html": "html", ".css": "css", ".vue": "vue", ".svelte": "svelte",
+        ".py": "python",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".java": "java",
+        ".go": "go",
+        ".rs": "rust",
+        ".rb": "ruby",
+        ".php": "php",
+        ".cs": "csharp",
+        ".cpp": "cpp",
+        ".c": "c",
+        ".swift": "swift",
+        ".kt": "kotlin",
+        ".scala": "scala",
+        ".sql": "sql",
+        ".html": "html",
+        ".css": "css",
+        ".vue": "vue",
+        ".svelte": "svelte",
     }
 
     @classmethod
@@ -119,7 +161,9 @@ class DeepCodeAnalyzer:
 
         for root, dirs, files in os.walk(workspace):
             # Skip ignored directories
-            dirs[:] = [d for d in dirs if d not in cls.SKIP_DIRS and not d.startswith('.')]
+            dirs[:] = [
+                d for d in dirs if d not in cls.SKIP_DIRS and not d.startswith(".")
+            ]
 
             for filename in files:
                 if files_analyzed >= max_files:
@@ -169,10 +213,12 @@ class DeepCodeAnalyzer:
         return analysis
 
     @classmethod
-    async def _analyze_file(cls, file_path: Path, workspace: Path) -> Optional[FileAnalysis]:
+    async def _analyze_file(
+        cls, file_path: Path, workspace: Path
+    ) -> Optional[FileAnalysis]:
         """Analyze a single file deeply."""
         try:
-            content = file_path.read_text(encoding='utf-8', errors='ignore')
+            content = file_path.read_text(encoding="utf-8", errors="ignore")
             ext = file_path.suffix.lower()
             language = cls.LANGUAGE_EXTENSIONS.get(ext, "unknown")
 
@@ -186,7 +232,9 @@ class DeepCodeAnalyzer:
             analysis.imports = cls._extract_imports(content, language)
 
             # Extract functions
-            analysis.functions = cls._extract_functions(content, language, str(file_path))
+            analysis.functions = cls._extract_functions(
+                content, language, str(file_path)
+            )
 
             # Extract classes
             analysis.classes = cls._extract_classes(content, language, str(file_path))
@@ -210,8 +258,8 @@ class DeepCodeAnalyzer:
 
         patterns = {
             "python": [
-                r'^import\s+([\w.]+)',
-                r'^from\s+([\w.]+)\s+import',
+                r"^import\s+([\w.]+)",
+                r"^from\s+([\w.]+)\s+import",
             ],
             "javascript": [
                 r"import\s+.*?from\s+['\"]([^'\"]+)['\"]",
@@ -225,10 +273,10 @@ class DeepCodeAnalyzer:
                 r'^\s+"([^"]+)"',  # Inside import block
             ],
             "java": [
-                r'^import\s+([\w.]+);',
+                r"^import\s+([\w.]+);",
             ],
             "rust": [
-                r'^use\s+([\w:]+)',
+                r"^use\s+([\w:]+)",
             ],
         }
 
@@ -239,18 +287,20 @@ class DeepCodeAnalyzer:
         return imports
 
     @classmethod
-    def _extract_functions(cls, content: str, language: str, file_path: str) -> List[FunctionInfo]:
+    def _extract_functions(
+        cls, content: str, language: str, file_path: str
+    ) -> List[FunctionInfo]:
         """Extract function definitions."""
         functions = []
         content.splitlines()
 
         patterns = {
-            "python": r'^(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)(?:\s*->.*?)?:',
-            "javascript": r'(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*=>',
-            "typescript": r'(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*[<(]([^)]*)\)|(?:const|let)\s+(\w+)\s*(?::\s*[\w<>[\],\s]+)?\s*=\s*(?:async\s+)?\(([^)]*)\)\s*(?::\s*[\w<>[\],\s]+)?\s*=>',
-            "go": r'^func\s+(?:\([^)]+\)\s+)?(\w+)\s*\(([^)]*)\)',
-            "java": r'(?:public|private|protected)?\s*(?:static)?\s*(?:\w+(?:<[\w<>,\s]+>)?)\s+(\w+)\s*\(([^)]*)\)',
-            "rust": r'(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*(?:<[^>]+>)?\s*\(([^)]*)\)',
+            "python": r"^(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)(?:\s*->.*?)?:",
+            "javascript": r"(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*=>",
+            "typescript": r"(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*[<(]([^)]*)\)|(?:const|let)\s+(\w+)\s*(?::\s*[\w<>[\],\s]+)?\s*=\s*(?:async\s+)?\(([^)]*)\)\s*(?::\s*[\w<>[\],\s]+)?\s*=>",
+            "go": r"^func\s+(?:\([^)]+\)\s+)?(\w+)\s*\(([^)]*)\)",
+            "java": r"(?:public|private|protected)?\s*(?:static)?\s*(?:\w+(?:<[\w<>,\s]+>)?)\s+(\w+)\s*\(([^)]*)\)",
+            "rust": r"(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*(?:<[^>]+>)?\s*\(([^)]*)\)",
         }
 
         pattern = patterns.get(language)
@@ -270,29 +320,33 @@ class DeepCodeAnalyzer:
 
             if name:
                 start_pos = match.start()
-                line_num = content[:start_pos].count('\n') + 1
+                line_num = content[:start_pos].count("\n") + 1
 
-                functions.append(FunctionInfo(
-                    name=name,
-                    file_path=file_path,
-                    line_number=line_num,
-                    signature=f"{name}({params})",
-                ))
+                functions.append(
+                    FunctionInfo(
+                        name=name,
+                        file_path=file_path,
+                        line_number=line_num,
+                        signature=f"{name}({params})",
+                    )
+                )
 
         return functions
 
     @classmethod
-    def _extract_classes(cls, content: str, language: str, file_path: str) -> List[ClassInfo]:
+    def _extract_classes(
+        cls, content: str, language: str, file_path: str
+    ) -> List[ClassInfo]:
         """Extract class definitions."""
         classes = []
 
         patterns = {
-            "python": r'^class\s+(\w+)(?:\(([^)]*)\))?:',
-            "javascript": r'(?:export\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?',
-            "typescript": r'(?:export\s+)?(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?',
-            "java": r'(?:public|private)?\s*(?:abstract|final)?\s*class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?',
-            "go": r'^type\s+(\w+)\s+struct',
-            "rust": r'(?:pub\s+)?struct\s+(\w+)',
+            "python": r"^class\s+(\w+)(?:\(([^)]*)\))?:",
+            "javascript": r"(?:export\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?",
+            "typescript": r"(?:export\s+)?(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?",
+            "java": r"(?:public|private)?\s*(?:abstract|final)?\s*class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([\w,\s]+))?",
+            "go": r"^type\s+(\w+)\s+struct",
+            "rust": r"(?:pub\s+)?struct\s+(\w+)",
         }
 
         pattern = patterns.get(language)
@@ -302,18 +356,20 @@ class DeepCodeAnalyzer:
         for match in re.finditer(pattern, content, re.MULTILINE):
             name = match.group(1)
             start_pos = match.start()
-            line_num = content[:start_pos].count('\n') + 1
+            line_num = content[:start_pos].count("\n") + 1
 
             base_classes = []
             if match.lastindex and match.lastindex >= 2 and match.group(2):
-                base_classes = [b.strip() for b in match.group(2).split(',')]
+                base_classes = [b.strip() for b in match.group(2).split(",")]
 
-            classes.append(ClassInfo(
-                name=name,
-                file_path=file_path,
-                line_number=line_num,
-                base_classes=base_classes,
-            ))
+            classes.append(
+                ClassInfo(
+                    name=name,
+                    file_path=file_path,
+                    line_number=line_num,
+                    base_classes=base_classes,
+                )
+            )
 
         return classes
 
@@ -321,42 +377,58 @@ class DeepCodeAnalyzer:
     def _extract_todos(cls, content: str) -> List[str]:
         """Extract TODO comments."""
         todos = []
-        pattern = r'(?:#|//|/\*)\s*(?:TODO|FIXME|HACK|XXX)[:\s]*(.*?)(?:\n|\*/)'
+        pattern = r"(?:#|//|/\*)\s*(?:TODO|FIXME|HACK|XXX)[:\s]*(.*?)(?:\n|\*/)"
         for match in re.finditer(pattern, content, re.IGNORECASE):
             todos.append(match.group(1).strip())
         return todos[:10]  # Limit
 
     @classmethod
-    def _find_potential_issues(cls, content: str, language: str) -> List[Dict[str, Any]]:
+    def _find_potential_issues(
+        cls, content: str, language: str
+    ) -> List[Dict[str, Any]]:
         """Find potential code issues."""
         issues = []
 
         # Common issues across languages
         if "password" in content.lower() and "=" in content:
             if re.search(r'password\s*=\s*["\'][^"\']+["\']', content, re.IGNORECASE):
-                issues.append({"type": "security", "message": "Hardcoded password detected"})
+                issues.append(
+                    {"type": "security", "message": "Hardcoded password detected"}
+                )
 
         if "api_key" in content.lower() and "=" in content:
             if re.search(r'api_key\s*=\s*["\'][^"\']+["\']', content, re.IGNORECASE):
-                issues.append({"type": "security", "message": "Hardcoded API key detected"})
+                issues.append(
+                    {"type": "security", "message": "Hardcoded API key detected"}
+                )
 
         # Language-specific issues
         if language == "python":
             if "eval(" in content:
-                issues.append({"type": "security", "message": "Use of eval() is dangerous"})
+                issues.append(
+                    {"type": "security", "message": "Use of eval() is dangerous"}
+                )
             if "exec(" in content:
-                issues.append({"type": "security", "message": "Use of exec() is dangerous"})
+                issues.append(
+                    {"type": "security", "message": "Use of exec() is dangerous"}
+                )
 
         if language in ["javascript", "typescript"]:
             if "eval(" in content:
-                issues.append({"type": "security", "message": "Use of eval() is dangerous"})
+                issues.append(
+                    {"type": "security", "message": "Use of eval() is dangerous"}
+                )
             if "innerHTML" in content:
-                issues.append({"type": "security", "message": "innerHTML can lead to XSS"})
+                issues.append(
+                    {"type": "security", "message": "innerHTML can lead to XSS"}
+                )
 
         return issues[:5]  # Limit
 
     @classmethod
-    async def find_symbol(cls, workspace_path: str, symbol_name: str) -> List[Dict[str, Any]]:
+    async def find_symbol(
+        cls, workspace_path: str, symbol_name: str
+    ) -> List[Dict[str, Any]]:
         """Find all occurrences of a symbol in the codebase."""
         results = []
         workspace = Path(workspace_path)
@@ -371,14 +443,16 @@ class DeepCodeAnalyzer:
 
                 file_path = Path(root) / filename
                 try:
-                    content = file_path.read_text(encoding='utf-8', errors='ignore')
+                    content = file_path.read_text(encoding="utf-8", errors="ignore")
                     for i, line in enumerate(content.splitlines(), 1):
                         if symbol_name in line:
-                            results.append({
-                                "file": str(file_path.relative_to(workspace)),
-                                "line": i,
-                                "content": line.strip()[:200],
-                            })
+                            results.append(
+                                {
+                                    "file": str(file_path.relative_to(workspace)),
+                                    "line": i,
+                                    "content": line.strip()[:200],
+                                }
+                            )
                 except Exception:
                     continue
 
@@ -392,9 +466,11 @@ class DeepCodeAnalyzer:
 # DATABASE DEBUGGING & FIXING
 # ============================================================
 
+
 @dataclass
 class TableInfo:
     """Information about a database table"""
+
     name: str
     columns: List[Dict[str, Any]] = field(default_factory=list)
     primary_key: Optional[str] = None
@@ -405,6 +481,7 @@ class TableInfo:
 @dataclass
 class DatabaseAnalysis:
     """Complete database analysis"""
+
     database_type: str
     connection_status: str
     tables: Dict[str, TableInfo] = field(default_factory=dict)
@@ -473,11 +550,13 @@ class DatabaseDebugger:
                         )
             except Exception as e:
                 analysis.connection_status = f"connection_failed: {e}"
-                analysis.issues.append({
-                    "type": "connection",
-                    "message": f"Failed to connect to database: {e}",
-                    "suggestion": "Check your DATABASE_URL and ensure the database server is running",
-                })
+                analysis.issues.append(
+                    {
+                        "type": "connection",
+                        "message": f"Failed to connect to database: {e}",
+                        "suggestion": "Check your DATABASE_URL and ensure the database server is running",
+                    }
+                )
 
         return analysis
 
@@ -489,9 +568,13 @@ class DatabaseDebugger:
 
         # Look for common model file patterns
         model_patterns = [
-            "**/models.py", "**/models/*.py", "**/model.py",
-            "**/schema.py", "**/schemas/*.py",
-            "**/entities/*.py", "**/entity.py",
+            "**/models.py",
+            "**/models/*.py",
+            "**/model.py",
+            "**/schema.py",
+            "**/schemas/*.py",
+            "**/entities/*.py",
+            "**/entity.py",
             "**/prisma/schema.prisma",
             "**/drizzle/*.ts",
         ]
@@ -499,15 +582,15 @@ class DatabaseDebugger:
         for pattern in model_patterns:
             for file_path in workspace.glob(pattern):
                 try:
-                    content = file_path.read_text(encoding='utf-8', errors='ignore')
+                    content = file_path.read_text(encoding="utf-8", errors="ignore")
 
                     # SQLAlchemy models
-                    if file_path.suffix == '.py':
+                    if file_path.suffix == ".py":
                         models.extend(cls._parse_sqlalchemy_models(content))
                         models.extend(cls._parse_django_models(content))
 
                     # Prisma schema
-                    elif file_path.suffix == '.prisma':
+                    elif file_path.suffix == ".prisma":
                         models.extend(cls._parse_prisma_models(content))
 
                 except Exception as e:
@@ -521,31 +604,35 @@ class DatabaseDebugger:
         models = []
 
         # Find class definitions that inherit from Base or Model
-        class_pattern = r'class\s+(\w+)\s*\([^)]*(?:Base|Model|db\.Model)[^)]*\):'
-        column_pattern = r'(\w+)\s*=\s*(?:Column|db\.Column)\s*\(\s*(\w+)'
+        class_pattern = r"class\s+(\w+)\s*\([^)]*(?:Base|Model|db\.Model)[^)]*\):"
+        column_pattern = r"(\w+)\s*=\s*(?:Column|db\.Column)\s*\(\s*(\w+)"
 
         for class_match in re.finditer(class_pattern, content):
             model_name = class_match.group(1)
             # Find columns within this class
             class_start = class_match.end()
             # Find next class or end of file
-            next_class = re.search(r'\nclass\s+\w+', content[class_start:])
+            next_class = re.search(r"\nclass\s+\w+", content[class_start:])
             class_end = class_start + next_class.start() if next_class else len(content)
             class_content = content[class_start:class_end]
 
             columns = []
             for col_match in re.finditer(column_pattern, class_content):
-                columns.append({
-                    "name": col_match.group(1),
-                    "type": col_match.group(2),
-                })
+                columns.append(
+                    {
+                        "name": col_match.group(1),
+                        "type": col_match.group(2),
+                    }
+                )
 
             if model_name:
-                models.append({
-                    "name": model_name,
-                    "type": "sqlalchemy",
-                    "columns": columns,
-                })
+                models.append(
+                    {
+                        "name": model_name,
+                        "type": "sqlalchemy",
+                        "columns": columns,
+                    }
+                )
 
         return models
 
@@ -555,29 +642,33 @@ class DatabaseDebugger:
         models = []
 
         # Find class definitions that inherit from models.Model
-        class_pattern = r'class\s+(\w+)\s*\(models\.Model\):'
-        field_pattern = r'(\w+)\s*=\s*models\.(\w+Field)\s*\('
+        class_pattern = r"class\s+(\w+)\s*\(models\.Model\):"
+        field_pattern = r"(\w+)\s*=\s*models\.(\w+Field)\s*\("
 
         for class_match in re.finditer(class_pattern, content):
             model_name = class_match.group(1)
             class_start = class_match.end()
-            next_class = re.search(r'\nclass\s+\w+', content[class_start:])
+            next_class = re.search(r"\nclass\s+\w+", content[class_start:])
             class_end = class_start + next_class.start() if next_class else len(content)
             class_content = content[class_start:class_end]
 
             columns = []
             for field_match in re.finditer(field_pattern, class_content):
-                columns.append({
-                    "name": field_match.group(1),
-                    "type": field_match.group(2),
-                })
+                columns.append(
+                    {
+                        "name": field_match.group(1),
+                        "type": field_match.group(2),
+                    }
+                )
 
             if model_name:
-                models.append({
-                    "name": model_name,
-                    "type": "django",
-                    "columns": columns,
-                })
+                models.append(
+                    {
+                        "name": model_name,
+                        "type": "django",
+                        "columns": columns,
+                    }
+                )
 
         return models
 
@@ -586,7 +677,7 @@ class DatabaseDebugger:
         """Parse Prisma schema models."""
         models = []
 
-        model_pattern = r'model\s+(\w+)\s*\{([^}]+)\}'
+        model_pattern = r"model\s+(\w+)\s*\{([^}]+)\}"
 
         for match in re.finditer(model_pattern, content):
             model_name = match.group(1)
@@ -595,21 +686,25 @@ class DatabaseDebugger:
             columns = []
             for line in model_body.splitlines():
                 line = line.strip()
-                if not line or line.startswith('@@') or line.startswith('//'):
+                if not line or line.startswith("@@") or line.startswith("//"):
                     continue
 
                 parts = line.split()
                 if len(parts) >= 2:
-                    columns.append({
-                        "name": parts[0],
-                        "type": parts[1],
-                    })
+                    columns.append(
+                        {
+                            "name": parts[0],
+                            "type": parts[1],
+                        }
+                    )
 
-            models.append({
-                "name": model_name,
-                "type": "prisma",
-                "columns": columns,
-            })
+            models.append(
+                {
+                    "name": model_name,
+                    "type": "prisma",
+                    "columns": columns,
+                }
+            )
 
         return models
 
@@ -632,17 +727,25 @@ class DatabaseDebugger:
             migration_dir = workspace / dir_name
             if migration_dir.exists():
                 for file_path in sorted(migration_dir.glob("*")):
-                    if file_path.is_file() and file_path.suffix in ['.py', '.sql', '.ts']:
-                        migrations.append({
-                            "file": str(file_path.relative_to(workspace)),
-                            "name": file_path.stem,
-                            "applied": None,  # Would need DB connection to check
-                        })
+                    if file_path.is_file() and file_path.suffix in [
+                        ".py",
+                        ".sql",
+                        ".ts",
+                    ]:
+                        migrations.append(
+                            {
+                                "file": str(file_path.relative_to(workspace)),
+                                "name": file_path.stem,
+                                "applied": None,  # Would need DB connection to check
+                            }
+                        )
 
         return migrations
 
     @classmethod
-    async def _detect_issues(cls, workspace_path: str, models: List[Dict]) -> List[Dict[str, Any]]:
+    async def _detect_issues(
+        cls, workspace_path: str, models: List[Dict]
+    ) -> List[Dict[str, Any]]:
         """Detect common database issues."""
         issues = []
 
@@ -652,12 +755,14 @@ class DatabaseDebugger:
         if alembic_ini.exists():
             versions_dir = workspace / "alembic" / "versions"
             if not versions_dir.exists() or not list(versions_dir.glob("*.py")):
-                issues.append({
-                    "type": "migration",
-                    "severity": "warning",
-                    "message": "Alembic is configured but no migrations found",
-                    "fix": "Run: alembic revision --autogenerate -m 'initial'",
-                })
+                issues.append(
+                    {
+                        "type": "migration",
+                        "severity": "warning",
+                        "message": "Alembic is configured but no migrations found",
+                        "fix": "Run: alembic revision --autogenerate -m 'initial'",
+                    }
+                )
 
         # Check for models without primary key
         for model in models:
@@ -666,12 +771,14 @@ class DatabaseDebugger:
                 for col in model.get("columns", [])
             )
             if not has_pk:
-                issues.append({
-                    "type": "schema",
-                    "severity": "warning",
-                    "message": f"Model '{model['name']}' may be missing a primary key",
-                    "fix": f"Add an 'id' column to {model['name']}",
-                })
+                issues.append(
+                    {
+                        "type": "schema",
+                        "severity": "warning",
+                        "message": f"Model '{model['name']}' may be missing a primary key",
+                        "fix": f"Add an 'id' column to {model['name']}",
+                    }
+                )
 
         return issues
 
@@ -681,10 +788,14 @@ class DatabaseDebugger:
         suggestions = []
 
         if analysis.connection_status != "connected":
-            suggestions.append("Set DATABASE_URL environment variable to enable full database analysis")
+            suggestions.append(
+                "Set DATABASE_URL environment variable to enable full database analysis"
+            )
 
         if not analysis.migrations:
-            suggestions.append("Consider using a migration system (Alembic, Django migrations, Prisma migrate)")
+            suggestions.append(
+                "Consider using a migration system (Alembic, Django migrations, Prisma migrate)"
+            )
 
         if len(analysis.tables) > 10:
             suggestions.append("Consider documenting your database schema")
@@ -715,15 +826,25 @@ class DatabaseDebugger:
             if (workspace / "alembic.ini").exists():
                 try:
                     proc = subprocess.run(
-                        ["alembic", "revision", "--autogenerate", "-m", "auto_generated"],
+                        [
+                            "alembic",
+                            "revision",
+                            "--autogenerate",
+                            "-m",
+                            "auto_generated",
+                        ],
                         cwd=workspace,
                         capture_output=True,
                         text=True,
                         timeout=30,
                     )
-                    result["commands_run"].append("alembic revision --autogenerate -m 'auto_generated'")
+                    result["commands_run"].append(
+                        "alembic revision --autogenerate -m 'auto_generated'"
+                    )
                     result["success"] = proc.returncode == 0
-                    result["message"] = proc.stdout if proc.returncode == 0 else proc.stderr
+                    result["message"] = (
+                        proc.stdout if proc.returncode == 0 else proc.stderr
+                    )
                 except Exception as e:
                     result["message"] = f"Failed to generate migration: {e}"
 
@@ -739,7 +860,9 @@ class DatabaseDebugger:
                     )
                     result["commands_run"].append("python manage.py makemigrations")
                     result["success"] = proc.returncode == 0
-                    result["message"] = proc.stdout if proc.returncode == 0 else proc.stderr
+                    result["message"] = (
+                        proc.stdout if proc.returncode == 0 else proc.stderr
+                    )
                 except Exception as e:
                     result["message"] = f"Failed to generate migration: {e}"
 
@@ -755,7 +878,9 @@ class DatabaseDebugger:
                     )
                     result["commands_run"].append("alembic upgrade head")
                     result["success"] = proc.returncode == 0
-                    result["message"] = proc.stdout if proc.returncode == 0 else proc.stderr
+                    result["message"] = (
+                        proc.stdout if proc.returncode == 0 else proc.stderr
+                    )
                 except Exception as e:
                     result["message"] = f"Failed to apply migrations: {e}"
 
@@ -770,7 +895,9 @@ class DatabaseDebugger:
                     )
                     result["commands_run"].append("python manage.py migrate")
                     result["success"] = proc.returncode == 0
-                    result["message"] = proc.stdout if proc.returncode == 0 else proc.stderr
+                    result["message"] = (
+                        proc.stdout if proc.returncode == 0 else proc.stderr
+                    )
                 except Exception as e:
                     result["message"] = f"Failed to apply migrations: {e}"
 
@@ -781,9 +908,11 @@ class DatabaseDebugger:
 # GIT DEBUGGING & FIXING
 # ============================================================
 
+
 @dataclass
 class GitStatus:
     """Detailed git repository status"""
+
     branch: str
     is_detached: bool = False
     ahead: int = 0
@@ -802,6 +931,7 @@ class GitStatus:
 @dataclass
 class GitIssue:
     """A detected git issue with fix suggestions"""
+
     type: str
     severity: str  # "error", "warning", "info"
     message: str
@@ -813,6 +943,7 @@ class GitIssue:
 @dataclass
 class GitAnalysis:
     """Complete git repository analysis"""
+
     status: GitStatus
     issues: List[GitIssue] = field(default_factory=list)
     recent_commits: List[Dict[str, str]] = field(default_factory=list)
@@ -832,7 +963,9 @@ class GitDebugger:
     """
 
     @classmethod
-    def _run_git(cls, repo_path: str, args: List[str], check: bool = True) -> Tuple[str, str, int]:
+    def _run_git(
+        cls, repo_path: str, args: List[str], check: bool = True
+    ) -> Tuple[str, str, int]:
         """Run a git command and return stdout, stderr, returncode."""
         try:
             proc = subprocess.run(
@@ -886,10 +1019,10 @@ class GitDebugger:
         # Get ahead/behind
         stdout, _, rc = cls._run_git(repo_path, ["status", "-sb"])
         if rc == 0:
-            match = re.search(r'\[ahead (\d+)', stdout)
+            match = re.search(r"\[ahead (\d+)", stdout)
             if match:
                 status.ahead = int(match.group(1))
-            match = re.search(r'behind (\d+)', stdout)
+            match = re.search(r"behind (\d+)", stdout)
             if match:
                 status.behind = int(match.group(1))
 
@@ -903,13 +1036,17 @@ class GitDebugger:
                 worktree_status = line[1]
                 file_path = line[3:].strip()
 
-                if index_status == 'U' or worktree_status == 'U' or line[:2] in ['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']:
+                if (
+                    index_status == "U"
+                    or worktree_status == "U"
+                    or line[:2] in ["DD", "AU", "UD", "UA", "DU", "AA", "UU"]
+                ):
                     status.conflicts.append(file_path)
-                elif line[:2] == '??':
+                elif line[:2] == "??":
                     status.untracked_files.append(file_path)
-                elif index_status != ' ' and index_status != '?':
+                elif index_status != " " and index_status != "?":
                     status.staged_files.append(file_path)
-                elif worktree_status != ' ' and worktree_status != '?':
+                elif worktree_status != " " and worktree_status != "?":
                     status.unstaged_files.append(file_path)
 
         # Check for special states
@@ -937,119 +1074,136 @@ class GitDebugger:
 
         # Detached HEAD
         if status.is_detached:
-            issues.append(GitIssue(
-                type="detached_head",
-                severity="warning",
-                message="You are in detached HEAD state",
-                details="Changes made here may be lost if you checkout another branch",
-                fix_command="git checkout -b new-branch-name",
-                fix_steps=[
-                    "Create a new branch: git checkout -b new-branch-name",
-                    "Or return to a branch: git checkout main",
-                ],
-            ))
+            issues.append(
+                GitIssue(
+                    type="detached_head",
+                    severity="warning",
+                    message="You are in detached HEAD state",
+                    details="Changes made here may be lost if you checkout another branch",
+                    fix_command="git checkout -b new-branch-name",
+                    fix_steps=[
+                        "Create a new branch: git checkout -b new-branch-name",
+                        "Or return to a branch: git checkout main",
+                    ],
+                )
+            )
 
         # Merge conflicts
         if status.conflicts:
-            issues.append(GitIssue(
-                type="merge_conflict",
-                severity="error",
-                message=f"Merge conflicts in {len(status.conflicts)} file(s)",
-                details=f"Conflicting files: {', '.join(status.conflicts[:5])}",
-                fix_steps=[
-                    "1. Edit conflicting files to resolve conflicts",
-                    "2. Remove conflict markers (<<<<<<, ======, >>>>>>)",
-                    "3. Stage resolved files: git add <file>",
-                    "4. Complete merge: git commit",
-                    "Or abort: git merge --abort",
-                ],
-            ))
+            issues.append(
+                GitIssue(
+                    type="merge_conflict",
+                    severity="error",
+                    message=f"Merge conflicts in {len(status.conflicts)} file(s)",
+                    details=f"Conflicting files: {', '.join(status.conflicts[:5])}",
+                    fix_steps=[
+                        "1. Edit conflicting files to resolve conflicts",
+                        "2. Remove conflict markers (<<<<<<, ======, >>>>>>)",
+                        "3. Stage resolved files: git add <file>",
+                        "4. Complete merge: git commit",
+                        "Or abort: git merge --abort",
+                    ],
+                )
+            )
 
         # Ongoing rebase
         if status.is_rebasing:
-            issues.append(GitIssue(
-                type="rebase_in_progress",
-                severity="error",
-                message="Rebase is in progress",
-                fix_steps=[
-                    "Continue rebase: git rebase --continue",
-                    "Skip current commit: git rebase --skip",
-                    "Abort rebase: git rebase --abort",
-                ],
-            ))
+            issues.append(
+                GitIssue(
+                    type="rebase_in_progress",
+                    severity="error",
+                    message="Rebase is in progress",
+                    fix_steps=[
+                        "Continue rebase: git rebase --continue",
+                        "Skip current commit: git rebase --skip",
+                        "Abort rebase: git rebase --abort",
+                    ],
+                )
+            )
 
         # Ongoing merge
         if status.is_merging and not status.conflicts:
-            issues.append(GitIssue(
-                type="merge_in_progress",
-                severity="warning",
-                message="Merge is in progress",
-                fix_steps=[
-                    "Complete merge: git commit",
-                    "Abort merge: git merge --abort",
-                ],
-            ))
+            issues.append(
+                GitIssue(
+                    type="merge_in_progress",
+                    severity="warning",
+                    message="Merge is in progress",
+                    fix_steps=[
+                        "Complete merge: git commit",
+                        "Abort merge: git merge --abort",
+                    ],
+                )
+            )
 
         # Diverged from remote
         if status.ahead > 0 and status.behind > 0:
-            issues.append(GitIssue(
-                type="diverged",
-                severity="warning",
-                message=f"Branch has diverged: {status.ahead} ahead, {status.behind} behind",
-                fix_steps=[
-                    "Rebase onto remote: git pull --rebase",
-                    "Or merge remote: git pull",
-                    "Or force push (careful!): git push --force-with-lease",
-                ],
-            ))
+            issues.append(
+                GitIssue(
+                    type="diverged",
+                    severity="warning",
+                    message=f"Branch has diverged: {status.ahead} ahead, {status.behind} behind",
+                    fix_steps=[
+                        "Rebase onto remote: git pull --rebase",
+                        "Or merge remote: git pull",
+                        "Or force push (careful!): git push --force-with-lease",
+                    ],
+                )
+            )
 
         # Uncommitted changes
         if status.staged_files or status.unstaged_files:
             total = len(status.staged_files) + len(status.unstaged_files)
-            issues.append(GitIssue(
-                type="uncommitted_changes",
-                severity="info",
-                message=f"{total} uncommitted change(s)",
-                fix_steps=[
-                    "Stage changes: git add .",
-                    "Commit: git commit -m 'message'",
-                    "Or stash: git stash",
-                ],
-            ))
+            issues.append(
+                GitIssue(
+                    type="uncommitted_changes",
+                    severity="info",
+                    message=f"{total} uncommitted change(s)",
+                    fix_steps=[
+                        "Stage changes: git add .",
+                        "Commit: git commit -m 'message'",
+                        "Or stash: git stash",
+                    ],
+                )
+            )
 
         # Stashed changes
         if status.stashes > 0:
-            issues.append(GitIssue(
-                type="stashed_changes",
-                severity="info",
-                message=f"{status.stashes} stash(es) saved",
-                fix_steps=[
-                    "View stashes: git stash list",
-                    "Apply latest: git stash pop",
-                    "Apply specific: git stash apply stash@{n}",
-                ],
-            ))
+            issues.append(
+                GitIssue(
+                    type="stashed_changes",
+                    severity="info",
+                    message=f"{status.stashes} stash(es) saved",
+                    fix_steps=[
+                        "View stashes: git stash list",
+                        "Apply latest: git stash pop",
+                        "Apply specific: git stash apply stash@{n}",
+                    ],
+                )
+            )
 
         return issues
 
     @classmethod
-    async def _get_recent_commits(cls, repo_path: str, limit: int = 10) -> List[Dict[str, str]]:
+    async def _get_recent_commits(
+        cls, repo_path: str, limit: int = 10
+    ) -> List[Dict[str, str]]:
         """Get recent commit history."""
         commits = []
         stdout, _, rc = cls._run_git(
-            repo_path,
-            ["log", f"-{limit}", "--pretty=format:%h|%s|%an|%ar"]
+            repo_path, ["log", f"-{limit}", "--pretty=format:%h|%s|%an|%ar"]
         )
         if rc == 0:
             for line in stdout.strip().splitlines():
                 parts = line.split("|")
                 if len(parts) >= 4:
-                    commits.append({
-                        "hash": parts[0],
-                        "message": parts[1],
-                        "author": parts[2],
-                        "date": parts[3],
-                    })
+                    commits.append(
+                        {
+                            "hash": parts[0],
+                            "message": parts[1],
+                            "author": parts[2],
+                            "date": parts[3],
+                        }
+                    )
         return commits
 
     @classmethod
@@ -1063,11 +1217,13 @@ class GitDebugger:
                 line = line.lstrip("* ")
                 parts = line.split()
                 if parts:
-                    branches.append({
-                        "name": parts[0],
-                        "current": is_current,
-                        "remote": "remotes/" in parts[0],
-                    })
+                    branches.append(
+                        {
+                            "name": parts[0],
+                            "current": is_current,
+                            "remote": "remotes/" in parts[0],
+                        }
+                    )
         return branches
 
     @classmethod
@@ -1093,7 +1249,9 @@ class GitDebugger:
 
         if issue_type == "detached_head":
             branch_name = options.get("branch_name", "recovered-work")
-            stdout, stderr, rc = cls._run_git(repo_path, ["checkout", "-b", branch_name])
+            stdout, stderr, rc = cls._run_git(
+                repo_path, ["checkout", "-b", branch_name]
+            )
             result["commands_run"].append(f"git checkout -b {branch_name}")
             result["success"] = rc == 0
             result["message"] = stdout if rc == 0 else stderr
@@ -1160,7 +1318,7 @@ class GitDebugger:
             full_path = Path(repo_path) / file_path
             if full_path.exists():
                 try:
-                    content = full_path.read_text(encoding='utf-8', errors='ignore')
+                    content = full_path.read_text(encoding="utf-8", errors="ignore")
                     # Find conflict markers
                     conflict_sections = []
                     in_conflict = False
@@ -1176,21 +1334,30 @@ class GitDebugger:
                             in_conflict = False
                             conflict_sections.append(current_section)
                         elif in_conflict:
-                            if "=======" not in content[:content.find(line)].split("<<<<<<<")[-1]:
+                            if (
+                                "======="
+                                not in content[: content.find(line)].split("<<<<<<<")[
+                                    -1
+                                ]
+                            ):
                                 current_section["ours"].append(line)
                             else:
                                 current_section["theirs"].append(line)
 
-                    conflicts.append({
-                        "file": file_path,
-                        "conflict_count": len(conflict_sections),
-                        "sections": conflict_sections[:3],  # Limit
-                    })
+                    conflicts.append(
+                        {
+                            "file": file_path,
+                            "conflict_count": len(conflict_sections),
+                            "sections": conflict_sections[:3],  # Limit
+                        }
+                    )
                 except Exception as e:
-                    conflicts.append({
-                        "file": file_path,
-                        "error": str(e),
-                    })
+                    conflicts.append(
+                        {
+                            "file": file_path,
+                            "error": str(e),
+                        }
+                    )
 
         return conflicts
 
@@ -1198,6 +1365,7 @@ class GitDebugger:
 # ============================================================
 # UNIFIED DEEP ANALYSIS API
 # ============================================================
+
 
 class DeepAnalysisService:
     """
@@ -1252,14 +1420,19 @@ class DeepAnalysisService:
         # Database analysis
         if include_database:
             try:
-                db_analysis = await DatabaseDebugger.analyze_database(workspace_path, database_url)
+                db_analysis = await DatabaseDebugger.analyze_database(
+                    workspace_path, database_url
+                )
                 result["database"] = {
                     "type": db_analysis.database_type,
                     "connection_status": db_analysis.connection_status,
                     "tables_count": len(db_analysis.tables),
                     "tables": list(db_analysis.tables.keys()),
                     "migrations_count": len(db_analysis.migrations),
-                    "issues": [{"type": i["type"], "message": i["message"]} for i in db_analysis.issues],
+                    "issues": [
+                        {"type": i["type"], "message": i["message"]}
+                        for i in db_analysis.issues
+                    ],
                     "suggestions": db_analysis.suggestions,
                 }
                 result["summary"]["total_issues"] += len(db_analysis.issues)
@@ -1284,7 +1457,10 @@ class DeepAnalysisService:
                     "is_rebasing": git_analysis.status.is_rebasing,
                     "is_merging": git_analysis.status.is_merging,
                     "stashes": git_analysis.status.stashes,
-                    "issues": [{"type": i.type, "severity": i.severity, "message": i.message} for i in git_analysis.issues],
+                    "issues": [
+                        {"type": i.type, "severity": i.severity, "message": i.message}
+                        for i in git_analysis.issues
+                    ],
                     "recent_commits": git_analysis.recent_commits[:5],
                 }
                 result["summary"]["total_issues"] += len(git_analysis.issues)
@@ -1325,7 +1501,9 @@ class DeepAnalysisService:
                 result["issue_found"] = True
                 result["issue_details"] = matching_issues[0]
                 if auto_fix:
-                    fix_result = await DatabaseDebugger.fix_migration_issues(workspace_path, db_issue)
+                    fix_result = await DatabaseDebugger.fix_migration_issues(
+                        workspace_path, db_issue
+                    )
                     result["fix_applied"] = fix_result.get("success", False)
                     result["fix_result"] = fix_result
 
@@ -1342,7 +1520,9 @@ class DeepAnalysisService:
                     "fix_steps": matching_issues[0].fix_steps,
                 }
                 if auto_fix:
-                    fix_result = await GitDebugger.fix_issue(workspace_path, git_issue, options)
+                    fix_result = await GitDebugger.fix_issue(
+                        workspace_path, git_issue, options
+                    )
                     result["fix_applied"] = fix_result.get("success", False)
                     result["fix_result"] = fix_result
 
@@ -1352,6 +1532,7 @@ class DeepAnalysisService:
 # ============================================================
 # PUBLIC API FUNCTIONS
 # ============================================================
+
 
 async def analyze_deep(workspace_path: str, **kwargs) -> Dict[str, Any]:
     """Public API: Deep workspace analysis."""
@@ -1374,23 +1555,33 @@ async def analyze_git(workspace_path: str) -> Dict[str, Any]:
             "is_rebasing": analysis.status.is_rebasing,
             "is_merging": analysis.status.is_merging,
         },
-        "issues": [{"type": i.type, "message": i.message, "fix_steps": i.fix_steps} for i in analysis.issues],
+        "issues": [
+            {"type": i.type, "message": i.message, "fix_steps": i.fix_steps}
+            for i in analysis.issues
+        ],
         "recent_commits": analysis.recent_commits,
     }
 
 
-async def fix_git_issue(workspace_path: str, issue_type: str, options: Dict = None) -> Dict[str, Any]:
+async def fix_git_issue(
+    workspace_path: str, issue_type: str, options: Dict = None
+) -> Dict[str, Any]:
     """Public API: Fix a git issue."""
     return await GitDebugger.fix_issue(workspace_path, issue_type, options)
 
 
-async def analyze_database(workspace_path: str, database_url: str = None) -> Dict[str, Any]:
+async def analyze_database(
+    workspace_path: str, database_url: str = None
+) -> Dict[str, Any]:
     """Public API: Database analysis."""
     analysis = await DatabaseDebugger.analyze_database(workspace_path, database_url)
     return {
         "type": analysis.database_type,
         "connection": analysis.connection_status,
-        "tables": {name: {"columns": [c["name"] for c in t.columns]} for name, t in analysis.tables.items()},
+        "tables": {
+            name: {"columns": [c["name"] for c in t.columns]}
+            for name, t in analysis.tables.items()
+        },
         "migrations": analysis.migrations,
         "issues": analysis.issues,
         "suggestions": analysis.suggestions,
@@ -1406,6 +1597,7 @@ async def fix_database_issue(workspace_path: str, issue_type: str) -> Dict[str, 
 # ADVANCED GIT OPERATIONS
 # ============================================================
 
+
 class AdvancedGitOperations:
     """
     Advanced git operations for complex workflows:
@@ -1419,7 +1611,9 @@ class AdvancedGitOperations:
     """
 
     @classmethod
-    def _run_git(cls, repo_path: str, args: List[str], timeout: int = 60) -> Tuple[str, str, int]:
+    def _run_git(
+        cls, repo_path: str, args: List[str], timeout: int = 60
+    ) -> Tuple[str, str, int]:
         """Run a git command and return stdout, stderr, returncode."""
         try:
             proc = subprocess.run(
@@ -1497,12 +1691,16 @@ class AdvancedGitOperations:
         to_commit: str,
     ) -> Dict[str, Any]:
         """Cherry-pick a range of commits."""
-        result = {"success": False, "message": "", "picked_commits": [], "commands_run": []}
+        result = {
+            "success": False,
+            "message": "",
+            "picked_commits": [],
+            "commands_run": [],
+        }
 
         # Get list of commits in range
         stdout, stderr, rc = cls._run_git(
-            repo_path,
-            ["log", "--oneline", "--reverse", f"{from_commit}..{to_commit}"]
+            repo_path, ["log", "--oneline", "--reverse", f"{from_commit}..{to_commit}"]
         )
 
         if rc != 0:
@@ -1510,14 +1708,18 @@ class AdvancedGitOperations:
             return result
 
         commits = [line.split()[0] for line in stdout.strip().splitlines()]
-        result["commands_run"].append(f"git log --oneline --reverse {from_commit}..{to_commit}")
+        result["commands_run"].append(
+            f"git log --oneline --reverse {from_commit}..{to_commit}"
+        )
 
         for commit in commits:
             pick_result = await cls.cherry_pick(repo_path, commit)
             if pick_result["success"]:
                 result["picked_commits"].append(commit)
             else:
-                result["message"] = f"Failed at commit {commit}: {pick_result['message']}"
+                result["message"] = (
+                    f"Failed at commit {commit}: {pick_result['message']}"
+                )
                 result["conflicts"] = pick_result.get("conflicts", [])
                 return result
 
@@ -1605,8 +1807,7 @@ class AdvancedGitOperations:
         # Get the commit message from all commits if not provided
         if not commit_message:
             stdout, _, rc = cls._run_git(
-                repo_path,
-                ["log", f"-{num_commits}", "--pretty=format:%s"]
+                repo_path, ["log", f"-{num_commits}", "--pretty=format:%s"]
             )
             if rc == 0:
                 commit_message = "Squashed commits:\n" + "\n".join(
@@ -1616,7 +1817,9 @@ class AdvancedGitOperations:
                 commit_message = f"Squashed {num_commits} commits"
 
         # Soft reset to N commits back
-        stdout, stderr, rc = cls._run_git(repo_path, ["reset", "--soft", f"HEAD~{num_commits}"])
+        stdout, stderr, rc = cls._run_git(
+            repo_path, ["reset", "--soft", f"HEAD~{num_commits}"]
+        )
         result["commands_run"].append(f"git reset --soft HEAD~{num_commits}")
 
         if rc != 0:
@@ -1647,8 +1850,7 @@ class AdvancedGitOperations:
         Returns the commits that would be modified.
         """
         stdout, stderr, rc = cls._run_git(
-            repo_path,
-            ["log", f"-{num_commits}", "--oneline", "--reverse"]
+            repo_path, ["log", f"-{num_commits}", "--oneline", "--reverse"]
         )
 
         if rc != 0:
@@ -1658,11 +1860,13 @@ class AdvancedGitOperations:
         for line in stdout.strip().splitlines():
             parts = line.split(" ", 1)
             if len(parts) >= 2:
-                commits.append({
-                    "hash": parts[0],
-                    "message": parts[1],
-                    "action": "pick",  # Default action
-                })
+                commits.append(
+                    {
+                        "hash": parts[0],
+                        "message": parts[1],
+                        "action": "pick",  # Default action
+                    }
+                )
 
         return {
             "success": True,
@@ -1733,7 +1937,9 @@ class AdvancedGitOperations:
 
         # Mark good commit if provided
         if good_commit:
-            stdout, stderr, rc = cls._run_git(repo_path, ["bisect", "good", good_commit])
+            stdout, stderr, rc = cls._run_git(
+                repo_path, ["bisect", "good", good_commit]
+            )
             result["commands_run"].append(f"git bisect good {good_commit}")
 
             if rc != 0:
@@ -1743,7 +1949,9 @@ class AdvancedGitOperations:
             result["status"] = stdout
 
         result["success"] = True
-        result["message"] = "Bisect started. Test current commit and mark as 'good' or 'bad'"
+        result["message"] = (
+            "Bisect started. Test current commit and mark as 'good' or 'bad'"
+        )
         result["next_steps"] = [
             "1. Test the current commit for the bug",
             "2. If bug exists: git bisect bad",
@@ -1830,7 +2038,12 @@ class AdvancedGitOperations:
         Automatically bisect by running a test command.
         The command should return 0 for good, non-zero for bad.
         """
-        result = {"success": False, "message": "", "commands_run": [], "bad_commit": None}
+        result = {
+            "success": False,
+            "message": "",
+            "commands_run": [],
+            "bad_commit": None,
+        }
 
         stdout, stderr, rc = cls._run_git(
             repo_path,
@@ -1841,7 +2054,7 @@ class AdvancedGitOperations:
 
         if "is the first bad commit" in stdout:
             # Extract the bad commit hash
-            match = re.search(r'([a-f0-9]{40}) is the first bad commit', stdout)
+            match = re.search(r"([a-f0-9]{40}) is the first bad commit", stdout)
             if match:
                 result["bad_commit"] = match.group(1)
             result["success"] = True
@@ -1892,13 +2105,15 @@ class AdvancedGitOperations:
         for line in stdout.strip().splitlines():
             if not line:
                 continue
-            match = re.match(r'(stash@\{(\d+)\}): (.*)', line)
+            match = re.match(r"(stash@\{(\d+)\}): (.*)", line)
             if match:
-                stashes.append({
-                    "ref": match.group(1),
-                    "index": int(match.group(2)),
-                    "message": match.group(3),
-                })
+                stashes.append(
+                    {
+                        "ref": match.group(1),
+                        "index": int(match.group(2)),
+                        "message": match.group(3),
+                    }
+                )
 
         return {
             "success": True,
@@ -1981,7 +2196,9 @@ class AdvancedGitOperations:
         }
 
     @classmethod
-    async def stash_drop(cls, repo_path: str, stash_ref: str = "stash@{0}") -> Dict[str, Any]:
+    async def stash_drop(
+        cls, repo_path: str, stash_ref: str = "stash@{0}"
+    ) -> Dict[str, Any]:
         """Drop a specific stash."""
         stdout, stderr, rc = cls._run_git(repo_path, ["stash", "drop", stash_ref])
 
@@ -2011,8 +2228,7 @@ class AdvancedGitOperations:
     ) -> Dict[str, Any]:
         """Create a branch from a stash."""
         stdout, stderr, rc = cls._run_git(
-            repo_path,
-            ["stash", "branch", branch_name, stash_ref]
+            repo_path, ["stash", "branch", branch_name, stash_ref]
         )
 
         return {
@@ -2033,10 +2249,17 @@ class AdvancedGitOperations:
         """
         Find and optionally delete branches that have been merged.
         """
-        result = {"success": False, "branches_to_delete": [], "deleted_branches": [], "commands_run": []}
+        result = {
+            "success": False,
+            "branches_to_delete": [],
+            "deleted_branches": [],
+            "commands_run": [],
+        }
 
         # Get merged branches
-        stdout, stderr, rc = cls._run_git(repo_path, ["branch", "--merged", base_branch])
+        stdout, stderr, rc = cls._run_git(
+            repo_path, ["branch", "--merged", base_branch]
+        )
         result["commands_run"].append(f"git branch --merged {base_branch}")
 
         if rc != 0:
@@ -2071,7 +2294,9 @@ class AdvancedGitOperations:
         new_name: str,
     ) -> Dict[str, Any]:
         """Rename a branch."""
-        stdout, stderr, rc = cls._run_git(repo_path, ["branch", "-m", old_name, new_name])
+        stdout, stderr, rc = cls._run_git(
+            repo_path, ["branch", "-m", old_name, new_name]
+        )
 
         return {
             "success": rc == 0,
@@ -2085,8 +2310,7 @@ class AdvancedGitOperations:
     async def reflog(cls, repo_path: str, limit: int = 20) -> Dict[str, Any]:
         """Get reflog entries for recovery."""
         stdout, stderr, rc = cls._run_git(
-            repo_path,
-            ["reflog", f"-{limit}", "--pretty=format:%h|%gd|%gs|%ar"]
+            repo_path, ["reflog", f"-{limit}", "--pretty=format:%h|%gd|%gs|%ar"]
         )
 
         if rc != 0:
@@ -2096,12 +2320,14 @@ class AdvancedGitOperations:
         for line in stdout.strip().splitlines():
             parts = line.split("|")
             if len(parts) >= 4:
-                entries.append({
-                    "hash": parts[0],
-                    "ref": parts[1],
-                    "action": parts[2],
-                    "time": parts[3],
-                })
+                entries.append(
+                    {
+                        "hash": parts[0],
+                        "ref": parts[1],
+                        "action": parts[2],
+                        "time": parts[3],
+                    }
+                )
 
         return {
             "success": True,
@@ -2123,13 +2349,16 @@ class AdvancedGitOperations:
             branch_name = f"recovered-{commit_hash[:8]}"
 
         stdout, stderr, rc = cls._run_git(
-            repo_path,
-            ["branch", branch_name, commit_hash]
+            repo_path, ["branch", branch_name, commit_hash]
         )
 
         return {
             "success": rc == 0,
-            "message": f"Created branch '{branch_name}' pointing to {commit_hash}" if rc == 0 else stderr,
+            "message": (
+                f"Created branch '{branch_name}' pointing to {commit_hash}"
+                if rc == 0
+                else stderr
+            ),
             "branch_name": branch_name if rc == 0 else None,
             "commands_run": [f"git branch {branch_name} {commit_hash}"],
         }
@@ -2160,7 +2389,9 @@ class AdvancedGitOperations:
             args.append("--no-edit")
 
         stdout, stderr, rc = cls._run_git(repo_path, args)
-        result["commands_run"].append(f"git commit --amend {'--no-edit' if not new_message else '-m <message>'}")
+        result["commands_run"].append(
+            f"git commit --amend {'--no-edit' if not new_message else '-m <message>'}"
+        )
 
         result["success"] = rc == 0
         result["message"] = "Commit amended successfully" if rc == 0 else stderr
@@ -2200,21 +2431,23 @@ class AdvancedGitOperations:
             return {"success": False, "message": f"Invalid mode: {mode}"}
 
         stdout, stderr, rc = cls._run_git(
-            repo_path,
-            ["reset", f"--{mode}", commit_hash]
+            repo_path, ["reset", f"--{mode}", commit_hash]
         )
 
         return {
             "success": rc == 0,
             "message": f"Reset to {commit_hash} ({mode})" if rc == 0 else stderr,
             "commands_run": [f"git reset --{mode} {commit_hash}"],
-            "warning": "Hard reset discards uncommitted changes!" if mode == "hard" else None,
+            "warning": (
+                "Hard reset discards uncommitted changes!" if mode == "hard" else None
+            ),
         }
 
 
 # ============================================================
 # ADVANCED DATABASE OPERATIONS
 # ============================================================
+
 
 class AdvancedDatabaseOperations:
     """
@@ -2262,31 +2495,41 @@ class AdvancedDatabaseOperations:
 
                 # Find missing tables
                 result["missing_in_db"] = [
-                    name for name in code_tables
+                    name
+                    for name in code_tables
                     if name.lower() not in [n.lower() for n in db_tables]
                 ]
 
                 result["missing_in_code"] = [
-                    name for name in db_tables
+                    name
+                    for name in db_tables
                     if name.lower() not in [n.lower() for n in code_tables]
                 ]
 
                 # Compare columns for matching tables
                 for table_name, code_table in code_tables.items():
-                    db_table = db_tables.get(table_name) or db_tables.get(table_name.lower())
+                    db_table = db_tables.get(table_name) or db_tables.get(
+                        table_name.lower()
+                    )
                     if db_table:
-                        code_cols = {c["name"].lower() for c in code_table.get("columns", [])}
-                        db_cols = {c["name"].lower() for c in db_table.get("columns", [])}
+                        code_cols = {
+                            c["name"].lower() for c in code_table.get("columns", [])
+                        }
+                        db_cols = {
+                            c["name"].lower() for c in db_table.get("columns", [])
+                        }
 
                         missing_cols = code_cols - db_cols
                         extra_cols = db_cols - code_cols
 
                         if missing_cols or extra_cols:
-                            result["column_differences"].append({
-                                "table": table_name,
-                                "missing_in_db": list(missing_cols),
-                                "extra_in_db": list(extra_cols),
-                            })
+                            result["column_differences"].append(
+                                {
+                                    "table": table_name,
+                                    "missing_in_db": list(missing_cols),
+                                    "extra_in_db": list(extra_cols),
+                                }
+                            )
 
                 result["success"] = True
 
@@ -2326,7 +2569,12 @@ class AdvancedDatabaseOperations:
         """
         Generate a new migration file.
         """
-        result = {"success": False, "message": "", "migration_file": None, "commands_run": []}
+        result = {
+            "success": False,
+            "message": "",
+            "migration_file": None,
+            "commands_run": [],
+        }
         workspace = Path(workspace_path)
 
         # Check for Alembic
@@ -2350,7 +2598,7 @@ class AdvancedDatabaseOperations:
                     result["success"] = True
                     result["message"] = proc.stdout
                     # Extract migration file path
-                    match = re.search(r'Generating (.*\.py)', proc.stdout)
+                    match = re.search(r"Generating (.*\.py)", proc.stdout)
                     if match:
                         result["migration_file"] = match.group(1)
                 else:
@@ -2369,7 +2617,9 @@ class AdvancedDatabaseOperations:
                     text=True,
                     timeout=60,
                 )
-                result["commands_run"].append(f"python manage.py makemigrations --name {migration_name}")
+                result["commands_run"].append(
+                    f"python manage.py makemigrations --name {migration_name}"
+                )
                 result["success"] = proc.returncode == 0
                 result["message"] = proc.stdout if proc.returncode == 0 else proc.stderr
 
@@ -2380,20 +2630,32 @@ class AdvancedDatabaseOperations:
         elif (workspace / "prisma" / "schema.prisma").exists():
             try:
                 proc = subprocess.run(
-                    ["npx", "prisma", "migrate", "dev", "--name", migration_name, "--create-only"],
+                    [
+                        "npx",
+                        "prisma",
+                        "migrate",
+                        "dev",
+                        "--name",
+                        migration_name,
+                        "--create-only",
+                    ],
                     cwd=workspace,
                     capture_output=True,
                     text=True,
                     timeout=120,
                 )
-                result["commands_run"].append(f"npx prisma migrate dev --name {migration_name} --create-only")
+                result["commands_run"].append(
+                    f"npx prisma migrate dev --name {migration_name} --create-only"
+                )
                 result["success"] = proc.returncode == 0
                 result["message"] = proc.stdout if proc.returncode == 0 else proc.stderr
 
             except Exception as e:
                 result["message"] = f"Failed to generate migration: {e}"
         else:
-            result["message"] = "No supported migration system found (Alembic, Django, or Prisma)"
+            result["message"] = (
+                "No supported migration system found (Alembic, Django, or Prisma)"
+            )
 
         return result
 
@@ -2491,15 +2753,24 @@ class AdvancedDatabaseOperations:
 
         elif (workspace / "manage.py").exists():
             # Django requires app name and migration name
-            result["message"] = "Django rollback requires app name: python manage.py migrate <app> <migration>"
-            result["suggestion"] = "Use: python manage.py showmigrations to see migration names"
+            result["message"] = (
+                "Django rollback requires app name: python manage.py migrate <app> <migration>"
+            )
+            result["suggestion"] = (
+                "Use: python manage.py showmigrations to see migration names"
+            )
 
         return result
 
     @classmethod
     async def get_migration_history(cls, workspace_path: str) -> Dict[str, Any]:
         """Get migration history."""
-        result = {"success": False, "migrations": [], "current": None, "commands_run": []}
+        result = {
+            "success": False,
+            "migrations": [],
+            "current": None,
+            "commands_run": [],
+        }
         workspace = Path(workspace_path)
 
         if (workspace / "alembic.ini").exists():
@@ -2549,7 +2820,9 @@ class AdvancedDatabaseOperations:
                 )
                 result["commands_run"].append("python manage.py showmigrations")
                 result["success"] = proc.returncode == 0
-                result["migrations_output"] = proc.stdout if proc.returncode == 0 else proc.stderr
+                result["migrations_output"] = (
+                    proc.stdout if proc.returncode == 0 else proc.stderr
+                )
 
             except Exception as e:
                 result["message"] = f"Failed to get history: {e}"
@@ -2587,7 +2860,9 @@ class AdvancedDatabaseOperations:
                     )
                     result["commands_run"].append(f"python {loc}")
                     result["success"] = proc.returncode == 0
-                    result["message"] = proc.stdout if proc.returncode == 0 else proc.stderr
+                    result["message"] = (
+                        proc.stdout if proc.returncode == 0 else proc.stderr
+                    )
                     return result
                 except Exception as e:
                     result["message"] = f"Failed to run seed: {e}"
@@ -2602,13 +2877,20 @@ class AdvancedDatabaseOperations:
                     try:
                         for fixture in fixtures:
                             proc = subprocess.run(
-                                ["python", "manage.py", "loaddata", str(fixture.relative_to(workspace))],
+                                [
+                                    "python",
+                                    "manage.py",
+                                    "loaddata",
+                                    str(fixture.relative_to(workspace)),
+                                ],
                                 cwd=workspace,
                                 capture_output=True,
                                 text=True,
                                 timeout=60,
                             )
-                            result["commands_run"].append(f"python manage.py loaddata {fixture.name}")
+                            result["commands_run"].append(
+                                f"python manage.py loaddata {fixture.name}"
+                            )
                         result["success"] = True
                         result["message"] = f"Loaded {len(fixtures)} fixtures"
                         return result
@@ -2634,7 +2916,9 @@ class AdvancedDatabaseOperations:
                 result["message"] = f"Failed to run Prisma seed: {e}"
                 return result
 
-        result["message"] = "No seed file found. Create one at seeds/seed.py or similar location."
+        result["message"] = (
+            "No seed file found. Create one at seeds/seed.py or similar location."
+        )
         return result
 
     @classmethod
@@ -2677,6 +2961,7 @@ class AdvancedDatabaseOperations:
 # ============================================================
 # COMPLEX CODE DEBUGGING & FIXING
 # ============================================================
+
 
 class CodeDebugger:
     """
@@ -2735,12 +3020,12 @@ class CodeDebugger:
         if error_log:
             # Parse log file for errors (language-agnostic)
             error_patterns = [
-                r'ERROR[:\s]+(.+)',
-                r'Exception[:\s]+(.+)',
-                r'FATAL[:\s]+(.+)',
-                r'\[error\][:\s]+(.+)',
-                r'panic[:\s]+(.+)',
-                r'PANIC[:\s]+(.+)',
+                r"ERROR[:\s]+(.+)",
+                r"Exception[:\s]+(.+)",
+                r"FATAL[:\s]+(.+)",
+                r"\[error\][:\s]+(.+)",
+                r"panic[:\s]+(.+)",
+                r"PANIC[:\s]+(.+)",
             ]
 
             for pattern in error_patterns:
@@ -2768,23 +3053,29 @@ class CodeDebugger:
             return cls._parse_rust_error(traceback)
 
         # Java exception
-        if re.search(r'(Exception|Error)\s+in\s+thread|at\s+[\w.]+\([\w.]+:\d+\)', traceback):
+        if re.search(
+            r"(Exception|Error)\s+in\s+thread|at\s+[\w.]+\([\w.]+:\d+\)", traceback
+        ):
             return cls._parse_java_error(traceback)
 
         # Ruby exception
-        if re.search(r'^\s+from\s+[\w/.-]+:\d+:in\s+', traceback, re.MULTILINE):
+        if re.search(r"^\s+from\s+[\w/.-]+:\d+:in\s+", traceback, re.MULTILINE):
             return cls._parse_ruby_error(traceback)
 
         # C#/.NET exception
-        if re.search(r'(System\.\w+Exception|at\s+[\w.]+\s+in\s+.*:\s*line\s+\d+)', traceback):
+        if re.search(
+            r"(System\.\w+Exception|at\s+[\w.]+\s+in\s+.*:\s*line\s+\d+)", traceback
+        ):
             return cls._parse_csharp_error(traceback)
 
         # PHP error
-        if re.search(r'(Fatal error|PHP Fatal|Stack trace:.*#\d+)', traceback, re.IGNORECASE):
+        if re.search(
+            r"(Fatal error|PHP Fatal|Stack trace:.*#\d+)", traceback, re.IGNORECASE
+        ):
             return cls._parse_php_error(traceback)
 
         # JavaScript/Node.js error (generic - check last)
-        if "Error:" in traceback or re.search(r'\w+Error:', traceback):
+        if "Error:" in traceback or re.search(r"\w+Error:", traceback):
             return cls._parse_javascript_error(traceback)
 
         return None
@@ -2812,11 +3103,13 @@ class CodeDebugger:
         # Extract file locations
         file_pattern = r'File "([^"]+)", line (\d+), in (\w+)'
         for match in re.finditer(file_pattern, traceback):
-            result["affected_files"].append({
-                "path": match.group(1),
-                "line": int(match.group(2)),
-                "function": match.group(3),
-            })
+            result["affected_files"].append(
+                {
+                    "path": match.group(1),
+                    "line": int(match.group(2)),
+                    "function": match.group(3),
+                }
+            )
 
         return result
 
@@ -2831,7 +3124,7 @@ class CodeDebugger:
         }
 
         # Extract error message
-        error_match = re.search(r'(\w+Error):\s*(.+?)(?:\n|$)', traceback)
+        error_match = re.search(r"(\w+Error):\s*(.+?)(?:\n|$)", traceback)
         if error_match:
             result["root_cause"] = {
                 "type": error_match.group(1),
@@ -2839,15 +3132,17 @@ class CodeDebugger:
             }
 
         # Extract file locations (at /path/to/file.js:line:col)
-        file_pattern = r'at\s+(?:[\w.<>]+\s+)?\(?([^:\s]+):(\d+):(\d+)\)?'
+        file_pattern = r"at\s+(?:[\w.<>]+\s+)?\(?([^:\s]+):(\d+):(\d+)\)?"
         for match in re.finditer(file_pattern, traceback):
             path = match.group(1)
-            if not path.startswith('native') and not path.startswith('internal'):
-                result["affected_files"].append({
-                    "path": path,
-                    "line": int(match.group(2)),
-                    "column": int(match.group(3)),
-                })
+            if not path.startswith("native") and not path.startswith("internal"):
+                result["affected_files"].append(
+                    {
+                        "path": path,
+                        "line": int(match.group(2)),
+                        "column": int(match.group(3)),
+                    }
+                )
 
         return result
 
@@ -2862,7 +3157,7 @@ class CodeDebugger:
         }
 
         # Extract panic message
-        panic_match = re.search(r'panic:\s*(.+?)(?:\n|$)', traceback)
+        panic_match = re.search(r"panic:\s*(.+?)(?:\n|$)", traceback)
         if panic_match:
             result["root_cause"] = {
                 "type": "panic",
@@ -2870,7 +3165,7 @@ class CodeDebugger:
             }
         else:
             # Try to find error message
-            error_match = re.search(r'error:\s*(.+?)(?:\n|$)', traceback, re.IGNORECASE)
+            error_match = re.search(r"error:\s*(.+?)(?:\n|$)", traceback, re.IGNORECASE)
             if error_match:
                 result["root_cause"] = {
                     "type": "error",
@@ -2878,15 +3173,17 @@ class CodeDebugger:
                 }
 
         # Extract file locations (e.g., /path/to/file.go:123)
-        file_pattern = r'([/\w.-]+\.go):(\d+)'
+        file_pattern = r"([/\w.-]+\.go):(\d+)"
         for match in re.finditer(file_pattern, traceback):
-            result["affected_files"].append({
-                "path": match.group(1),
-                "line": int(match.group(2)),
-            })
+            result["affected_files"].append(
+                {
+                    "path": match.group(1),
+                    "line": int(match.group(2)),
+                }
+            )
 
         # Also try to extract function names
-        func_pattern = r'([/\w.-]+\.go):(\d+)\s+\+0x[\da-f]+\n\s*([\w.]+)\('
+        func_pattern = r"([/\w.-]+\.go):(\d+)\s+\+0x[\da-f]+\n\s*([\w.]+)\("
         for match in re.finditer(func_pattern, traceback):
             # Update with function info
             for f in result["affected_files"]:
@@ -2908,7 +3205,7 @@ class CodeDebugger:
         # Extract panic message: thread 'main' panicked at 'message', file.rs:line:col
         panic_match = re.search(
             r"thread '([^']+)' panicked at ['\"](.+?)['\"],?\s*([^:\s]+):(\d+):(\d+)",
-            traceback
+            traceback,
         )
         if panic_match:
             result["root_cause"] = {
@@ -2916,33 +3213,39 @@ class CodeDebugger:
                 "message": panic_match.group(2),
                 "thread": panic_match.group(1),
             }
-            result["affected_files"].append({
-                "path": panic_match.group(3),
-                "line": int(panic_match.group(4)),
-                "column": int(panic_match.group(5)),
-            })
+            result["affected_files"].append(
+                {
+                    "path": panic_match.group(3),
+                    "line": int(panic_match.group(4)),
+                    "column": int(panic_match.group(5)),
+                }
+            )
 
         # Extract additional stack frames
-        frame_pattern = r'at\s+([^<\s]+)\s*\n\s+at\s+([^:\s]+):(\d+):(\d+)'
+        frame_pattern = r"at\s+([^<\s]+)\s*\n\s+at\s+([^:\s]+):(\d+):(\d+)"
         for match in re.finditer(frame_pattern, traceback):
-            result["affected_files"].append({
-                "path": match.group(2),
-                "line": int(match.group(3)),
-                "column": int(match.group(4)),
-                "function": match.group(1),
-            })
+            result["affected_files"].append(
+                {
+                    "path": match.group(2),
+                    "line": int(match.group(3)),
+                    "column": int(match.group(4)),
+                    "function": match.group(1),
+                }
+            )
 
         # Also handle: src/main.rs:10:5 format
-        file_pattern = r'([/\w.-]+\.rs):(\d+):(\d+)'
+        file_pattern = r"([/\w.-]+\.rs):(\d+):(\d+)"
         seen = {(f["path"], f["line"]) for f in result["affected_files"]}
         for match in re.finditer(file_pattern, traceback):
             key = (match.group(1), int(match.group(2)))
             if key not in seen:
-                result["affected_files"].append({
-                    "path": match.group(1),
-                    "line": int(match.group(2)),
-                    "column": int(match.group(3)),
-                })
+                result["affected_files"].append(
+                    {
+                        "path": match.group(1),
+                        "line": int(match.group(2)),
+                        "column": int(match.group(3)),
+                    }
+                )
                 seen.add(key)
 
         return result
@@ -2960,26 +3263,31 @@ class CodeDebugger:
         # Extract exception type and message
         # Pattern: ExceptionType: message or ExceptionType at location
         exception_match = re.search(
-            r'([\w.]+(?:Exception|Error))(?::\s*(.+?))?(?:\n|\s+at\s)',
-            traceback
+            r"([\w.]+(?:Exception|Error))(?::\s*(.+?))?(?:\n|\s+at\s)", traceback
         )
         if exception_match:
             result["root_cause"] = {
                 "type": exception_match.group(1),
-                "message": exception_match.group(2).strip() if exception_match.group(2) else "",
+                "message": (
+                    exception_match.group(2).strip() if exception_match.group(2) else ""
+                ),
             }
 
         # Extract file locations: at package.Class.method(File.java:line)
-        file_pattern = r'at\s+([\w.$]+)\(([\w.]+):(\d+)\)'
+        file_pattern = r"at\s+([\w.$]+)\(([\w.]+):(\d+)\)"
         for match in re.finditer(file_pattern, traceback):
-            result["affected_files"].append({
-                "path": match.group(2),
-                "line": int(match.group(3)),
-                "function": match.group(1),
-            })
+            result["affected_files"].append(
+                {
+                    "path": match.group(2),
+                    "line": int(match.group(3)),
+                    "function": match.group(1),
+                }
+            )
 
         # Handle "Caused by:" chains
-        caused_by = re.findall(r'Caused by:\s*([\w.]+(?:Exception|Error))(?::\s*(.+?))?(?:\n|$)', traceback)
+        caused_by = re.findall(
+            r"Caused by:\s*([\w.]+(?:Exception|Error))(?::\s*(.+?))?(?:\n|$)", traceback
+        )
         if caused_by:
             result["caused_by"] = [
                 {"type": c[0], "message": c[1].strip() if c[1] else ""}
@@ -3008,7 +3316,9 @@ class CodeDebugger:
             }
         else:
             # Try alternate format
-            alt_match = re.search(r":\s*(.+?)\s*\((\w+(?:Error|Exception))\)", traceback)
+            alt_match = re.search(
+                r":\s*(.+?)\s*\((\w+(?:Error|Exception))\)", traceback
+            )
             if alt_match:
                 result["root_cause"] = {
                     "type": alt_match.group(2),
@@ -3016,7 +3326,7 @@ class CodeDebugger:
                 }
 
         # Extract file locations: /path/file.rb:line:in `method'
-        file_pattern = r'([/\w.-]+\.rb):(\d+)(?::in\s+[`\'](\w+)[\'`])?'
+        file_pattern = r"([/\w.-]+\.rb):(\d+)(?::in\s+[`\'](\w+)[\'`])?"
         for match in re.finditer(file_pattern, traceback):
             entry = {
                 "path": match.group(1),
@@ -3039,7 +3349,7 @@ class CodeDebugger:
         }
 
         # C# format: System.ExceptionType: message
-        exception_match = re.search(r'([\w.]+Exception):\s*(.+?)(?:\n|$)', traceback)
+        exception_match = re.search(r"([\w.]+Exception):\s*(.+?)(?:\n|$)", traceback)
         if exception_match:
             result["root_cause"] = {
                 "type": exception_match.group(1),
@@ -3047,21 +3357,25 @@ class CodeDebugger:
             }
 
         # Extract file locations: at Namespace.Class.Method() in path\file.cs:line N
-        file_pattern = r'at\s+([\w.<>]+)\([^)]*\)\s+in\s+([^:]+):line\s+(\d+)'
+        file_pattern = r"at\s+([\w.<>]+)\([^)]*\)\s+in\s+([^:]+):line\s+(\d+)"
         for match in re.finditer(file_pattern, traceback):
-            result["affected_files"].append({
-                "path": match.group(2),
-                "line": int(match.group(3)),
-                "function": match.group(1),
-            })
+            result["affected_files"].append(
+                {
+                    "path": match.group(2),
+                    "line": int(match.group(3)),
+                    "function": match.group(1),
+                }
+            )
 
         # Also handle simpler format without file paths
-        simple_pattern = r'at\s+([\w.<>]+)\([^)]*\)'
+        simple_pattern = r"at\s+([\w.<>]+)\([^)]*\)"
         if not result["affected_files"]:
             for match in re.finditer(simple_pattern, traceback):
-                result["affected_files"].append({
-                    "function": match.group(1),
-                })
+                result["affected_files"].append(
+                    {
+                        "function": match.group(1),
+                    }
+                )
 
         return result
 
@@ -3077,28 +3391,32 @@ class CodeDebugger:
 
         # PHP Fatal error: message in /path/file.php on line N
         fatal_match = re.search(
-            r'(?:Fatal error|PHP Fatal[^:]*|Exception):\s*(.+?)\s+in\s+([^\s]+)\s+on\s+line\s+(\d+)',
+            r"(?:Fatal error|PHP Fatal[^:]*|Exception):\s*(.+?)\s+in\s+([^\s]+)\s+on\s+line\s+(\d+)",
             traceback,
-            re.IGNORECASE
+            re.IGNORECASE,
         )
         if fatal_match:
             result["root_cause"] = {
                 "type": "FatalError",
                 "message": fatal_match.group(1).strip(),
             }
-            result["affected_files"].append({
-                "path": fatal_match.group(2),
-                "line": int(fatal_match.group(3)),
-            })
+            result["affected_files"].append(
+                {
+                    "path": fatal_match.group(2),
+                    "line": int(fatal_match.group(3)),
+                }
+            )
 
         # Stack trace format: #N /path/file.php(line): function()
-        stack_pattern = r'#\d+\s+([^\(]+)\((\d+)\):\s*([\w\\]+(?:->|::)?\w+)'
+        stack_pattern = r"#\d+\s+([^\(]+)\((\d+)\):\s*([\w\\]+(?:->|::)?\w+)"
         for match in re.finditer(stack_pattern, traceback):
-            result["affected_files"].append({
-                "path": match.group(1),
-                "line": int(match.group(2)),
-                "function": match.group(3),
-            })
+            result["affected_files"].append(
+                {
+                    "path": match.group(1),
+                    "line": int(match.group(2)),
+                    "function": match.group(3),
+                }
+            )
 
         return result
 
@@ -3407,20 +3725,26 @@ class CodeDebugger:
                     continue
 
                 try:
-                    content = file_path.read_text(encoding='utf-8', errors='ignore')
+                    content = file_path.read_text(encoding="utf-8", errors="ignore")
 
                     for pattern_info in performance_patterns[language]:
-                        matches = re.finditer(pattern_info["pattern"], content, re.IGNORECASE | re.MULTILINE)
+                        matches = re.finditer(
+                            pattern_info["pattern"],
+                            content,
+                            re.IGNORECASE | re.MULTILINE,
+                        )
                         for match in matches:
-                            line_num = content[:match.start()].count('\n') + 1
-                            result["issues"].append({
-                                "file": str(file_path.relative_to(workspace)),
-                                "line": line_num,
-                                "issue": pattern_info["issue"],
-                                "severity": pattern_info["severity"],
-                                "fix": pattern_info["fix"],
-                                "code_snippet": match.group(0)[:100],
-                            })
+                            line_num = content[: match.start()].count("\n") + 1
+                            result["issues"].append(
+                                {
+                                    "file": str(file_path.relative_to(workspace)),
+                                    "line": line_num,
+                                    "issue": pattern_info["issue"],
+                                    "severity": pattern_info["severity"],
+                                    "fix": pattern_info["fix"],
+                                    "code_snippet": match.group(0)[:100],
+                                }
+                            )
                             result["summary"][pattern_info["severity"]] += 1
 
                 except Exception as e:
@@ -3452,25 +3776,35 @@ class CodeDebugger:
         for file_path, file_analysis in analysis.files.items():
             try:
                 full_path = Path(workspace_path) / file_path
-                all_code_content += full_path.read_text(encoding='utf-8', errors='ignore')
+                all_code_content += full_path.read_text(
+                    encoding="utf-8", errors="ignore"
+                )
             except Exception:
                 continue
 
         for symbol_name, locations in analysis.symbol_table.items():
             # Skip common patterns
-            if symbol_name.startswith("_") or symbol_name in ["main", "__init__", "setup"]:
+            if symbol_name.startswith("_") or symbol_name in [
+                "main",
+                "__init__",
+                "setup",
+            ]:
                 continue
 
             # Count occurrences (definition + calls)
-            occurrences = len(re.findall(rf'\b{re.escape(symbol_name)}\b', all_code_content))
+            occurrences = len(
+                re.findall(rf"\b{re.escape(symbol_name)}\b", all_code_content)
+            )
 
             # If only appears once or twice (definition + maybe one use), might be unused
             if occurrences <= 2:
-                result["unused_functions"].append({
-                    "name": symbol_name,
-                    "locations": locations,
-                    "occurrences": occurrences,
-                })
+                result["unused_functions"].append(
+                    {
+                        "name": symbol_name,
+                        "locations": locations,
+                        "occurrences": occurrences,
+                    }
+                )
 
         result["success"] = True
         return result
@@ -3537,10 +3871,12 @@ class CodeDebugger:
             cycle_key = tuple(sorted(cycle))
             if cycle_key not in seen:
                 seen.add(cycle_key)
-                result["circular_deps"].append({
-                    "cycle": cycle,
-                    "fix": "Consider extracting shared code to a separate module",
-                })
+                result["circular_deps"].append(
+                    {
+                        "cycle": cycle,
+                        "fix": "Consider extracting shared code to a separate module",
+                    }
+                )
 
         result["success"] = True
         return result
@@ -3561,7 +3897,9 @@ class CodeDebugger:
 
         smell_patterns = {
             "long_function": {
-                "check": lambda content, func: len(func.body.splitlines()) > 50 if func.body else False,
+                "check": lambda content, func: (
+                    len(func.body.splitlines()) > 50 if func.body else False
+                ),
                 "message": "Function is too long (>50 lines)",
                 "fix": "Break into smaller functions",
             },
@@ -3605,21 +3943,25 @@ class CodeDebugger:
                     continue
 
                 try:
-                    content = file_path.read_text(encoding='utf-8', errors='ignore')
+                    content = file_path.read_text(encoding="utf-8", errors="ignore")
                     rel_path = str(file_path.relative_to(workspace))
 
                     for smell_name, smell_info in smell_patterns.items():
                         if "pattern" in smell_info:
-                            matches = re.finditer(smell_info["pattern"], content, re.IGNORECASE)
+                            matches = re.finditer(
+                                smell_info["pattern"], content, re.IGNORECASE
+                            )
                             for match in matches:
-                                line_num = content[:match.start()].count('\n') + 1
-                                result["smells"].append({
-                                    "file": rel_path,
-                                    "line": line_num,
-                                    "smell": smell_name,
-                                    "message": smell_info["message"],
-                                    "fix": smell_info["fix"],
-                                })
+                                line_num = content[: match.start()].count("\n") + 1
+                                result["smells"].append(
+                                    {
+                                        "file": rel_path,
+                                        "line": line_num,
+                                        "smell": smell_name,
+                                        "message": smell_info["message"],
+                                        "fix": smell_info["fix"],
+                                    }
+                                )
 
                                 if smell_name not in result["summary"]:
                                     result["summary"][smell_name] = 0
@@ -3657,7 +3999,7 @@ class CodeDebugger:
             return result
 
         try:
-            content = full_path.read_text(encoding='utf-8')
+            content = full_path.read_text(encoding="utf-8")
             lines = content.splitlines(keepends=True)
 
             if line_number > len(lines):
@@ -3672,7 +4014,9 @@ class CodeDebugger:
             # Apply fixes based on issue type
             if issue_type == "empty_catch":
                 if "except:" in original_line or "except :" in original_line:
-                    fixed_line = original_line.replace("pass", "logger.exception('Caught exception')")
+                    fixed_line = original_line.replace(
+                        "pass", "logger.exception('Caught exception')"
+                    )
                 elif "catch" in original_line:
                     # JavaScript - add console.error
                     fixed_line = original_line.replace("{}", "{ console.error(e); }")
@@ -3711,18 +4055,26 @@ class CodeDebugger:
 # PUBLIC API ADDITIONS
 # ============================================================
 
+
 # Advanced Git Operations
 async def cherry_pick(repo_path: str, commit_hash: str, **kwargs) -> Dict[str, Any]:
     """Public API: Cherry-pick a commit."""
     return await AdvancedGitOperations.cherry_pick(repo_path, commit_hash, **kwargs)
 
-async def squash_commits(repo_path: str, num_commits: int, message: str = None) -> Dict[str, Any]:
+
+async def squash_commits(
+    repo_path: str, num_commits: int, message: str = None
+) -> Dict[str, Any]:
     """Public API: Squash last N commits."""
     return await AdvancedGitOperations.squash_commits(repo_path, num_commits, message)
 
-async def bisect_start(repo_path: str, bad: str = "HEAD", good: str = None) -> Dict[str, Any]:
+
+async def bisect_start(
+    repo_path: str, bad: str = "HEAD", good: str = None
+) -> Dict[str, Any]:
     """Public API: Start git bisect."""
     return await AdvancedGitOperations.bisect_start(repo_path, bad, good)
+
 
 async def stash_operations(repo_path: str, operation: str, **kwargs) -> Dict[str, Any]:
     """Public API: Stash operations (save, pop, apply, list, drop)."""
@@ -3739,6 +4091,7 @@ async def stash_operations(repo_path: str, operation: str, **kwargs) -> Dict[str
         return {"success": False, "message": f"Unknown operation: {operation}"}
     return await ops[operation](repo_path, **kwargs)
 
+
 async def rebase_operations(repo_path: str, operation: str, **kwargs) -> Dict[str, Any]:
     """Public API: Rebase operations."""
     ops = {
@@ -3751,12 +4104,18 @@ async def rebase_operations(repo_path: str, operation: str, **kwargs) -> Dict[st
         return {"success": False, "message": f"Unknown operation: {operation}"}
     return await ops[operation](repo_path, **kwargs)
 
+
 # Advanced Database Operations
-async def database_schema_diff(workspace_path: str, database_url: str = None) -> Dict[str, Any]:
+async def database_schema_diff(
+    workspace_path: str, database_url: str = None
+) -> Dict[str, Any]:
     """Public API: Compare code models with database schema."""
     return await AdvancedDatabaseOperations.schema_diff(workspace_path, database_url)
 
-async def database_migration(workspace_path: str, operation: str, **kwargs) -> Dict[str, Any]:
+
+async def database_migration(
+    workspace_path: str, operation: str, **kwargs
+) -> Dict[str, Any]:
     """Public API: Database migration operations."""
     ops = {
         "generate": AdvancedDatabaseOperations.generate_migration,
@@ -3768,33 +4127,53 @@ async def database_migration(workspace_path: str, operation: str, **kwargs) -> D
         return {"success": False, "message": f"Unknown operation: {operation}"}
     return await ops[operation](workspace_path, **kwargs)
 
+
 async def database_seed(workspace_path: str, seed_file: str = None) -> Dict[str, Any]:
     """Public API: Seed database."""
     return await AdvancedDatabaseOperations.seed_database(workspace_path, seed_file)
 
+
 # Code Debugging
-async def analyze_error(traceback: str = None, error_log: str = None, workspace_path: str = None) -> Dict[str, Any]:
+async def analyze_error(
+    traceback: str = None, error_log: str = None, workspace_path: str = None
+) -> Dict[str, Any]:
     """Public API: Analyze error traceback or logs."""
-    return await CodeDebugger.analyze_errors(workspace_path or ".", error_log, traceback)
+    return await CodeDebugger.analyze_errors(
+        workspace_path or ".", error_log, traceback
+    )
+
 
 async def detect_issues(workspace_path: str, issue_type: str = "all") -> Dict[str, Any]:
     """Public API: Detect code issues."""
     results = {}
 
     if issue_type in ["all", "performance"]:
-        results["performance"] = await CodeDebugger.detect_performance_issues(workspace_path)
+        results["performance"] = await CodeDebugger.detect_performance_issues(
+            workspace_path
+        )
 
     if issue_type in ["all", "dead_code"]:
         results["dead_code"] = await CodeDebugger.detect_dead_code(workspace_path)
 
     if issue_type in ["all", "circular_deps"]:
-        results["circular_deps"] = await CodeDebugger.detect_circular_dependencies(workspace_path)
+        results["circular_deps"] = await CodeDebugger.detect_circular_dependencies(
+            workspace_path
+        )
 
     if issue_type in ["all", "code_smells"]:
         results["code_smells"] = await CodeDebugger.detect_code_smells(workspace_path)
 
     return results
 
-async def auto_fix_issue(workspace_path: str, file_path: str, issue_type: str, line: int, dry_run: bool = True) -> Dict[str, Any]:
+
+async def auto_fix_issue(
+    workspace_path: str,
+    file_path: str,
+    issue_type: str,
+    line: int,
+    dry_run: bool = True,
+) -> Dict[str, Any]:
     """Public API: Auto-fix a detected issue."""
-    return await CodeDebugger.auto_fix(workspace_path, file_path, issue_type, line, dry_run)
+    return await CodeDebugger.auto_fix(
+        workspace_path, file_path, issue_type, line, dry_run
+    )

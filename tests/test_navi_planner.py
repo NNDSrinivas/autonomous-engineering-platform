@@ -52,9 +52,9 @@ class TestPlanCreation:
                 print(f"Questions: {len(result['questions'])}")
 
                 # Should have clarifying questions for API work
-                if result['questions']:
+                if result["questions"]:
                     print("\nClarifying Questions:")
-                    for q in result['questions']:
+                    for q in result["questions"]:
                         print(f"  - {q['question']}")
                         print(f"    Why: {q['why_asking']}")
                         print(f"    Options: {q['options']}")
@@ -79,7 +79,9 @@ class TestPlanCreation:
 
                 # Should ask about auth strategy
                 questions = result.get("questions", [])
-                auth_questions = [q for q in questions if "auth" in q.get("question", "").lower()]
+                auth_questions = [
+                    q for q in questions if "auth" in q.get("question", "").lower()
+                ]
 
                 print(f"\nAuth-related questions: {len(auth_questions)}")
                 for q in auth_questions:
@@ -105,7 +107,9 @@ class TestPlanCreation:
 
                 # Should ask about database strategy
                 questions = result.get("questions", [])
-                db_questions = [q for q in questions if "database" in q.get("question", "").lower()]
+                db_questions = [
+                    q for q in questions if "database" in q.get("question", "").lower()
+                ]
 
                 print(f"\nDatabase-related questions: {len(db_questions)}")
 
@@ -121,17 +125,81 @@ class TestPlanWithImages:
 
             # Create a simple test image (1x1 pixel PNG)
             # This is a valid minimal PNG
-            minimal_png = base64.b64encode(bytes([
-                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,  # PNG signature
-                0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,  # IHDR chunk
-                0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-                0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-                0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,  # IDAT chunk
-                0x54, 0x08, 0xD7, 0x63, 0xF8, 0xFF, 0xFF, 0x3F,
-                0x00, 0x05, 0xFE, 0x02, 0xFE, 0xDC, 0xCC, 0x59,
-                0xE7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,  # IEND chunk
-                0x44, 0xAE, 0x42, 0x60, 0x82,
-            ])).decode('utf-8')
+            minimal_png = base64.b64encode(
+                bytes(
+                    [
+                        0x89,
+                        0x50,
+                        0x4E,
+                        0x47,
+                        0x0D,
+                        0x0A,
+                        0x1A,
+                        0x0A,  # PNG signature
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x0D,
+                        0x49,
+                        0x48,
+                        0x44,
+                        0x52,  # IHDR chunk
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x01,
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x01,
+                        0x08,
+                        0x02,
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x90,
+                        0x77,
+                        0x53,
+                        0xDE,
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x0C,
+                        0x49,
+                        0x44,
+                        0x41,  # IDAT chunk
+                        0x54,
+                        0x08,
+                        0xD7,
+                        0x63,
+                        0xF8,
+                        0xFF,
+                        0xFF,
+                        0x3F,
+                        0x00,
+                        0x05,
+                        0xFE,
+                        0x02,
+                        0xFE,
+                        0xDC,
+                        0xCC,
+                        0x59,
+                        0xE7,
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x00,
+                        0x49,
+                        0x45,
+                        0x4E,  # IEND chunk
+                        0x44,
+                        0xAE,
+                        0x42,
+                        0x60,
+                        0x82,
+                    ]
+                )
+            ).decode("utf-8")
 
             payload = {
                 "message": "Build this dashboard UI from the screenshot",
@@ -156,17 +224,24 @@ class TestPlanWithImages:
 
                 # Should have UI-specific questions
                 questions = result.get("questions", [])
-                ui_questions = [q for q in questions if any(
-                    keyword in q.get("question", "").lower()
-                    for keyword in ["ui", "component", "state", "responsive"]
-                )]
+                ui_questions = [
+                    q
+                    for q in questions
+                    if any(
+                        keyword in q.get("question", "").lower()
+                        for keyword in ["ui", "component", "state", "responsive"]
+                    )
+                ]
 
                 print(f"\nUI-related questions: {len(ui_questions)}")
                 for q in ui_questions:
                     print(f"  - {q['question']}")
 
                 # Plan title should mention UI
-                assert "UI" in result.get("title", "") or "ui" in result.get("title", "").lower()
+                assert (
+                    "UI" in result.get("title", "")
+                    or "ui" in result.get("title", "").lower()
+                )
 
 
 class TestQuestionAnswering:
@@ -219,8 +294,8 @@ class TestQuestionAnswering:
                 print(f"Tasks generated: {updated_plan['total_tasks']}")
 
                 # After answering all questions, should be ready or have tasks
-                if updated_plan['unanswered_questions'] == 0:
-                    assert updated_plan['status'] in ['ready', 'approved']
+                if updated_plan["unanswered_questions"] == 0:
+                    assert updated_plan["status"] in ["ready", "approved"]
 
 
 class TestPlanApproval:
@@ -247,7 +322,11 @@ class TestPlanApproval:
 
             # If there are questions, answer them first
             if plan.get("questions"):
-                answers = {q["id"]: q["options"][0] for q in plan["questions"] if q.get("options")}
+                answers = {
+                    q["id"]: q["options"][0]
+                    for q in plan["questions"]
+                    if q.get("options")
+                }
                 async with session.post(
                     f"{BASE_URL}/api/navi/plan/{plan['id']}/answer",
                     json={"answers": answers},
@@ -266,7 +345,7 @@ class TestPlanApproval:
 
                     print("\nPlan approved!")
                     print(f"Status: {approved_plan['status']}")
-                    assert approved_plan['status'] == 'approved'
+                    assert approved_plan["status"] == "approved"
 
 
 class TestPlanExecution:
@@ -294,7 +373,11 @@ class TestPlanExecution:
 
             # Answer questions if any
             if plan.get("questions"):
-                answers = {q["id"]: q["options"][0] for q in plan["questions"] if q.get("options")}
+                answers = {
+                    q["id"]: q["options"][0]
+                    for q in plan["questions"]
+                    if q.get("options")
+                }
                 async with session.post(
                     f"{BASE_URL}/api/navi/plan/{plan['id']}/answer",
                     json={"answers": answers},
@@ -319,8 +402,8 @@ class TestPlanExecution:
                     # Read streaming response
                     events = []
                     async for line in response.content:
-                        line = line.decode('utf-8').strip()
-                        if line.startswith('data:'):
+                        line = line.decode("utf-8").strip()
+                        if line.startswith("data:"):
                             event = json.loads(line[5:].strip())
                             events.append(event)
                             print(f"Event: {event.get('type')}")
@@ -359,7 +442,7 @@ class TestPlanListing:
                 result = await response.json()
 
                 print(f"\nPlans in workspace: {result['total']}")
-                assert result['total'] >= 2
+                assert result["total"] >= 2
 
 
 class TestClarifyingQuestionGenerator:
@@ -399,7 +482,11 @@ class TestClarifyingQuestionGenerator:
         )
 
         # Should have API architecture question
-        api_questions = [q for q in questions if "api" in q.question.lower() or "architecture" in q.question.lower()]
+        api_questions = [
+            q
+            for q in questions
+            if "api" in q.question.lower() or "architecture" in q.question.lower()
+        ]
         assert len(api_questions) > 0
 
     def test_ui_questions_generated(self):
@@ -492,29 +579,41 @@ class TestRefactoringQuestions:
 
     def test_refactoring_questions_on_feature_request(self):
         """Test that feature requests trigger refactoring questions"""
-        from backend.services.navi_planner import ClarifyingQuestionGenerator, QuestionCategory
+        from backend.services.navi_planner import (
+            ClarifyingQuestionGenerator,
+            QuestionCategory,
+        )
 
         questions = ClarifyingQuestionGenerator.generate_questions(
             request="Add a new user profile feature"
         )
 
         # Should have refactoring question
-        refactoring_questions = [q for q in questions if q.category == QuestionCategory.REFACTORING]
+        refactoring_questions = [
+            q for q in questions if q.category == QuestionCategory.REFACTORING
+        ]
         assert len(refactoring_questions) > 0
         print(f"Refactoring questions: {[q.question for q in refactoring_questions]}")
 
     def test_refactoring_questions_have_options(self):
         """Test that refactoring questions have proper options"""
-        from backend.services.navi_planner import ClarifyingQuestionGenerator, QuestionCategory
+        from backend.services.navi_planner import (
+            ClarifyingQuestionGenerator,
+            QuestionCategory,
+        )
 
         questions = ClarifyingQuestionGenerator.generate_questions(
             request="Build a new authentication system"
         )
 
-        refactoring_questions = [q for q in questions if q.category == QuestionCategory.REFACTORING]
+        refactoring_questions = [
+            q for q in questions if q.category == QuestionCategory.REFACTORING
+        ]
         for q in refactoring_questions:
             assert len(q.options) >= 2
-            assert "Yes" in q.options[0] or "No" in q.options[2]  # Should have yes/no options
+            assert (
+                "Yes" in q.options[0] or "No" in q.options[2]
+            )  # Should have yes/no options
 
 
 class TestCommitQuestions:
@@ -522,26 +621,36 @@ class TestCommitQuestions:
 
     def test_commit_questions_on_feature_request(self):
         """Test that feature requests trigger commit questions"""
-        from backend.services.navi_planner import ClarifyingQuestionGenerator, QuestionCategory
+        from backend.services.navi_planner import (
+            ClarifyingQuestionGenerator,
+            QuestionCategory,
+        )
 
         questions = ClarifyingQuestionGenerator.generate_questions(
             request="Implement a new dashboard feature"
         )
 
         # Should have commit question
-        commit_questions = [q for q in questions if q.category == QuestionCategory.COMMIT]
+        commit_questions = [
+            q for q in questions if q.category == QuestionCategory.COMMIT
+        ]
         assert len(commit_questions) > 0
         print(f"Commit questions: {[q.question for q in commit_questions]}")
 
     def test_commit_questions_have_strategies(self):
         """Test that commit questions have different strategy options"""
-        from backend.services.navi_planner import ClarifyingQuestionGenerator, QuestionCategory
+        from backend.services.navi_planner import (
+            ClarifyingQuestionGenerator,
+            QuestionCategory,
+        )
 
         questions = ClarifyingQuestionGenerator.generate_questions(
             request="Create a new API endpoint"
         )
 
-        commit_questions = [q for q in questions if q.category == QuestionCategory.COMMIT]
+        commit_questions = [
+            q for q in questions if q.category == QuestionCategory.COMMIT
+        ]
         if commit_questions:
             options = commit_questions[0].options
             # Should have auto-commit, single, manual options
@@ -556,7 +665,12 @@ class TestRefactoringTaskGeneration:
 
     def test_refactoring_task_added_when_requested(self):
         """Test that refactoring task is added when user requests it"""
-        from backend.services.navi_planner import PlanGenerator, ExecutionPlan, ClarifyingQuestion, QuestionCategory
+        from backend.services.navi_planner import (
+            PlanGenerator,
+            ExecutionPlan,
+            ClarifyingQuestion,
+            QuestionCategory,
+        )
 
         async def run_test():
             plan = ExecutionPlan(
@@ -570,7 +684,10 @@ class TestRefactoringTaskGeneration:
                         category=QuestionCategory.REFACTORING,
                         question="Should I review and improve code?",
                         why_asking="Code quality matters",
-                        options=["Yes, suggest improvements inline", "No, just implement"],
+                        options=[
+                            "Yes, suggest improvements inline",
+                            "No, just implement",
+                        ],
                         answer="Yes, suggest improvements inline",
                         answered=True,
                     )
@@ -587,7 +704,12 @@ class TestRefactoringTaskGeneration:
 
     def test_no_refactoring_task_when_declined(self):
         """Test that no refactoring task when user declines"""
-        from backend.services.navi_planner import PlanGenerator, ExecutionPlan, ClarifyingQuestion, QuestionCategory
+        from backend.services.navi_planner import (
+            PlanGenerator,
+            ExecutionPlan,
+            ClarifyingQuestion,
+            QuestionCategory,
+        )
 
         async def run_test():
             plan = ExecutionPlan(
@@ -621,7 +743,12 @@ class TestCommitTaskGeneration:
 
     def test_commit_task_added_for_auto_commit(self):
         """Test that commit task is added when user wants auto-commit"""
-        from backend.services.navi_planner import PlanGenerator, ExecutionPlan, ClarifyingQuestion, QuestionCategory
+        from backend.services.navi_planner import (
+            PlanGenerator,
+            ExecutionPlan,
+            ClarifyingQuestion,
+            QuestionCategory,
+        )
 
         async def run_test():
             plan = ExecutionPlan(
@@ -635,7 +762,11 @@ class TestCommitTaskGeneration:
                         category=QuestionCategory.COMMIT,
                         question="How to handle git commits?",
                         why_asking="Clean history",
-                        options=["Auto-commit after each task", "Single commit at end", "Don't commit"],
+                        options=[
+                            "Auto-commit after each task",
+                            "Single commit at end",
+                            "Don't commit",
+                        ],
                         answer="Auto-commit after each task",
                         answered=True,
                     )
@@ -652,7 +783,12 @@ class TestCommitTaskGeneration:
 
     def test_no_commit_task_when_manual(self):
         """Test that no commit task when user wants manual commits"""
-        from backend.services.navi_planner import PlanGenerator, ExecutionPlan, ClarifyingQuestion, QuestionCategory
+        from backend.services.navi_planner import (
+            PlanGenerator,
+            ExecutionPlan,
+            ClarifyingQuestion,
+            QuestionCategory,
+        )
 
         async def run_test():
             plan = ExecutionPlan(
@@ -666,7 +802,11 @@ class TestCommitTaskGeneration:
                         category=QuestionCategory.COMMIT,
                         question="How to handle git commits?",
                         why_asking="Clean history",
-                        options=["Auto-commit", "Single commit", "Don't commit, I'll handle it manually"],
+                        options=[
+                            "Auto-commit",
+                            "Single commit",
+                            "Don't commit, I'll handle it manually",
+                        ],
                         answer="Don't commit, I'll handle it manually",
                         answered=True,
                     )
@@ -740,6 +880,7 @@ def run_all_tests():
     print("=" * 60)
 
     import sys
+
     sys.exit(pytest.main([__file__, "-v", "--tb=short"]))
 
 

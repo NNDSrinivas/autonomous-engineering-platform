@@ -117,11 +117,11 @@ async def _handle_deployment_event(
 
     # Project info
     project_name = (
-        deployment.get("project", {}).get("name")
-        or deployment.get("name")
-        or "unknown"
+        deployment.get("project", {}).get("name") or deployment.get("name") or "unknown"
     )
-    project_id = deployment.get("project", {}).get("id") or deployment.get("projectId") or ""
+    project_id = (
+        deployment.get("project", {}).get("id") or deployment.get("projectId") or ""
+    )
 
     # Target and meta
     target = deployment.get("target") or "preview"
@@ -131,14 +131,10 @@ async def _handle_deployment_event(
     git_source = meta.get("githubCommitRef") or meta.get("gitlabCommitRef") or ""
     git_sha = (meta.get("githubCommitSha") or meta.get("gitlabCommitSha") or "")[:8]
     git_message = (
-        meta.get("githubCommitMessage")
-        or meta.get("gitlabCommitMessage")
-        or ""
+        meta.get("githubCommitMessage") or meta.get("gitlabCommitMessage") or ""
     )[:100]
     git_author = (
-        meta.get("githubCommitAuthorName")
-        or meta.get("gitlabCommitAuthorName")
-        or ""
+        meta.get("githubCommitAuthorName") or meta.get("gitlabCommitAuthorName") or ""
     )
 
     # User info

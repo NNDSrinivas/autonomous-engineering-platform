@@ -263,7 +263,9 @@ class NotionIngestor:
                         )
 
             # Ingest databases
-            db_results = await self.client.list_databases(page_size=min(database_limit, 100))
+            db_results = await self.client.list_databases(
+                page_size=min(database_limit, 100)
+            )
             databases = db_results.get("results") or []
 
             for database in databases[:database_limit]:

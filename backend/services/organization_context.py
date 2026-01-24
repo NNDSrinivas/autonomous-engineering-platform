@@ -30,16 +30,18 @@ logger = logging.getLogger(__name__)
 
 class ContextLevel(Enum):
     """Hierarchy of context levels."""
-    GLOBAL = "global"           # NAVI defaults
+
+    GLOBAL = "global"  # NAVI defaults
     ORGANIZATION = "organization"  # Company-wide standards
-    TEAM = "team"               # Team-specific patterns
-    PROJECT = "project"         # Project conventions (auto-detected)
-    USER = "user"               # Individual preferences
+    TEAM = "team"  # Team-specific patterns
+    PROJECT = "project"  # Project conventions (auto-detected)
+    USER = "user"  # Individual preferences
 
 
 @dataclass
 class CodingStandard:
     """A single coding standard/convention."""
+
     id: str
     name: str
     description: str
@@ -69,19 +71,23 @@ class CodingStandard:
 @dataclass
 class ArchitecturePattern:
     """An architectural pattern or decision."""
+
     id: str
     name: str
     description: str
     pattern_type: str  # "layered", "microservice", "monolith", "event-driven", etc.
     components: List[str] = field(default_factory=list)
     rules: List[str] = field(default_factory=list)
-    file_structure: Dict[str, str] = field(default_factory=dict)  # path pattern -> purpose
+    file_structure: Dict[str, str] = field(
+        default_factory=dict
+    )  # path pattern -> purpose
     level: ContextLevel = ContextLevel.ORGANIZATION
 
 
 @dataclass
 class CodeReviewInsight:
     """Insight learned from code reviews."""
+
     id: str
     pattern: str  # What was flagged
     feedback: str  # What the reviewer said
@@ -95,6 +101,7 @@ class CodeReviewInsight:
 @dataclass
 class OrganizationContext:
     """Complete context for an organization."""
+
     org_id: str
     name: str
     coding_standards: List[CodingStandard] = field(default_factory=list)
@@ -103,14 +110,18 @@ class OrganizationContext:
 
     # Language/framework preferences
     preferred_languages: List[str] = field(default_factory=list)
-    preferred_frameworks: Dict[str, List[str]] = field(default_factory=dict)  # lang -> frameworks
+    preferred_frameworks: Dict[str, List[str]] = field(
+        default_factory=dict
+    )  # lang -> frameworks
 
     # Style preferences
     indent_style: str = "spaces"
     indent_size: int = 4
     quote_style: str = "double"  # or "single"
     semicolons: bool = True  # for JS/TS
-    naming_conventions: Dict[str, str] = field(default_factory=dict)  # type -> convention
+    naming_conventions: Dict[str, str] = field(
+        default_factory=dict
+    )  # type -> convention
 
     # Documentation requirements
     require_docstrings: bool = True
@@ -159,7 +170,9 @@ class OrganizationContext:
 
         # Common review feedback (top issues)
         if self.review_insights:
-            top_insights = sorted(self.review_insights, key=lambda x: x.frequency, reverse=True)[:5]
+            top_insights = sorted(
+                self.review_insights, key=lambda x: x.frequency, reverse=True
+            )[:5]
             lines.append("**Common Review Feedback (avoid these):**")
             for insight in top_insights:
                 lines.append(f"- {insight.pattern} → {insight.correction}")
@@ -171,6 +184,7 @@ class OrganizationContext:
 @dataclass
 class TeamContext:
     """Team-specific context that extends organization context."""
+
     team_id: str
     org_id: str
     name: str
@@ -211,6 +225,7 @@ class TeamContext:
 @dataclass
 class UserPreferences:
     """Individual user preferences."""
+
     user_id: str
     org_id: Optional[str] = None
     team_id: Optional[str] = None
@@ -233,6 +248,7 @@ class UserPreferences:
 # CONTEXT STORAGE AND RETRIEVAL
 # ============================================================
 
+
 class ContextStore:
     """
     Storage for organization, team, and user contexts.
@@ -242,10 +258,10 @@ class ContextStore:
     """
 
     def __init__(self, storage_path: str = None):
-        self.storage_path = Path(storage_path or os.getenv(
-            "NAVI_CONTEXT_PATH",
-            os.path.expanduser("~/.navi/contexts")
-        ))
+        self.storage_path = Path(
+            storage_path
+            or os.getenv("NAVI_CONTEXT_PATH", os.path.expanduser("~/.navi/contexts"))
+        )
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
         # In-memory cache
@@ -429,6 +445,7 @@ class ContextStore:
 # ============================================================
 # CONTEXT RESOLVER - Merges all levels
 # ============================================================
+
 
 class ContextResolver:
     """

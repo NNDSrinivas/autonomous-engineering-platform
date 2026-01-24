@@ -90,7 +90,9 @@ async def ingest(
 
         elif x_event_key.startswith("pullrequest:"):
             action = x_event_key.split(":")[1] if ":" in x_event_key else "unknown"
-            await _handle_pull_request(payload, action, repo_full_name, repo_url, org_id, db)
+            await _handle_pull_request(
+                payload, action, repo_full_name, repo_url, org_id, db
+            )
 
         elif x_event_key.startswith("issue:"):
             action = x_event_key.split(":")[1] if ":" in x_event_key else "unknown"
@@ -253,7 +255,9 @@ async def _handle_issue(
     kind = issue.get("kind") or "bug"
 
     reporter = issue.get("reporter") or {}
-    reporter_name = reporter.get("display_name") or reporter.get("username") or "unknown"
+    reporter_name = (
+        reporter.get("display_name") or reporter.get("username") or "unknown"
+    )
 
     links = issue.get("links") or {}
     issue_url = links.get("html", {}).get("href") or ""

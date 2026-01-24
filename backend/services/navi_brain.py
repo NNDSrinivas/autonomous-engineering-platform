@@ -53,6 +53,7 @@ class ModelNotAvailableError(RuntimeError):
         self.model = model
         self.detail = detail
 
+
 # ==================== MEMORY INTEGRATION ====================
 # Lazy-loaded to avoid circular imports
 _memory_integration = None
@@ -64,7 +65,9 @@ def _get_memory_integration():
     if _memory_integration is None:
         try:
             from backend.database.session import get_db
-            from backend.services.navi_memory_integration import get_navi_memory_integration
+            from backend.services.navi_memory_integration import (
+                get_navi_memory_integration,
+            )
 
             # Get database session
             db = next(get_db())
@@ -194,6 +197,7 @@ async def _store_interaction_async(
     try:
         # Create a conversation_id if not provided
         from uuid import UUID
+
         conv_id = UUID(conversation_id) if conversation_id else None
 
         if not conv_id:
@@ -216,6 +220,7 @@ async def _store_interaction_async(
         logger.debug(f"[NAVI] Stored interaction for user {user_id}")
     except Exception as e:
         logger.warning(f"[NAVI] Failed to store interaction: {e}")
+
 
 # ==================== SAFETY CONFIGURATION ====================
 
@@ -317,9 +322,10 @@ class NaviConfig:
     DEFAULT_PORT_RANGE_START = int(os.getenv("NAVI_PORT_RANGE_START", "3000"))
     DEFAULT_PORT_RANGE_END = int(os.getenv("NAVI_PORT_RANGE_END", "3100"))
     COMMON_DEV_PORTS = [
-        int(p) for p in os.getenv(
+        int(p)
+        for p in os.getenv(
             "NAVI_COMMON_PORTS",
-            "3000,3001,3002,3003,3004,3005,4000,5000,5173,5174,8000,8080,8081"
+            "3000,3001,3002,3003,3004,3005,4000,5000,5173,5174,8000,8080,8081",
         ).split(",")
     ]
 
@@ -343,7 +349,9 @@ class NaviConfig:
         "google": os.getenv("NAVI_GOOGLE_MODEL", "gemini-1.5-pro"),
         "groq": os.getenv("NAVI_GROQ_MODEL", "llama-3.3-70b-versatile"),
         "mistral": os.getenv("NAVI_MISTRAL_MODEL", "mistral-large-latest"),
-        "openrouter": os.getenv("NAVI_OPENROUTER_MODEL", "anthropic/claude-3-5-sonnet-20241022"),
+        "openrouter": os.getenv(
+            "NAVI_OPENROUTER_MODEL", "anthropic/claude-3-5-sonnet-20241022"
+        ),
         "ollama": os.getenv("NAVI_OLLAMA_MODEL", "llama3"),
     }
 
@@ -359,7 +367,9 @@ class NaviConfig:
             for script_name, script_cmd in scripts.items():
                 if script_name in ("dev", "start", "serve"):
                     # Look for port in script
-                    port_match = re.search(r'-p\s*(\d+)|--port\s*(\d+)|PORT=(\d+)|:(\d+)', script_cmd)
+                    port_match = re.search(
+                        r"-p\s*(\d+)|--port\s*(\d+)|PORT=(\d+)|:(\d+)", script_cmd
+                    )
                     if port_match:
                         for group in port_match.groups():
                             if group:
@@ -447,8 +457,8 @@ class NaviConfig:
 
         # Check for Poetry
         if (workspace / "poetry.lock").exists() or (
-            (workspace / "pyproject.toml").exists() and
-            "[tool.poetry]" in (workspace / "pyproject.toml").read_text()
+            (workspace / "pyproject.toml").exists()
+            and "[tool.poetry]" in (workspace / "pyproject.toml").read_text()
         ):
             return "poetry"
 
@@ -457,7 +467,9 @@ class NaviConfig:
             return "pipenv"
 
         # Check for Conda
-        if (workspace / "environment.yml").exists() or (workspace / "environment.yaml").exists():
+        if (workspace / "environment.yml").exists() or (
+            workspace / "environment.yaml"
+        ).exists():
             return "conda"
 
         # Check for uv (fast Python package manager)
@@ -649,15 +661,39 @@ class ProjectAnalyzer:
 
         # Count total source files in key directories
         total_files = 0
-        SOURCE_DIRS = ["pages", "app", "src/pages", "src/app", "components", "src/components", "utils", "lib", "hooks", "styles"]
-        SOURCE_EXTENSIONS = {".js", ".jsx", ".ts", ".tsx", ".py", ".go", ".rs", ".java", ".css"}
+        SOURCE_DIRS = [
+            "pages",
+            "app",
+            "src/pages",
+            "src/app",
+            "components",
+            "src/components",
+            "utils",
+            "lib",
+            "hooks",
+            "styles",
+        ]
+        SOURCE_EXTENSIONS = {
+            ".js",
+            ".jsx",
+            ".ts",
+            ".tsx",
+            ".py",
+            ".go",
+            ".rs",
+            ".java",
+            ".css",
+        }
 
         for dir_name in SOURCE_DIRS:
             dir_path = workspace / dir_name
             if dir_path.exists() and dir_path.is_dir():
                 try:
                     for file_path in dir_path.iterdir():
-                        if file_path.is_file() and file_path.suffix in SOURCE_EXTENSIONS:
+                        if (
+                            file_path.is_file()
+                            and file_path.suffix in SOURCE_EXTENSIONS
+                        ):
                             total_files += 1
                 except Exception:
                     pass
@@ -674,9 +710,11 @@ class ProjectAnalyzer:
             return 10 + config_files  # Larger project
         else:
             return 8 + config_files  # Very large project, focus on key files
-    
+
     @classmethod
-    def analyze_source_files(cls, workspace_path: str, max_files: int = 10, max_file_size: int = 5000) -> Dict[str, str]:
+    def analyze_source_files(
+        cls, workspace_path: str, max_files: int = 10, max_file_size: int = 5000
+    ) -> Dict[str, str]:
         """
         Read actual source files from key directories to provide detailed context.
         This is what makes responses like GitHub Copilot - we READ the actual code.
@@ -688,22 +726,22 @@ class ProjectAnalyzer:
 
         # Key directories to scan for source files
         SOURCE_DIRS = [
-            "pages",           # Next.js pages
-            "app",             # Next.js 13+ app router
-            "src/pages",       # Alternative pages location
-            "src/app",         # Alternative app location
-            "components",      # React components
+            "pages",  # Next.js pages
+            "app",  # Next.js 13+ app router
+            "src/pages",  # Alternative pages location
+            "src/app",  # Alternative app location
+            "components",  # React components
             "src/components",  # Alternative components
-            "utils",           # Utility functions
-            "src/utils",       # Alternative utils
-            "lib",             # Library code
-            "src/lib",         # Alternative lib
-            "hooks",           # React hooks
-            "src/hooks",       # Alternative hooks
-            "services",        # Service layer
-            "src/services",    # Alternative services
-            "api",             # API routes
-            "src/api",         # Alternative API
+            "utils",  # Utility functions
+            "src/utils",  # Alternative utils
+            "lib",  # Library code
+            "src/lib",  # Alternative lib
+            "hooks",  # React hooks
+            "src/hooks",  # Alternative hooks
+            "services",  # Service layer
+            "src/services",  # Alternative services
+            "api",  # API routes
+            "src/api",  # Alternative API
         ]
 
         # File extensions to read
@@ -741,14 +779,18 @@ class ProjectAnalyzer:
                         relative_path = str(file_path.relative_to(workspace))
                         source_files[relative_path] = content
                         files_found += 1
-                        logger.debug(f"[ProjectAnalyzer] Read source file: {relative_path}")
+                        logger.debug(
+                            f"[ProjectAnalyzer] Read source file: {relative_path}"
+                        )
                     except Exception as e:
                         logger.debug(f"Could not read {file_path}: {e}")
 
             except Exception as e:
                 logger.debug(f"Could not scan {dir_name}: {e}")
 
-        logger.info(f"[ProjectAnalyzer] Read {len(source_files)} source files for context")
+        logger.info(
+            f"[ProjectAnalyzer] Read {len(source_files)} source files for context"
+        )
         return source_files
 
     @classmethod
@@ -781,8 +823,8 @@ class ProjectAnalyzer:
         # README.md is critical for understanding project purpose and name
         CONFIG_FILES = [
             "package.json",
-            "README.md",          # CRITICAL: Contains project name and description
-            "readme.md",          # Alternative casing
+            "README.md",  # CRITICAL: Contains project name and description
+            "readme.md",  # Alternative casing
             "next.config.js",
             "next.config.mjs",
             "tsconfig.json",
@@ -833,28 +875,38 @@ class ProjectAnalyzer:
 
         # PHASE 2: Key directories to scan for source files
         SOURCE_DIRS = [
-            "pages",           # Next.js pages
-            "app",             # Next.js 13+ app router
-            "src/pages",       # Alternative pages location
-            "src/app",         # Alternative app location
-            "components",      # React components
+            "pages",  # Next.js pages
+            "app",  # Next.js 13+ app router
+            "src/pages",  # Alternative pages location
+            "src/app",  # Alternative app location
+            "components",  # React components
             "src/components",  # Alternative components
-            "utils",           # Utility functions
-            "src/utils",       # Alternative utils
-            "lib",             # Library code
-            "src/lib",         # Alternative lib
-            "hooks",           # React hooks
-            "src/hooks",       # Alternative hooks
-            "services",        # Service layer
-            "src/services",    # Alternative services
-            "api",             # API routes
-            "src/api",         # Alternative API
-            "styles",          # CSS/styles directory
-            "src/styles",      # Alternative styles
+            "utils",  # Utility functions
+            "src/utils",  # Alternative utils
+            "lib",  # Library code
+            "src/lib",  # Alternative lib
+            "hooks",  # React hooks
+            "src/hooks",  # Alternative hooks
+            "services",  # Service layer
+            "src/services",  # Alternative services
+            "api",  # API routes
+            "src/api",  # Alternative API
+            "styles",  # CSS/styles directory
+            "src/styles",  # Alternative styles
         ]
 
         # File extensions to read (including CSS for styling context)
-        SOURCE_EXTENSIONS = {".js", ".jsx", ".ts", ".tsx", ".py", ".go", ".rs", ".java", ".css"}
+        SOURCE_EXTENSIONS = {
+            ".js",
+            ".jsx",
+            ".ts",
+            ".tsx",
+            ".py",
+            ".go",
+            ".rs",
+            ".java",
+            ".css",
+        }
 
         for dir_name in SOURCE_DIRS:
             dir_path = workspace / dir_name
@@ -912,7 +964,9 @@ class ProjectAnalyzer:
                             }
                         }
 
-                        logger.debug(f"[ProjectAnalyzer] Read source file: {relative_path}")
+                        logger.debug(
+                            f"[ProjectAnalyzer] Read source file: {relative_path}"
+                        )
 
                     except Exception as e:
                         logger.debug(f"Could not read {file_path}: {e}")
@@ -920,7 +974,9 @@ class ProjectAnalyzer:
             except Exception as e:
                 logger.debug(f"Could not scan {dir_name}: {e}")
 
-        logger.info(f"[ProjectAnalyzer] Streamed {len(source_files)} source files for context")
+        logger.info(
+            f"[ProjectAnalyzer] Streamed {len(source_files)} source files for context"
+        )
 
         # Yield the final files dict
         yield {"files": source_files}
@@ -1052,6 +1108,7 @@ class ProjectAnalyzer:
         """
         try:
             from backend.services.deep_analysis import DeepAnalysisService
+
             return await DeepAnalysisService.analyze_workspace_deep(workspace_path)
         except ImportError:
             logger.warning("[ProjectAnalyzer] Deep analysis service not available")
@@ -1061,12 +1118,15 @@ class ProjectAnalyzer:
             return {"error": str(e)}
 
     @classmethod
-    async def find_symbol_in_codebase(cls, workspace_path: str, symbol_name: str) -> List[Dict[str, Any]]:
+    async def find_symbol_in_codebase(
+        cls, workspace_path: str, symbol_name: str
+    ) -> List[Dict[str, Any]]:
         """
         Find all occurrences of a symbol (function, class, variable) in the codebase.
         """
         try:
             from backend.services.deep_analysis import DeepCodeAnalyzer
+
             return await DeepCodeAnalyzer.find_symbol(workspace_path, symbol_name)
         except ImportError:
             return []
@@ -1075,12 +1135,15 @@ class ProjectAnalyzer:
             return []
 
     @classmethod
-    async def analyze_and_fix_git(cls, workspace_path: str, auto_fix: bool = False) -> Dict[str, Any]:
+    async def analyze_and_fix_git(
+        cls, workspace_path: str, auto_fix: bool = False
+    ) -> Dict[str, Any]:
         """
         Analyze git repository for issues and optionally fix them.
         """
         try:
             from backend.services.deep_analysis import GitDebugger
+
             analysis = await GitDebugger.analyze_repository(workspace_path)
 
             result = {
@@ -1113,10 +1176,12 @@ class ProjectAnalyzer:
                         continue
                     fix_result = await GitDebugger.fix_issue(workspace_path, issue.type)
                     if fix_result.get("success"):
-                        result["fixes_applied"].append({
-                            "issue": issue.type,
-                            "result": fix_result,
-                        })
+                        result["fixes_applied"].append(
+                            {
+                                "issue": issue.type,
+                                "result": fix_result,
+                            }
+                        )
 
             return result
         except ImportError:
@@ -1125,12 +1190,15 @@ class ProjectAnalyzer:
             return {"error": str(e)}
 
     @classmethod
-    async def analyze_and_fix_database(cls, workspace_path: str, auto_fix: bool = False) -> Dict[str, Any]:
+    async def analyze_and_fix_database(
+        cls, workspace_path: str, auto_fix: bool = False
+    ) -> Dict[str, Any]:
         """
         Analyze database configuration and issues, optionally fix them.
         """
         try:
             from backend.services.deep_analysis import DatabaseDebugger
+
             analysis = await DatabaseDebugger.analyze_database(workspace_path)
 
             result = {
@@ -1151,10 +1219,12 @@ class ProjectAnalyzer:
                             workspace_path, "generate_migration"
                         )
                         if fix_result.get("success"):
-                            result["fixes_applied"].append({
-                                "issue": issue.get("type"),
-                                "result": fix_result,
-                            })
+                            result["fixes_applied"].append(
+                                {
+                                    "issue": issue.get("type"),
+                                    "result": fix_result,
+                                }
+                            )
 
             return result
         except ImportError:
@@ -1183,11 +1253,15 @@ class ProjectAnalyzer:
         """
         try:
             from backend.services.deep_analysis import AdvancedGitOperations
+
             return await AdvancedGitOperations.cherry_pick(
                 workspace_path, commit_hash, no_commit=no_commit, strategy=strategy
             )
         except ImportError:
-            return {"success": False, "message": "Advanced git operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced git operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1201,11 +1275,15 @@ class ProjectAnalyzer:
         """Cherry-pick a range of commits."""
         try:
             from backend.services.deep_analysis import AdvancedGitOperations
+
             return await AdvancedGitOperations.cherry_pick_range(
                 workspace_path, from_commit, to_commit
             )
         except ImportError:
-            return {"success": False, "message": "Advanced git operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced git operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1226,11 +1304,15 @@ class ProjectAnalyzer:
         """
         try:
             from backend.services.deep_analysis import AdvancedGitOperations
+
             return await AdvancedGitOperations.squash_commits(
                 workspace_path, num_commits, commit_message
             )
         except ImportError:
-            return {"success": False, "message": "Advanced git operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced git operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1244,11 +1326,15 @@ class ProjectAnalyzer:
         """Rebase current branch onto target branch."""
         try:
             from backend.services.deep_analysis import AdvancedGitOperations
+
             return await AdvancedGitOperations.rebase_onto(
                 workspace_path, target_branch, preserve_merges
             )
         except ImportError:
-            return {"success": False, "message": "Advanced git operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced git operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1291,11 +1377,17 @@ class ProjectAnalyzer:
             }
 
             if operation not in ops:
-                return {"success": False, "message": f"Unknown bisect operation: {operation}"}
+                return {
+                    "success": False,
+                    "message": f"Unknown bisect operation: {operation}",
+                }
 
             return await ops[operation]()
         except ImportError:
-            return {"success": False, "message": "Advanced git operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced git operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1351,11 +1443,17 @@ class ProjectAnalyzer:
             }
 
             if operation not in ops:
-                return {"success": False, "message": f"Unknown stash operation: {operation}"}
+                return {
+                    "success": False,
+                    "message": f"Unknown stash operation: {operation}",
+                }
 
             return await ops[operation]()
         except ImportError:
-            return {"success": False, "message": "Advanced git operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced git operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1364,9 +1462,13 @@ class ProjectAnalyzer:
         """Get reflog entries for recovering lost commits."""
         try:
             from backend.services.deep_analysis import AdvancedGitOperations
+
             return await AdvancedGitOperations.reflog(workspace_path, limit)
         except ImportError:
-            return {"success": False, "message": "Advanced git operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced git operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1380,11 +1482,15 @@ class ProjectAnalyzer:
         """Recover a lost commit by creating a branch pointing to it."""
         try:
             from backend.services.deep_analysis import AdvancedGitOperations
+
             return await AdvancedGitOperations.recover_commit(
                 workspace_path, commit_hash, branch_name
             )
         except ImportError:
-            return {"success": False, "message": "Advanced git operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced git operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1398,11 +1504,15 @@ class ProjectAnalyzer:
         """Find and optionally delete branches that have been merged."""
         try:
             from backend.services.deep_analysis import AdvancedGitOperations
+
             return await AdvancedGitOperations.cleanup_merged_branches(
                 workspace_path, base_branch, dry_run
             )
         except ImportError:
-            return {"success": False, "message": "Advanced git operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced git operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1417,9 +1527,15 @@ class ProjectAnalyzer:
         """Compare ORM models with actual database schema."""
         try:
             from backend.services.deep_analysis import AdvancedDatabaseOperations
-            return await AdvancedDatabaseOperations.schema_diff(workspace_path, database_url)
+
+            return await AdvancedDatabaseOperations.schema_diff(
+                workspace_path, database_url
+            )
         except ImportError:
-            return {"success": False, "message": "Advanced database operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced database operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1462,11 +1578,17 @@ class ProjectAnalyzer:
             }
 
             if operation not in ops:
-                return {"success": False, "message": f"Unknown migration operation: {operation}"}
+                return {
+                    "success": False,
+                    "message": f"Unknown migration operation: {operation}",
+                }
 
             return await ops[operation]()
         except ImportError:
-            return {"success": False, "message": "Advanced database operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced database operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1479,9 +1601,15 @@ class ProjectAnalyzer:
         """Run database seeding."""
         try:
             from backend.services.deep_analysis import AdvancedDatabaseOperations
-            return await AdvancedDatabaseOperations.seed_database(workspace_path, seed_file)
+
+            return await AdvancedDatabaseOperations.seed_database(
+                workspace_path, seed_file
+            )
         except ImportError:
-            return {"success": False, "message": "Advanced database operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced database operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1494,9 +1622,15 @@ class ProjectAnalyzer:
         """Reset database (drop and recreate). Requires explicit confirmation."""
         try:
             from backend.services.deep_analysis import AdvancedDatabaseOperations
-            return await AdvancedDatabaseOperations.reset_database(workspace_path, confirm)
+
+            return await AdvancedDatabaseOperations.reset_database(
+                workspace_path, confirm
+            )
         except ImportError:
-            return {"success": False, "message": "Advanced database operations not available"}
+            return {
+                "success": False,
+                "message": "Advanced database operations not available",
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -1519,7 +1653,10 @@ class ProjectAnalyzer:
         """
         try:
             from backend.services.deep_analysis import CodeDebugger
-            return await CodeDebugger.analyze_errors(workspace_path, error_log, traceback)
+
+            return await CodeDebugger.analyze_errors(
+                workspace_path, error_log, traceback
+            )
         except ImportError:
             return {"success": False, "message": "Code debugger not available"}
         except Exception as e:
@@ -1556,6 +1693,7 @@ class ProjectAnalyzer:
         """
         try:
             from backend.services.comprehensive_debugger import analyze_errors
+
             return await analyze_errors(error_output, workspace_path)
         except ImportError:
             return {"success": False, "message": "Comprehensive debugger not available"}
@@ -1583,16 +1721,24 @@ class ProjectAnalyzer:
             types = issue_types or ["all"]
 
             if "all" in types or "performance" in types:
-                results["performance"] = await CodeDebugger.detect_performance_issues(workspace_path)
+                results["performance"] = await CodeDebugger.detect_performance_issues(
+                    workspace_path
+                )
 
             if "all" in types or "dead_code" in types:
-                results["dead_code"] = await CodeDebugger.detect_dead_code(workspace_path)
+                results["dead_code"] = await CodeDebugger.detect_dead_code(
+                    workspace_path
+                )
 
             if "all" in types or "circular_deps" in types:
-                results["circular_deps"] = await CodeDebugger.detect_circular_dependencies(workspace_path)
+                results["circular_deps"] = (
+                    await CodeDebugger.detect_circular_dependencies(workspace_path)
+                )
 
             if "all" in types or "code_smells" in types:
-                results["code_smells"] = await CodeDebugger.detect_code_smells(workspace_path)
+                results["code_smells"] = await CodeDebugger.detect_code_smells(
+                    workspace_path
+                )
 
             return {"success": True, "results": results}
         except ImportError:
@@ -1621,6 +1767,7 @@ class ProjectAnalyzer:
         """
         try:
             from backend.services.deep_analysis import CodeDebugger
+
             return await CodeDebugger.auto_fix(
                 workspace_path, file_path, issue_type, line_number, dry_run
             )
@@ -1636,6 +1783,7 @@ class ProjectAnalyzer:
 @dataclass
 class PortStatus:
     """Information about a port's status"""
+
     port: int
     is_available: bool
     process_name: Optional[str] = None
@@ -1648,7 +1796,7 @@ class PortStatus:
             "is_available": self.is_available,
             "process_name": self.process_name,
             "process_pid": self.process_pid,
-            "process_command": self.process_command
+            "process_command": self.process_command,
         }
 
 
@@ -1676,7 +1824,7 @@ class PortManager:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(1)
-                result = s.connect_ex(('127.0.0.1', port))
+                result = s.connect_ex(("127.0.0.1", port))
                 is_available = result != 0
         except Exception:
             is_available = True
@@ -1691,7 +1839,7 @@ class PortManager:
             is_available=False,
             process_name=process_info.get("name"),
             process_pid=process_info.get("pid"),
-            process_command=process_info.get("command")
+            process_command=process_info.get("command"),
         )
 
     @classmethod
@@ -1709,17 +1857,17 @@ class PortManager:
                     ["lsof", "-i", f":{port}", "-t"],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=5,
                 )
                 if result.returncode == 0 and result.stdout.strip():
-                    pid = int(result.stdout.strip().split('\n')[0])
+                    pid = int(result.stdout.strip().split("\n")[0])
 
                     # Get process name and command
                     ps_result = subprocess.run(
                         ["ps", "-p", str(pid), "-o", "comm=,args="],
                         capture_output=True,
                         text=True,
-                        timeout=5
+                        timeout=5,
                     )
                     if ps_result.returncode == 0:
                         output = ps_result.stdout.strip()
@@ -1733,13 +1881,10 @@ class PortManager:
             elif system == "Windows":
                 # Use netstat on Windows
                 result = subprocess.run(
-                    ["netstat", "-ano"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
+                    ["netstat", "-ano"], capture_output=True, text=True, timeout=5
                 )
                 if result.returncode == 0:
-                    for line in result.stdout.split('\n'):
+                    for line in result.stdout.split("\n"):
                         if f":{port}" in line and "LISTENING" in line:
                             parts = line.split()
                             if parts:
@@ -1813,7 +1958,7 @@ class PortManager:
                 subprocess.run(
                     ["taskkill", "/F", "/PID", str(status.process_pid)],
                     capture_output=True,
-                    timeout=5
+                    timeout=5,
                 )
             else:
                 os.kill(status.process_pid, signal.SIGTERM)
@@ -1841,9 +1986,9 @@ class PortManager:
         """Modify a dev server command to use a specific port"""
         # Common patterns for port flags
         port_patterns = [
-            (r'--port[=\s]+\d+', f'--port {new_port}'),
-            (r'-p[=\s]+\d+', f'-p {new_port}'),
-            (r'PORT=\d+', f'PORT={new_port}'),
+            (r"--port[=\s]+\d+", f"--port {new_port}"),
+            (r"-p[=\s]+\d+", f"-p {new_port}"),
+            (r"PORT=\d+", f"PORT={new_port}"),
         ]
 
         modified = command
@@ -1857,17 +2002,17 @@ class PortManager:
 
         # If no existing port flag, add one based on the command
         if not has_port_flag:
-            if 'next' in command.lower() or 'npm run dev' in command.lower():
+            if "next" in command.lower() or "npm run dev" in command.lower():
                 modified = f"{command} -- -p {new_port}"
-            elif 'vite' in command.lower():
+            elif "vite" in command.lower():
                 modified = f"{command} --port {new_port}"
-            elif 'react-scripts' in command.lower():
+            elif "react-scripts" in command.lower():
                 modified = f"PORT={new_port} {command}"
-            elif 'vue' in command.lower():
+            elif "vue" in command.lower():
                 modified = f"{command} --port {new_port}"
-            elif 'uvicorn' in command.lower():
+            elif "uvicorn" in command.lower():
                 modified = f"{command} --port {new_port}"
-            elif 'flask' in command.lower():
+            elif "flask" in command.lower():
                 modified = f"{command} --port {new_port}"
 
         return modified
@@ -1894,14 +2039,12 @@ class PortManager:
                 "is_available": True,
                 "message": None,
                 "alternatives": [],
-                "process_info": None
+                "process_info": None,
             }
 
         # Port is busy - find alternatives and process info
         alternative = await cls.find_available_port(
-            preferred_port,
-            exclude_ports=[preferred_port],
-            project_info=project_info
+            preferred_port, exclude_ports=[preferred_port], project_info=project_info
         )
 
         return {
@@ -1913,13 +2056,17 @@ class PortManager:
                 status.process_command,
                 alternative,
             ),
-            "process_info": {
-                "name": status.process_name,
-                "pid": status.process_pid,
-                "command": status.process_command
-            } if status.process_pid else None,
+            "process_info": (
+                {
+                    "name": status.process_name,
+                    "pid": status.process_pid,
+                    "command": status.process_command,
+                }
+                if status.process_pid
+                else None
+            ),
             "alternative_port": alternative,
-            "alternatives": [alternative]
+            "alternatives": [alternative],
         }
 
 
@@ -2046,7 +2193,9 @@ class IntelligentResponder:
         return None, None
 
     @classmethod
-    def _extract_port_from_script(cls, script_content: str, project_type: str) -> Optional[str]:
+    def _extract_port_from_script(
+        cls, script_content: str, project_type: str
+    ) -> Optional[str]:
         """Try to extract port from script content. Returns None if not explicitly set.
 
         We only return a URL if the port is EXPLICITLY configured in the script.
@@ -2060,10 +2209,10 @@ class IntelligentResponder:
         # Look for explicit port flags in the script
         # Common patterns: --port 3001, -p 8080, PORT=3001
         port_patterns = [
-            r'--port[=\s]+(\d+)',
-            r'-p[=\s]+(\d+)',
-            r'PORT[=:]\s*(\d+)',
-            r':(\d{4,5})',  # e.g., localhost:3001 in script
+            r"--port[=\s]+(\d+)",
+            r"-p[=\s]+(\d+)",
+            r"PORT[=:]\s*(\d+)",
+            r":(\d{4,5})",  # e.g., localhost:3001 in script
         ]
 
         for pattern in port_patterns:
@@ -2205,6 +2354,7 @@ class NaviResponse:
         # Add usage info with cost calculation for SaaS billing
         if self.usage_info:
             from backend.services.token_tracking import CostCalculator, TokenUsage
+
             model = self.usage_info.get("model", "default")
             input_tokens = self.usage_info.get("input_tokens", 0)
             output_tokens = self.usage_info.get("output_tokens", 0)
@@ -2223,7 +2373,7 @@ class NaviResponse:
                     "input": f"${costs['input_cost']:.6f}",
                     "output": f"${costs['output_cost']:.6f}",
                     "total": f"${costs['total_cost']:.6f}",
-                }
+                },
             }
 
         return result
@@ -2277,19 +2427,29 @@ class DynamicMessages:
 
         # PRIORITY 1: LLM/API errors - check these FIRST before generic patterns
         # These errors often contain words like "access" which would be misclassified
-        if "api error" in error_lower or "anthropic" in error_lower or "openai" in error_lower:
+        if (
+            "api error" in error_lower
+            or "anthropic" in error_lower
+            or "openai" in error_lower
+        ):
             # Rate limit errors
             if "rate" in error_lower or "429" in error_str or "too many" in error_lower:
                 return "NAVI is experiencing high demand. Please wait a moment and try again."
             # Authentication errors
-            if "401" in error_str or "unauthorized" in error_lower or "invalid.*key" in error_lower:
+            if (
+                "401" in error_str
+                or "unauthorized" in error_lower
+                or "invalid.*key" in error_lower
+            ):
                 return "There's an issue with NAVI's configuration. Please contact support."
             # Quota/billing errors
             if "quota" in error_lower or "billing" in error_lower or "402" in error_str:
                 return "NAVI's service quota has been reached. Please try again later or contact support."
             # Overloaded
             if "overloaded" in error_lower or "503" in error_str or "529" in error_str:
-                return "NAVI is temporarily overloaded. Please try again in a few seconds."
+                return (
+                    "NAVI is temporarily overloaded. Please try again in a few seconds."
+                )
             # Generic API error
             return "NAVI encountered a temporary issue. Please try again in a moment."
 
@@ -2303,16 +2463,24 @@ class DynamicMessages:
         # PRIORITY 3: File system permission errors (only if NOT an API error)
         if "permission" in error_lower or "access denied" in error_lower:
             # Make sure this is actually a file permission error, not an API error
-            if "file" in error_lower or "directory" in error_lower or "path" in error_lower:
+            if (
+                "file" in error_lower
+                or "directory" in error_lower
+                or "path" in error_lower
+            ):
                 return "I don't have permission to access that file or directory. You may need to adjust file permissions."
             # Otherwise, be more generic
-            return "Access was denied. This might be a temporary issue - please try again."
+            return (
+                "Access was denied. This might be a temporary issue - please try again."
+            )
 
         if "not found" in error_lower or "does not exist" in error_lower:
             file_match = re.search(r"['\"]([^'\"]+)['\"]", error_str)
             if file_match:
                 return f"I couldn't find `{file_match.group(1)}`. Would you like me to create it or search for alternatives?"
-            return "The requested resource wasn't found. Can you verify the path or name?"
+            return (
+                "The requested resource wasn't found. Can you verify the path or name?"
+            )
 
         if "syntax" in error_lower or "parse" in error_lower:
             return "There seems to be a syntax issue. Let me analyze and help fix it."
@@ -2401,9 +2569,9 @@ class DynamicMessages:
         if action_type == "createFile":
             return f"Created `{details.get('filePath', 'file')}`"
         elif action_type == "editFile":
-            stats = details.get('stats', {})
-            added = stats.get('added', 0)
-            removed = stats.get('removed', 0)
+            stats = details.get("stats", {})
+            added = stats.get("added", 0)
+            removed = stats.get("removed", 0)
             if added or removed:
                 return f"Updated `{details.get('filePath', 'file')}` (+{added}/-{removed} lines)"
             return f"Updated `{details.get('filePath', 'file')}`"
@@ -2433,16 +2601,16 @@ class WebSearchProvider:
     SEARCH_PROVIDERS = {
         "duckduckgo": {
             "url": "https://api.duckduckgo.com/",
-            "params": lambda q: {"q": q, "format": "json", "no_html": 1}
+            "params": lambda q: {"q": q, "format": "json", "no_html": 1},
         },
         "serper": {
             "url": "https://google.serper.dev/search",
-            "api_key_env": "SERPER_API_KEY"
+            "api_key_env": "SERPER_API_KEY",
         },
         "tavily": {
             "url": "https://api.tavily.com/search",
-            "api_key_env": "TAVILY_API_KEY"
-        }
+            "api_key_env": "TAVILY_API_KEY",
+        },
     }
 
     # Patterns that suggest web search would help
@@ -2475,10 +2643,18 @@ class WebSearchProvider:
         message_lower = message.lower()
 
         # Check for explicit search requests
-        if any(phrase in message_lower for phrase in [
-            "search for", "look up", "find documentation", "search the web",
-            "google", "look online", "find examples of"
-        ]):
+        if any(
+            phrase in message_lower
+            for phrase in [
+                "search for",
+                "look up",
+                "find documentation",
+                "search the web",
+                "google",
+                "look online",
+                "find examples of",
+            ]
+        ):
             return True
 
         # Check if it's asking about something not in our domain knowledge
@@ -2487,7 +2663,7 @@ class WebSearchProvider:
             known_terms.update(keywords)
 
         # Extract potential technology names from the message
-        words = re.findall(r'\b[a-zA-Z][a-zA-Z0-9_-]+\b', message_lower)
+        words = re.findall(r"\b[a-zA-Z][a-zA-Z0-9_-]+\b", message_lower)
         unknown_terms = [w for w in words if len(w) > 3 and w not in known_terms]
 
         # If there are many unknown terms, might benefit from search
@@ -2495,7 +2671,7 @@ class WebSearchProvider:
             return True
 
         # Check for error messages (often benefit from web search)
-        if re.search(r'error|exception|failed|cannot|unable', message_lower):
+        if re.search(r"error|exception|failed|cannot|unable", message_lower):
             return True
 
         return False
@@ -2555,33 +2731,36 @@ class WebSearchProvider:
 
                     # Abstract (main answer)
                     if data.get("Abstract"):
-                        results.append({
-                            "title": data.get("Heading", "Result"),
-                            "snippet": data["Abstract"],
-                            "url": data.get("AbstractURL", ""),
-                            "source": data.get("AbstractSource", "")
-                        })
+                        results.append(
+                            {
+                                "title": data.get("Heading", "Result"),
+                                "snippet": data["Abstract"],
+                                "url": data.get("AbstractURL", ""),
+                                "source": data.get("AbstractSource", ""),
+                            }
+                        )
 
                     # Related topics
-                    for topic in data.get("RelatedTopics", [])[:max_results-1]:
+                    for topic in data.get("RelatedTopics", [])[: max_results - 1]:
                         if isinstance(topic, dict) and topic.get("Text"):
-                            results.append({
-                                "title": topic.get("Text", "")[:100],
-                                "snippet": topic.get("Text", ""),
-                                "url": topic.get("FirstURL", "")
-                            })
+                            results.append(
+                                {
+                                    "title": topic.get("Text", "")[:100],
+                                    "snippet": topic.get("Text", ""),
+                                    "url": topic.get("FirstURL", ""),
+                                }
+                            )
 
                     return {"results": results, "source": "duckduckgo"}
 
         return {"results": [], "source": "duckduckgo"}
 
     @classmethod
-    async def _search_serper(cls, query: str, api_key: str, max_results: int) -> Dict[str, Any]:
+    async def _search_serper(
+        cls, query: str, api_key: str, max_results: int
+    ) -> Dict[str, Any]:
         """Search using Serper.dev (Google Search API)"""
-        headers = {
-            "X-API-KEY": api_key,
-            "Content-Type": "application/json"
-        }
+        headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
         payload = {"q": query, "num": max_results}
 
         async with aiohttp.ClientSession() as session:
@@ -2596,25 +2775,29 @@ class WebSearchProvider:
 
                     results = []
                     for item in data.get("organic", [])[:max_results]:
-                        results.append({
-                            "title": item.get("title", ""),
-                            "snippet": item.get("snippet", ""),
-                            "url": item.get("link", "")
-                        })
+                        results.append(
+                            {
+                                "title": item.get("title", ""),
+                                "snippet": item.get("snippet", ""),
+                                "url": item.get("link", ""),
+                            }
+                        )
 
                     return {"results": results, "source": "serper"}
 
         return {"results": [], "source": "serper"}
 
     @classmethod
-    async def _search_tavily(cls, query: str, api_key: str, max_results: int) -> Dict[str, Any]:
+    async def _search_tavily(
+        cls, query: str, api_key: str, max_results: int
+    ) -> Dict[str, Any]:
         """Search using Tavily AI Search"""
         headers = {"Content-Type": "application/json"}
         payload = {
             "api_key": api_key,
             "query": query,
             "max_results": max_results,
-            "search_depth": "basic"
+            "search_depth": "basic",
         }
 
         async with aiohttp.ClientSession() as session:
@@ -2629,11 +2812,13 @@ class WebSearchProvider:
 
                     results = []
                     for item in data.get("results", [])[:max_results]:
-                        results.append({
-                            "title": item.get("title", ""),
-                            "snippet": item.get("content", ""),
-                            "url": item.get("url", "")
-                        })
+                        results.append(
+                            {
+                                "title": item.get("title", ""),
+                                "snippet": item.get("content", ""),
+                                "url": item.get("url", ""),
+                            }
+                        )
 
                     return {"results": results, "source": "tavily"}
 
@@ -2674,54 +2859,72 @@ class ToolInstaller:
     # Tool installation commands by platform
     TOOL_INSTALLERS = {
         "node": {
-            "Darwin": ["brew install node", "curl -fsSL https://fnm.vercel.app/install | bash && fnm install --lts"],
-            "Linux": ["curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs",
-                     "curl -fsSL https://fnm.vercel.app/install | bash && fnm install --lts"],
-            "Windows": ["winget install OpenJS.NodeJS.LTS", "choco install nodejs-lts"]
+            "Darwin": [
+                "brew install node",
+                "curl -fsSL https://fnm.vercel.app/install | bash && fnm install --lts",
+            ],
+            "Linux": [
+                "curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs",
+                "curl -fsSL https://fnm.vercel.app/install | bash && fnm install --lts",
+            ],
+            "Windows": ["winget install OpenJS.NodeJS.LTS", "choco install nodejs-lts"],
         },
         "python": {
             "Darwin": ["brew install python@3.11", "brew install python"],
-            "Linux": ["sudo apt-get install python3 python3-pip", "sudo dnf install python3 python3-pip"],
-            "Windows": ["winget install Python.Python.3.11", "choco install python"]
+            "Linux": [
+                "sudo apt-get install python3 python3-pip",
+                "sudo dnf install python3 python3-pip",
+            ],
+            "Windows": ["winget install Python.Python.3.11", "choco install python"],
         },
         "docker": {
             "Darwin": ["brew install --cask docker"],
             "Linux": ["curl -fsSL https://get.docker.com | sh"],
-            "Windows": ["winget install Docker.DockerDesktop"]
+            "Windows": ["winget install Docker.DockerDesktop"],
         },
         "git": {
             "Darwin": ["xcode-select --install", "brew install git"],
             "Linux": ["sudo apt-get install git", "sudo dnf install git"],
-            "Windows": ["winget install Git.Git", "choco install git"]
+            "Windows": ["winget install Git.Git", "choco install git"],
         },
         "yarn": {
-            "all": ["npm install -g yarn", "corepack enable && corepack prepare yarn@stable --activate"]
+            "all": [
+                "npm install -g yarn",
+                "corepack enable && corepack prepare yarn@stable --activate",
+            ]
         },
         "pnpm": {
-            "all": ["npm install -g pnpm", "corepack enable && corepack prepare pnpm@latest --activate"]
+            "all": [
+                "npm install -g pnpm",
+                "corepack enable && corepack prepare pnpm@latest --activate",
+            ]
         },
         "bun": {
             "Darwin": ["curl -fsSL https://bun.sh/install | bash"],
             "Linux": ["curl -fsSL https://bun.sh/install | bash"],
-            "Windows": ["powershell -c \"irm bun.sh/install.ps1 | iex\""]
+            "Windows": ['powershell -c "irm bun.sh/install.ps1 | iex"'],
         },
         "go": {
             "Darwin": ["brew install go"],
-            "Linux": ["sudo apt-get install golang-go", "sudo snap install go --classic"],
-            "Windows": ["winget install GoLang.Go", "choco install golang"]
+            "Linux": [
+                "sudo apt-get install golang-go",
+                "sudo snap install go --classic",
+            ],
+            "Windows": ["winget install GoLang.Go", "choco install golang"],
         },
         "rust": {
             "all": ["curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"]
         },
         "cargo": {
             "all": ["curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"]
-        }
+        },
     }
 
     @classmethod
     def get_missing_tools(cls, required_tools: List[str]) -> List[str]:
         """Check which tools are missing from the system"""
         import shutil
+
         missing = []
         for tool in required_tools:
             if not shutil.which(tool):
@@ -2732,6 +2935,7 @@ class ToolInstaller:
     def get_install_commands(cls, tool: str) -> List[str]:
         """Get installation commands for a tool on the current platform"""
         import platform
+
         system = platform.system()
 
         tool_lower = tool.lower()
@@ -2756,7 +2960,13 @@ class ToolInstaller:
 
         # From project type
         if project_info:
-            if project_info.project_type in ["nextjs", "react", "vue", "angular", "node"]:
+            if project_info.project_type in [
+                "nextjs",
+                "react",
+                "vue",
+                "angular",
+                "node",
+            ]:
                 required.add("node")
                 required.add(project_info.package_manager or "npm")
             elif project_info.project_type == "python":
@@ -2796,14 +3006,16 @@ class ToolInstaller:
             commands = cls.get_install_commands(tool)
             if commands:
                 # Prefer the first (usually most common) installation method
-                actions.append({
-                    "type": "installTool",
-                    "tool": tool,
-                    "command": commands[0],
-                    "alternatives": commands[1:] if len(commands) > 1 else [],
-                    "description": f"Install {tool}",
-                    "requires_approval": True
-                })
+                actions.append(
+                    {
+                        "type": "installTool",
+                        "tool": tool,
+                        "command": commands[0],
+                        "alternatives": commands[1:] if len(commands) > 1 else [],
+                        "description": f"Install {tool}",
+                        "requires_approval": True,
+                    }
+                )
 
         return actions
 
@@ -2814,6 +3026,7 @@ class ToolInstaller:
             return ""
 
         import platform
+
         platform.system()
 
         parts = [f"⚠️ **Missing Tools Detected**: {', '.join(missing_tools)}\n"]
@@ -2853,324 +3066,967 @@ class DynamicContextProvider:
     DOMAIN_HINTS = {
         # ==================== FRONTEND ====================
         "web_frontend": [
-            "react", "vue", "angular", "svelte", "nextjs", "nuxt", "gatsby",
-            "component", "css", "tailwind", "styled", "scss", "sass", "less",
-            "responsive", "mobile-first", "accessibility", "a11y", "seo",
-            "webpack", "vite", "parcel", "bundler", "transpile", "esbuild",
-            "redux", "zustand", "pinia", "mobx", "recoil", "jotai",
-            "remix", "astro", "solid", "qwik", "htmx", "alpine.js"
+            "react",
+            "vue",
+            "angular",
+            "svelte",
+            "nextjs",
+            "nuxt",
+            "gatsby",
+            "component",
+            "css",
+            "tailwind",
+            "styled",
+            "scss",
+            "sass",
+            "less",
+            "responsive",
+            "mobile-first",
+            "accessibility",
+            "a11y",
+            "seo",
+            "webpack",
+            "vite",
+            "parcel",
+            "bundler",
+            "transpile",
+            "esbuild",
+            "redux",
+            "zustand",
+            "pinia",
+            "mobx",
+            "recoil",
+            "jotai",
+            "remix",
+            "astro",
+            "solid",
+            "qwik",
+            "htmx",
+            "alpine.js",
         ],
-
         # ==================== BACKEND ====================
         "web_backend": [
-            "api", "endpoint", "rest", "graphql", "server", "express",
-            "fastapi", "django", "flask", "rails", "spring", "nestjs",
-            "middleware", "authentication", "authorization", "jwt", "oauth",
-            "database", "query", "orm", "prisma", "sequelize", "sqlalchemy",
-            "grpc", "websocket", "sse", "microservice", "monolith"
+            "api",
+            "endpoint",
+            "rest",
+            "graphql",
+            "server",
+            "express",
+            "fastapi",
+            "django",
+            "flask",
+            "rails",
+            "spring",
+            "nestjs",
+            "middleware",
+            "authentication",
+            "authorization",
+            "jwt",
+            "oauth",
+            "database",
+            "query",
+            "orm",
+            "prisma",
+            "sequelize",
+            "sqlalchemy",
+            "grpc",
+            "websocket",
+            "sse",
+            "microservice",
+            "monolith",
         ],
-
         # ==================== JAVA ECOSYSTEM ====================
         "java": [
-            "java", "jvm", "spring boot", "spring", "maven", "gradle",
-            "hibernate", "jpa", "jdbc", "tomcat", "jetty", "wildfly",
-            "quarkus", "micronaut", "vert.x", "dropwizard", "jax-rs",
-            "lombok", "jackson", "gson", "junit", "mockito", "testng",
-            "java 17", "java 21", "records", "sealed", "virtual threads"
+            "java",
+            "jvm",
+            "spring boot",
+            "spring",
+            "maven",
+            "gradle",
+            "hibernate",
+            "jpa",
+            "jdbc",
+            "tomcat",
+            "jetty",
+            "wildfly",
+            "quarkus",
+            "micronaut",
+            "vert.x",
+            "dropwizard",
+            "jax-rs",
+            "lombok",
+            "jackson",
+            "gson",
+            "junit",
+            "mockito",
+            "testng",
+            "java 17",
+            "java 21",
+            "records",
+            "sealed",
+            "virtual threads",
         ],
-
         # ==================== .NET / C# ECOSYSTEM ====================
         "dotnet": [
-            ".net", "c#", "csharp", "dotnet", "asp.net", "blazor",
-            "entity framework", "ef core", "linq", "nuget", "msbuild",
-            ".net core", ".net 6", ".net 7", ".net 8", "maui", "xamarin",
-            "signalr", "minimal api", "razor", "winforms", "wpf", "uwp",
-            "xunit", "nunit", "moq", "autofac", "mediatr", "fluentvalidation"
+            ".net",
+            "c#",
+            "csharp",
+            "dotnet",
+            "asp.net",
+            "blazor",
+            "entity framework",
+            "ef core",
+            "linq",
+            "nuget",
+            "msbuild",
+            ".net core",
+            ".net 6",
+            ".net 7",
+            ".net 8",
+            "maui",
+            "xamarin",
+            "signalr",
+            "minimal api",
+            "razor",
+            "winforms",
+            "wpf",
+            "uwp",
+            "xunit",
+            "nunit",
+            "moq",
+            "autofac",
+            "mediatr",
+            "fluentvalidation",
         ],
-
         # ==================== C / C++ ====================
         "cpp": [
-            "c++", "cpp", "c language", "clang", "gcc", "msvc",
-            "cmake", "make", "makefile", "ninja", "conan", "vcpkg",
-            "stl", "boost", "qt", "opencv", "eigen", "poco",
-            "memory management", "pointer", "smart pointer", "raii",
-            "c++11", "c++14", "c++17", "c++20", "c++23", "modern c++",
-            "header", "template", "constexpr", "coroutine"
+            "c++",
+            "cpp",
+            "c language",
+            "clang",
+            "gcc",
+            "msvc",
+            "cmake",
+            "make",
+            "makefile",
+            "ninja",
+            "conan",
+            "vcpkg",
+            "stl",
+            "boost",
+            "qt",
+            "opencv",
+            "eigen",
+            "poco",
+            "memory management",
+            "pointer",
+            "smart pointer",
+            "raii",
+            "c++11",
+            "c++14",
+            "c++17",
+            "c++20",
+            "c++23",
+            "modern c++",
+            "header",
+            "template",
+            "constexpr",
+            "coroutine",
         ],
-
         # ==================== SCALA ====================
         "scala": [
-            "scala", "sbt", "akka", "play framework", "cats", "zio",
-            "spark scala", "flink", "scalaz", "circe", "http4s",
-            "functional programming", "implicits", "case class", "trait",
-            "scala 2", "scala 3", "dotty", "scalatest", "specs2"
+            "scala",
+            "sbt",
+            "akka",
+            "play framework",
+            "cats",
+            "zio",
+            "spark scala",
+            "flink",
+            "scalaz",
+            "circe",
+            "http4s",
+            "functional programming",
+            "implicits",
+            "case class",
+            "trait",
+            "scala 2",
+            "scala 3",
+            "dotty",
+            "scalatest",
+            "specs2",
         ],
-
         # ==================== GO ====================
         "golang": [
-            "go", "golang", "goroutine", "channel", "go mod",
-            "gin", "echo", "fiber", "chi", "buffalo", "beego",
-            "gorm", "sqlx", "go-kit", "cobra", "viper",
-            "concurrency", "interface", "struct", "defer"
+            "go",
+            "golang",
+            "goroutine",
+            "channel",
+            "go mod",
+            "gin",
+            "echo",
+            "fiber",
+            "chi",
+            "buffalo",
+            "beego",
+            "gorm",
+            "sqlx",
+            "go-kit",
+            "cobra",
+            "viper",
+            "concurrency",
+            "interface",
+            "struct",
+            "defer",
         ],
-
         # ==================== RUST ====================
         "rust": [
-            "rust", "cargo", "rustup", "crate", "rustc",
-            "actix", "axum", "rocket", "warp", "tokio", "async-std",
-            "serde", "diesel", "sqlx", "ownership", "borrowing", "lifetime",
-            "trait", "macro", "unsafe", "wasm", "webassembly"
+            "rust",
+            "cargo",
+            "rustup",
+            "crate",
+            "rustc",
+            "actix",
+            "axum",
+            "rocket",
+            "warp",
+            "tokio",
+            "async-std",
+            "serde",
+            "diesel",
+            "sqlx",
+            "ownership",
+            "borrowing",
+            "lifetime",
+            "trait",
+            "macro",
+            "unsafe",
+            "wasm",
+            "webassembly",
         ],
-
         # ==================== PYTHON ====================
         "python": [
-            "python", "pip", "poetry", "pipenv", "conda", "virtualenv",
-            "fastapi", "django", "flask", "starlette", "aiohttp",
-            "pydantic", "sqlalchemy", "asyncio", "celery", "dramatiq",
-            "numpy", "scipy", "matplotlib", "jupyter", "notebook"
+            "python",
+            "pip",
+            "poetry",
+            "pipenv",
+            "conda",
+            "virtualenv",
+            "fastapi",
+            "django",
+            "flask",
+            "starlette",
+            "aiohttp",
+            "pydantic",
+            "sqlalchemy",
+            "asyncio",
+            "celery",
+            "dramatiq",
+            "numpy",
+            "scipy",
+            "matplotlib",
+            "jupyter",
+            "notebook",
         ],
-
         # ==================== JAVASCRIPT/TYPESCRIPT ====================
         "javascript": [
-            "javascript", "typescript", "node", "nodejs", "npm", "yarn", "pnpm", "bun",
-            "express", "nestjs", "fastify", "koa", "hapi",
-            "deno", "es6", "esm", "commonjs", "async await", "promise"
+            "javascript",
+            "typescript",
+            "node",
+            "nodejs",
+            "npm",
+            "yarn",
+            "pnpm",
+            "bun",
+            "express",
+            "nestjs",
+            "fastify",
+            "koa",
+            "hapi",
+            "deno",
+            "es6",
+            "esm",
+            "commonjs",
+            "async await",
+            "promise",
         ],
-
         # ==================== RUBY ====================
         "ruby": [
-            "ruby", "rails", "ruby on rails", "gem", "bundler",
-            "sinatra", "hanami", "rspec", "minitest", "capybara",
-            "activerecord", "sidekiq", "puma", "unicorn", "rake"
+            "ruby",
+            "rails",
+            "ruby on rails",
+            "gem",
+            "bundler",
+            "sinatra",
+            "hanami",
+            "rspec",
+            "minitest",
+            "capybara",
+            "activerecord",
+            "sidekiq",
+            "puma",
+            "unicorn",
+            "rake",
         ],
-
         # ==================== PHP ====================
         "php": [
-            "php", "laravel", "symfony", "composer", "wordpress",
-            "drupal", "magento", "codeigniter", "yii", "cakephp",
-            "artisan", "eloquent", "doctrine", "phpunit", "pest"
+            "php",
+            "laravel",
+            "symfony",
+            "composer",
+            "wordpress",
+            "drupal",
+            "magento",
+            "codeigniter",
+            "yii",
+            "cakephp",
+            "artisan",
+            "eloquent",
+            "doctrine",
+            "phpunit",
+            "pest",
         ],
-
         # ==================== ELIXIR / ERLANG ====================
         "elixir": [
-            "elixir", "phoenix", "erlang", "otp", "beam", "mix",
-            "ecto", "liveview", "genserver", "supervisor", "mnesia",
-            "absinthe", "nerves", "broadway", "flow"
+            "elixir",
+            "phoenix",
+            "erlang",
+            "otp",
+            "beam",
+            "mix",
+            "ecto",
+            "liveview",
+            "genserver",
+            "supervisor",
+            "mnesia",
+            "absinthe",
+            "nerves",
+            "broadway",
+            "flow",
         ],
-
         # ==================== KOTLIN ====================
         "kotlin": [
-            "kotlin", "ktor", "spring kotlin", "coroutines", "flow",
-            "jetpack compose", "multiplatform", "kmp", "kmm",
-            "arrow", "exposed", "kotest", "mockk"
+            "kotlin",
+            "ktor",
+            "spring kotlin",
+            "coroutines",
+            "flow",
+            "jetpack compose",
+            "multiplatform",
+            "kmp",
+            "kmm",
+            "arrow",
+            "exposed",
+            "kotest",
+            "mockk",
         ],
-
         # ==================== SWIFT ====================
         "swift": [
-            "swift", "swiftui", "uikit", "cocoa", "xcode",
-            "ios development", "macos", "watchos", "tvos",
-            "combine", "async/await", "actor", "spm", "swift package"
+            "swift",
+            "swiftui",
+            "uikit",
+            "cocoa",
+            "xcode",
+            "ios development",
+            "macos",
+            "watchos",
+            "tvos",
+            "combine",
+            "async/await",
+            "actor",
+            "spm",
+            "swift package",
         ],
-
         # ==================== AWS ====================
         "aws": [
-            "aws", "amazon web services", "ec2", "s3", "lambda", "rds",
-            "dynamodb", "sqs", "sns", "ecs", "eks", "fargate",
-            "cloudformation", "cdk", "sam", "amplify", "cognito",
-            "api gateway", "cloudwatch", "iam", "vpc", "route53",
-            "elasticache", "aurora", "kinesis", "step functions",
-            "eventbridge", "secrets manager", "ssm", "cloudfront",
-            "elb", "alb", "nlb", "auto scaling", "beanstalk"
+            "aws",
+            "amazon web services",
+            "ec2",
+            "s3",
+            "lambda",
+            "rds",
+            "dynamodb",
+            "sqs",
+            "sns",
+            "ecs",
+            "eks",
+            "fargate",
+            "cloudformation",
+            "cdk",
+            "sam",
+            "amplify",
+            "cognito",
+            "api gateway",
+            "cloudwatch",
+            "iam",
+            "vpc",
+            "route53",
+            "elasticache",
+            "aurora",
+            "kinesis",
+            "step functions",
+            "eventbridge",
+            "secrets manager",
+            "ssm",
+            "cloudfront",
+            "elb",
+            "alb",
+            "nlb",
+            "auto scaling",
+            "beanstalk",
         ],
-
         # ==================== GCP ====================
         "gcp": [
-            "gcp", "google cloud", "compute engine", "gke", "cloud run",
-            "cloud functions", "bigquery", "cloud storage", "gcs",
-            "pubsub", "cloud sql", "spanner", "firestore", "bigtable",
-            "dataflow", "dataproc", "composer", "cloud build",
-            "artifact registry", "container registry", "cloud cdn",
-            "load balancer", "vpc network", "iam", "secret manager",
-            "cloud logging", "cloud monitoring", "cloud armor",
-            "vertex ai", "automl", "vision api", "speech api"
+            "gcp",
+            "google cloud",
+            "compute engine",
+            "gke",
+            "cloud run",
+            "cloud functions",
+            "bigquery",
+            "cloud storage",
+            "gcs",
+            "pubsub",
+            "cloud sql",
+            "spanner",
+            "firestore",
+            "bigtable",
+            "dataflow",
+            "dataproc",
+            "composer",
+            "cloud build",
+            "artifact registry",
+            "container registry",
+            "cloud cdn",
+            "load balancer",
+            "vpc network",
+            "iam",
+            "secret manager",
+            "cloud logging",
+            "cloud monitoring",
+            "cloud armor",
+            "vertex ai",
+            "automl",
+            "vision api",
+            "speech api",
         ],
-
         # ==================== AZURE ====================
         "azure": [
-            "azure", "microsoft azure", "azure functions", "app service",
-            "aks", "azure kubernetes", "cosmos db", "azure sql",
-            "blob storage", "azure storage", "service bus", "event hub",
-            "azure devops", "pipelines", "azure ad", "entra",
-            "arm templates", "bicep", "azure cli", "key vault",
-            "application insights", "azure monitor", "front door",
-            "traffic manager", "virtual network", "azure cdn",
-            "logic apps", "power automate", "azure openai"
+            "azure",
+            "microsoft azure",
+            "azure functions",
+            "app service",
+            "aks",
+            "azure kubernetes",
+            "cosmos db",
+            "azure sql",
+            "blob storage",
+            "azure storage",
+            "service bus",
+            "event hub",
+            "azure devops",
+            "pipelines",
+            "azure ad",
+            "entra",
+            "arm templates",
+            "bicep",
+            "azure cli",
+            "key vault",
+            "application insights",
+            "azure monitor",
+            "front door",
+            "traffic manager",
+            "virtual network",
+            "azure cdn",
+            "logic apps",
+            "power automate",
+            "azure openai",
         ],
-
         # ==================== KUBERNETES ====================
         "kubernetes": [
-            "kubernetes", "k8s", "kubectl", "helm", "kustomize",
-            "pod", "deployment", "service", "ingress", "configmap",
-            "secret", "namespace", "pvc", "statefulset", "daemonset",
-            "operator", "crd", "istio", "linkerd", "envoy",
-            "argocd", "fluxcd", "crossplane", "keda", "knative"
+            "kubernetes",
+            "k8s",
+            "kubectl",
+            "helm",
+            "kustomize",
+            "pod",
+            "deployment",
+            "service",
+            "ingress",
+            "configmap",
+            "secret",
+            "namespace",
+            "pvc",
+            "statefulset",
+            "daemonset",
+            "operator",
+            "crd",
+            "istio",
+            "linkerd",
+            "envoy",
+            "argocd",
+            "fluxcd",
+            "crossplane",
+            "keda",
+            "knative",
         ],
-
         # ==================== DOCKER / CONTAINERS ====================
         "docker": [
-            "docker", "dockerfile", "docker-compose", "container",
-            "podman", "buildah", "containerd", "cri-o",
-            "image", "registry", "ecr", "gcr", "acr", "dockerhub",
-            "multi-stage", "layer", "volume", "network"
+            "docker",
+            "dockerfile",
+            "docker-compose",
+            "container",
+            "podman",
+            "buildah",
+            "containerd",
+            "cri-o",
+            "image",
+            "registry",
+            "ecr",
+            "gcr",
+            "acr",
+            "dockerhub",
+            "multi-stage",
+            "layer",
+            "volume",
+            "network",
         ],
-
         # ==================== TERRAFORM / IAC ====================
         "terraform": [
-            "terraform", "hcl", "tfstate", "terraform cloud",
-            "pulumi", "crossplane", "cdktf", "terragrunt",
-            "provider", "module", "resource", "data source",
-            "plan", "apply", "destroy", "state", "backend"
+            "terraform",
+            "hcl",
+            "tfstate",
+            "terraform cloud",
+            "pulumi",
+            "crossplane",
+            "cdktf",
+            "terragrunt",
+            "provider",
+            "module",
+            "resource",
+            "data source",
+            "plan",
+            "apply",
+            "destroy",
+            "state",
+            "backend",
         ],
-
         # ==================== CI/CD ====================
         "cicd": [
-            "ci/cd", "github actions", "gitlab ci", "jenkins",
-            "circleci", "travis", "buildkite", "teamcity",
-            "azure pipelines", "bitbucket pipelines", "drone",
-            "argocd", "fluxcd", "spinnaker", "harness",
-            "workflow", "pipeline", "build", "deploy", "release"
+            "ci/cd",
+            "github actions",
+            "gitlab ci",
+            "jenkins",
+            "circleci",
+            "travis",
+            "buildkite",
+            "teamcity",
+            "azure pipelines",
+            "bitbucket pipelines",
+            "drone",
+            "argocd",
+            "fluxcd",
+            "spinnaker",
+            "harness",
+            "workflow",
+            "pipeline",
+            "build",
+            "deploy",
+            "release",
         ],
-
         # ==================== DATA ENGINEERING ====================
         "data_engineering": [
-            "etl", "elt", "pipeline", "spark", "pyspark", "pandas", "polars",
-            "dataframe", "parquet", "avro", "orc", "delta lake", "iceberg",
-            "airflow", "dagster", "prefect", "luigi", "dbt", "mage",
-            "warehouse", "data lake", "lakehouse", "medallion",
-            "bigquery", "snowflake", "redshift", "databricks", "synapse",
-            "kafka", "flink", "beam", "kinesis", "pulsar",
-            "streaming", "batch", "transform", "schema", "data quality"
+            "etl",
+            "elt",
+            "pipeline",
+            "spark",
+            "pyspark",
+            "pandas",
+            "polars",
+            "dataframe",
+            "parquet",
+            "avro",
+            "orc",
+            "delta lake",
+            "iceberg",
+            "airflow",
+            "dagster",
+            "prefect",
+            "luigi",
+            "dbt",
+            "mage",
+            "warehouse",
+            "data lake",
+            "lakehouse",
+            "medallion",
+            "bigquery",
+            "snowflake",
+            "redshift",
+            "databricks",
+            "synapse",
+            "kafka",
+            "flink",
+            "beam",
+            "kinesis",
+            "pulsar",
+            "streaming",
+            "batch",
+            "transform",
+            "schema",
+            "data quality",
         ],
-
         # ==================== MACHINE LEARNING / AI ====================
         "machine_learning": [
-            "model", "training", "inference", "tensorflow", "pytorch", "jax",
-            "sklearn", "scikit-learn", "huggingface", "transformers",
-            "neural network", "deep learning", "cnn", "rnn", "lstm", "gpt",
-            "feature engineering", "embedding", "vector", "rag",
-            "classification", "regression", "clustering", "nlp",
-            "computer vision", "reinforcement learning", "rl",
-            "fine-tuning", "llm", "langchain", "llamaindex", "openai api",
-            "mlflow", "wandb", "dvc", "mlops", "kubeflow", "sagemaker"
+            "model",
+            "training",
+            "inference",
+            "tensorflow",
+            "pytorch",
+            "jax",
+            "sklearn",
+            "scikit-learn",
+            "huggingface",
+            "transformers",
+            "neural network",
+            "deep learning",
+            "cnn",
+            "rnn",
+            "lstm",
+            "gpt",
+            "feature engineering",
+            "embedding",
+            "vector",
+            "rag",
+            "classification",
+            "regression",
+            "clustering",
+            "nlp",
+            "computer vision",
+            "reinforcement learning",
+            "rl",
+            "fine-tuning",
+            "llm",
+            "langchain",
+            "llamaindex",
+            "openai api",
+            "mlflow",
+            "wandb",
+            "dvc",
+            "mlops",
+            "kubeflow",
+            "sagemaker",
         ],
-
         # ==================== DATABASES ====================
         "database": [
-            "postgresql", "postgres", "mysql", "mariadb", "sql server",
-            "oracle", "sqlite", "mongodb", "redis", "elasticsearch",
-            "cassandra", "couchdb", "neo4j", "graph database",
-            "timescaledb", "influxdb", "clickhouse", "druid",
-            "sql", "nosql", "index", "query optimization", "sharding",
-            "replication", "backup", "migration", "schema design"
+            "postgresql",
+            "postgres",
+            "mysql",
+            "mariadb",
+            "sql server",
+            "oracle",
+            "sqlite",
+            "mongodb",
+            "redis",
+            "elasticsearch",
+            "cassandra",
+            "couchdb",
+            "neo4j",
+            "graph database",
+            "timescaledb",
+            "influxdb",
+            "clickhouse",
+            "druid",
+            "sql",
+            "nosql",
+            "index",
+            "query optimization",
+            "sharding",
+            "replication",
+            "backup",
+            "migration",
+            "schema design",
         ],
-
         # ==================== MESSAGE QUEUES ====================
         "messaging": [
-            "kafka", "rabbitmq", "redis pubsub", "nats", "pulsar",
-            "sqs", "sns", "pubsub", "service bus", "event hub",
-            "zeromq", "activemq", "mqtt", "amqp",
-            "message queue", "event driven", "async messaging"
+            "kafka",
+            "rabbitmq",
+            "redis pubsub",
+            "nats",
+            "pulsar",
+            "sqs",
+            "sns",
+            "pubsub",
+            "service bus",
+            "event hub",
+            "zeromq",
+            "activemq",
+            "mqtt",
+            "amqp",
+            "message queue",
+            "event driven",
+            "async messaging",
         ],
-
         # ==================== MOBILE ====================
         "mobile": [
-            "ios", "android", "react native", "flutter", "swift", "kotlin",
-            "mobile app", "native", "expo", "capacitor", "cordova", "ionic",
-            "push notification", "deep link", "app store", "play store",
-            "jetpack compose", "swiftui", "uikit", "xml layout"
+            "ios",
+            "android",
+            "react native",
+            "flutter",
+            "swift",
+            "kotlin",
+            "mobile app",
+            "native",
+            "expo",
+            "capacitor",
+            "cordova",
+            "ionic",
+            "push notification",
+            "deep link",
+            "app store",
+            "play store",
+            "jetpack compose",
+            "swiftui",
+            "uikit",
+            "xml layout",
         ],
-
         # ==================== TESTING ====================
         "testing_quality": [
-            "test", "spec", "jest", "pytest", "mocha", "vitest",
-            "cypress", "playwright", "selenium", "puppeteer",
-            "unit test", "integration test", "e2e", "coverage",
-            "mock", "stub", "spy", "fixture", "snapshot",
-            "tdd", "bdd", "cucumber", "gherkin",
-            "junit", "testng", "xunit", "nunit", "rspec"
+            "test",
+            "spec",
+            "jest",
+            "pytest",
+            "mocha",
+            "vitest",
+            "cypress",
+            "playwright",
+            "selenium",
+            "puppeteer",
+            "unit test",
+            "integration test",
+            "e2e",
+            "coverage",
+            "mock",
+            "stub",
+            "spy",
+            "fixture",
+            "snapshot",
+            "tdd",
+            "bdd",
+            "cucumber",
+            "gherkin",
+            "junit",
+            "testng",
+            "xunit",
+            "nunit",
+            "rspec",
         ],
-
         # ==================== SECURITY ====================
         "security": [
-            "security", "vulnerability", "auth", "authentication",
-            "authorization", "encrypt", "hash", "ssl", "tls",
-            "cors", "csrf", "xss", "injection", "sanitize", "validate",
-            "penetration", "pentest", "audit", "compliance",
-            "gdpr", "hipaa", "soc2", "pci", "iso27001",
-            "oauth", "oidc", "saml", "mfa", "2fa", "rbac", "abac",
-            "vault", "secrets", "key management", "hsm"
+            "security",
+            "vulnerability",
+            "auth",
+            "authentication",
+            "authorization",
+            "encrypt",
+            "hash",
+            "ssl",
+            "tls",
+            "cors",
+            "csrf",
+            "xss",
+            "injection",
+            "sanitize",
+            "validate",
+            "penetration",
+            "pentest",
+            "audit",
+            "compliance",
+            "gdpr",
+            "hipaa",
+            "soc2",
+            "pci",
+            "iso27001",
+            "oauth",
+            "oidc",
+            "saml",
+            "mfa",
+            "2fa",
+            "rbac",
+            "abac",
+            "vault",
+            "secrets",
+            "key management",
+            "hsm",
         ],
-
         # ==================== PERFORMANCE ====================
         "performance": [
-            "performance", "optimize", "optimization", "cache", "caching",
-            "redis", "memcached", "varnish", "cdn",
-            "profiling", "profiler", "bottleneck", "latency", "throughput",
-            "scaling", "horizontal", "vertical", "auto-scaling",
-            "load balancing", "connection pooling", "async",
-            "lazy loading", "code splitting", "tree shaking"
+            "performance",
+            "optimize",
+            "optimization",
+            "cache",
+            "caching",
+            "redis",
+            "memcached",
+            "varnish",
+            "cdn",
+            "profiling",
+            "profiler",
+            "bottleneck",
+            "latency",
+            "throughput",
+            "scaling",
+            "horizontal",
+            "vertical",
+            "auto-scaling",
+            "load balancing",
+            "connection pooling",
+            "async",
+            "lazy loading",
+            "code splitting",
+            "tree shaking",
         ],
-
         # ==================== BLOCKCHAIN / WEB3 ====================
         "blockchain": [
-            "blockchain", "web3", "ethereum", "solidity", "smart contract",
-            "nft", "defi", "dao", "token", "erc20", "erc721",
-            "hardhat", "truffle", "foundry", "remix", "ganache",
-            "metamask", "wagmi", "ethers.js", "web3.js", "viem",
-            "solana", "rust solana", "anchor", "polygon", "arbitrum",
-            "ipfs", "the graph", "chainlink", "alchemy", "infura"
+            "blockchain",
+            "web3",
+            "ethereum",
+            "solidity",
+            "smart contract",
+            "nft",
+            "defi",
+            "dao",
+            "token",
+            "erc20",
+            "erc721",
+            "hardhat",
+            "truffle",
+            "foundry",
+            "remix",
+            "ganache",
+            "metamask",
+            "wagmi",
+            "ethers.js",
+            "web3.js",
+            "viem",
+            "solana",
+            "rust solana",
+            "anchor",
+            "polygon",
+            "arbitrum",
+            "ipfs",
+            "the graph",
+            "chainlink",
+            "alchemy",
+            "infura",
         ],
-
         # ==================== OBSERVABILITY ====================
         "observability": [
-            "monitoring", "logging", "tracing", "metrics", "apm",
-            "prometheus", "grafana", "elk", "elasticsearch", "kibana",
-            "datadog", "newrelic", "splunk", "dynatrace",
-            "jaeger", "zipkin", "opentelemetry", "otel",
-            "alerting", "pagerduty", "opsgenie", "dashboard"
+            "monitoring",
+            "logging",
+            "tracing",
+            "metrics",
+            "apm",
+            "prometheus",
+            "grafana",
+            "elk",
+            "elasticsearch",
+            "kibana",
+            "datadog",
+            "newrelic",
+            "splunk",
+            "dynatrace",
+            "jaeger",
+            "zipkin",
+            "opentelemetry",
+            "otel",
+            "alerting",
+            "pagerduty",
+            "opsgenie",
+            "dashboard",
         ],
-
         # ==================== API DESIGN ====================
         "api_design": [
-            "rest api", "graphql", "grpc", "openapi", "swagger",
-            "api gateway", "rate limiting", "throttling", "versioning",
-            "api design", "endpoint", "resource", "http methods",
-            "postman", "insomnia", "hoppscotch", "api testing"
+            "rest api",
+            "graphql",
+            "grpc",
+            "openapi",
+            "swagger",
+            "api gateway",
+            "rate limiting",
+            "throttling",
+            "versioning",
+            "api design",
+            "endpoint",
+            "resource",
+            "http methods",
+            "postman",
+            "insomnia",
+            "hoppscotch",
+            "api testing",
         ],
-
         # ==================== GAME DEVELOPMENT ====================
         "gamedev": [
-            "unity", "unreal", "godot", "game engine", "gamedev",
-            "c# unity", "blueprint", "gdscript", "shader", "hlsl", "glsl",
-            "3d", "2d", "sprite", "animation", "physics",
-            "multiplayer", "netcode", "photon", "mirror"
+            "unity",
+            "unreal",
+            "godot",
+            "game engine",
+            "gamedev",
+            "c# unity",
+            "blueprint",
+            "gdscript",
+            "shader",
+            "hlsl",
+            "glsl",
+            "3d",
+            "2d",
+            "sprite",
+            "animation",
+            "physics",
+            "multiplayer",
+            "netcode",
+            "photon",
+            "mirror",
         ],
-
         # ==================== EMBEDDED / IOT ====================
         "embedded": [
-            "embedded", "iot", "arduino", "raspberry pi", "esp32",
-            "firmware", "rtos", "freertos", "zephyr",
-            "c embedded", "microcontroller", "mcu", "gpio",
-            "i2c", "spi", "uart", "can bus", "mqtt iot"
+            "embedded",
+            "iot",
+            "arduino",
+            "raspberry pi",
+            "esp32",
+            "firmware",
+            "rtos",
+            "freertos",
+            "zephyr",
+            "c embedded",
+            "microcontroller",
+            "mcu",
+            "gpio",
+            "i2c",
+            "spi",
+            "uart",
+            "can bus",
+            "mqtt iot",
         ],
-
         # ==================== FUNCTIONAL PROGRAMMING ====================
         "functional": [
-            "functional programming", "fp", "haskell", "ocaml", "f#",
-            "clojure", "lisp", "scheme", "racket",
-            "monad", "functor", "immutable", "pure function",
-            "pattern matching", "algebraic data type", "lambda"
-        ]
+            "functional programming",
+            "fp",
+            "haskell",
+            "ocaml",
+            "f#",
+            "clojure",
+            "lisp",
+            "scheme",
+            "racket",
+            "monad",
+            "functor",
+            "immutable",
+            "pure function",
+            "pattern matching",
+            "algebraic data type",
+            "lambda",
+        ],
     }
 
     @classmethod
@@ -3202,7 +4058,10 @@ class DynamicContextProvider:
                 deps = str(project_info.dependencies).lower()
                 if any(lib in deps for lib in ["pandas", "spark", "airflow", "dbt"]):
                     scores["data_engineering"] = scores.get("data_engineering", 0) + 2
-                if any(lib in deps for lib in ["torch", "tensorflow", "sklearn", "transformers"]):
+                if any(
+                    lib in deps
+                    for lib in ["torch", "tensorflow", "sklearn", "transformers"]
+                ):
                     scores["machine_learning"] = scores.get("machine_learning", 0) + 2
 
         # Return top domains (those with scores > 0)
@@ -3591,7 +4450,7 @@ FUNCTIONAL PROGRAMMING CONTEXT:
 - Concepts: immutability, pure functions, higher-order functions
 - Patterns: monads, functors, applicatives, algebraic data types
 - Benefits: predictability, testability, parallelism
-"""
+""",
         }
 
         for domain in domains:
@@ -3605,12 +4464,19 @@ FUNCTIONAL PROGRAMMING CONTEXT:
 
         # Enhanced domain knowledge for code generation
         try:
-            from backend.services.domain_knowledge import get_domain_context as get_enhanced_context, DomainType
+            from backend.services.domain_knowledge import (
+                get_domain_context as get_enhanced_context,
+                DomainType,
+            )
+
             # Map our domains to the enhanced domain types
             domain_mapping = {
                 "web_backend": [DomainType.BACKEND_PYTHON, DomainType.BACKEND_NODE],
                 "web_frontend": [DomainType.FRONTEND_REACT, DomainType.FRONTEND_VUE],
-                "devops_infrastructure": [DomainType.DEVOPS_DOCKER, DomainType.DEVOPS_CICD],
+                "devops_infrastructure": [
+                    DomainType.DEVOPS_DOCKER,
+                    DomainType.DEVOPS_CICD,
+                ],
                 "data_engineering": [DomainType.DATA_PANDAS, DomainType.DATA_SQL],
             }
 
@@ -3641,7 +4507,18 @@ FUNCTIONAL PROGRAMMING CONTEXT:
 
         # Check for common tools
         tools_available: Dict[str, bool] = {}
-        for tool in ["node", "npm", "yarn", "pnpm", "python", "pip", "docker", "git", "go", "cargo"]:
+        for tool in [
+            "node",
+            "npm",
+            "yarn",
+            "pnpm",
+            "python",
+            "pip",
+            "docker",
+            "git",
+            "go",
+            "cargo",
+        ]:
             tools_available[tool] = shutil.which(tool) is not None
         context["tools_available"] = tools_available
 
@@ -3682,12 +4559,15 @@ FUNCTIONAL PROGRAMMING CONTEXT:
 
         # Check for port-related requests - use dynamic port detection
         port_context = None
-        if any(word in message.lower() for word in ["run", "start", "server", "dev", "localhost", "port"]):
+        if any(
+            word in message.lower()
+            for word in ["run", "start", "server", "dev", "localhost", "port"]
+        ):
             try:
                 # Pass project_info for intelligent port detection (not hardcoded 3000)
                 port_context = await PortManager.get_port_context_for_llm(
                     preferred_port=None,  # Let NaviConfig determine from project
-                    project_info=project_info
+                    project_info=project_info,
                 )
             except Exception:
                 pass
@@ -3699,7 +4579,9 @@ FUNCTIONAL PROGRAMMING CONTEXT:
             required_tools = ToolInstaller.detect_required_tools(project_info, message)
             missing_tools = ToolInstaller.get_missing_tools(required_tools)
             if missing_tools:
-                tool_install_actions = ToolInstaller.generate_install_actions(missing_tools)
+                tool_install_actions = ToolInstaller.generate_install_actions(
+                    missing_tools
+                )
         except Exception as e:
             logger.warning(f"Tool detection failed: {e}")
 
@@ -3710,9 +4592,15 @@ FUNCTIONAL PROGRAMMING CONTEXT:
             try:
                 # Create a search query from the message
                 search_query = message[:200]  # Limit query length
-                web_search_results = await WebSearchProvider.search(search_query, max_results=5)
+                web_search_results = await WebSearchProvider.search(
+                    search_query, max_results=5
+                )
                 if web_search_results.get("results"):
-                    web_search_context = WebSearchProvider.format_search_results_for_llm(web_search_results)
+                    web_search_context = (
+                        WebSearchProvider.format_search_results_for_llm(
+                            web_search_results
+                        )
+                    )
             except Exception as e:
                 logger.warning(f"Web search failed (non-fatal): {e}")
 
@@ -3739,20 +4627,28 @@ FUNCTIONAL PROGRAMMING CONTEXT:
             "domain_context": domain_context,
             "runtime": runtime_context,
             "port_context": port_context,
-            "project_analysis": project_info.to_context_string() if project_info else None,
+            "project_analysis": (
+                project_info.to_context_string() if project_info else None
+            ),
             # Tool installation support
             "missing_tools": missing_tools,
             "tool_install_actions": tool_install_actions,
-            "missing_tools_message": ToolInstaller.format_missing_tools_message(missing_tools) if missing_tools else None,
+            "missing_tools_message": (
+                ToolInstaller.format_missing_tools_message(missing_tools)
+                if missing_tools
+                else None
+            ),
             # Web search results
             "web_search_results": web_search_results,
             "web_search_context": web_search_context,
-            "web_search_performed": bool(web_search_results and web_search_results.get("results")),
+            "web_search_performed": bool(
+                web_search_results and web_search_results.get("results")
+            ),
             # Project coding standards for consistent code generation
             "project_standards": project_standards_context,
             # Task plan for complex multi-step tasks
             "task_plan": task_plan_context,
-            "is_complex_task": bool(task_plan_context)
+            "is_complex_task": bool(task_plan_context),
         }
 
 
@@ -3765,6 +4661,7 @@ class ProjectStandards:
     Detected coding standards and conventions from project configuration.
     This enables NAVI to generate code that matches project style.
     """
+
     # Code style
     indent_style: str = "spaces"  # "spaces" or "tabs"
     indent_size: int = 2
@@ -3785,7 +4682,9 @@ class ProjectStandards:
     constant_naming: str = "SCREAMING_SNAKE_CASE"
 
     # Project patterns
-    import_order: List[str] = field(default_factory=lambda: ["builtin", "external", "internal", "relative"])
+    import_order: List[str] = field(
+        default_factory=lambda: ["builtin", "external", "internal", "relative"]
+    )
     export_style: str = "named"  # "named", "default", "mixed"
 
     # Testing conventions
@@ -3849,10 +4748,12 @@ class ProjectStandardsDetector:
             cls._read_tsconfig(workspace),
             cls._read_editorconfig(workspace),
             cls._read_package_json(workspace),
-            return_exceptions=True
+            return_exceptions=True,
         )
 
-        eslint_config, prettier_config, tsconfig, editorconfig, package_json = config_results
+        eslint_config, prettier_config, tsconfig, editorconfig, package_json = (
+            config_results
+        )
 
         # Apply detected settings (priority: editorconfig > prettier > eslint)
         if isinstance(editorconfig, dict):
@@ -3862,9 +4763,15 @@ class ProjectStandardsDetector:
                 standards.indent_size = int(editorconfig.get("indent_size", 2))
 
         if isinstance(prettier_config, dict):
-            standards.indent_size = prettier_config.get("tabWidth", standards.indent_size)
-            standards.indent_style = "tabs" if prettier_config.get("useTabs") else "spaces"
-            standards.quote_style = "single" if prettier_config.get("singleQuote") else "double"
+            standards.indent_size = prettier_config.get(
+                "tabWidth", standards.indent_size
+            )
+            standards.indent_style = (
+                "tabs" if prettier_config.get("useTabs") else "spaces"
+            )
+            standards.quote_style = (
+                "single" if prettier_config.get("singleQuote") else "double"
+            )
             standards.semicolons = prettier_config.get("semi", True)
             standards.trailing_comma = prettier_config.get("trailingComma", "es5")
 
@@ -3872,7 +4779,9 @@ class ProjectStandardsDetector:
             standards.use_typescript = True
             compiler_options = tsconfig.get("compilerOptions", {})
             standards.ts_strict = compiler_options.get("strict", False)
-            standards.module_system = "esm" if "ESNext" in compiler_options.get("module", "") else "commonjs"
+            standards.module_system = (
+                "esm" if "ESNext" in compiler_options.get("module", "") else "commonjs"
+            )
 
         if isinstance(eslint_config, dict):
             rules = eslint_config.get("rules", {})
@@ -3881,11 +4790,16 @@ class ProjectStandardsDetector:
             if "prefer-const" in rules:
                 standards.prefer_const = rules["prefer-const"] != "off"
             if "prefer-arrow-callback" in rules:
-                standards.prefer_arrow_functions = rules["prefer-arrow-callback"] != "off"
+                standards.prefer_arrow_functions = (
+                    rules["prefer-arrow-callback"] != "off"
+                )
 
         if isinstance(package_json, dict):
             # Detect test framework
-            deps = {**package_json.get("dependencies", {}), **package_json.get("devDependencies", {})}
+            deps = {
+                **package_json.get("dependencies", {}),
+                **package_json.get("devDependencies", {}),
+            }
             if "jest" in deps:
                 standards.test_framework = "jest"
                 standards.test_file_pattern = "*.test.{ts,tsx,js,jsx}"
@@ -3908,8 +4822,12 @@ class ProjectStandardsDetector:
     async def _read_eslint_config(cls, workspace: Path) -> Optional[Dict]:
         """Read ESLint configuration"""
         eslint_files = [
-            ".eslintrc.json", ".eslintrc.js", ".eslintrc.yml",
-            ".eslintrc.yaml", ".eslintrc", "eslint.config.js"
+            ".eslintrc.json",
+            ".eslintrc.js",
+            ".eslintrc.yml",
+            ".eslintrc.yaml",
+            ".eslintrc",
+            "eslint.config.js",
         ]
         for filename in eslint_files:
             config_path = workspace / filename
@@ -3929,8 +4847,12 @@ class ProjectStandardsDetector:
     async def _read_prettier_config(cls, workspace: Path) -> Optional[Dict]:
         """Read Prettier configuration"""
         prettier_files = [
-            ".prettierrc", ".prettierrc.json", ".prettierrc.js",
-            ".prettierrc.yml", ".prettierrc.yaml", "prettier.config.js"
+            ".prettierrc",
+            ".prettierrc.json",
+            ".prettierrc.js",
+            ".prettierrc.yml",
+            ".prettierrc.yaml",
+            "prettier.config.js",
         ]
         for filename in prettier_files:
             config_path = workspace / filename
@@ -3963,8 +4885,8 @@ class ProjectStandardsDetector:
             try:
                 content = tsconfig_path.read_text()
                 # Remove comments (TypeScript config allows them)
-                content = re.sub(r'//.*$', '', content, flags=re.MULTILINE)
-                content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
+                content = re.sub(r"//.*$", "", content, flags=re.MULTILINE)
+                content = re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL)
                 return json.loads(content)
             except Exception:
                 pass
@@ -4034,9 +4956,14 @@ class ProjectStandardsDetector:
         for pattern in source_patterns:
             files = list(workspace.glob(pattern))
             # Exclude node_modules, dist, etc.
-            files = [f for f in files if not any(
-                exc in str(f) for exc in ["node_modules", "dist", "build", ".next", "__pycache__"]
-            )]
+            files = [
+                f
+                for f in files
+                if not any(
+                    exc in str(f)
+                    for exc in ["node_modules", "dist", "build", ".next", "__pycache__"]
+                )
+            ]
             sample_files.extend(files[:5])  # Sample up to 5 files per pattern
 
         if not sample_files:
@@ -4087,12 +5014,19 @@ class ProjectStandardsDetector:
 @dataclass
 class TaskStep:
     """A single step in a decomposed task"""
+
     id: str
     description: str
-    action_type: str  # "create_file", "modify_file", "run_command", "verify", "research"
+    action_type: (
+        str  # "create_file", "modify_file", "run_command", "verify", "research"
+    )
     target: Optional[str] = None  # file path or command
-    dependencies: List[str] = field(default_factory=list)  # IDs of steps this depends on
-    status: str = "pending"  # "pending", "in_progress", "completed", "failed", "skipped"
+    dependencies: List[str] = field(
+        default_factory=list
+    )  # IDs of steps this depends on
+    status: str = (
+        "pending"  # "pending", "in_progress", "completed", "failed", "skipped"
+    )
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     retry_count: int = 0
@@ -4102,6 +5036,7 @@ class TaskStep:
 @dataclass
 class TaskPlan:
     """A complete plan for executing a complex task"""
+
     id: str
     original_request: str
     steps: List[TaskStep] = field(default_factory=list)
@@ -4120,7 +5055,7 @@ class TaskPlan:
             f"**Task Plan** ({completed}/{total} steps completed)",
             f"Request: {self.original_request[:100]}...",
             "",
-            "**Steps:**"
+            "**Steps:**",
         ]
 
         for i, step in enumerate(self.steps, 1):
@@ -4129,7 +5064,7 @@ class TaskPlan:
                 "in_progress": "🔄",
                 "completed": "✅",
                 "failed": "❌",
-                "skipped": "⏭️"
+                "skipped": "⏭️",
             }.get(step.status, "⬜")
             lines.append(f"{status_icon} {i}. {step.description}")
 
@@ -4144,10 +5079,22 @@ class TaskDecomposer:
 
     # Patterns that indicate complex tasks needing decomposition
     COMPLEX_TASK_INDICATORS = [
-        "end to end", "e2e", "full stack", "complete", "entire",
-        "from scratch", "build", "implement", "create application",
-        "add feature", "refactor", "migrate", "upgrade",
-        "setup", "configure", "integrate"
+        "end to end",
+        "e2e",
+        "full stack",
+        "complete",
+        "entire",
+        "from scratch",
+        "build",
+        "implement",
+        "create application",
+        "add feature",
+        "refactor",
+        "migrate",
+        "upgrade",
+        "setup",
+        "configure",
+        "integrate",
     ]
 
     @classmethod
@@ -4157,12 +5104,20 @@ class TaskDecomposer:
 
         # Check for complexity indicators
         has_complex_indicator = any(
-            indicator in message_lower
-            for indicator in cls.COMPLEX_TASK_INDICATORS
+            indicator in message_lower for indicator in cls.COMPLEX_TASK_INDICATORS
         )
 
         # Multiple actions in one request
-        action_words = ["create", "add", "modify", "update", "fix", "install", "configure", "test"]
+        action_words = [
+            "create",
+            "add",
+            "modify",
+            "update",
+            "fix",
+            "install",
+            "configure",
+            "test",
+        ]
         action_count = sum(1 for word in action_words if word in message_lower)
 
         # Estimated scope
@@ -4181,55 +5136,67 @@ class TaskDecomposer:
         the structure and common patterns.
         """
         plan_id = f"plan-{uuid.uuid4().hex[:8]}"
-        plan = TaskPlan(
-            id=plan_id,
-            original_request=message
-        )
+        plan = TaskPlan(id=plan_id, original_request=message)
 
         # Add common initial steps based on patterns
         message_lower = message.lower()
 
         # Research/analysis step (always first for complex tasks)
-        plan.steps.append(TaskStep(
-            id=f"{plan_id}-research",
-            description="Analyze existing code and project structure",
-            action_type="research",
-            dependencies=[]
-        ))
+        plan.steps.append(
+            TaskStep(
+                id=f"{plan_id}-research",
+                description="Analyze existing code and project structure",
+                action_type="research",
+                dependencies=[],
+            )
+        )
 
         # Detect common patterns and add appropriate steps
         if any(word in message_lower for word in ["create", "build", "new"]):
-            plan.steps.extend([
-                TaskStep(
-                    id=f"{plan_id}-structure",
-                    description="Create file/folder structure",
-                    action_type="create_file",
-                    dependencies=[f"{plan_id}-research"]
-                ),
-                TaskStep(
-                    id=f"{plan_id}-implement",
-                    description="Implement core functionality",
-                    action_type="create_file",
-                    dependencies=[f"{plan_id}-structure"]
-                ),
-            ])
+            plan.steps.extend(
+                [
+                    TaskStep(
+                        id=f"{plan_id}-structure",
+                        description="Create file/folder structure",
+                        action_type="create_file",
+                        dependencies=[f"{plan_id}-research"],
+                    ),
+                    TaskStep(
+                        id=f"{plan_id}-implement",
+                        description="Implement core functionality",
+                        action_type="create_file",
+                        dependencies=[f"{plan_id}-structure"],
+                    ),
+                ]
+            )
 
-        if any(word in message_lower for word in ["test", "spec", "verify"]) or "with tests" in message_lower:
-            plan.steps.append(TaskStep(
-                id=f"{plan_id}-test",
-                description="Create and run tests",
-                action_type="run_command",
-                target="test",
-                dependencies=[f"{plan_id}-implement"] if f"{plan_id}-implement" in [s.id for s in plan.steps] else []
-            ))
+        if (
+            any(word in message_lower for word in ["test", "spec", "verify"])
+            or "with tests" in message_lower
+        ):
+            plan.steps.append(
+                TaskStep(
+                    id=f"{plan_id}-test",
+                    description="Create and run tests",
+                    action_type="run_command",
+                    target="test",
+                    dependencies=(
+                        [f"{plan_id}-implement"]
+                        if f"{plan_id}-implement" in [s.id for s in plan.steps]
+                        else []
+                    ),
+                )
+            )
 
         # Always add verification step
-        plan.steps.append(TaskStep(
-            id=f"{plan_id}-verify",
-            description="Verify implementation works correctly",
-            action_type="verify",
-            dependencies=[s.id for s in plan.steps if s.id != f"{plan_id}-verify"]
-        ))
+        plan.steps.append(
+            TaskStep(
+                id=f"{plan_id}-verify",
+                description="Verify implementation works correctly",
+                action_type="verify",
+                dependencies=[s.id for s in plan.steps if s.id != f"{plan_id}-verify"],
+            )
+        )
 
         return plan
 
@@ -4240,6 +5207,7 @@ class TaskDecomposer:
 @dataclass
 class ErrorDiagnosis:
     """Diagnosis of an error with recovery suggestions"""
+
     error_type: str  # "syntax", "type", "runtime", "dependency", "permission", "network", "unknown"
     error_message: str
     likely_cause: str
@@ -4265,98 +5233,92 @@ class SelfHealingEngine:
             "type": "dependency",
             "cause": "Missing npm/node module",
             "fix_template": "npm install {0}",
-            "auto_fixable": True
+            "auto_fixable": True,
         },
         r"ModuleNotFoundError: No module named '([^']+)'": {
             "type": "dependency",
             "cause": "Missing Python package",
             "fix_template": "pip install {0}",
-            "auto_fixable": True
+            "auto_fixable": True,
         },
         r"ImportError: cannot import name '([^']+)'": {
             "type": "dependency",
             "cause": "Import error - package may need update",
             "fix_template": "pip install --upgrade {0}",
-            "auto_fixable": True
+            "auto_fixable": True,
         },
-
         # Type errors
         r"TypeError: .* is not a function": {
             "type": "type",
             "cause": "Calling non-function as function",
             "fix_template": "Check import and ensure correct usage",
-            "auto_fixable": False
+            "auto_fixable": False,
         },
         r"Type '([^']+)' is not assignable to type '([^']+)'": {
             "type": "type",
             "cause": "TypeScript type mismatch",
             "fix_template": "Fix type annotation or add type assertion",
-            "auto_fixable": False
+            "auto_fixable": False,
         },
-
         # Syntax errors
         r"SyntaxError: Unexpected token": {
             "type": "syntax",
             "cause": "Invalid syntax in code",
             "fix_template": "Review and fix syntax",
-            "auto_fixable": False
+            "auto_fixable": False,
         },
         r"SyntaxError: invalid syntax": {
             "type": "syntax",
             "cause": "Invalid Python syntax",
             "fix_template": "Review and fix syntax",
-            "auto_fixable": False
+            "auto_fixable": False,
         },
-
         # Permission errors
         r"EACCES: permission denied": {
             "type": "permission",
             "cause": "Insufficient file system permissions",
             "fix_template": "Check file permissions or run with appropriate privileges",
-            "auto_fixable": False
+            "auto_fixable": False,
         },
         r"PermissionError: \[Errno 13\]": {
             "type": "permission",
             "cause": "Python permission denied",
             "fix_template": "Check file/directory permissions",
-            "auto_fixable": False
+            "auto_fixable": False,
         },
-
         # Network errors
         r"ECONNREFUSED": {
             "type": "network",
             "cause": "Connection refused - service may not be running",
             "fix_template": "Start the required service or check the port",
-            "auto_fixable": False
+            "auto_fixable": False,
         },
         r"ETIMEDOUT|ENOTFOUND": {
             "type": "network",
             "cause": "Network timeout or DNS resolution failed",
             "fix_template": "Check network connection and URL",
-            "auto_fixable": False
+            "auto_fixable": False,
         },
-
         # Port errors
         r"EADDRINUSE.*:(\d+)": {
             "type": "port",
             "cause": "Port already in use",
             "fix_template": "Kill process on port or use different port",
-            "auto_fixable": True
+            "auto_fixable": True,
         },
-
         # Build errors
         r"error TS\d+:": {
             "type": "typescript",
             "cause": "TypeScript compilation error",
             "fix_template": "Fix TypeScript errors",
-            "auto_fixable": False
+            "auto_fixable": False,
         },
         r"ESLint:.*error": {
             "type": "lint",
             "cause": "ESLint rule violation",
             "fix_template": "Fix linting errors or disable rule",
-            "auto_fixable": True
-        }
+            "auto_fixable": True,
+        },
     }
 
     @classmethod
@@ -4388,7 +5350,7 @@ class SelfHealingEngine:
                     likely_cause=info["cause"],
                     suggested_fixes=[fix],
                     auto_fixable=info["auto_fixable"],
-                    recovery_actions=recovery_actions
+                    recovery_actions=recovery_actions,
                 )
 
         # Unknown error - provide generic diagnosis
@@ -4396,9 +5358,13 @@ class SelfHealingEngine:
             error_type="unknown",
             error_message=error_str,
             likely_cause="Unknown error occurred",
-            suggested_fixes=["Review the error message", "Check logs for details", "Try a different approach"],
+            suggested_fixes=[
+                "Review the error message",
+                "Check logs for details",
+                "Try a different approach",
+            ],
             auto_fixable=False,
-            recovery_actions=[]
+            recovery_actions=[],
         )
 
     @classmethod
@@ -4414,40 +5380,46 @@ class SelfHealingEngine:
 
         if error_type == "dependency":
             # Add package installation action
-            actions.append({
-                "type": "runCommand",
-                "command": fix,
-                "description": "Installing missing dependency",
-                "auto_execute": True
-            })
+            actions.append(
+                {
+                    "type": "runCommand",
+                    "command": fix,
+                    "description": "Installing missing dependency",
+                    "auto_execute": True,
+                }
+            )
 
         elif error_type == "port":
             port = captured_groups[0] if captured_groups else "3000"
-            actions.extend([
-                {
-                    "type": "checkPort",
-                    "port": port,
-                    "description": f"Check what's using port {port}"
-                },
-                {
-                    "type": "killPort",
-                    "port": port,
-                    "description": f"Stop process on port {port}"
-                },
-                {
-                    "type": "findPort",
-                    "port": port,
-                    "description": "Find an available alternative port"
-                }
-            ])
+            actions.extend(
+                [
+                    {
+                        "type": "checkPort",
+                        "port": port,
+                        "description": f"Check what's using port {port}",
+                    },
+                    {
+                        "type": "killPort",
+                        "port": port,
+                        "description": f"Stop process on port {port}",
+                    },
+                    {
+                        "type": "findPort",
+                        "port": port,
+                        "description": "Find an available alternative port",
+                    },
+                ]
+            )
 
         elif error_type == "lint":
-            actions.append({
-                "type": "runCommand",
-                "command": "npm run lint -- --fix",
-                "description": "Auto-fix linting errors",
-                "auto_execute": True
-            })
+            actions.append(
+                {
+                    "type": "runCommand",
+                    "command": "npm run lint -- --fix",
+                    "description": "Auto-fix linting errors",
+                    "auto_execute": True,
+                }
+            )
 
         return actions
 
@@ -4470,15 +5442,19 @@ class SelfHealingEngine:
             "diagnosis": diagnosis,
             "can_recover": diagnosis.auto_fixable and retry_count < 3,
             "recovery_plan": [],
-            "message": ""
+            "message": "",
         }
 
         if diagnosis.auto_fixable and retry_count < 3:
             result["recovery_plan"] = diagnosis.recovery_actions
-            result["message"] = f"Attempting automatic recovery: {diagnosis.likely_cause}"
+            result["message"] = (
+                f"Attempting automatic recovery: {diagnosis.likely_cause}"
+            )
         else:
-            result["message"] = f"Manual intervention needed: {diagnosis.likely_cause}\n\nSuggested fixes:\n" + \
-                               "\n".join(f"- {fix}" for fix in diagnosis.suggested_fixes)
+            result["message"] = (
+                f"Manual intervention needed: {diagnosis.likely_cause}\n\nSuggested fixes:\n"
+                + "\n".join(f"- {fix}" for fix in diagnosis.suggested_fixes)
+            )
 
         return result
 
@@ -4489,6 +5465,7 @@ class SelfHealingEngine:
 @dataclass
 class Checkpoint:
     """A snapshot of project state at a point in time"""
+
     id: str
     timestamp: datetime
     description: str
@@ -4553,7 +5530,7 @@ class CheckpointManager:
             task_plan_id=task_plan_id,
             step_index=step_index,
             files_state=files_state,
-            git_commit=git_commit
+            git_commit=git_commit,
         )
 
         self.checkpoints.append(checkpoint)
@@ -4576,7 +5553,7 @@ class CheckpointManager:
             "step_index": checkpoint.step_index,
             "files_state": checkpoint.files_state,
             "git_commit": checkpoint.git_commit,
-            "metadata": checkpoint.metadata
+            "metadata": checkpoint.metadata,
         }
 
         checkpoint_file.write_text(json.dumps(checkpoint_data, indent=2))
@@ -4587,7 +5564,9 @@ class CheckpointManager:
         """Get the most recent checkpoint, optionally for a specific task"""
         relevant = self.checkpoints
         if task_plan_id:
-            relevant = [cp for cp in self.checkpoints if cp.task_plan_id == task_plan_id]
+            relevant = [
+                cp for cp in self.checkpoints if cp.task_plan_id == task_plan_id
+            ]
 
         if not relevant:
             return None
@@ -4601,13 +5580,17 @@ class CheckpointManager:
         Note: This only provides metadata about the state - actual file
         restoration should be handled by git or backup mechanisms.
         """
-        checkpoint = next((cp for cp in self.checkpoints if cp.id == checkpoint_id), None)
+        checkpoint = next(
+            (cp for cp in self.checkpoints if cp.id == checkpoint_id), None
+        )
         if not checkpoint:
             return False
 
         # If git commit is available, suggest git reset
         if checkpoint.git_commit:
-            logger.info(f"Rollback available via: git reset --hard {checkpoint.git_commit}")
+            logger.info(
+                f"Rollback available via: git reset --hard {checkpoint.git_commit}"
+            )
             return True
 
         return False
@@ -4628,22 +5611,19 @@ class VerificationEngine:
         "eslint": ["npm run lint", "npx eslint ."],
         "jest": ["npm test", "npm run test"],
         "vitest": ["npm test", "npx vitest run"],
-
         # Python
         "python": ["python -m py_compile {file}"],
         "pytest": ["pytest", "python -m pytest"],
         "mypy": ["mypy .", "python -m mypy ."],
         "flake8": ["flake8", "python -m flake8"],
-
         # Build verification
         "npm_build": ["npm run build"],
         "next_build": ["npm run build", "npx next build"],
         "vite_build": ["npm run build", "npx vite build"],
-
         # General
         "syntax_check": [],
         "import_check": [],
-        "runtime_check": []
+        "runtime_check": [],
     }
 
     @classmethod
@@ -4664,38 +5644,46 @@ class VerificationEngine:
             ext = Path(file_path).suffix.lower()
 
             if ext in [".ts", ".tsx"]:
-                steps.append({
-                    "type": "runCommand",
-                    "command": "npx tsc --noEmit",
-                    "description": "Verify TypeScript compilation",
-                    "required": True
-                })
+                steps.append(
+                    {
+                        "type": "runCommand",
+                        "command": "npx tsc --noEmit",
+                        "description": "Verify TypeScript compilation",
+                        "required": True,
+                    }
+                )
 
             if ext in [".js", ".jsx", ".ts", ".tsx"]:
                 if project_info.has_eslint:
-                    steps.append({
-                        "type": "runCommand",
-                        "command": f"npx eslint {file_path}",
-                        "description": "Check linting",
-                        "required": False
-                    })
+                    steps.append(
+                        {
+                            "type": "runCommand",
+                            "command": f"npx eslint {file_path}",
+                            "description": "Check linting",
+                            "required": False,
+                        }
+                    )
 
             if ext == ".py":
-                steps.append({
-                    "type": "runCommand",
-                    "command": f"python -m py_compile {file_path}",
-                    "description": "Verify Python syntax",
-                    "required": True
-                })
+                steps.append(
+                    {
+                        "type": "runCommand",
+                        "command": f"python -m py_compile {file_path}",
+                        "description": "Verify Python syntax",
+                        "required": True,
+                    }
+                )
 
         # Add test verification if tests exist
         if "test" in project_info.scripts:
-            steps.append({
-                "type": "runCommand",
-                "command": "npm test -- --passWithNoTests",
-                "description": "Run tests",
-                "required": False
-            })
+            steps.append(
+                {
+                    "type": "runCommand",
+                    "command": "npm test -- --passWithNoTests",
+                    "description": "Run tests",
+                    "required": False,
+                }
+            )
 
         return steps
 
@@ -4711,12 +5699,7 @@ class VerificationEngine:
 
         Returns verification result with success status and any issues found.
         """
-        result = {
-            "success": True,
-            "verified": True,
-            "issues": [],
-            "warnings": []
-        }
+        result = {"success": True, "verified": True, "issues": [], "warnings": []}
 
         if step.action_type == "create_file":
             # Verify file was created
@@ -4797,11 +5780,9 @@ class EndToEndOrchestrator:
                 original_request=message,
                 steps=[
                     TaskStep(
-                        id="single-step",
-                        description=message,
-                        action_type="execute"
+                        id="single-step", description=message, action_type="execute"
                     )
-                ]
+                ],
             )
 
         self.current_plan = plan
@@ -4825,16 +5806,18 @@ class EndToEndOrchestrator:
                 if action.get("type") in ["create_file", "modify_file", "run_command"]:
                     await self.checkpoint_manager.create_checkpoint(
                         description=f"Before: {action.get('description', action.get('type'))}",
-                        task_plan_id=self.current_plan.id if self.current_plan else None,
-                        step_index=self.current_plan.current_step_index if self.current_plan else 0
+                        task_plan_id=(
+                            self.current_plan.id if self.current_plan else None
+                        ),
+                        step_index=(
+                            self.current_plan.current_step_index
+                            if self.current_plan
+                            else 0
+                        ),
                     )
 
                 # Execute the action (actual execution happens in NaviBrain)
-                return {
-                    "success": True,
-                    "action": action,
-                    "retry_count": retry_count
-                }
+                return {"success": True, "action": action, "retry_count": retry_count}
 
             except Exception as e:
                 last_error = str(e)
@@ -4845,7 +5828,7 @@ class EndToEndOrchestrator:
                     error=last_error,
                     failed_action=action,
                     context=context,
-                    retry_count=retry_count
+                    retry_count=retry_count,
                 )
 
                 if not recovery["can_recover"]:
@@ -4854,14 +5837,18 @@ class EndToEndOrchestrator:
                 # Execute recovery actions
                 for recovery_action in recovery["recovery_plan"]:
                     if recovery_action.get("auto_execute"):
-                        logger.info(f"Auto-executing recovery: {recovery_action.get('command')}")
+                        logger.info(
+                            f"Auto-executing recovery: {recovery_action.get('command')}"
+                        )
                         # Recovery action execution would go here
 
         return {
             "success": False,
             "error": last_error,
             "retry_count": retry_count,
-            "diagnosis": SelfHealingEngine.diagnose(last_error, context) if last_error else None
+            "diagnosis": (
+                SelfHealingEngine.diagnose(last_error, context) if last_error else None
+            ),
         }
 
     def get_standards_context(self) -> str:
@@ -5549,7 +6536,7 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
         self,
         context: NaviContext,
         message: str,
-        project_info: Optional[ProjectInfo] = None
+        project_info: Optional[ProjectInfo] = None,
     ) -> str:
         """
         Get SaaS multi-tenant context for the current request.
@@ -5584,9 +6571,17 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                     framework = project_info.framework
                 if project_info.has_typescript:
                     language = "typescript"
-                elif any(d in str(project_info.dependencies) for d in ["react", "vue", "angular"]):
+                elif any(
+                    d in str(project_info.dependencies)
+                    for d in ["react", "vue", "angular"]
+                ):
                     language = "javascript"
-                elif project_info.project_type in ["python", "django", "flask", "fastapi"]:
+                elif project_info.project_type in [
+                    "python",
+                    "django",
+                    "flask",
+                    "fastapi",
+                ]:
                     language = "python"
 
             # 1. Get hierarchical organization/team/user context
@@ -5688,17 +6683,17 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                 "run it for me",
                 "run the project for me",
                 "run this project for me",
-                "run the project",   # Simple "run the project" request
-                "run project",       # Shortened version
+                "run the project",  # Simple "run the project" request
+                "run project",  # Shortened version
                 "run this project",  # This project variant
-                "start the project", # Start variant
-                "start project",     # Shortened start
-                "start the app",     # App variant
+                "start the project",  # Start variant
+                "start project",  # Shortened start
+                "start the app",  # App variant
                 "start the server",  # Server variant
-                "run the app",       # App variant
-                "run app",           # Shortened
-                "launch the project",# Launch variant
-                "launch project",    # Shortened launch
+                "run the app",  # App variant
+                "run app",  # Shortened
+                "launch the project",  # Launch variant
+                "launch project",  # Shortened launch
                 "can you run",
                 "please run",
                 "just run",
@@ -5752,15 +6747,20 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             port_context = None
             if dev_cmd:
                 # Try to extract port from dev command first
-                port_match = re.search(r'--port[=\s]+(\d+)|-p[=\s]+(\d+)|PORT=(\d+)', dev_cmd)
+                port_match = re.search(
+                    r"--port[=\s]+(\d+)|-p[=\s]+(\d+)|PORT=(\d+)", dev_cmd
+                )
                 if port_match:
-                    preferred_port = int(port_match.group(1) or port_match.group(2) or port_match.group(3))
+                    preferred_port = int(
+                        port_match.group(1)
+                        or port_match.group(2)
+                        or port_match.group(3)
+                    )
 
                 # Check port availability asynchronously
                 try:
                     port_context = await PortManager.get_port_context_for_llm(
-                        preferred_port=preferred_port,
-                        project_info=project_info
+                        preferred_port=preferred_port, project_info=project_info
                     )
                     thinking_steps.append(f"Checked port {preferred_port} availability")
                 except Exception as e:
@@ -5768,23 +6768,31 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
 
             # Build actions for the commands
             actions = []
-            actions.append({
-                "type": "runCommand",
-                "command": install_cmd,
-                "description": "Installing project dependencies",
-                "cwd": context.workspace_path,
-            })
+            actions.append(
+                {
+                    "type": "runCommand",
+                    "command": install_cmd,
+                    "description": "Installing project dependencies",
+                    "cwd": context.workspace_path,
+                }
+            )
 
             # Handle port conflict intelligently
             framework = project_info.framework or project_info.project_type
             if port_context and not port_context.get("is_available", True):
                 # Port is busy - inform user and offer options
                 process_info = port_context.get("process_info", {})
-                process_name = process_info.get("name", "another process") if process_info else "another process"
+                process_name = (
+                    process_info.get("name", "another process")
+                    if process_info
+                    else "another process"
+                )
                 process_cmd = process_info.get("command", "") if process_info else ""
                 alt_port = port_context.get("alternative_port", preferred_port + 1)
 
-                thinking_steps.append(f"Port {preferred_port} is in use by {process_name}")
+                thinking_steps.append(
+                    f"Port {preferred_port} is in use by {process_name}"
+                )
                 thinking_steps.append(f"Found alternative port: {alt_port}")
 
                 # Modify command to use alternative port
@@ -5793,22 +6801,34 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                 response_text = f"I'll run this **{framework}** project for you.\n\n"
                 response_text += f"⚠️ **Port {preferred_port} is currently in use** by `{process_name}`"
                 if process_cmd:
-                    response_text += f"\n   Command: `{process_cmd[:60]}...`" if len(process_cmd) > 60 else f"\n   Command: `{process_cmd}`"
-                response_text += f"\n\nI'll start the server on **port {alt_port}** instead. "
-                response_text += "The URL will be shown in the terminal when it's ready."
-                response_text += "\n\nReview the commands below and click **Allow** to proceed."
+                    response_text += (
+                        f"\n   Command: `{process_cmd[:60]}...`"
+                        if len(process_cmd) > 60
+                        else f"\n   Command: `{process_cmd}`"
+                    )
+                response_text += (
+                    f"\n\nI'll start the server on **port {alt_port}** instead. "
+                )
+                response_text += (
+                    "The URL will be shown in the terminal when it's ready."
+                )
+                response_text += (
+                    "\n\nReview the commands below and click **Allow** to proceed."
+                )
 
-                actions.append({
-                    "type": "runCommand",
-                    "command": modified_cmd,
-                    "description": f"Starting development server on port {alt_port}",
-                    "cwd": context.workspace_path,
-                    "meta": {
-                        "port": alt_port,
-                        "original_port": preferred_port,
-                        "port_conflict": True
+                actions.append(
+                    {
+                        "type": "runCommand",
+                        "command": modified_cmd,
+                        "description": f"Starting development server on port {alt_port}",
+                        "cwd": context.workspace_path,
+                        "meta": {
+                            "port": alt_port,
+                            "original_port": preferred_port,
+                            "port_conflict": True,
+                        },
                     }
-                })
+                )
 
                 # Also offer to kill the process as an alternative
                 if process_info and process_info.get("pid"):
@@ -5822,24 +6842,28 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                         next_steps=[
                             f"Stop the process on port {preferred_port} and use that port instead",
                             "Continue with the alternative port",
-                            "Check what's running on other ports"
+                            "Check what's running on other ports",
                         ],
-                        port_context=port_context
+                        port_context=port_context,
                     )
             else:
                 # Port is available - proceed normally
                 if dev_cmd:
-                    actions.append({
-                        "type": "runCommand",
-                        "command": dev_cmd,
-                        "description": "Starting development server",
-                        "cwd": context.workspace_path,
-                    })
+                    actions.append(
+                        {
+                            "type": "runCommand",
+                            "command": dev_cmd,
+                            "description": "Starting development server",
+                            "cwd": context.workspace_path,
+                        }
+                    )
 
             # Generate a natural, action-oriented response
             response_text = f"I'll run this **{framework}** project for you."
             response_text += " The URL will be shown in the terminal when it's ready."
-            response_text += "\n\nReview the commands below and click **Allow** to proceed."
+            response_text += (
+                "\n\nReview the commands below and click **Allow** to proceed."
+            )
 
             return NaviResponse(
                 message=response_text,
@@ -5848,7 +6872,7 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                 files_read=project_info.files_read,
                 project_type=project_info.project_type,
                 framework=project_info.framework,
-                port_context=port_context
+                port_context=port_context,
             )
 
         # For INFORMATION requests (how to run), generate smart explanation
@@ -5868,7 +6892,11 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                 project_type=project_info.project_type,
                 framework=project_info.framework,
                 # Suggest next steps instead of asking again
-                next_steps=["Run the project for me", "Show me the main components", "Check for any issues"],
+                next_steps=[
+                    "Run the project for me",
+                    "Show me the main components",
+                    "Check for any issues",
+                ],
             )
 
         # STEP 3: Enrich context with domain-specific knowledge
@@ -5879,7 +6907,9 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                 message, project_info, context.workspace_path
             )
             if enriched_context.get("detected_domains"):
-                thinking_steps.append(f"Detected domains: {', '.join(enriched_context['detected_domains'])}")
+                thinking_steps.append(
+                    f"Detected domains: {', '.join(enriched_context['detected_domains'])}"
+                )
         except Exception as e:
             logger.warning(f"Context enrichment failed (non-fatal): {e}")
 
@@ -5899,7 +6929,9 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
 
         # STEP 5: Call LLM with informed context
         try:
-            llm_result = await self._call_llm(prompt, context.recent_conversation, context)
+            llm_result = await self._call_llm(
+                prompt, context.recent_conversation, context
+            )
 
             # Handle tuple return (response_text, usage_info)
             if isinstance(llm_result, tuple):
@@ -5955,7 +6987,9 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                         workspace_path=context.workspace_path,
                         current_file=context.current_file,
                     )
-                    logger.info(f"[NAVI] Stored interaction for user {user_id_int} in conversation {context.conversation_id}")
+                    logger.info(
+                        f"[NAVI] Stored interaction for user {user_id_int} in conversation {context.conversation_id}"
+                    )
             except Exception as store_error:
                 logger.warning(f"[NAVI] Failed to store interaction: {store_error}")
 
@@ -5965,7 +6999,9 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             logger.error(f"NAVI processing error: {e}", exc_info=True)
             # Graceful fallback - never crash, use dynamic error messages
             return NaviResponse(
-                message=DynamicMessages.error_message(e, context="processing your request"),
+                message=DynamicMessages.error_message(
+                    e, context="processing your request"
+                ),
                 needs_user_input=True,
                 user_input_prompt="Would you like to try a different approach?",
                 thinking_steps=thinking_steps,
@@ -6263,18 +7299,24 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
         context_parts = []
 
         # SAAS MULTI-TENANT CONTEXT (organization, team, user, RAG, learning)
-        saas_context = enriched_context.get("saas_context", "") if enriched_context else ""
+        saas_context = (
+            enriched_context.get("saas_context", "") if enriched_context else ""
+        )
         if saas_context:
             context_parts.append(saas_context)
             context_parts.append("")
 
         # MEMORY CONTEXT (user preferences, past conversations, code patterns)
-        memory_context = context.memory_context if hasattr(context, 'memory_context') else {}
+        memory_context = (
+            context.memory_context if hasattr(context, "memory_context") else {}
+        )
         if memory_context:
             memory = _get_memory_integration()
             if memory:
                 try:
-                    memory_str = memory.format_context_for_prompt(memory_context, max_tokens=1500)
+                    memory_str = memory.format_context_for_prompt(
+                        memory_context, max_tokens=1500
+                    )
                     if memory_str.strip():
                         context_parts.append("=== MEMORY CONTEXT ===")
                         context_parts.append(memory_str)
@@ -6286,7 +7328,9 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
         if context.user_id:
             try:
                 from backend.database.session import get_db
-                from backend.services.connector_base import build_connector_context_for_navi
+                from backend.services.connector_base import (
+                    build_connector_context_for_navi,
+                )
 
                 db = next(get_db())
                 connector_ctx = build_connector_context_for_navi(
@@ -6317,20 +7361,30 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             if port_ctx:
                 context_parts.append("=== PORT STATUS ===")
                 if port_ctx.get("is_available"):
-                    context_parts.append(f"Port {port_ctx.get('preferred_port', 3000)} is available.")
+                    context_parts.append(
+                        f"Port {port_ctx.get('preferred_port', 3000)} is available."
+                    )
                 else:
                     proc = port_ctx.get("process_info", {})
-                    context_parts.append(f"Port {port_ctx.get('preferred_port', 3000)} is IN USE by: {proc.get('name', 'unknown')}")
+                    context_parts.append(
+                        f"Port {port_ctx.get('preferred_port', 3000)} is IN USE by: {proc.get('name', 'unknown')}"
+                    )
                     if port_ctx.get("alternative_port"):
-                        context_parts.append(f"Alternative available: port {port_ctx.get('alternative_port')}")
+                        context_parts.append(
+                            f"Alternative available: port {port_ctx.get('alternative_port')}"
+                        )
                 context_parts.append("")
 
             # Runtime environment
             runtime = enriched_context.get("runtime", {})
             if runtime.get("tools_available"):
-                available_tools = [t for t, v in runtime["tools_available"].items() if v]
+                available_tools = [
+                    t for t, v in runtime["tools_available"].items() if v
+                ]
                 if available_tools:
-                    context_parts.append(f"AVAILABLE TOOLS: {', '.join(available_tools)}")
+                    context_parts.append(
+                        f"AVAILABLE TOOLS: {', '.join(available_tools)}"
+                    )
 
             # Missing tools detection
             missing_tools = enriched_context.get("missing_tools", [])
@@ -6338,7 +7392,9 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                 context_parts.append("\n=== MISSING TOOLS DETECTED ===")
                 context_parts.append(f"Missing: {', '.join(missing_tools)}")
                 context_parts.append("You can offer to install these for the user.")
-                context_parts.append("Use 'installTool' action type with the appropriate command.")
+                context_parts.append(
+                    "Use 'installTool' action type with the appropriate command."
+                )
                 context_parts.append("")
 
             # Web search results (if search was performed)
@@ -6360,7 +7416,9 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
             if isinstance(standards_ctx, str) and standards_ctx:
                 context_parts.append("=== CODE STYLE REQUIREMENTS ===")
                 context_parts.append(standards_ctx)
-                context_parts.append("When generating code, FOLLOW these conventions exactly.")
+                context_parts.append(
+                    "When generating code, FOLLOW these conventions exactly."
+                )
                 context_parts.append("")
 
         # TASK PLAN (if executing a complex multi-step task)
@@ -6420,19 +7478,31 @@ NEVER hardcode port numbers in your responses. Use the PORT_CONTEXT information.
                         else:
                             file_path = Path(context.workspace_path) / error_file
 
-                        logger.info(f"[NaviBrain] Trying to read file: {file_path}, exists: {file_path.exists()}")
+                        logger.info(
+                            f"[NaviBrain] Trying to read file: {file_path}, exists: {file_path.exists()}"
+                        )
 
                         if file_path.exists() and file_path.is_file():
-                            content = file_path.read_text(encoding="utf-8", errors="ignore")
+                            content = file_path.read_text(
+                                encoding="utf-8", errors="ignore"
+                            )
                             # Truncate if too long
                             if len(content) > 3000:
                                 content = content[:3000] + "\n... (truncated)"
-                            context_parts.append(f"\nFILE WITH ERROR ({error_file}):\n```\n{content}\n```")
-                            logger.info(f"[NaviBrain] Successfully read error file content ({len(content)} chars)")
+                            context_parts.append(
+                                f"\nFILE WITH ERROR ({error_file}):\n```\n{content}\n```"
+                            )
+                            logger.info(
+                                f"[NaviBrain] Successfully read error file content ({len(content)} chars)"
+                            )
                         else:
-                            logger.warning(f"[NaviBrain] Error file not found: {file_path}")
+                            logger.warning(
+                                f"[NaviBrain] Error file not found: {file_path}"
+                            )
                     except Exception as e:
-                        logger.error(f"[NaviBrain] Could not read error file {error_file}: {e}")
+                        logger.error(
+                            f"[NaviBrain] Could not read error file {error_file}: {e}"
+                        )
 
         # Open files
         if context.open_files:
@@ -6590,19 +7660,37 @@ If your response is just text explanation, IT IS WRONG."""
 
         # FOLLOW-UP DETECTION: Check if this is a short confirmation
         is_followup = message_lower.strip() in (
-            "yes", "yes please", "sure", "go ahead", "okay", "ok",
-            "do it", "proceed", "continue", "please", "yeah", "yep",
-            "sounds good", "that works", "perfect", "great"
-        ) or (len(message.strip()) < 20 and any(
-            word in message_lower for word in ["yes", "sure", "okay", "ok", "please", "proceed"]
-        ))
+            "yes",
+            "yes please",
+            "sure",
+            "go ahead",
+            "okay",
+            "ok",
+            "do it",
+            "proceed",
+            "continue",
+            "please",
+            "yeah",
+            "yep",
+            "sounds good",
+            "that works",
+            "perfect",
+            "great",
+        ) or (
+            len(message.strip()) < 20
+            and any(
+                word in message_lower
+                for word in ["yes", "sure", "okay", "ok", "please", "proceed"]
+            )
+        )
 
         # Include recent conversation summary for follow-ups
         conversation_context = ""
         if is_followup and context.recent_conversation:
             # Get the last assistant message to understand what they're confirming
             last_assistant_msgs = [
-                msg for msg in context.recent_conversation
+                msg
+                for msg in context.recent_conversation
                 if msg.get("role") == "assistant"
             ]
             if last_assistant_msgs:
@@ -6650,40 +7738,71 @@ Respond with JSON only."""
         for attempt in range(max_retries):
             try:
                 if self.provider == "anthropic":
-                    return await self._call_anthropic(prompt, conversation_history, context)
+                    return await self._call_anthropic(
+                        prompt, conversation_history, context
+                    )
                 elif (
                     self.provider == "openai"
                     or self.provider == "groq"
                     or self.provider == "openrouter"
                 ):
-                    result = await self._call_openai_compatible(prompt, conversation_history, context)
+                    result = await self._call_openai_compatible(
+                        prompt, conversation_history, context
+                    )
                     # Wrap in tuple for consistency (OpenAI doesn't return usage yet)
                     if isinstance(result, tuple):
                         return result
-                    return result, {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+                    return result, {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                    }
                 elif self.provider == "ollama":
-                    result = await self._call_ollama(prompt, conversation_history, context)
+                    result = await self._call_ollama(
+                        prompt, conversation_history, context
+                    )
                     if isinstance(result, tuple):
                         return result
-                    return result, {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+                    return result, {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                    }
                 else:
-                    result = await self._call_openai_compatible(prompt, conversation_history, context)
+                    result = await self._call_openai_compatible(
+                        prompt, conversation_history, context
+                    )
                     if isinstance(result, tuple):
                         return result
-                    return result, {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+                    return result, {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                    }
 
             except Exception as e:
                 error_str = str(e).lower()
 
                 # Check if this is a retryable error
-                is_retryable = any(x in error_str for x in [
-                    "overloaded", "529", "503", "rate", "429",
-                    "timeout", "connection", "temporarily"
-                ])
+                is_retryable = any(
+                    x in error_str
+                    for x in [
+                        "overloaded",
+                        "529",
+                        "503",
+                        "rate",
+                        "429",
+                        "timeout",
+                        "connection",
+                        "temporarily",
+                    ]
+                )
 
                 if is_retryable and attempt < max_retries - 1:
-                    delay = base_delay * (2 ** attempt)  # Exponential backoff
-                    logger.warning(f"LLM call failed (attempt {attempt + 1}/{max_retries}), retrying in {delay}s: {e}")
+                    delay = base_delay * (2**attempt)  # Exponential backoff
+                    logger.warning(
+                        f"LLM call failed (attempt {attempt + 1}/{max_retries}), retrying in {delay}s: {e}"
+                    )
                     await asyncio.sleep(delay)
                     continue
 
@@ -6703,6 +7822,7 @@ Respond with JSON only."""
         Returns: (response_text, usage_info) tuple for token tracking.
         """
         import time
+
         start_time = time.time()
         session = await self._get_session()
 
@@ -6716,10 +7836,7 @@ Respond with JSON only."""
                     # Map 'assistant' to 'assistant', 'user' to 'user'
                     if role not in ("user", "assistant"):
                         role = "user"  # Default unknown roles to user
-                    messages.append({
-                        "role": role,
-                        "content": msg.get("content", "")
-                    })
+                    messages.append({"role": role, "content": msg.get("content", "")})
                 elif hasattr(msg, "__dict__"):
                     # Convert object to dict - check both role and type attributes
                     role = getattr(msg, "role", None) or getattr(msg, "type", "user")
@@ -6737,7 +7854,11 @@ Respond with JSON only."""
         messages.append({"role": "user", "content": prompt})
 
         # Use personalized system prompt based on user context
-        system_prompt = self._get_personalized_system_prompt(context) if context else self.SYSTEM_PROMPT
+        system_prompt = (
+            self._get_personalized_system_prompt(context)
+            if context
+            else self.SYSTEM_PROMPT
+        )
 
         model = self._normalize_model(self.model)
         payload = {
@@ -6783,6 +7904,7 @@ Respond with JSON only."""
                 # Track token usage
                 try:
                     from backend.services.token_tracking import track_usage
+
                     track_usage(
                         model=model,
                         provider="anthropic",
@@ -6812,7 +7934,8 @@ Respond with JSON only."""
                 return response_text, {
                     "input_tokens": usage_info.get("input_tokens", 0),
                     "output_tokens": usage_info.get("output_tokens", 0),
-                    "total_tokens": usage_info.get("input_tokens", 0) + usage_info.get("output_tokens", 0),
+                    "total_tokens": usage_info.get("input_tokens", 0)
+                    + usage_info.get("output_tokens", 0),
                     "latency_ms": latency_ms,
                     "model": model,
                     "provider": "anthropic",
@@ -6830,7 +7953,11 @@ Respond with JSON only."""
         session = await self._get_session()
 
         # Use personalized system prompt based on user context
-        system_prompt = self._get_personalized_system_prompt(context) if context else self.SYSTEM_PROMPT
+        system_prompt = (
+            self._get_personalized_system_prompt(context)
+            if context
+            else self.SYSTEM_PROMPT
+        )
         messages = [{"role": "system", "content": system_prompt}]
         if history:
             # Convert history to dicts if needed (handle ChatMessage objects)
@@ -6841,10 +7968,7 @@ Respond with JSON only."""
                     # Map to valid OpenAI roles
                     if role not in ("user", "assistant", "system"):
                         role = "user"  # Default unknown roles to user
-                    messages.append({
-                        "role": role,
-                        "content": msg.get("content", "")
-                    })
+                    messages.append({"role": role, "content": msg.get("content", "")})
                 elif hasattr(msg, "__dict__"):
                     # Convert object to dict - check both role and type attributes
                     role = getattr(msg, "role", None) or getattr(msg, "type", "user")
@@ -6928,7 +8052,11 @@ Respond with JSON only."""
         session = await self._get_session()
 
         # Use personalized system prompt based on user context
-        system_prompt = self._get_personalized_system_prompt(context) if context else self.SYSTEM_PROMPT
+        system_prompt = (
+            self._get_personalized_system_prompt(context)
+            if context
+            else self.SYSTEM_PROMPT
+        )
         messages = [{"role": "system", "content": system_prompt}]
         if history:
             # Safely extend history - validate it's a list
@@ -6978,10 +8106,14 @@ Respond with JSON only."""
         - {"complete": "full response"} - When complete
         """
         if self.provider == "anthropic":
-            async for chunk in self._call_anthropic_streaming(prompt, conversation_history):
+            async for chunk in self._call_anthropic_streaming(
+                prompt, conversation_history
+            ):
                 yield chunk
         elif self.provider in ("openai", "groq", "openrouter"):
-            async for chunk in self._call_openai_streaming(prompt, conversation_history):
+            async for chunk in self._call_openai_streaming(
+                prompt, conversation_history
+            ):
                 yield chunk
         else:
             # Fallback to non-streaming
@@ -7006,7 +8138,9 @@ Respond with JSON only."""
                     role = getattr(msg, "role", None) or getattr(msg, "type", "user")
                     if role not in ("user", "assistant"):
                         role = "user"
-                    messages.append({"role": role, "content": getattr(msg, "content", str(msg))})
+                    messages.append(
+                        {"role": role, "content": getattr(msg, "content", str(msg))}
+                    )
                 else:
                     messages.append({"role": "user", "content": str(msg)})
         messages.append({"role": "user", "content": prompt})
@@ -7109,7 +8243,9 @@ Respond with JSON only."""
                     role = getattr(msg, "role", None) or getattr(msg, "type", "user")
                     if role not in ("user", "assistant", "system"):
                         role = "user"
-                    messages.append({"role": role, "content": getattr(msg, "content", str(msg))})
+                    messages.append(
+                        {"role": role, "content": getattr(msg, "content", str(msg))}
+                    )
                 else:
                     messages.append({"role": "user", "content": str(msg)})
         messages.append({"role": "user", "content": prompt})
@@ -7184,7 +8320,9 @@ Respond with JSON only."""
 
     def _parse_response(self, llm_response: str) -> NaviResponse:
         """Parse LLM response into NaviResponse"""
-        logger.info(f"[NaviBrain] Raw LLM response (first 1000 chars): {llm_response[:1000]}")
+        logger.info(
+            f"[NaviBrain] Raw LLM response (first 1000 chars): {llm_response[:1000]}"
+        )
         try:
             # Clean up response - extract JSON
             content = llm_response.strip()
@@ -7207,12 +8345,14 @@ Respond with JSON only."""
                 start = content.find("{")
                 end = content.rfind("}")
                 if start != -1 and end != -1 and end > start:
-                    data = try_parse_json(content[start:end + 1])
+                    data = try_parse_json(content[start : end + 1])
 
             if data is None:
                 # As a last resort, extract message field from JSON-like text
                 # Use a more robust pattern that handles multi-line and escaped content
-                match = re.search(r'"message"\s*:\s*"((?:[^"\\]|\\.)*)"', content, re.DOTALL)
+                match = re.search(
+                    r'"message"\s*:\s*"((?:[^"\\]|\\.)*)"', content, re.DOTALL
+                )
                 if match:
                     message = match.group(1).encode("utf-8").decode("unicode_escape")
                     return NaviResponse(message=message, needs_user_input=False)
@@ -7232,58 +8372,72 @@ Respond with JSON only."""
                 # Build actions from files_to_create, files_to_modify, commands_to_run
                 # Try to create contextual descriptions based on file paths and commands
                 for path, content in files_to_create.items():
-                    filename = path.split('/')[-1]
+                    filename = path.split("/")[-1]
                     # Infer context from filename
-                    if 'component' in path.lower() or filename.endswith('.tsx') or filename.endswith('.jsx'):
+                    if (
+                        "component" in path.lower()
+                        or filename.endswith(".tsx")
+                        or filename.endswith(".jsx")
+                    ):
                         desc = f"Creating {filename} component"
-                    elif 'hook' in path.lower() or filename.startswith('use'):
+                    elif "hook" in path.lower() or filename.startswith("use"):
                         desc = f"Creating {filename} hook"
-                    elif 'context' in path.lower():
+                    elif "context" in path.lower():
                         desc = f"Setting up {filename} context provider"
-                    elif 'service' in path.lower() or 'api' in path.lower():
+                    elif "service" in path.lower() or "api" in path.lower():
                         desc = f"Creating {filename} for API integration"
-                    elif 'test' in path.lower() or filename.endswith('.test.ts') or filename.endswith('.spec.ts'):
+                    elif (
+                        "test" in path.lower()
+                        or filename.endswith(".test.ts")
+                        or filename.endswith(".spec.ts")
+                    ):
                         desc = f"Adding tests in {filename}"
-                    elif filename.endswith('.css') or filename.endswith('.scss'):
+                    elif filename.endswith(".css") or filename.endswith(".scss"):
                         desc = f"Adding styles in {filename}"
                     else:
                         desc = f"Creating {filename}"
-                    actions.append({
-                        "type": "createFile",
-                        "filePath": path,
-                        "content": content,
-                        "description": desc
-                    })
+                    actions.append(
+                        {
+                            "type": "createFile",
+                            "filePath": path,
+                            "content": content,
+                            "description": desc,
+                        }
+                    )
                 for path, content in files_to_modify.items():
-                    filename = path.split('/')[-1]
-                    actions.append({
-                        "type": "editFile",
-                        "filePath": path,
-                        "content": content,
-                        "description": f"Updating {filename}"
-                    })
+                    filename = path.split("/")[-1]
+                    actions.append(
+                        {
+                            "type": "editFile",
+                            "filePath": path,
+                            "content": content,
+                            "description": f"Updating {filename}",
+                        }
+                    )
                 for cmd in commands_to_run:
                     # Infer context from command
-                    if 'install' in cmd.lower():
-                        pkg = cmd.split()[-1] if len(cmd.split()) > 2 else 'dependencies'
+                    if "install" in cmd.lower():
+                        pkg = (
+                            cmd.split()[-1] if len(cmd.split()) > 2 else "dependencies"
+                        )
                         desc = f"Installing {pkg}"
-                    elif 'test' in cmd.lower():
+                    elif "test" in cmd.lower():
                         desc = "Running tests"
-                    elif 'build' in cmd.lower():
+                    elif "build" in cmd.lower():
                         desc = "Building the project"
-                    elif 'lint' in cmd.lower():
+                    elif "lint" in cmd.lower():
                         desc = "Checking code quality"
-                    elif 'dev' in cmd.lower() or 'start' in cmd.lower():
+                    elif "dev" in cmd.lower() or "start" in cmd.lower():
                         desc = "Starting development server"
                     else:
                         desc = f"Running: {cmd[:50]}{'...' if len(cmd) > 50 else ''}"
-                    actions.append({
-                        "type": "runCommand",
-                        "command": cmd,
-                        "description": desc
-                    })
+                    actions.append(
+                        {"type": "runCommand", "command": cmd, "description": desc}
+                    )
 
-            logger.info(f"[NaviBrain] Parsed response - files_to_modify: {list(files_to_modify.keys())}, files_to_create: {list(files_to_create.keys())}, vscode_commands: {len(vscode_commands)}, commands_to_run: {commands_to_run}, actions: {len(actions)}")
+            logger.info(
+                f"[NaviBrain] Parsed response - files_to_modify: {list(files_to_modify.keys())}, files_to_create: {list(files_to_create.keys())}, vscode_commands: {len(vscode_commands)}, commands_to_run: {commands_to_run}, actions: {len(actions)}"
+            )
 
             return NaviResponse(
                 message=data.get("message", "Done!"),
@@ -7302,13 +8456,19 @@ Respond with JSON only."""
             raw = llm_response.strip()
             if raw.startswith("{") and '"message"' in raw:
                 # Try regex extraction as final fallback
-                match = re.search(r'"message"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
+                match = re.search(
+                    r'"message"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL
+                )
                 if match:
                     message = match.group(1).encode("utf-8").decode("unicode_escape")
                     return NaviResponse(message=message, needs_user_input=False)
             # Return plain text (first 2000 chars)
             return NaviResponse(
-                message=raw[:2000] if not raw.startswith("{") else "I processed your request but couldn't parse the response. Please try again.",
+                message=(
+                    raw[:2000]
+                    if not raw.startswith("{")
+                    else "I processed your request but couldn't parse the response. Please try again."
+                ),
                 needs_user_input=False,
             )
 
@@ -7548,19 +8708,23 @@ class NaviEngine:
         # Build file edit actions for VS Code to apply
         file_edits = []
         for file_path, content in response.files_to_modify.items():
-            file_edits.append({
-                "type": "editFile",
-                "filePath": file_path,
-                "content": content,
-                "operation": "modify",
-            })
+            file_edits.append(
+                {
+                    "type": "editFile",
+                    "filePath": file_path,
+                    "content": content,
+                    "operation": "modify",
+                }
+            )
         for file_path, content in response.files_to_create.items():
-            file_edits.append({
-                "type": "editFile",
-                "filePath": file_path,
-                "content": content,
-                "operation": "create",
-            })
+            file_edits.append(
+                {
+                    "type": "editFile",
+                    "filePath": file_path,
+                    "content": content,
+                    "operation": "create",
+                }
+            )
 
         # Return combined result with file edits for VS Code
         return {
@@ -7802,7 +8966,7 @@ async def process_navi_request_streaming(
                     "kind": "intent",
                     "label": "Understanding request",
                     "detail": "Classifying intent...",
-                    "status": "running"
+                    "status": "running",
                 }
             }
 
@@ -7811,16 +8975,26 @@ async def process_navi_request_streaming(
                 message,
                 metadata={
                     "files": [current_file] if current_file else [],
-                    "language": _detect_language(current_file) if current_file else None,
-                }
+                    "language": (
+                        _detect_language(current_file) if current_file else None
+                    ),
+                },
             )
 
             # Emit intent detection result
             confidence_pct = int(detected_intent.confidence * 100)
             yield {
                 "intent": {
-                    "family": detected_intent.family.value if hasattr(detected_intent.family, 'value') else str(detected_intent.family),
-                    "kind": detected_intent.kind.value if hasattr(detected_intent.kind, 'value') else str(detected_intent.kind),
+                    "family": (
+                        detected_intent.family.value
+                        if hasattr(detected_intent.family, "value")
+                        else str(detected_intent.family)
+                    ),
+                    "kind": (
+                        detected_intent.kind.value
+                        if hasattr(detected_intent.kind, "value")
+                        else str(detected_intent.kind)
+                    ),
                     "confidence": detected_intent.confidence,
                 }
             }
@@ -7830,16 +9004,21 @@ async def process_navi_request_streaming(
                     "kind": "intent",
                     "label": "Understanding request",
                     "detail": f"Detected: {detected_intent.kind.value if hasattr(detected_intent.kind, 'value') else detected_intent.kind} ({confidence_pct}%)",
-                    "status": "done"
+                    "status": "done",
                 }
             }
 
             # Emit narrative about what we understand
             from backend.services.narrative_generator import NarrativeGenerator
+
             intent_narrative = NarrativeGenerator.for_intent(
-                detected_intent.kind.value if hasattr(detected_intent.kind, 'value') else str(detected_intent.kind),
+                (
+                    detected_intent.kind.value
+                    if hasattr(detected_intent.kind, "value")
+                    else str(detected_intent.kind)
+                ),
                 detected_intent.confidence,
-                message
+                message,
             )
             yield {"narrative": intent_narrative}
 
@@ -7854,7 +9033,7 @@ async def process_navi_request_streaming(
                 "kind": "detection",
                 "label": "Detected",
                 "detail": engine.project_type,
-                "status": "done"
+                "status": "done",
             }
         }
 
@@ -7864,7 +9043,7 @@ async def process_navi_request_streaming(
                 "kind": "context",
                 "label": "Building context",
                 "detail": "Gathering workspace information",
-                "status": "running"
+                "status": "running",
             }
         }
 
@@ -7887,13 +9066,17 @@ async def process_navi_request_streaming(
                 "kind": "context",
                 "label": "Building context",
                 "detail": "Complete",
-                "status": "done"
+                "status": "done",
             }
         }
 
         # STEP 3: Try to use persisted RAG index for faster context if available
         try:
-            from backend.services.workspace_rag import load_workspace_index, get_context_for_task
+            from backend.services.workspace_rag import (
+                load_workspace_index,
+                get_context_for_task,
+            )
+
             persisted_index = await load_workspace_index(workspace_path)
             if persisted_index and persisted_index.total_chunks > 0:
                 await get_context_for_task(workspace_path, message)
@@ -7902,7 +9085,7 @@ async def process_navi_request_streaming(
                         "kind": "rag",
                         "label": "Searching code index",
                         "detail": f"{persisted_index.total_chunks} symbols indexed",
-                        "status": "done"
+                        "status": "done",
                     }
                 }
         except Exception as e:
@@ -7949,17 +9132,17 @@ async def process_navi_request_streaming(
                 "run it for me",
                 "run the project for me",
                 "run this project for me",
-                "run the project",   # Simple "run the project" request
-                "run project",       # Shortened version
+                "run the project",  # Simple "run the project" request
+                "run project",  # Shortened version
                 "run this project",  # This project variant
-                "start the project", # Start variant
-                "start project",     # Shortened start
-                "start the app",     # App variant
+                "start the project",  # Start variant
+                "start project",  # Shortened start
+                "start the app",  # App variant
                 "start the server",  # Server variant
-                "run the app",       # App variant
-                "run app",           # Shortened
-                "launch the project",# Launch variant
-                "launch project",    # Shortened launch
+                "run the app",  # App variant
+                "run app",  # Shortened
+                "launch the project",  # Launch variant
+                "launch project",  # Shortened launch
                 "can you run",
                 "please run",
                 "just run",
@@ -7991,7 +9174,7 @@ async def process_navi_request_streaming(
                     "kind": "response",
                     "label": "Preparing actions",
                     "detail": "Setting up commands to run",
-                    "status": "running"
+                    "status": "running",
                 }
             }
 
@@ -8002,37 +9185,46 @@ async def process_navi_request_streaming(
             # Build actions for immediate execution with dependency tracking
             actions = []
             if install_cmd:
-                actions.append({
-                    "type": "runCommand",
-                    "command": install_cmd,
-                    "title": "Install dependencies",
-                    "description": f"Run {install_cmd} to install project dependencies",
-                    "cwd": workspace_path,
-                    "requiresPreviousSuccess": False,  # First command, no dependency
-                })
+                actions.append(
+                    {
+                        "type": "runCommand",
+                        "command": install_cmd,
+                        "title": "Install dependencies",
+                        "description": f"Run {install_cmd} to install project dependencies",
+                        "cwd": workspace_path,
+                        "requiresPreviousSuccess": False,  # First command, no dependency
+                    }
+                )
             if dev_cmd:
-                actions.append({
-                    "type": "runCommand",
-                    "command": dev_cmd,
-                    "title": "Start development server",
-                    "description": f"Run {dev_cmd} to start the dev server" + (f" at {dev_url}" if dev_url else ""),
-                    "cwd": workspace_path,
-                    "requiresPreviousSuccess": bool(install_cmd),  # Only run if install succeeds
-                })
+                actions.append(
+                    {
+                        "type": "runCommand",
+                        "command": dev_cmd,
+                        "title": "Start development server",
+                        "description": f"Run {dev_cmd} to start the dev server"
+                        + (f" at {dev_url}" if dev_url else ""),
+                        "cwd": workspace_path,
+                        "requiresPreviousSuccess": bool(
+                            install_cmd
+                        ),  # Only run if install succeeds
+                    }
+                )
 
             # Generate a natural, action-oriented response
             framework = project_info.framework or project_info.project_type
             response_text = f"I'll run this **{framework}** project for you."
             if dev_url:
                 response_text += f" Once it's started, you can access it at {dev_url}."
-            response_text += "\n\nReview the commands below and click **Allow** to proceed."
+            response_text += (
+                "\n\nReview the commands below and click **Allow** to proceed."
+            )
 
             yield {
                 "activity": {
                     "kind": "response",
                     "label": "Preparing actions",
                     "detail": "Complete",
-                    "status": "done"
+                    "status": "done",
                 }
             }
 
@@ -8047,7 +9239,10 @@ async def process_navi_request_streaming(
                 "needs_user_input": False,
                 "user_input_prompt": None,
                 "warnings": [],
-                "thinking_steps": ["Detected run action request", "Prepared executable actions"],
+                "thinking_steps": [
+                    "Detected run action request",
+                    "Prepared executable actions",
+                ],
                 "files_read": project_info.files_read,
                 "project_type": project_info.project_type,
                 "framework": project_info.framework,
@@ -8064,7 +9259,7 @@ async def process_navi_request_streaming(
                     "kind": "response",
                     "label": "Generating response",
                     "detail": "Using project knowledge",
-                    "status": "running"
+                    "status": "running",
                 }
             }
 
@@ -8075,7 +9270,7 @@ async def process_navi_request_streaming(
                     "kind": "response",
                     "label": "Generating response",
                     "detail": "Complete",
-                    "status": "done"
+                    "status": "done",
                 }
             }
 
@@ -8102,7 +9297,10 @@ async def process_navi_request_streaming(
                 "needs_user_input": False,
                 "user_input_prompt": None,
                 "warnings": [],
-                "thinking_steps": ["Detected run question", "Generated project-specific instructions"],
+                "thinking_steps": [
+                    "Detected run question",
+                    "Generated project-specific instructions",
+                ],
                 "files_read": project_info.files_read,
                 "project_type": project_info.project_type,
                 "framework": project_info.framework,
@@ -8118,7 +9316,7 @@ async def process_navi_request_streaming(
                 "kind": "prompt",
                 "label": "Building prompt",
                 "detail": "Preparing context for LLM",
-                "status": "running"
+                "status": "running",
             }
         }
 
@@ -8129,7 +9327,7 @@ async def process_navi_request_streaming(
                 "kind": "prompt",
                 "label": "Building prompt",
                 "detail": "Complete",
-                "status": "done"
+                "status": "done",
             }
         }
 
@@ -8162,7 +9360,7 @@ async def process_navi_request_streaming(
                 "kind": "llm_call",
                 "label": f"Calling {provider_display}",
                 "detail": model_display,
-                "status": "running"
+                "status": "running",
             }
         }
 
@@ -8171,7 +9369,9 @@ async def process_navi_request_streaming(
             llm_response = ""
             thinking_shown = False
 
-            async for chunk in engine.brain._call_llm_streaming(prompt, context.recent_conversation):
+            async for chunk in engine.brain._call_llm_streaming(
+                prompt, context.recent_conversation
+            ):
                 if "thinking" in chunk:
                     # Stream thinking text to frontend
                     thinking_text = chunk["thinking"]
@@ -8183,7 +9383,7 @@ async def process_navi_request_streaming(
                                 "kind": "thinking",
                                 "label": "Thinking",
                                 "detail": "",
-                                "status": "running"
+                                "status": "running",
                             }
                         }
                         thinking_shown = True
@@ -8201,7 +9401,7 @@ async def process_navi_request_streaming(
                         "kind": "thinking",
                         "label": "Thinking",
                         "detail": "Complete",
-                        "status": "done"
+                        "status": "done",
                     }
                 }
 
@@ -8210,7 +9410,7 @@ async def process_navi_request_streaming(
                     "kind": "llm_call",
                     "label": f"Calling {provider_display}",
                     "detail": "Response received",
-                    "status": "done"
+                    "status": "done",
                 }
             }
 
@@ -8220,7 +9420,7 @@ async def process_navi_request_streaming(
                     "kind": "parsing",
                     "label": "Processing response",
                     "detail": "Parsing JSON structure...",
-                    "status": "running"
+                    "status": "running",
                 }
             }
 
@@ -8231,7 +9431,7 @@ async def process_navi_request_streaming(
                     "kind": "parsing",
                     "label": "Processing response",
                     "detail": "Complete",
-                    "status": "done"
+                    "status": "done",
                 }
             }
 
@@ -8241,7 +9441,7 @@ async def process_navi_request_streaming(
                     "kind": "validation",
                     "label": "Safety check",
                     "detail": "Validating actions...",
-                    "status": "running"
+                    "status": "running",
                 }
             }
 
@@ -8255,7 +9455,7 @@ async def process_navi_request_streaming(
                         "kind": "validation",
                         "label": "Safety check",
                         "detail": f"{len(warnings)} issue(s) require review",
-                        "status": "done"
+                        "status": "done",
                     }
                 }
 
@@ -8275,7 +9475,10 @@ async def process_navi_request_streaming(
                     "files_read": project_info.files_read,
                     "project_type": project_info.project_type,
                     "framework": project_info.framework,
-                    "next_steps": ["Suggest a safer alternative", "Explain why this was flagged"],
+                    "next_steps": [
+                        "Suggest a safer alternative",
+                        "Explain why this was flagged",
+                    ],
                 }
                 yield {"result": result}
                 return
@@ -8285,7 +9488,7 @@ async def process_navi_request_streaming(
                     "kind": "validation",
                     "label": "Safety check",
                     "detail": "Passed",
-                    "status": "done"
+                    "status": "done",
                 }
             }
 
@@ -8301,15 +9504,25 @@ async def process_navi_request_streaming(
 
             # Validate generated code before presenting to user
             try:
-                from backend.services.code_validator import validate_navi_output, format_validation_summary
+                from backend.services.code_validator import (
+                    validate_navi_output,
+                    format_validation_summary,
+                )
+
                 all_files = {**response.files_to_create, **response.files_to_modify}
                 if all_files:
                     is_valid, validation_results = validate_navi_output(all_files)
                     if not is_valid:
-                        validation_summary = format_validation_summary(validation_results)
-                        logger.warning(f"Code validation found issues:\n{validation_summary}")
+                        validation_summary = format_validation_summary(
+                            validation_results
+                        )
+                        logger.warning(
+                            f"Code validation found issues:\n{validation_summary}"
+                        )
                         # Add validation info to response message
-                        response.message += f"\n\n⚠️ **Code Validation:**\n{validation_summary}"
+                        response.message += (
+                            f"\n\n⚠️ **Code Validation:**\n{validation_summary}"
+                        )
             except ImportError:
                 logger.debug("Code validator not available")
             except Exception as e:
@@ -8344,7 +9557,9 @@ async def process_navi_request_streaming(
                 if isinstance(cmd, str) and cmd.strip():
                     # Try to generate a descriptive title based on the command
                     cmd_lower = cmd.lower()
-                    if "install" in cmd_lower or cmd_lower.startswith(("npm i", "yarn add", "pnpm add")):
+                    if "install" in cmd_lower or cmd_lower.startswith(
+                        ("npm i", "yarn add", "pnpm add")
+                    ):
                         title = "Install dependencies"
                     elif "dev" in cmd_lower or "start" in cmd_lower:
                         title = "Start development server"
@@ -8357,14 +9572,18 @@ async def process_navi_request_streaming(
                     elif "git" in cmd_lower:
                         title = "Git operation"
                     else:
-                        title = f"Run: {cmd[:30]}..." if len(cmd) > 30 else f"Run: {cmd}"
+                        title = (
+                            f"Run: {cmd[:30]}..." if len(cmd) > 30 else f"Run: {cmd}"
+                        )
 
-                    proposed_actions.append({
-                        "type": "runCommand",
-                        "command": cmd,
-                        "title": title,
-                        "description": f"Execute: {cmd}"
-                    })
+                    proposed_actions.append(
+                        {
+                            "type": "runCommand",
+                            "command": cmd,
+                            "title": title,
+                            "description": f"Execute: {cmd}",
+                        }
+                    )
 
             # Build result in same format as NaviEngine.process returns
             result = {
@@ -8397,14 +9616,16 @@ async def process_navi_request_streaming(
                     "kind": "error",
                     "label": "Processing Error",
                     "detail": error_summary,
-                    "status": "done"
+                    "status": "done",
                 }
             }
 
             # Build result in same format as NaviEngine.process returns
             result = {
                 "success": False,
-                "message": DynamicMessages.error_message(e, context="processing your request"),
+                "message": DynamicMessages.error_message(
+                    e, context="processing your request"
+                ),
                 "files_created": [],
                 "files_modified": [],
                 "file_edits": [],
@@ -8417,7 +9638,10 @@ async def process_navi_request_streaming(
                 "files_read": project_info.files_read if project_info else [],
                 "project_type": project_info.project_type if project_info else None,
                 "framework": project_info.framework if project_info else None,
-                "next_steps": ["Try with more specific details", "Check if resources are accessible"],
+                "next_steps": [
+                    "Try with more specific details",
+                    "Check if resources are accessible",
+                ],
             }
             yield {"result": result}
 

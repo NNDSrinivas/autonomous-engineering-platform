@@ -19,6 +19,7 @@ router = APIRouter(prefix="/api/advanced", tags=["advanced-operations"])
 # Request/Response Models
 # ============================================================================
 
+
 # Git Operations Models
 class GitCherryPickRequest(BaseModel):
     workspace_path: str = Field(..., description="Path to git repository")
@@ -115,6 +116,7 @@ class DebugAutoFixRequest(BaseModel):
 
 class ApprovalWrapper(BaseModel):
     """Wrapper for requests that require approval."""
+
     approved: bool = Field(False, description="User approval for operation")
     request: Dict[str, Any]
 
@@ -122,6 +124,7 @@ class ApprovalWrapper(BaseModel):
 # ============================================================================
 # Git Operations Endpoints
 # ============================================================================
+
 
 @router.post("/git/cherry-pick")
 async def git_cherry_pick(request: GitCherryPickRequest, approved: bool = False):
@@ -134,10 +137,11 @@ async def git_cherry_pick(request: GitCherryPickRequest, approved: bool = False)
             "details": {
                 "commits": request.commit_hashes,
                 "workspace": request.workspace_path,
-            }
+            },
         }
 
     from backend.services.deep_analysis import AdvancedGitOperations
+
     return await AdvancedGitOperations.cherry_pick(
         workspace_path=request.workspace_path,
         commit_hashes=request.commit_hashes,
@@ -156,10 +160,11 @@ async def git_rebase(request: GitRebaseRequest, approved: bool = False):
             "details": {
                 "onto": request.onto,
                 "interactive": request.interactive,
-            }
+            },
         }
 
     from backend.services.deep_analysis import AdvancedGitOperations
+
     return await AdvancedGitOperations.rebase(
         workspace_path=request.workspace_path,
         onto=request.onto,
@@ -178,10 +183,11 @@ async def git_squash(request: GitSquashRequest, approved: bool = False):
             "details": {
                 "num_commits": request.num_commits,
                 "message": request.message,
-            }
+            },
         }
 
     from backend.services.deep_analysis import AdvancedGitOperations
+
     return await AdvancedGitOperations.squash_commits(
         workspace_path=request.workspace_path,
         num_commits=request.num_commits,
@@ -226,6 +232,7 @@ async def git_stash(request: GitStashRequest):
 async def git_bisect(request: GitBisectRequest):
     """Run git bisect to find bug-introducing commit."""
     from backend.services.deep_analysis import AdvancedGitOperations
+
     return await AdvancedGitOperations.bisect(
         workspace_path=request.workspace_path,
         operation=request.operation,
@@ -238,6 +245,7 @@ async def git_bisect(request: GitBisectRequest):
 async def git_reflog(request: GitReflogRequest):
     """Access reflog for commit recovery."""
     from backend.services.deep_analysis import AdvancedGitOperations
+
     return await AdvancedGitOperations.reflog(
         workspace_path=request.workspace_path,
         operation=request.operation,
@@ -257,6 +265,7 @@ async def git_cleanup_branches(request: GitCleanupRequest, approved: bool = Fals
         }
 
     from backend.services.deep_analysis import AdvancedGitOperations
+
     return await AdvancedGitOperations.cleanup_merged_branches(
         workspace_path=request.workspace_path,
         dry_run=request.dry_run,
@@ -268,10 +277,12 @@ async def git_cleanup_branches(request: GitCleanupRequest, approved: bool = Fals
 # Database Operations Endpoints
 # ============================================================================
 
+
 @router.post("/db/schema-diff")
 async def db_schema_diff(request: DbSchemaDiffRequest):
     """Compare database schema between sources."""
     from backend.services.deep_analysis import AdvancedDatabaseOperations
+
     return await AdvancedDatabaseOperations.schema_diff(
         workspace_path=request.workspace_path,
         source=request.source,
@@ -291,6 +302,7 @@ async def db_generate_migration(request: DbMigrationRequest, approved: bool = Fa
         }
 
     from backend.services.deep_analysis import AdvancedDatabaseOperations
+
     return await AdvancedDatabaseOperations.generate_migration(
         workspace_path=request.workspace_path,
         message=request.message,
@@ -310,6 +322,7 @@ async def db_apply_migration(request: DbApplyMigrationRequest, approved: bool = 
         }
 
     from backend.services.deep_analysis import AdvancedDatabaseOperations
+
     return await AdvancedDatabaseOperations.apply_migration(
         workspace_path=request.workspace_path,
         revision=request.revision,
@@ -329,6 +342,7 @@ async def db_rollback(request: DbRollbackRequest, approved: bool = False):
         }
 
     from backend.services.deep_analysis import AdvancedDatabaseOperations
+
     return await AdvancedDatabaseOperations.rollback_migration(
         workspace_path=request.workspace_path,
         steps=request.steps,
@@ -340,6 +354,7 @@ async def db_rollback(request: DbRollbackRequest, approved: bool = False):
 async def db_migration_history(workspace_path: str, verbose: bool = False):
     """Get migration history."""
     from backend.services.deep_analysis import AdvancedDatabaseOperations
+
     return await AdvancedDatabaseOperations.migration_history(
         workspace_path=workspace_path,
         verbose=verbose,
@@ -358,6 +373,7 @@ async def db_seed(request: DbSeedRequest, approved: bool = False):
         }
 
     from backend.services.deep_analysis import AdvancedDatabaseOperations
+
     return await AdvancedDatabaseOperations.seed_database(
         workspace_path=request.workspace_path,
         seed_file=request.seed_file,
@@ -369,10 +385,12 @@ async def db_seed(request: DbSeedRequest, approved: bool = False):
 # Debugging Endpoints
 # ============================================================================
 
+
 @router.post("/debug/analyze-error")
 async def debug_analyze_error(request: DebugErrorRequest):
     """Comprehensive error analysis supporting 15+ languages."""
     from backend.services.comprehensive_debugger import ComprehensiveDebugger
+
     return await ComprehensiveDebugger.analyze(
         error_output=request.error_output,
         workspace_path=request.workspace_path or ".",
@@ -384,6 +402,7 @@ async def debug_analyze_error(request: DebugErrorRequest):
 async def debug_performance(request: DebugPerformanceRequest):
     """Detect performance issues in code."""
     from backend.services.deep_analysis import CodeDebugger
+
     return await CodeDebugger.detect_performance_issues(
         workspace_path=request.workspace_path,
         file_path=request.file_path,
@@ -394,6 +413,7 @@ async def debug_performance(request: DebugPerformanceRequest):
 async def debug_dead_code(workspace_path: str):
     """Find unused/dead code."""
     from backend.services.deep_analysis import CodeDebugger
+
     return await CodeDebugger.detect_dead_code(workspace_path=workspace_path)
 
 
@@ -401,13 +421,17 @@ async def debug_dead_code(workspace_path: str):
 async def debug_circular_deps(workspace_path: str):
     """Detect circular dependencies."""
     from backend.services.deep_analysis import CodeDebugger
-    return await CodeDebugger.detect_circular_dependencies(workspace_path=workspace_path)
+
+    return await CodeDebugger.detect_circular_dependencies(
+        workspace_path=workspace_path
+    )
 
 
 @router.post("/debug/code-smells")
 async def debug_code_smells(workspace_path: str):
     """Detect code smells and anti-patterns."""
     from backend.services.deep_analysis import CodeDebugger
+
     return await CodeDebugger.detect_code_smells(workspace_path=workspace_path)
 
 
@@ -422,6 +446,7 @@ async def debug_auto_fix(request: DebugAutoFixRequest, approved: bool = False):
         }
 
     from backend.services.deep_analysis import CodeDebugger
+
     return await CodeDebugger.auto_fix(
         workspace_path=request.workspace_path,
         dry_run=not request.apply,
@@ -432,10 +457,12 @@ async def debug_auto_fix(request: DebugAutoFixRequest, approved: bool = False):
 # MCP Integration Endpoints
 # ============================================================================
 
+
 @router.get("/mcp/tools")
 async def list_mcp_tools():
     """List all available MCP tools."""
     from backend.services.mcp_server import get_mcp_server
+
     server = get_mcp_server()
     return {
         "server_info": server.get_server_info(),
@@ -451,6 +478,7 @@ async def execute_mcp_tool(
 ):
     """Execute an MCP tool."""
     from backend.services.mcp_server import get_mcp_server
+
     server = get_mcp_server()
     result = await server.execute_tool(
         tool_name=tool_name,
@@ -468,6 +496,7 @@ async def execute_mcp_tool(
 # ============================================================================
 # Health Check
 # ============================================================================
+
 
 @router.get("/health")
 async def health_check():

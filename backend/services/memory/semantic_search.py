@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 class SearchScope(str, Enum):
     """Search scope options."""
+
     ALL = "all"
     CONVERSATIONS = "conversations"
     KNOWLEDGE = "knowledge"
@@ -40,6 +41,7 @@ class SearchScope(str, Enum):
 @dataclass
 class SearchResult:
     """Unified search result."""
+
     id: str
     source: str  # conversations, knowledge, code
     title: str
@@ -142,18 +144,24 @@ class SemanticSearchService:
             )
 
             for r in conv_results:
-                results.append(SearchResult(
-                    id=r["conversation_id"],
-                    source="conversations",
-                    title=r["title"] or "Untitled Conversation",
-                    content=r["matching_message"]["content"] if r.get("matching_message") else "",
-                    similarity=r["similarity"],
-                    metadata={
-                        "conversation_id": r["conversation_id"],
-                        "matching_message": r.get("matching_message"),
-                        "updated_at": r.get("updated_at"),
-                    },
-                ))
+                results.append(
+                    SearchResult(
+                        id=r["conversation_id"],
+                        source="conversations",
+                        title=r["title"] or "Untitled Conversation",
+                        content=(
+                            r["matching_message"]["content"]
+                            if r.get("matching_message")
+                            else ""
+                        ),
+                        similarity=r["similarity"],
+                        metadata={
+                            "conversation_id": r["conversation_id"],
+                            "matching_message": r.get("matching_message"),
+                            "updated_at": r.get("updated_at"),
+                        },
+                    )
+                )
         except Exception as e:
             logger.error(f"Error searching conversations: {e}")
 
@@ -178,18 +186,24 @@ class SemanticSearchService:
             )
 
             for r in knowledge_results:
-                results.append(SearchResult(
-                    id=r["id"],
-                    source="knowledge",
-                    title=r["title"],
-                    content=r["content"][:500] + "..." if len(r["content"]) > 500 else r["content"],
-                    similarity=r["similarity"],
-                    metadata={
-                        "knowledge_type": r["knowledge_type"],
-                        "tags": r.get("tags", []),
-                        "confidence": r.get("confidence", 1.0),
-                    },
-                ))
+                results.append(
+                    SearchResult(
+                        id=r["id"],
+                        source="knowledge",
+                        title=r["title"],
+                        content=(
+                            r["content"][:500] + "..."
+                            if len(r["content"]) > 500
+                            else r["content"]
+                        ),
+                        similarity=r["similarity"],
+                        metadata={
+                            "knowledge_type": r["knowledge_type"],
+                            "tags": r.get("tags", []),
+                            "confidence": r.get("confidence", 1.0),
+                        },
+                    )
+                )
         except Exception as e:
             logger.error(f"Error searching knowledge: {e}")
 
@@ -220,20 +234,26 @@ class SemanticSearchService:
                 if r.get("documentation"):
                     content_parts.append(r["documentation"][:200])
 
-                results.append(SearchResult(
-                    id=r["id"],
-                    source="code",
-                    title=f"{r['type']}: {r['name']}",
-                    content="\n".join(content_parts) if content_parts else r["qualified_name"] or r["name"],
-                    similarity=r["similarity"],
-                    metadata={
-                        "symbol_type": r["type"],
-                        "file_path": r["file_path"],
-                        "line_start": r["line_start"],
-                        "line_end": r["line_end"],
-                        "qualified_name": r.get("qualified_name"),
-                    },
-                ))
+                results.append(
+                    SearchResult(
+                        id=r["id"],
+                        source="code",
+                        title=f"{r['type']}: {r['name']}",
+                        content=(
+                            "\n".join(content_parts)
+                            if content_parts
+                            else r["qualified_name"] or r["name"]
+                        ),
+                        similarity=r["similarity"],
+                        metadata={
+                            "symbol_type": r["type"],
+                            "file_path": r["file_path"],
+                            "line_start": r["line_start"],
+                            "line_end": r["line_end"],
+                            "qualified_name": r.get("qualified_name"),
+                        },
+                    )
+                )
         except Exception as e:
             logger.error(f"Error searching code: {e}")
 
@@ -328,26 +348,32 @@ class SemanticSearchService:
         # Group results by source
         for result in results:
             if result.source == "conversations":
-                context["relevant_conversations"].append({
-                    "title": result.title,
-                    "excerpt": result.content[:300],
-                    "similarity": round(result.similarity, 3),
-                })
+                context["relevant_conversations"].append(
+                    {
+                        "title": result.title,
+                        "excerpt": result.content[:300],
+                        "similarity": round(result.similarity, 3),
+                    }
+                )
             elif result.source == "knowledge":
-                context["relevant_knowledge"].append({
-                    "title": result.title,
-                    "content": result.content,
-                    "type": result.metadata.get("knowledge_type"),
-                    "similarity": round(result.similarity, 3),
-                })
+                context["relevant_knowledge"].append(
+                    {
+                        "title": result.title,
+                        "content": result.content,
+                        "type": result.metadata.get("knowledge_type"),
+                        "similarity": round(result.similarity, 3),
+                    }
+                )
             elif result.source == "code":
-                context["relevant_code"].append({
-                    "symbol": result.title,
-                    "file": result.metadata.get("file_path"),
-                    "line": result.metadata.get("line_start"),
-                    "content": result.content,
-                    "similarity": round(result.similarity, 3),
-                })
+                context["relevant_code"].append(
+                    {
+                        "symbol": result.title,
+                        "file": result.metadata.get("file_path"),
+                        "line": result.metadata.get("line_start"),
+                        "content": result.content,
+                        "similarity": round(result.similarity, 3),
+                    }
+                )
 
         context["has_context"] = bool(
             context["relevant_conversations"]
@@ -389,7 +415,9 @@ class SemanticSearchService:
         if context.get("relevant_code"):
             parts.append("## Relevant Code\n")
             for item in context["relevant_code"][:3]:
-                parts.append(f"**{item['symbol']}** in `{item['file']}:{item.get('line', 0)}`")
+                parts.append(
+                    f"**{item['symbol']}** in `{item['file']}:{item.get('line', 0)}`"
+                )
                 if item.get("content"):
                     parts.append(f"```\n{item['content'][:300]}\n```")
                 parts.append("")

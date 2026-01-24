@@ -71,11 +71,13 @@ async def list_discord_servers(
             lines.append(f"  - Role: {is_owner}")
             lines.append("")
 
-            sources.append({
-                "type": "discord_server",
-                "name": name,
-                "url": f"https://discord.com/channels/{server_id}",
-            })
+            sources.append(
+                {
+                    "type": "discord_server",
+                    "name": name,
+                    "url": f"https://discord.com/channels/{server_id}",
+                }
+            )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -165,11 +167,13 @@ async def list_discord_channels(
             lines.append("")
 
             if ch_type == "text":
-                sources.append({
-                    "type": "discord_channel",
-                    "name": f"#{name}",
-                    "url": f"https://discord.com/channels/{guild_id}/{ch_id}",
-                })
+                sources.append(
+                    {
+                        "type": "discord_channel",
+                        "name": f"#{name}",
+                        "url": f"https://discord.com/channels/{guild_id}/{ch_id}",
+                    }
+                )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -238,17 +242,21 @@ async def get_discord_messages(
             content = msg.get("content", "")[:200]
             timestamp = msg.get("timestamp", "")
 
-            lines.append(f"**{author}** ({timestamp[:10] if timestamp else 'unknown'}):")
+            lines.append(
+                f"**{author}** ({timestamp[:10] if timestamp else 'unknown'}):"
+            )
             lines.append(f"> {content}")
             if msg.get("attachments"):
                 lines.append(f"  📎 {msg['attachments']} attachment(s)")
             lines.append("")
 
-        sources = [{
-            "type": "discord_channel",
-            "name": f"Channel {channel_id}",
-            "url": f"https://discord.com/channels/@me/{channel_id}",
-        }]
+        sources = [
+            {
+                "type": "discord_channel",
+                "name": f"Channel {channel_id}",
+                "url": f"https://discord.com/channels/@me/{channel_id}",
+            }
+        ]
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -292,9 +300,9 @@ async def send_discord_message(
     if not approve:
         return ToolResult(
             output=f"**Preview: Send Discord message**\n\n"
-                   f"Channel ID: {channel_id}\n"
-                   f"Message:\n```\n{content}\n```\n\n"
-                   f"Please approve this action to send the message.",
+            f"Channel ID: {channel_id}\n"
+            f"Message:\n```\n{content}\n```\n\n"
+            f"Please approve this action to send the message.",
             sources=[],
         )
 
@@ -321,11 +329,14 @@ async def send_discord_message(
         if result.success:
             return ToolResult(
                 output="Message sent successfully to channel.",
-                sources=[{
-                    "type": "discord_message",
-                    "name": "Sent message",
-                    "url": result.url or f"https://discord.com/channels/@me/{channel_id}",
-                }],
+                sources=[
+                    {
+                        "type": "discord_message",
+                        "name": "Sent message",
+                        "url": result.url
+                        or f"https://discord.com/channels/@me/{channel_id}",
+                    }
+                ],
             )
         else:
             return ToolResult(

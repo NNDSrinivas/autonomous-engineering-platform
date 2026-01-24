@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class ExecutionMode(Enum):
     """Execution mode for plan implementation."""
+
     FULLY_AUTONOMOUS = "fully_autonomous"  # No pauses, run end-to-end
     WITH_APPROVAL_GATES = "with_approval_gates"  # Pause for critical operations
     CUSTOM = "custom"  # User-provided custom instructions
@@ -35,6 +36,7 @@ class ExecutionMode(Enum):
 
 class PlanStepType(Enum):
     """Type of plan step - determines if approval is needed."""
+
     ANALYZE = "analyze"  # Read/search operations (no approval needed)
     CREATE_FILE = "create_file"  # Creating new files (approval in gated mode)
     MODIFY_FILE = "modify_file"  # Modifying existing files (approval in gated mode)
@@ -47,6 +49,7 @@ class PlanStepType(Enum):
 @dataclass
 class PlanStep:
     """A single step in the implementation plan."""
+
     id: str
     description: str
     step_type: PlanStepType
@@ -62,6 +65,7 @@ class PlanStep:
 @dataclass
 class ImplementationPlan:
     """A complete implementation plan for a feature."""
+
     id: str
     title: str
     description: str
@@ -100,6 +104,7 @@ class ImplementationPlan:
 @dataclass
 class PlanModeState:
     """State for plan mode execution."""
+
     plan: Optional[ImplementationPlan] = None
     execution_mode: ExecutionMode = ExecutionMode.PLANNING
     current_step_index: int = 0
@@ -174,6 +179,7 @@ class PlanModeController:
         """Get current settings, loading defaults if needed."""
         if self._settings is None:
             from backend.agent.navi_settings import NaviSettings
+
             self._settings = NaviSettings()
         return self._settings
 
@@ -183,11 +189,7 @@ class PlanModeController:
         if self.state.plan:
             self._update_approval_requirements()
 
-    def set_execution_mode(
-        self,
-        mode: str,
-        custom_instructions: Optional[str] = None
-    ):
+    def set_execution_mode(self, mode: str, custom_instructions: Optional[str] = None):
         """Set the execution mode after user chooses."""
         try:
             self.state.execution_mode = ExecutionMode(mode)
@@ -202,8 +204,7 @@ class PlanModeController:
             self._update_approval_requirements()
 
         logger.info(
-            "[PLAN_MODE] Execution mode set to: %s",
-            self.state.execution_mode.value
+            "[PLAN_MODE] Execution mode set to: %s", self.state.execution_mode.value
         )
 
     def _update_approval_requirements(self):
@@ -225,8 +226,7 @@ class PlanModeController:
 
         # Check settings
         return self.settings.requires_approval_for(
-            operation,
-            context={"command": step.arguments.get("command", "")}
+            operation, context={"command": step.arguments.get("command", "")}
         )
 
     def set_plan(self, plan: ImplementationPlan):
@@ -235,7 +235,9 @@ class PlanModeController:
         self.state.current_step_index = 0
         self.state.completed_steps = 0
         self.state.failed_steps = 0
-        logger.info("[PLAN_MODE] Plan set: %s with %d steps", plan.title, len(plan.steps))
+        logger.info(
+            "[PLAN_MODE] Plan set: %s with %d steps", plan.title, len(plan.steps)
+        )
 
     def get_current_step(self) -> Optional[PlanStep]:
         """Get the current step to execute."""
@@ -286,7 +288,7 @@ class PlanModeController:
                 "[PLAN_MODE] Step completed: %s (%d/%d)",
                 step.id,
                 self.state.completed_steps,
-                len(self.state.plan.steps) if self.state.plan else 0
+                len(self.state.plan.steps) if self.state.plan else 0,
             )
 
     def mark_step_failed(self, error: str):
@@ -333,7 +335,9 @@ class PlanModeController:
                     f"- Failed: {self.state.failed_steps}\n"
                     f"- Skipped: {self.state.skipped_steps}"
                 )
-            return f"**Plan completed successfully!** ({self.state.completed_steps} steps)"
+            return (
+                f"**Plan completed successfully!** ({self.state.completed_steps} steps)"
+            )
 
         return (
             f"**Executing plan** ({progress:.0f}% complete)\n\n"
@@ -369,7 +373,9 @@ def generate_execution_options_message(plan: ImplementationPlan) -> str:
     # Build plan summary
     steps_summary = []
     for i, step in enumerate(plan.steps[:10], 1):  # Show first 10 steps
-        risk_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(step.estimated_risk, "⚪")
+        risk_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(
+            step.estimated_risk, "⚪"
+        )
         steps_summary.append(f"  {i}. {risk_emoji} {step.description}")
 
     if len(plan.steps) > 10:
@@ -460,7 +466,9 @@ def create_approval_request_message(step: PlanStep) -> str:
     Returns:
         Formatted approval request message
     """
-    risk_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(step.estimated_risk, "⚪")
+    risk_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(
+        step.estimated_risk, "⚪"
+    )
 
     message = f"""## Approval Required {risk_emoji}
 

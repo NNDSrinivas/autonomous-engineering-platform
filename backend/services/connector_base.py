@@ -422,7 +422,10 @@ class ConnectorServiceBase(ABC):
     @classmethod
     @abstractmethod
     async def sync_items(
-        cls, db: Session, connection: Dict[str, Any], item_types: Optional[List[str]] = None
+        cls,
+        db: Session,
+        connection: Dict[str, Any],
+        item_types: Optional[List[str]] = None,
     ) -> SyncResult:
         """
         Sync items from external provider to database.
@@ -503,7 +506,12 @@ PROVIDER_CAPABILITIES = {
         "name": "Jira",
         "category": "work_tracking",
         "read_capabilities": ["query issues", "get issue details", "list comments"],
-        "write_capabilities": ["create issues", "add comments", "transition status", "assign issues"],
+        "write_capabilities": [
+            "create issues",
+            "add comments",
+            "transition status",
+            "assign issues",
+        ],
     },
     "linear": {
         "name": "Linear",
@@ -539,13 +547,27 @@ PROVIDER_CAPABILITIES = {
     "github": {
         "name": "GitHub",
         "category": "code",
-        "read_capabilities": ["query PRs", "query issues", "list repos", "get PR details"],
-        "write_capabilities": ["create issues", "comment on PRs", "set labels", "create PRs"],
+        "read_capabilities": [
+            "query PRs",
+            "query issues",
+            "list repos",
+            "get PR details",
+        ],
+        "write_capabilities": [
+            "create issues",
+            "comment on PRs",
+            "set labels",
+            "create PRs",
+        ],
     },
     "gitlab": {
         "name": "GitLab",
         "category": "code",
-        "read_capabilities": ["query merge requests", "query issues", "get pipeline status"],
+        "read_capabilities": [
+            "query merge requests",
+            "query issues",
+            "get pipeline status",
+        ],
         "write_capabilities": ["create merge requests", "add comments"],
     },
     "bitbucket": {
@@ -563,13 +585,21 @@ PROVIDER_CAPABILITIES = {
     "circleci": {
         "name": "CircleCI",
         "category": "ci_cd",
-        "read_capabilities": ["list pipelines", "get pipeline status", "get job status"],
+        "read_capabilities": [
+            "list pipelines",
+            "get pipeline status",
+            "get job status",
+        ],
         "write_capabilities": ["trigger pipelines"],
     },
     "vercel": {
         "name": "Vercel",
         "category": "deployment",
-        "read_capabilities": ["list projects", "list deployments", "get deployment status"],
+        "read_capabilities": [
+            "list projects",
+            "list deployments",
+            "get deployment status",
+        ],
         "write_capabilities": ["redeploy"],
     },
     # Documentation & Knowledge
@@ -582,7 +612,11 @@ PROVIDER_CAPABILITIES = {
     "confluence": {
         "name": "Confluence",
         "category": "wiki",
-        "read_capabilities": ["search pages", "get page content", "list pages in space"],
+        "read_capabilities": [
+            "search pages",
+            "get page content",
+            "list pages in space",
+        ],
         "write_capabilities": [],
     },
     "google_drive": {
@@ -614,7 +648,11 @@ PROVIDER_CAPABILITIES = {
     "zoom": {
         "name": "Zoom",
         "category": "meetings",
-        "read_capabilities": ["list recordings", "get transcripts", "search recordings"],
+        "read_capabilities": [
+            "list recordings",
+            "get transcripts",
+            "search recordings",
+        ],
         "write_capabilities": [],
     },
     "google_calendar": {
@@ -639,14 +677,24 @@ PROVIDER_CAPABILITIES = {
     "figma": {
         "name": "Figma",
         "category": "design",
-        "read_capabilities": ["list files", "get file details", "get comments", "list projects"],
+        "read_capabilities": [
+            "list files",
+            "get file details",
+            "get comments",
+            "list projects",
+        ],
         "write_capabilities": ["add comments"],
     },
     # Monitoring & Observability
     "datadog": {
         "name": "Datadog",
         "category": "monitoring",
-        "read_capabilities": ["list monitors", "get alerting monitors", "list incidents", "list dashboards"],
+        "read_capabilities": [
+            "list monitors",
+            "get alerting monitors",
+            "list incidents",
+            "list dashboards",
+        ],
         "write_capabilities": ["mute monitors"],
     },
     "sentry": {
@@ -665,13 +713,22 @@ PROVIDER_CAPABILITIES = {
     "snyk": {
         "name": "Snyk",
         "category": "security",
-        "read_capabilities": ["list vulnerabilities", "list projects", "get security summary"],
+        "read_capabilities": [
+            "list vulnerabilities",
+            "list projects",
+            "get security summary",
+        ],
         "write_capabilities": [],
     },
     "sonarqube": {
         "name": "SonarQube",
         "category": "code_quality",
-        "read_capabilities": ["list projects", "list issues", "get quality gate", "get metrics"],
+        "read_capabilities": [
+            "list projects",
+            "list issues",
+            "get quality gate",
+            "get metrics",
+        ],
         "write_capabilities": [],
     },
 }
@@ -709,21 +766,26 @@ def build_connector_context_for_navi(
         # Add all known providers with their status
         for provider, info in PROVIDER_CAPABILITIES.items():
             if provider in connected_providers:
-                services.append({
-                    "provider": provider,
-                    "name": info["name"],
-                    "status": "connected",
-                    "category": info["category"],
-                    "capabilities": info["read_capabilities"] + info["write_capabilities"],
-                })
+                services.append(
+                    {
+                        "provider": provider,
+                        "name": info["name"],
+                        "status": "connected",
+                        "category": info["category"],
+                        "capabilities": info["read_capabilities"]
+                        + info["write_capabilities"],
+                    }
+                )
             else:
-                services.append({
-                    "provider": provider,
-                    "name": info["name"],
-                    "status": "not_connected",
-                    "category": info["category"],
-                    "capabilities": [],
-                })
+                services.append(
+                    {
+                        "provider": provider,
+                        "name": info["name"],
+                        "status": "not_connected",
+                        "category": info["category"],
+                        "capabilities": [],
+                    }
+                )
 
         # Sort by status (connected first) then by name
         services.sort(key=lambda x: (x["status"] != "connected", x["name"]))

@@ -40,7 +40,9 @@ class ClickUpService(ConnectorServiceBase):
         item_types: Optional[List[str]] = None,
     ) -> SyncResult:
         """Sync workspaces and tasks from ClickUp."""
-        logger.info("clickup_service.sync_items.start", connector_id=connection.get("id"))
+        logger.info(
+            "clickup_service.sync_items.start", connector_id=connection.get("id")
+        )
 
         try:
             credentials = cls.get_credentials(connection)
@@ -96,7 +98,11 @@ class ClickUpService(ConnectorServiceBase):
                                 item_type="space",
                                 external_id=space_id,
                                 title=space.get("name"),
-                                status="active" if not space.get("archived") else "archived",
+                                status=(
+                                    "active"
+                                    if not space.get("archived")
+                                    else "archived"
+                                ),
                                 user_id=user_id,
                                 org_id=org_id,
                                 data={
@@ -113,7 +119,9 @@ class ClickUpService(ConnectorServiceBase):
                                 items_updated += 1
 
                     except Exception as e:
-                        logger.warning("clickup_service.sync_spaces.error", error=str(e))
+                        logger.warning(
+                            "clickup_service.sync_spaces.error", error=str(e)
+                        )
 
             cls.update_sync_status(db=db, connector_id=connector_id, status="success")
 
@@ -153,7 +161,9 @@ class ClickUpService(ConnectorServiceBase):
                     description = data.get("description")
 
                     if not list_id or not name:
-                        return WriteResult(success=False, error="Missing list_id or name")
+                        return WriteResult(
+                            success=False, error="Missing list_id or name"
+                        )
 
                     result = await client.create_task(
                         list_id, name, description=description
@@ -286,23 +296,29 @@ class ClickUpService(ConnectorServiceBase):
                                         # Get tasks in list
                                         tasks_resp = await client.client.get(
                                             f"/list/{list_id}/task",
-                                            params={"assignees[]": [user_id]}
+                                            params={"assignees[]": [user_id]},
                                         )
                                         tasks_resp.raise_for_status()
                                         list_tasks = tasks_resp.json().get("tasks", [])
 
                                         for task in list_tasks:
-                                            tasks.append({
-                                                "id": task.get("id"),
-                                                "name": task.get("name"),
-                                                "description": task.get("description"),
-                                                "status": task.get("status", {}).get("status"),
-                                                "url": task.get("url"),
-                                                "workspace": ws_name,
-                                                "list": list_name,
-                                                "due_date": task.get("due_date"),
-                                                "priority": task.get("priority"),
-                                            })
+                                            tasks.append(
+                                                {
+                                                    "id": task.get("id"),
+                                                    "name": task.get("name"),
+                                                    "description": task.get(
+                                                        "description"
+                                                    ),
+                                                    "status": task.get(
+                                                        "status", {}
+                                                    ).get("status"),
+                                                    "url": task.get("url"),
+                                                    "workspace": ws_name,
+                                                    "list": list_name,
+                                                    "due_date": task.get("due_date"),
+                                                    "priority": task.get("priority"),
+                                                }
+                                            )
 
                                     except Exception:
                                         pass

@@ -78,7 +78,13 @@ async def list_circleci_pipelines(
             lines.append("")
 
             if url:
-                sources.append({"type": "circleci_pipeline", "name": f"Pipeline #{num}", "url": url})
+                sources.append(
+                    {
+                        "type": "circleci_pipeline",
+                        "name": f"Pipeline #{num}",
+                        "url": url,
+                    }
+                )
 
         return ToolResult(output="\n".join(lines), sources=sources)
 
@@ -189,7 +195,13 @@ async def trigger_circleci_pipeline(
             url = f"https://app.circleci.com/pipelines/{project_slug}/{pipeline_num}"
             return ToolResult(
                 output=f"Pipeline #{pipeline_num} triggered on branch `{branch}`.\n\n[View Pipeline]({url})",
-                sources=[{"type": "circleci_pipeline", "name": f"Pipeline #{pipeline_num}", "url": url}],
+                sources=[
+                    {
+                        "type": "circleci_pipeline",
+                        "name": f"Pipeline #{pipeline_num}",
+                        "url": url,
+                    }
+                ],
             )
         else:
             return ToolResult(output="Failed to trigger pipeline.", sources=[])
@@ -221,7 +233,10 @@ async def get_circleci_job_status(
             return ToolResult(output="CircleCI is not connected.", sources=[])
 
         job = await CircleCIService.get_job_status(
-            db=db, connection=connection, project_slug=project_slug, job_number=job_number
+            db=db,
+            connection=connection,
+            project_slug=project_slug,
+            job_number=job_number,
         )
 
         if not job:

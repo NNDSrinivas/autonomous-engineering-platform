@@ -147,7 +147,9 @@ class GoogleDriveIngestor:
                 try:
                     # Get sheet values
                     range_name = f"'{sheet_name}'!A1:Z{max_rows}"
-                    values = await self.client.get_sheet_values(spreadsheet_id, range_name)
+                    values = await self.client.get_sheet_values(
+                        spreadsheet_id, range_name
+                    )
                     text = self.client.extract_sheet_text(values)
                     rows = len(values.get("values", []))
                     total_rows += rows
@@ -243,7 +245,9 @@ class GoogleDriveIngestor:
                         )
 
             # Ingest Google Sheets
-            sheets_result = await self.client.list_spreadsheets(page_size=spreadsheet_limit)
+            sheets_result = await self.client.list_spreadsheets(
+                page_size=spreadsheet_limit
+            )
             sheets = sheets_result.get("files", [])
 
             for sheet in sheets[:spreadsheet_limit]:
@@ -319,7 +323,8 @@ class GoogleDriveIngestor:
                             org_id=self.org_id,
                             node_type="google_drive_file",
                             title=file_meta.get("name", "Untitled"),
-                            text=file_meta.get("description", "") or f"Google Drive file: {file_meta.get('name')}",
+                            text=file_meta.get("description", "")
+                            or f"Google Drive file: {file_meta.get('name')}",
                             meta_json={
                                 "file_id": file_id,
                                 "mime_type": mime_type,

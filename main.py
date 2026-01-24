@@ -218,11 +218,19 @@ app.include_router(trello_webhook_router)  # Trello webhook ingestion
 app.include_router(pagerduty_webhook_router)  # PagerDuty webhook ingestion
 app.include_router(sentry_webhook_router)  # Sentry webhook ingestion
 app.include_router(saas_router)  # SaaS management (org/team/user, RAG, feedback)
-app.include_router(navi_planner_router)  # NAVI Plan Mode (clarifying questions, structured plans)
-app.include_router(navi_enhanced_router)  # NAVI Enhanced (RAG, Vision, Testing, Persistence)
+app.include_router(
+    navi_planner_router
+)  # NAVI Plan Mode (clarifying questions, structured plans)
+app.include_router(
+    navi_enhanced_router
+)  # NAVI Enhanced (RAG, Vision, Testing, Persistence)
 app.include_router(user_sync_router)  # User sync from Auth0
-app.include_router(navi_memory_router)  # NAVI Memory System (preferences, knowledge, conversations)
-app.include_router(advanced_operations_router)  # Advanced Git, DB, Debugging operations + MCP
+app.include_router(
+    navi_memory_router
+)  # NAVI Memory System (preferences, knowledge, conversations)
+app.include_router(
+    advanced_operations_router
+)  # Advanced Git, DB, Debugging operations + MCP
 
 # CORS middleware - Allow VS Code webviews and other origins
 app.add_middleware(

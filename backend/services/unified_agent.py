@@ -388,6 +388,293 @@ NAVI_TOOLS = [
             },
             "required": ["path"]
         }
+    },
+    # === PROCESS MANAGEMENT TOOLS ===
+    # These enable handling ANY long-running process (servers, watchers, etc.)
+    {
+        "name": "run_background",
+        "description": "Start a long-running command in background (dev servers, watchers, docker, etc.). Returns immediately with process_id. ALWAYS use this instead of run_command for: 'npm run dev', 'python app.py', 'docker-compose up', 'npm run watch', or ANY command that runs indefinitely.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "The command to run"
+                },
+                "env": {
+                    "type": "object",
+                    "description": "Optional environment variables (e.g., {'PORT': '3001'})"
+                }
+            },
+            "required": ["command"]
+        }
+    },
+    {
+        "name": "check_process",
+        "description": "Check status of a background process. Returns running status, exit code, recent output.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "process_id": {
+                    "type": "string",
+                    "description": "The process ID returned by run_background"
+                }
+            },
+            "required": ["process_id"]
+        }
+    },
+    {
+        "name": "get_process_output",
+        "description": "Get recent output/logs from a background process.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "process_id": {
+                    "type": "string",
+                    "description": "The process ID"
+                },
+                "lines": {
+                    "type": "integer",
+                    "description": "Number of recent lines (default: 50)"
+                }
+            },
+            "required": ["process_id"]
+        }
+    },
+    {
+        "name": "kill_process",
+        "description": "Kill/stop a background process.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "process_id": {
+                    "type": "string",
+                    "description": "The process ID to kill"
+                },
+                "force": {
+                    "type": "boolean",
+                    "description": "Force kill with SIGKILL (default: false, uses SIGTERM)"
+                }
+            },
+            "required": ["process_id"]
+        }
+    },
+    {
+        "name": "verify_condition",
+        "description": "Check if a condition is true. COMPREHENSIVE verification for ANY scenario: network, files, databases, containers, cloud, registries, services, resources. Use to VERIFY your work before reporting success.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "condition_type": {
+                    "type": "string",
+                    "enum": [
+                        "http", "port", "tcp", "websocket", "ssl", "dns", "ssh", "ftp", "smtp", "ldap",
+                        "file_exists", "file_contains", "process_running", "command_succeeds",
+                        "disk_space", "memory_available", "cpu_usage", "env_var",
+                        "database", "elasticsearch",
+                        "docker", "docker_compose", "kubernetes",
+                        "queue", "graphql", "grpc", "sse", "api_response", "json_schema", "url_accessible",
+                        "s3", "npm_registry", "docker_registry", "git_remote",
+                        "systemd_service", "launchd_service", "cron_job", "network_interface",
+                        "health_aggregate"
+                    ],
+                    "description": "Type of condition to check"
+                },
+                "url": {"type": "string", "description": "For http/websocket/graphql/sse: URL to check"},
+                "port": {"type": "integer", "description": "For port/tcp/ssl/grpc: port number"},
+                "host": {"type": "string", "description": "Hostname (default: localhost)"},
+                "path": {"type": "string", "description": "For file_exists/file_contains/disk_space: path"},
+                "pattern": {"type": "string", "description": "For file_contains/tcp/cron_job: regex pattern"},
+                "name": {"type": "string", "description": "For process_running/env_var/kubernetes: name"},
+                "command": {"type": "string", "description": "For command_succeeds: command to run"},
+                "db_type": {"type": "string", "description": "For database: postgres, mysql, mongodb, redis"},
+                "database": {"type": "string", "description": "For database: database name"},
+                "user": {"type": "string", "description": "For database/ssh: username"},
+                "password": {"type": "string", "description": "For database: password"},
+                "container": {"type": "string", "description": "For docker: container name/id"},
+                "service": {"type": "string", "description": "For docker_compose/systemd/launchd: service name"},
+                "queue_type": {"type": "string", "description": "For queue: rabbitmq, kafka, redis, nats"},
+                "hostname": {"type": "string", "description": "For dns: hostname to resolve"},
+                "bucket": {"type": "string", "description": "For s3: bucket name"},
+                "registry": {"type": "string", "description": "For npm/docker_registry: registry URL"},
+                "resource_type": {"type": "string", "description": "For kubernetes: pod, deployment, service"},
+                "namespace": {"type": "string", "description": "For kubernetes: namespace"},
+                "min_free_gb": {"type": "number", "description": "For disk_space/memory: minimum free GB"},
+                "max_used_percent": {"type": "number", "description": "For disk_space/memory/cpu: max used %"},
+                "interface": {"type": "string", "description": "For network_interface: interface name"},
+                "expected_status": {"type": "integer", "description": "For http/api_response: expected HTTP status"},
+                "response_contains": {"type": "string", "description": "For api_response: expected text in response"},
+                "checks": {"type": "array", "description": "For health_aggregate: list of checks to run"}
+            },
+            "required": ["condition_type"]
+        }
+    },
+    {
+        "name": "wait_for_condition",
+        "description": "Wait for a condition to become true with configurable retry/backoff. Use after run_background to wait for server to start.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "condition_type": {
+                    "type": "string",
+                    "enum": [
+                        "http", "port", "tcp", "websocket", "file_exists", "file_contains",
+                        "process_running", "command_succeeds", "database", "docker",
+                        "docker_compose", "kubernetes", "elasticsearch", "queue"
+                    ],
+                    "description": "Type of condition to wait for"
+                },
+                "timeout": {"type": "integer", "description": "Max seconds to wait (default: 30)"},
+                "interval": {"type": "number", "description": "Seconds between checks (default: 1.0)"},
+                "backoff": {"type": "string", "enum": ["none", "linear", "exponential"], "description": "Retry backoff strategy (default: linear)"},
+                "url": {"type": "string", "description": "For http: URL to wait for"},
+                "port": {"type": "integer", "description": "For port: port to wait for"},
+                "host": {"type": "string", "description": "Hostname (default: localhost)"},
+                "path": {"type": "string", "description": "For file_exists: path to wait for"},
+                "name": {"type": "string", "description": "For process_running/kubernetes: name"},
+                "container": {"type": "string", "description": "For docker: container name"},
+                "service": {"type": "string", "description": "For docker_compose: service name"}
+            },
+            "required": ["condition_type"]
+        }
+    },
+    # === ADVANCED PROCESS MANAGEMENT ===
+    {
+        "name": "run_interactive",
+        "description": "Run a command that requires stdin input (npm init, git rebase, npx create-*, etc). Automates expect/send pattern.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Command to run"},
+                "inputs": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "expect": {"type": "string", "description": "Pattern to wait for in output"},
+                            "send": {"type": "string", "description": "Response to send"}
+                        }
+                    },
+                    "description": "Expect/send pairs for automation"
+                },
+                "timeout": {"type": "integer", "description": "Max seconds (default: 60)"}
+            },
+            "required": ["command", "inputs"]
+        }
+    },
+    {
+        "name": "run_parallel",
+        "description": "Run multiple commands in parallel, wait for all to complete. Use for concurrent lint, test, build, etc.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "commands": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "command": {"type": "string"},
+                            "name": {"type": "string", "description": "Label for this command"}
+                        },
+                        "required": ["command"]
+                    },
+                    "description": "Commands to run in parallel"
+                },
+                "timeout": {"type": "integer", "description": "Max seconds for all (default: 300)"},
+                "fail_fast": {"type": "boolean", "description": "Stop all on first failure (default: false)"}
+            },
+            "required": ["commands"]
+        }
+    },
+    {
+        "name": "wait_for_log_pattern",
+        "description": "Wait for a specific pattern in process output. Use when HTTP check isn't the right signal (e.g., 'Database connected', 'Ready to accept connections').",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "process_id": {"type": "string", "description": "Process ID to monitor"},
+                "pattern": {"type": "string", "description": "Regex pattern to match in output"},
+                "timeout": {"type": "integer", "description": "Max seconds to wait (default: 60)"}
+            },
+            "required": ["process_id", "pattern"]
+        }
+    },
+    {
+        "name": "cleanup_session",
+        "description": "Kill all managed processes and clean up. Use when done with task or on error to ensure no orphan processes.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tags": {"type": "array", "items": {"type": "string"}, "description": "Only clean processes with these tags"},
+                "force": {"type": "boolean", "description": "Force kill with SIGKILL (default: false)"}
+            }
+        }
+    },
+    {
+        "name": "list_processes",
+        "description": "List all managed background processes with their status.",
+        "input_schema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "start_service_chain",
+        "description": "Start multiple dependent services in order with health checks. Handles dependencies (e.g., db before backend before frontend).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "services": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Service name"},
+                            "command": {"type": "string", "description": "Start command"},
+                            "depends_on": {"type": "array", "items": {"type": "string"}, "description": "Services this depends on"},
+                            "health_check": {"type": "object", "description": "Health check config (type, url, port, etc)"},
+                            "startup_timeout": {"type": "integer", "description": "Seconds to wait for health (default: 30)"}
+                        },
+                        "required": ["name", "command"]
+                    }
+                }
+            },
+            "required": ["services"]
+        }
+    },
+    {
+        "name": "check_resources",
+        "description": "Check CPU, memory, disk usage. For a specific process or system-wide.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "process_id": {"type": "string", "description": "Check specific managed process"},
+                "pid": {"type": "integer", "description": "Check specific PID"}
+            }
+        }
+    },
+    {
+        "name": "run_with_environment",
+        "description": "Run command with specific Node/Python/Ruby/Java version. Handles version managers (nvm, pyenv, rbenv, sdkman).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Command to run"},
+                "env_type": {"type": "string", "enum": ["node", "python", "ruby", "java"], "description": "Environment type"},
+                "version": {"type": "string", "description": "Version (e.g., '18', '3.11')"},
+                "timeout": {"type": "integer", "description": "Max seconds (default: 120)"}
+            },
+            "required": ["command", "env_type"]
+        }
+    },
+    {
+        "name": "run_oauth_flow",
+        "description": "Run command that triggers browser OAuth (vercel login, gh auth login, firebase login). Monitors for success patterns.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "CLI auth command"},
+                "timeout": {"type": "integer", "description": "Max seconds for auth (default: 300)"}
+            },
+            "required": ["command"]
+        }
     }
 ]
 
@@ -491,6 +778,38 @@ class ToolExecutor:
                 return await self._search_files(args)
             elif name == "list_directory":
                 return await self._list_directory(args)
+            # Process management tools
+            elif name == "run_background":
+                return await self._run_background(args)
+            elif name == "check_process":
+                return await self._check_process(args)
+            elif name == "get_process_output":
+                return await self._get_process_output(args)
+            elif name == "kill_process":
+                return await self._kill_process(args)
+            elif name == "verify_condition":
+                return await self._verify_condition(args)
+            elif name == "wait_for_condition":
+                return await self._wait_for_condition(args)
+            # Advanced process management tools
+            elif name == "run_interactive":
+                return await self._run_interactive(args)
+            elif name == "run_parallel":
+                return await self._run_parallel(args)
+            elif name == "wait_for_log_pattern":
+                return await self._wait_for_log_pattern(args)
+            elif name == "cleanup_session":
+                return await self._cleanup_session(args)
+            elif name == "list_processes":
+                return await self._list_processes(args)
+            elif name == "start_service_chain":
+                return await self._start_service_chain(args)
+            elif name == "check_resources":
+                return await self._check_resources(args)
+            elif name == "run_with_environment":
+                return await self._run_with_environment(args)
+            elif name == "run_oauth_flow":
+                return await self._run_oauth_flow(args)
             else:
                 return {"error": f"Unknown tool: {name}", "success": False}
         except Exception as e:
@@ -734,6 +1053,204 @@ class ToolExecutor:
             }
         except Exception as e:
             return {"error": f"Error listing directory: {e}", "success": False}
+
+    # ====== PROCESS MANAGEMENT TOOLS ======
+    # These enable handling ANY long-running process generically
+
+    async def _run_background(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Start a command in background and return immediately."""
+        from backend.services.process_manager import ProcessManager
+
+        command = args["command"]
+        env = args.get("env")
+
+        # Get or create process manager
+        pm = ProcessManager()
+
+        result = await pm.start_background(
+            command=command,
+            working_dir=str(self.workspace_path),
+            env=env
+        )
+
+        return result
+
+    async def _check_process(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Check status of a background process."""
+        from backend.services.process_manager import ProcessManager
+
+        process_id = args["process_id"]
+        pm = ProcessManager()
+
+        return await pm.check_process(process_id)
+
+    async def _get_process_output(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Get recent output from a background process."""
+        from backend.services.process_manager import ProcessManager
+
+        process_id = args["process_id"]
+        lines = args.get("lines", 50)
+        pm = ProcessManager()
+
+        return await pm.get_output(process_id, lines)
+
+    async def _kill_process(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Kill a background process."""
+        from backend.services.process_manager import ProcessManager
+
+        process_id = args["process_id"]
+        force = args.get("force", False)
+        pm = ProcessManager()
+
+        signal_type = "KILL" if force else "TERM"
+        return await pm.kill_process(process_id, signal_type)
+
+    async def _verify_condition(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Check if a condition is true - extensible verification.
+
+        Uses the condition registry which supports:
+        - 100+ built-in conditions
+        - Custom patterns from YAML/JSON config
+        - Dynamic service detection
+        - Plugin-based extensibility
+        """
+        try:
+            from backend.services.condition_registry import verify_condition
+        except ImportError:
+            # Fallback to legacy implementation
+            from backend.services.process_manager import verify_condition
+
+        condition_type = args["condition_type"]
+
+        # Build kwargs from args
+        kwargs = {k: v for k, v in args.items() if k != "condition_type" and v is not None}
+
+        # For file operations, resolve paths relative to workspace
+        if "path" in kwargs and not kwargs["path"].startswith("/"):
+            kwargs["path"] = str(self.workspace_path / kwargs["path"])
+        if "working_dir" in kwargs and not kwargs["working_dir"].startswith("/"):
+            kwargs["working_dir"] = str(self.workspace_path / kwargs["working_dir"])
+        elif "working_dir" not in kwargs and condition_type == "command_succeeds":
+            kwargs["working_dir"] = str(self.workspace_path)
+
+        return await verify_condition(condition_type, **kwargs)
+
+    async def _wait_for_condition(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Wait for a condition to become true with retry.
+
+        Uses the extensible condition registry for maximum flexibility.
+        """
+        try:
+            from backend.services.condition_registry import wait_for_condition
+        except ImportError:
+            from backend.services.process_manager import wait_for_condition
+
+        condition_type = args["condition_type"]
+        timeout = args.get("timeout", 30)
+        interval = args.get("interval", 1.0)
+
+        # Build kwargs from args
+        kwargs = {k: v for k, v in args.items() if k not in ["condition_type", "timeout", "interval"] and v is not None}
+
+        # For file operations, resolve paths relative to workspace
+        if "path" in kwargs and not kwargs["path"].startswith("/"):
+            kwargs["path"] = str(self.workspace_path / kwargs["path"])
+
+        return await wait_for_condition(condition_type, timeout=timeout, interval=interval, **kwargs)
+
+    async def _run_interactive(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Run interactive command with expect/send automation."""
+        from backend.services.process_manager import ProcessManager
+
+        pm = ProcessManager()
+        return await pm.run_interactive(
+            command=args["command"],
+            working_dir=str(self.workspace_path),
+            inputs=args["inputs"],
+            timeout=args.get("timeout", 60)
+        )
+
+    async def _run_parallel(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Run multiple commands in parallel."""
+        from backend.services.process_manager import ProcessManager
+
+        pm = ProcessManager()
+        return await pm.run_parallel(
+            commands=args["commands"],
+            working_dir=str(self.workspace_path),
+            timeout=args.get("timeout", 300),
+            fail_fast=args.get("fail_fast", False)
+        )
+
+    async def _wait_for_log_pattern(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Wait for pattern in process output."""
+        from backend.services.process_manager import ProcessManager
+
+        pm = ProcessManager()
+        return await pm.wait_for_log_pattern(
+            process_id=args["process_id"],
+            pattern=args["pattern"],
+            timeout=args.get("timeout", 60)
+        )
+
+    async def _cleanup_session(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Clean up all managed processes."""
+        from backend.services.process_manager import ProcessManager
+
+        pm = ProcessManager()
+        return await pm.cleanup_session(
+            tags=args.get("tags"),
+            force=args.get("force", False)
+        )
+
+    async def _list_processes(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """List all managed processes."""
+        from backend.services.process_manager import ProcessManager
+
+        pm = ProcessManager()
+        return await pm.list_processes()
+
+    async def _start_service_chain(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Start multiple dependent services."""
+        from backend.services.process_manager import start_service_chain
+
+        return await start_service_chain(
+            services=args["services"],
+            working_dir=str(self.workspace_path)
+        )
+
+    async def _check_resources(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Check CPU, memory, disk usage."""
+        from backend.services.process_manager import check_resources
+
+        return await check_resources(
+            process_id=args.get("process_id"),
+            pid=args.get("pid")
+        )
+
+    async def _run_with_environment(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Run command with specific environment."""
+        from backend.services.process_manager import run_with_environment
+
+        return await run_with_environment(
+            command=args["command"],
+            working_dir=str(self.workspace_path),
+            env_type=args["env_type"],
+            version=args.get("version"),
+            timeout=args.get("timeout", 120)
+        )
+
+    async def _run_oauth_flow(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle OAuth/browser authentication flow."""
+        from backend.services.process_manager import run_oauth_flow
+
+        return await run_oauth_flow(
+            command=args["command"],
+            working_dir=str(self.workspace_path),
+            timeout=args.get("timeout", 300)
+        )
 
 
 # ======================================================================
@@ -1191,23 +1708,55 @@ You solve ANY software engineering problem:
 **Environment**: Version managers, PATH, permissions, shell config, OS specifics
 
 ## Tools Available
+
+### File Operations
 - **read_file**: Read any file (code, config, logs)
 - **write_file**: Create or replace files
 - **edit_file**: Make targeted edits
-- **run_command**: Execute ANY shell command - your most powerful tool
-  - Diagnose: `cat`, `grep`, `ps`, `lsof`, `docker logs`, `git status`
-  - Fix: `npm install`, `git reset`, `kill`, `docker restart`, `chmod`
-  - Investigate: `curl`, `ping`, `nslookup`, `netstat`
 - **search_files**: Find files by pattern or content
 - **list_directory**: Explore structure
+
+### Command Execution
+- **run_command**: Short-lived commands that finish quickly (build, test, install, git)
+- **run_background**: Long-running processes that run indefinitely (dev servers, watchers, docker)
+
+### Process Management (CRITICAL FOR SERVERS!)
+- **run_background**: Start server/watcher in background → returns process_id
+- **check_process**: Check if process is running, get recent output
+- **get_process_output**: Get logs from background process
+- **kill_process**: Stop a background process
+- **verify_condition**: Check if something is working (HTTP responds, port open, file exists)
+- **wait_for_condition**: Wait for something to become true (server to start, file to appear)
+
+## CRITICAL: How to Start Servers
+
+**NEVER use run_command for: npm run dev, python app.py, docker-compose up, npm run watch**
+These run FOREVER and will timeout!
+
+**CORRECT pattern for starting any server:**
+1. `run_background` command="npm run dev" → get process_id
+2. `wait_for_condition` condition_type="http" url="http://localhost:3000" timeout=30
+3. If wait succeeds → "Server running and verified!"
+4. If wait fails → `get_process_output` to see error logs → fix the issue → retry
+
+**Example:**
+```
+User: "Start the dev server"
+You: Starting server in background...
+     run_background: npm run dev → process_id: proc_abc123
+     Waiting for server to respond...
+     wait_for_condition: http, url=http://localhost:3000
+     ✓ Server running and responding at localhost:3000!
+```
 
 ## How You Work
 
 1. **DO IT**: When asked to do something, USE YOUR TOOLS
-   - "Run the project" → run_command
+   - "Run the project" → run_background + wait_for_condition (NOT run_command!)
    - "Fix the bug" → read_file, then edit_file
    - "Resolve merge conflict" → git commands
    - "Fix database" → check connection, run migrations
+   - "Check if server is running" → verify_condition
 
 2. **READ BEFORE WRITE**: Always understand before changing
 
@@ -1234,6 +1783,12 @@ You solve ANY software engineering problem:
    - "Found issue. Fixing now..." [then fix]
 
 4. **ITERATE**: Try multiple approaches until success
+
+5. **ALWAYS VERIFY YOUR WORK**:
+   - After starting server: verify_condition http to confirm it responds
+   - After editing file: run tests/build to confirm it works
+   - After fixing bug: run the failing test to confirm it passes
+   - NEVER say "done" or ask user to check - VERIFY IT YOURSELF
 
 ## Response Style
 Brief, action-oriented:

@@ -1,0 +1,484 @@
+# =============================================================================
+# Custom Condition Patterns for NAVI
+# =============================================================================
+#
+# This file allows you to define custom verification patterns without code.
+# NAVI will automatically load and use these patterns.
+#
+# Pattern Types:
+# 1. composite - Multiple conditions that all must pass (or any)
+# 2. http - HTTP-based check with custom validation
+# 3. command - Shell command with output validation
+# 4. script - Python script execution
+#
+# =============================================================================
+
+# =============================================================================
+# FULL STACK APPLICATION PATTERNS
+# =============================================================================
+
+full_stack_ready:
+  type: composite
+  description: Check if full stack (DB + API + Frontend) is ready
+  steps:
+    - condition: database
+      params:
+        db_type: postgres
+        port: 5432
+    - condition: http
+      params:
+        url: http://localhost:3000/api/health
+    - condition: http
+      params:
+        url: http://localhost:8080
+  require_all: true
+
+mern_stack:
+  type: composite
+  description: MongoDB + Express + React + Node stack
+  steps:
+    - condition: database
+      params:
+        db_type: mongodb
+        port: 27017
+    - condition: http
+      params:
+        url: http://localhost:3001/health
+    - condition: http
+      params:
+        url: http://localhost:3000
+
+django_stack:
+  type: composite
+  description: Django + PostgreSQL + Celery + Redis
+  steps:
+    - condition: database
+      params:
+        db_type: postgres
+    - condition: database
+      params:
+        db_type: redis
+    - condition: http
+      params:
+        url: http://localhost:8000/admin/
+    - condition: process_running
+      params:
+        name: celery
+
+rails_stack:
+  type: composite
+  description: Ruby on Rails + PostgreSQL + Sidekiq
+  steps:
+    - condition: database
+      params:
+        db_type: postgres
+    - condition: database
+      params:
+        db_type: redis
+    - condition: http
+      params:
+        url: http://localhost:3000
+    - condition: process_running
+      params:
+        name: sidekiq
+
+# =============================================================================
+# MICROSERVICES PATTERNS
+# =============================================================================
+
+microservices_mesh:
+  type: composite
+  description: Service mesh health (Istio/Linkerd)
+  steps:
+    - condition: kubernetes
+      params:
+        resource_type: deployment
+        name: istiod
+        namespace: istio-system
+    - condition: http
+      params:
+        url: http://localhost:15014/healthz/ready
+
+api_gateway_ready:
+  type: composite
+  description: API Gateway (Kong/Traefik) + Services
+  steps:
+    - condition: http
+      params:
+        url: http://localhost:8001/status
+    - condition: http
+      params:
+        url: http://localhost:8000/health
+
+event_driven_stack:
+  type: composite
+  description: Event-driven architecture (Kafka + Services)
+  steps:
+    - condition: port
+      params:
+        port: 9092
+    - condition: port
+      params:
+        port: 2181
+    - condition: http
+      params:
+        url: http://localhost:8081  # Schema Registry
+
+# =============================================================================
+# CI/CD PIPELINE PATTERNS
+# =============================================================================
+
+cicd_ready:
+  type: composite
+  description: CI/CD infrastructure ready
+  steps:
+    - condition: http
+      params:
+        url: http://localhost:8080/login  # Jenkins
+    - condition: http
+      params:
+        url: http://localhost:9000  # SonarQube
+    - condition: http
+      params:
+        url: http://localhost:8081/service/rest/v1/status  # Nexus
+
+gitlab_runner_ready:
+  type: command
+  description: Check GitLab Runner registration
+  command: gitlab-runner verify
+  expected_exit_code: 0
+
+github_self_hosted:
+  type: command
+  description: Check GitHub Actions self-hosted runner
+  command: ls ~/.actions-runner && test -f ~/.actions-runner/.runner
+  expected_exit_code: 0
+
+# =============================================================================
+# OBSERVABILITY PATTERNS
+# =============================================================================
+
+observability_stack:
+  type: composite
+  description: Full observability (Prometheus + Grafana + Loki)
+  steps:
+    - condition: http
+      params:
+        url: http://localhost:9090/-/healthy
+    - condition: http
+      params:
+        url: http://localhost:3000/api/health
+    - condition: http
+      params:
+        url: http://localhost:3100/ready
+
+elk_stack:
+  type: composite
+  description: Elasticsearch + Logstash + Kibana
+  steps:
+    - condition: http
+      params:
+        url: http://localhost:9200/_cluster/health
+    - condition: port
+      params:
+        port: 5044
+    - condition: http
+      params:
+        url: http://localhost:5601/api/status
+
+tracing_ready:
+  type: composite
+  description: Distributed tracing (Jaeger/Zipkin)
+  steps:
+    - condition: http
+      params:
+        url: http://localhost:16686/api/services
+  require_all: true
+
+# =============================================================================
+# CLOUD PROVIDER PATTERNS
+# =============================================================================
+
+aws_credentials_valid:
+  type: command
+  description: Check AWS credentials are valid
+  command: aws sts get-caller-identity
+  expected_exit_code: 0
+
+gcp_credentials_valid:
+  type: command
+  description: Check GCP credentials are valid
+  command: gcloud auth print-identity-token
+  expected_exit_code: 0
+
+azure_credentials_valid:
+  type: command
+  description: Check Azure credentials are valid
+  command: az account show
+  expected_exit_code: 0
+
+terraform_initialized:
+  type: command
+  description: Check Terraform is initialized
+  command: terraform validate
+  expected_exit_code: 0
+
+pulumi_initialized:
+  type: command
+  description: Check Pulumi is initialized
+  command: pulumi stack --show-name
+  expected_exit_code: 0
+
+# =============================================================================
+# DEVELOPMENT ENVIRONMENT PATTERNS
+# =============================================================================
+
+node_env_ready:
+  type: composite
+  description: Node.js development environment
+  steps:
+    - condition: command_succeeds
+      params:
+        command: node --version
+    - condition: command_succeeds
+      params:
+        command: npm --version
+    - condition: file_exists
+      params:
+        path: package.json
+    - condition: file_exists
+      params:
+        path: node_modules
+
+python_env_ready:
+  type: composite
+  description: Python development environment
+  steps:
+    - condition: command_succeeds
+      params:
+        command: python --version
+    - condition: file_exists
+      params:
+        path: requirements.txt
+    - condition: env_var
+      params:
+        name: VIRTUAL_ENV
+
+rust_env_ready:
+  type: composite
+  description: Rust development environment
+  steps:
+    - condition: command_succeeds
+      params:
+        command: rustc --version
+    - condition: command_succeeds
+      params:
+        command: cargo --version
+    - condition: file_exists
+      params:
+        path: Cargo.toml
+
+go_env_ready:
+  type: composite
+  description: Go development environment
+  steps:
+    - condition: command_succeeds
+      params:
+        command: go version
+    - condition: file_exists
+      params:
+        path: go.mod
+    - condition: env_var
+      params:
+        name: GOPATH
+
+# =============================================================================
+# DATABASE PATTERNS
+# =============================================================================
+
+postgres_cluster:
+  type: composite
+  description: PostgreSQL cluster with replication
+  steps:
+    - condition: database
+      params:
+        db_type: postgres
+        port: 5432
+    - condition: database
+      params:
+        db_type: postgres
+        port: 5433
+
+redis_cluster:
+  type: composite
+  description: Redis cluster
+  steps:
+    - condition: database
+      params:
+        db_type: redis
+        port: 6379
+    - condition: database
+      params:
+        db_type: redis
+        port: 6380
+    - condition: database
+      params:
+        db_type: redis
+        port: 6381
+  require_all: false  # At least one must work
+
+mongodb_replica:
+  type: composite
+  description: MongoDB replica set
+  steps:
+    - condition: database
+      params:
+        db_type: mongodb
+        port: 27017
+    - condition: database
+      params:
+        db_type: mongodb
+        port: 27018
+    - condition: database
+      params:
+        db_type: mongodb
+        port: 27019
+  require_all: false
+
+# =============================================================================
+# SECURITY PATTERNS
+# =============================================================================
+
+ssl_valid:
+  type: composite
+  description: Check SSL certificate validity
+  steps:
+    - condition: ssl
+      params:
+        host: ${host}
+        port: 443
+
+security_headers_present:
+  type: http
+  description: Verify security headers
+  url: ${url}
+  response_contains: X-Content-Type-Options
+
+vault_unsealed:
+  type: http
+  description: Check HashiCorp Vault is unsealed
+  url: http://localhost:8200/v1/sys/health
+  expected_status: 200
+
+keycloak_ready:
+  type: http
+  description: Check Keycloak is ready
+  url: http://localhost:8080/auth/realms/master/.well-known/openid-configuration
+  expected_status: 200
+
+# =============================================================================
+# MESSAGING PATTERNS
+# =============================================================================
+
+rabbitmq_ready:
+  type: composite
+  description: RabbitMQ with management
+  steps:
+    - condition: port
+      params:
+        port: 5672
+    - condition: http
+      params:
+        url: http://localhost:15672/api/overview
+
+kafka_cluster:
+  type: composite
+  description: Kafka cluster with Zookeeper
+  steps:
+    - condition: port
+      params:
+        port: 2181
+    - condition: port
+      params:
+        port: 9092
+    - condition: http
+      params:
+        url: http://localhost:8081  # Schema Registry
+
+nats_streaming:
+  type: composite
+  description: NATS with streaming
+  steps:
+    - condition: port
+      params:
+        port: 4222
+    - condition: http
+      params:
+        url: http://localhost:8222/healthz
+
+# =============================================================================
+# ML/AI PATTERNS
+# =============================================================================
+
+jupyter_ready:
+  type: http
+  description: Jupyter notebook server
+  url: http://localhost:8888/api
+  expected_status: 200
+
+mlflow_ready:
+  type: http
+  description: MLflow tracking server
+  url: http://localhost:5000/api/2.0/mlflow/experiments/list
+  expected_status: 200
+
+kubeflow_ready:
+  type: composite
+  description: Kubeflow cluster
+  steps:
+    - condition: kubernetes
+      params:
+        resource_type: deployment
+        name: ml-pipeline
+        namespace: kubeflow
+    - condition: http
+      params:
+        url: http://localhost:8080/pipeline
+
+gpu_available:
+  type: command
+  description: Check NVIDIA GPU is available
+  command: nvidia-smi
+  expected_exit_code: 0
+
+# =============================================================================
+# CUSTOM SCRIPT PATTERNS
+# =============================================================================
+
+custom_health_check:
+  type: script
+  description: Custom Python health check
+  script: |
+    import socket
+    import json
+
+    # Your custom logic here
+    host = kwargs.get("host", "localhost")
+    port = kwargs.get("port", 8080)
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        connected = sock.connect_ex((host, port)) == 0
+        sock.close()
+
+        result = {
+            "success": connected,
+            "host": host,
+            "port": port
+        }
+    except Exception as e:
+        result = {
+            "success": False,
+            "error": str(e)
+        }

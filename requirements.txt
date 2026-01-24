@@ -79,3 +79,7 @@ psycopg2-binary>=2.9.0
 boto3>=1.28.0
 slack_sdk==3.27.1  # Slack Web API client
 msal==1.28.0  # Microsoft Authentication Library for Graph API
+
+# Process Management
+psutil>=5.9.0  # CPU/memory/process monitoring
+websockets>=11.0  # WebSocket connectivity verification

@@ -17,6 +17,7 @@ what it's doing while actually doing it.
 
 import json
 import logging
+import re
 import uuid
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from dataclasses import dataclass, field
@@ -25,12 +26,125 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 
+# Give-up detection patterns - LLM responses that indicate premature termination
+GIVE_UP_PATTERNS = [
+    r"I was unable to",
+    r"I couldn'?t",
+    r"I encountered several issues",
+    r"Here'?s a summary",
+    r"manual intervention",
+    r"you can try",
+    r"you might want to",
+    r"I suggest",
+    r"please check",
+    r"you may need to",
+    r"unfortunately",
+    r"I'?m unable to",
+    r"could not complete",
+    r"failed to complete",
+    # Patterns for giving manual instructions instead of executing
+    r"try running",
+    r"you should run",
+    r"run the following",
+    r"you need to run",
+    r"execute the following",
+    r"you can run",
+    r"you'll need to",
+    r"you would need to",
+    r"here's how",
+    r"here is how",
+    r"steps to follow",
+    r"follow these steps",
+    r"Then,.*:",  # "Then, start the development server:" pattern
+]
+
+
+def is_giving_up(text: str, max_retries: int = 3, retry_count: int = 0) -> bool:
+    """
+    Detect if the LLM is giving up instead of persisting.
+    Returns True if give-up patterns are detected and we haven't exceeded max retries.
+    """
+    if retry_count >= max_retries:
+        return False  # Don't force retry indefinitely
+
+    text_lower = text.lower()
+    for pattern in GIVE_UP_PATTERNS:
+        if re.search(pattern, text_lower, re.IGNORECASE):
+            logger.info(f"[StreamingAgent] Give-up pattern detected: {pattern}")
+            return True
+    return False
+
+
+FORCE_CONTINUE_MESSAGE = """DO NOT GIVE UP. You have more tool calls available.
+
+You said you would try 5-10 DIFFERENT alternatives before stopping. Try a COMPLETELY DIFFERENT approach now.
+
+What else can you try? Use a different tool, different command, different strategy.
+DO NOT output a summary or suggest manual steps. TAKE ACTION with your tools."""
+
+
+# ========== EXECUTION PLAN DETECTION ==========
+# Regex patterns to detect when LLM outputs a numbered execution plan
+# This enables the visual step-by-step progress UI in the frontend
+
+# Matches phrases that introduce a plan followed by numbered steps
+PLAN_INTRO_PATTERN = re.compile(
+    r"(?:let'?s|I'?ll|I will|here'?s|proceed|steps?|following steps)[^:]*:\s*\n?"
+    r"((?:\s*\d+[\.\)]\s*\*{0,2}[^\n]+\n?)+)",
+    re.IGNORECASE | re.MULTILINE
+)
+
+# Extracts individual steps: number, title, and optional detail after colon
+STEP_PATTERN = re.compile(
+    r"(\d+)[\.\)]\s*\*{0,2}([^:\*\n]+?)\*{0,2}(?:[:\s]+([^\n]*))?$",
+    re.MULTILINE
+)
+
+
+def parse_execution_plan(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse an execution plan from LLM text output.
+    Returns plan dict with steps if found, None otherwise.
+    """
+    match = PLAN_INTRO_PATTERN.search(text)
+    if not match:
+        return None
+
+    steps_text = match.group(1)
+    steps = []
+
+    for step_match in STEP_PATTERN.finditer(steps_text):
+        step_num = int(step_match.group(1))
+        title = step_match.group(2).strip()
+        detail = (step_match.group(3) or "").strip()
+
+        if title:  # Only add if we have a title
+            steps.append({
+                "index": step_num,
+                "title": title,
+                "detail": detail
+            })
+
+    if len(steps) >= 2:  # Only return if we have at least 2 steps
+        return {
+            "plan_id": f"plan-{uuid.uuid4().hex[:8]}",
+            "steps": steps
+        }
+
+    return None
+
+
 class StreamEventType(Enum):
     """Types of events in the streaming response."""
     TEXT = "text"           # Narrative text from LLM
+    THINKING = "thinking"   # Extended thinking/reasoning from LLM
     TOOL_CALL = "tool_call" # LLM wants to call a tool
     TOOL_RESULT = "tool_result"  # Result of tool execution
     DONE = "done"           # Stream complete
+    # Execution Plan Events - for visual step-by-step progress UI
+    PLAN_START = "plan_start"       # Detected execution plan with steps
+    STEP_UPDATE = "step_update"     # Step status changed (running/completed/error)
+    PLAN_COMPLETE = "plan_complete" # All steps completed
 
 
 @dataclass
@@ -45,6 +159,8 @@ class StreamEvent:
         result = {"type": self.type.value}
         if self.type == StreamEventType.TEXT:
             result["text"] = self.content
+        elif self.type == StreamEventType.THINKING:
+            result["thinking"] = self.content
         elif self.type == StreamEventType.TOOL_CALL:
             result["tool_call"] = {
                 "id": self.tool_id,
@@ -63,6 +179,13 @@ class StreamEvent:
                 result["summary"] = self.content.get("summary", {})
             else:
                 result["final_message"] = self.content
+        # Execution Plan Events
+        elif self.type == StreamEventType.PLAN_START:
+            result["data"] = self.content  # {plan_id, steps: [{index, title, detail}]}
+        elif self.type == StreamEventType.STEP_UPDATE:
+            result["data"] = self.content  # {plan_id, step_index, status}
+        elif self.type == StreamEventType.PLAN_COMPLETE:
+            result["data"] = self.content  # {plan_id}
         return result
 
 
@@ -179,6 +302,69 @@ NAVI_TOOLS = [
                 }
             },
             "required": ["path"]
+        }
+    },
+    {
+        "name": "start_server",
+        "description": "Start a dev server or long-running process in background. Returns immediately after starting, then verifies the server is responding. Use this instead of run_command for 'npm run dev', 'python app.py', etc.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "The command to start the server (e.g., 'npm run dev', 'python app.py')"
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "The port the server will listen on (for verification)"
+                },
+                "health_path": {
+                    "type": "string",
+                    "description": "Optional: path to check for health (default: '/')"
+                },
+                "startup_time": {
+                    "type": "integer",
+                    "description": "Optional: seconds to wait for server to start (default: 10)"
+                }
+            },
+            "required": ["command", "port"]
+        }
+    },
+    {
+        "name": "check_endpoint",
+        "description": "Check if an HTTP endpoint is responding. Use to verify servers, APIs, or services are running.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL to check (e.g., 'http://localhost:3000')"
+                },
+                "method": {
+                    "type": "string",
+                    "enum": ["GET", "POST", "HEAD"],
+                    "description": "HTTP method (default: GET)"
+                },
+                "expected_status": {
+                    "type": "integer",
+                    "description": "Expected HTTP status code (default: 200)"
+                }
+            },
+            "required": ["url"]
+        }
+    },
+    {
+        "name": "stop_server",
+        "description": "Stop a running server by killing processes on a specific port.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "port": {
+                    "type": "integer",
+                    "description": "The port the server is running on"
+                }
+            },
+            "required": ["port"]
         }
     }
 ]
@@ -339,22 +525,230 @@ User: "run the tests"
 ❌ WRONG: Explain how to run tests
 
 ### Action Keywords That Require Tool Use:
-- "run", "start", "execute", "launch" → Use `run_command`
-- "install", "add package" → Use `run_command` with npm/pip/etc
+- "start server", "run dev", "start the project" → Use `start_server` (NOT run_command!)
+- "install", "add package", "run tests", "build" → Use `run_command` with npm/pip/etc
 - "create", "make", "generate" → Use `write_file`
 - "fix", "update", "change" → Use `edit_file` or `write_file`
 - "delete", "remove" → Use appropriate tool
+- "check if running", "verify server" → Use `check_endpoint`
+- "stop server", "kill server" → Use `stop_server`
+
+### CRITICAL: Use start_server for Dev Servers
+**NEVER use `run_command` for starting dev servers.** They run forever and will timeout!
+
+✅ CORRECT: `start_server` with command="npm run dev", port=3000
+❌ WRONG: `run_command` with command="npm run dev" (will timeout after 2 min!)
+
+The `start_server` tool:
+1. Kills any existing process on the port
+2. Removes lock files (e.g., .next/dev/lock)
+3. Starts the server in background
+4. Automatically verifies the server is responding
+5. Returns success only if the server is actually running and responding
+
+## PERSISTENCE - CRITICAL RULES (NEVER VIOLATE)
+
+When a task fails, you MUST try alternative approaches. You have 10+ tool calls available - USE THEM ALL.
+
+### NEVER DO:
+- Output a summary of what went wrong (that's giving up)
+- List manual steps for the user to try
+- Say "I was unable to...", "I couldn't...", "I encountered several issues..."
+- Say "you can try...", "you might want to...", "I suggest..."
+- Say "manual intervention needed" or "please check..."
+- Stop before the task is ACTUALLY COMPLETE (server running, tests passing, etc.)
+- Give up after one failure or even multiple failures
+
+### ALWAYS DO:
+- Try at least 5-10 DIFFERENT approaches before considering stopping
+- Each attempt must be GENUINELY DIFFERENT from previous attempts
+- Track what you've tried and explicitly avoid repeating it
+- Analyze errors and adapt your strategy based on what you learn
+- Keep going until you succeed or have truly exhausted all options
+
+## CRITICAL: Shell State Does NOT Persist Between Commands
+
+**IMPORTANT**: Each `run_command` starts a NEW shell. Environment variables, nvm sessions, virtualenvs do NOT persist.
+
+### WRONG (environment is lost):
+```
+run_command: source ~/.nvm/nvm.sh && nvm use 18   # Sets up nvm
+run_command: npm install                          # FAILS - nvm not sourced, npm not found!
+run_command: npm run dev                          # FAILS - same reason
+```
+
+### CORRECT (include setup in EVERY command):
+```
+run_command: export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use 18 && npm install
+run_command: export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use 18 && npm run dev
+```
+
+### Key Rules:
+1. **Include nvm/pyenv/etc sourcing in EVERY command that needs it**
+2. **Once you find a working Node version, STICK WITH IT** - don't keep switching versions
+3. **Chain all related commands together**: `source nvm && nvm use 18 && npm install && npm run dev`
+4. If a specific version isn't installed, install it ONCE then use it: `nvm install 18 && nvm use 18 && npm run dev`
+
+## Specific Fallback Strategies
+
+### For Node.js/npm Setup Failures:
+If nvm fails or node isn't found, try these IN ORDER (don't skip any):
+1. Check if node already exists: `which node && node --version && npm --version`
+2. Try full nvm with default: `export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use default && npm install && npm run dev`
+3. Try nvm with Node 18 (LTS): `export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm install 18 && nvm use 18 && npm install && npm run dev`
+4. Try nvm with Node 20 (LTS): `export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm install 20 && nvm use 20 && npm install && npm run dev`
+5. Try homebrew node: `/opt/homebrew/bin/npm install && /opt/homebrew/bin/npm run dev`
+6. Try /usr/local node: `/usr/local/bin/npm install && /usr/local/bin/npm run dev`
+7. Install via brew: `brew install node && npm install && npm run dev`
+8. Try volta: `volta install node && npm install && npm run dev`
+9. Try fnm: `eval "$(fnm env)" && fnm use && npm install && npm run dev`
+
+**IMPORTANT**: Once ONE of these works, use that SAME approach for all subsequent commands. Don't keep switching!
+
+### For Port-in-Use Errors:
+The `start_server` tool automatically handles this! It kills existing processes on the port before starting.
+If you still need manual control:
+1. Use `stop_server` tool with the port number
+2. Or try different port: `start_server` with command="PORT=3001 npm run dev", port=3001
+3. Check what's using it: `run_command` with `lsof -i :<port>`
+
+### For Dependency Errors:
+1. Install first: `npm install && npm run dev`
+2. Clear and reinstall: `rm -rf node_modules && npm install && npm run dev`
+3. Clear cache: `npm cache clean --force && rm -rf node_modules package-lock.json && npm install`
+4. Try yarn: `yarn install && yarn dev`
+5. Try pnpm: `pnpm install && pnpm dev`
+
+### For Python/pip Setup Failures:
+1. Check python: `which python3 && python3 --version`
+2. Create venv: `python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt`
+3. Try pip3: `pip3 install -r requirements.txt`
+4. Use poetry: `poetry install && poetry run python ...`
+
+## Environment & Project Setup Tasks
+
+For tasks like "start the project", "restart", "run dev server":
+1. First check package.json for available scripts
+2. Try the most common approach first
+3. When it fails, TRY THE NEXT ALTERNATIVE - do NOT repeat the same command
+4. KEEP TRYING different approaches until the server is actually running
+5. Verify success by checking output or hitting the endpoint
 
 ## Important Guidelines
 
 - **ACTION WITH NARRATIVE**: When user wants something done, DO IT with tools AND explain what you're doing
-- **BEFORE each tool**: Brief explanation of intent (e.g., "Let me check...", "I'll create...", "Since that failed, let me try...")
+- **BEFORE each tool**: Brief explanation of intent (e.g., "Let me check...", "I'll create...", "Since that failed, let me try a different approach...")
 - **AFTER each tool result**: Explain what happened and what it means
-- If a command fails, analyze stderr, explain the error, and describe your fix approach
+- If a command fails, analyze stderr, explain the error, and TRY A DIFFERENT APPROACH immediately
 - Only skip narrative for pure information requests ("what is...", "explain...")
 - Complete tasks end-to-end without asking permission
+- **NEVER mark a task complete until it's ACTUALLY done** - Running commands is not "complete", the actual result must be achieved
 
-Remember: You are an AUTONOMOUS agent that COMMUNICATES clearly. Use tools to take action, but ALWAYS explain what you're doing and why. The user should understand your thought process as you work."""
+Example of WRONG behavior:
+User: "start the project"
+❌ "I tried npm run dev but it failed. I encountered several issues with nvm. You can try: 1) Check nvm installation..."
+❌ Using `run_command` for `npm run dev` (will timeout!)
+
+Example of CORRECT behavior:
+User: "start the project"
+✅ "Let me start the development server. [start_server: command='npm run dev', port=3000] ... Server verified and responding at http://localhost:3000!"
+
+If start_server fails:
+✅ "Server didn't start. Let me check the logs... [The log shows missing dependencies]. Installing dependencies first... [run_command: npm install] Done. Now starting server... [start_server: command='npm run dev', port=3000] ... Server verified and responding!"
+
+## VERIFICATION BEFORE COMPLETION (CRITICAL)
+
+**ALWAYS verify your work BEFORE claiming success or asking the user to verify.**
+
+### Rules:
+1. **Server tasks**: Use `start_server` tool - it automatically verifies the server responds!
+   - ✅ CORRECT: `start_server` with port=3000 - it verifies automatically
+   - ✅ ALSO OK: After starting, use `check_endpoint` to verify: `check_endpoint` url="http://localhost:3000"
+   - ❌ WRONG: Start server, assume it worked, ask user to "check if it's working"
+
+2. **File changes**: ALWAYS re-read modified files or run tests to verify changes worked
+   - ✅ CORRECT: Edit file, run `npm run build` or `npm test` to verify, report result
+   - ❌ WRONG: Edit file, ask user to "try building and let me know if it works"
+
+3. **NEVER ask user to verify what you can verify yourself**:
+   - ❌ "Please check if the server is running"
+   - ❌ "Let me know if this fixed the issue"
+   - ❌ "Try building and see if it works"
+   - ✅ "Let me verify with check_endpoint... Confirmed working!"
+   - ✅ "Server started but check_endpoint failed. Let me investigate..."
+
+### Verification Tools:
+- `start_server`: Starts AND verifies server is responding (use for dev servers)
+- `check_endpoint`: Check if any URL is responding (use to verify APIs, services)
+- `run_command`: For tests/builds, check exit code and output for errors
+
+### NEVER make false claims about continuing work:
+**Your response ENDS when you stop responding. You do NOT continue working in the background.**
+
+NEVER say:
+- ❌ "I will continue attempting to resolve this..."
+- ❌ "In the meantime, I will keep working on..."
+- ❌ "I'll continue investigating..."
+- ❌ "Let me know and I'll continue..."
+
+These are LIES because you stop working when the response ends. Instead:
+- ✅ Be honest: "I was unable to resolve this. The issue appears to be X. Would you like me to try Y approach?"
+- ✅ Summarize what you tried and what failed
+- ✅ Suggest specific next steps the USER can take if you truly cannot solve it
+
+## DEPLOYMENT CAPABILITIES
+
+You can deploy projects to ANY cloud platform using their official CLIs.
+
+### Deployment Workflow
+1. **Detect Project Type**: Read package.json/requirements.txt/Dockerfile to determine type
+2. **Check CLI**: Verify if platform CLI is installed (`which vercel`)
+3. **Install CLI if needed**: Run the install command
+4. **Login**: Run login command - tell user "Please complete authentication in your browser. I'll wait..."
+5. **Deploy**: Run deploy command (may take 5-30 minutes)
+6. **Verify**: Check deployment status and report URL
+
+### Platform CLI Reference
+
+| Platform | Install | Login | Deploy | Verify |
+|----------|---------|-------|--------|--------|
+| Vercel | `npm i -g vercel` | `vercel login` | `vercel --prod` | `vercel ls` |
+| Railway | `npm i -g @railway/cli` | `railway login` | `railway up` | `railway status` |
+| Fly.io | `curl -L https://fly.io/install.sh \| sh` | `fly auth login` | `fly deploy` | `fly status` |
+| Netlify | `npm i -g netlify-cli` | `netlify login` | `netlify deploy --prod` | `netlify status` |
+| Render | `pip install render-cli` | `render login` | `render deploy` | `render services` |
+| Heroku | `curl https://cli-assets.heroku.com/install.sh \| sh` | `heroku login` | `git push heroku main` | `heroku ps` |
+| Cloudflare | `npm i -g wrangler` | `wrangler login` | `wrangler publish` | `wrangler whoami` |
+| AWS | Download from aws.amazon.com/cli | `aws configure` | `sam deploy` / `cdk deploy` | `aws sts get-caller-identity` |
+| GCP | `curl https://sdk.cloud.google.com \| bash` | `gcloud auth login` | `gcloud run deploy` | `gcloud auth list` |
+| Azure | `curl -sL https://aka.ms/InstallAzureCLIDeb \| sudo bash` | `az login` | `az webapp up` | `az account show` |
+
+### Project Type → Platform Recommendations
+- **Next.js/React**: Vercel (optimal), Netlify, Railway
+- **Python/FastAPI/Django**: Railway, Render, Fly.io, Heroku
+- **Node.js API**: Railway, Render, Fly.io, Heroku
+- **Static Site**: Netlify, Vercel, Cloudflare Pages
+- **Docker/Container**: Fly.io, Railway, Render, AWS ECS
+- **Full-Stack with DB**: Railway (includes Postgres), Render, Fly.io
+
+### Authentication Flow
+When a CLI requires OAuth login:
+1. Run the login command (e.g., `vercel login`)
+2. Tell user: "Please complete authentication in your browser. The CLI will open a browser window."
+3. The command will complete automatically once browser auth finishes
+4. Verify authentication worked with a status command
+
+### Deployment Commands are Long-Running
+- Deployments can take 5-30 minutes - this is normal
+- After starting deployment, report progress
+- Poll status periodically if needed
+- Report final deployment URL when complete
+
+### Example Deployment Workflow
+User: "Deploy this to Vercel"
+✅ "Let me deploy to Vercel. First, checking if CLI is installed... [run_command: which vercel] Found at /usr/local/bin/vercel. Checking auth... [run_command: vercel whoami] Authenticated as user@example.com. Deploying to production... [run_command: vercel --prod] Deployment complete! Your app is live at: https://my-app.vercel.app"
+
+Remember: You are an AUTONOMOUS agent that COMMUNICATES clearly AND PERSISTS until success. Use tools to take action, explain what you're doing, and NEVER give up until the task is truly complete."""
 
 
 class StreamingToolExecutor:
@@ -367,6 +761,7 @@ class StreamingToolExecutor:
         self.files_modified: set = set()
         self.files_created: set = set()
         self.commands_run: list = []
+        self.failed_commands: list = []  # Track failed commands to prevent repetition
 
     def get_summary(self) -> dict:
         """Get summary of all operations performed."""
@@ -378,7 +773,21 @@ class StreamingToolExecutor:
             "files_read_list": list(self.files_read),
             "files_modified_list": list(self.files_modified),
             "files_created_list": list(self.files_created),
+            "failed_commands": len(self.failed_commands),
         }
+
+    def get_failed_commands_context(self) -> str:
+        """Get context about failed commands to inject into LLM messages."""
+        if not self.failed_commands:
+            return ""
+
+        context = "\n\n**FAILED COMMANDS (DO NOT REPEAT THESE):**\n"
+        for fc in self.failed_commands[-5:]:  # Last 5 failures
+            cmd = fc.get("command", "Unknown")[:80]
+            error = fc.get("error", "Unknown error")[:100]
+            context += f"- `{cmd}`: {error}\n"
+        context += "\nTry a COMPLETELY DIFFERENT approach.\n"
+        return context
 
     async def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a tool and return the result."""
@@ -463,17 +872,40 @@ class StreamingToolExecutor:
                 if arguments.get("cwd"):
                     cwd = os.path.join(self.workspace_path, arguments["cwd"])
 
+                command = arguments["command"]
+
+                # Extended timeout for deployment commands (30 minutes)
+                deployment_indicators = [
+                    "vercel", "railway", "fly deploy", "fly launch",
+                    "netlify deploy", "render deploy", "heroku",
+                    "gcloud run deploy", "gcloud app deploy",
+                    "aws deploy", "sam deploy", "cdk deploy",
+                    "az webapp", "docker push", "docker build",
+                    "wrangler publish", "wrangler deploy"
+                ]
+                is_deployment = any(ind in command.lower() for ind in deployment_indicators)
+                timeout = 1800 if is_deployment else 120  # 30 min for deployments, 2 min default
+
                 result = subprocess.run(
-                    arguments["command"],
+                    command,
                     shell=True,
                     cwd=cwd,
                     capture_output=True,
                     text=True,
-                    timeout=60
+                    timeout=timeout
                 )
 
                 # Track command run
                 self.commands_run.append(arguments["command"])
+
+                # Track failed commands for context injection
+                if result.returncode != 0:
+                    error_msg = result.stderr[:200] if result.stderr else result.stdout[:200] if result.stdout else "Command failed"
+                    self.failed_commands.append({
+                        "command": arguments["command"],
+                        "error": error_msg,
+                        "exit_code": result.returncode
+                    })
 
                 return {
                     "success": result.returncode == 0,
@@ -533,6 +965,169 @@ class StreamingToolExecutor:
                     "entries": entries,
                     "path": arguments.get("path", ".")
                 }
+
+            elif tool_name == "start_server":
+                import time
+                import urllib.request
+                import urllib.error
+
+                command = arguments["command"]
+                port = arguments["port"]
+                health_path = arguments.get("health_path", "/")
+                startup_time = arguments.get("startup_time", 10)
+
+                # First, kill any existing process on the port
+                try:
+                    kill_result = subprocess.run(
+                        f"lsof -ti :{port} | xargs kill -9 2>/dev/null || true",
+                        shell=True,
+                        capture_output=True,
+                        timeout=10
+                    )
+                except Exception:
+                    pass
+
+                # Also remove any lock files for Next.js
+                try:
+                    lock_path = os.path.join(self.workspace_path, ".next", "dev", "lock")
+                    if os.path.exists(lock_path):
+                        os.remove(lock_path)
+                except Exception:
+                    pass
+
+                # Start the server in background using nohup
+                # Redirect output to a log file so we can check it
+                log_file = os.path.join(self.workspace_path, ".navi-server.log")
+                bg_command = f"cd {self.workspace_path} && nohup {command} > {log_file} 2>&1 &"
+
+                try:
+                    subprocess.run(bg_command, shell=True, timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass  # Expected - we're running in background
+
+                # Wait for server to start, checking periodically
+                url = f"http://localhost:{port}{health_path}"
+                server_started = False
+                last_error = ""
+
+                for i in range(startup_time * 2):  # Check every 0.5 seconds
+                    time.sleep(0.5)
+                    try:
+                        req = urllib.request.Request(url, method='HEAD')
+                        with urllib.request.urlopen(req, timeout=2) as response:
+                            if response.status < 500:
+                                server_started = True
+                                break
+                    except urllib.error.HTTPError as e:
+                        # Even a 404 means server is running
+                        if e.code < 500:
+                            server_started = True
+                            break
+                        last_error = f"HTTP {e.code}"
+                    except urllib.error.URLError as e:
+                        last_error = str(e.reason)
+                    except Exception as e:
+                        last_error = str(e)
+
+                # Get any log output
+                log_content = ""
+                try:
+                    with open(log_file, 'r') as f:
+                        log_content = f.read()[-1000:]  # Last 1000 chars
+                except Exception:
+                    pass
+
+                if server_started:
+                    return {
+                        "success": True,
+                        "message": f"Server started successfully on port {port}",
+                        "url": url,
+                        "verified": True,
+                        "log_preview": log_content[:500] if log_content else None
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Server did not respond after {startup_time} seconds",
+                        "last_error": last_error,
+                        "url": url,
+                        "log_preview": log_content if log_content else "No log output captured",
+                        "suggestion": "Check the log output for errors. Common issues: port already in use, missing dependencies, build errors."
+                    }
+
+            elif tool_name == "check_endpoint":
+                import urllib.request
+                import urllib.error
+
+                url = arguments["url"]
+                method = arguments.get("method", "GET")
+                expected_status = arguments.get("expected_status", 200)
+
+                try:
+                    req = urllib.request.Request(url, method=method)
+                    with urllib.request.urlopen(req, timeout=10) as response:
+                        body_preview = response.read(500).decode('utf-8', errors='ignore')
+                        return {
+                            "success": response.status == expected_status,
+                            "status": response.status,
+                            "responding": True,
+                            "body_preview": body_preview,
+                            "headers": dict(response.headers)
+                        }
+                except urllib.error.HTTPError as e:
+                    return {
+                        "success": e.code == expected_status,
+                        "status": e.code,
+                        "responding": True,
+                        "error": f"HTTP {e.code}: {e.reason}"
+                    }
+                except urllib.error.URLError as e:
+                    return {
+                        "success": False,
+                        "responding": False,
+                        "error": f"Connection failed: {e.reason}"
+                    }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "responding": False,
+                        "error": str(e)
+                    }
+
+            elif tool_name == "stop_server":
+                port = arguments["port"]
+
+                try:
+                    # Find and kill processes on the port
+                    result = subprocess.run(
+                        f"lsof -ti :{port} | xargs kill -9 2>/dev/null",
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+
+                    # Verify the port is free
+                    check = subprocess.run(
+                        f"lsof -ti :{port}",
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+
+                    port_is_free = not check.stdout.strip()
+
+                    return {
+                        "success": port_is_free,
+                        "message": f"Port {port} is now free" if port_is_free else f"Processes still running on port {port}",
+                        "port": port
+                    }
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "error": str(e)
+                    }
 
             else:
                 return {"success": False, "error": f"Unknown tool: {tool_name}"}
@@ -607,21 +1202,43 @@ async def stream_with_tools_anthropic(
 
     messages.append({"role": "user", "content": user_content})
 
+    # Track give-up retry count to prevent infinite loops
+    give_up_retry_count = 0
+    max_give_up_retries = 3
+    accumulated_text = ""  # Track full response text for give-up detection
+
+    # Execution plan tracking for visual step-by-step UI
+    current_plan: Optional[Dict[str, Any]] = None
+    plan_emitted = False
+    current_step_index = 0
+
     async with aiohttp.ClientSession() as session:
         while True:  # Loop for tool use continuation
+            # Enable extended thinking for supported models (Claude 3.5 Sonnet, Claude 3 Opus)
+            # Extended thinking requires higher max_tokens (budget_tokens + response tokens)
+            use_extended_thinking = "claude-3" in model.lower() and ("sonnet" in model.lower() or "opus" in model.lower())
+
             payload = {
                 "model": model,
-                "max_tokens": 4096,
+                "max_tokens": 16000 if use_extended_thinking else 4096,
                 "system": STREAMING_SYSTEM_PROMPT,
                 "messages": messages,
                 "tools": NAVI_TOOLS,
                 "stream": True,
             }
 
+            # Add extended thinking configuration if supported
+            if use_extended_thinking:
+                payload["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": 10000
+                }
+
             headers = {
                 "x-api-key": api_key,
                 "content-type": "application/json",
                 "anthropic-version": "2023-06-01",
+                "anthropic-beta": "interleaved-thinking-2025-05-14",
             }
 
             async with session.post(
@@ -637,11 +1254,13 @@ async def stream_with_tools_anthropic(
                     return
 
                 text_buffer = ""
+                thinking_buffer = ""  # Buffer for extended thinking content
                 tool_calls = []
                 current_tool_input = ""
                 current_tool_id = None
                 current_tool_name = None
                 in_tool_input = False
+                in_thinking_block = False  # Track if we're in a thinking block
                 stop_reason = None
 
                 async for line in response.content:
@@ -659,35 +1278,87 @@ async def stream_with_tools_anthropic(
 
                         if event_type == "content_block_start":
                             block = data.get("content_block", {})
-                            if block.get("type") == "tool_use":
+                            block_type = block.get("type")
+
+                            if block_type == "thinking":
+                                # Starting a thinking block
+                                in_thinking_block = True
+                                # Flush any pending text before thinking
+                                if text_buffer:
+                                    yield StreamEvent(StreamEventType.TEXT, text_buffer)
+                                    text_buffer = ""
+
+                            elif block_type == "tool_use":
                                 # Starting a tool call
                                 current_tool_id = block.get("id")
                                 current_tool_name = block.get("name")
                                 current_tool_input = ""
                                 in_tool_input = True
+                                in_thinking_block = False
 
-                                # Flush any pending text
+                                # Flush any pending text and thinking
                                 if text_buffer:
                                     yield StreamEvent(StreamEventType.TEXT, text_buffer)
                                     text_buffer = ""
+                                if thinking_buffer:
+                                    yield StreamEvent(StreamEventType.THINKING, thinking_buffer)
+                                    thinking_buffer = ""
+
+                            elif block_type == "text":
+                                # Starting a text block - flush thinking if pending
+                                in_thinking_block = False
+                                if thinking_buffer:
+                                    yield StreamEvent(StreamEventType.THINKING, thinking_buffer)
+                                    thinking_buffer = ""
 
                         elif event_type == "content_block_delta":
                             delta = data.get("delta", {})
+                            delta_type = delta.get("type")
 
-                            if delta.get("type") == "text_delta":
+                            if delta_type == "thinking_delta":
+                                # Extended thinking content
+                                thinking_text = delta.get("thinking", "")
+                                if thinking_text:
+                                    thinking_buffer += thinking_text
+                                    # Yield thinking in chunks for smoother streaming
+                                    if len(thinking_buffer) >= 100 or thinking_text.endswith((".", "!", "?", "\n")):
+                                        yield StreamEvent(StreamEventType.THINKING, thinking_buffer)
+                                        thinking_buffer = ""
+
+                            elif delta_type == "text_delta":
                                 text = delta.get("text", "")
                                 if text:
                                     text_buffer += text
+                                    accumulated_text += text  # Track for plan detection
                                     # Yield text in chunks for smoother streaming
                                     if len(text_buffer) >= 20 or text.endswith((".", "!", "?", "\n")):
                                         yield StreamEvent(StreamEventType.TEXT, text_buffer)
                                         text_buffer = ""
 
-                            elif delta.get("type") == "input_json_delta":
+                                        # Check for execution plan in accumulated text (only once)
+                                        if not plan_emitted and len(accumulated_text) > 50:
+                                            detected_plan = parse_execution_plan(accumulated_text)
+                                            if detected_plan:
+                                                current_plan = detected_plan
+                                                plan_emitted = True
+                                                current_step_index = 0
+                                                yield StreamEvent(
+                                                    StreamEventType.PLAN_START,
+                                                    detected_plan
+                                                )
+                                                logger.info(f"[StreamingAgent] Detected execution plan with {len(detected_plan['steps'])} steps")
+
+                            elif delta_type == "input_json_delta":
                                 # Building tool input
                                 current_tool_input += delta.get("partial_json", "")
 
                         elif event_type == "content_block_stop":
+                            # Flush thinking buffer when thinking block ends
+                            if in_thinking_block and thinking_buffer:
+                                yield StreamEvent(StreamEventType.THINKING, thinking_buffer)
+                                thinking_buffer = ""
+                            in_thinking_block = False
+
                             if in_tool_input and current_tool_name:
                                 # Tool call complete - execute it
                                 try:
@@ -703,6 +1374,17 @@ async def stream_with_tools_anthropic(
                                     tool_name=current_tool_name
                                 )
 
+                                # Emit step_update for execution plan (running)
+                                if current_plan and current_step_index < len(current_plan.get("steps", [])):
+                                    yield StreamEvent(
+                                        StreamEventType.STEP_UPDATE,
+                                        {
+                                            "plan_id": current_plan["plan_id"],
+                                            "step_index": current_step_index,
+                                            "status": "running"
+                                        }
+                                    )
+
                                 # Execute the tool
                                 result = await executor.execute(current_tool_name, args)
 
@@ -712,6 +1394,32 @@ async def stream_with_tools_anthropic(
                                     result,
                                     tool_id=current_tool_id
                                 )
+
+                                # Emit step_update for execution plan (completed)
+                                if current_plan and current_step_index < len(current_plan.get("steps", [])):
+                                    # Determine if step succeeded or failed
+                                    step_status = "completed"
+                                    if isinstance(result, dict) and result.get("error"):
+                                        step_status = "error"
+                                    elif isinstance(result, str) and "error" in result.lower():
+                                        step_status = "error"
+
+                                    yield StreamEvent(
+                                        StreamEventType.STEP_UPDATE,
+                                        {
+                                            "plan_id": current_plan["plan_id"],
+                                            "step_index": current_step_index,
+                                            "status": step_status
+                                        }
+                                    )
+                                    current_step_index += 1
+
+                                    # Check if plan is complete
+                                    if current_step_index >= len(current_plan.get("steps", [])):
+                                        yield StreamEvent(
+                                            StreamEventType.PLAN_COMPLETE,
+                                            {"plan_id": current_plan["plan_id"]}
+                                        )
 
                                 tool_calls.append({
                                     "id": current_tool_id,
@@ -734,8 +1442,11 @@ async def stream_with_tools_anthropic(
                     except json.JSONDecodeError:
                         continue
 
-                # Flush remaining text
+                # Flush remaining thinking and text
+                if thinking_buffer:
+                    yield StreamEvent(StreamEventType.THINKING, thinking_buffer)
                 if text_buffer:
+                    accumulated_text += text_buffer
                     yield StreamEvent(StreamEventType.TEXT, text_buffer)
 
                 # Check if we need to continue (tool use)
@@ -751,7 +1462,7 @@ async def stream_with_tools_anthropic(
                         })
                     messages.append({"role": "assistant", "content": assistant_content})
 
-                    # Add tool results
+                    # Add tool results with failed commands context
                     tool_results = []
                     for tc in tool_calls:
                         tool_results.append({
@@ -759,13 +1470,44 @@ async def stream_with_tools_anthropic(
                             "tool_use_id": tc["id"],
                             "content": json.dumps(tc["result"])
                         })
+
+                    # Inject failed commands context if any
+                    failed_context = executor.get_failed_commands_context()
+                    if failed_context:
+                        tool_results.append({
+                            "type": "text",
+                            "text": failed_context
+                        })
+
                     messages.append({"role": "user", "content": tool_results})
 
                     # Reset for next iteration
                     tool_calls = []
+                    accumulated_text = ""  # Reset for next response
                     continue
                 else:
-                    # No more tool calls, we're done - emit summary
+                    # No more tool calls - check if LLM is giving up prematurely
+                    if is_giving_up(accumulated_text, max_give_up_retries, give_up_retry_count):
+                        give_up_retry_count += 1
+                        logger.info(f"[StreamingAgent] Give-up detected, forcing retry {give_up_retry_count}/{max_give_up_retries}")
+
+                        # Add assistant's response to messages
+                        messages.append({"role": "assistant", "content": accumulated_text})
+
+                        # Add force-continue message with failed commands context
+                        retry_message = FORCE_CONTINUE_MESSAGE
+                        failed_context = executor.get_failed_commands_context()
+                        if failed_context:
+                            retry_message += failed_context
+
+                        messages.append({"role": "user", "content": retry_message})
+
+                        # Reset and continue the loop
+                        accumulated_text = ""
+                        tool_calls = []
+                        continue
+
+                    # Truly done - emit summary
                     summary = executor.get_summary()
                     yield StreamEvent(StreamEventType.DONE, {
                         "status": "complete",
@@ -865,6 +1607,7 @@ async def stream_with_tools_openai(
                 text_buffer = ""
                 tool_calls: Dict[int, Dict[str, Any]] = {}  # index -> tool call data
                 finish_reason = None
+                has_seen_tool_call = False  # Track if we've started tool calls
 
                 async for line in response.content:
                     line = line.decode("utf-8").strip()
@@ -885,12 +1628,21 @@ async def stream_with_tools_openai(
                         if delta.get("content"):
                             text = delta["content"]
                             text_buffer += text
+
+                            # NOTE: We no longer capture OpenAI text as "thinking" because:
+                            # 1. OpenAI doesn't have extended thinking like Anthropic
+                            # 2. Capturing text as thinking causes duplicate display
+                            # The frontend shows a "Thinking..." animation during streaming anyway
+
                             if len(text_buffer) >= 20 or text.endswith((".", "!", "?", "\n")):
                                 yield StreamEvent(StreamEventType.TEXT, text_buffer)
                                 text_buffer = ""
 
                         # Handle tool calls
                         if delta.get("tool_calls"):
+                            # Mark that we've seen tool calls
+                            if not has_seen_tool_call:
+                                has_seen_tool_call = True
                             for tc in delta["tool_calls"]:
                                 idx = tc.get("index", 0)
                                 if idx not in tool_calls:

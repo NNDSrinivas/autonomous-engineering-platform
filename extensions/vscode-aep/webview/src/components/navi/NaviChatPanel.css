@@ -14,8 +14,12 @@
               #0b1120;
   font-family: 'Sora', 'Segoe UI', sans-serif;
   overflow: hidden;
+  overflow-x: hidden !important; /* Prevent horizontal overflow */
   box-sizing: border-box;
   position: relative; /* Ensure proper stacking context */
+  /* Containment: Prevent layout/paint from bleeding outside this container */
+  contain: layout paint;
+  isolation: isolate; /* Create new stacking context */
 }
 
 .navi-chat-header {
@@ -53,6 +57,24 @@
   box-sizing: border-box;
   overflow-wrap: break-word;
   word-wrap: break-word;
+}
+
+/* Ensure all paragraphs wrap properly */
+.navi-chat-body p,
+.navi-chat-body div,
+.navi-chat-body span {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+/* Response stream container - ensure proper sizing */
+.navi-response-stream {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .navi-coverage-gate {
@@ -927,10 +949,10 @@ html.light .navi-status-text--done {
   width: 100%;
 }
 
-/* Toast notifications */
+/* Toast notifications - use absolute positioning to stay within webview */
 .navi-toast {
-  position: fixed;
-  bottom: 16px;
+  position: absolute;
+  bottom: 80px; /* Above the input area */
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
@@ -940,6 +962,7 @@ html.light .navi-status-text--done {
   color: #ffffff;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
   animation: naviToastSlideUp 0.2s ease-out;
+  pointer-events: auto;
 }
 
 .navi-toast--info {
@@ -1257,6 +1280,43 @@ html.light .navi-status-text--done {
   object-fit: cover;
   border-radius: 4px;
   flex-shrink: 0;
+}
+
+/* Message attachments (images/files shown in chat bubbles) */
+.navi-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.navi-message-attachment-item {
+  display: inline-block;
+}
+
+.navi-message-attachment-image {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.navi-message-attachment-image:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.navi-message-attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 /* Pills enhancement for small size */
@@ -1721,6 +1781,51 @@ html.light .navi-status-text--done {
   font-size: 13px;
   font-weight: 500;
   color: #a78bfa;
+  display: inline-flex;
+}
+
+/* Wave animation for "Thinking..." text characters */
+.navi-thinking-label-char {
+  display: inline-block;
+  animation: navi-text-wave 1.5s ease-in-out infinite;
+  color: #a78bfa;
+}
+
+.navi-thinking-label-char:nth-child(1) { animation-delay: 0.00s; }
+.navi-thinking-label-char:nth-child(2) { animation-delay: 0.05s; }
+.navi-thinking-label-char:nth-child(3) { animation-delay: 0.10s; }
+.navi-thinking-label-char:nth-child(4) { animation-delay: 0.15s; }
+.navi-thinking-label-char:nth-child(5) { animation-delay: 0.20s; }
+.navi-thinking-label-char:nth-child(6) { animation-delay: 0.25s; }
+.navi-thinking-label-char:nth-child(7) { animation-delay: 0.30s; }
+.navi-thinking-label-char:nth-child(8) { animation-delay: 0.35s; }
+.navi-thinking-label-char:nth-child(9) { animation-delay: 0.40s; }
+.navi-thinking-label-char:nth-child(10) { animation-delay: 0.45s; }
+.navi-thinking-label-char:nth-child(11) { animation-delay: 0.50s; }
+.navi-thinking-label-char:nth-child(12) { animation-delay: 0.55s; }
+
+@keyframes navi-text-wave {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  25% {
+    transform: translateY(-3px);
+    opacity: 1;
+    color: #c4b5fd;
+  }
+  50% {
+    transform: translateY(0);
+    opacity: 0.85;
+  }
+}
+
+/* Stop animation when thinking complete */
+.navi-thinking-block--complete .navi-thinking-label-char {
+  animation: none;
+  color: #4ade80;
+  opacity: 1;
+  transform: none;
 }
 
 .navi-thinking-block--complete .navi-thinking-label {
@@ -1744,6 +1849,14 @@ html.light .navi-status-text--done {
   animation: fadeInUp 0.2s ease;
 }
 
+/* Streaming content inside thinking block - dimmed style, flowing text */
+.navi-thinking-content--streaming {
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+  max-height: 200px;
+  white-space: normal; /* Override pre-wrap to make text flow */
+}
+
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -1753,6 +1866,12 @@ html.light .navi-status-text--done {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Placeholder text when no thinking content available */
+.navi-thinking-placeholder {
+  color: rgba(167, 139, 250, 0.6);
+  font-style: italic;
 }
 
 /* Wave dots animation for thinking state */
@@ -3197,7 +3316,7 @@ html.light .navi-status-text--done {
 }
 
 .navi-attachment-backdrop {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
@@ -3913,7 +4032,7 @@ html.light .navi-slash-menu {
 
 /* Branch dropdown backdrop */
 .navi-branch-dropdown-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 99;
 }
@@ -6844,6 +6963,54 @@ h4.navi-heading {
   line-height: 1;
   flex-shrink: 0;
 }
+
+/* SVG file icons - inline file type indicators */
+.navi-file-svg {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+  margin-right: 4px;
+  margin-top: -2px;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.navi-file-link:hover .navi-file-svg {
+  transform: scale(1.1);
+  filter: brightness(1.2);
+}
+
+/* File type specific colors via CSS classes */
+.navi-file-svg--ts,
+.navi-file-svg--tsx { color: #3178c6; }
+.navi-file-svg--js,
+.navi-file-svg--mjs { color: #f7df1e; }
+.navi-file-svg--jsx { color: #61dafb; }
+.navi-file-svg--py,
+.navi-file-svg--pyw { color: #3776ab; }
+.navi-file-svg--json,
+.navi-file-svg--jsonc { color: #cbcb41; }
+.navi-file-svg--md,
+.navi-file-svg--mdx { color: #519aba; }
+.navi-file-svg--css { color: #563d7c; }
+.navi-file-svg--scss,
+.navi-file-svg--sass { color: #cd6799; }
+.navi-file-svg--html,
+.navi-file-svg--htm { color: #e34f26; }
+.navi-file-svg--yaml,
+.navi-file-svg--yml { color: #cb171e; }
+.navi-file-svg--sql { color: #e38c00; }
+.navi-file-svg--rs { color: #dea584; }
+.navi-file-svg--go { color: #00add8; }
+.navi-file-svg--rb { color: #cc342d; }
+.navi-file-svg--java { color: #b07219; }
+.navi-file-svg--sh,
+.navi-file-svg--bash,
+.navi-file-svg--zsh { color: #89e051; }
+.navi-file-svg--vue { color: #41b883; }
+.navi-file-svg--svelte { color: #ff3e00; }
+.navi-file-svg--docker,
+.navi-file-svg--dockerfile { color: #384d54; }
+.navi-file-svg--default { color: #6d8086; }
 
 .navi-link--file {
   color: #60a5fa;
@@ -10322,6 +10489,350 @@ html.light .navi-activity-item-detail--file {
   color: rgba(0, 0, 0, 0.8);
 }
 
+/* ===== CLAUDE CODE-STYLE INLINE ACTIVITIES ===== */
+/* Matches Claude Code's activity display: dot + label + description */
+.navi-claude-activities {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+  padding: 8px 0;
+}
+
+.navi-claude-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.navi-claude-activity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MODERN FUTURISTIC STATUS INDICATORS
+   Sleek, glowing, animated indicators for running/done/error states
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.navi-claude-dot {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0; /* Hide the text bullet */
+}
+
+/* Base ring for all states */
+.navi-claude-dot::before {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── RUNNING STATE: Animated glowing ring with orbiting dot ── */
+.navi-claude-dot--running::before {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+  border: 2px solid transparent;
+  border-top-color: #60a5fa;
+  border-right-color: rgba(96, 165, 250, 0.3);
+  box-shadow:
+    0 0 10px rgba(96, 165, 250, 0.6),
+    0 0 20px rgba(96, 165, 250, 0.3),
+    inset 0 0 6px rgba(96, 165, 250, 0.1);
+  animation: navi-futuristic-spin 1s linear infinite;
+}
+
+.navi-claude-dot--running::after {
+  content: '';
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #93c5fd, #60a5fa);
+  box-shadow: 0 0 6px #60a5fa;
+  animation: navi-core-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── DONE STATE: Sleek checkmark with pop effect ── */
+.navi-claude-dot--done::before {
+  width: 10px;
+  height: 10px;
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 50%, #16a34a 100%);
+  box-shadow:
+    0 0 8px rgba(74, 222, 128, 0.6),
+    0 0 16px rgba(74, 222, 128, 0.3),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.1);
+  animation: navi-success-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.navi-claude-dot--done::after {
+  content: '✓';
+  position: absolute;
+  font-size: 7px;
+  color: white;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  animation: navi-check-scale 0.3s ease-out 0.15s both;
+}
+
+/* ── ERROR STATE: Pulsing warning with X ── */
+.navi-claude-dot--error::before {
+  width: 10px;
+  height: 10px;
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 50%, #dc2626 100%);
+  box-shadow:
+    0 0 8px rgba(248, 113, 113, 0.6),
+    0 0 16px rgba(248, 113, 113, 0.3);
+  animation: navi-error-breathe 1.5s ease-in-out infinite;
+}
+
+.navi-claude-dot--error::after {
+  content: '✕';
+  position: absolute;
+  font-size: 6px;
+  color: white;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* ── ANIMATIONS ── */
+@keyframes navi-futuristic-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes navi-core-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+    box-shadow: 0 0 4px #60a5fa;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+    box-shadow: 0 0 8px #60a5fa, 0 0 12px rgba(96, 165, 250, 0.5);
+  }
+}
+
+@keyframes navi-success-pop {
+  0% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes navi-check-scale {
+  0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes navi-error-breathe {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 6px rgba(248, 113, 113, 0.5);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 12px rgba(248, 113, 113, 0.8), 0 0 20px rgba(248, 113, 113, 0.4);
+  }
+}
+
+.navi-claude-activity-label {
+  font-weight: 600;
+  color: #e2e8f0;
+  letter-spacing: 0.01em;
+}
+
+.navi-claude-activity-desc {
+  color: rgba(148, 163, 184, 0.85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400px;
+}
+
+.navi-claude-activity-desc--file {
+  color: #60a5fa;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+}
+
+/* Clickable file names in activities - use !important to override global cursor: text */
+.navi-clickable-file {
+  cursor: pointer !important;
+  text-decoration: underline !important;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  color: #60a5fa !important;
+}
+
+.navi-clickable-file:hover {
+  color: #93c5fd !important;
+  text-decoration-style: solid;
+  background: rgba(96, 165, 250, 0.1);
+  border-radius: 2px;
+}
+
+/* Inline links in narrative text - use !important to override global cursor: text */
+.navi-inline-link {
+  color: #60a5fa !important;
+  text-decoration: underline !important;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer !important;
+}
+
+.navi-inline-link:hover {
+  color: #93c5fd !important;
+  text-decoration-style: solid;
+  background: rgba(96, 165, 250, 0.1);
+  border-radius: 2px;
+}
+
+/* Light theme variants for clickable elements */
+.light .navi-clickable-file,
+:root.light .navi-clickable-file {
+  color: #2563eb;
+}
+
+.light .navi-clickable-file:hover,
+:root.light .navi-clickable-file:hover {
+  color: #1d4ed8;
+}
+
+.light .navi-inline-link,
+:root.light .navi-inline-link {
+  color: #2563eb;
+}
+
+.light .navi-inline-link:hover,
+:root.light .navi-inline-link:hover {
+  color: #1d4ed8;
+}
+
+.navi-claude-activity-status {
+  color: #60a5fa;
+  font-size: 10px;
+  animation: navi-status-spin 1s linear infinite;
+}
+
+@keyframes navi-status-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.navi-claude-activity-check {
+  color: #4ade80;
+  font-size: 11px;
+}
+
+/* Inline activity stats (Claude Code style +/- display) */
+.navi-claude-activity-stats {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 8px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  font-weight: 500;
+}
+
+.navi-claude-activity-stats .navi-activity-change-add {
+  color: #4ade80;
+}
+
+.navi-claude-activity-stats .navi-activity-change-del {
+  color: #f87171;
+}
+
+/* Light mode variants */
+.light .navi-claude-activity-stats .navi-activity-change-add,
+:root.light .navi-claude-activity-stats .navi-activity-change-add {
+  color: #16a34a;
+}
+
+.light .navi-claude-activity-stats .navi-activity-change-del,
+:root.light .navi-claude-activity-stats .navi-activity-change-del {
+  color: #dc2626;
+}
+
+/* Command block with IN/OUT like Claude Code */
+.navi-claude-command-block {
+  margin-left: 20px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  border-radius: 6px;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+}
+
+.navi-claude-command-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.navi-claude-io-label {
+  font-weight: 600;
+  color: #64748b;
+  font-size: 11px;
+  min-width: 28px;
+  text-transform: uppercase;
+}
+
+.navi-claude-command-text {
+  color: #f1f5f9;
+  background: none;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.navi-claude-output-text {
+  color: rgba(148, 163, 184, 0.9);
+  background: none;
+  padding: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+/* Light theme */
+.light .navi-claude-activity-label,
+:root.light .navi-claude-activity-label {
+  color: #1e293b;
+}
+
+.light .navi-claude-activity-desc,
+:root.light .navi-claude-activity-desc {
+  color: rgba(71, 85, 105, 0.85);
+}
+
+.light .navi-claude-command-block,
+:root.light .navi-claude-command-block {
+  background: rgba(241, 245, 249, 0.8);
+  border-color: rgba(203, 213, 225, 0.6);
+}
+
+.light .navi-claude-command-text,
+:root.light .navi-claude-command-text {
+  color: #1e293b;
+}
+
 /* ===== CLAUDE CODE-STYLE NARRATIVE LINES ===== */
 /* Main response text - BRIGHT white for prominence over dim activities */
 .navi-narrative-line {
@@ -10384,6 +10895,170 @@ html.light .navi-activity-item-detail--file {
 :root.light .navi-narrative-line,
 html.light .navi-narrative-line {
   color: rgba(0, 0, 0, 0.9);
+}
+
+/* ===== ACTIVITIES SECTION ===== */
+/* Tool activities shown after message content */
+.navi-activities-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.1));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Hide empty activities section */
+.navi-activities-section:empty {
+  display: none;
+}
+
+/* ===== INTERLEAVED STREAM ===== */
+/* Container for chronologically interleaved text and activities */
+/* Uses block layout so inline narratives flow together, activities break as blocks */
+.navi-interleaved-stream {
+  display: block;
+  width: 100%;
+  line-height: 1.6;
+}
+
+/* Narrative text chunks - inline flowing text */
+.navi-narrative-chunk {
+  display: inline; /* Make narrative chunks flow inline instead of block */
+  color: var(--vscode-foreground, #e8ecf5);
+  line-height: 1.6;
+  white-space: normal; /* Allow text to wrap naturally */
+  word-break: normal;
+}
+
+/* Narrative block with structure (lists, paragraphs) */
+.navi-narrative-block {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+  color: var(--vscode-foreground, #e8ecf5);
+  line-height: 1.7;
+}
+
+/* Narrative paragraph */
+.navi-narrative-para {
+  margin: 8px 0;
+  line-height: 1.7;
+}
+
+.navi-narrative-para:first-child {
+  margin-top: 0;
+}
+
+/* Narrative lists (ul/ol) */
+.navi-narrative-list {
+  margin: 12px 0;
+  padding-left: 24px;
+  line-height: 1.7;
+}
+
+.navi-narrative-list li {
+  margin: 6px 0;
+  padding-left: 4px;
+}
+
+/* Ordered list styling */
+ol.navi-narrative-list {
+  list-style-type: decimal;
+}
+
+/* Unordered list styling */
+ul.navi-narrative-list {
+  list-style-type: disc;
+}
+
+/* Strong/bold text in narratives */
+.navi-narrative-block strong,
+.navi-narrative-chunk strong {
+  font-weight: 600;
+  color: var(--vscode-foreground, #f1f5f9);
+}
+
+/* Inline code in narratives */
+.navi-narrative-block .navi-inline-code,
+.navi-narrative-chunk .navi-inline-code {
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  font-size: 0.9em;
+}
+
+/* Light theme */
+.light .navi-narrative-block strong,
+:root.light .navi-narrative-block strong,
+.light .navi-narrative-chunk strong,
+:root.light .navi-narrative-chunk strong {
+  color: var(--vscode-foreground, #1e293b);
+}
+
+.light .navi-narrative-block .navi-inline-code,
+:root.light .navi-narrative-block .navi-inline-code,
+.light .navi-narrative-chunk .navi-inline-code,
+:root.light .navi-narrative-chunk .navi-inline-code {
+  background: rgba(99, 102, 241, 0.1);
+  color: #4f46e5;
+}
+
+/* Activities in interleaved stream are block elements that break the inline flow */
+.navi-interleaved-stream .navi-claude-activity {
+  display: block;
+  margin: 8px 0;
+  clear: both; /* Ensure activities start on new line */
+}
+
+/* ===== BOTTOM PROCESSING INDICATOR ===== */
+/* Shows at the bottom of content when NAVI is still working */
+/* Replaces the top "Thinking..." once content appears */
+.navi-processing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 0;
+  margin-top: 8px;
+}
+
+.navi-processing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(96, 165, 250, 0.8);
+  animation: navi-processing-bounce 1.4s ease-in-out infinite;
+}
+
+.navi-processing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.navi-processing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.navi-processing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes navi-processing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* Light theme */
+.light .navi-processing-dot,
+:root.light .navi-processing-dot {
+  background: rgba(37, 99, 235, 0.8);
 }
 
 /* ===== THINKING INDICATOR ===== */
@@ -11052,6 +11727,331 @@ html.light .navi-progress-chevron {
 }
 
 /* ========================================================================
+   EXECUTION PLAN STEPPER - Visual task execution progress
+   ======================================================================== */
+
+.navi-plan-stepper {
+  margin: 12px 0;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.92));
+  overflow: hidden;
+}
+
+.navi-plan-stepper--completed {
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.navi-plan-stepper--error {
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.navi-plan-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  font-family: inherit;
+}
+
+.navi-plan-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.navi-plan-icon {
+  color: #60a5fa;
+  display: flex;
+  align-items: center;
+}
+
+.navi-plan-stepper--completed .navi-plan-icon {
+  color: #4ade80;
+}
+
+.navi-plan-stepper--error .navi-plan-icon {
+  color: #f87171;
+}
+
+.navi-plan-title {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navi-plan-progress-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.navi-plan-chevron {
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.5);
+  transition: transform 0.2s ease;
+}
+
+.navi-plan-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.navi-plan-progress-track {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.navi-plan-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4ade80, #60a5fa);
+  transition: width 0.4s ease;
+}
+
+.navi-plan-progress-fill.has-error {
+  background: linear-gradient(90deg, #4ade80, #f87171);
+}
+
+.navi-plan-steps {
+  padding: 8px 16px 16px;
+}
+
+.navi-plan-stepper--collapsed .navi-plan-steps {
+  display: none;
+}
+
+.navi-plan-step {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  position: relative;
+}
+
+/* Connector line between steps */
+.navi-plan-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 32px;
+  bottom: -8px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.navi-plan-step--completed:not(:last-child)::after {
+  background: #4ade80;
+}
+
+.navi-plan-step--running:not(:last-child)::after {
+  background: linear-gradient(180deg, #60a5fa, rgba(255, 255, 255, 0.1));
+}
+
+.navi-plan-step-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.navi-plan-step--pending .navi-plan-step-icon {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.navi-plan-step--running .navi-plan-step-icon {
+  background: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  animation: step-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes step-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(96, 165, 250, 0);
+  }
+}
+
+.navi-plan-step--completed .navi-plan-step-icon {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+}
+
+.navi-plan-step--error .navi-plan-step-icon {
+  background: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+}
+
+.navi-plan-step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.navi-plan-step-title {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.navi-plan-step--pending .navi-plan-step-title {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.navi-plan-step--running .navi-plan-step-title {
+  color: #60a5fa;
+  font-weight: 500;
+}
+
+.navi-plan-step--completed .navi-plan-step-title {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.navi-plan-step--error .navi-plan-step-title {
+  color: #f87171;
+}
+
+.navi-plan-step-detail {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 2px;
+}
+
+.navi-plan-step-output {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.navi-plan-step-error {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #f87171;
+}
+
+/* Light theme for execution plan stepper */
+.light .navi-plan-stepper,
+:root.light .navi-plan-stepper,
+html.light .navi-plan-stepper {
+  background: linear-gradient(135deg, rgba(241, 245, 249, 0.98), rgba(226, 232, 240, 0.95));
+  border-color: rgba(99, 102, 241, 0.25);
+}
+
+.light .navi-plan-header,
+:root.light .navi-plan-header,
+html.light .navi-plan-header {
+  color: hsl(var(--foreground, 0 0% 10%));
+}
+
+.light .navi-plan-header:hover,
+:root.light .navi-plan-header:hover,
+html.light .navi-plan-header:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.light .navi-plan-icon,
+:root.light .navi-plan-icon,
+html.light .navi-plan-icon {
+  color: #6366f1;
+}
+
+.light .navi-plan-progress-track,
+:root.light .navi-plan-progress-track,
+html.light .navi-plan-progress-track {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.light .navi-plan-progress-badge,
+:root.light .navi-plan-progress-badge,
+html.light .navi-plan-progress-badge {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.light .navi-plan-step--pending .navi-plan-step-icon,
+:root.light .navi-plan-step--pending .navi-plan-step-icon,
+html.light .navi-plan-step--pending .navi-plan-step-icon {
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.4);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.light .navi-plan-step--running .navi-plan-step-icon,
+:root.light .navi-plan-step--running .navi-plan-step-icon,
+html.light .navi-plan-step--running .navi-plan-step-icon {
+  background: rgba(99, 102, 241, 0.15);
+  color: #6366f1;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.light .navi-plan-step--completed .navi-plan-step-icon,
+:root.light .navi-plan-step--completed .navi-plan-step-icon,
+html.light .navi-plan-step--completed .navi-plan-step-icon {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.light .navi-plan-step-title,
+:root.light .navi-plan-step-title,
+html.light .navi-plan-step-title {
+  color: rgba(0, 0, 0, 0.8);
+}
+
+.light .navi-plan-step--pending .navi-plan-step-title,
+:root.light .navi-plan-step--pending .navi-plan-step-title,
+html.light .navi-plan-step--pending .navi-plan-step-title {
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.light .navi-plan-step--running .navi-plan-step-title,
+:root.light .navi-plan-step--running .navi-plan-step-title,
+html.light .navi-plan-step--running .navi-plan-step-title {
+  color: #6366f1;
+}
+
+.light .navi-plan-step-detail,
+:root.light .navi-plan-step-detail,
+html.light .navi-plan-step-detail {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.light .navi-plan-step-output,
+:root.light .navi-plan-step-output,
+html.light .navi-plan-step-output {
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.7);
+}
+
+/* ========================================================================
    ACCEPT/UNDO CHANGE BUTTONS - For action approval
    ======================================================================== */
 .navi-change-actions {
@@ -11390,7 +12390,7 @@ html.light .navi-thinking-block-content pre {
    PERSISTENT BOTTOM STATUS BAR - REMOVED (status now shown inline)
    ======================================================================== */
 .navi-persistent-status {
-  position: fixed;
+  position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
@@ -11542,13 +12542,54 @@ html.light .navi-persistent-status {
   background: rgba(0, 0, 0, 0.3);
 }
 
+/* Claude Code-style files summary header */
+.navi-task-complete-files-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  text-transform: none;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .navi-task-complete-files-count {
-  margin-left: auto;
-  padding: 2px 8px;
-  background: rgba(139, 92, 246, 0.2);
-  border-radius: 10px;
-  font-size: 11px;
-  color: rgba(139, 92, 246, 0.9);
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.navi-task-complete-files-label {
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.navi-task-complete-files-stats {
+  display: flex;
+  gap: 8px;
+  margin-left: 8px;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* +/- stats colors in file summary */
+.navi-files-add {
+  color: #4ade80;
+}
+
+.navi-files-del {
+  color: #f87171;
+}
+
+.light .navi-files-add,
+:root.light .navi-files-add,
+html.light .navi-files-add {
+  color: #16a34a;
+}
+
+.light .navi-files-del,
+:root.light .navi-files-del,
+html.light .navi-files-del {
+  color: #dc2626;
 }
 
 .navi-task-complete-files-list {
@@ -11602,6 +12643,44 @@ html.light .navi-persistent-status {
   font-family: 'JetBrains Mono', monospace;
 }
 
+/* File icon colors */
+.navi-file-created {
+  color: #4ade80 !important;
+  background: rgba(74, 222, 128, 0.15) !important;
+}
+
+.navi-file-modified {
+  color: #60a5fa !important;
+  background: rgba(96, 165, 250, 0.15) !important;
+}
+
+/* Per-file diff button */
+.navi-task-complete-file-diff-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 4px;
+  color: #a78bfa;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.navi-task-complete-file-item:hover .navi-task-complete-file-diff-btn {
+  opacity: 1;
+}
+
+.navi-task-complete-file-diff-btn:hover {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #c4b5fd;
+}
+
 .navi-task-complete-verification {
   margin-bottom: 12px;
 }
@@ -11641,20 +12720,27 @@ html.light .navi-persistent-status {
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
+/* 3-button action bar: Accept / Review / Undo */
+.navi-task-complete-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
 .navi-task-complete-review-btn {
-  width: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
-  margin-bottom: 12px;
+  gap: 4px;
+  padding: 12px 8px;
   background: rgba(139, 92, 246, 0.1);
   border: 1px solid rgba(139, 92, 246, 0.3);
-  border-radius: 8px;
-  color: rgba(139, 92, 246, 0.9);
-  font-size: 13px;
-  font-weight: 500;
+  border-radius: 10px;
+  color: rgba(167, 139, 250, 0.95);
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -11662,26 +12748,22 @@ html.light .navi-persistent-status {
 .navi-task-complete-review-btn:hover {
   background: rgba(139, 92, 246, 0.2);
   border-color: rgba(139, 92, 246, 0.5);
-}
-
-.navi-task-complete-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 12px;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
 }
 
 .navi-task-complete-accept-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 16px;
-  background: linear-gradient(135deg, rgba(74, 222, 128, 0.9), rgba(34, 197, 94, 0.9));
-  border: none;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 13px;
+  gap: 4px;
+  padding: 12px 8px;
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.15), rgba(34, 197, 94, 0.1));
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  border-radius: 10px;
+  color: #4ade80;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -11689,28 +12771,32 @@ html.light .navi-persistent-status {
 
 .navi-task-complete-accept-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.25), rgba(34, 197, 94, 0.2));
+  box-shadow: 0 4px 12px rgba(74, 222, 128, 0.25);
 }
 
 .navi-task-complete-revert-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 16px;
-  background: rgba(239, 68, 68, 0.1);
+  gap: 4px;
+  padding: 12px 8px;
+  background: rgba(239, 68, 68, 0.08);
   border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
-  color: #ef4444;
-  font-size: 13px;
+  border-radius: 10px;
+  color: #f87171;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .navi-task-complete-revert-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.15);
   border-color: rgba(239, 68, 68, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
 }
 
 .navi-task-complete-next {

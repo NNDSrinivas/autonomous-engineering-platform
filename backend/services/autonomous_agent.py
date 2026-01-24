@@ -21,7 +21,6 @@ import uuid
 from typing import AsyncGenerator, Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -1331,7 +1330,7 @@ Return ONLY the JSON, no markdown or explanations."""
             elif tool_name == "list_directory":
                 path = os.path.join(self.workspace_path, arguments.get("path", ""))
                 if not os.path.exists(path):
-                    return {"success": False, "error": f"Directory not found"}
+                    return {"success": False, "error": "Directory not found"}
 
                 entries = []
                 for entry in sorted(os.listdir(path))[:50]:
@@ -1397,8 +1396,6 @@ Return ONLY the JSON, no markdown or explanations."""
         context: TaskContext
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Call LLM with tools and stream the response."""
-        import aiohttp
-        from backend.services.streaming_agent import NAVI_TOOLS, NAVI_FUNCTIONS_OPENAI
 
         system_prompt = self._build_system_prompt(context)
 

@@ -907,7 +907,7 @@ class ToolExecutor:
 
             if old_text not in content:
                 return {
-                    "error": f"Text to replace not found in file. Make sure old_text matches exactly.",
+                    "error": "Text to replace not found in file. Make sure old_text matches exactly.",
                     "success": False,
                 }
 

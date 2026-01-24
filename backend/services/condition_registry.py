@@ -15,7 +15,6 @@ This allows NAVI to handle ANY verification scenario in the real world.
 import asyncio
 import importlib
 import json
-import os
 import re
 import socket
 import subprocess
@@ -26,7 +25,7 @@ import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Pattern, Set, Type, Union
+from typing import Any, Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)

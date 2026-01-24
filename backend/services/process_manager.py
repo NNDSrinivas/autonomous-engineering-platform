@@ -43,11 +43,9 @@ This module provides COMPLETE capabilities for handling ANY software engineering
 """
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
-import platform
 import psutil  # For resource monitoring
 import re
 import signal
@@ -56,13 +54,12 @@ import ssl
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Pattern, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -1237,7 +1234,7 @@ async def verify_condition(
             import websockets
 
             async def check_ws():
-                async with websockets.connect(url, close_timeout=timeout) as ws:
+                async with websockets.connect(url, close_timeout=timeout):
                     return True
 
             await asyncio.wait_for(check_ws(), timeout=timeout)
@@ -1911,11 +1908,12 @@ async def verify_condition(
     elif condition_type == "docker_registry":
         # Check Docker registry accessibility
         registry = kwargs.get("registry", "docker.io")
-        image = kwargs.get("image")
+        # image parameter reserved for future image-specific checks
+        _ = kwargs.get("image")
 
         try:
             if registry == "docker.io":
-                url = f"https://registry.hub.docker.com/v2/"
+                url = "https://registry.hub.docker.com/v2/"
             else:
                 url = f"https://{registry}/v2/"
 
@@ -2616,7 +2614,7 @@ async def verify_condition(
         resource = kwargs.get("resource")
 
         try:
-            cmd = f"terraform state list"
+            cmd = "terraform state list"
             result = subprocess.run(cmd, shell=True, capture_output=True, timeout=30, cwd=working_dir)
 
             if result.returncode == 0:
@@ -2666,7 +2664,6 @@ async def verify_condition(
                         "count": len(firing)
                     }
             elif query:
-                import urllib.parse
                 api_url = f"{url}/api/v1/query?query={urllib.parse.quote(query)}"
                 req = urllib.request.Request(api_url)
 
@@ -2836,7 +2833,7 @@ async def verify_condition(
                 "port": port,
                 "connected": result.returncode == 0
             }
-        except Exception as e:
+        except Exception:
             # Fallback to port check
             return await verify_condition("port", host=host, port=port)
 

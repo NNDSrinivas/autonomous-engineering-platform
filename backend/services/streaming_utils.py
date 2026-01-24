@@ -316,7 +316,6 @@ async def stream_with_heartbeat(
     Yields:
         Events from main generator, interspersed with heartbeats
     """
-    import asyncio
 
     session = session or StreamingSession()
     heartbeat_count = 0

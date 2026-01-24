@@ -6,7 +6,7 @@ multiple platforms (Vercel, Railway, Fly.io, Netlify, Heroku, AWS, GCP, Azure, e
 using CLI-based deployment workflow.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 import subprocess
 import shutil
 import os
@@ -296,7 +296,7 @@ async def detect_project_type(
     lines.append(f"\n**Detected Files**: {', '.join(detected['detected_files']) or 'None'}")
 
     if detected["recommended_platforms"]:
-        lines.append(f"\n**Recommended Platforms**:")
+        lines.append("\n**Recommended Platforms**:")
         for platform in detected["recommended_platforms"][:4]:
             config = PLATFORM_CLIS.get(platform, {})
             desc = config.get("description", "")
@@ -334,14 +334,14 @@ async def check_deployment_cli(
 
     # Check if CLI is installed
     if not cli_path:
-        lines.append(f"**Installed**: No")
-        lines.append(f"\n**To install**, run:")
+        lines.append("**Installed**: No")
+        lines.append("\n**To install**, run:")
         lines.append(f"```bash\n{config['install']}\n```")
-        lines.append(f"\n**Then login** with:")
+        lines.append("\n**Then login** with:")
         lines.append(f"```bash\n{config['login']}\n```")
         return ToolResult(output="\n".join(lines), sources=[])
 
-    lines.append(f"**Installed**: Yes")
+    lines.append("**Installed**: Yes")
     lines.append(f"**Path**: {cli_path}")
 
     # Try to get version
@@ -370,21 +370,21 @@ async def check_deployment_cli(
             )
 
             if result.returncode == 0:
-                lines.append(f"**Authenticated**: Yes")
+                lines.append("**Authenticated**: Yes")
                 # Show who's logged in (first line of output usually)
                 if result.stdout:
                     who = result.stdout.strip().split("\n")[0][:100]
                     lines.append(f"**User**: {who}")
-                lines.append(f"\n**Ready to deploy!** Use:")
+                lines.append("\n**Ready to deploy!** Use:")
                 lines.append(f"```bash\n{config['deploy']}\n```")
             else:
-                lines.append(f"**Authenticated**: No")
-                lines.append(f"\n**To login**, run:")
+                lines.append("**Authenticated**: No")
+                lines.append("\n**To login**, run:")
                 lines.append(f"```bash\n{config['login']}\n```")
                 lines.append("\n(This will open your browser for OAuth authentication)")
 
         except subprocess.TimeoutExpired:
-            lines.append(f"**Authenticated**: Unknown (timeout)")
+            lines.append("**Authenticated**: Unknown (timeout)")
             lines.append(f"\nTry running `{status_cmd}` manually to check.")
         except Exception as e:
             lines.append(f"**Authenticated**: Unknown ({e})")

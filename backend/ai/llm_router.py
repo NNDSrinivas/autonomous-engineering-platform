@@ -35,7 +35,7 @@ import random
 import asyncio
 import os
 from typing import Any, Dict, Optional, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import json
 
 try:

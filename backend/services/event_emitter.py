@@ -17,7 +17,7 @@ from enum import Enum
 from datetime import datetime
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 class StreamEventType(Enum):

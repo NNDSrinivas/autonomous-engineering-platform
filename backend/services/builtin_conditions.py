@@ -18,11 +18,10 @@ import re
 import socket
 import ssl
 import subprocess
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import List
 
 from backend.services.condition_registry import BaseCondition, ConditionResult
 
@@ -283,7 +282,7 @@ class WebSocketCondition(BaseCondition):
             import websockets
 
             async def check_ws():
-                async with websockets.connect(url, close_timeout=timeout) as ws:
+                async with websockets.connect(url, close_timeout=timeout):
                     return True
 
             await asyncio.wait_for(check_ws(), timeout=timeout)

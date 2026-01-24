@@ -20,7 +20,7 @@ import logging
 import re
 import uuid
 from typing import AsyncGenerator, Dict, Any, List, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -978,7 +978,7 @@ class StreamingToolExecutor:
 
                 # First, kill any existing process on the port
                 try:
-                    kill_result = subprocess.run(
+                    subprocess.run(
                         f"lsof -ti :{port} | xargs kill -9 2>/dev/null || true",
                         shell=True,
                         capture_output=True,
@@ -1194,7 +1194,7 @@ async def stream_with_tools_anthropic(
 
         # CRITICAL: Include actual file contents for detailed analysis
         if context.get("source_files_preview"):
-            context_parts.append(f"\n=== SOURCE FILE CONTENTS (for detailed analysis) ===")
+            context_parts.append("\n=== SOURCE FILE CONTENTS (for detailed analysis) ===")
             context_parts.append(context["source_files_preview"])
 
         if context_parts:
@@ -1570,7 +1570,7 @@ async def stream_with_tools_openai(
 
         # CRITICAL: Include actual file contents for detailed analysis
         if context.get("source_files_preview"):
-            context_parts.append(f"\n=== SOURCE FILE CONTENTS (for detailed analysis) ===")
+            context_parts.append("\n=== SOURCE FILE CONTENTS (for detailed analysis) ===")
             context_parts.append(context["source_files_preview"])
 
         if context_parts:

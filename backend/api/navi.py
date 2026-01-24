@@ -6368,7 +6368,6 @@ async def navi_chat_stream_v2(
     from backend.services.streaming_agent import (
         stream_with_tools_anthropic,
         stream_with_tools_openai,
-        StreamEventType,
     )
 
     # Determine workspace path (accept both workspace_path and workspace_root from extension)
@@ -6398,7 +6397,7 @@ async def navi_chat_stream_v2(
         from backend.services.navi_brain import ProjectAnalyzer
         from backend.services.narrative_generator import NarrativeGenerator
         from backend.agent.intent_classifier import classify_intent
-        from backend.agent.intent_schema import IntentKind, IntentFamily
+        from backend.agent.intent_schema import IntentKind
 
         try:
             # PHASE 0: Intent Classification (determines what analysis to do)
